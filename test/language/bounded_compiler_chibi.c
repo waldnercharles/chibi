@@ -44,8 +44,7 @@ enum
     TARGET_BUDGET = 128
 };
 static const char PACKAGE[] = "project:bounded_compiler";
-static const char
-    VALID[] = "package facts\nAnswer :: pure fn()->int { return 42; }";
+static const char VALID[] = "package facts\nAnswer :: ()->int { return 42; }";
 typedef struct
 {
     const char *name;
@@ -64,31 +63,31 @@ typedef struct
     int line, column;
 } rejection;
 static const rejection rejections[REJECTED] = {
-    { "Expected }", 2, 36 },
+    { "Expected }", 2, 29 },
     { "Package sibling headers differ", 1, 9 },
     { "unsupported declaration in bounded package", 2, 1 },
-    { "bounded function body needs exactly one ordinary return", 2, 26 },
+    { "bounded function body needs exactly one ordinary return", 2, 19 },
     { "Imported package is missing from the snapshot", 2, 12 },
-    { "bounded return expression differs from its declared result type", 2, 35 },
-    { "bounded Boolean context cannot take a number", 2, 36 },
+    { "bounded return expression differs from its declared result type", 2, 28 },
+    { "bounded Boolean context cannot take a number", 2, 29 },
     { "bounded compiler requires one to three complete source files", 1, 1 },
     { "bounded source path or text exceeds its limit", 1, 1 },
     { "bounded compiler requires one to three complete source files", 1, 1 },
     { "bounded compiler requires one to three complete source files", 1, 1 },
     { "bounded compiler supports zero-argument functions only", 2, 1 },
-    { "bounded compiler requires a nongeneric pure function", 2, 1 },
+    { "bounded compiler supports zero-argument functions only", 2, 1 },
     { "bounded package supports exactly one function", 3, 1 },
-    { "bounded compiler needs a decimal literal in the int range", 2, 35 },
-    { "bounded compiler requires one ordinary int or bool result", 2, 22 },
-    { "bounded integer operands need explicit int(value)", 2, 35 },
-    { "bounded compiler supports no call except int(value)", 2, 35 },
-    { "bounded function body needs exactly one ordinary return", 2, 26 },
+    { "bounded compiler needs a decimal literal in the int range", 2, 28 },
+    { "bounded compiler requires one ordinary int or bool result", 2, 15 },
+    { "bounded integer operands need explicit int(value)", 2, 28 },
+    { "bounded compiler supports no call except int(value)", 2, 28 },
+    { "bounded function body needs exactly one ordinary return", 2, 19 },
     { "Expected package header", 1, 1 },
-    { "bounded compiler supports no call except int(value)", 2, 36 },
-    { "bounded compiler supports no call except int(value)", 2, 35 },
+    { "bounded compiler supports no call except int(value)", 2, 29 },
+    { "bounded compiler supports no call except int(value)", 2, 28 },
     { "bounded compiler reserves int and bool for conversions", 2, 1 },
     { "bounded compiler requires one ordinary int or bool result", 2, 1 },
-    { "bounded expression exceeds its 24-row limit", 2, 36 },
+    { "bounded expression exceeds its 24-row limit", 2, 29 },
     { "unsupported bounded compiler root or target", 1, 1 },
     { "bounded source path or text exceeds its limit", 1, 1 },
     { "unsupported bounded compiler root or target", 1, 1 },
@@ -311,7 +310,7 @@ static bool compile(int b, pin_value *args, pin_value *out)
         b ? runs.counts.sljit_entries > 0 && !runs.counts.bytecode_entries
           : runs.counts.bytecode_entries > 0 && !runs.counts.sljit_entries
     );
-    REQUIRE(!pin_value_snapshot_to_arena(&detached, out, &call_result));
+    REQUIRE(!compiler_fixture_snapshot(&detached, out, &call_result));
     /* Deliberately retire arguments, activation and producer before examining
      * detached output, including diagnostic text and each byte element. */
     behavior_function_release_host(&context);
@@ -438,40 +437,40 @@ static bool corpus()
 {
     single(0, "unchanged original", VALID, "[42]");
     single(1, "unchanged repeat", VALID, "[42]");
-    single(2, "changed expression", "package facts\nAnswer :: pure fn()->int { return 43; }", "[43]");
+    single(2, "changed expression", "package facts\nAnswer :: ()->int { return 43; }", "[43]");
     single(
         3,
         "Boolean operators",
-        "package facts\nAnswer :: pure fn()->bool { return "
+        "package facts\nAnswer :: ()->bool { return "
         "(not false and (false or true)) && !false || false; }",
         "[true]"
     );
-    single(4, "signed minimum", "package facts\nAnswer :: pure fn()->int { return -2147483648; }", "[-2147483648]");
+    single(4, "signed minimum", "package facts\nAnswer :: ()->int { return -2147483648; }", "[-2147483648]");
     single(
         5,
         "wrapping addition",
-        "package facts\nAnswer :: pure fn()->int { return "
+        "package facts\nAnswer :: ()->int { return "
         "int(2147483647) + int(1); }",
         "[-2147483648]"
     );
     single(
         6,
         "integer arithmetic",
-        "package facts\nAnswer :: pure fn()->int { return "
+        "package facts\nAnswer :: ()->int { return "
         "-(int(3) * int(4) - int(5)); }",
         "[-7]"
     );
     single(
         7,
         "integer bits",
-        "package facts\nAnswer :: pure fn()->int { return "
+        "package facts\nAnswer :: ()->int { return "
         "~(int(6) & int(3)) | (int(8) ^ int(1)); }",
         "[-3]"
     );
     single(
         8,
         "ordered equality",
-        "package facts\nAnswer :: pure fn()->bool { return "
+        "package facts\nAnswer :: ()->bool { return "
         "(int(1) < int(2)) && (int(2) == int(2)) && "
         "(int(2) != int(3)); }",
         "[true]"
@@ -479,7 +478,7 @@ static bool corpus()
     single(
         9,
         "ordered comparison",
-        "package facts\nAnswer :: pure fn()->bool { return "
+        "package facts\nAnswer :: ()->bool { return "
         "(int(2) <= int(2)) && (int(3) > int(2)) && "
         "(int(3) >= int(3)); }",
         "[true]"
@@ -491,7 +490,7 @@ static bool corpus()
         .sources = { "// header only\npackage facts\n",
                      "package facts\n/* complete package member */\n",
                      "package facts\n// entry is in the third member\n"
-                     "Answer :: pure fn()->int { return (42); }" },
+                     "Answer :: ()->int { return (42); }" },
         .path_count = 3,
         .source_count = 3,
         .expected = "[42]"
@@ -507,7 +506,7 @@ static bool corpus()
     oversized[SOURCE_CAP] = 'x';
     oversized[SOURCE_CAP + 1] = 0;
     single(11, "source exactly at cap", padded, "[42]");
-    const char *head = "package facts\nAnswer :: pure fn()->bool { return ";
+    const char *head = "package facts\nAnswer :: ()->bool { return ";
     prefix = strlen(head);
     memcpy(expression24, head, prefix);
     memset(expression24 + prefix, '!', 23);
@@ -519,23 +518,23 @@ static bool corpus()
     single(
         13,
         "Boolean equality",
-        "package facts\nAnswer :: pure fn()->bool { return "
+        "package facts\nAnswer :: ()->bool { return "
         "(true == true) != false; }",
         "[true]"
     );
     int n = ACCEPTED;
-    single(n++, "syntax invalid", "package facts\nAnswer :: pure fn()->int { return ;", NULL);
+    single(n++, "syntax invalid", "package facts\nAnswer :: ()->int { return ;", NULL);
     cases[n++] = (request){ .name = "mixed package names",
                             .project = "/project",
                             .paths = { "facts/One.chibi", "facts/Two.chibi" },
                             .sources = { VALID, "package other\n" },
                             .path_count = 2,
                             .source_count = 2 };
-    single(n++, "extra declaration", "package facts\nExtra :: 7;\nAnswer :: pure fn()->int { return 42; }", NULL);
-    single(n++, "extra return statement", "package facts\nAnswer :: pure fn()->int { return 42; return 43; }", NULL);
-    single(n++, "import", "package facts\nimport dep \"project:other\"\nAnswer :: pure fn()->int { return 42; }", NULL);
-    single(n++, "Boolean returned as int", "package facts\nAnswer :: pure fn()->int { return true; }", NULL);
-    single(n++, "int returned as Boolean", "package facts\nAnswer :: pure fn()->bool { return 42; }", NULL);
+    single(n++, "extra declaration", "package facts\nExtra :: 7;\nAnswer :: ()->int { return 42; }", NULL);
+    single(n++, "extra return statement", "package facts\nAnswer :: ()->int { return 42; return 43; }", NULL);
+    single(n++, "import", "package facts\nimport dep \"project:other\"\nAnswer :: ()->int { return 42; }", NULL);
+    single(n++, "Boolean returned as int", "package facts\nAnswer :: ()->int { return true; }", NULL);
+    single(n++, "int returned as Boolean", "package facts\nAnswer :: ()->bool { return 42; }", NULL);
     cases[n++] = (request){ .name = "empty source arrays", .project = "/project" };
     single(n++, "source over cap", oversized, NULL);
     single(n, "mismatched source arrays", VALID, NULL);
@@ -548,25 +547,25 @@ static bool corpus()
         .path_count = 4,
         .source_count = 4
     };
-    single(n++, "function parameter", "package facts\nAnswer :: pure fn(value:int)->int { return value; }", NULL);
-    single(n++, "non-pure function", "package facts\nAnswer :: fn()->int { return 42; }", NULL);
+    single(n++, "function parameter", "package facts\nAnswer :: (value:int)->int { return value; }", NULL);
+    single(n++, "template function", "package facts\nAnswer :: ($T: Type)->int { return 42; }", NULL);
     single(
         n++,
         "two functions",
-        "package facts\nAnswer :: pure fn()->int { return 42; }\n"
-        "Other :: pure fn()->int { return 43; }",
+        "package facts\nAnswer :: ()->int { return 42; }\n"
+        "Other :: ()->int { return 43; }",
         NULL
     );
-    single(n++, "floating literal", "package facts\nAnswer :: pure fn()->int { return 1.5; }", NULL);
-    single(n++, "unsupported scalar result", "package facts\nAnswer :: pure fn()->uint64 { return 42; }", NULL);
-    single(n++, "untyped binary expression", "package facts\nAnswer :: pure fn()->int { return 19 + 23; }", NULL);
-    single(n++, "function call", "package facts\nAnswer :: pure fn()->int { return length(\"hello\"); }", NULL);
-    single(n++, "local statement", "package facts\nAnswer :: pure fn()->int { value:int=42; return value; }", NULL);
-    single(n++, "library wrapper", "library Facts { Answer :: pure fn()->int { return 42; } }", NULL);
-    single(n++, "unsupported conversion", "package facts\nAnswer :: pure fn()->bool { return bool(true); }", NULL);
-    single(n++, "conversion type arguments", "package facts\nAnswer :: pure fn()->int { return int<bool>(5); }", NULL);
-    single(n++, "function named int", "package facts\nint :: pure fn()->int { return int(42); }", NULL);
-    single(n++, "no result", "package facts\nAnswer :: pure fn() { return 42; }", NULL);
+    single(n++, "floating literal", "package facts\nAnswer :: ()->int { return 1.5; }", NULL);
+    single(n++, "unsupported scalar result", "package facts\nAnswer :: ()->uint64 { return 42; }", NULL);
+    single(n++, "untyped binary expression", "package facts\nAnswer :: ()->int { return 19 + 23; }", NULL);
+    single(n++, "function call", "package facts\nAnswer :: ()->int { return length(\"hello\"); }", NULL);
+    single(n++, "local statement", "package facts\nAnswer :: ()->int { value:int=42; return value; }", NULL);
+    single(n++, "library wrapper", "Facts :: library { Answer :: ()->int { return 42; } }", NULL);
+    single(n++, "unsupported conversion", "package facts\nAnswer :: ()->bool { return bool(true); }", NULL);
+    single(n++, "conversion type arguments", "package facts\nAnswer :: ()->int { return int<bool>(5); }", NULL);
+    single(n++, "function named int", "package facts\nint :: ()->int { return int(42); }", NULL);
+    single(n++, "no result", "package facts\nAnswer :: () { return 42; }", NULL);
     single(n++, "25 expression rows", expression25, NULL);
     single(n, "empty project root", VALID, NULL);
     cases[n++].project = "";

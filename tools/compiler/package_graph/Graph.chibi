@@ -58,11 +58,11 @@ DuplicateImport: int : 6;
 Cycle: int : 7;
 MaxFiles: int : 256;
 
-Failure :: pure fn(error: Error, cycle: int[]) -> Graph {
+Failure :: (error: Error, cycle: int[]) -> Graph {
     return Graph.Rejected(error, cycle);
 }
 
-BindingCompare :: pure fn(left: Binding, right: Binding) -> int {
+BindingCompare :: (left: Binding, right: Binding) -> int {
     if (left.file < right.file) {
         return -1;
     }
@@ -83,7 +83,7 @@ BindingCompare :: pure fn(left: Binding, right: Binding) -> int {
 }
 
 // Merge sorting avoids repeated whole-array indexed rewrites of imported bindings.
-SortBindings :: pure fn(items: Binding[]) -> Binding[] {
+SortBindings :: (items: Binding[]) -> Binding[] {
     count := length(items);
     if (count < 2) {
         return items;
@@ -110,7 +110,7 @@ SortBindings :: pure fn(items: Binding[]) -> Binding[] {
     return result;
 }
 
-Build :: pure fn(files: File[], imports: Import[]) -> Graph {
+Build :: (files: File[], imports: Import[]) -> Graph {
     fileCount := length(files);
     packages: Package[] = [];
     bindings: Binding[] = [];
@@ -229,7 +229,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         }
         from := filePackages[imported.file];
         exists := false;
-        foreach (edge in edges) {
+        for (edge in edges) {
             if (edge.from == from && edge.to == target) {
                 exists = true;
                 break;
@@ -265,7 +265,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
     dependencies := resize([int(0)], count);
     emitted := resize([false], count);
     order := resize([int(0)], count);
-    foreach (edge in edges) {
+    for (edge in edges) {
         if (edge.from != edge.to) {
             dependencies[edge.from] += 1;
         }
@@ -295,7 +295,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
                 seen[current] = length(path) + 1;
                 target: int = -1;
                 importIndex: int = -1;
-                foreach (edge in edges) {
+                for (edge in edges) {
                     if (edge.from == current && edge.to != current && !emitted[edge.to]) {
                         if (target < 0 || strings.Compare(packages[edge.to].directory, packages[target].directory) < 0) {
                             target = edge.to;
@@ -321,7 +321,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         }
         emitted[next] = true;
         order[ordinal] = next;
-        foreach (edge in edges) {
+        for (edge in edges) {
             if (edge.to == next && !emitted[edge.from]) {
                 dependencies[edge.from] -= 1;
             }
@@ -332,7 +332,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
 }
 
 // Like the C facade, indexed queries require accepted graphs and valid indices.
-Count :: pure fn(graph: Graph) -> int {
+Count :: (graph: Graph) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return length(packages);
@@ -340,7 +340,7 @@ Count :: pure fn(graph: Graph) -> int {
             return 0;
     }
 }
-PackageAt :: pure fn(graph: Graph, index: int) -> Package {
+PackageAt :: (graph: Graph, index: int) -> Package {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return packages[index];
@@ -348,7 +348,7 @@ PackageAt :: pure fn(graph: Graph, index: int) -> Package {
             return {directory: "", name: "", member_start: 0, member_count: 0};
     }
 }
-FilePackage :: pure fn(graph: Graph, file: int) -> int {
+FilePackage :: (graph: Graph, file: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return files[file];
@@ -356,7 +356,7 @@ FilePackage :: pure fn(graph: Graph, file: int) -> int {
             return -1;
     }
 }
-Order :: pure fn(graph: Graph, ordinal: int) -> int {
+Order :: (graph: Graph, ordinal: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return order[ordinal];
@@ -364,10 +364,10 @@ Order :: pure fn(graph: Graph, ordinal: int) -> int {
             return -1;
     }
 }
-Dependency :: pure fn(graph: Graph, from: int, to: int) -> int {
+Dependency :: (graph: Graph, from: int, to: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
-            foreach (edge in edges) {
+            for (edge in edges) {
                 if (edge.from == from && edge.to == to) {
                     return edge.import_index;
                 }
@@ -377,7 +377,7 @@ Dependency :: pure fn(graph: Graph, from: int, to: int) -> int {
             return -1;
     }
 }
-Lookup :: pure fn(graph: Graph, file: int, alias: string) -> int {
+Lookup :: (graph: Graph, file: int, alias: string) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             lo: int = 0;

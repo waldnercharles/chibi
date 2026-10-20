@@ -1,4 +1,4 @@
-behavior CameraFollow {
+CameraFollow :: behavior {
     on Tick(dt) {
         self.Transform += (entity(get_global_variable("Player")).Transform - self.Transform) * (1 - exp(-6 * dt))
     }

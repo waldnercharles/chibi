@@ -847,7 +847,7 @@ bool package_snapshot_chibi_compare(
         REQUIRE(own(&output, &result, 0));
         REQUIRE(compare_result(b, options, snapshot, &result));
         if (retain) {
-            REQUIRE(!pin_value_snapshot_to_arena(&retained[b][kind], &saved[b][kind], &result));
+            REQUIRE(!compiler_fixture_snapshot(&retained[b][kind], &saved[b][kind], &result));
             saved_tag[b][kind] = ((const pin_union *)result.ptr)->tag;
             const pin_value *value;
             pin_value check;
@@ -879,7 +879,7 @@ bool package_snapshot_chibi_compare(
                 strcpy(saved_expected[kind], documents[0].syntax->text);
             }
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b][kind], &saved_check[b][kind], &check)
+                !compiler_fixture_snapshot(&retained[b][kind], &saved_check[b][kind], &check)
             );
         }
     }
@@ -933,10 +933,10 @@ TEST_CASE(package_snapshot_all_parse_before_import)
 TEST_CASE(package_snapshot_missing_syntax_token)
 {
     /* Tree-sitter inserts MISSING ")" for the first body and recovers the
-     * unterminated second declaration as ERROR; both reach the snapshot. */
+     * second declaration's stray brace as ERROR; both reach the snapshot. */
     static const char text[] = "package app\n"
-                               "Value :: pure fn() -> int { return (1; }\n"
-                               "Other :: pure fn() -> int { return 1;\n";
+                               "Value :: () -> int { return (1; }\n"
+                               "Other :: () -> int { return 1; } }\n";
     const source_package_input file = { "app/a.chibi", text, sizeof text - 1 };
     int before = missing_nodes;
     error_seen = false;

@@ -992,6 +992,55 @@ const node_command ENTITY_SEND_COMMAND = {
     .failure_message = "Could not queue event payload",
     .invoke = send_command
 };
+static int add_pair_command(void *service, const char *, const pin_value *args, int count)
+{
+    assert(count == 3);
+    (void)count;
+    return ecs_world_record_add_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64),
+        0
+    );
+}
+static int remove_pair_command(void *service, const char *, const pin_value *args, int count)
+{
+    assert(count == 3);
+    (void)count;
+    return ecs_world_record_remove_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64),
+        0
+    );
+}
+static const char *has_pair_data(void *service, const pin_value *args, pin_value *out)
+{
+    out[0].b = ecs_has_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64)
+    );
+    return NULL;
+}
+const node_command ENTITY_ADD_PAIR_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "add_pair requires an entity world",
+    .invoke = add_pair_command
+};
+const node_command ENTITY_REMOVE_PAIR_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "remove_pair requires an entity world",
+    .invoke = remove_pair_command
+};
+const node_host_call ENTITY_HAS_PAIR_CALL = {
+    .service = "game.entities",
+    .missing_service = "has_pair requires an entity world",
+    .invoke = has_pair_data
+};
 
 static void nearest_position(nearest_target target, const pin_value *inputs, pin_value *out, double *best)
 {

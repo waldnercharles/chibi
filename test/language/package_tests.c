@@ -3,6 +3,7 @@
 #include "authoring/native_bindings.h"
 #include "backend.h"
 #include "package_core_source.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
@@ -26,40 +27,40 @@ static package_test *tests;
 static const char
     FACTS[] = "package facts\n"
               "import strings \"core:strings\"\n"
-              "Check :: fn(amount: int) {\n"
+              "Check :: (amount: int) {\n"
               "    expect(amount > 2, \"amount is large\");\n"
               "}\n"
               "@test\n"
-              "Passes :: fn() {\n"
+              "Passes :: () {\n"
               "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "@test\n"
-              "Fails :: fn() {\n"
+              "Fails :: () {\n"
               "    Check(1);\n"
               "}\n"
               "@test\n"
-              "Faults :: fn() {\n"
+              "Faults :: () {\n"
               "    values: int[] = [1];\n"
               "    expect(values[3] == 1, \"unreachable\");\n"
               "}\n"
               "@test\n"
-              "Spins :: fn() {\n"
+              "Spins :: () {\n"
               "    while (true) {\n"
               "    }\n"
               "}\n"
               "@test\n"
-              "Yields :: fn() {\n"
+              "Yields :: () {\n"
               "    yield\n"
               "}\n"
               "@test\n"
-              "Starts :: fn() {\n"
+              "Starts :: () {\n"
               "    Yields();\n"
               "}\n";
-static const char FIRST[] = "package facts\n@test\nFirst :: fn() {\n}\n";
+static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 /* The package at the root itself is named by its declaration. */
-static const char TOP[] = "package top\n@test\nTop :: fn() {\n}\n";
+static const char TOP[] = "package top\n@test\nTop :: () {\n}\n";
 /* A collection's tests belong to the collection, not to this project. */
-static const char MARKS[] = "package marks\n@test\nCollected :: fn() {\n}\n";
+static const char MARKS[] = "package marks\n@test\nCollected :: () {\n}\n";
 
 static void cleanup()
 {
@@ -74,9 +75,10 @@ static bool prepare(behavior_backend backend)
 {
     cleanup();
     native_definition_pack packs[] = { CORE_DEFINITION_PACK,
-                                       NATIVE_TEXT_DEFINITION_PACK };
+                                       NATIVE_TEXT_DEFINITION_PACK,
+                                       NATIVE_ARRAY_DEFINITION_PACK };
     char error[192];
-    table = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
+    table = native_capabilities_from_definition_packs(NULL, 0, packs, 3, error, sizeof error);
     REQUIRE(table);
     source_package_input files[] = {
         { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE, strlen(CORE_STRINGS_SOURCE) },

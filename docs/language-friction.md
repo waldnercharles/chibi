@@ -78,7 +78,10 @@ and Zig type `'0'`.
 ## Strings have no indexing or slicing syntax
 
 Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
-`strings.Slice`.
+`strings.Slice`. Strings carry no length, so each `ByteAt` measures its
+string: scanning 1 MiB byte by byte took 19.9 s in a Release build on macOS
+arm64, against 0.07 s through `strings.Bytes`, which reads every byte into an
+`int[]` once (2026-10-19).
 
 - Odin and Go index bytes with `s[i]` and slice with `s[a:b]`; Rust slices a
   `str` by byte offsets with `&s[a..b]` and reads bytes through
@@ -86,15 +89,19 @@ Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
 
 Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 
-## No counted loops
+## Stage one compiles only `for name in array`
 
-Counting loops are `while (index < n) { ...; index += 1; }`.
+The language now has `for i in first..last` with inclusive bounds, keyed
+loops and `for item: ref in items` (#420), but stage one rejects all three, so
+the compiler's own counting loops stay `while (index < n) { ...; index += 1; }`.
 
-- Odin has `for i in 0..<n`, Rust `for i in 0..n`, Zig `for (0..n) |i|`,
-  Python `for i in range(n)`, and C, C++ and C# three-part `for`.
+- Odin has `for i in 0..<n`, `for i in 0..=n` and `for x, i in xs`; Rust
+  `for i in 0..n`; Zig `for (0..n) |i|`; Python `for i in range(n)`; C, C++
+  and C# three-part `for`.
 
-Suggestion: Odin's `for i in 0..<n` and `for i in 0..=n`, plus an index in
-`foreach`, as `for x, i in xs`.
+Suggestion: stage one compiles range and keyed loops. Chibi's inclusive
+`first..last` makes the common count loop `0..n - 1`; Odin's half-open `0..<n`
+would avoid the `- 1`.
 
 ## Stage one constants are literals only
 
@@ -107,3 +114,147 @@ constants, so a lookup table is a local array built on every call
 
 Suggestion: stage one folds the constant expressions stage zero accepts, and
 constant arrays such as `Steps :: [1, 3, 6]`.
+
+## Strings are NUL-terminated and carry no length
+
+In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
+quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
+`_split` and `replace` copies the rest of the string on each match. A string
+cannot hold a NUL byte, so Odin's `trim_null` has no use.
+
+- Odin, Go, Zig and Jai strings are a pointer and a length; `len(s)` and
+  `s[i]` are O(1) and `s[a:b]` is a view. Rust's `&str` and C++'s
+  `std::string_view` are the same pair; C# strings carry their length.
+
+Suggestion: strings that carry their length and may hold any byte, with
+slices that share the bytes once ownership allows it.
+
+## No narrow unsigned types or wrapping arithmetic
+
+Odin's Rabin-Karp `index` keeps a `u32` hash that wraps. `core:strings` keeps
+it in `int64` and masks every step:
+`h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF`.
+`byte` itself has only equality and bit operations.
+
+- Odin, Go and C define unsigned overflow to wrap; Rust has
+  `wrapping_mul` and `Wrapping<u32>`; Zig has `+%`, `-%` and `*%` beside
+  checked `+`, `-` and `*`; C# wraps in `unchecked` code; Python and
+  JavaScript mask (`& 0xFFFFFFFF`, `Math.imul`, `>>> 0`).
+
+Suggestion: `u8`, `u16` and `u32` with full arithmetic, and Zig's wrapping
+operators so ordinary arithmetic stays checked.
+
+## Every top-level declaration is exported
+
+Odin's private `_split` became the exported `SplitKeeping`, and the shared
+line splitter the exported `SplitLinesKeeping`.
+
+- Odin has `@(private)` and `@(private="file")`; Jai `#scope_file` and
+  `#scope_module`; Rust, Zig and F# export only `pub` or public items; Go
+  exports capitalized names; C has `static`; C# `internal` and `private`;
+  TypeScript exports explicitly; Python marks private names with `_`.
+
+Suggestion: an `@private` attribute, beside `@test`, that keeps a declaration
+out of the package's exports and its reference page.
+
+## No way to build a string
+
+Concatenation is `format_text("{}{}", a, b)`, so `Join`, `Repeat`, `Replace`
+and `ToLower` copy everything built so far on each append. No conversion makes
+a string from a byte: `ToLower` slices its letter out of
+`"abcdefghijklmnopqrstuvwxyz"`.
+
+- Odin has `strings.Builder` and `string(bytes)`; Go `strings.Builder` and
+  `string(b)`; Rust `String::push_str` and `String::from_utf8`; Zig
+  `ArrayList(u8)`; C# `StringBuilder`; Python `"".join`; Ruby a mutable
+  `String#<<`.
+
+Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
+`s = append(s, t)` on a local string, as arrays already update in place.
+
+## A pure function cannot fail on purpose
+
+Odin's `repeat` panics on a negative count. Purity is inferred since #420, and
+`expect` has an effect, so calling it would make `Repeat` impure; `core:strings`
+returns an empty string instead and hides the caller's mistake. Only a checked
+conversion or an out-of-bounds read fails a pure call.
+
+- Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
+  and `unreachable`; C `assert`; C# and F# throw.
+
+Suggestion: a pure `assert(condition, message)` that fails the call as a
+checked conversion does.
+
+## No runes
+
+`core:strings` works on bytes: `Cut` takes byte offsets, `EqualFold`,
+`ToLower`, `ToUpper` and the space trims are ASCII, and `Split(s, "")` splits
+into bytes. Odin's `rune_count`, `index_rune`, `reverse`, `expand_tabs`, the
+justify procedures and `levenshtein_distance` are not ported.
+
+- Odin has a `rune` type, `for r, i in s` that decodes UTF-8 and
+  `core:unicode/utf8`; Go ranges over a string's runes; Rust has `char` and
+  `s.chars()`; C# `Rune`; Python and Ruby strings are code points.
+
+Suggestion: a `rune` type and Odin's decoding `for r, i in s`, then a
+`core:utf8` package written in Chibi.
+
+## No procedure values
+
+Odin builds `trim_space` and `trim` on `trim_left_proc`, `index_proc` and
+`fields_proc`, which take a procedure. `core:strings` repeats each loop
+instead and leaves the `_proc` API out.
+
+- Odin passes non-capturing `proc` values; C function pointers; Zig function
+  types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
+  TypeScript, Python and Ruby lambdas.
+
+Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
+
+## Stage one has no reference parameters
+
+Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator` and
+`fields_iterator` advance the caller's string. The language has `ref`
+parameters since #420, but stage one rejects them, and `core:strings`, which
+stage one compiles, has no iterators.
+
+- Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
+  Ruby use generators.
+
+Suggestion: stage one compiles `ref` parameters of locals, then
+`core:strings` gains Odin's iterators.
+
+## No default parameter values
+
+Odin's `cut(s, rune_offset := 0, rune_length := 0)` is `Cut(s, offset, count)`
+with every argument required.
+
+- Odin, C#, C++, Python, TypeScript and Ruby default trailing parameters;
+  Rust and Zig don't.
+
+Suggestion: constant defaults for trailing parameters; low priority.
+
+## Calls nest at most 64 deep
+
+Every authored function shares a call-depth budget of 64 (#420). Stage-one
+twins that walked a graph recursively, the union-members walk and the effect
+analysis query restrictions, failed on deep inputs and became loops over an
+explicit stack.
+
+- Odin, C, C++, Rust and Zig recurse until the native stack runs out, often
+  megabytes deep; Python's default limit is 1,000 frames; C# and F# grow to
+  the thread's stack, and F# turns tail calls into jumps.
+
+Suggestion: a deeper budget, counted in frame bytes rather than calls, or
+guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
+
+## Templates are package-local
+
+A template with `$T` parameters cannot be exported, so a generic helper is
+copied into each package that needs it (#420).
+
+- Odin's parametric procedures, Zig's `comptime` functions, Rust generics and
+  C++ templates all export from their package, module or header.
+
+Suggestion: export templates, instantiating each at the caller with the
+callee package's declarations in scope, as Odin does.

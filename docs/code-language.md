@@ -1,6 +1,7 @@
-# Asset and behavior source — revision 3
+# Asset and behavior source, revision 4
 
-Executable behavior source uses `.chibi`; declarative content remains KDL.
+Executable behavior source uses `.chibi`. Components, prototypes and relationships
+also have authored `.chibi` declarations; scenes and project configuration use KDL.
 The shared C frontend retains syntax snapshots and resolves typed semantic
 records. The compiler lowers those records directly into verified execution
 modules; visual editors consume their authoring projections.
@@ -17,13 +18,13 @@ functions with declared results can recurse across files.
 ```code
 // arithmetic.chibi
 package sample
-Add :: fn(value: int) -> int { return value + 2; }
+Add :: (value: int) -> int { return value + 2; }
 ```
 
 ```code
 // main.chibi
 package sample
-Main :: fn(value: int) -> int { return Add(value); }
+Main :: (value: int) -> int { return Add(value); }
 ```
 
 Each input supplies a display path, a stable document key and parsed syntax; the
@@ -84,11 +85,27 @@ loading remains unsupported; callers can still supply owned buffer snapshots.
 
 The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
 as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
-pure `ByteLength`, `ByteAt`, `Slice`, `Compare`, `IsIdentifier` and `BaseName`
-functions use the text capability pack. Byte access returns unsigned 0..255 or
--1 outside the string. Slice clamps its start/count and owns its result; byte
-ranges can split UTF-8 sequences. Compare orders unsigned bytes, IsIdentifier
-checks ASCII identifiers, and BaseName uses slash separators. Compiler packages
+pure functions use the text and array capability packs. `ByteLength`, `ByteAt`,
+`Bytes`, `Slice`, `Compare`, `IsIdentifier` and `BaseName` are the primitives:
+byte access returns unsigned 0..255 or -1 outside the string; each `ByteAt`
+call measures the string, so a loop over a long one is quadratic, and `Bytes`
+returns every byte as an `int[]` in one pass instead; Slice clamps its start/count and owns
+its result, byte ranges can split UTF-8 sequences, Compare orders unsigned
+bytes, IsIdentifier checks ASCII identifiers, and BaseName uses slash
+separators. The rest port Odin's `core:strings` over bytes: `Contains`,
+`ContainsAny`, `HasPrefix`, `HasSuffix`, `Index`, `LastIndex`, `IndexByte`,
+`LastIndexByte`, `IndexAny`, `LastIndexAny`, `Count`, `TruncateToByte`,
+`EqualFold`, `ToLower`, `ToUpper`, `IsAsciiSpace`, `Trim`, `TrimLeft`,
+`TrimRight`, `TrimSpace`, `TrimLeftSpace`, `TrimRightSpace`, `TrimPrefix`,
+`TrimSuffix`, `Cut`, `Split`, `SplitN`, `SplitAfter`, `SplitAfterN`,
+`SplitKeeping` (Odin's `_split`), `SplitLines`, `SplitLinesN`,
+`SplitLinesAfter`, `SplitLinesAfterN`, `SplitLinesKeeping`, `Fields`, `Join`,
+`Concatenate`, `Repeat`, `Replace`, `ReplaceAll`, `Remove`, `RemoveAll` and
+`Partition`, which returns a `Parts` record. Where Odin decodes runes, these
+compare, count and offset bytes: an empty separator splits into bytes, `Cut`
+takes byte offsets, cutsets are byte sets, and case and spaces are ASCII.
+`Repeat` returns an empty string for a count below 1 where Odin panics, and
+`Replace` returns only the string. Compiler packages
 also use the existing pure generic array capability pack. General authored
 generic specialization remains a separate language gap; core does not provide
 an imported generic array-wrapper API.
@@ -101,18 +118,18 @@ not change the public build command.
 
 An attribute is `@name` before a function declaration, on its own line or the
 same one. `@test` is the only attribute; any other name, or `@test` twice, is a
-diagnostic. It marks a package-level function that takes no parameters, has no
-type parameters and returns nothing:
+diagnostic. It marks a package-level function that takes no parameters and
+returns nothing:
 
 ```chibi
 package scoring
 
-Double :: pure fn(points: int) -> int {
+Double :: (points: int) -> int {
     return points * 2;
 }
 
 @test
-DoublesPoints :: fn() {
+DoublesPoints :: () {
     expect(Double(3) == 6, "three doubles to six");
 }
 ```
@@ -120,9 +137,9 @@ DoublesPoints :: fn() {
 A test passes when it returns. It fails when `expect(condition, message)` sees
 a false condition, which fails the call with `Expectation failed: message` at
 the `expect` call's position, or on any other runtime failure, such as an
-out-of-bounds read or a checked conversion. `expect` is a core function that is
-not `pure`, so a `pure fn` cannot call it and no optimization removes it. Tests
-are ordinary functions: they compile into the package like any other and run
+out-of-bounds read or a checked conversion. `expect` is a core function with an
+effect, so a function that calls it is not pure and no optimization removes the
+call. Tests are ordinary functions: they compile into the package like any other and run
 only when something calls them.
 
 `chibi test [ROOT]` calls them: it prepares every package below ROOT, runs the
@@ -132,15 +149,20 @@ without a game: it may call the natives that need none, such as text, array
 and math functions, and fails when it waits or starts a task, or after 100
 million instructions.
 
+The [versioned contract snapshot](language-contracts/v1.md) pins source evidence,
+existing C conformance cases and unresolved migration semantics separately at its
+recorded revision, before the version-25 retained-binding migration. Its source
+audit is not fresh runtime or cross-backend validation.
+
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 24. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 26. Scenes, KDL prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 24
+version 26
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -172,6 +194,13 @@ fields, such as `Radius 25`; array payloads use `(array)-` with values or item
 nodes. Escape their text when embedding them in another KDL document. These
 payloads are declarative configuration, not executable behavior source.
 
+Authored asset declarations use the same name-first headers as executable source:
+`Health :: component { ... }`, `Enemy :: prototype { ... }` and
+`Targets :: relationship { ... }`. A composed prototype names ordered bases,
+such as `Elite :: prototype(Enemy, Armored) { ... }`. See
+[authored prototypes and relationships](runtime-authoring.md#authored-prototypes-and-relationships)
+for sparse defaults, instance-local links, relationship traits and typed pair edits.
+
 ## Executable source
 
 Semicolons are optional at the end of a line and before a closing brace.
@@ -193,7 +222,7 @@ its value or source, for example `Value: float = amount` or
 `Source: ref int from count`. A bare identifier after `:` is a value expression.
 
 ```code
-system FreeMotion(position: Transform, velocity: Velocity)
+FreeMotion :: system(position: Transform, velocity: Velocity)
     without Collider, Body
 {
     position += velocity * dt
@@ -214,14 +243,14 @@ Library calls resolve against the project catalog; native calls resolve against
 registered engine capabilities. Unknown names and incompatible types are errors.
 
 ```code
-behavior Projectile {
+Projectile :: behavior {
     elapsed := 0;
     lifetime := 3;
     on Tick(dt) {
         elapsed += dt;
         self.Projectile.Age += dt;
         if (elapsed >= lifetime) {
-            destroy(self);
+            destroy_entity(self);
         }
     }
 }
@@ -234,10 +263,49 @@ and nominal values require an explicit type. `elapsed: number = 0;` spells out t
 type; native storage types such as `float` and `int64` remain available when precision
 or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.
 
+An explicit retained binding puts its lifetime after the name and colon:
+
+```chibi
+visits: retain int = 0
+elapsed: retain = 0
+```
+
+`retain` selects private persistent storage belonging to the enclosing behavior
+attachment or system registration, including inside named functions. Calling a
+helper does not create another retained owner. All matches of one system share
+its retained values; a second registration has independent values. Imported
+library state inherits the consuming owner and keeps its own module namespace.
+`retain = value` infers the value's type with the same rules as `:=`.
+Behavior and library root declarations such as `elapsed := 0` are also retained.
+There is no `retain(system)` form.
+
+An ordinary system-body declaration is local to its invocation. Each query match
+has independent locals, which survive `await` and `yield` until the invocation
+finishes. Use those locals for temporary coroutine progress, components for
+longer-lived entity state, and retained bindings for private owner-wide state.
+System-retained values cannot contain task handles; keep those handles local to
+the invocation instead. Pass system invocation locals to helpers and handlers as
+parameters; they cannot capture those locals.
+Formatting may remove an explicit root `retain` when the analyzed program stays
+the same; a callable's `retain` and system ownership remain meaningful.
+
+Historical project upgrades preserve behavior retention and convert old
+system-owned `shared` or `retain(system)` bindings to plain `retain`. Old per-match
+system state cannot be converted by changing its spelling: migration stops with
+a diagnostic so the author can put durable entity state in components or
+temporary progress in coroutine locals. The project version remains 26 because
+no checked-in project uses the affected system declarations. Hand-made projects
+already at candidate version 26 must review system `retain` declarations manually
+and remove any old `(system)` suffix. Rebuild prepared code after upgrading.
+The old `state` and `shared` prefixes are no longer declaration syntax.
+The `state.name` expression still selects a persistent binding when a local
+shadows its name.
+
 `::` defines a compile-time constant, function or union type. A constant such as
 `BaseDamage :: 12` has no writable instance storage. Its initializer can use literals,
 other constants and built-in operators, including constant arrays and reflected
-structs; runtime values and function calls are rejected. The compiler evaluates
+structs. Ordinary procedures can also run in compile-time contexts when all their
+inputs and operations are available there. Runtime dependencies are errors. The compiler evaluates
 these expressions once when it builds the module. `:=` continues to infer a mutable
 value: persistent state at program scope, a local inside an executable block.
 
@@ -263,26 +331,34 @@ in the source as one undoable edit. The definition remains available for other
 calls. **Fold into Input** and **Show Input Nodes** only change presentation.
 
 Adding a standalone variable **Get** creates a named local read, such as
-`levelValue := state."level"`. Its execution pins show when the read occurs; its
+`levelValue := state.level`. Its execution pins show when the read occurs; its
 output retains that value. Choosing the variable as an existing input's source
 reads it when that consumer runs. The `state` qualifier identifies the declared
 state even when a local parameter has the same name. A newly added **Set** uses
 a zero default where one can be written, or the variable's current value for
 types such as entities; edit its Value input to choose the intended source.
 
-Names may be identifiers or quoted display names. Prototype references in native
-prototype arguments resolve project symbols, such as `spawn(MovementEmitter)`.
-Component references resolve reflected symbols. Source member paths use short
-component names, such as `Velocity`; exact registered names and keys also resolve.
-Reflected fields use source spellings such as `BurstCount` for `burst_count`.
-Case and underscore differences are accepted only when the match is unique.
-Completion supplies the matching symbol category.
-Names with spaces still use quotes; quoted literals also disambiguate a name shadowed
-by a local value. Missing, ambiguous and wrong-kind symbols are errors.
+Language declarations, bindings and member names use identifiers. Quotes denote
+string values, including user-facing text and literal union alternatives.
+Prototype, component and relationship symbols produce typed reference values:
+
+```chibi
+asset: Prototype = MovementEmitter
+component: Component = Health
+relation: Relationship = Targets
+Forward :: (value: Prototype) -> Prototype { return value }
+emitter := await spawn_prototype(Forward(asset))
+```
+
+The reference category survives locals, parameters and results. A string containing
+`"MovementEmitter"` is not a prototype reference, and a component reference cannot
+be passed where a prototype is required. Missing, ambiguous and wrong-kind symbols
+are errors. Source member paths use registered component and field spellings;
+completion supplies the available names.
 
 Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and
-reflected structs. Arrays use `number[]`; collection types use `set<int>` or
-`map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
+reflected structs. Arrays use `number[]`; collection types include `set<int>` and
+`Map<string, int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Collection natives such as `array_add` return a new value: write
 `hair = array_add(hair, h)`. A pure native called as a statement is an error.
 Arrays are values, so every store copies; a local or result array therefore
@@ -319,6 +395,70 @@ yet supported. A constant can declare its type, as in `Mask: uint : 0xFF`. A
 conversion to a value's own type, such as `entity(get_global_variable("Player"))`,
 only supplies the type a polymorphic call needs.
 
+### Array storage
+
+The runtime automatically packs eligible array elements into contiguous fixed-width
+storage. Eligible types are booleans, signed and unsigned integers, F32/F64 values,
+enums, handles, and plain fixed-layout records, including vectors. A record is
+eligible only when every field, including nested records, has a validated fixed
+layout and needs no managed storage. Strings, names, managed record fields and
+nested collections use boxed elements. Arrays containing null record elements
+also stay boxed. Mutable native builders may remain boxed until an owned snapshot
+is made.
+
+Packing changes physical storage, not element order, indexing, value types, copy
+ownership or iteration semantics. Inspection and persistence support both layouts.
+Maps use separate associative storage; they are not packed arrays.
+
+The focused numeric-loop check compares boxed and packed inputs for ten numeric
+types, with 64 elements and 16 trials per representation, through the VM and the
+available compiled backend, native SLJIT or Wasm. It checks equal results and
+reports payload bytes and elapsed time. This small workload does not establish a
+universal speedup.
+
+### Maps and iteration
+
+Maps retain separate key and value types. A complete type can be explicit or
+inferred from a nonempty initializer:
+
+```chibi
+scores: Map<string, int> = {"Ada": 3, "Bo": 5}
+inferred: Map = {"Ada": 3}
+more := {"Ada": 3}
+empty: Map<string, int> = {}
+scores["Ada"] = 4
+if map_has(scores, "Bo") { score := scores["Bo"] }
+scores = map_remove(scores, "Bo")
+for name,score in scores { record_score(name, score) }
+```
+
+`map_has` guards a lookup. A missing key fails the lookup; it does not synthesize
+a zero value. Assignment inserts or replaces a value. Replacement keeps the key's
+position; removal followed by reinsertion appends it. Iteration takes a snapshot
+in insertion order. Map equality compares associations independently of order.
+Dynamic duplicate keys keep the last value at the first position. Keys must be
+supported finite scalars, strings, names, enums or handles. Nested maps and arrays
+retain their complete value types. An empty literal needs a concrete contextual type.
+
+Array iteration binds the item first and the optional zero-based index second.
+String iteration yields one string per Unicode scalar, not one byte or one
+grapheme cluster. Both take a value snapshot before entering the loop:
+
+```chibi
+for item,index in items { total += item * index }
+for character in "Aé🐈" { append_character(character) }
+for item: ref in items { item += 1 }
+```
+
+Reference iteration writes through to a mutable owned array binding. Other
+bindings copied from the array keep their snapshots. The borrowed source cannot
+be accessed or replaced directly inside the loop; use `item`. Its body cannot
+suspend, start tasks, perform opaque host operations or call mutating procedures.
+`break` and `continue` preserve writes already performed. This form rejects
+temporary arrays, reference parameters, maps, strings and paired item/index
+bindings. The implementation stores logical references and resolves each write
+against the source binding; source code never receives a raw element pointer.
+
 Vector receivers support `velocity.norm()`, statically resolved to the existing
 vec2 normalization operation. `vec2_norm(velocity)` names that operation directly.
 Neither form introduces object allocation or virtual dispatch. Normalization retains
@@ -337,11 +477,12 @@ registered Tick delta to `dt`; `on Tick { ... }` needs no explicit payload list.
 A handler may name its entire payload with `on Tick as tick { ... }`. Event
 payload members are read-only unless their reflected signature supplies a reference.
 
-A behavior has an implicit `self: ecs.entity` owner. Component paths read the
+A behavior, library or system has an implicit invocation owner, `self: entity`.
+Library calls use their caller's owner. Component paths read the
 owner or another entity handle and follow reflected members:
 
 ```code
-behavior Emitter {
+Emitter :: behavior {
     on Tick {
         self.ParticleEmitter.Active = true;
         self.ParticleEmitter.Rate += event.dt;
@@ -365,12 +506,12 @@ reads the field only when it exists.
 `chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
 becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
 statement `set_dash_remaining(v)` becomes `self.Dash.remaining = v`. It also
-spells `get_variable<"x">()` as `state."x"` and operator functions such as
+spells supported state reads as `state.x` and operator functions such as
 `add(a, b)` and `less(a, b)` as operators. Each rewrite is kept only when the
 program analyzes the same. Awaiting a component accessor does not wait.
 
 Ordinary blocks support assignments, compound assignments, `if`/`else`, `switch`, `while`,
-`for (i in first..last)` with inclusive bounds, `foreach (item in array)`,
+`for i in first..last` with inclusive bounds, `for item in array`,
 `break`, `continue` and calls. An ordinary call invokes its native entry and then
 continues with the following statement, including entries that emit no outcome.
 `await` follows one native `Then` or `Completed` outcome instead; a suspended
@@ -413,7 +554,8 @@ switch level {
 
 Project version 24 migrates existing `function` declarations and `match` statements
 to these forms. Those old keywords are no longer runtime syntax.
-The new reserved words are `fn`, `union`, `switch`, `is`, `and`, `or`, and `where`.
+Version 26 removes the named `fn`, `pure` and `foreach` spellings. Current reserved
+words include `union`, `switch`, `is`, `and`, `or`, and `where`.
 If a version 23 project uses one as an identifier, rename it and its references
 before migrating; the migration does not rename identifiers automatically.
 
@@ -423,7 +565,7 @@ block-scoped result:
 
 ```code
 on Begin {
-    emitter := await spawn(MovementEmitter);
+    emitter := await spawn_prototype(MovementEmitter);
         emitter.ParticleEmitter.Parent = self;
 }
 ```
@@ -484,7 +626,8 @@ entity identities for references to independently owned work or entities.
 
 ### Tasks
 
-A function waits when its body contains `await` or `yield`. Calling such a
+A function waits when its body contains a retained `await` or `yield`.
+Compiler-proven synchronous component awaits do not make it wait. Calling such a
 function without `await` starts a task: it runs inside the call until its first
 suspension, then runs beside the caller and returns a task handle. Awaiting a
 call gives its result directly. Awaiting a `task<T>` handle gives `T | Cancelled`.
@@ -496,12 +639,12 @@ Qualified names such as `Outcome.Cancelled` and component fields named `Cancelle
 remain legal; this restriction does not make it a grammar keyword.
 
 ```code
-behavior Turret {
+Turret :: behavior {
     pulse: task
     ready: bool = false
 
-    Charge :: fn(time: double) -> (power: double) {
-        await Delay(time)
+    Charge :: (time: double) -> (power: double) {
+        await delay(time)
         yield
         return(time * 2)
     }
@@ -525,7 +668,7 @@ behavior Turret {
   cancel the awaiting caller.
 - `cancel t after n` schedules cancellation without waiting. Its deadline is the
   task's original start time plus `n`, measured in the same game-clock seconds as
-  `Delay`. The start time is recorded before the task's initial synchronous work.
+  `delay`. The start time is recorded before the task's initial synchronous work.
   Negative or NaN durations count as zero; positive infinity sets no finite
   deadline. Repeated deadlines keep the earliest. An overdue pending task stops
   at a safe point; already performed effects remain. Completion removes the deadline, and
@@ -565,7 +708,7 @@ The runtime retains call frames and captured locals across supported native wait
 and cancels owned invocations when their entity or system registration is
 removed.
 
-Native calls use their reflected names or unique snake-case spellings. Named
+Native calls use their registered source names. Named
 arguments follow `name: expression`; ordinary statement calls may use positional
 arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
@@ -588,20 +731,20 @@ single conventional completion. `on` handles events. For example, opening a gate
 and entering it can occur in the same handler:
 
 ```code
-behavior SharedGate {
-    state int visits = 0;
+SharedGate :: behavior {
+    visits: retain int = 0;
     action latch = gate();
     on Tick() { latch.open(); latch.enter(); }
     after latch.Exit { visits += 1; }
 }
 ```
 
-A named function uses `Name :: fn(parameters) -> result_type { body }`. The `fn`
-marker is optional: these definitions have the same signature and behavior:
+A named function uses `Name :: (parameters) -> result_type { body }`. An optional
+`=>` can precede its brace body:
 
 ```code
-DamageFor :: fn(level: int) -> number { return level * 2 }
-OtherDamage :: (level: int) -> number { return level * 2 }
+DamageFor :: (level: int) -> number { return level * 2 }
+OtherDamage :: (level: int) -> number => { return level * 2 }
 ```
 
 A single result may be named with `-> (Damage: number)`, and multiple results retain
@@ -632,13 +775,22 @@ unit-polymorphic signatures or permit cyclic library publication. Numeric
 inference and runtime representation stay unchanged.
 
 Functions declare data parameters and results. Ordinary functions infer their
-execution continuation; `Name :: pure fn(...)` declares a data-only signature. Calls
-use the function name directly. Qualification selects an external library:
-`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
+execution continuation and effects. Purity is inferred through local and imported
+calls, including recursion, writes and suspension. Starting a task is an effect.
+Query filters additionally reject reads of retained or per-invocation values,
+even through an imported helper. Calls use the function name directly.
+Qualification selects an external library, such as `MovementActions.ApplyForce(force)`.
+Reference parameters use `ref`; a call passes a writable value directly, such as
+`Nudge(self.Velocity)`, and the function writes through it. There is no address-of
+operator. Other parameters are copies and can change without changing the caller.
+All authored functions use the shared call-depth budget of 64. Source metadata
+cannot override that limit or declare a custom owner type. Descriptions belong
+in comments rather than executable metadata declarations.
 Qualification has no import aliases or visibility syntax of its own.
 
-Type parameters preserve generic relationships, for example
-`Identity :: fn<T: float>(item: T) -> (output: T) { ... }`. A function
+Argument-bound type parameters preserve generic relationships, for example
+`Identity :: (item: $T) -> T { return item }`. Later uses of `T` must match the
+bound type. `$N: int` binds a compile-time value argument. A function
 gives its results with `return x`, or `return(a, b)` in signature order. A bare `return` gives
 each result's current value.
 
@@ -646,6 +798,65 @@ A function without `->` infers its results from its first `return`: `return x` g
 result named `Result` with the type of `x`, and `return(Hit: h, Distance: d)` gives one result
 per label. Later returns must match. A function that never returns a value has no results.
 Recursive functions, and functions that call each other in a cycle, declare their results.
+
+### Compile-time values and constructed types
+
+`$T` binds a type from a runtime argument; `$N: int` binds a value that must be
+known at compilation. Specialization keeps concrete storage types and reuses the
+same instantiation for identical bindings:
+
+```chibi
+Identity :: (value: $T) -> T { return value }
+Scale :: (value: $T, $N: int) -> T { return value * N }
+Factorial :: (n: int) -> int {
+    if n <= 1 { return 1 }
+    return n * Factorial(n - 1)
+}
+Size :: Factorial(5)
+```
+
+An ordinary procedure runs in a compile-time context when its inputs and body
+are available there. It needs no `pure` or `comptime` marker. Runtime storage,
+host effects and unsupported operations cannot enter that evaluation. The evaluator
+supports scalar and type values, authored calls, local variables, assignment,
+`if` and `while`. Arrays, `for` loops, closures and native calls are not supported
+in compile-time execution. Each evaluation has a 65,536-step budget and a
+128-call depth limit, separate from the runtime call-depth limit of 64. Expression
+and statement nesting are each limited to 256 levels.
+
+Qualified library calls also specialize generic functions and construct types,
+for example `Units.Quantity(double, 1, -1)`. Specializations are materialized in
+the defining library, with that library's source ranges and lexical bindings;
+their bodies are not copied into the caller's analysis. Nested imported requests
+resolve before executable generations are published. A failed specialization
+does not publish a callable generation. Body edits rebuild dependent runtime
+callers; changed compile-time results or constructed layouts invalidate cached
+analysis as semantic catalog changes.
+
+Libraries can construct record types from compile-time type and value parameters.
+For example, dimensions can live in type arguments while the runtime value stores
+only the numeric payload:
+
+```chibi
+Units :: library {
+    Quantity :: struct($DataType: Type, $Length: int, $Time: int) {
+        amount: DataType
+    }
+    ProductType :: (A: Type, B: Type) -> Type {
+        return Quantity(A.DataType, A.Length + B.Length, A.Time + B.Time)
+    }
+    Multiply :: (a: $A, b: $B) -> ProductType(A, B) {
+        result: ProductType(A, B) = {amount: a.amount * b.amount}
+        return result
+    }
+}
+```
+
+`Quantity(double, 1, -1)` multiplied by `Quantity(double, 0, 1)` produces
+`Quantity(double, 1, 0)`. The resulting record stores one double; dimension
+exponents are compile-time metadata. The procedure constructs the return type
+using ordinary type operations. This is separate from the existing erased unit
+annotations on native/component fields described above.
 
 When several graph calls share a pure generated expression body, formatting
 emits one ordinary pure function and calls it from each original site. Typed
@@ -672,7 +883,7 @@ macro Choose(flag: bool) -> () {
 }
 ```
 
-Additional event scopes use `events "Scope Name" { ... }`. Disabled actions are
+Additional event scopes use `events ScopeName { ... }`. Disabled actions are
 explicit source declarations, such as `disabled action gate = multi_gate();`.
 Disabling behavior is executable source semantics.
 
@@ -680,7 +891,7 @@ Systems declare their required and optional components in the header. Their
 ordinary body runs once per matched entity per tick:
 
 ```code
-system EmitterControl(emitter: ParticleEmitter, trigger: Aim?) without Collider {
+EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider {
     if (trigger) {
         emitter.Active = trigger.Firing;
     }
@@ -699,14 +910,14 @@ component's value. A component cannot appear in both the parameter list and
 `without`, including an optional parameter.
 
 An explicit query declaration also supports `all`, `any`, `not` and `has`, such as
-`query all(has("Transform"), not(has("Collider")));`.
+`query all(has(Transform), not(has(Collider)));`.
 When both a header and an explicit query are present, the query intersects the
-header's required and excluded components. A parameterless system may omit
+header's required and excluded components. A parameterless system must write
 `()`; its body still has an implicit Tick, including an empty body. Systems
 without declared membership use the runtime's inferred component query.
 
-The separate header form, `system Move query position: Transform, velocity:
-Velocity where not Frozen { ... }`, supports Boolean membership filters and
+The header form `Move :: system(position: Transform, velocity: Velocity)
+where not Frozen { ... }` supports Boolean membership filters and
 relationship-sourced bindings. `join aim: Targets.Transform?` groups a binding
 that follows an exclusive relationship; the existing comma-separated binding
 has the same meaning. `team: Team from ancestor(ChildOf)` selects the nearest
@@ -721,13 +932,13 @@ A synchronous system can contribute to a numeric component field without reading
 and writing the destination immediately:
 
 ```chibi
-system Damage query projectile: Projectile {
+Damage :: system(projectile: Projectile) {
     reduce projectile.Target.Health.Damage += projectile.Damage
 }
 ```
 
 ```chibi
-system Closest query candidate: Candidate {
+Closest :: system(candidate: Candidate) {
     reduce min(candidate.Target.Threat.Distance, candidate.Distance)
 }
 ```
@@ -761,7 +972,7 @@ reset and engine teardown also cancel held dispatches.
 Opt in to regrouped sums when the changed numeric behavior is acceptable:
 
 ```chibi
-system Damage query projectile: Projectile {
+Damage :: system(projectile: Projectile) {
     reduce unordered projectile.Target.Health.Damage += projectile.Damage
 }
 ```
@@ -796,18 +1007,24 @@ Publication occurs outside active dispatch, cancels the old continuations and
 tasks, and replaces the program; it does not wait for suspended work to finish.
 Invalid drafts retain the applied source/runtime generation.
 
-System root state belongs to each matched query tuple and persists across ticks.
-`shared total := 0;` instead belongs to the system and is shared by its
-matched instances. `shared` is rejected in behaviors. Leaving the query releases
-the tuple's retained system state; matching again starts from the authored defaults.
-Entity generation changes also start fresh state. Suspended system executions
-retain their continuation rather than starting a second Tick for that entity.
+Explicit system `retain` belongs to the registration, persists across completed
+invocations and survives having no query matches. Removing or re-adding a match
+does not reset it. Imported library retention follows the same owner. Ordinary
+system-body declarations are invocation-local: each complete query tuple has
+independent local variables and suspended work, but no private retained bindings.
+Removing a structural tuple cancels that work and discards its locals; a new
+match starts a fresh invocation. Entity generations participate in tuple identity.
+Suspended system executions resume their continuation rather than starting a
+second invocation for that tuple. A completed invocation may start again on a
+later eligible update. A value predicate becoming false does not itself cancel
+already suspended work; check changing gameplay conditions inside the coroutine.
 System publication uses the same matching-state replacement path. Query-managed
 rows are retained only when the query generator shape matches; later membership
 refresh still releases rows that no longer match. In the preview caller,
 `preview_sources_stage` sets restart only for the explicitly requested
 `restart_path`; dependent replacements preserve matching state. Explicit restart
-resets both instance and shared state. These rules come from
+resets retained state for the owner. Components keep their independent ECS
+lifetime and are not reset merely because a system query stops matching. These rules come from
 `src/authoring/preview_source_publish.c` and `src/execution/program.c`, not the
 retired native application-DLL reload mechanism.
 
@@ -817,7 +1034,7 @@ The built-in `globals` namespace exposes entities named by authored
 `GlobalBinding` components. It is available in behaviors, libraries and systems:
 
 ```chibi
-behavior CameraFollow {
+CameraFollow :: behavior {
     player: entity
     on Begin {
         player = globals.Player
@@ -884,7 +1101,7 @@ A root-level `bind` maintains a writable component field from a deterministic
 value expression:
 
 ```code
-behavior LinkedEmitter {
+LinkedEmitter :: behavior {
     bind self.ParticleEmitter.Active = input.Boost.held;
 }
 ```
@@ -923,7 +1140,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 24. Executable files contain no generated identity
+Project manifests use version 26. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

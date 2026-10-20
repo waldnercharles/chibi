@@ -149,7 +149,7 @@ static bool compare(int backend, const path_case *item, const char *expected, bo
         path->str && !strcmp(path->str, expected)
     );
     if (retain) {
-        REQUIRE(!pin_value_snapshot_to_arena(&retained[backend], &previous[backend], &result));
+        REQUIRE(!compiler_fixture_snapshot(&retained[backend], &previous[backend], &result));
         retained_tag[backend] = kind->tag;
         REQUIRE(strlen(expected) < sizeof retained_expected[backend]);
         strcpy(retained_expected[backend], expected);

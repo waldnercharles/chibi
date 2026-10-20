@@ -32,23 +32,6 @@ static script_range node_range(TSNode node, int document)
                            .column = (int)p.column + 1,
                            .document = document };
 }
-static bool text_is(TSNode node, const char *source, const char *text)
-{
-    if (ts_node_is_null(node)) {
-        return false;
-    }
-    size_t start = ts_node_start_byte(node), end = ts_node_end_byte(node);
-    return strlen(text) == end - start && !memcmp(source + start, text, end - start);
-}
-static bool token(TSNode node, const char *source, const char *text)
-{
-    for (uint32_t i = 0; !ts_node_is_null(node) && i < ts_node_child_count(node); i++) {
-        if (text_is(ts_node_child(node, i), source, text)) {
-            return true;
-        }
-    }
-    return false;
-}
 static void *copy(arena *storage, const void *input, size_t bytes)
 {
     if (!bytes) {
@@ -62,15 +45,7 @@ static char *own(arena *storage, const char *text)
 {
     return text ? copy(storage, text, strlen(text) + 1) : NULL;
 }
-script_function script_callable_function(
-    const script_function *functions,
-    int parent,
-    TSNode node,
-    const char *source,
-    int document,
-    script_function_kind kind,
-    int symbol
-)
+script_function script_callable_function(int parent, TSNode node, int document, script_function_kind kind, int symbol)
 {
     return (script_function){ .kind = kind,
                               .symbol = symbol,
@@ -79,9 +54,7 @@ script_function script_callable_function(
                               .receiver = -1,
                               .parent = parent,
                               .range = node_range(node, document),
-                              .pure = token(node, source, "pure"),
-                              .depth_limit = parent >= 0 ? functions[parent].depth_limit
-                                                         : 64 };
+                              .depth_limit = SCRIPT_CALL_DEPTH_LIMIT };
 }
 script_type script_callable_result_type(uint64_t function, const script_type *results, int count)
 {
@@ -148,16 +121,12 @@ static headers begin(arena *storage, const script_callable_facts *facts, const c
         script_function f = facts->signature.functions[i];
         f.parameters = NULL;
         f.results = NULL;
-        f.type_parameters = NULL;
         const script_function *original = &facts->signature.functions[i];
         for (int j = 0; j < acount(original->parameters); j++) {
             apush(f.parameters, original->parameters[j]);
         }
         for (int j = 0; j < acount(original->results); j++) {
             apush(f.results, original->results[j]);
-        }
-        for (int j = 0; j < acount(original->type_parameters); j++) {
-            apush(f.type_parameters, original->type_parameters[j]);
         }
         apush(h.functions, f);
         apush(h.function_changes, false);
@@ -216,7 +185,8 @@ static int declare(
         (script_lexical_context){ h->context.scope,
                                   h->context.function,
                                   h->facts.named.package_scope,
-                                  h->facts.named.document_count },
+                                  h->facts.named.document_count,
+                                  h->context.specialization },
         range,
         name,
         kind
@@ -270,15 +240,8 @@ static script_signature_reading annotation(headers *h, TSNode node, bool signatu
 }
 static int function_new(headers *h, TSNode node, script_function_kind kind, int symbol)
 {
-    script_function f = script_callable_function(
-        h->functions,
-        h->context.function,
-        node,
-        h->source,
-        h->context.document,
-        kind,
-        symbol
-    );
+    script_function
+        f = script_callable_function(h->context.function, node, h->context.document, kind, symbol);
     apush(h->functions, f);
     apush(h->function_changes, true);
     return acount(h->functions) - 1;
@@ -303,7 +266,9 @@ static void parameters(headers *h, TSNode node, bool results)
     }
     for (uint32_t i = 0; i < named_count(node); i++) {
         TSNode parameter = ts_node_named_child(node, i);
-        if (ts_node_is_extra(parameter)) {
+        if (ts_node_is_extra(parameter) ||
+            (h->context.instantiating &&
+             !ts_node_is_null(field(parameter, "comptime")))) {
             continue;
         }
         script_signature_reading read = annotation(h, field(parameter, "type"), true);
@@ -381,19 +346,6 @@ static void register_header(headers *h, TSNode node, int *symbol_out, int *funct
     );
     h->context.scope = acount(h->scopes) - 1;
     h->functions[function].scope = h->context.scope;
-    TSNode generics = field(node, "type_parameters");
-    for (uint32_t i = 0; i < named_count(generics); i++) {
-        TSNode parameter = ts_node_named_child(generics, i);
-        if (ts_node_is_extra(parameter)) {
-            continue;
-        }
-        script_type bound = annotation(h, field(parameter, "type"), false).type;
-        int generic = declare_node(h, field(parameter, "name"), SCRIPT_TYPE_PARAMETER, bound, false);
-        h->symbols[generic].type.parameter = h->symbols[generic].id;
-        h->symbols[generic].type.flags |= SCRIPT_TYPE_GENERIC;
-        h->changes[generic] |= SCRIPT_CALLABLE_TYPE;
-        apush(h->functions[function].type_parameters, generic);
-    }
     parameters(h, field(node, "parameters"), false);
     parameters(h, field(node, "results"), true);
     script_symbol entry = { .name = own(h->storage, "entry"),
@@ -460,7 +412,6 @@ static script_callable_header finish(headers *h, int symbol, int function)
         f.entry = own(h->storage, f.entry);
         f.parameter_count = acount(f.parameters);
         f.result_count = acount(f.results);
-        f.type_parameter_count = acount(f.type_parameters);
         f.parameters = copy(
             h->storage,
             f.parameters,
@@ -470,11 +421,6 @@ static script_callable_header finish(headers *h, int symbol, int function)
             h->storage,
             f.results,
             (size_t)f.result_count * sizeof *f.results
-        );
-        f.type_parameters = copy(
-            h->storage,
-            f.type_parameters,
-            (size_t)f.type_parameter_count * sizeof *f.type_parameters
         );
         apush(functions, ((script_callable_function_change){ i, i >= h->initial_functions, f }));
     }
@@ -519,7 +465,6 @@ static script_callable_header finish(headers *h, int symbol, int function)
     for (int i = 0; i < acount(h->functions); i++) {
         afree(h->functions[i].parameters);
         afree(h->functions[i].results);
-        afree(h->functions[i].type_parameters);
     }
     afree(symbols);
     afree(functions);

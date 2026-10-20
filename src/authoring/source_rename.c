@@ -328,29 +328,14 @@ static char *replacement(
     if (kind == SOURCE_TEXT_RML) {
         return identifier(name) ? xstrdup(name) : NULL;
     }
+    if (document->syntax) {
+        return identifier(name) ? xstrdup(name) : NULL;
+    }
     if (source[r->location.range.start] == '"') {
         return quoted(name);
     }
-    if (!document->syntax) {
-        /* A bare KDL name, like an input map action's node, stays bare. */
-        return identifier(name) ? xstrdup(name) : quoted(name);
-    }
-    if (identifier(name)) {
-        return xstrdup(name);
-    }
-    TSNode node = ts_node_named_descendant_for_byte_range(
-        ts_tree_root_node(document->syntax->tree),
-        (uint32_t)r->location.range.start,
-        (uint32_t)r->location.range.end
-    );
-    TSNode parent = ts_node_parent(node);
-    bool member = !strcmp(ts_node_type(parent), "member_expression") &&
-                  ts_node_eq(node, ts_node_child_by_field_name(parent, "member", 6));
-    if (member || !strcmp(ts_node_type(parent), "argument_name") ||
-        r->kind == AUTHORING_DEFINE || r->kind == AUTHORING_CALL) {
-        return quoted(name);
-    }
-    return NULL;
+    /* A bare KDL name, like an input map action's node, stays bare. */
+    return identifier(name) ? xstrdup(name) : quoted(name);
 }
 
 static int compare_edits(const void *left, const void *right)
@@ -432,7 +417,7 @@ static bool syntax_valid(const authoring_navigation *index, const authoring_rena
              * binding separator or markup delimiter can change. The complete
              * project candidate still requires semantic validation. */
             valid = true;
-        } else if (input->syntax) {
+        } else if (input->syntax || authoring_navigation_document_kind(index, document) == SOURCE_TEXT_CHIBI) {
             script_syntax *syntax = script_parse(text);
             valid = !syntax->diagnostic_count;
             script_syntax_free(syntax);

@@ -6,11 +6,13 @@
 #include "authoring/material_prepare.h"
 #include "authoring/mesh_prepare.h"
 #include "authoring/native_graph_prepare.h"
+#include "authoring/project_open.h"
 #include "authoring/project_prepare_internal.h"
 #include "authoring/prototype_prepare.h"
 #include "authoring/scene_prepare.h"
 #include "authoring/shader_prepare.h"
 #include "authoring/sound_prepare.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_collection.h"
 #include "authoring/ui_prepare.h"
 #include "authoring/visual_prepare.h"
@@ -447,6 +449,7 @@ bool authoring_project_prepare(
     authoring_language_catalog *native = NULL;
     authoring_sources *sources = NULL;
     project_prototype *prototypes = NULL;
+    ecs_relationship_desc **relationships = NULL;
     scene *prepared_scene = NULL;
     player_named_scene *scenes = NULL;
     event_catalog *events = NULL;
@@ -463,7 +466,7 @@ bool authoring_project_prepare(
     char *scene_path = NULL, *start = NULL;
     int opened = options->read_only
                    ? chibi_project_read(&project, options->project, error, size)
-                   : chibi_project_open(&project, options->project, error, size);
+                   : authoring_project_open(&project, options->project, options->native, error, size);
     if (opened || !application_title_valid(&project, error, size) ||
         !application_icon_read(&project, &icon, error, size)) {
         goto done;
@@ -524,8 +527,15 @@ bool authoring_project_prepare(
     if (!events) {
         goto done;
     }
-    prototype_registry registry = { .components = components,
-                                    .component_count = acount(components) };
+    if (!project_prepare_relationships(project.content, &relationships, error, size)) {
+        goto done;
+    }
+    prototype_registry registry = {
+        .components = components,
+        .component_count = acount(components),
+        .relationships = (const ecs_relationship_desc *const *)relationships,
+        .relationship_count = acount(relationships)
+    };
     if (!project_prepare_prototypes(project.content, &registry, &prototypes, error, size)) {
         goto done;
     }
@@ -706,6 +716,10 @@ done:
     }
     afree(scenes);
     project_prepare_prototypes_free(prototypes);
+    for (int i = 0; i < acount(relationships); i++) {
+        authoring_relationship_source_free(relationships[i]);
+    }
+    afree(relationships);
     free(start);
     free(scene_path);
     event_catalog_free(events);

@@ -231,8 +231,10 @@ static bool open_project(chibi_project *project, const char *requested, bool mig
     }
     char error[512];
     const char *path = requested ? requested : found;
+    /* Inspection accepts an older manifest; the compiler upgrades it with its
+     * native catalog when it opens the project. */
     bool opened = !(
-        migrate ? chibi_project_open(project, path, error, sizeof error)
+        migrate ? chibi_project_inspect(project, path, error, sizeof error)
                 : chibi_project_read(project, path, error, sizeof error)
     );
     if (!opened) {
@@ -299,7 +301,11 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
     char *stamp = join(root, CHIBI_COMPILER_STAMP);
     int64_t prepared = modified(artifact);
     int result = 0;
-    if (prepared < 0 || compiler_changed(stamp, identity) ||
+    chibi_project current = { 0 };
+    char error[512];
+    bool needs_migration = chibi_project_read(&current, root, error, sizeof error) != 0;
+    chibi_project_free(&current);
+    if (needs_migration || prepared < 0 || compiler_changed(stamp, identity) ||
         sources_changed(project, prepared)) {
         char *build = join(root, CHIBI_BUILD_DIR);
         char *dot = join(root, ".chibi");

@@ -226,9 +226,7 @@ static bool unpack(
 }
 static bool save(int backend, int kind, const pin_value *result)
 {
-    REQUIRE(
-        !pin_value_snapshot_to_arena(&retained[backend][kind], &saved[backend][kind], result)
-    );
+    REQUIRE(!compiler_fixture_snapshot(&retained[backend][kind], &saved[backend][kind], result));
     saved_tag[backend][kind] = ((const pin_union *)result->ptr)->tag;
     return true;
 }

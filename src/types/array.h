@@ -15,11 +15,25 @@ typedef struct pin_array
     int count;
     int capacity;
     pin_value *items;
+    /* Exactly one representation: stride > 0 stores fixed-layout values in
+     * data, with no per-element headers; stride == 0 uses items. */
+    void *data;
+    size_t stride;
     /* Optional index into ordered items. Owned by the same arena as the
      * snapshot; owned runtime sets update it on append. */
     int *buckets;
     unsigned bucket_mask;
 } pin_array;
+
+bool pin_array_valid(const pin_array *);
+size_t pin_array_element_stride(pin_type, const char *, const pin_record *);
+size_t pin_array_storage_bytes(const pin_array *);
+/* Borrowed element/payload. Indices must already be checked by the caller. */
+pin_value pin_array_get(const pin_array *, int index);
+void *pin_array_data(const pin_array *, int index);
+/* Assign an already-owned compatible element. This does not retain pointers. */
+int pin_array_set(pin_array *, int index, const pin_value *);
+void pin_array_swap(pin_array *, int first, int second);
 
 /* Small and aggregate collections retain flat storage. Indexes never change
  * iteration order or first-match equality semantics. */
@@ -39,6 +53,8 @@ pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
 pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name, int count);
 /* Uninitialized items with a copied/shared source element layout. */
 pin_array *pin_array_snapshot_like(arena *, const pin_array *, int count);
+int pin_array_snapshot_set(arena *, pin_array *, int index, const pin_value *);
+int pin_array_snapshot_copy(arena *, pin_array *out, int to, const pin_array *items, int from, int count);
 /* Internal array construction. Validate the destination layout's ownership once
  * per range, and each original source layout before copying. Items already
  * copied on failure must be abandoned with the unpublished destination array. */

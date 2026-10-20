@@ -1571,6 +1571,74 @@ ecs_entity ecs_world_create_entity(ecs_world *world)
     return entity;
 }
 
+int ecs_world_prepare_owned_destruction(ecs_world *world, const ecs_entity *entities, int count)
+{
+    if (!world || count < 0 || (count && !entities)) {
+        return ECS_ERR_ARGUMENT;
+    }
+    if (!count) {
+        return ECS_OK;
+    }
+    if (world->applying || world->iteration_depth || acount(world->commands)) {
+        return ECS_ERR_ITERATING;
+    }
+    unsigned char *owned = xcalloc(world->execution.slot_count, 1);
+    unsigned char *visited = xcalloc(world->execution.slot_count, 1);
+    uint32_t *pending = NULL;
+    for (int i = 0; i < count; i++) {
+        if (entity_matches(world, entities[i]) && !owned[entities[i].slot]) {
+            owned[entities[i].slot] = 1;
+            visited[entities[i].slot] = 1;
+            apush(pending, entities[i].slot);
+        }
+    }
+    int result = ECS_OK;
+    /* Inspect DELETE cascades too, before unlinking anything in the owned set. */
+    for (int i = 0; result == ECS_OK && i < acount(pending); i++) {
+        uint32_t target = pending[i];
+        for (int j = 0; result == ECS_OK && j < acount(world->relationships); j++) {
+            ecs_relationship *relationship = &world->relationships[j];
+            const uint32_t *sources = relationship->sources[target];
+            for (int k = 0; k < acount(sources); k++) {
+                uint32_t source = sources[k];
+                if (relationship->desc.on_delete_target == ECS_CLEANUP_PANIC &&
+                    !(owned[source] && owned[target])) {
+                    result = ECS_ERR_COMMAND;
+                    break;
+                }
+                if (relationship->desc.on_delete_target == ECS_CLEANUP_DELETE &&
+                    !visited[source]) {
+                    visited[source] = 1;
+                    apush(pending, source);
+                }
+            }
+        }
+    }
+    for (int i = 0; result == ECS_OK && i < count; i++) {
+        if (!entity_matches(world, entities[i])) {
+            continue;
+        }
+        uint32_t source = entities[i].slot;
+        for (int j = 0; j < acount(world->relationships); j++) {
+            ecs_relationship *relationship = &world->relationships[j];
+            if (relationship->desc.id == ECS_CHILD_OF) {
+                continue;
+            }
+            for (int k = relationship_target_count(relationship, source) - 1; k >= 0;
+                 k--) {
+                ecs_entity target = relationship_target(relationship, source, k);
+                if (owned[target.slot]) {
+                    relationship_unlink(relationship, source, target);
+                }
+            }
+        }
+    }
+    afree(pending);
+    free(visited);
+    free(owned);
+    return result;
+}
+
 int ecs_world_destroy_entity(ecs_world *world, ecs_entity entity)
 {
     if (world && world->applying) {

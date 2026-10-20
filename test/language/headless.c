@@ -102,7 +102,7 @@ static bool compile(behavior_backend backend)
         .tick_event = 11,
     };
     print_abi = script_catalog_capability_abi(&catalog, &events[3]);
-    const char *text = "behavior Headless { state count: int = 0;\n"
+    const char *text = "Headless :: behavior { count: retain int = 0;\n"
                        "on Begin() { count = count + 1; }\n"
                        "on Tick() { PrintString(\"headless tick\"); count = "
                        "count + 2; }\n"

@@ -22,7 +22,7 @@ Environment :: union {
     Tables(types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[])
 }
 
-Equal :: pure fn(left: named.Value, right: named.Value) -> bool {
+Equal :: (left: named.Value, right: named.Value) -> bool {
     switch left {
         case .Typed(a_storage, a_container, a_flags, a_nominal, a_parameter):
             switch right {
@@ -38,7 +38,7 @@ Equal :: pure fn(left: named.Value, right: named.Value) -> bool {
             }
     }
 }
-Numeric :: pure fn(value: named.Value) -> bool {
+Numeric :: (value: named.Value) -> bool {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             return container == 0 && (nominal == 0 || (flags & 32) != 0) &&
@@ -47,7 +47,7 @@ Numeric :: pure fn(value: named.Value) -> bool {
 }
 // Integers convert implicitly only when every value fits; floats always do.
 // Storage 2..9 alternates signed and unsigned 8, 16, 32 and 64-bit integers.
-NumericImplicit :: pure fn(from: int, to: int) -> bool {
+NumericImplicit :: (from: int, to: int) -> bool {
     if (from > 9 || to > 9) {
         return true;
     }
@@ -58,7 +58,7 @@ NumericImplicit :: pure fn(from: int, to: int) -> bool {
     }
     return !from_signed && to_signed && to > from;
 }
-Assignable :: pure fn(expected: named.Value, actual: named.Value) -> bool {
+Assignable :: (expected: named.Value, actual: named.Value) -> bool {
     switch expected {
         case .Typed(e_storage, e_container, expected_flags, e_nominal, e_parameter):
             switch actual {
@@ -107,7 +107,7 @@ Assignable :: pure fn(expected: named.Value, actual: named.Value) -> bool {
             }
     }
 }
-FindDefinition :: pure fn(environment: Environment, id: uint64) -> int {
+FindDefinition :: (environment: Environment, id: uint64) -> int {
     switch environment {
         case .Tables(types, ids, definitions, variants):
             index: int = 0;
@@ -120,7 +120,7 @@ FindDefinition :: pure fn(environment: Environment, id: uint64) -> int {
             return -1;
     }
 }
-Canonical :: pure fn(environment: Environment, value: named.Value) -> named.Value {
+Canonical :: (environment: Environment, value: named.Value) -> named.Value {
     switch value {
         case .Typed(storage, container, flags, original_nominal, parameter):
             nominal := original_nominal;
@@ -149,7 +149,7 @@ Canonical :: pure fn(environment: Environment, value: named.Value) -> named.Valu
             }
     }
 }
-CatalogAssignable :: pure fn(environment: Environment, expected: named.Value, actual: named.Value) -> bool {
+CatalogAssignable :: (environment: Environment, expected: named.Value, actual: named.Value) -> bool {
     switch expected {
         case .Typed(e_storage, e_container, e_flags, e_nominal, e_parameter):
             switch actual {

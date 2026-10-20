@@ -17,6 +17,43 @@ static const char *name(arena *storage, const char *prefix, uint64_t id)
     memcpy(copy, text, bytes);
     return copy;
 }
+script_catalog_type script_constructor_collection(
+    arena *storage,
+    pin_container container,
+    script_type key,
+    script_type value,
+    size_t pointer_size
+)
+{
+    char identity[128];
+    snprintf(
+        identity,
+        sizeof identity,
+        "%d:%" PRIu64 ":%" PRIu64,
+        container,
+        script_type_tag(key),
+        script_type_tag(value)
+    );
+    uint64_t id = script_catalog_id("collection-type", identity);
+    script_type type = container == PIN_CONTAINER_MAP
+                         ? (script_type){ .storage = PIN_UNION }
+                         : value;
+    type.container = container;
+    type.collection = id;
+    char text[64];
+    snprintf(text, sizeof text, "__collection_%" PRIu64, id);
+    size_t bytes = strlen(text) + 1;
+    char *owned = arena_alloc(storage, bytes);
+    memcpy(owned, text, bytes);
+    return (script_catalog_type){ .id = id,
+                                  .name = owned,
+                                  .type = type,
+                                  .size = pointer_size,
+                                  .internal = true,
+                                  .container = container,
+                                  .key_type = key,
+                                  .element_type = value };
+}
 script_constructor_plan script_constructor_union(
     arena *storage,
     const script_constructor_facts *facts,

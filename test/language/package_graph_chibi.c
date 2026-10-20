@@ -3,6 +3,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_prepare.h"
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "package_core_source.h"
@@ -179,6 +180,7 @@ static bool invoke(int backend, const char *name, const pin_value *arguments, in
         fprintf(stderr, "authored graph %s failed: status %d\n", name, status);
     }
     REQUIRE(status == FLOW_OK && context.returned && output.type == type);
+    compiler_fixture_box(&storage, &output);
     REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
     REQUIRE(backend == 0 ? runs.counts.bytecode_entries > 0 : !runs.counts.bytecode_entries);
     REQUIRE(backends[backend] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
@@ -500,7 +502,7 @@ static bool queries(
 {
     /* Detach Build's result before the next invocation releases its storage. */
     pin_value graph;
-    REQUIRE(!pin_value_snapshot_to_arena(&inputs, &graph, &output));
+    REQUIRE(!compiler_fixture_snapshot(&inputs, &graph, &output));
     pin_value arguments[] = { graph, integer(0), integer(0) };
     int count = source_packages_count(expected);
     REQUIRE(query(backend, "Count", arguments, 1, count));

@@ -2,6 +2,7 @@
 
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/union.h"
 
 #include <stdio.h>
@@ -18,6 +19,12 @@ const char *pin_value_to_string(const pin_value *v)
 
     if (!v) {
         snprintf(buf, PIN_FMT_CAP, "<null>");
+        return buf;
+    }
+
+    if (v->container == PIN_CONTAINER_MAP) {
+        const pin_map *map = v->ptr;
+        snprintf(buf, PIN_FMT_CAP, "Map[%d]", map ? map->count : 0);
         return buf;
     }
 

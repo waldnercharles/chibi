@@ -53,7 +53,7 @@ script_syntax *script_analyzer_recovery_syntax(const script_syntax *syntax)
     if (!script_analyzer_is(first, "ERROR")) {
         return NULL;
     }
-    TSNode token = ts_node_child(first, 0);
+    TSNode token = ts_node_child(first, 2);
     if (!script_analyzer_is(token, "behavior") &&
         !script_analyzer_is(token, "library") &&
         !script_analyzer_is(token, "system")) {

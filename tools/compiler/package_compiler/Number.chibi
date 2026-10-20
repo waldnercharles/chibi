@@ -33,7 +33,7 @@ ExponentLimit: int : 2047;
 Bias: int : -1023;
 
 // The decimal without trailing zeros, as Odin's trim leaves it.
-Trimmed :: pure fn(digits: int[], count: int, point: int, trunc: bool) -> Decimal {
+Trimmed :: (digits: int[], count: int, point: int, trunc: bool) -> Decimal {
     kept := count;
     while (kept > 0 && digits[kept - 1] == 0) {
         kept -= 1;
@@ -49,7 +49,7 @@ Trimmed :: pure fn(digits: int[], count: int, point: int, trunc: bool) -> Decima
 // an optional exponent, as Odin's decimal.set reads them, except that the
 // point counts every significant digit read, those beyond the stored ones
 // too.
-DecimalOf :: pure fn(spelling: string) -> Decimal {
+DecimalOf :: (spelling: string) -> Decimal {
     size := strings.ByteLength(spelling);
     digits: int[] = [];
     count: int = 0;
@@ -119,7 +119,7 @@ DecimalOf :: pure fn(spelling: string) -> Decimal {
 }
 
 // An integer decimal plus `value`, carrying into new leading digits.
-Added :: pure fn(digits: int[], count: int, point: int, trunc: bool, value: int) -> Decimal {
+Added :: (digits: int[], count: int, point: int, trunc: bool, value: int) -> Decimal {
     // The integer's every digit, the trimmed zeros included.
     full: int[] = [];
     index: int = 0;
@@ -150,7 +150,7 @@ Added :: pure fn(digits: int[], count: int, point: int, trunc: bool, value: int)
 }
 
 // The decimal of a hexadecimal integer literal, `0x` and its digits.
-HexDecimalOf :: pure fn(spelling: string) -> Decimal {
+HexDecimalOf :: (spelling: string) -> Decimal {
     size := strings.ByteLength(spelling);
     digits: int[] = [];
     count: int = 0;
@@ -184,7 +184,7 @@ HexDecimalOf :: pure fn(spelling: string) -> Decimal {
 // The decimal times 2^k for 0 < k <= MaxShift. Odin finds the new length
 // from a table of powers of five; computing the carry's digits first gives
 // the same digits.
-ShiftLeft :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
+ShiftLeft :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
     // Product digits, least significant first.
     reversed: int[] = [];
     n: int = 0;
@@ -218,7 +218,7 @@ ShiftLeft :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int)
 
 // The nonzero decimal divided by 2^k for 0 < k <= MaxShift, as Odin's
 // shift_right.
-ShiftRight :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
+ShiftRight :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
     read: int = 0;
     n: int = 0;
     while ((n >> k) == 0) {
@@ -258,7 +258,7 @@ ShiftRight :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int
 
 // The decimal times 2^shift, divided when `shift` is negative, in steps of
 // at most MaxShift, as Odin's shift.
-Shifted :: pure fn(digits: int[], count: int, point: int, trunc: bool, shift: int) -> Decimal {
+Shifted :: (digits: int[], count: int, point: int, trunc: bool, shift: int) -> Decimal {
     current := Decimal.Value(digits, count, point, trunc);
     left := shift;
     while (left != 0) {
@@ -290,7 +290,7 @@ Shifted :: pure fn(digits: int[], count: int, point: int, trunc: bool, shift: in
 // Whether rounding at digit `at` rounds up: above half, or exactly half with
 // an odd digit before it or truncated digits after it, as Odin's
 // can_round_up.
-RoundsUp :: pure fn(digits: int[], count: int, trunc: bool, at: int) -> bool {
+RoundsUp :: (digits: int[], count: int, trunc: bool, at: int) -> bool {
     if (at < 0 || at >= count) {
         return false;
     }
@@ -305,7 +305,7 @@ RoundsUp :: pure fn(digits: int[], count: int, trunc: bool, at: int) -> bool {
 
 // The decimal's integer part, rounded half to even, as Odin's
 // rounded_integer; the callers keep it below 2^54.
-RoundedInteger :: pure fn(digits: int[], count: int, point: int, trunc: bool) -> int64 {
+RoundedInteger :: (digits: int[], count: int, point: int, trunc: bool) -> int64 {
     n: int64 = 0;
     index: int = 0;
     while (index < point && index < count) {
@@ -324,7 +324,7 @@ RoundedInteger :: pure fn(digits: int[], count: int, point: int, trunc: bool) ->
 
 // The steps that move the decimal point by a decimal place or more, by
 // how far it is from the units, as Odin's power_table.
-PowerStep :: pure fn(distance: int) -> int {
+PowerStep :: (distance: int) -> int {
     steps: int[] = [1, 3, 6, 9, 13, 16, 19, 23, 26];
     if (distance >= length(steps)) {
         return 27;
@@ -334,7 +334,7 @@ PowerStep :: pure fn(distance: int) -> int {
 
 // The binary32 nearest a normal binary64 value: its mantissa rounded half to
 // even to 24 bits, or to a subnormal's fewer bits, as a C conversion rounds.
-FloatFromDouble :: pure fn(exponent: int, mantissa: int64) -> int64 {
+FloatFromDouble :: (exponent: int, mantissa: int64) -> int64 {
     whole := mantissa | (int64(1) << 52);
     unbiased := exponent - 1023;
     narrow := unbiased + 127;
@@ -361,7 +361,7 @@ FloatFromDouble :: pure fn(exponent: int, mantissa: int64) -> int64 {
 
 // The bit patterns of the decimal, negated when `negative`, as Odin's
 // decimal_to_float_bits for binary64.
-DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negative: bool) -> FloatBits {
+DecimalBits :: (digits: int[], count: int, point: int, trunc: bool, negative: bool) -> FloatBits {
     sign: uint64 = 0;
     if (negative) {
         sign = 0x8000000000000000;
@@ -453,7 +453,7 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
 
 // The bit patterns of the number literal `spelling`, negated when
 // `negative`.
-LiteralBits :: pure fn(spelling: string, negative: bool) -> FloatBits {
+LiteralBits :: (spelling: string, negative: bool) -> FloatBits {
     size := strings.ByteLength(spelling);
     hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
                    (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);

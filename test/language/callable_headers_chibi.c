@@ -36,22 +36,23 @@ enum
 };
 static const char PACKAGE[] = "project:callable_headers";
 static const char *const sources[CASES] = {
-    "library Facts { Work :: fn<T:int,U:T>(value:U)->T { return value; } }",
-    "library Facts { Work :: fn<T:U,U:int>(value:U)->T { return value; } }",
-    "library Facts { Work :: fn(T:T,value:T)->int { return 1; } }",
-    "library Facts { Work :: fn(value:int)->int { return value; } }",
-    "package facts\nWork :: fn(value:int)->int { return value; }",
-    "package facts\nWork :: fn(value:int)->int { return value; }",
-    "library Facts { Work :: pure fn()->int { return 1; } }",
-    "library Facts { Work :: fn(\"entry\":int)->int { return 1; } }",
-    "library Facts { Work :: fn() { return 1; } }",
-    "library Facts { Work :: fn() { Inner :: fn() { return 1; } } }",
-    "library Facts { macro Work(value:int) { entry \"entry\" {} entry Other {} "
+    "Facts :: library { Work :: (value:int,scale:double)->double { return "
+    "scale; } }",
+    "Facts :: library { Work :: (value:U)->int { return 1; } }",
+    "Facts :: library { Work :: (T:T,value:T)->int { return 1; } }",
+    "Facts :: library { Work :: (value:int)->int { return value; } }",
+    "package facts\nWork :: (value:int)->int { return value; }",
+    "package facts\nWork :: (value:int)->int { return value; }",
+    "Facts :: library { Work :: ()->int { return 1; } }",
+    "Facts :: library { Work :: (value:int)->int { return 1; } }",
+    "Facts :: library { Work :: () { return 1; } }",
+    "Facts :: library { Work :: () { Inner :: () { return 1; } } }",
+    "Facts :: library { macro Work(value:int) { entry Begin {} entry Other {} "
     "exit Done; exit Fail; return 1; } }",
-    "library Facts { Work :: fn(value:int=3)->(value:int=4) { return; } }",
-    "library Facts { Work :: fn(value) {} }",
-    "package facts\nWork :: fn(value:int)->int { return value; }",
-    "library Facts { Work :: fn(speed:double u/s)->double u/s { return speed; "
+    "Facts :: library { Work :: (value:int=3)->(value:int=4) { return; } }",
+    "Facts :: library { Work :: (value) {} }",
+    "package facts\nWork :: (value:int)->int { return value; }",
+    "Facts :: library { Work :: (speed:double u/s)->double u/s { return speed; "
     "} }",
 };
 static compiler_fixture fixture;
@@ -251,7 +252,7 @@ static bool tagged(int b, const char *name, const char *member, pin_value *field
 {
     const script_catalog_variant *tag = variant(b, name, member);
     REQUIRE(tag && tag->field_count == count);
-    REQUIRE(!pin_union_value(&input, tag->tag, fields, count, out));
+    REQUIRE(!compiler_fixture_union(&input, tag->tag, fields, count, out));
     return true;
 }
 static pin_value empty()
@@ -427,7 +428,7 @@ static bool function_row(const pin_value *row, const pin_union *environment, con
     REQUIRE(
         members(row, "parameter", &environment->values[3], f->parameters, f->parameter_count) &&
         members(row, "result", &environment->values[4], f->results, f->result_count) &&
-        members(row, "generic", &environment->values[5], f->type_parameters, f->type_parameter_count)
+        members(row, "generic", &environment->values[5], NULL, 0)
     );
     return true;
 }
@@ -542,7 +543,6 @@ static bool compare(const pin_value *value, const script_callable_facts *facts, 
         );
         parameters += f->parameter_count;
         results += f->result_count;
-        generics += f->type_parameter_count;
     }
     const pin_array *ignored;
     const int totals[] = { parameters, results, generics };
@@ -654,17 +654,7 @@ static bool witness(int index, const script_callable_facts *facts, const script_
     REQUIRE(header->function == 0 && header->scope_count == 1 && header->function_count >= 1);
     const script_function *f = &header->functions[0].function;
     if (index == 0) {
-        REQUIRE(
-            f->type_parameter_count == 2 && f->parameter_count == 1 &&
-            f->result_count == 1 && header->use_count == 3
-        );
-        for (int i = 0; i < 2; i++) {
-            const script_symbol *s = symbol_at(facts, header, f->type_parameters[i]);
-            REQUIRE(
-                s && s->kind == SCRIPT_TYPE_PARAMETER && s->type.storage == PIN_I32 &&
-                s->type.parameter == s->id && (s->type.flags & SCRIPT_TYPE_GENERIC)
-            );
-        }
+        REQUIRE(f->parameter_count == 2 && f->result_count == 1 && !header->diagnostic_count);
     }
     if (index == 1) {
         REQUIRE(
@@ -690,7 +680,7 @@ static bool witness(int index, const script_callable_facts *facts, const script_
     if (index == 6) {
         const script_symbol *s = symbol_at(facts, header, f->results[0]);
         REQUIRE(
-            f->pure && f->result_count == 1 && s && !strcmp(s->name, "Result") &&
+            !f->pure && f->result_count == 1 && s && !strcmp(s->name, "Result") &&
             s->declaration.start == -1 && s->declaration.end == -1
         );
     }
@@ -699,7 +689,7 @@ static bool witness(int index, const script_callable_facts *facts, const script_
         for (int i = 0; i < header->symbol_count; i++) {
             entries += !strcmp(header->symbols[i].symbol.name, "entry");
         }
-        REQUIRE(entries == 2);
+        REQUIRE(entries == 1);
     }
     if (index == 8) {
         REQUIRE(f->inferred);
@@ -843,7 +833,7 @@ static bool run_case(int index)
             retained_parameter = header.functions[0].function.parameters[0];
             retained_id = symbol_at(&facts, &header, header.symbol)->id;
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b], &kept[b], &result) &&
+                !compiler_fixture_snapshot(&retained[b], &kept[b], &result) &&
                 owned(&retained[b], &kept[b], 0)
             );
         }

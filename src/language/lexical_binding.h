@@ -18,6 +18,7 @@ typedef struct
 typedef struct
 {
     int scope, function, package_scope, document_count;
+    uint64_t specialization; /* Nonzero while analyzing one generic specialization. */
 } script_lexical_context;
 typedef struct
 {

@@ -3,6 +3,7 @@
 
 #include "execution/function.h"
 #include "types/array.h"
+#include "types/scalar.h"
 
 #include <string.h>
 
@@ -97,18 +98,32 @@ static inline bool behavior_borrow_array(
     }
     const pin_array *array = value->ptr;
     if (array) {
-        if (array->count < 0 || (array->count && !array->items) ||
-            (size_t)array->count > SIZE_MAX / sizeof(pin_value) ||
-            array->element_type != value->type ||
+        /* Generated C uses this guard without linking the owned-value runtime.
+         * Only plain scalar elements reach it, so layout validation needs no
+         * record/catalog lookup or generic array helper. */
+        size_t width = array->stride ? array->stride : sizeof(pin_value);
+        if (array->count < 0 || array->capacity < array->count ||
+            array->record || array->element_type != value->type ||
+            (size_t)array->capacity > SIZE_MAX / width ||
+            (array->stride
+                 ? (array->items || array->stride != behavior_scalar_size(value->type) ||
+                    (array->count && !array->data) ||
+                    (array->type_name && !strncmp(array->type_name, "__collection_", 13)))
+                 : (array->data || (array->count && !array->items))) ||
             !behavior_borrow_name(array->type_name, value->type_name) ||
             !behavior_borrow_disjoint(ctx, array, sizeof *array, layout) ||
-            !behavior_borrow_disjoint(ctx, array->items, (size_t)array->count * sizeof(pin_value), layout)) {
+            !behavior_borrow_disjoint(
+                ctx,
+                array->stride ? array->data : (void *)array->items,
+                (size_t)array->capacity * width,
+                layout
+            )) {
             return false;
         }
-        for (int j = 0; j < array->count; j++) {
-            const pin_value *item = &array->items[j];
-            if (item->container != PIN_CONTAINER_SINGLE || item->type != value->type ||
-                !behavior_borrow_name(item->type_name, value->type_name)) {
+        for (int j = 0; !array->stride && j < array->count; j++) {
+            pin_value item = array->items[j];
+            if (item.container != PIN_CONTAINER_SINGLE || item.type != value->type ||
+                !behavior_borrow_name(item.type_name, value->type_name)) {
                 return false;
             }
         }

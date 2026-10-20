@@ -298,11 +298,12 @@ test-materials: test-build
 # validate-project starts chibi_ctl dozens of times, and each start builds the
 # authoring catalog, which sanitizers make too slow for one 60-second deadline.
 # The project selectors run against an unsanitized Release chibi_ctl instead, and
-# published-docs against a Release chibi-compile, whose --docs takes about a
-# second where the sanitized one takes five or more.
+# published-docs and chibi-cli against the Release chibi launcher and the
+# chibi-compile and chibi-player it builds: their --docs runs take about a
+# second each where sanitized ones take five or more.
 test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi-compile'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
+	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
 
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap

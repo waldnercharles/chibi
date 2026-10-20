@@ -318,19 +318,29 @@ Example :: library {
 }
 ```
 
-A map declares separate key and value types. Check a key before reading it.
-A missing key fails the lookup.
+A map `[K: V]` associates keys of one type with values of another, as Swift
+writes it. `["Player": 10]` is a map literal and `[:]` an empty one; an empty
+literal takes its types from the declaration. Reading a missing key yields the
+value type's zero, as in Odin: `0`, `""`, an empty array or map, a record's
+field defaults, or `nil` for an optional value. Reading adds no key, so
+`counts[name] += 1` counts from zero. A record with a field that has no default
+has no zero value, so reading a missing key of a map of them fails; check the
+key first. Writing through a missing key, as `m[a][b] = v` when `m` lacks
+`a`, also fails; store `m[a]` first.
+
+`k in m`, `k not in m` and `m.has(k)` test for a key. `delete m[k]` and
+`m.delete(k)` remove one, and removing a missing key does nothing.
 
 ```chibi
 Example :: library {
     Run :: () {
-        scores: Map<string, int> = {"Player": 10, "Rival": 20}
+        scores: [string: int] = ["Player": 10, "Rival": 20]
         scores["Player"] = 30
-        score: int = 0
-        if map_has(scores, "Rival") {
-            score = scores["Rival"]
+        scores["Guest"] += 5
+        if "Rival" in scores {
+            delete scores["Rival"]
         }
-        scores = map_remove(scores, "Rival")
+        empty: [string: int] = [:]
     }
 }
 ```
@@ -346,7 +356,7 @@ order, so it takes time in proportion to the map.
 
 ```chibi
 Example :: library {
-    Total :: (scores: Map<string, int>) -> int {
+    Total :: (scores: [string: int]) -> int {
         total: int = 0
         for name, points in scores {
             total += points

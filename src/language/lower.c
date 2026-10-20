@@ -1152,6 +1152,30 @@ static int reference_read(lower *l, int descriptor, script_type type, script_ran
         range
     );
 }
+/* Reads an assignment's target; an absent map key reads its value type's zero. */
+static int target_read(lower *l, int descriptor, int index, script_range range)
+{
+    const script_expression *e = &l->a->expressions[index];
+    if (e->kind != SCRIPT_EXPR_INDEX || !e->argument_count) {
+        return reference_read(l, descriptor, e->type, range);
+    }
+    int absent = e->arguments[0].value;
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, initial(l, e->type) };
+    int slots[] = {
+        descriptor,
+        convert(l, expression(l, absent), l->a->expressions[absent].type, e->type, range)
+    };
+    return primitive(
+        l,
+        &EXECUTION_reference_read_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        e->type,
+        range
+    );
+}
 static void reference_write(lower *l, int descriptor, int value, script_type type, script_range range)
 {
     pin_value headers[] = { { .type = BF_POINTER_TYPE }, initial(l, type) };
@@ -4316,16 +4340,30 @@ static int expression_value(lower *l, int index)
             int array = expression(l, e->left);
             script_type collection = l->a->expressions[e->left].type;
             if (collection.container == PIN_CONTAINER_MAP) {
+                /* An absent key reads the value type's zero when it has one. */
                 script_type key = script_catalog_key_type(l->catalog, collection);
-                pin_value headers[] = { initial(l, collection), initial(l, key) };
-                int slots[] = { array, expression(l, e->right) };
+                pin_value headers[] = { initial(l, collection),
+                                        initial(l, key),
+                                        initial(l, e->type) };
+                int slots[] = { array, expression(l, e->right), -1 };
+                int count = 2;
+                if (e->argument_count) {
+                    int absent = e->arguments[0].value;
+                    slots[count++] = convert(
+                        l,
+                        expression(l, absent),
+                        l->a->expressions[absent].type,
+                        e->type,
+                        e->range
+                    );
+                }
                 return primitive(
                     l,
                     &EXECUTION_map_get_call,
                     &EXECUTION_value_access,
                     headers,
                     slots,
-                    2,
+                    count,
                     e->type,
                     e->range
                 );
@@ -5158,8 +5196,8 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     return true;
 }
-/* `m[k] = v` and `m = map_remove(m, k)` on an owned local map update it in
- * place, so building a map is linear rather than quadratic. */
+/* `m[k] = v` and `delete m[k]` on an owned local map update it in place, so
+ * building a map is linear rather than quadratic. */
 static bool in_place_map(lower *l, const script_statement *s)
 {
     if (s->op != SCRIPT_OP_NONE) {
@@ -5287,12 +5325,7 @@ static void assign(lower *l, const script_statement *s)
     l->target_reference = destination;
     l->target_value = !compound ? -1
                     : direct    ? expression(l, index)
-                                : reference_read(
-                                      l,
-                                      destination,
-                                      l->a->expressions[index].type,
-                                      s->range
-                                  );
+                                : target_read(l, destination, index, s->range);
     l->target_cached = compound;
     int value = expression(l, s->second);
     /* Retain the destination for simple writes without replacing RHS reads. */

@@ -183,13 +183,17 @@ ToolchainBuild :: library {
     // FETCHCONTENT_* definition does; for source overrides a definition
     // replaces the cached value. Entries follow CMake's NAME[:TYPE]=VALUE form.
     PrivateSources :: (buildDir: string, arguments: string[]) -> bool {
-        overrides: Map<string, string> = {};
+        // Parallel arrays rather than a map, so a build host built before
+        // the map syntax changed can still read this program.
+        names: string[] = [];
+        values: string[] = [];
         for (line in build.lines(build.read_file(Join([buildDir, "/CMakeCache.txt"])))) {
             name := build.before(line, ":");
             typed := build.after(line, ":");
             if (SourceOverride(name) && !Contains(name, "=") && !Contains(name, "#") &&
                 Contains(typed, "=") && build.before(typed, "=") != "") {
-                overrides[name] = build.after(typed, "=");
+                names = build.concat(names, [name]);
+                values = build.concat(values, [build.after(typed, "=")]);
             }
         }
         for (argument in Normalize(arguments)) {
@@ -205,13 +209,23 @@ ToolchainBuild :: library {
                 return true;
             }
             if (SourceOverride(name)) {
-                overrides[name] = value;
+                names = build.concat(names, [name]);
+                values = build.concat(values, [value]);
             }
         }
-        for (name, value in overrides) {
-            if (PrivateSource(buildDir, name, value)) {
+        // A later definition replaces an earlier one.
+        position := 0;
+        for (name in names) {
+            replaced := false;
+            index := 0;
+            for (other in names) {
+                replaced = replaced || (index > position && other == name);
+                index += 1;
+            }
+            if (!replaced && PrivateSource(buildDir, name, values[position])) {
                 return true;
             }
+            position += 1;
         }
         return false;
     }

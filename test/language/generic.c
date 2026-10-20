@@ -249,7 +249,7 @@ TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type)
 TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
 {
     REQUIRE(
-        analyze("Nested :: behavior { First::(values:$T[])->T{return values[0]} on Run :: () { items:Map<string,int>[]=[{\"one\":1}]; first:=First(items); } }")
+        analyze("Nested :: behavior { First::(values:$T[])->T{return values[0]} on Run :: () { items:[string:int][]=[[\"one\":1]]; first:=First(items); } }")
     );
     bool nested = false;
     for (int i = 0; i < analysis->symbol_count; i++) {

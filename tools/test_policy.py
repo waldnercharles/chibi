@@ -701,16 +701,23 @@ TOOLS = {
     # One shared60s including bootstrap; no aggregate.
     'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--prepared-writer-chibi'],
-    # One pico_unit case: the authored package compiler over fixed sample
-    # packages on both compiler backends; each accepted closure loads in a fresh
-    # runtime host and runs on bytecode and SLJIT, and stage zero's build of the
-    # same package agrees. Rejections check message and position. shared60s.
+    # One pico_unit case: the authored package compiler, running on the
+    # bytecode backend, over fixed sample packages; each accepted closure loads
+    # in a fresh runtime host and runs on bytecode and SLJIT, and stage zero's
+    # build of the same package agrees and has the same points. Rejections
+    # check message and position. shared60s.
     'language-package-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--package-compiler-chibi'],
+    # The same samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                '--package-compiler-chibi-compiled'],
     # The same case over the samples of unions, constants, patterns and
     # integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # The type samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-types-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                      '--package-compiler-chibi-types-compiled'],
     # The stage-one compiler's reading of floating literals against stage
     # zero's: listed spellings on both backends, long and generated ones on
     # the compiled one. shared60s.
@@ -733,6 +740,9 @@ TOOLS = {
     # core:strings, split off so it keeps its own shared60s.
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
+    # The imports sample compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                        '--package-compiler-chibi-imports-compiled'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same
     # bytes. Sanitizers make one compile take about two minutes, so this runs

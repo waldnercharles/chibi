@@ -287,18 +287,39 @@ Each package is its own module, assembled dependencies first:
 - The closure has one row per package, named by its identity.
 
 Runtime sources record each instruction's origin. Each function has stage
-zero's function, statement and completion points:
-- one at its entry, meaning the event a handler handles, or the function;
-- one before each statement, and one before each value a `return` gives;
-- a completion point at each `return` and at the function's end.
+zero's points:
+- a function point at its entry, meaning the event a handler handles, or the
+  function, and a completion point at each `return` and at its end;
+- a statement point before each statement, and one before each value a
+  `return` gives;
+- an expression point before each expression it evaluates, outermost first.
+  Parentheses only group, `-1` is one literal, and an array of literals is one
+  constant, so their parts have none;
+- a symbol point where it reads a name, after the name's expression point,
+  and where it stores one: an assignment, a declaration with one value, a
+  `for` element and each value a `return` gives its result.
+
+An assignment's target has the points of its value's reads: a component or
+field target has an expression point for each member it reaches through and a
+symbol point for the name it starts from, and a compound assignment reads its
+target first. Stage zero writes a parameter through its reference, so
+assigning one has the target's points and no store. A local array that `xs =
+array_add(xs, x)` updates in place is stored, then read again. A `switch` arm
+has an expression point for its pattern, and each binding of an arm or of `is`
+a symbol point. A function with a record or array result stores that result's
+symbol at its entry.
 
 A point's occurrence is `script_occurrence` of its record's source range, so
 it is the one Studio's breakpoints find; a completion point's record is the
-function. Its position is where it is placed. Each point is a `SOURCE_POINT`
-instruction, which suspends, so each invocation's and point's target is its
-order among them, as the runtime numbers suspensions; an imported module's
-fingerprint covers those bytes. Expression and symbol points and watches are
-not emitted yet; they must be before stage one becomes the normal compiler.
+function, and a symbol point's is the name's declaration. A symbol the source
+declares nowhere, such as `self` or an unnamed result, spans its document, as
+stage zero clamps the unset range; another package's constant is declared
+where this package first uses it. A point's position is where it is placed.
+Each point is a `SOURCE_POINT` instruction, which suspends, so each
+invocation's and point's target is its order among them, as the runtime
+numbers suspensions; an imported module's fingerprint covers those bytes.
+Watches are not emitted yet; they must be before stage one becomes the normal
+compiler.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
@@ -323,19 +344,23 @@ fast paths otherwise cover.
 
 ## Test
 
-Three selectors compile 86 samples on both compiler backends, each under its
-own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-20, load average
-about 15 from other sessions):
+Three groups of 86 samples each have two selectors, one for each backend the
+compiler runs on, each under its own 60 s ceiling (macOS arm64, Debug +
+ASan/UBSan, 2026-10-20, load average about 11 from other sessions). The
+bytecode selector also compares each module with stage zero's:
 
-- `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (10,859 assertions in
-  38.6 s);
-- `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types, inferred arrays and element reads (3,374 assertions in
-  38.1 s);
-- `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,995 assertions in 51.5 s; 35.7 s on a quiet
-  machine before points).
+- `tool language-package-compiler-chibi` and `-compiled`: scalars, control
+  flow, records, arrays, strings and natives, and every rejection (5,598 and
+  5,272 assertions in 40.6 s and 32.6 s);
+- `tool language-package-compiler-chibi-types` and `-types-compiled`: unions,
+  constants, patterns, scopes, integer types, inferred arrays and element
+  reads (1,811 and 1,574 assertions in 37.2 s and 30.7 s);
+- `tool language-package-compiler-chibi-imports` and `-imports-compiled`: the
+  imports sample, which compiles all of `core:strings` (1,018 and 988
+  assertions in 51.9 s and 34.5 s).
+
+Expression and symbol points made the compiler about 20% slower on this
+sample: 18.2 s to 21.9 s of CPU time to compile it on the bytecode backend.
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs

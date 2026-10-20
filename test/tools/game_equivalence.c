@@ -1,5 +1,7 @@
 #include "assets/scenario_document.h"
 #include "authoring/graph_catalog.h"
+#include "authoring/project_compile.h"
+#include "authoring/project_prepare.h"
 #include "host/native_default.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
@@ -447,6 +449,71 @@ TEST_CASE(declarations_and_missing_traces_are_refused)
     return true;
 }
 
+/* Assembling a story from the modules of its own artifact, as a stage-one
+ * route will supply modules it compiled, writes that artifact again; a source
+ * without its module, or a module of no source, is refused. */
+static bool assembles_from_its_own_modules(const char *story)
+{
+    char project[4096], error[512] = { 0 };
+    story_path(project, sizeof project, story, "");
+    authoring_application application;
+    REQUIRE(authoring_application_begin(&application, error, sizeof error));
+    authoring_project_options options = { .project = project,
+                                          .native = application.native,
+                                          .components = { REGISTRY_COMPONENTS,
+                                                          REGISTRY_COMPONENT_COUNT },
+                                          .modules = WORLD_MODULES_ALL,
+                                          .read_only = true };
+    authoring_project_artifact prepared = { 0 }, assembled = { 0 }, refused = { 0 };
+    bool valid = authoring_project_prepare(&options, &prepared, error, sizeof error);
+    arena names = { 0 };
+    package_module *modules = NULL;
+    size_t first, end;
+    valid = valid && player_prepared_modules(
+                         prepared.data,
+                         prepared.size,
+                         &names,
+                         &modules,
+                         &first,
+                         &end,
+                         error,
+                         sizeof error
+                     );
+    int count = acount(modules);
+    valid = valid && count > 0 &&
+            authoring_project_assemble(&options, modules, count, &assembled, error, sizeof error);
+    if (!valid) {
+        fprintf(stderr, "%s assembly: %s\n", story, error);
+    }
+    bool same = valid && assembled.size == prepared.size &&
+                !memcmp(assembled.data, prepared.data, prepared.size) &&
+                !strcmp(assembled.manifest, prepared.manifest);
+    bool missing = valid &&
+                   !authoring_project_assemble(&options, modules, count - 1, &refused, error, sizeof error) &&
+                   strstr(error, "no prepared module was supplied");
+    package_module stray = modules ? modules[0] : (package_module){ 0 };
+    stray.id ^= 1;
+    if (valid) {
+        apush(modules, stray);
+    }
+    bool extra = valid &&
+                 !authoring_project_assemble(&options, modules, count + 1, &refused, error, sizeof error) &&
+                 strstr(error, "belongs to no project source");
+    afree(modules);
+    arena_free(&names);
+    authoring_project_artifact_free(&prepared);
+    authoring_project_artifact_free(&assembled);
+    authoring_application_end(&application);
+    REQUIRE(same && missing && extra && !refused.data);
+    return true;
+}
+TEST_CASE(stories_assemble_from_their_own_modules)
+{
+    for (int i = 0; i < STORY_COUNT; i++) {
+        REQUIRE(assembles_from_its_own_modules(story_names[i]));
+    }
+    return true;
+}
 void test_tool_game_equivalence(
     const char *observer,
     const char *build_host,
@@ -466,6 +533,7 @@ void test_tool_game_equivalence(
     snprintf(scratch, sizeof scratch, "%s", resolved);
     free(resolved);
     path(log_path, sizeof log_path, "harness.log");
+    RUN_TEST_CASE(stories_assemble_from_their_own_modules);
     RUN_TEST_CASE(stories_play_alike_under_both_compilers);
     RUN_TEST_CASE(a_changed_behavior_is_named_at_its_first_frame);
     RUN_TEST_CASE(declarations_and_missing_traces_are_refused);

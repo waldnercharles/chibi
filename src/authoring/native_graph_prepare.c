@@ -31,7 +31,7 @@ bool authoring_native_graphs_prepare(
     if (!authoring_graph_sources_load(content, &sources)) {
         return failed(error, size, content, "Cannot load native graph documents");
     }
-    behavior_asset **libraries = authoring_source_graph_libraries(code);
+    behavior_asset **libraries = code ? authoring_source_graph_libraries(code) : NULL;
     const behavior_asset **catalog = NULL, **models = NULL;
     behavior_asset **linked = NULL;
     bool valid = false;

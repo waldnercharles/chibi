@@ -282,7 +282,6 @@ static uint64_t context_abi()
                               FIELD(states),
                               FIELD(arguments),
                               FIELD(argument_count),
-                              FIELD(event_argument),
                               FIELD(owned_host),
                               FIELD(owned_data),
                               FIELD(results),

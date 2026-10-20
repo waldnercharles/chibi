@@ -24,7 +24,6 @@ typedef enum
     EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP = 10,
     EXECUTION_INTRINSIC_BREAK_REQUEST = 11,
     EXECUTION_INTRINSIC_BREAK_TAKE = 12,
-    EXECUTION_INTRINSIC_EVENT_READ = 13,
     EXECUTION_INTRINSIC_STATE_DEMAND = 15,
     EXECUTION_INTRINSIC_STATE_TRANSITION = 16,
     EXECUTION_INTRINSIC_RETRIGGER_ACTION = 17,
@@ -76,7 +75,6 @@ extern const node_host_call EXECUTION_reference_reduce_call;
 extern const node_host_call EXECUTION_action_read_call;
 extern const node_host_call EXECUTION_action_complete_call;
 extern const node_host_call EXECUTION_break_request_call, EXECUTION_break_take_call;
-extern const node_host_call EXECUTION_event_read_call;
 extern const node_host_call EXECUTION_local_release_call;
 extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;

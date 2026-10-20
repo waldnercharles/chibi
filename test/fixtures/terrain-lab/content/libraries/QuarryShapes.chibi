@@ -1,6 +1,6 @@
 // Ground with an open cave at the western entrance. Live cuts are separate.
 QuarryShapes :: library {
     Quarry :: (X: float = 0.0, Y: float = 0.0) -> (Value: float = 0.0) {
-        return field_subtract(0.0, field_min(field_subtract(0.0, field_box(entry.X, field_subtract(entry.Y, 4.0), 384.0, 68.0)), field_min(field_capsule(entry.X, entry.Y, -236.0, -80.0, -205.0, -9.0, 25.0), field_circle(field_add(entry.X, 170.0), field_add(entry.Y, 6.0), 40.0))))
+        return field_subtract(0.0, field_min(field_subtract(0.0, field_box(X, field_subtract(Y, 4.0), 384.0, 68.0)), field_min(field_capsule(X, Y, -236.0, -80.0, -205.0, -9.0, 25.0), field_circle(field_add(X, 170.0), field_add(Y, 6.0), 40.0))))
     }
 }

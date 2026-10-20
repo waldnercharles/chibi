@@ -466,12 +466,14 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)

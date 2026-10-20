@@ -35,6 +35,6 @@ Weapon :: behavior {
         }
     }
     position_offset :: (position: struct<CF_V2> = null, offset: struct<CF_V2> = null) -> (Result: struct<CF_V2> = null) {
-        return entry.position + entry.offset
+        return position + offset
     }
 }

@@ -156,13 +156,13 @@ audit is not fresh runtime or cross-backend validation.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 26. Scenes, KDL prototypes, event
+Project manifests are `project.kdl`, version 28. Scenes, KDL prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 26
+version 28
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -551,6 +551,18 @@ switch level {
         damage = 30
 }
 ```
+
+Project version 28 reads parameters by name. A callable reads its
+parameter `X` as `X`. The version 27 spelling `entry.X` migrates to `X`; when
+`X` is not a parameter, `entry` meant the callable's only parameter `p`, so a
+bare `entry` migrates to `p` and `entry.x` to `p.x`. The migration refuses a
+read that a local, constant, loop, handler or pattern binding of the same
+name would capture; rename that binding first.
+
+A handler without a parameter list binds its payload's names. A bare read of
+one that is also a parameter of the function around the handler is an error,
+since the payload would hide the function's parameter; list the payload's
+parameters, as in `after spawned(made) { ... }`, to give them other names.
 
 Project version 24 migrates existing `function` declarations and `match` statements
 to these forms. Those old keywords are no longer runtime syntax.

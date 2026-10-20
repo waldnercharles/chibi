@@ -390,10 +390,12 @@ by truncating toward zero, clamping at the destination bounds and mapping NaN
 to zero. Mixed integer operands, in arithmetic and comparisons, use the wider
 type, or `int` or `int64` for a signed and unsigned pair: `byte + int8` is `int`
 and `int + uint` is `int64`. `int64` with `uint64` needs an explicit conversion.
-Arithmetic narrower than 32 bits, and unsigned ordering and subtraction, are not
-yet supported. A constant can declare its type, as in `Mask: uint : 0xFF`. A
-conversion to a value's own type, such as `entity(get_global_variable("Player"))`,
-only supplies the type a polymorphic call needs.
+Every integer type has every arithmetic and comparison operator, unsigned types
+comparing as unsigned values. Integer arithmetic wraps on overflow:
+`byte(3) - byte(200)` is 59. A constant can declare its type, as in
+`Mask: uint : 0xFF`. A conversion to a value's own type, such as
+`entity(get_global_variable("Player"))`, only supplies the type a polymorphic
+call needs.
 
 ### Array storage
 

@@ -34,4 +34,48 @@ bool build_io_write(
     const volatile sig_atomic_t *cancelled
 );
 
+/* Metadata. Kind reads the path itself, not a link's target: "" when nothing
+ * is there, else "file", "directory", "link" or "other". A stamp follows
+ * links and changes with the file's device, inode, size, mode, modification
+ * or change time; it is "" when nothing is there. Other failures return a
+ * static capability diagnostic. */
+#define BUILD_IO_STAMP_SIZE 160
+const char *build_io_kind(const char *root, const char *path, const char **kind);
+const char *build_io_stamp(const char *root, const char *path, char stamp[BUILD_IO_STAMP_SIZE]);
+
+/* A directory's entry names except . and .., sorted by byte, as an owned
+ * support/array.h array of owned strings. A missing directory lists no names.
+ * Fails beyond 8,192 names or 1 MiB of names. */
+const char *build_io_list(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char ***names
+);
+
+/* Copy replaces destination atomically with a regular source file's bytes
+ * and permission bits, through a temporary file it removes on failure.
+ * Rename is rename(2). Remove deletes a file, link or empty directory and
+ * succeeds when nothing is there. */
+bool build_io_copy(
+    const char *root,
+    const char *source,
+    const char *destination,
+    double deadline,
+    const volatile sig_atomic_t *cancelled
+);
+bool build_io_rename(const char *root, const char *source, const char *destination);
+bool build_io_remove(const char *root, const char *path);
+
+/* The SHA-256 of a regular file's bytes as lowercase hex, or "" when nothing
+ * is there. */
+const char *build_io_hash(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char digest[65]
+);
+
 #endif

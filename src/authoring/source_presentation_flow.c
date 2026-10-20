@@ -555,17 +555,32 @@ static source_flow_target statement(source_projection *p, int index, source_flow
     }
     return entry;
 }
+/* The title of a `where` clause's node. */
+static const char *query_title(script_query_kind kind)
+{
+    switch (kind) {
+        case SCRIPT_QUERY_HAS: return "Has";
+        case SCRIPT_QUERY_ALL: return "All";
+        case SCRIPT_QUERY_ANY: return "Any";
+        case SCRIPT_QUERY_NOT: return "Not";
+        case SCRIPT_QUERY_RELATION: return "Related";
+        case SCRIPT_QUERY_GENERATOR: return "Generate";
+        case SCRIPT_QUERY_VALUE: return "Where";
+        case SCRIPT_QUERY_CHANGED: return "Changed";
+    }
+    assert(false);
+    return NULL;
+}
 node *source_view_query(source_projection *p, int index)
 {
     const script_query *q = &p->analysis->queries[index];
-    const char *names[] = { "Has", "All", "Any", "Not" };
     pin_spec *inputs = NULL, *outputs = NULL;
     script_type boolean = { .storage = PIN_BOOL };
     for (int i = 0; i < q->child_count; i++) {
         apush(inputs, source_view_data_pin(p, "Predicate", boolean));
     }
     apush(outputs, source_view_data_pin(p, "Matches", boolean));
-    const char *name = names[q->kind];
+    const char *name = query_title(q->kind);
     char *label = NULL;
     for (int i = 0; q->component && i < p->catalog->type_count; i++) {
         const script_catalog_type *type = &p->catalog->types[i];

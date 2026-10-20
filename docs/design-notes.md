@@ -3,9 +3,29 @@
 These are changes worth making while stage one re-implements what stage zero
 and the fixtures do today, instead of porting them as they are. Each entry
 says what we do now, how other engines handle the same need, and what to
-change. `docs/language-friction.md` covers the language itself. Nothing here
-is decided or implemented. Line references are to `main` after #420
-(2026-10-19), whose language the re-implementation targets.
+change. `docs/language-friction.md` covers the language itself. Line references
+are to `main` after #420 (2026-10-19), whose language the re-implementation
+targets.
+
+## Decisions (owner, 2026-10-20)
+
+- **Examples.** Playable examples such as Terrain Lab live outside the engine
+  repository. The compiler's corpus is intentional, purpose-made example
+  files, one per feature, browsable like Storybook. Stage one gates on those
+  before any whole game.
+- **Stage one's artifact route.** It is written in Chibi, not as a C hook:
+  "The user should need to download nothing else to start programming."
+- **Chibi parser.** A Chibi parser on the Chibi tokenizer is wanted, but does
+  not hold up M5. Only the tokenizer exists so far, on the odin-tokenizer
+  branch.
+- **`entry`.** Removed from field libraries, which read their parameters.
+- **Named results.** A named, defaulted single result whose name adds nothing
+  is dropped. Named results remain where natives need them.
+- **Events.** Under discussion: declare events name-first with a typed
+  payload, along the lines of `Tick :: event (dt: Seconds)`. See "One way to
+  read the step".
+
+The remaining entries are proposals.
 
 ## Should Terrain Lab be the compiler's checked game?
 
@@ -120,15 +140,24 @@ than the entries above.
 
 ## One way to read the step
 
-`QuarryCamera` reads a bare `dt` in `on Tick {`, while the language guide
-writes `on Tick(dt)`.
+A Tick handler can read the step four ways today:
+- `on Tick(dt)` binds it;
+- `event.dt` reads it;
+- `on Tick as tick` names the whole payload, as `tick.dt`;
+- a bare `dt`, as `QuarryCamera` uses it.
+
+All four mean the same thing (`docs/code-language.md` on main, lines
+471-475).
 
 - Godot passes `delta` to `_process`.
 - Unity reads a global, `Time.deltaTime`.
 - Bevy injects `Res<Time>`.
 
-Change: keep the handler parameter only, so stage one implements one form
-rather than both.
+Change: one form. The owner proposes declaring events name-first with a
+typed payload, `Tick :: event (dt: Seconds)`, as other declarations are. A
+handler then lists that payload, checked against the declaration, and the
+other three forms go. Godot's `signal tick(dt: float)` and Pony's
+`be tick(dt: F64)` declare events with typed payloads the same way.
 
 ## The field library reads `entry` beside its own parameters
 

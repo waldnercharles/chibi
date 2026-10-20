@@ -7600,7 +7600,7 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
                          "    }\n"
                          "}\n"
                          "Last :: () {\n"
-                         "    after entry { log(\"done\") }\n"
+                         "    after entry { log('d') }\n"
                          "}\n"
                          "Once :: (Value: int) -> int { after entry { return "
                          "Value } }\n"
@@ -7622,7 +7622,7 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
                            "    }\n"
                            "}\n"
                            "Last :: () {\n"
-                           "    log(\"done\")\n"
+                           "    log('d')\n"
                            "}\n"
                            "Once :: (Value: int) -> int { return Value }\n"
                            "}";

@@ -105,6 +105,8 @@ bool script_analyzer_native_capability(const analyzer *, uint64_t);
 int script_analyzer_package_function(analyzer *, TSNode, const char *);
 int script_analyzer_package_constant(analyzer *, TSNode);
 bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
+/* Whether a qualified name names a declaration its package keeps private. */
+bool script_analyzer_private_member(const analyzer *, TSNode, const char *name);
 bool script_analyzer_generic_declare(analyzer *, TSNode);
 void script_analyzer_generic_prepare(analyzer *, TSNode);
 int script_analyzer_generic_call(analyzer *, TSNode, int symbol, int **arguments);
@@ -150,6 +152,9 @@ bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text);
 char *script_analyzer_text_copy(const analyzer *a, TSNode node);
 void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...);
 char *script_analyzer_name_copy(analyzer *a, TSNode node);
+/* The one Unicode scalar a character literal holds; false after diagnosing
+ * a malformed, empty or longer literal. */
+bool script_analyzer_character_value(analyzer *a, TSNode node, int *value);
 int script_analyzer_scope_new(analyzer *a, TSNode node);
 int script_analyzer_lookup_name(const analyzer *a, const char *name);
 int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);
@@ -196,6 +201,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
+script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);

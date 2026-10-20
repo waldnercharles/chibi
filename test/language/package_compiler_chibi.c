@@ -1,10 +1,13 @@
 #include "package_compiler_chibi.h"
 
 #include "compiler_fixture.h"
+#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/module.h"
+#include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/native_capabilities.h"
@@ -18,6 +21,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/catalog.h"
 #include "types/copy.h"
 #include "types/union.h"
 #include "types/value_document.h"
@@ -80,6 +84,16 @@ static const sample samples[] = {
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
+    { .name = "named results",
+      .source = "package facts\nPair :: (x: int) -> (kind: int, end: int) {\n  "
+                "  end = x + 1;\n"
+                "    return (x, end);\n}\nRest :: (x: int) -> (low: int, high: "
+                "int) {\n    low = x - 1;\n    return;\n}\n"
+                "Use :: (x: int) -> int {\n    p := Pair(x);\n    q := "
+                "Rest(x);\n"
+                "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
+                "1000 + q.high;\n}",
+      .calls = { { "Use", "[3]", "[2434]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
@@ -295,17 +309,18 @@ static const sample samples[] = {
                 "lib.Point[] = [lib.Make(n, n)]; return points; }",
       .library = "package lib\n"
                  "import text \"core:strings\"\n"
-                 "Point :: struct { x: int; y: int; }\n"
-                 "Shape :: union { Dot(at: Point) | Line(size: int) | Nothing "
+                 "pub Point :: struct { x: int; y: int; }\n"
+                 "pub Shape :: union { Dot(at: Point) | Line(size: int) | "
+                 "Nothing "
                  "}\n"
-                 "Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
+                 "pub Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
                  "y: y}; return p; }\n"
-                 "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
-                 "Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
+                 "pub Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                 "pub Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
                  "Helper :: (n: int) -> int { return n + 1; }\n"
-                 "Width :: (s: string) -> int { return "
+                 "pub Width :: (s: string) -> int { return "
                  "text.ByteLength(s); }\n"
-                 "Size :: (shape: Shape) -> int {\n"
+                 "pub Size :: (shape: Shape) -> int {\n"
                  "    switch shape {\n"
                  "        case .Dot(at): return Sum(at);\n"
                  "        case .Line(size): return size;\n"
@@ -335,10 +350,10 @@ static const sample samples[] = {
                 "    return 0;\n}\n"
                 "Scale :: () -> int { return lib.Scaled(2); }",
       .library = "package lib\n"
-                 "Step: int : 100;\n"
-                 "Low: int : -2147483648;\n"
-                 "High: int : 2147483647;\n"
-                 "Scaled :: (n: int) -> int { return n * Step; }",
+                 "pub Step: int : 100;\n"
+                 "pub Low: int : -2147483648;\n"
+                 "pub High: int : 2147483647;\n"
+                 "pub Scaled :: (n: int) -> int { return n * Step; }",
       .calls = { { "Sum", "[3]", "[148]" },
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
@@ -463,6 +478,41 @@ static const sample samples[] = {
                  { "Twice", "[]", "[-10000000000]" },
                  { "Negative", "[-1]", "[true]" },
                  { "Pick", "[5]", "[5000000035]" } } },
+    { .name = "wide records",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Entry :: struct { flag: bool; id: uint64; small: byte; "
+                "count: int; delta: int64; name: string; }\n"
+                "Make :: (n: int) -> Entry {\n"
+                "    e: Entry = {flag: n > 0, id: uint64(n) * 1000000007, "
+                "small: byte(wrap: n), count: n, delta: int64(n) - "
+                "5000000000, name: \"e\"};\n"
+                "    return e;\n}\n"
+                "Mix :: (e: Entry) -> uint64 { return (e.id ^ "
+                "uint64(e.small)) + uint64(e.count); }\n"
+                "Bump :: (e: Entry) -> Entry {\n"
+                "    out := e;\n    out.id += 1;\n    out.small = 7;\n"
+                "    out.delta *= 2;\n    return out;\n}\n"
+                "Total :: (n: int) -> int64 {\n"
+                "    es: Entry[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { es = array_add(es, Make(i)); i += 1; }\n"
+                "    total: int64 = 0;\n"
+                "    for (e in es) { total += e.delta + int64(e.small); }\n"
+                "    return total;\n}",
+      .calls = { { "Make",
+                   "[3]",
+                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
+                   "\"delta\":-4999999997,\"name\":\"e\"}]" },
+                 { "Mix",
+                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
+                   "\"delta\":-4999999997,\"name\":\"e\"}]",
+                   "[3000000025]" },
+                 { "Bump",
+                   "[{\"flag\":false,\"id\":18446744073709551614,\"small\":200,"
+                   "\"count\":-1,\"delta\":-4999999997,\"name\":\"x\"}]",
+                   "[{\"flag\":false,\"id\":18446744073709551615,\"small\":7,"
+                   "\"count\":-1,\"delta\":-9999999994,\"name\":\"x\"}]" },
+                 { "Total", "[3]", "[-14999999994]" } } },
     { .name = "inferred arrays",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -697,6 +747,12 @@ static const sample samples[] = {
       .message = "for loops support only `for name in array`",
       .line = 2,
       .column = 20 },
+    { .name = "reverse for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for < x in xs { } "
+                "return 0; }",
+      .message = "for loops support only `for name in array`",
+      .line = 2,
+      .column = 29 },
     { .name = "for scalar",
       .source = "package facts\nOne :: (n: int) -> int { for (x in "
                 "n) { } return 0; }",
@@ -750,21 +806,21 @@ static const sample samples[] = {
     { .name = "unknown imported function",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown function 'Missing'",
       .line = 3,
       .column = 31 },
     { .name = "alias conflict",
       .source = "package facts\nimport lib \"project:lib\"\nlib :: () "
                 "-> int { return 1; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Package import alias conflicts with a package declaration",
       .line = 2,
       .column = 1 },
     { .name = "alias value",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown name 'lib'",
       .line = 3,
       .column = 27 },
@@ -1997,6 +2053,632 @@ TEST_CASE(package_compiler_reads_float_literals)
     REQUIRE(prepare());
     return literals_agree();
 }
+/* Behavior assets. Stage one compiles each against a game this test declares,
+ * on both compiler backends; its module declares stage zero's identities and
+ * plays as stage zero's does. Counter is the Counter story's behavior: a
+ * retained state, and a Tick handler that increments it and writes it,
+ * converted to a float, to a field of the owner's component. */
+typedef struct
+{
+    const char *name, *source;
+} behavior_sample;
+static const char COUNTER[] = "// Behavior state that survives between steps, "
+                              "written to a component.\n"
+                              "Counter :: behavior {\n"
+                              "    steps: int = 0\n"
+                              "\n"
+                              "    on Tick {\n"
+                              "        steps += 1\n"
+                              "        self.Spot.x = steps\n"
+                              "    }\n"
+                              "}\n";
+static const behavior_sample behavior_samples[] = {
+    { "Counter", COUNTER },
+    { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick {\n        steps = 7\n    }\n}\n" },
+    { "Glide", "Glide :: behavior {\n    on Tick(dt) {\n        self.Spot.y = dt\n    }\n}\n" },
+    { "Mark", "Mark :: behavior {\n    on tick {\n        self.Spot.x = 3\n    }\n}\n" },
+    { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
+    { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
+    { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Swap", "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "Turn",
+      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick(dt) {\n        "
+      "angle += dt * 2\n"
+      "        self.Spot.x = angle\n    }\n}\n" },
+    { "Fold",
+      "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
+      "{\n"
+      "        if value > limit {\n            return value - limit * 2\n      "
+      "  }\n        return value\n    }\n"
+      "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
+      "whole = int(value)\n"
+      "        rest = value - whole\n        return (whole, rest)\n    }\n    "
+      "on Tick {\n"
+      "        self.Spot.x = Wrap(self.Spot.x + 7, 20)\n        parts := "
+      "Split(self.Spot.x)\n"
+      "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
+    { "Halve",
+      "Halve :: behavior {\n    on Tick(dt) {\n        self.Spot.y = "
+      "self.Spot.w / 2 - dt\n"
+      "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
+      "}\n    }\n}\n" },
+    { "Pair",
+      "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick {\n     "
+      "   a *= 2\n"
+      "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
+      " }\n}\n" },
+};
+/* Sources stage one rejects, with its message. */
+typedef struct
+{
+    const char *source, *message;
+} behavior_rejection;
+static const behavior_rejection behavior_rejections[] = {
+    { "Late :: behavior {\n    after Tick {\n    }\n}\n",
+      "only `on Event` handlers are supported yet" },
+    { "Jump :: behavior {\n    on Jump {\n    }\n}\n", "Unknown event 'Jump'" },
+    { "Fixed :: behavior {\n    on Tick {\n        self.Spot.w = 1\n    }\n}\n",
+      "Assignment requires a writable value" },
+    { "Named :: behavior {\n    label: string = \"\"\n    on Tick {\n    "
+      "}\n}\n",
+      "state needs a number type" },
+    { "Extra :: behavior {\n    on Tick(dt, more) {\n    }\n}\n",
+      "the event has no such parameter" },
+    { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
+      "operator does not apply to these operands" },
+    { "Pace :: behavior {\n    on Tick {\n        self.Spot.x = pace\n    "
+      "}\n}\n",
+      "reading the global 'pace' is not supported yet" },
+};
+enum
+{
+    SPOT = 101,
+    SPOT_COMPONENT = 901,
+    TICK = 11,
+    OWNER = 30,
+    ENTITY = 700,
+    BEHAVIOR_ARGUMENTS = 17,
+    TICKS = 5
+};
+typedef struct
+{
+    float x, y, w;
+} spot;
+static const type_field spot_fields[] = {
+    { .name = "x",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, x),
+      .size = sizeof(float) },
+    { .name = "y",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, y),
+      .size = sizeof(float) },
+    { .name = "w",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, w),
+      .size = sizeof(float) },
+};
+static const type_desc spot_type = { .name = "Spot",
+                                     .size = sizeof(spot),
+                                     .fields = spot_fields,
+                                     .field_count = 3 };
+static const script_catalog_field spot_members[] = {
+    { .id = 811,
+      .name = "x",
+      .type = { .storage = PIN_F32 },
+      .offset = offsetof(spot, x),
+      .writable = true },
+    { .id = 812,
+      .name = "y",
+      .type = { .storage = PIN_F32 },
+      .offset = offsetof(spot, y),
+      .writable = true },
+    { .id = 813, .name = "w", .type = { .storage = PIN_F32 }, .offset = offsetof(spot, w) },
+};
+static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
+                                                        .type = { .storage = PIN_F32 } };
+static const script_catalog_capability game_events[] = {
+    { .id = TICK,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = &delta_seconds,
+      .parameter_count = 1,
+      .completion_outcome = -1 },
+};
+static const script_catalog_global game_globals[] = {
+    { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
+    { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
+};
+/* The game: the Spot component and the entity type, Tick, `self` and
+ * `pace`, a global stage one cannot read yet. */
+static script_catalog game_catalog()
+{
+    static script_catalog_type types[2];
+    types[0] = (script_catalog_type){ .id = SPOT,
+                                      .name = spot_type.name,
+                                      .type = { .storage = PIN_STRUCT, .nominal = SPOT },
+                                      .fields = spot_members,
+                                      .field_count = 3,
+                                      .size = spot_type.size,
+                                      .layout = type_layout_hash(&spot_type),
+                                      .component_id = SPOT_COMPONENT,
+                                      .component = true };
+    types[1] = (script_catalog_type){ .id = ENTITY,
+                                      .name = "ecs.entity",
+                                      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+                                      .size = sizeof(uint64_t) };
+    return (script_catalog){ .types = types,
+                             .type_count = 2,
+                             .capabilities = game_events,
+                             .capability_count = 1,
+                             .globals = game_globals,
+                             .global_count = 2,
+                             .entity_type = ENTITY,
+                             .tick_event = TICK };
+}
+static bool game_global(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id != OWNER) {
+        return false;
+    }
+    *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+    return true;
+}
+/* Stage zero's module of `source`. */
+static execution_module *stage_zero_behavior(const char *source)
+{
+    script_catalog catalog = game_catalog();
+    script_syntax *syntax = script_parse(source);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    const script_lower_bindings bindings = { .global = game_global };
+    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    char error[256] = { 0 };
+    execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
+                                 ? NULL
+                                 : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "stage zero behavior: %s\n", error);
+    }
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    return module;
+}
+static pin_value u64(uint64_t value)
+{
+    return (pin_value){ .type = PIN_U64, .u64 = value };
+}
+static pin_value flag(bool value)
+{
+    return (pin_value){ .type = PIN_BOOL, .b = value };
+}
+/* The index of the type `id` among the catalog's, -1 for none. */
+static int type_index(const script_catalog *catalog, uint64_t id)
+{
+    for (int i = 0; id && i < catalog->type_count; i++) {
+        if (catalog->types[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+/* CompileBehavior's game arguments, as the game target exports them: each
+ * event and its payload fields, each type and its fields, the entity type,
+ * no operators that combine records, the globals, and no record makes. */
+static bool game_arguments(int b, pin_value *out)
+{
+    script_catalog catalog = game_catalog();
+    pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        pin_value event = row(b, "GameEvent");
+        REQUIRE(put_value(&event, "name", text(c->name)));
+        REQUIRE(put_value(&event, "id", u64(c->id)));
+        REQUIRE(put_value(&event, "abi", u64(script_catalog_capability_abi(&catalog, c))));
+        REQUIRE(put(&event, "first", acount(payloads)));
+        REQUIRE(put(&event, "count", c->parameter_count));
+        apush(declared, event);
+        for (int j = 0; j < c->parameter_count; j++) {
+            pin_value payload = row(b, "GameEventField");
+            REQUIRE(put_value(&payload, "name", text(c->parameters[j].name)));
+            REQUIRE(put(&payload, "storage", (int)c->parameters[j].type.storage));
+            REQUIRE(put_value(&payload, "nominal", u64(c->parameters[j].type.nominal)));
+            REQUIRE(put_value(&payload, "has_default", flag(c->parameters[j].has_default)));
+            REQUIRE(put_value(&payload, "default_owner", flag(c->parameters[j].default_owner)));
+            apush(payloads, payload);
+        }
+    }
+    for (int i = 0; i < catalog.type_count; i++) {
+        const script_catalog_type *t = &catalog.types[i];
+        pin_value type = row(b, "GameType");
+        REQUIRE(put_value(&type, "required", flag(true)));
+        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
+        REQUIRE(put_value(&type, "name", text(t->name)));
+        REQUIRE(put_value(&type, "id", u64(t->id)));
+        REQUIRE(put_value(&type, "layout", u64(t->layout)));
+        REQUIRE(put(&type, "storage", (int)t->type.storage));
+        REQUIRE(put(&type, "size", (int)t->size));
+        REQUIRE(put_value(&type, "component", u64(t->component ? t->component_id : 0)));
+        REQUIRE(put(&type, "first", acount(fields)));
+        REQUIRE(put(&type, "count", t->field_count));
+        apush(types, type);
+        for (int j = 0; j < t->field_count; j++) {
+            pin_value field = row(b, "GameField");
+            REQUIRE(put_value(&field, "name", text(t->fields[j].name)));
+            REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
+            REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
+            REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
+            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
+            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
+            REQUIRE(put(&field, "read", -1));
+            REQUIRE(put_value(&field, "read_key", text("")));
+            apush(fields, field);
+        }
+    }
+    out[0] = rows(declared, acount(declared), PIN_STRUCT, declared[0].record);
+    out[1] = rows(payloads, acount(payloads), PIN_STRUCT, payloads[0].record);
+    out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
+    out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
+    out[4] = u64(catalog.entity_type);
+    out[5] = rows(
+        NULL,
+        0,
+        PIN_STRUCT,
+        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
+    );
+    pin_value *globals = NULL;
+    for (int i = 0; i < catalog.global_count; i++) {
+        const script_catalog_global *g = &catalog.globals[i];
+        pin_value global = row(b, "GameGlobal");
+        REQUIRE(put_value(&global, "name", text(g->name)));
+        REQUIRE(put(&global, "storage", (int)g->type.storage));
+        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
+        apush(globals, global);
+    }
+    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
+    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
+    out[8] = rows(NULL, 0, PIN_I32, NULL);
+    afree(declared);
+    afree(payloads);
+    afree(types);
+    afree(fields);
+    afree(globals);
+    return true;
+}
+/* Stage one's Result for `source` on backend `b`, in `detached`. */
+static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
+{
+    pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
+    REQUIRE(arguments(b, NULL, 0, compile));
+    args[0] = text(identity);
+    args[1] = text(source);
+    memcpy(&args[2], &compile[5], 6 * sizeof *args);
+    REQUIRE(game_arguments(b, &args[8]));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
+    );
+    REQUIRE(out->type == PIN_UNION && out->ptr);
+    return true;
+}
+/* The game's types and events, as the player links them. */
+static bool link_game_type(void *user, uint64_t id, execution_prepared_type *out)
+{
+    const script_catalog *catalog = user;
+    for (int i = 0; i < catalog->type_count; i++) {
+        const script_catalog_type *t = &catalog->types[i];
+        if (t->id == id) {
+            *out = (execution_prepared_type){ .name = t->name,
+                                              .type = t->id == SPOT ? &spot_type : NULL,
+                                              .storage = t->type.storage,
+                                              .size = t->size,
+                                              .layout = t->layout };
+            return true;
+        }
+    }
+    return false;
+}
+static bool link_game_event(void *user, uint64_t id, uint64_t abi)
+{
+    const script_catalog *catalog = user;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind == SCRIPT_CAPABILITY_EVENT && c->id == id) {
+            return script_catalog_capability_abi(catalog, c) == abi;
+        }
+    }
+    return false;
+}
+/* The module stage one compiles `source` to on backend `b`, linked against
+ * the game. */
+static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
+{
+    *module = NULL;
+    pin_value out;
+    REQUIRE(compile_behavior(b, identity, source, &out));
+    const pin_union *value = out.ptr;
+    if (value->tag != tag(b, "Compiled")) {
+        pin_value message, line, column;
+        get(&value->values[0], "message", &message);
+        get(&value->values[0], "line", &line);
+        get(&value->values[0], "column", &column);
+        fprintf(
+            stderr,
+            "stage one behavior %s rejected: %s at %d:%d\n",
+            identity,
+            message.str,
+            line.i,
+            column.i
+        );
+        arena_free(&detached);
+        return false;
+    }
+    size_t length;
+    unsigned char *bytes = closure_bytes(value, &length);
+    arena_free(&detached);
+    script_catalog catalog = game_catalog();
+    execution_prepared_linker linker = { .user = &catalog,
+                                         .type = link_game_type,
+                                         .event = link_game_event };
+    char error[256] = { 0 };
+    *module = execution_prepared_read(bytes, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!*module) {
+        fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
+    }
+    free(bytes);
+    return *module != NULL;
+}
+/* A behavior module playing in its own world, on one owner holding a Spot. */
+typedef struct
+{
+    ecs_world *world;
+    execution_program *program;
+    execution_instance *instance;
+    ecs_entity owner;
+} player;
+static bool play(execution_module *module, player *out)
+{
+    out->world = ecs_world_new();
+    const ecs_component_desc component = { .id = SPOT_COMPONENT,
+                                           .key = "test.spot",
+                                           .name = spot_type.name,
+                                           .element_size = sizeof(spot),
+                                           .type = &spot_type };
+    REQUIRE(ecs_world_register_component(out->world, &component, NULL) == ECS_OK);
+    out->program = execution_program_new(module, out->world, NULL);
+    REQUIRE(out->program);
+    out->owner = ecs_world_create_entity(out->world);
+    spot initial = { .w = 9 };
+    REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
+    out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
+    REQUIRE(out->instance);
+    return true;
+}
+static void stop(player *p)
+{
+    execution_program_free(p->program);
+    ecs_world_free(p->world);
+    *p = (player){ 0 };
+}
+/* Stage one's module declares what stage zero's does: the module, its owner,
+ * types, services, states, events and handlers, with the same identities,
+ * ABIs, kinds and effects. */
+static bool same_declarations(const execution_module *expected, const execution_module *actual)
+{
+    const execution_module_plan *e = &expected->plan, *a = &actual->plan;
+    REQUIRE(a->id == e->id && a->owner_type == e->owner_type);
+    REQUIRE(a->type_count == e->type_count);
+    for (int i = 0; i < e->type_count; i++) {
+        REQUIRE(
+            a->types[i].id == e->types[i].id &&
+            a->types[i].layout == e->types[i].layout
+        );
+        REQUIRE(
+            a->types[i].storage == e->types[i].storage &&
+            a->types[i].size == e->types[i].size
+        );
+        REQUIRE(
+            !strcmp(a->types[i].name, e->types[i].name) &&
+            !a->types[i].record == !e->types[i].record
+        );
+    }
+    REQUIRE(a->service_count == e->service_count);
+    for (int i = 0; i < e->service_count; i++) {
+        REQUIRE(!strcmp(a->services[i], e->services[i]));
+    }
+    REQUIRE(a->state_count == e->state_count);
+    for (int i = 0; i < e->state_count; i++) {
+        REQUIRE(a->states[i].id == e->states[i].id);
+        REQUIRE(a->states[i].initial.type == e->states[i].initial.type);
+        REQUIRE(a->states[i].initial.i == e->states[i].initial.i);
+    }
+    REQUIRE(a->event_count == e->event_count);
+    for (int i = 0; i < e->event_count; i++) {
+        const execution_module_event_declaration *x = &e->events[i],
+                                                 *y = &a->events[i];
+        REQUIRE(y->id == x->id && y->abi == x->abi && !strcmp(y->name, x->name));
+        REQUIRE(y->field_count == x->field_count);
+        for (int j = 0; j < x->field_count; j++) {
+            REQUIRE(
+                !strcmp(y->fields[j].name, x->fields[j].name) &&
+                y->fields[j].nominal == x->fields[j].nominal
+            );
+            REQUIRE(y->fields[j].has_default == x->fields[j].has_default);
+            REQUIRE(y->fields[j].default_owner == x->fields[j].default_owner);
+            REQUIRE(y->fields[j].initial.type == x->fields[j].initial.type);
+        }
+    }
+    REQUIRE(a->function_count == e->function_count);
+    for (int i = 0; i < e->function_count; i++) {
+        const execution_module_function *x = &e->functions[i], *y = &a->functions[i];
+        REQUIRE(y->id == x->id && y->event == x->event && y->event_abi == x->event_abi);
+        REQUIRE(y->kind == x->kind && y->effects == x->effects);
+        REQUIRE(!y->event_name == !x->event_name && !y->entry == !x->entry);
+        REQUIRE(!x->event_name || !strcmp(y->event_name, x->event_name));
+        REQUIRE(y->body->argument_count == x->body->argument_count);
+        REQUIRE(y->body->result_count == x->body->result_count);
+        REQUIRE(y->body->variable_count == x->body->variable_count);
+        REQUIRE(y->body->component_access == x->body->component_access);
+        REQUIRE(acount(y->body->components) == acount(x->body->components));
+        for (int j = 0; j < acount(x->body->components); j++) {
+            REQUIRE(y->body->components[j].id == x->body->components[j].id);
+        }
+    }
+    return true;
+}
+/* Each Tick, both modules' owners hold the same Spot and states. */
+static bool plays_alike(execution_module *expected, execution_module *actual)
+{
+    player e = { 0 }, a = { 0 };
+    bool alike = play(expected, &e) && play(actual, &a);
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    for (int tick = 0; alike && tick < TICKS; tick++) {
+        int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
+        int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
+        const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
+        const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
+        alike = left == FLOW_OK && right == FLOW_OK && x && y &&
+                !memcmp(x, y, sizeof *x);
+        for (int i = 0; alike && i < expected->plan.state_count; i++) {
+            const pin_value *kept = execution_instance_state(
+                e.instance,
+                expected->plan.states[i].id
+            );
+            const pin_value *held = execution_instance_state(
+                a.instance,
+                expected->plan.states[i].id
+            );
+            alike = kept && held && kept->type == held->type && kept->i == held->i;
+        }
+        if (!alike) {
+            fprintf(
+                stderr,
+                "behavior tick %d: flow %d/%d x %g/%g y %g/%g\n",
+                tick,
+                left,
+                right,
+                x ? x->x : -1.0,
+                y ? y->x : -1.0,
+                x ? x->y : -1.0,
+                y ? y->y : -1.0
+            );
+        }
+    }
+    stop(&e);
+    stop(&a);
+    return alike;
+}
+/* Stage one's module of `sample` against stage zero's, on backend `b`. */
+static bool behaves_alike(int b, const behavior_sample *sample)
+{
+    execution_module *expected = stage_zero_behavior(sample->source);
+    execution_module *actual = NULL;
+    bool same = expected &&
+                stage_one_behavior(b, sample->name, sample->source, &actual) &&
+                same_declarations(expected, actual) && plays_alike(expected, actual);
+    if (!same) {
+        fprintf(stderr, "behavior %s differs on backend %d\n", sample->name, b);
+    }
+    execution_module_free(actual);
+    execution_module_free(expected);
+    return same;
+}
+/* Stage one rejects the source with exactly the message. */
+static bool rejects(int b, const behavior_rejection *rejection)
+{
+    pin_value out, message;
+    REQUIRE(compile_behavior(b, "Rejected", rejection->source, &out));
+    const pin_union *value = out.ptr;
+    bool rejected = value->tag == tag(b, "Rejected") &&
+                    get(&value->values[0], "message", &message) &&
+                    !strcmp(message.str, rejection->message);
+    if (!rejected) {
+        fprintf(stderr, "behavior rejection: wanted '%s'\n", rejection->message);
+    }
+    arena_free(&detached);
+    return rejected;
+}
+/* A project names a behavior by its path, and the IDs follow it. */
+static bool takes_project_identities(int b)
+{
+    const char *identity = "behaviors/Counter.chibi";
+    execution_module *module = NULL;
+    REQUIRE(stage_one_behavior(b, identity, COUNTER, &module));
+    char handler[128];
+    snprintf(handler, sizeof handler, "%s:%d:1", identity, (int)(strstr(COUNTER, "on Tick") - COUNTER));
+    const execution_module_plan *p = &module->plan;
+    bool named = p->id == script_catalog_id("module", identity) &&
+                 p->state_count == 1 &&
+                 p->states[0].id ==
+                     script_catalog_id("symbol", "behaviors/Counter.chibi:1:steps") &&
+                 p->function_count == 1 &&
+                 p->functions[0].id == script_catalog_id("function", handler);
+    execution_module_free(module);
+    REQUIRE(named);
+    return true;
+}
+/* Stage zero's build of stage one passes arguments without copying them to
+ * every function but those that run once per compile. One that pushes onto an
+ * array argument, or stores a uint64 into a field of a local record, copies
+ * every argument on each call, and so does every function that calls it;
+ * each took stage one compiling itself past its 60-second ceiling. */
+TEST_CASE(package_compiler_shares_its_arguments)
+{
+    REQUIRE(prepare());
+    const char *const once[] = { "Compile",           "CompileClosure",
+                                 "CompileBehavior",   "CompileBehaviors",
+                                 "BehaviorRejection", "Declare",
+                                 "DeclarePackage" };
+    const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
+                                          ->module->plan;
+    int copying = 0;
+    for (int i = 0; i < p->function_count; i++) {
+        const behavior_function *body = p->functions[i].body;
+        bool allowed = false;
+        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
+            char name[128];
+            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
+            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
+        }
+        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
+            fprintf(
+                stderr,
+                "package compiler function %016llx copies its arguments\n",
+                (unsigned long long)p->functions[i].id
+            );
+            copying++;
+        }
+    }
+    REQUIRE(copying == 0);
+    return true;
+}
+TEST_CASE(package_compiler_compiles_behaviors)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t i = 0;
+             passed && i < sizeof behavior_samples / sizeof *behavior_samples;
+             i++) {
+            passed = behaves_alike(b, &behavior_samples[i]);
+        }
+    }
+    for (size_t i = 0;
+         passed && i < sizeof behavior_rejections / sizeof *behavior_rejections;
+         i++) {
+        passed = rejects(1, &behavior_rejections[i]);
+    }
+    passed = passed && takes_project_identities(1);
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -2025,5 +2707,12 @@ void test_language_package_compiler_chibi_literals()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_reads_float_literals);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_behaviors()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_shares_its_arguments);
+    RUN_TEST_CASE(package_compiler_compiles_behaviors);
     pu_clear_setup();
 }

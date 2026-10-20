@@ -4,10 +4,10 @@ import strings "core:strings"
 
 // Renders the Markdown of one documentation page as HTML. It covers what the
 // public pages use: headings, paragraphs, lists, block quotes, fenced code,
-// pipe tables, and inline code, emphasis and links. Links between pages
-// follow the site's own map from source files to pages; a link to a file the
-// site does not publish keeps only its text, and Unpublished names each such
-// link at its line.
+// pipe tables, and inline code, emphasis and links. It lists the page's level
+// 2 and 3 headings as its contents. Links between pages follow the site's own
+// map from source files to pages; a link to a file the site does not publish
+// keeps only its text, and Unpublished names each such link at its line.
 
 Space :: 32;
 Quote :: 34;
@@ -31,20 +31,20 @@ Size :: (text: string) -> int {
     return strings.ByteLength(text);
 }
 
-At :: (text: string, index: int) -> int {
+pub At :: (text: string, index: int) -> int {
     return strings.ByteAt(text, index);
 }
 
-From :: (text: string, start: int) -> string {
+pub From :: (text: string, start: int) -> string {
     return strings.Slice(text, start, Size(text) - start);
 }
 
-IsBlank :: (byte: int) -> bool {
+pub IsBlank :: (byte: int) -> bool {
     return byte == Space || byte == 9 || byte == 13;
 }
 
 // text without the blanks IsBlank names at either end.
-Trim :: (text: string) -> string {
+pub Trim :: (text: string) -> string {
     return strings.Trim(text, " \t\r");
 }
 
@@ -58,7 +58,7 @@ IndexFrom :: (text: string, substr: string, start: int) -> int {
 }
 
 // Text as HTML element content or attribute value.
-Escape :: (text: string) -> string {
+pub Escape :: (text: string) -> string {
     out: string = "";
     size := Size(text);
     start: int = 0;
@@ -110,7 +110,7 @@ Slug :: (text: string) -> string {
 }
 
 // The folder of a site path, without its trailing slash.
-Folder :: (path: string) -> string {
+pub Folder :: (path: string) -> string {
     end := strings.LastIndexByte(path, Slash);
     if (end < 0) {
         return "";
@@ -476,18 +476,35 @@ Locate :: (lines: string[], first: int, end: int, targets: string[]) -> int[] {
     return found;
 }
 
+// The entry in a page's contents that links to the heading at line, of level 2
+// or 3, with the heading's inline content.
+Entry :: (line: string, level: int, page: string, sources: string[], outputs: string[]) -> string {
+    title := Trim(From(line, level + 1));
+    inline := Inline(title, page, sources, outputs);
+    kind: string = "";
+    if (level == 3) {
+        kind = " class=\"sub\"";
+    }
+    return format_text("<li{}><a href=\"#{}\">{}</a></li>\n", kind, Slug(title), inline.html);
+}
+
 // The page's Markdown, given as its lines, as HTML pieces to write in order,
-// and the line index and target of each link written as text. page is the
-// page's source path, and sources and outputs map published sources to their
-// pages for links. Lines arrive split because reading a byte of a string costs
-// the length of the string.
-Page :: (lines: string[], page: string, sources: string[],
-         outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
+// the line index and target of each link written as text, and an entry for
+// each heading of level 2 or 3. page is the page's source path, and sources
+// and outputs map published sources to their pages for links. Lines arrive
+// split because reading a byte of a string costs the length of the string.
+pub Page :: (lines: string[], page: string, sources: string[],
+             outputs: string[]) -> (html: string[], at: int[], targets: string[], contents: string[]) {
     index: int = 0;
     while (index < length(lines)) {
-        if (Trim(lines[index]) == "") {
+        line := Trim(lines[index]);
+        if (line == "") {
             index += 1;
             continue;
+        }
+        level := HeadingLevel(line);
+        if (level == 2 || level == 3) {
+            contents = array_add(contents, Entry(line, level, page, sources, outputs));
         }
         block := Block(lines, index, page, sources, outputs);
         html = append(html, block.html);
@@ -495,18 +512,24 @@ Page :: (lines: string[], page: string, sources: string[],
         targets = append(targets, block.dropped);
         index = block.end;
     }
-    return (html: html, at: at, targets: targets);
+    return (html: html, at: at, targets: targets, contents: contents);
 }
 
-// The page's HTML pieces, as Page renders them.
-Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+// The page's HTML pieces, as Page renders them, followed by its contents when
+// it has headings of level 2 or 3.
+pub Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
-    return rendered.html;
+    if (length(rendered.contents) == 0) {
+        return rendered.html;
+    }
+    html := array_add(rendered.html, "<nav class=\"contents\" aria-label=\"On this page\">\n<p>On this page</p>\n<ul>\n");
+    html = append(html, rendered.contents);
+    return array_add(html, "</ul>\n</nav>\n");
 }
 
 // items followed by item until there are count of them; generated pages use
 // it to keep the source line of each Markdown line they write.
-Pad :: (items: int[], count: int, item: int) -> int[] {
+pub Pad :: (items: int[], count: int, item: int) -> int[] {
     padded := items;
     while (length(padded) < count) {
         padded = array_add(padded, item);
@@ -515,12 +538,12 @@ Pad :: (items: int[], count: int, item: int) -> int[] {
 }
 
 // What chibi doc reports for a link written as text at line of source.
-Dropped :: (source: string, line: int, target: string) -> string {
+pub Dropped :: (source: string, line: int, target: string) -> string {
     return format_text("{}:{}: link to {} is not published; written as text\n", source, line, target);
 }
 
 // A report, as Dropped writes it, of each link Render writes as text.
-Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     reports: string[] = [];
     index: int = 0;

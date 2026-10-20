@@ -10,10 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Eight cases on bytecode and the compiled backend. One preparation of the
+/* Eleven cases on bytecode and the compiled backend. One preparation of the
  * shipped site generator packages with core:strings per case; each call
- * renders, lays out or reports on one page of at most a few hundred bytes with
- * a 2,000,000-instruction budget. No filesystem, processes or frames. */
+ * renders, lays out, styles or reports on one page of at most a few hundred
+ * bytes with a 2,000,000-instruction budget. No filesystem, processes or
+ * frames. */
 enum
 {
     BUDGET = 2000000
@@ -161,6 +162,32 @@ TEST_CASE(docs_markdown_renders_blocks)
     return true;
 }
 
+/* Headings of level 2 and 3, outside fenced code, are listed after the page
+ * as its contents, each linking to its anchor. */
+TEST_CASE(docs_markdown_lists_contents)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(renders(
+            b,
+            "# Title\n\n## First `one`\n\n```sh\n## not a heading\n```\n\n"
+            "### Second part\n\n#### Deep\n",
+            "README.md",
+            "<h1 id=\"title\">Title</h1>\n"
+            "<h2 id=\"first-one\">First <code>one</code></h2>\n"
+            "<pre><code class=\"language-sh\">## not a heading\n</code></pre>\n"
+            "<h3 id=\"second-part\">Second part</h3>\n"
+            "<h4 id=\"deep\">Deep</h4>\n"
+            "<nav class=\"contents\" aria-label=\"On this page\">\n"
+            "<p>On this page</p>\n<ul>\n"
+            "<li><a href=\"#first-one\">First <code>one</code></a></li>\n"
+            "<li class=\"sub\"><a href=\"#second-part\">Second part</a></li>\n"
+            "</ul>\n</nav>\n"
+        ));
+    }
+    return true;
+}
+
 /* Pipe tables split at pipes outside code spans and escaped pipes. */
 TEST_CASE(docs_markdown_renders_tables)
 {
@@ -272,8 +299,9 @@ TEST_CASE(docs_markdown_reports_unpublished_links)
     return true;
 }
 
-/* A page's head names it and the site, links the stylesheet and lists every
- * page under its section, marking this one. */
+/* A page's head names it and the site, links the stylesheet, puts each
+ * section's first page in the bar, marking this page's section, and lists
+ * every page under its section, marking this one. */
 TEST_CASE(docs_site_lays_out_navigation)
 {
     REQUIRE(prepare());
@@ -293,6 +321,14 @@ TEST_CASE(docs_site_lays_out_navigation)
                         strstr(head, "<link rel=\"stylesheet\" href=\"style.css\">") &&
                         strstr(
                             head,
+                            "<header class=\"bar\">\n<a class=\"site\" "
+                            "href=\"index.html\">Chibi</a>\n<nav "
+                            "aria-label=\"Sections\">\n<a "
+                            "href=\"index.html\">Overview</a>\n<a "
+                            "href=\"language.html\" "
+                            "aria-current=\"true\">Learn</a>\n</nav>\n"
+                            "</header>\n<div class=\"page\">\n<nav "
+                            "class=\"pages\" aria-label=\"Pages\">\n"
                             "<h2>Overview</h2>\n<ul>\n<li><a "
                             "href=\"index.html\">Chibi</a></li>\n</ul>\n"
                             "<h2>Learn</h2>\n<ul>\n<li><a "
@@ -301,7 +337,7 @@ TEST_CASE(docs_site_lays_out_navigation)
                             "aria-current=\"page\">Tests &amp; more</a></li>\n"
                             "</ul>\n</nav>\n<main>\n"
                         ) &&
-                        !strcmp(foot, "</main>\n</body>\n</html>\n");
+                        !strcmp(foot, "</main>\n</div>\n</body>\n</html>\n");
         free(head);
         free(foot);
         REQUIRE(laid_out);
@@ -309,36 +345,88 @@ TEST_CASE(docs_site_lays_out_navigation)
     return true;
 }
 
+/* The stylesheet takes every colour from custom properties, which a dark
+ * palette redefines when the system prefers a dark scheme. */
+TEST_CASE(docs_site_follows_color_scheme)
+{
+    REQUIRE(prepare());
+    static const char *const properties[] = { "--text:",  "--muted:", "--page:",
+                                              "--panel:", "--line:",  "--link:",
+                                              "--code:",  "--bar:" };
+    for (int b = 0; b < 2; b++) {
+        char *style = call(b, "project:site", "Style", NULL, 0);
+        REQUIRE(style);
+        char *light = strstr(style, ":root { color-scheme: light dark;");
+        char *dark = strstr(style, "@media (prefers-color-scheme: dark) {\n  :root {");
+        char *rules = dark ? strstr(dark, "\n}\n") : NULL;
+        bool themed = light == style && dark && rules && !strchr(rules, '#');
+        for (int i = 0; themed && i < 8; i++) {
+            char *defined = strstr(light, properties[i]);
+            char *redefined = strstr(dark, properties[i]);
+            themed = defined && defined < dark && redefined && redefined < rules;
+        }
+        free(style);
+        REQUIRE(themed);
+    }
+    return true;
+}
+
+/* The bar keeps one row of a fixed height, which the anchor offset clears.
+ * A narrow window keeps the page list, which holds the only links to a
+ * section's later pages, and draws it where it is in the page, so focus
+ * order and visual order agree. */
+TEST_CASE(docs_site_keeps_navigation_in_reach)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        char *style = call(b, "project:site", "Style", NULL, 0);
+        REQUIRE(style);
+        char *narrow = strstr(style, "@media (max-width: 48rem) {");
+        char *end = narrow ? strchr(narrow, '\n') : NULL;
+        if (end) {
+            *end = '\0';
+        }
+        bool reachable = end && strstr(style, "; height: 3.5rem;") &&
+                         strstr(style, "scroll-margin-top: 4.5rem;") &&
+                         !strstr(style, "flex-wrap: wrap") &&
+                         strstr(narrow, ".pages li { display: inline-block;") &&
+                         !strstr(narrow, ".pages { display: none") &&
+                         !strstr(narrow, "order:");
+        free(style);
+        REQUIRE(reachable);
+    }
+    return true;
+}
+
 /* The package reference lists each package once, with its import path, and
- * each top-level declaration's signature, up to its body, with the comment
- * written right above it. */
+ * each pub declaration's signature, up to its body, with the comment written
+ * right above it. */
 TEST_CASE(docs_reference_lists_declarations)
 {
     REQUIRE(prepare());
     static const char *const paths[] = { "shapes/A.chibi", "shapes/B.chibi" };
-    static const char *const files[] = {
-        "package shapes",
-        "",
-        "// The area of a square.",
-        "Area :: (side: int,",
-        "                 scale: int) -> int {",
-        "    return side * side;",
-        "}",
-        "package shapes",
-        "Sides: int : 4;",
-        "// Not attached.",
-        "",
-        "Shape :: struct { sides: int; }",
-        "Greeting :: \"Hello {}\";",
-        "@test",
-        "Checks :: () {",
-        "}",
-        "@test Also :: () {}",
-        "Vec :: struct {",
-        "    // Horizontal.",
-        "    x: int;",
-        "}"
-    };
+    static const char *const files[] = { "package shapes",
+                                         "",
+                                         "// The area of a square.",
+                                         "pub Area :: (side: int,",
+                                         "             scale: int) -> int {",
+                                         "    return side * side;",
+                                         "}",
+                                         "package shapes",
+                                         "pub Sides: int : 4;",
+                                         "// Not attached.",
+                                         "",
+                                         "pub Shape :: struct { sides: int; }",
+                                         "pub Greeting :: \"Hello {}\";",
+                                         "Hidden :: 3;",
+                                         "@test",
+                                         "Checks :: () {",
+                                         "}",
+                                         "@test Also :: () {}",
+                                         "pub Vec :: struct {",
+                                         "    // Horizontal.",
+                                         "    x: int;",
+                                         "}" };
     for (int b = 0; b < 2; b++) {
         pin_value starts = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
         pin_array *offsets = pin_array_snapshot_allocate(&input, PIN_I32, NULL, 2);
@@ -347,7 +435,7 @@ TEST_CASE(docs_reference_lists_declarations)
         starts.ptr = offsets;
         static const char *const none[] = { "README.md" };
         pin_value arguments[] = { text("core"),     strings(paths, 2),
-                                  starts,           strings(files, 21),
+                                  starts,           strings(files, 22),
                                   text("packages"), strings(none, 1),
                                   strings(none, 1) };
         char *html = call(b, "project:reference", "Render", arguments, 7);
@@ -357,15 +445,16 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\">Area :: (side: "
+                          "class=\"language-chibi\">pub Area :: (side: "
                           "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
                           "area of a square.</p>"
                       ) &&
-                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">Sides: int : 4;\n") &&
-                      strstr(html, "Shape :: struct { sides: int; }\n") &&
-                      strstr(html, "Greeting :: &quot;Hello {}&quot;;\n") &&
-                      !strstr(html, "Checks") && !strstr(html, "Also") &&
-                      strstr(html, "Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
+                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">pub Sides: int : 4;\n") &&
+                      strstr(html, "pub Shape :: struct { sides: int; }\n") &&
+                      strstr(html, "pub Greeting :: &quot;Hello {}&quot;;\n") &&
+                      !strstr(html, "Hidden") && !strstr(html, "Checks") &&
+                      !strstr(html, "Also") &&
+                      strstr(html, "pub Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
@@ -427,12 +516,12 @@ TEST_CASE(docs_generated_pages_report_unpublished_links)
         "// Not [attached](a.md).",
         "",
         "// The [area](area.md).",
-        "Area :: () -> int {",
+        "pub Area :: () -> int {",
         "    return 1;",
         "}",
         "package shapes",
         "// Four [sides](PLAN.md#sides), as [Area](#area).",
-        "Sides: int : 4;"
+        "pub Sides: int : 4;"
     };
     static const char *const grammar[] = {
         "  rules: {",
@@ -473,10 +562,13 @@ void test_language_docs_markdown()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(docs_markdown_renders_blocks);
+    RUN_TEST_CASE(docs_markdown_lists_contents);
     RUN_TEST_CASE(docs_markdown_renders_tables);
     RUN_TEST_CASE(docs_markdown_maps_links_to_pages);
     RUN_TEST_CASE(docs_markdown_reports_unpublished_links);
     RUN_TEST_CASE(docs_site_lays_out_navigation);
+    RUN_TEST_CASE(docs_site_follows_color_scheme);
+    RUN_TEST_CASE(docs_site_keeps_navigation_in_reach);
     RUN_TEST_CASE(docs_reference_lists_declarations);
     RUN_TEST_CASE(docs_grammar_lists_rules);
     RUN_TEST_CASE(docs_generated_pages_report_unpublished_links);

@@ -121,7 +121,8 @@ Split: int : 110;
 Component: int : 111;
 Prototype: int : 112;
 Relationship: int : 113;
-KindCount: int : 114;
+Pub: int : 114;
+KindCount: int : 115;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -165,7 +166,7 @@ Lexeme :: struct {
     partial: bool;
 }
 
-KindNames :: () -> string[] {
+pub KindNames :: () -> string[] {
     return ["Invalid", "EOF", "Comment", "Ident", "Integer", "Float", "String", "=",
             "!", "@", "$", "?", "+", "-", "*", "/", "%", "&", "|", "^", "~", "<<",
             ">>", "&&", "||", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "->",
@@ -178,10 +179,10 @@ KindNames :: () -> string[] {
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain", "ref",
             "service", "setting", "wildcard", "from", "split", "component",
-            "prototype", "relationship"];
+            "prototype", "relationship", "pub"];
 }
 
-Tokenize :: (text: string) -> Tokens {
+pub Tokenize :: (text: string) -> Tokens {
     bytes := text_bytes(text);
     count := length(bytes);
     classes := Classes();

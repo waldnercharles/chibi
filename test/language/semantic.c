@@ -121,6 +121,29 @@ TEST_CASE(language_shadowing_resolves_nearest_declaration)
     REQUIRE(analysis->symbols[state].type.storage == PIN_F64);
     return true;
 }
+/* pub exports a package's top-level declarations; nothing else takes it. */
+TEST_CASE(language_pub_marks_only_package_declarations)
+{
+    cleanup();
+    syntax = script_parse(
+        "package facts\n@test pub F :: () {}\npub L: int : 3;\npub C :: 4;\n"
+        "pub S :: struct { x: int; }\npub U :: union { A | B }\n"
+    );
+    REQUIRE(!syntax->diagnostic_count);
+    const char *invalid[] = {
+        "L :: library { pub F :: () {} }",
+        "B :: behavior { pub Limit :: 3; }",
+        "package facts\nF :: () { pub Limit :: 3; }",
+        "package facts\npub x := 1;",
+        "package facts\npub import strings \"core:strings\"\n",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        cleanup();
+        syntax = script_parse(invalid[i]);
+        REQUIRE(syntax->diagnostic_count);
+    }
+    return true;
+}
 TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity)
 {
     parse(
@@ -823,6 +846,182 @@ TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
     REQUIRE(analysis->valid && constant_of(PIN_U32));
     parse("L :: library { Small: byte : 300; }");
     REQUIRE(diagnostic("Numeric literal is outside the range of byte"));
+    return true;
+}
+/* The value of the one character constant the last parse produced. */
+static bool character(pin_type storage, int value, bool is_char)
+{
+    const script_expression *constant = constant_of(storage);
+    return analysis->valid && constant &&
+           script_type_char(constant->type) == is_char &&
+           (storage == PIN_U8 ? constant->constant.u8 : constant->constant.i) == value;
+}
+TEST_CASE(language_character_literals_take_their_type_from_context)
+{
+    parse("L :: library { F :: (c: byte) -> bool { return c == '/'; } }");
+    REQUIRE(character(PIN_U8, '/', false));
+    parse("L :: library { F :: (c: int) -> bool { return c >= 'A' && c <= 'Z'; } }");
+    REQUIRE(analysis->valid && !constant_of(PIN_F64));
+    parse("L :: library { Slash: byte : 'é'; }");
+    REQUIRE(character(PIN_U8, 233, false));
+    parse("L :: library { Euro: byte : '€'; }");
+    REQUIRE(diagnostic("Character literal is outside the range of byte"));
+    parse("L :: library { F :: () -> char { c := 'a'; return c; } }");
+    REQUIRE(character(PIN_I32, 'a', true));
+    parse("L :: library { F :: () -> char { return '🐈'; } }");
+    REQUIRE(character(PIN_I32, 0x1F408, true));
+    parse("L :: library { F :: () -> char { return '\\uD83D\\uDC08'; } }");
+    REQUIRE(character(PIN_I32, 0x1F408, true));
+    parse("L :: library { F :: () -> char { return '\\''; } }");
+    REQUIRE(character(PIN_I32, '\'', true));
+    parse("L :: library { F :: () -> char { return '\"'; } }");
+    REQUIRE(character(PIN_I32, '"', true));
+    parse("L :: library { F :: () -> char { return '\\n'; } }");
+    REQUIRE(character(PIN_I32, '\n', true));
+    parse("L :: library { F :: () -> char { return '\\u0000'; } }");
+    REQUIRE(character(PIN_I32, 0, true));
+    parse("L :: library { F :: () -> char { return ''; } }");
+    REQUIRE(diagnostic("A character literal holds exactly one character"));
+    parse("L :: library { F :: () -> char { return 'ab'; } }");
+    REQUIRE(diagnostic("A character literal holds exactly one character"));
+    parse("L :: library { F :: () -> char { return '\\q'; } }");
+    REQUIRE(diagnostic("Invalid character literal"));
+    parse("L :: library { F :: () -> char { return '\\uD800'; } }");
+    REQUIRE(diagnostic("Invalid character literal"));
+    parse("L :: library { F :: () -> string { return 'a'; } }");
+    REQUIRE(!analysis->valid);
+    parse("L :: library { F :: () -> double { return 'a'; } }");
+    REQUIRE(diagnostic("A character literal needs an integer or char type"));
+    return true;
+}
+TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
+{
+    parse("L :: library { F :: (c: char) -> int { return c; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> int64 { return c; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> byte { return c; } }");
+    REQUIRE(diagnostic("Incompatible types: expected byte, got char; convert with byte(value)"));
+    parse("L :: library { F :: (n: int) -> char { return n; } }");
+    REQUIRE(diagnostic("Incompatible types: expected char, got int; convert with char(value)"));
+    parse("L :: library { F :: (n: int) -> char { return char(n); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> byte { return byte(c); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (n: int) -> char { return char(wrap: n); } }");
+    REQUIRE(diagnostic("char converts only with char(value)"));
+    parse("L :: library { F :: () -> char { return char(0xD800); } }");
+    REQUIRE(diagnostic("Constant does not fit in char"));
+    parse("L :: library { F :: () -> char { return char(0x10FFFF); } }");
+    REQUIRE(analysis->valid);
+    /* char arithmetic stays char; with an int it widens to int. */
+    parse("L :: library { F :: (c: char) -> char { return c + 1; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, n: int) -> int { return c + n; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, n: int) -> char { return c + n; } }");
+    REQUIRE(diagnostic("Incompatible types: expected char, got int; convert with char(value)"));
+    parse("L :: library { F :: () -> char { return 'a' + 1; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> int { return c - '0'; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (d: double) -> char { return char(d); } }");
+    REQUIRE(diagnostic("char converts from an integer"));
+    /* A compile-time call evaluates its character literals. */
+    parse(
+        "L :: library { Code :: () -> int { return 'a'; } Folded :: Code(); "
+        "F :: () -> bool { return Folded == 97; } }"
+    );
+    REQUIRE(analysis->valid);
+    /* A char type argument specializes apart from int. */
+    parse(
+        "L :: library { Box :: struct($T: Type) { value: T } "
+        "A :: () -> Box(char) { return {value: 'a'}; } "
+        "B :: () -> Box(int) { return A(); } }"
+    );
+    REQUIRE(!analysis->valid);
+    /* Beside a wide unsigned operand a char takes part as uint, not int64. */
+    parse("L :: library { F :: (c: char, u: uint) -> uint { return c + u; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, u: uint64) -> uint64 { return c + u; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, b: byte) -> int { return c + b; } }");
+    REQUIRE(analysis->valid);
+    /* A compile-time call keeps its declared char result. */
+    parse(
+        "L :: library { Code :: () -> char { return 'a'; } Folded :: Code(); "
+        "F :: () -> char { return Folded; } }"
+    );
+    REQUIRE(analysis->valid);
+    return true;
+}
+/* Ranges never count down: `for <` reverses a range or an array instead. */
+TEST_CASE(language_loops_reverse_explicitly)
+{
+    parse("L :: library { F :: (n: int) { for < i in 0..<n {} for i in 0..<n {} for < x, i in [1, 2] {} } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: () { for i in 10..0 {} } }");
+    REQUIRE(diagnostic("Range bounds descend; count down with for <"));
+    parse("L :: library { Top :: 10; F :: () { for < i in Top..<1 {} } }");
+    REQUIRE(diagnostic("Range bounds descend; for < takes the low bound first, as in for < i in 0..10"));
+    parse("L :: library { F :: () { for < c in \"ab\" {} } }");
+    REQUIRE(diagnostic("for < reverses only ranges and arrays"));
+    parse("L :: library { F :: (m: Map<string, int>) { for < k, v in m {} } }");
+    REQUIRE(diagnostic("for < reverses only ranges and arrays"));
+    return true;
+}
+/* A function with results ends in a terminating statement, as Go and Odin
+ * require: a return, an if/else or exhaustive switch whose every branch
+ * terminates, or a while (true) that nothing breaks out of. */
+TEST_CASE(language_functions_with_results_must_return)
+{
+    const char *missing[] = {
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }",
+        "L :: library { F :: (a: float) -> (r: float) { r = a; } }",
+        "L :: library { F :: (c: bool) -> int { while (true) { if c { break; } "
+        "return 1; } } }",
+        "L :: library { F :: (n: int) -> int { switch n { case 1: return 1; "
+        "case 2: return 2; } } }",
+        "L :: library { F :: (n: int) -> int { while (n > 0) { return 1; } } }",
+        "L :: library { F :: (n: int) -> int { for i in 0..n { return i; } } }",
+        "L :: library { F :: (n: int) -> int { while (true) { switch n { case "
+        "1: break; case: return 1; } } } }",
+        "L :: library { F :: (n: int) { if n > 0 { return 1; } } }",
+        "Run :: behavior { F :: () -> int { on Begin { } } }",
+    };
+    for (size_t i = 0; i < sizeof missing / sizeof *missing; i++) {
+        parse(missing[i]);
+        REQUIRE(!analysis->valid && diagnostic("Missing return"));
+    }
+    const char *ending[] = {
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else { "
+        "return 2; } } }",
+        "L :: library { F :: (a: float) -> (r: float) { r = a; return; } }",
+        "L :: library { F :: () -> int { while (true) { return 1; } } }",
+        "L :: library { F :: (c: bool) -> int { while (true) { while (c) { "
+        "break; } return 1; } } }",
+        "L :: library { F :: (n: int) -> int { switch n { case 1: return 1; "
+        "case: return 2; } } }",
+        "L :: library { Choice :: union { A | B }; "
+        "F :: (n: int) -> Choice { while (true) { if n > 0 { return Choice.A; "
+        "} return Choice.B; } } }",
+        "L :: library { F :: (n: int) { if n > 0 { return; } } }",
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else if "
+        "n < 0 { return -1; } else { return 0; } } }",
+
+    };
+    for (size_t i = 0; i < sizeof ending / sizeof *ending; i++) {
+        parse(ending[i]);
+        REQUIRE(analysis->valid);
+    }
+    /* A union result still needs a value on every return path. */
+    parse("L :: library { Choice :: union { A | B }; F :: () -> (value: Choice) { return; } }");
+    REQUIRE(diagnostic("Union result 'value' requires a value on every return path"));
+    /* The diagnostic sits on the closing brace that control would fall past. */
+    parse("L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }");
+    const script_diagnostic *error = diagnostic("Missing return");
+    int brace = (int)(strstr(analysis->text, "} } }") - analysis->text) + 2;
+    REQUIRE(error && error->range.start == brace && error->range.end == brace + 1);
     return true;
 }
 TEST_CASE(language_hex_literal_fills_integer_storage)
@@ -1591,7 +1790,7 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "elapsed; } }",
           "Units differ: u = s" },
         { "M :: library { Bad :: (distance: u = dt) {} }", "Units differ: u default s" },
-        { "M :: library { Bad :: () -> (Distance: u = dt) {} }",
+        { "M :: library { Bad :: () -> (Distance: u = dt) { return } }",
           "Units differ: u default s" },
         { "M :: library { Bad :: () -> (Distance: u, Elapsed: s) { "
           "return(Distance: dt, Elapsed: 1); } }",
@@ -1779,7 +1978,7 @@ TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches)
         "Run :: () -> Choice { } }"
     );
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Union result 'Result' requires a value on every return path"));
+    REQUIRE(diagnostic("Missing return"));
     parse("Unions :: library { Choice :: union { A | B }; Run :: () -> Choice { return Result; } }");
     REQUIRE(!analysis->valid);
     parse(
@@ -2018,6 +2217,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
+    RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity);
     RUN_TEST_CASE(language_inferred_map_requires_an_initializer);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);
@@ -2036,7 +2236,11 @@ void test_language_semantic()
     RUN_TEST_CASE(language_query_filters_reject_effects_and_unbound_variables);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
+    RUN_TEST_CASE(language_loops_reverse_explicitly);
+    RUN_TEST_CASE(language_functions_with_results_must_return);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
+    RUN_TEST_CASE(language_character_literals_take_their_type_from_context);
+    RUN_TEST_CASE(language_char_widens_to_int_and_narrows_explicitly);
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);

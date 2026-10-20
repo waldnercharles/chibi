@@ -50,6 +50,7 @@ typedef struct
     int cached_argument, cached_value;
     bool pattern_cached;
     int pattern_expression, pattern_value;
+    script_occurrences *occurrences; /* Made by the first debugger point. */
 } lower;
 static uint64_t document_id(const script_analysis *analysis, script_range range)
 {
@@ -330,9 +331,81 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
 {
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
+/* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
+ * the surrogates. As a uint64 a negative value lies above the range, and
+ * value - 0xD800 falls below 0x800 only for a surrogate. */
+static void char_check(lower *l, int slot, pin_type storage, script_range range)
+{
+    static const char message[] = "Value does not fit in char";
+    int wide = storage == PIN_U64
+                 ? slot
+                 : value_op(
+                       l,
+                       (behavior_function_instruction){ .op = BF_CAST,
+                                                        .type = PIN_U64,
+                                                        .left = slot,
+                                                        .target = BEHAVIOR_CAST_WRAP },
+                       range
+                   );
+    int high = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x10FFFF }, range);
+    int in_range = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_LE, .type = PIN_U64, .left = wide, .right = high },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = in_range,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
+    int offset = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        range
+    );
+    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int scalar = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = scalar,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+}
 /* Implicit conversions are lossless; explicit T(value) carries its mode. */
 static int convert_mode(lower *l, int slot, script_type from, script_type to, behavior_cast_mode mode, script_range range)
 {
+    if (script_type_char(to) && !script_type_char(from) && from.storage >= PIN_I8 &&
+        from.storage <= PIN_U64 && !(from.flags & SCRIPT_TYPE_UNTYPED)) {
+        char_check(l, slot, from.storage, range);
+        if (slot_type(from) == PIN_I32) {
+            return slot;
+        }
+        return value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_CAST,
+                                             .type = PIN_I32,
+                                             .left = slot,
+                                             .target = BEHAVIOR_CAST_WRAP },
+            range
+        );
+    }
     if (((to.flags & SCRIPT_TYPE_UNION) && to.container == PIN_CONTAINER_SINGLE &&
          !(to.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
          ((from.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
@@ -431,6 +504,49 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
                                          .message = fit_message(target) },
         range
     );
+}
+/* The source text of a range in its own document. */
+static const char *range_text(const lower *l, script_range range)
+{
+    return l->a->document_count ? l->a->documents[range.document].text : l->a->text;
+}
+/* assert fails the call, as a checked conversion does, with its message or,
+ * as Odin's #caller_expression, its condition's source text. */
+static int assertion(lower *l, const script_expression *e)
+{
+    int condition = -1;
+    const char *message = NULL;
+    script_range text = { 0 };
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_expression *value = &l->a->expressions[e->arguments[i].value];
+        if (e->arguments[i].parameter == 0) {
+            condition = expression(l, e->arguments[i].value);
+            text = value->range;
+            continue;
+        }
+        if (value->kind != SCRIPT_EXPR_CONSTANT) {
+            error(l, value->range, "assert's message is a string constant");
+            return -1;
+        }
+        message = value->constant.str;
+    }
+    if (condition < 0) {
+        return -1;
+    }
+    bool own = !message || !*message;
+    int length = own ? text.end - text.start : (int)strlen(message);
+    size_t size = sizeof "Assertion failed: " + (size_t)length;
+    char *failure = arena_alloc(&l->module->storage, size);
+    snprintf(failure, size, "Assertion failed: %.*s", length, own ? range_text(l, text) + text.start : message);
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = condition,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = failure },
+        e->range
+    );
+    return -1;
 }
 /* A fractional value, such as a `number`, truncates to the int an array index
  * or a range bound takes. Integers keep their width: casts only narrow floats. */
@@ -537,17 +653,21 @@ static int binary(lower *l, script_operator op, int left, int right, script_type
             range
         );
     }
-    return value_op(
+    bool comparison = code >= BF_LT && code <= BF_NE;
+    int result = value_op(
         l,
         (behavior_function_instruction){ .op = code,
-                                         .type = code >= BF_LT && code <= BF_NE
-                                                   ? slot_type(operand)
-                                                   : slot_type(type),
+                                         .type = comparison ? slot_type(operand)
+                                                            : slot_type(type),
                                          .left = left,
                                          .right = right,
                                          .target = -1 },
         range
     );
+    if (script_type_char(type) && !comparison) {
+        char_check(l, result, PIN_I32, range);
+    }
+    return result;
 }
 static int short_circuit(lower *l, const script_expression *e)
 {
@@ -2954,14 +3074,17 @@ static int call(lower *l, const script_expression *e)
             linked = l->bindings->host(l->bindings->user, e->capability, &host);
         }
     }
-    if (!linked || (!host.call && !host.function && !host.command &&
-                    !host.query && host.intrinsic != BF_DELAY &&
-                    host.intrinsic != BF_OWNER && host.intrinsic != BF_DELTA)) {
+    if (!linked || (!host.call && !host.function && !host.command && !host.query &&
+                    host.intrinsic != BF_DELAY && host.intrinsic != BF_OWNER &&
+                    host.intrinsic != BF_DELTA && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
         return -1;
     }
     if (host.function) {
         return external_call(l, e, cap, host);
+    }
+    if (host.intrinsic == BF_ASSERT) {
+        return assertion(l, e);
     }
     if (host.intrinsic == BF_OWNER || host.intrinsic == BF_DELTA) {
         if (l->initializing || e->argument_count || cap->parameter_count ||
@@ -4041,13 +4164,18 @@ static void discard_call_results(lower *l, const script_expression *e, int first
 }
 static behavior_source_point debug_origin(lower *l, script_record_kind kind, int record, script_range range)
 {
-    return (behavior_source_point){ .occurrence = script_record_id(l->a, kind, record),
-                                    .meaning = script_record_meaning(l->a, kind, record),
-                                    .start = range.start,
-                                    .end = range.end,
-                                    .line = range.line,
-                                    .column = range.column,
-                                    .kind = kind };
+    if (!l->occurrences) {
+        l->occurrences = script_occurrences_new(l->a);
+    }
+    return (behavior_source_point){
+        .occurrence = script_record_id(l->occurrences, kind, record),
+        .meaning = script_record_meaning(l->a, kind, record),
+        .start = range.start,
+        .end = range.end,
+        .line = range.line,
+        .column = range.column,
+        .kind = kind
+    };
 }
 static void debug_point(lower *l, script_record_kind kind, int record, script_range range)
 {
@@ -4257,23 +4385,19 @@ static int expression_value(lower *l, int index)
             if (e->op == SCRIPT_OP_NONE) {
                 return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
             }
-            if (e->op == SCRIPT_OP_NEG) {
-                return value_op(
+            if (e->op == SCRIPT_OP_NEG || e->op == SCRIPT_OP_BIT_NOT) {
+                int result = value_op(
                     l,
-                    (behavior_function_instruction){ .op = BF_NEG,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
+                    (behavior_function_instruction){
+                        .op = e->op == SCRIPT_OP_NEG ? BF_NEG : BF_BIT_NOT,
+                        .type = slot_type(e->type),
+                        .left = left },
                     e->range
                 );
-            }
-            if (e->op == SCRIPT_OP_BIT_NOT) {
-                return value_op(
-                    l,
-                    (behavior_function_instruction){ .op = BF_BIT_NOT,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
-                    e->range
-                );
+                if (script_type_char(e->type)) {
+                    char_check(l, result, PIN_I32, e->range);
+                }
+                return result;
             }
             if (e->op == SCRIPT_OP_NOT) {
                 pin_type operand = l->a->expressions[e->left].type.flags &
@@ -4328,8 +4452,13 @@ static int expression_value(lower *l, int index)
                                     ? e->type
                                     : l->a->expressions[e->left].type;
             if (e->type.storage == PIN_BOOL && script_type_numeric(operand)) {
-                /* Integers compare in the type holding both, as arithmetic does. */
+                /* Integers compare in the type holding both, as arithmetic does;
+                 * a char beside another integer compares as that integer. */
                 script_type other = l->a->expressions[e->right].type;
+                if (script_type_char(operand) != script_type_char(other)) {
+                    operand.nominal = script_type_char(operand) ? 0 : operand.nominal;
+                    other.nominal = script_type_char(other) ? 0 : other.nominal;
+                }
                 pin_type common = behavior_scalar_common_integer(
                     operand.storage,
                     other.storage
@@ -5455,13 +5584,46 @@ static void statement(lower *l, int index)
         case SCRIPT_STMT_FOR: {
             int first = int_slot(l, s->expression, s->range),
                 last = int_slot(l, s->second, s->range);
-            store_symbol(l, s->symbol, first, s->range);
+            /* `for <` counts down from last, `..<` stops before it. A reversed
+             * half-open range starts at last - 1 only after first < last proves
+             * that cannot wrap. Equality ends an inclusive range before its
+             * step, so neither INT_MAX nor INT_MIN wraps. */
+            int start = s->reverse ? last : first, stop = s->reverse ? first : last;
+            int empty = -1;
+            if (s->reverse && s->exclusive) {
+                int nonempty = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_LT, .type = PIN_I32, .left = first, .right = last },
+                    s->range
+                );
+                int enter = emit(
+                    l,
+                    (behavior_function_instruction){ .op = BF_BRANCH,
+                                                     .left = nonempty,
+                                                     .target = -1 },
+                    s->range
+                );
+                empty = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
+                behavior_function_builder_patch_target(l->builder, enter, l->pc);
+                int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
+                start = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_SUB, .type = PIN_I32, .left = last, .right = one },
+                    s->range
+                );
+            }
+            bool counted = !s->exclusive || s->reverse;
+            store_symbol(l, s->symbol, start, s->range);
             int bound = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
             emit(
                 l,
                 (
                     behavior_function_instruction
-                ){ .op = BF_SAVE, .type = PIN_I32, .left = last, .target = bound },
+                ){ .op = BF_SAVE, .type = PIN_I32, .left = stop, .target = bound },
                 s->range
             );
             int again = l->pc;
@@ -5472,7 +5634,7 @@ static void statement(lower *l, int index)
                                                  .left = l->locals[s->symbol] },
                 s->range
             );
-            last = value_op(
+            int limit = value_op(
                 l,
                 (behavior_function_instruction){ .op = BF_LOCAL,
                                                  .type = PIN_I32,
@@ -5481,9 +5643,12 @@ static void statement(lower *l, int index)
             );
             int condition = value_op(
                 l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_LE, .type = PIN_I32, .left = current, .right = last },
+                (behavior_function_instruction){ .op = s->reverse ? BF_GE
+                                                     : counted    ? BF_LE
+                                                                  : BF_LT,
+                                                 .type = PIN_I32,
+                                                 .left = current,
+                                                 .right = limit },
                 s->range
             );
             int branch = emit(
@@ -5509,40 +5674,48 @@ static void statement(lower *l, int index)
                                                  .left = l->locals[s->symbol] },
                 s->range
             );
-            last = value_op(
-                l,
-                (behavior_function_instruction){ .op = BF_LOCAL,
-                                                 .type = PIN_I32,
-                                                 .left = bound },
-                s->range
-            );
-            /* Test equality before increment, so an INT_MAX upper bound never wraps. */
-            int done = value_op(
-                l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_EQ, .type = PIN_I32, .left = current, .right = last },
-                s->range
-            );
-            int at_bound = emit(
-                l,
-                (behavior_function_instruction){ .op = BF_BRANCH,
-                                                 .left = done,
-                                                 .target = -1 },
-                s->range
-            );
+            int at_bound = -1;
+            if (counted) {
+                limit = value_op(
+                    l,
+                    (behavior_function_instruction){ .op = BF_LOCAL,
+                                                     .type = PIN_I32,
+                                                     .left = bound },
+                    s->range
+                );
+                int done = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_EQ, .type = PIN_I32, .left = current, .right = limit },
+                    s->range
+                );
+                at_bound = emit(
+                    l,
+                    (behavior_function_instruction){ .op = BF_BRANCH,
+                                                     .left = done,
+                                                     .target = -1 },
+                    s->range
+                );
+            }
             int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
             int next = value_op(
                 l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_ADD, .type = PIN_I32, .left = current, .right = one },
+                (behavior_function_instruction){ .op = s->reverse ? BF_SUB : BF_ADD,
+                                                 .type = PIN_I32,
+                                                 .left = current,
+                                                 .right = one },
                 s->range
             );
             store_symbol(l, s->symbol, next, s->range);
             emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = again }, s->range);
             behavior_function_builder_patch_target(l->builder, end, l->pc);
-            behavior_function_builder_patch_target(l->builder, at_bound, l->pc);
+            if (at_bound >= 0) {
+                behavior_function_builder_patch_target(l->builder, at_bound, l->pc);
+            }
+            if (empty >= 0) {
+                behavior_function_builder_patch_target(l->builder, empty, l->pc);
+            }
             loop_finish(l, advance, l->pc);
             return;
         }
@@ -5624,12 +5797,26 @@ static void statement(lower *l, int index)
                 );
             }
             int ordinal = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
-            int zero = constant(l, (pin_value){ .type = PIN_I32 }, s->range);
+            /* `for <` visits an array from its last item down to index 0. */
+            int zero = constant(l, (pin_value){ .type = PIN_I32 }, s->range),
+                start = zero;
+            if (s->reverse) {
+                int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
+                start = value_op(
+                    l,
+                    (behavior_function_instruction){
+                        .op = BF_SUB,
+                        .type = PIN_I32,
+                        .left = array_count(l, array, s->range),
+                        .right = one },
+                    s->range
+                );
+            }
             emit(
                 l,
                 (
                     behavior_function_instruction
-                ){ .op = BF_SAVE, .type = PIN_I32, .left = zero, .target = ordinal },
+                ){ .op = BF_SAVE, .type = PIN_I32, .left = start, .target = ordinal },
                 s->range
             );
             int again = l->pc;
@@ -5702,9 +5889,10 @@ static void statement(lower *l, int index)
                                  : array_count(l, array, s->range);
                 condition = value_op(
                     l,
-                    (
-                        behavior_function_instruction
-                    ){ .op = BF_LT, .type = PIN_I32, .left = index, .right = count },
+                    (behavior_function_instruction){ .op = s->reverse ? BF_GE : BF_LT,
+                                                     .type = PIN_I32,
+                                                     .left = index,
+                                                     .right = s->reverse ? zero : count },
                     s->range
                 );
             }
@@ -5804,29 +5992,30 @@ static void statement(lower *l, int index)
                 s->range
             );
             int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
-            int next = text
-                         ? string_cursor(
-                               l,
-                               &EXECUTION_string_next_call,
-                               value_op(
-                                   l,
-                                   (behavior_function_instruction){ .op = BF_LOCAL,
-                                                                    .type = BF_POINTER_TYPE,
-                                                                    .left = saved_array },
-                                   s->range
-                               ),
-                               index,
-                               (script_type){ .storage = PIN_I32 },
-                               s->range
-                           )
-                         : value_op(
-                               l,
-                               (behavior_function_instruction){ .op = BF_ADD,
-                                                                .type = PIN_I32,
-                                                                .left = index,
-                                                                .right = one },
-                               s->range
-                           );
+            int next = text ? string_cursor(
+                                  l,
+                                  &EXECUTION_string_next_call,
+                                  value_op(
+                                      l,
+                                      (behavior_function_instruction){
+                                          .op = BF_LOCAL,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = saved_array },
+                                      s->range
+                                  ),
+                                  index,
+                                  (script_type){ .storage = PIN_I32 },
+                                  s->range
+                              )
+                            : value_op(
+                                  l,
+                                  (behavior_function_instruction){
+                                      .op = s->reverse ? BF_SUB : BF_ADD,
+                                      .type = PIN_I32,
+                                      .left = index,
+                                      .right = one },
+                                  s->range
+                              );
             emit(
                 l,
                 (
@@ -6287,6 +6476,7 @@ behavior_function_builder *script_lower_evaluator_reference(
     }
     emit_value_evaluator(&l, expressions, types, count, range);
     free(l.variables);
+    script_occurrences_free(l.occurrences);
     if (l.failed) {
         snprintf(
             message,
@@ -7500,6 +7690,7 @@ static execution_module_plan *lower_analysis(
     }
     free(l.constant_values);
     afree(l.loops);
+    script_occurrences_free(l.occurrences);
     m->diagnostic_count = acount(m->diagnostics);
     m->valid = !l.failed;
     if (!m->valid) {

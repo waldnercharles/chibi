@@ -26,9 +26,8 @@ ValueLocal :: (storage: int) -> Slot {
     return {storage: storage, kind: ValueKind};
 }
 // An instruction with the value a constant or header read carries, the
-// message a failing check reports and the source range it lowers. A scalar's
-// 64 bits, sign-extended for signed types, are `payload_high` and `payload`,
-// since records hold only int, bool and string fields.
+// message a failing check reports and the source range it lowers. `payload`
+// is a scalar's 64 bits, sign-extended for signed types.
 Code :: struct {
     op: int;
     type: int;
@@ -40,8 +39,7 @@ Code :: struct {
     value_storage: int;
     value_container: int;
     value_record: int;
-    payload: int;
-    payload_high: int;
+    payload: uint64;
     text: string;
     has_text: bool;
     message: string;
@@ -61,7 +59,7 @@ Cell :: struct {
     storage: int;
     container: int;
     record: int;
-    constant: int;
+    constant: uint64;
     variant: int;
     kind: int;
 }
@@ -73,13 +71,15 @@ Invocation :: struct {
     result_count: int;
 }
 // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
-// when `linked` is not -1.
+// when `linked` is not -1. A component reference's make is `written` when
+// the body writes through the reference.
 Host :: struct {
     intrinsic: int;
     linked: int;
     first: int;
     result_first: int;
     result_count: int;
+    written: bool;
 }
 // A slot holding a record or array pointer the collector must trace.
 Root :: struct {
@@ -112,8 +112,8 @@ Value :: struct {
     record: int;
 }
 // A name in scope: a locals-bank value, a record or array held in a data
-// cell, or a record or array parameter read in place. Pattern bindings are
-// not writable.
+// cell, a record or array parameter read in place, or a behavior's state or
+// owner. Pattern bindings are not writable.
 Name :: struct {
     name: string;
     place: int;
@@ -179,6 +179,12 @@ AliasPlace: int : 3;
 // A local holding a native call's several results: its index is the first
 // result's cell and its record the native.
 ResultsPlace: int : 4;
+// A behavior's retained state; its index is the state's.
+StatePlace: int : 5;
+// `self`, the entity that owns the behavior.
+SelfPlace: int : 6;
+// A name the game binds; its index is the global's.
+GlobalPlace: int : 7;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -189,6 +195,7 @@ ArrayStoreIntrinsic: int : 28;
 ArrayExtendIntrinsic: int : 29;
 ReferenceMakeIntrinsic: int : 3;
 ReferenceFieldIntrinsic: int : 4;
+ReferenceReadIntrinsic: int : 5;
 ReferenceWriteIntrinsic: int : 6;
 UnionMakeIntrinsic: int : 20;
 UnionTestIntrinsic: int : 21;
@@ -199,11 +206,21 @@ RetainedPhase: int : 2;
 PushPhase: int : 3;
 StorePhase: int : 4;
 FieldPhase: int : 5;
+ComponentPhase: int : 6;
+// The phase of a binary operator or compound assignment whose two values on
+// top are records, which a numeric aggregate native combines.
+AggregatePhase: int : 7;
+ComponentAssignPhase: int : 8;
+// The phase of a compound assignment that combines the two values on top with
+// its operator.
+CombinePhase: int : 9;
+// The phase of `return (a, b)` once each named result's value is ready.
+ReturnsPhase: int : 10;
 
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
-            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
+            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, text: "",
             has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
             column: item.column + 1};
 }
@@ -215,6 +232,10 @@ Expect :: (node: int, storage: int, container: int, record: int) -> Work {
 }
 Resume :: (node: int, phase: int, a: int, b: int) -> Work {
     return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
+}
+// Bases for a step whose code stands alone, such as a state's initial value.
+NoBases :: () -> Bases {
+    return {pc: 0, slot: 0, local: 0, cell: 0, host: 0, call: 0};
 }
 NoValue :: () -> Value {
     return {slot: -1, storage: 0, container: 0, record: -1};
@@ -318,6 +339,9 @@ NumberStorage: int : -3;
 // The several results of a native call: the value's slot is the cell of the
 // first result and its record the native; `.name` reads one result.
 ResultsStorage: int : -4;
+// The named results of a function's call, as ResultsStorage, but the record
+// is the callable.
+FunctionResultsStorage: int : -5;
 // The integer types this compiler emits.
 Integer :: (storage: int) -> bool {
     return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
@@ -361,16 +385,6 @@ Bits :: (negative: bool, magnitude: uint64) -> uint64 {
     }
     return magnitude;
 }
-// The low and high 32 bits of a 64-bit pattern, and the pattern again.
-Low :: (bits: uint64) -> int {
-    return int(wrap: bits & 0xFFFFFFFF);
-}
-High :: (bits: uint64) -> int {
-    return int(wrap: bits >> 32);
-}
-Join :: (high: int, low: int) -> uint64 {
-    return (uint64(wrap: int64(high)) << 32) | (uint64(wrap: int64(low)) & 0xFFFFFFFF);
-}
 // The type both integer operands convert to without loss: the wider one, or
 // int for a byte and an int; -1 when there is none, as for a signed type with
 // uint64.
@@ -394,10 +408,14 @@ CommonInteger :: (left: int, right: int) -> int {
 Widens :: (from: int, to: int) -> bool {
     return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
 }
-// Whether the runtime computes `op` in an integer type: any comparison for
+// Whether the runtime computes `op` in a number type: arithmetic other than
+// remainders, and comparisons, for floats; for integers, any comparison for
 // equality and bit operation, the rest for int and int64, and only addition
 // and multiplication for uint64.
 Computes :: (ops: Ops, op: int, storage: int) -> bool {
+    if (Floating(storage)) {
+        return op == ops.add || op == ops.sub || op == ops.mul || op == ops.div || op == ops.neg || Comparison(ops, op);
+    }
     if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
         op == ops.bit_not || op == ops.shl || op == ops.shr) {
         return true;
@@ -407,13 +425,14 @@ Computes :: (ops: Ops, op: int, storage: int) -> bool {
     }
     return storage == WordStorage && (op == ops.add || op == ops.mul);
 }
-// A constant of an integer or bool type.
+// A constant of an integer or bool type. One literal holds `bits`: stage
+// zero takes any uint64 for a pointer, and storing one into a local record's
+// field would make this function, and every caller, copy its arguments.
 ConstantCode :: (ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
-    constant := Instruction(ops.constant, storage, output, 0, 0, 0, node);
-    constant.value_storage = storage;
-    constant.payload = Low(bits);
-    constant.payload_high = High(bits);
-    return constant;
+    return {op: ops.constant, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: bits, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
+            column: node.column + 1};
 }
 // A conversion to an integer type: `mode` 0 fails when the value does not
 // fit, 1 keeps its low bits and 2 saturates.
@@ -422,6 +441,10 @@ CastCode :: (ops: Ops, storage: int, output: int, input: int, mode: int, node: s
     cast.message = format_text("Value does not fit in {}", TypeName(storage));
     cast.has_message = true;
     return cast;
+}
+// The floating types this compiler emits.
+Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
 BinaryOp :: (ops: Ops, operator: string) -> int {
@@ -496,15 +519,29 @@ FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     }
     return -1;
 }
+// The field of types[record] named `name`; a native type's matches as the
+// catalog matches it: an exact name first, else the one that matches
+// loosely. -1 for none or several.
 FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+    found: int = -1;
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
         if (members[at].name == name) {
             return at;
         }
+        if (types[record].kind >= NativeDecl && NameMatches(members[at].name, name)) {
+            if (found != -1) {
+                found = -2;
+            } else {
+                found = at;
+            }
+        }
         at += 1;
     }
-    return -1;
+    if (found < 0) {
+        return -1;
+    }
+    return found;
 }
 // The innermost binding of `wanted`, -1 when none.
 Lookup :: (names: Name[], wanted: string) -> int {
@@ -778,8 +815,9 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], aliases: Name[],
-             function: int, ops: Ops, target: Target) -> Body {
+             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], function: int,
+             ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -832,6 +870,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                           storage: param.storage, container: 0, record: param.record, writable: true};
             names = array_add(names, name);
         }
+        index += 1;
+    }
+    // Named results are locals from `named` on, zero until the body sets them.
+    named := length(locals);
+    index = 0;
+    while (index < callable.results) {
+        result := params[callable.first + callable.count + index];
+        slots = array_add(slots, ValueLocal(result.storage));
+        code = array_add(code, ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+        locals = array_add(locals, ValueLocal(result.storage));
+        code = array_add(code, Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
+                                           declaration));
+        bound: Name = {name: result.name, place: LocalPlace, index: length(locals) - 1, storage: result.storage,
+                       container: 0, record: result.record, writable: true};
+        names = array_add(names, bound);
         index += 1;
     }
     work_top = length(work);
@@ -939,7 +992,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "for_statement") {
             if (item.phase == 0) {
                 if (Field(forest, item.node, "first") >= 0 || Field(forest, item.node, "key") >= 0 ||
-                    Field(forest, item.node, "reference") >= 0) {
+                    Field(forest, item.node, "reference") >= 0 || Field(forest, item.node, "reverse") >= 0) {
                     return Body.Failed(Diagnose(forest, item.node, document, "for loops support only `for name in array`"));
                 }
                 stepped = false;
@@ -1164,19 +1217,25 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code = array_add(code, Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
+        } else if (item.phase == CombinePhase) {
+            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+        } else if (item.phase == AggregatePhase) {
+            step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
+                                 target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, members, natives, identities, names, scopes[length(scopes) - 1],
-                                 callable.package, values, value_top, function, item, ops, target, at);
+            step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
+                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named, item,
+                                 ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, constants, natives, ports, names,
-                             callable.package, values, value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+                             names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names,
-                            callable.package, values, value_top, item, ops, target, at);
+            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
+                            make_fields, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {
@@ -1275,6 +1334,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             work_top += 1;
             at_next -= 1;
         }
+    }
+    // A function with named results returns them when its body ends.
+    if (callable.results > 0) {
+        code = append(code, NamedResultsCode(ops, params, callable, named, length(slots), declaration));
+        slots = append(slots, NamedResultsSlots(params, callable));
+        code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
     return Body.Emitted(slots, locals, cells, code, calls, hosts, roots);

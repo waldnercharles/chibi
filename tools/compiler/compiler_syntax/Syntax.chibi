@@ -27,7 +27,7 @@ Assemble :: (count: int, kinds: string[], starts: int[], ends: int[],
     return nodes;
 }
 
-Parse :: (text: string) -> Tree {
+pub Parse :: (text: string) -> Tree {
     raw := compiler_syntax_parse(text);
     nodes := Assemble(length(raw.kinds), raw.kinds, raw.starts, raw.ends,
                       raw.rows, raw.columns, raw.parents, raw.first_children,

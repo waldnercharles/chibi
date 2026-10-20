@@ -79,14 +79,14 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
 
 // The grammar page's body: lines are the grammar file's, and the last three
 // arguments map links as markdown.Render does.
-Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     return markdown.Render(grammar.md, page, sources, outputs);
 }
 
 // A report, as markdown.Dropped writes it, of each link Render writes as text,
 // at the line of the grammar file that holds it.
-Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     rendered := markdown.Page(grammar.md, page, sources, outputs);
     reports: string[] = [];

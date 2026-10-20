@@ -42,6 +42,9 @@ void test_tool_record_c_export();
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary);
+#ifdef CHIBI_TEST_PUBLISHED_DOCS
+void test_tool_published_docs(const char *binary);
+#endif
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_artifact(const char *producer, const char *host);
 void test_tool_compiler_bootstrap(const char *producer, const char *host);
@@ -190,6 +193,12 @@ void test_tool_game_equivalence(
     const char *build_host,
     const char *reference,
     const char *candidate
+);
+void test_tool_game_equivalence_stage_one(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *stage_one_host
 );
 #endif
 #ifdef CHIBI_TEST_PREVIEW_COMPONENTS
@@ -586,6 +595,18 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 3 && !strcmp(argv[1], "--published-docs")) {
+#ifdef CHIBI_TEST_PUBLISHED_DOCS
+        tool_init();
+        pu_display_time(true);
+        test_tool_published_docs(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the KDL asset reader\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();
@@ -803,6 +824,7 @@ int main(int argc, char **argv)
 #endif
     }
     if ((argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
+        (argc == 5 && !strcmp(argv[1], "--game-equivalence-stage-one")) ||
         (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         tool_init();
@@ -813,7 +835,11 @@ int main(int argc, char **argv)
             return test_tool_game_observe(argv[2], (const char *const *)argv + 3, (argc - 3) / 2);
         }
         pu_display_time(true);
-        test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
+        if (!strcmp(argv[1], "--game-equivalence-stage-one")) {
+            test_tool_game_equivalence_stage_one(argv[0], argv[2], argv[3], argv[4]);
+        } else {
+            test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

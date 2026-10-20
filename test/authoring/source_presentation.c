@@ -477,6 +477,27 @@ TEST_CASE(source_view_handler_exits_are_explicit_and_completion_is_natural)
     }
     return true;
 }
+/* A loop's node says when it counts down and when its range stops early. */
+TEST_CASE(source_view_names_reverse_and_half_open_loops)
+{
+    REQUIRE(
+        project("Counter :: behavior { count: int = 0; on Tick { for < i in 0..<3 { count += i; } for i in 0..3 { count += i; } } }")
+    );
+    REQUIRE(analysis->diagnostic_count == 0);
+    node *reverse = statement_at("for < i");
+    node *forward = statement_at("for i");
+    REQUIRE(reverse && forward);
+    REQUIRE(!strcmp(reverse->desc->name, "For Reverse") && !strcmp(forward->desc->name, "For"));
+    bool before = false, last = false;
+    for (int i = 0; i < reverse->input_count; i++) {
+        before |= !strcmp(reverse->input_pins[i].name, "Before");
+    }
+    for (int i = 0; i < forward->input_count; i++) {
+        last |= !strcmp(forward->input_pins[i].name, "Last");
+    }
+    REQUIRE(before && last);
+    return true;
+}
 static int named_pin(const pin_spec *pins, int count, pin_kind kind, const char *name)
 {
     for (int i = 0; i < count; i++) {
@@ -1124,5 +1145,6 @@ void test_source_presentation()
     RUN_TEST_CASE(source_view_namespace_fields_are_named_values);
     RUN_TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow);
     RUN_TEST_CASE(native_palette_composition_keeps_declared_capabilities);
+    RUN_TEST_CASE(source_view_names_reverse_and_half_open_loops);
     pu_clear_setup();
 }

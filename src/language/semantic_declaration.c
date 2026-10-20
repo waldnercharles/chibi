@@ -883,6 +883,9 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     bool entry_handler = after && !strcmp(name, "entry") && a->function >= 0;
     if (entry_handler) {
         const script_function *parent = &a->out->functions[a->function];
+        if (parent->symbol < 0 || a->out->symbols[parent->symbol].kind != SCRIPT_MACRO) {
+            script_analyzer_diagnostic(a, node, "A function runs its own body; write the statements of `after entry` at the end of it");
+        }
         authored_results = authored_payload(a, parent->parameters);
         authored = (script_catalog_capability){
             .id = parent->symbol >= 0 ? a->out->symbols[parent->symbol].id : 0,

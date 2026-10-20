@@ -30,7 +30,7 @@ static pin_value output;
 static const char APP[] =
     "package app\nimport strings \"core:strings\"\n"
     "Row :: struct { value: int; tag: string; }\n"
-    "Check :: () -> int {\n"
+    "pub Check :: () -> int {\n"
     " numbers: int[] = [1, 2]; third: int = 3; numbers = "
     "array_add(numbers, third);\n"
     " words: string[] = [\"alpha\"]; words = array_add(words, \"beta\");\n"
@@ -48,7 +48,7 @@ static const char APP[] =
     " return format_text(\"{}:{}\", length(parts), strings.Join(parts, "
     "\"|\"));\n"
     "}\n"
-    "Split :: (kind: int, s: string, sep: string, n: int) -> string {\n"
+    "pub Split :: (kind: int, s: string, sep: string, n: int) -> string {\n"
     " if kind == 0 { return View(strings.Split(s, sep)); }\n"
     " if kind == 1 { return View(strings.SplitN(s, sep, n)); }\n"
     " if kind == 2 { return View(strings.SplitAfter(s, sep)); }\n"
@@ -60,7 +60,7 @@ static const char APP[] =
     " if kind == 8 { return strings.Concatenate(strings.Split(s, sep)); }\n"
     " return View(strings.Fields(s));\n"
     "}\n"
-    "Partition :: (s: string, sep: string) -> string {\n"
+    "pub Partition :: (s: string, sep: string) -> string {\n"
     " parts: strings.Parts = strings.Partition(s, sep);\n"
     " return format_text(\"{}|{}|{}\", parts.head, parts.match, parts.tail);\n"
     "}\n";
@@ -629,7 +629,8 @@ TEST_CASE(package_core_pure_exports_and_generic_native_arrays)
             REQUIRE(signature && signature->pure && !signature->effects);
             functions++;
         }
-        REQUIRE(functions == 51 && types == 1);
+        /* Odin keeps its two splitters private. */
+        REQUIRE(functions == 49 && types == 1 && core->exports->private_count == 2);
         REQUIRE(invoke(app->module, exported(app, "Check"), NULL, 0, PIN_I32, backends[b]));
         REQUIRE(output.i == 3);
         cleanup();

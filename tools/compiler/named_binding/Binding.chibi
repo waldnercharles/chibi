@@ -7,14 +7,14 @@ import strings "core:strings"
 // All tables contain analyzer/catalog facts. A negative ID slot denotes zero;
 // symbol_types is aligned with the lexical symbol table. Nonnegative indices
 // and spans retain the owning analyzer's structural invariants.
-Type :: struct {
+pub Type :: struct {
     storage: int;
     container: int;
     flags: int;
     nominal_slot: int;
     parameter_slot: int;
 }
-Entry :: struct {
+pub Entry :: struct {
     name: string;
     source_name: string;
     key: string;
@@ -25,7 +25,7 @@ Entry :: struct {
     internal: bool;
     component: bool;
 }
-Import :: struct {
+pub Import :: struct {
     alias: string;
     identity: string;
     document: int;
@@ -33,12 +33,12 @@ Import :: struct {
     export_count: int;
     has_alias: bool;
 }
-Export :: struct {
+pub Export :: struct {
     name: string;
     kind: int;
     id_slot: int;
 }
-Use :: struct {
+pub Use :: struct {
     kind: int;
     symbol: int;
     member_slot: int;
@@ -48,7 +48,7 @@ Use :: struct {
     column: int;
     document: int;
 }
-Request :: struct {
+pub Request :: struct {
     text: string;
     scope: int;
     start: int;
@@ -57,35 +57,35 @@ Request :: struct {
     column: int;
     document: int;
 }
-TypeUse :: union {
+pub TypeUse :: union {
     Absent | Reference(symbol: int, member: uint64, start: int, end: int, line: int, column: int, document: int)
 }
-Resolution :: union {
+pub Resolution :: union {
     Resolved(storage: int, container: int, flags: int, nominal: uint64,
              parameter: uint64, use: TypeUse, diagnostics: syntax.Diagnostic[])
 }
-Environment :: union {
+pub Environment :: union {
     Tables(lexical: binding.Environment, types: Type[], ids: uint64[],
            merged: Entry[], own: Entry[], native: Entry[], symbol_types: int[],
            imports: Import[], exports: Export[], uses: Use[], identity: string,
            package_scope: int, has_native: bool, has_documents: bool, entity_id: uint64)
 }
-Value :: union {
+pub Value :: union {
     Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64)
 }
 
-IDAt :: (ids: uint64[], slot: int) -> uint64 {
+pub IDAt :: (ids: uint64[], slot: int) -> uint64 {
     if (slot < 0) {
         return 0;
     }
     return ids[slot];
 }
-TypeAt :: (types: Type[], ids: uint64[], index: int) -> Value {
+pub TypeAt :: (types: Type[], ids: uint64[], index: int) -> Value {
     type := types[index];
     return Value.Typed(type.storage, type.container, type.flags,
                        IDAt(ids, type.nominal_slot), IDAt(ids, type.parameter_slot));
 }
-Builtin :: (name: string) -> Value {
+pub Builtin :: (name: string) -> Value {
     if (name == "Cancelled") {
         return Value.Typed(18, 0, 512, 0x63616e63656c6c65, 0);
     }
@@ -115,7 +115,7 @@ Builtin :: (name: string) -> Value {
     }
     return Value.Typed(0, 0, 1, 0, 0);
 }
-Bad :: (value: Value) -> bool {
+pub Bad :: (value: Value) -> bool {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             return (flags & 1) != 0;
@@ -194,7 +194,7 @@ FindCatalog :: (entries: Entry[], name: string) -> int {
     }
     return found;
 }
-TypeIndex :: (entries: Entry[], ids: uint64[], id: uint64) -> int {
+pub TypeIndex :: (entries: Entry[], ids: uint64[], id: uint64) -> int {
     index: int = 0;
     while (index < length(entries)) {
         if (IDAt(ids, entries[index].id_slot) == id) {
@@ -237,7 +237,7 @@ Namespace :: (environment: Environment, scope: int, document: int, name: string)
             return -1;
     }
 }
-FindType :: (environment: Environment, scope: int, document: int, name: string) -> int {
+pub FindType :: (environment: Environment, scope: int, document: int, name: string) -> int {
     importedIndex := Namespace(environment, scope, document, name);
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
@@ -395,10 +395,10 @@ BindName :: (environment: Environment, request: Request, name: string,
 }
 // Parsed names are decoded ordinary type leaves. Constructor arguments,
 // structural union/task assembly and measured signatures remain separate.
-Parsed :: (environment: Environment, request: Request, tokens: string[]) -> Resolution {
+pub Parsed :: (environment: Environment, request: Request, tokens: string[]) -> Resolution {
     return BindName(environment, request, request.text, true, tokens, -1, 0);
 }
-Text :: (environment: Environment, request: Request) -> Resolution {
+pub Text :: (environment: Environment, request: Request) -> Resolution {
     name := strings.Concatenate(strings.Fields(request.text));
     flags: int = 0;
     if (strings.HasPrefix(name, "ref") && name != "ref") {

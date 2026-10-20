@@ -5,10 +5,10 @@ import named "project:named_binding"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 
-Selection :: union {
+pub Selection :: union {
     Selected(symbol: int, definition: int, diagnostics: syntax.Diagnostic[])
 }
-Member :: union {
+pub Member :: union {
     Discovered(name: string, id: uint64, annotation: reader.Reading,
                has_default: bool, default_node: int, admissible: bool,
                diagnostics: syntax.Diagnostic[])
@@ -16,8 +16,8 @@ Member :: union {
 
 // Authored-record bits are raw metadata aligned with the complete merged
 // catalog. All decisions, including original-order lookup and origin, live here.
-Select :: (environment: reader.Environment, authored_records: bool[],
-           tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
+pub Select :: (environment: reader.Environment, authored_records: bool[],
+               tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
     empty: syntax.Diagnostic[] = [];
     if (!reader.Kind(tree, node, "record_declaration")) {
         return Selection.Selected(-1, -1, empty);
@@ -64,8 +64,8 @@ Select :: (environment: reader.Environment, authored_records: bool[],
 // handles default_node separately, then supplies refreshed facts for the next
 // member. Previous names include every earlier field, even invalid ones.
 // Defaults are discovered, never read, resolved, checked or evaluated here.
-Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
-         previous_names: string[], scope: int, document: int) -> Member {
+pub Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
+             previous_names: string[], scope: int, document: int) -> Member {
     token := reader.Field(tree, member, "name");
     switch reader.Name(tree, token, document) {
         case .Name(name, name_diagnostics):

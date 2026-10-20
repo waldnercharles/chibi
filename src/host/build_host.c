@@ -77,6 +77,9 @@ static const char *const environment_names[] = {
     "LSAN_OPTIONS",
     "CHIBI_DEPENDENCY_PACKAGE_KEEP",
     "CHIBI_DEPENDENCY_PACKAGE_JOBS",
+    /* The tools tools/toolchain/StageOne.chibi runs. */
+    "CHIBI_COMPILE",
+    "CHIBI_STAGE_ONE_HOST",
     "EM_CONFIG",
     "CCACHE_DIR",
     "CCACHE_BASEDIR",
@@ -168,7 +171,7 @@ char *build_host_executable(build_host *host, const char *name)
     return NULL;
 }
 /* A reported step adds its output to the invocation's result; a probe's
- * output is only data for BuildLastStdout and BuildLastStderr. */
+ * output is only data for build.last_stdout and build.last_stderr. */
 static const char *run_step(void *service, const pin_value *arguments, pin_value *results, bool reported)
 {
     build_host *host = service;

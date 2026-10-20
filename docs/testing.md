@@ -37,20 +37,37 @@ make test-tools          # tooling and process integrations, separate build-tool
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-projects` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
-`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
+`make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
+launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
+`chibi_ctl` for `validate-project`, `prototype-expansion`, `controller` and
+`render-fixture`, `chibi-compile` for `published-docs`, and the launcher for
+`chibi-cli`. `validate-project` starts `chibi_ctl` dozens of times; each
 start builds the authoring catalog, and under ASan those starts alone take
 longer than the deadline. The project selectors left the native group when it
 reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
 coverage, mesh files, project validation and model import alone took 33 s.
 
+`published-docs` copies `docs/site.kdl` and every page, package folder and
+grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
+which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
+must parse, and each whole package must analyze, so a language change that
+breaks one fails `make test-projects` instead of the next site build. The site
+it writes stays out of the source tree. The Release `--docs` took 0.2–1.0 s on
+an M-series Mac under load; the sanitized one took 5–9 s.
+
+`chibi-cli` runs nineteen launcher cases: each command over a fake sibling
+compiler and player, the launcher's own `version` and `doctor`, and the real
+`chibi-compile`'s `--check`, `--test`, `--format` and `--docs` on fixture
+projects, package trees and sites. Its two `--docs` cases start the compiler 19
+times, so it took 22–26 s against the sanitized build and 5.6–8.0 s
+against the Release one, under load average 13–19.
+
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced and that Release `chibi_ctl`, except
+the drivers `make test-build` produced and those Release tools, except
 `language-package-compiler-chibi-bootstrap`, which runs the Release
 `test_language` that `make test-bootstrap` builds; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
-build.
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
+`CHIBI_COMPILE` to use another build.
 
 `python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
 checked-in fixture projects with Release `chibi_ctl --format --check`, under
@@ -1192,18 +1209,19 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately and use
 one shared 60-second deadline; this focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
-C cases for dependency execution, alias isolation, self imports, owned exported
+`python3 tools/test_policy.py tool language-package-imports` selects thirteen
+fixed C cases for dependency execution, alias isolation, self imports, `pub`
+visibility and its private-member diagnostics, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
 generations, constrained generics and constant defaults. It also checks owned
 union payload defaults and malformed public export bindings. Cached closures
 track sibling addition, path-only renames and removal across the dependency
 chain while an unrelated package is reused; failed generations publish no module
 or exports, are never cache hits, and repair replaces them while a separately
-retained valid module keeps working. The workload has 59 preparations, 210
-parses, 113 import declarations, at most 189 package visits before reuse, and 48
+retained valid module keeps working. The workload has 67 preparations, 226
+parses, 121 import declarations, at most 205 package visits before reuse, and 50
 direct calls with instruction budgets of 2,000.
-One catalog snapshot and one additional parse/nine semantic-only analyses cover
+One catalog snapshot and one additional parse/ten semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
 Build separately and run under one shared 60-second deadline. This focused
@@ -1264,10 +1282,10 @@ GPU work. This focused route is outside the language aggregate.
 cases for the shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
-package, with eight tests. They cover discovery order, names and positions,
-passes, a failed `expect` reported inside its helper, an out-of-range read, an
-exhausted 100,000-instruction budget, a wait and a task start on bytecode and
-SLJIT. There is no filesystem, process, service or GPU work. This focused route
+package, with nine tests. They cover discovery order, names and positions,
+passes, a failed `assert` reported inside its helper, an `assert` without a
+message reported by its condition, an out-of-range read, an exhausted
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
 is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
@@ -1867,9 +1885,10 @@ takes about 6 s.
   the order stage one reaches them. Each compiles alone, so stage one can
   pass one story before it compiles another.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
-  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
-  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
-  `build/sdk/chibi-compile` until stage one compiles stories.
+  --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
+  entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
+  select them. Both default to `build/sdk/chibi-compile`;
+  `game-equivalence-stage-one` takes stage one's route as the candidate.
 - **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
   `chibi-build-host`. Its `Rebuild` entry compiles each story with each
   compiler and plays them, and `Diff` compares two traces.
@@ -1882,18 +1901,28 @@ takes about 6 s.
     each module's name and ID (`--native` checks that function);
   - one line per fixed step, from frame 0 (after Begin) to the scenario's
     last frame: hashes of the ECS world, saved state, materials, physics
-    bodies, contacts and events, and UI text. Frame N is the world after N
+    bodies, contacts and events, and UI text. The ECS hash reads a string
+    field by its text, not its address, since the two compilers allocate
+    differently (`ecs_world_hash_reads_strings_by_text`). Frame N is the world after N
     steps, so input keyed at step K first shows in frame K + 1.
 - **Cases.**
   - Assembling each story from the modules of its own artifact, with
     `authoring_project_assemble`, writes that artifact again byte for byte.
     A source without its module, or a module of no source, is refused. This
     is the assembly a stage-one route uses for modules stage one compiled.
-  - `chibi-compile --project-root ROOT --stage-one-target FILE` exports what a
-    story's behavior links against, for stage one. The test compares its
-    types with the requirements of the module stage zero writes for Counter
-    (all 112, in order: ID, layout, storage, size and name). It also compares
-    the module's events (ID, ABI and payload fields) and the entity type.
+    `chibi-compile --modules` refuses a file that is no closure and writes no
+    artifact.
+  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports stage
+    one's `CompileBehaviors` input for a story: its executable sources' identities
+    and texts, then what they link against. For Counter, the test checks the
+    behavior's identity and source. It compares the types with the
+    requirements of the module stage zero writes (all 112, in order: ID,
+    layout, storage, size and name), and the module's events (ID, ABI and
+    payload fields) and entity type, that the operators that combine
+    records hold `+` as the native `add`, that the globals hold `self` of
+    the owner's type, and that the record makes hold `vec2` making a `CF_V2`
+    of its `x` and `y`. Only the types modules require are compared;
+    namespaces such as `SceneGlobals` are listed too.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.
@@ -1901,10 +1930,27 @@ takes about 6 s.
     frames, is refused rather than matched; the observer removes the trace
     unless every story played.
 
+`make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
+every story with `chibi-compile` and with stage one's route,
+`tools/toolchain/StageOne.chibi`, and compares them as above. The route:
+1. recovers stage one from the bootstrap artifact and the compiler sources
+   with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and
+   keeps it under `.chibi/stage-one` for the digest of those sources, the
+   artifact and the host, replacing the closure kept for an older digest;
+2. exports stage one's input with `chibi-compile --stage-one-input`;
+3. runs stage one's `CompileBehaviors` on it with `chibi-compiler-host
+   --output-bytes`. When stage one rejects a behavior, the route reports
+   `BehaviorRejection`'s identity, line, column and message;
+4. assembles the artifact with `chibi-compile --modules`.
+
+`CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
+takes about 19 s when it recovers stage one and 2 s once it is kept.
+
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects fifteen tooling
-cases and two cases in one child producer. Build `test_language`, `test_tools`
+`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
+cases and two cases in one child producer. One checks that `--output-bytes`
+writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
 preparations), serializes its executable modules and checks that reversed record
@@ -2101,7 +2147,7 @@ their precedence over the cache, failure/retry and exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
-missing host, one that fails the protocol query and one that reports protocol 2,
+missing host, one that fails the protocol query and one that reports protocol 3,
 and authored orchestration for a compatible host, including paths with spaces;
 four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are

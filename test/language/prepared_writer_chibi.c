@@ -5,6 +5,7 @@
 #include "execution/module.h"
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
+#include "language/lower.h"
 #include "package_core_source.h"
 #include "package_paths_chibi_source.h"
 #include "prepared_writer_chibi_source.h"
@@ -13,6 +14,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "types/array.h"
+#include "types/catalog.h"
 #include "types/record.h"
 #include "types/type.h"
 #include "types/union.h"
@@ -23,10 +25,10 @@
 
 /* The authored prepared writer must reproduce execution_prepared_write byte
  * for byte. One fixture prepares the writer with a fixed corpus; every corpus
- * module is marshalled into the authored model and written on bytecode and the
- * compiled backend. Modules above 512 KiB, the writer's own 1.3 MiB and
- * core:strings' 0.8 MiB, take 38 s and 22 s on bytecode under ASan, so they are
- * written on the compiled backend only. */
+ * module, and a behavior's module, is marshalled into the authored model and
+ * written on bytecode and the compiled backend. Modules above 512 KiB, the
+ * writer's own 1.3 MiB and core:strings' 0.8 MiB, take 38 s and 22 s on
+ * bytecode under ASan, so they are written on the compiled backend only. */
 static const char PACKAGE[] = "project:prepared_writer";
 static const char SAMPLE
     [] = "package sample\n"
@@ -68,18 +70,47 @@ static const char *const CORPUS[] = { "project:prepared_writer",
 enum
 {
     CORPUS_COUNT = sizeof CORPUS / sizeof *CORPUS,
-    TABLES = 21,
+    TABLES = 23,
     BUDGET = 200000000,
     BYTECODE_MODULE_LIMIT = 512 * 1024
 };
+/* A behavior with retained state, handlers of an event with and without a
+ * payload, and a write to a field of the owner's component. */
+static const char BEHAVIOR[] = "Counter :: behavior {\n"
+                               "    steps: int = 0\n"
+                               "    on Tick {\n"
+                               "        steps += 1\n"
+                               "        self.Tally.value = steps\n"
+                               "    }\n"
+                               "    on Add(amount: int) {\n"
+                               "        steps += amount\n"
+                               "    }\n"
+                               "}\n";
+enum
+{
+    TALLY = 101,
+    TALLY_COMPONENT = 901,
+    TICK = 11,
+    ADD = 12,
+    OWNER = 30,
+    ENTITY = 700
+};
+static const type_field tally_fields[] = {
+    { .name = "value", .type = PIN_I32, .type_name = "int", .offset = 0, .size = sizeof(int32_t) },
+};
+static const type_desc tally_type = { .name = "Tally",
+                                      .size = sizeof(int32_t),
+                                      .fields = tally_fields,
+                                      .field_count = 1 };
 static compiler_fixture fixture;
 static arena input;
 
 typedef struct
 {
-    pin_value *wide, *values, *ints, *requirements, *fields, *imports, *functions,
-        *spans, *roots, *instructions, *locals, *parameters, *frames, *sources,
-        *results, *data, *hosts, *calls, *references, *points, *watches, *entries;
+    pin_value *wide, *values, *ints, *requirements, *fields, *events,
+        *event_fields, *imports, *functions, *spans, *roots, *instructions,
+        *locals, *parameters, *frames, *sources, *results, *data, *hosts,
+        *calls, *references, *components, *points, *watches, *states, *entries;
     const behavior_function **order;
     const execution_module_plan *plan;
     int backend;
@@ -171,7 +202,8 @@ static pin_value value_row(model *m, const pin_value *v)
         assert(type);
         put_int(&row, "wide", wide(m, type_layout_hash(type)));
         put_bool(&row, "present", v->ptr != NULL);
-        put_int(&row, "count", type->field_count);
+        /* A native type's absent header carries no fields. */
+        put_int(&row, "count", v->ptr || v->record ? type->field_count : 0);
         if (v->ptr) {
             pin_value *members = NULL;
             for (int i = 0; i < type->field_count; i++) {
@@ -300,8 +332,7 @@ static int ints(model *m, const int *values, int count)
 }
 static bool function(model *m, const behavior_function *f)
 {
-    REQUIRE(!acount(f->queries) && !acount(f->commands) && !acount(f->components));
-    REQUIRE(!acount(f->component_writes) && !acount(f->state_selections));
+    REQUIRE(!acount(f->queries) && !acount(f->commands) && !acount(f->state_selections));
     REQUIRE(!acount(f->points) && !acount(f->watches) && !acount(f->edges));
     int base = acount(m->spans);
     for (int i = 0; i < TABLES; i++) {
@@ -491,11 +522,25 @@ static bool function(model *m, const behavior_function *f)
     }
     span(m, base + 18, ints(m, definitions, acount(definitions)), acount(definitions));
     afree(definitions);
+    first = acount(m->components);
+    for (int i = 0; i < acount(f->components); i++) {
+        pin_value component = record(m, "Component");
+        put_int(&component, "id", wide(m, f->components[i].id));
+        put_bool(&component, "binding", f->components[i].binding);
+        apush(m->components, component);
+    }
+    span(m, base + 19, first, acount(f->components));
+    int *writes = NULL;
+    for (int i = 0; i < acount(f->component_writes); i++) {
+        apush(writes, wide(m, f->component_writes[i]));
+    }
+    span(m, base + 20, ints(m, writes, acount(writes)), acount(writes));
+    afree(writes);
     first = acount(m->points);
     for (int i = 0; i < acount(f->source_points); i++) {
         point(m, &f->source_points[i]);
     }
-    span(m, base + 19, first, acount(f->source_points));
+    span(m, base + 21, first, acount(f->source_points));
     first = acount(m->watches);
     for (int i = 0; i < acount(f->source_watches); i++) {
         const behavior_source_watch *v = &f->source_watches[i];
@@ -507,7 +552,7 @@ static bool function(model *m, const behavior_function *f)
         put_bool(&watch, "reference", v->reference);
         apush(m->watches, watch);
     }
-    span(m, base + 20, first, acount(f->source_watches));
+    span(m, base + 22, first, acount(f->source_watches));
     apush(m->functions, row);
     return true;
 }
@@ -585,7 +630,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         order(m, p->functions[i].body);
         order(m, p->functions[i].subscription);
     }
-    REQUIRE(!p->binding_count && !p->query_count && !p->state_count && !p->event_count);
+    REQUIRE(!p->binding_count && !p->query_count);
     for (int i = 0; i < p->type_count; i++) {
         const execution_type_requirement *v = &p->types[i];
         pin_value row = record(m, "Requirement");
@@ -612,6 +657,25 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         }
         apush(m->requirements, row);
     }
+    for (int i = 0; i < p->event_count; i++) {
+        const execution_module_event_declaration *v = &p->events[i];
+        pin_value row = record(m, "Event");
+        put_int(&row, "id", wide(m, v->id));
+        put_int(&row, "abi", wide(m, v->abi));
+        put_text(&row, "name", NULL, v->name);
+        put_int(&row, "first", acount(m->event_fields));
+        put_int(&row, "count", v->field_count);
+        for (int f = 0; f < v->field_count; f++) {
+            pin_value field = record(m, "EventField");
+            put_text(&field, "name", NULL, v->fields[f].name);
+            put_int(&field, "nominal", wide(m, v->fields[f].nominal));
+            put_bool(&field, "has_default", v->fields[f].has_default);
+            put_bool(&field, "default_owner", v->fields[f].default_owner);
+            put_int(&field, "initial", value(m, &v->fields[f].initial));
+            apush(m->event_fields, field);
+        }
+        apush(m->events, row);
+    }
     for (int i = 0; i < p->import_count; i++) {
         size_t length = 0;
         uint64_t fingerprint = 0;
@@ -627,12 +691,17 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
     for (int i = 0; i < acount(m->order); i++) {
         REQUIRE(function(m, m->order[i]));
     }
+    for (int i = 0; i < p->state_count; i++) {
+        pin_value row = record(m, "State");
+        put_int(&row, "id", wide(m, p->states[i].id));
+        put_int(&row, "initial", value(m, &p->states[i].initial));
+        put_bool(&row, "shared", p->states[i].shared);
+        put_bool(&row, "contains_tasks", p->states[i].contains_tasks);
+        apush(m->states, row);
+    }
     for (int i = 0; i < p->function_count; i++) {
         const execution_module_function *v = &p->functions[i];
-        REQUIRE(
-            !v->event && !v->event_abi && !v->event_name && !v->action &&
-            !v->parent && !v->outcome
-        );
+        REQUIRE(!v->action && !v->parent && !v->outcome);
         REQUIRE(
             !v->observer.component && !v->observer.layout &&
             !v->observer.field && !v->observer.offset
@@ -644,6 +713,9 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         put_int(&row, "id", wide(m, v->id));
         put_int(&row, "kind", v->kind);
         put_text(&row, "entry_name", "has_entry", v->entry);
+        put_int(&row, "event_id", wide(m, v->event));
+        put_int(&row, "event_abi", wide(m, v->event_abi));
+        put_text(&row, "event_name", "has_event_name", v->event_name);
         put_int(&row, "effects", wide(m, v->effects));
         put_int(&row, "body", reference(m, v->body));
         put_int(&row, "subscription", reference(m, v->subscription));
@@ -658,6 +730,8 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         rows(m, NULL, PIN_I32, m->ints),
         rows(m, "Requirement", PIN_STRUCT, m->requirements),
         rows(m, "Field", PIN_STRUCT, m->fields),
+        rows(m, "Event", PIN_STRUCT, m->events),
+        rows(m, "EventField", PIN_STRUCT, m->event_fields),
         rows(m, "Import", PIN_STRUCT, m->imports),
         rows(m, "Function", PIN_STRUCT, m->functions),
         rows(m, "Span", PIN_STRUCT, m->spans),
@@ -672,8 +746,10 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         rows(m, "Host", PIN_STRUCT, m->hosts),
         rows(m, "Call", PIN_STRUCT, m->calls),
         rows(m, "Reference", PIN_STRUCT, m->references),
+        rows(m, "Component", PIN_STRUCT, m->components),
         rows(m, "Point", PIN_STRUCT, m->points),
         rows(m, "Watch", PIN_STRUCT, m->watches),
+        rows(m, "State", PIN_STRUCT, m->states),
         rows(m, "Entry", PIN_STRUCT, m->entries),
     };
     uint64_t tables = tag(m->backend, "Module", "Tables");
@@ -691,6 +767,8 @@ static void model_free(model *m)
     afree(m->ints);
     afree(m->requirements);
     afree(m->fields);
+    afree(m->events);
+    afree(m->event_fields);
     afree(m->imports);
     afree(m->functions);
     afree(m->spans);
@@ -705,8 +783,10 @@ static void model_free(model *m)
     afree(m->hosts);
     afree(m->calls);
     afree(m->references);
+    afree(m->components);
     afree(m->points);
     afree(m->watches);
+    afree(m->states);
     afree(m->entries);
     afree(m->order);
 }
@@ -739,6 +819,136 @@ static bool prepare_corpus()
     };
     return compiler_fixture_prepare(&fixture, inputs, (int)(sizeof inputs / sizeof *inputs));
 }
+/* Whether the writer on backend `b` writes `module` as the native writer
+ * does. A module above the bytecode limit is written on the compiled backend
+ * only. */
+static bool writes_like_native(int b, const execution_module *module, const char *name)
+{
+    unsigned char *expected = NULL;
+    size_t length = 0;
+    char error[192];
+    REQUIRE(execution_prepared_write(module, &expected, &length, error, sizeof error));
+    if (!b && length > BYTECODE_MODULE_LIMIT) {
+        free(expected);
+        return true;
+    }
+    model m = { .backend = b };
+    pin_value authored;
+    REQUIRE(marshal(&m, module, header_abi(expected), &authored));
+    arena detached = { 0 };
+    pin_value written = { 0 };
+    bool called = compiler_fixture_call(&fixture, b, PACKAGE, "Write", &authored, 1, BUDGET, &detached, &written);
+    const pin_array *bytes = written.ptr;
+    bool same = called && written.type == PIN_U8 && bytes &&
+                (size_t)bytes->count == length;
+    for (size_t i = 0; same && i < length; i++) {
+        same = pin_array_get(bytes, i).u8 == expected[i];
+    }
+    if (!same) {
+        fprintf(
+            stderr,
+            "prepared writer: backend=%d module=%s native=%zu "
+            "authored=%d first difference=%zu\n",
+            b,
+            name,
+            length,
+            bytes ? bytes->count : -1,
+            bytes ? first_difference(expected, length, bytes) : 0
+        );
+        size_t at = bytes ? first_difference(expected, length, bytes) : length;
+        for (size_t i = at > 24 ? at - 24 : 0;
+             i < at + 24 && i < length && i < (size_t)bytes->count;
+             i++) {
+            fprintf(stderr, " %02x/%02x", expected[i], pin_array_get(bytes, i).u8);
+        }
+        fprintf(stderr, "\n");
+    }
+    arena_free(&detached);
+    model_free(&m);
+    free(expected);
+    return same;
+}
+static bool resolve_owner(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id != OWNER) {
+        return false;
+    }
+    *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+    return true;
+}
+/* BEHAVIOR's module, lowered against a catalog of its component, events and
+ * owner, while the component's type is registered. */
+static execution_module *behavior_module()
+{
+    static const script_catalog_field value = { .id = 811,
+                                                .name = "value",
+                                                .type = { .storage = PIN_I32 },
+                                                .writable = true };
+    static const script_catalog_parameter amount = { .name = "amount",
+                                                     .type = { .storage = PIN_I32 } };
+    static const script_catalog_capability events[] = {
+        { .id = TICK, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 },
+        { .id = ADD,
+          .name = "Add",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = &amount,
+          .parameter_count = 1,
+          .completion_outcome = -1 },
+    };
+    static const script_catalog_global owner = { .id = OWNER,
+                                                 .name = "self",
+                                                 .type = { .storage = PIN_HANDLE,
+                                                           .nominal = ENTITY } };
+    const script_catalog_type tally = { .id = TALLY,
+                                        .name = tally_type.name,
+                                        .type = { .storage = PIN_STRUCT, .nominal = TALLY },
+                                        .fields = &value,
+                                        .field_count = 1,
+                                        .size = tally_type.size,
+                                        .layout = type_layout_hash(&tally_type),
+                                        .component_id = TALLY_COMPONENT,
+                                        .component = true };
+    const script_catalog catalog = { .types = &tally,
+                                     .type_count = 1,
+                                     .capabilities = events,
+                                     .capability_count = 2,
+                                     .globals = &owner,
+                                     .global_count = 1,
+                                     .entity_type = ENTITY,
+                                     .tick_event = TICK };
+    script_syntax *syntax = script_parse(BEHAVIOR);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    const script_lower_bindings bindings = { .global = resolve_owner };
+    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "behavior semantic: %s\n", analysis->diagnostics[i].message);
+    }
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        fprintf(stderr, "behavior lowering: %s\n", plan->diagnostics[i].message);
+    }
+    char error[192] = { 0 };
+    execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
+                                 ? NULL
+                                 : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "behavior finish: %s\n", error);
+    }
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    return module;
+}
+/* Whether a handler of `p` writes the owner's component. */
+static bool writes_component(const execution_module_plan *p)
+{
+    for (int i = 0; i < p->function_count; i++) {
+        const behavior_function *body = p->functions[i].body;
+        if (acount(body->components) && acount(body->component_writes)) {
+            return true;
+        }
+    }
+    return false;
+}
 TEST_CASE(prepared_writer_reproduces_native_modules)
 {
     REQUIRE(prepare_corpus());
@@ -746,46 +956,24 @@ TEST_CASE(prepared_writer_reproduces_native_modules)
         for (int c = 0; c < CORPUS_COUNT; c++) {
             const authoring_package *package = compiler_fixture_package(&fixture, b, CORPUS[c]);
             REQUIRE(package && package->module);
-            unsigned char *expected = NULL;
-            size_t length = 0;
-            char error[192];
-            REQUIRE(
-                execution_prepared_write(package->module, &expected, &length, error, sizeof error)
-            );
-            if (!b && length > BYTECODE_MODULE_LIMIT) {
-                free(expected);
-                continue;
-            }
-            model m = { .backend = b };
-            pin_value module;
-            REQUIRE(marshal(&m, package->module, header_abi(expected), &module));
-            arena detached = { 0 };
-            pin_value written = { 0 };
-            bool called = compiler_fixture_call(&fixture, b, PACKAGE, "Write", &module, 1, BUDGET, &detached, &written);
-            const pin_array *bytes = written.ptr;
-            bool same = called && written.type == PIN_U8 && bytes &&
-                        (size_t)bytes->count == length;
-            for (size_t i = 0; same && i < length; i++) {
-                same = pin_array_get(bytes, i).u8 == expected[i];
-            }
-            if (!same) {
-                fprintf(
-                    stderr,
-                    "prepared writer: backend=%d module=%s native=%zu "
-                    "authored=%d first difference=%zu\n",
-                    b,
-                    CORPUS[c],
-                    length,
-                    bytes ? bytes->count : -1,
-                    bytes ? first_difference(expected, length, bytes) : 0
-                );
-            }
-            arena_free(&detached);
-            model_free(&m);
-            free(expected);
-            REQUIRE(same);
+            REQUIRE(writes_like_native(b, package->module, CORPUS[c]));
         }
     }
+    /* The module's values name the component's type, so it stays registered
+     * while both writers read them. */
+    const type_desc *const reflected[] = { &tally_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    execution_module *behavior = behavior_module();
+    const execution_module_plan *p = behavior ? &behavior->plan : NULL;
+    bool covered = p && p->state_count == 1 && p->event_count == 2 &&
+                   p->function_count == 2 && writes_component(p);
+    bool written = covered && writes_like_native(0, behavior, "behavior") &&
+                   writes_like_native(1, behavior, "behavior");
+    execution_module_free(behavior);
+    type_catalog_set_project(NULL);
+    REQUIRE(covered);
+    REQUIRE(written);
     return true;
 }
 static pin_value byte_array(const unsigned char *data, size_t length)

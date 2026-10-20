@@ -267,7 +267,12 @@ Its examples of needs covered above are listed with those entries.
 Runtime. In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
 quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
 `_split` and `replace` copies the rest of the string on each match. A string
-cannot hold a NUL byte, so Odin's `trim_null` has no use.
+cannot hold a NUL byte, so Odin's `trim_null` has no use. On 2026-10-20 the
+package compiler's debugger occurrences counted whitespace with `ByteAt` from
+each document's start; compiling the compiler, whose largest file is 165 KB,
+`strlen` under `ByteAt` took about a fifth of a profile, and reading
+`strings.Bytes` once per document cut stage two's compile of itself from about
+18 to 14 s.
 
 - Odin, Go, Zig and Jai strings are a pointer and a length; `len(s)` and
   `s[i]` are O(1) and `s[a:b]` is a view. Rust's `&str` and C++'s
@@ -591,7 +596,9 @@ rehashing its type's layout (`pin_record_valid`, `type_layout_hash`); each
 call also prepares an activation. Inlining the hot loops, reading byte classes
 from a table and returning records only for rare tokens took the corpus run
 from 28 to 4 seconds on SLJIT in a sanitizer build. The bytecode backend is
-about eight times slower still.
+about eight times slower still. On 2026-10-20 a profile of stage one compiling
+the compiler put over half of its time in `pin_record_valid` and
+`type_layout_hash`, mostly under value snapshots.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none

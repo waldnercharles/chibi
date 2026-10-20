@@ -7770,15 +7770,14 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
     const char *libraries[] = {
         "W :: library { Bump :: (x: ref int) { x += 1 } }",
         "C :: library { Bump :: (x: int) { } }",
-        "L :: library { F :: (v: int) -> int { C.Bump(v); after entry { return "
-        "v }\n} }",
+        "L :: library { F :: (v: int) { C.Bump(v); after entry { G(v) }\n} }",
     };
     for (int i = 0; i < 3; i++) {
         snprintf(file, sizeof file, "%s/%s", project, names[i]);
         write_whole(file, libraries[i]);
     }
     REQUIRE(!chibi_project_migrate_content(project, NULL, 28, error, sizeof error));
-    write_whole(file, "L :: library { F :: (v: int) -> int { W.Bump(v); after entry { return v }\n} }");
+    write_whole(file, "L :: library { F :: (v: int) { W.Bump(v); after entry { G(v) }\n} }");
     REQUIRE(chibi_project_migrate_content(project, NULL, 28, error, sizeof error) < 0);
     REQUIRE(strstr(error, "pass by reference"));
     for (int i = 0; i < 3; i++) {

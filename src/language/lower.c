@@ -550,11 +550,12 @@ static int assertion(lower *l, const script_expression *e)
 }
 /* A fractional value, such as a `number`, truncates to the int an array index
  * or a range bound takes. Integers keep their width: casts only narrow floats. */
+/* A range bound as an int: a narrower integer such as a byte widens. */
 static int int_slot(lower *l, int value, script_range range)
 {
     script_type from = l->a->expressions[value].type;
     int slot = expression(l, value);
-    if (from.storage != PIN_F32 && from.storage != PIN_F64) {
+    if (slot_type(from) == PIN_I32) {
         return slot;
     }
     return convert(l, slot, from, (script_type){ .storage = PIN_I32 }, range);

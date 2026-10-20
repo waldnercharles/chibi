@@ -1728,10 +1728,11 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, l
 }
 
 // The head of a for loop over the copy in the last cell: an index local
-// set to zero, then at `head` the bound check, the exit jump and the element
-// load, which takes a second local for a packable record. Marks report the
-// head, the exit jump and the index local.
-ForStep :: (array: Value, packable: bool, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+// set to zero, or to the last index when `reverse`, then at `head` the bound
+// check, the exit jump and the element load, which takes a second local for a
+// packable record. Marks report the head, the exit jump and the index local.
+ForStep :: (array: Value, packable: bool, reverse: bool, ops: Ops, target: Target, at: Bases,
+            node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
     locals: Slot[] = [];
@@ -1744,37 +1745,69 @@ ForStep :: (array: Value, packable: bool, ops: Ops, target: Target, at: Bases, n
     number: Slot = {storage: IntStorage, kind: ValueKind};
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    slots = array_add(slots, number);
-    constant := Instruction(ops.constant, IntStorage, at.slot, 0, 0, 0, node);
-    constant.value_storage = IntStorage;
-    code = array_add(code, constant);
+    if (reverse) {
+        // The copy's count is fixed, so the last index is read once.
+        slots = array_add(slots, address);
+        slots = array_add(slots, address);
+        slots = array_add(slots, number);
+        slots = array_add(slots, number);
+        slots = array_add(slots, number);
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell - 1, 0, 0, node));
+        start_load := Instruction(ops.load, target.pointer_storage, at.slot + 1, at.slot, 0, 0, node);
+        start_load.offset = target.payload_offset;
+        code = array_add(code, start_load);
+        start_root: Root = {slot: at.slot + 1, storage: array.storage, container: ArrayContainer, record: array.record};
+        roots = array_add(roots, start_root);
+        code = array_add(code, Instruction(ops.guard, 0, 0, at.slot + 1, 0, target.argument_failure, node));
+        start_count := Instruction(ops.load, IntStorage, at.slot + 2, at.slot + 1, 0, 0, node);
+        start_count.offset = target.count_offset;
+        code = array_add(code, start_count);
+        code = array_add(code, ConstantCode(ops, IntStorage, 1, at.slot + 3, node));
+        code = array_add(code, Instruction(ops.sub, IntStorage, at.slot + 4, at.slot + 2, at.slot + 3, -1, node));
+    } else {
+        slots = array_add(slots, number);
+        constant := Instruction(ops.constant, IntStorage, at.slot, 0, 0, 0, node);
+        constant.value_storage = IntStorage;
+        code = array_add(code, constant);
+    }
     locals = array_add(locals, ValueLocal(IntStorage));
-    code = array_add(code, Instruction(ops.save, IntStorage, 0, at.slot, 0, at.local, node));
+    code = array_add(code, Instruction(ops.save, IntStorage, 0, at.slot + length(slots) - 1, 0, at.local, node));
+    // The head's slots follow the start's.
+    b := at.slot + length(slots);
     head := at.pc + length(code);
     code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
     slots = array_add(slots, address);
-    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + 1, at.cell - 1, 0, 0, node));
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, b, at.cell - 1, 0, 0, node));
     slots = array_add(slots, address);
-    load := Instruction(ops.load, target.pointer_storage, at.slot + 2, at.slot + 1, 0, 0, node);
+    load := Instruction(ops.load, target.pointer_storage, b + 1, b, 0, 0, node);
     load.offset = target.payload_offset;
     code = array_add(code, load);
-    root: Root = {slot: at.slot + 2, storage: array.storage, container: ArrayContainer, record: array.record};
+    root: Root = {slot: b + 1, storage: array.storage, container: ArrayContainer, record: array.record};
     roots = array_add(roots, root);
-    code = array_add(code, Instruction(ops.guard, 0, 0, at.slot + 2, 0, target.argument_failure, node));
+    code = array_add(code, Instruction(ops.guard, 0, 0, b + 1, 0, target.argument_failure, node));
     slots = array_add(slots, number);
-    count := Instruction(ops.load, IntStorage, at.slot + 3, at.slot + 2, 0, 0, node);
+    count := Instruction(ops.load, IntStorage, b + 2, b + 1, 0, 0, node);
     count.offset = target.count_offset;
     code = array_add(code, count);
     slots = array_add(slots, number);
-    code = array_add(code, Instruction(ops.local, IntStorage, at.slot + 4, at.local, 0, 0, node));
-    slots = array_add(slots, flag);
-    code = array_add(code, Instruction(ops.lt, IntStorage, at.slot + 5, at.slot + 4, at.slot + 3, -1, node));
-    code = array_add(code, Instruction(ops.branch_if, 0, 0, at.slot + 5, 0, at.pc + length(code) + 2, node));
+    code = array_add(code, Instruction(ops.local, IntStorage, b + 3, at.local, 0, 0, node));
+    if (reverse) {
+        slots = array_add(slots, number);
+        code = array_add(code, ConstantCode(ops, IntStorage, 0, b + 4, node));
+        slots = array_add(slots, flag);
+        code = array_add(code, Instruction(ops.ge, IntStorage, b + 5, b + 3, b + 4, -1, node));
+    } else {
+        slots = array_add(slots, flag);
+        code = array_add(code, Instruction(ops.lt, IntStorage, b + 4, b + 3, b + 2, -1, node));
+    }
+    code = array_add(code, Instruction(ops.branch_if, 0, 0, at.slot + length(slots) - 1, 0, at.pc + length(code) + 2,
+                                       node));
     leave := at.pc + length(code);
     code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-    // The index is below the count, so the element needs no check.
+    // The index is between zero and the count, so the element needs no check.
+    first_load := at.slot + length(slots);
     slots = append(slots, LoadSlots(array.storage, packable, target));
-    code = append(code, ElementLoad(at.slot + 2, at.slot + 4, array.storage, packable, at.slot + 6,
+    code = append(code, ElementLoad(b + 1, b + 3, array.storage, packable, first_load,
                                     at.pc + length(code), at.local + 1, ops, target, node));
     locals = append(locals, ElementLocals(array.storage, packable, target));
     element := at.slot + length(slots) - 1;

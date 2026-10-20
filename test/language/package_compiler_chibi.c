@@ -167,6 +167,53 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* Range loops count as stage zero's do: inclusive and half-open,
+     * forward and reversed, ending at a bound without wrapping; `for x, i`
+     * names an array's item and its index, and `for <` walks it backwards. */
+    { .name = "ranges",
+      .source = "package facts\n"
+                "Sum :: (first: int, last: int) -> int {\n"
+                "    total: int = 0;\n    for i in first..last { total += i; "
+                "}\n"
+                "    return total;\n}\n"
+                "Below :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for i in 0..<n { if (i == 2) { continue; } total += i; }\n"
+                "    return total;\n}\n"
+                "Down :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < i in 0..n { total = total * 10 + i; if (i == 1) { "
+                "break; } }\n"
+                "    return total;\n}\n"
+                "DownBelow :: (n: int) -> int {\n"
+                "    total: int = 0;\n    for < i in 0..<n { total = total * "
+                "10 + i; }\n"
+                "    return total;\n}\n"
+                "Count :: (first: int, last: int) -> int {\n"
+                "    count: int = 0;\n    for i in first..last { count += 1; "
+                "}\n"
+                "    for < i in first..last { count += 1; }\n"
+                "    return count;\n}\n"
+                "Small :: (b: byte) -> int {\n"
+                "    total: int = 0;\n    for i in 0..b { total += 1; }\n"
+                "    return total;\n}\n"
+                "Keys :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n    for x, i in xs { total += i * x; }\n"
+                "    return total;\n}\n"
+                "Back :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < x, i in xs { total = total * 100 + x * 10 + i; }\n"
+                "    return total;\n}\n",
+      .calls = { { "Sum", "[1,4]", "[10]" },
+                 { "Below", "[5]", "[8]" },
+                 { "Down", "[3]", "[321]" },
+                 { "DownBelow", "[3]", "[210]" },
+                 { "DownBelow", "[0]", "[0]" },
+                 { "Count", "[2147483646,2147483647]", "[4]" },
+                 { "Count", "[-2147483648,-2147483647]", "[4]" },
+                 { "Small", "[3]", "[4]" },
+                 { "Keys", "[[5,6,7]]", "[20]" },
+                 { "Back", "[[1,2,3]]", "[322110]" } } },
     { .name = "arrays",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
@@ -741,18 +788,19 @@ static const sample samples[] = {
       .message = "index needs an int",
       .line = 2,
       .column = 39 },
-    { .name = "range for",
-      .source = "package facts\nOne :: () -> int { for i in 0..3 { } return 0; "
-                "}",
-      .message = "for loops support only `for name in array`",
-      .line = 2,
-      .column = 20 },
-    { .name = "reverse for",
-      .source = "package facts\nOne :: (xs: int[]) -> int { for < x in xs { } "
+    { .name = "reference for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for x: ref in xs { "
+                "} "
                 "return 0; }",
-      .message = "for loops support only `for name in array`",
+      .message = "for loops do not support `ref` yet",
       .line = 2,
       .column = 29 },
+    { .name = "range assignment",
+      .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
+                "return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 2,
+      .column = 36 },
     { .name = "for scalar",
       .source = "package facts\nOne :: (n: int) -> int { for (x in "
                 "n) { } return 0; }",

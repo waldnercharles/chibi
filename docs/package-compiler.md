@@ -53,7 +53,7 @@ import:
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
-  gives, as in `x := 5`, is a double in stage zero, and stage one rejects it.
+  gives, as in `x := 5`, is an `int` in stage zero, and stage one rejects it.
   A literal outside its type, such as `byte` 256, is rejected;
 - `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types,
   of an integer or a floating value: the checked form fails the call when the
@@ -65,8 +65,10 @@ import:
   converts it: exactly to a double, then to a `float`. A literal where a
   floating value is expected is one;
 - local declarations, assignment and compound assignment; `if`/`else`,
-  `while`, `for name in array`, `break`, `continue` and `return`; range,
-  keyed and `ref` loops reject;
+  `while`, `break`, `continue` and `return`; `for` over an `int` range,
+  `first..last` or `first..<last`, and over an array, `for x in xs` or
+  `for x, i in xs` with its index, each counting down with `for <`, as stage
+  zero counts them; `ref` loops reject;
 - integer arithmetic, bitwise and comparison operators where the runtime
   computes them: all of them for `int` and `int64`, only addition,
   multiplication, equality and bit operations for `uint64`, and only equality

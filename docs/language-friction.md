@@ -554,7 +554,7 @@ Language. A string literal ends at its line, and nothing marks one as raw, so
 text with its own line structure becomes an array of quoted lines with `\n`
 and escaped quotes. The documentation site's stylesheet in
 `tools/docs/site/Site.chibi` is 35 such lines, and `Head` escapes every
-attribute quote of its HTML (#PR).
+attribute quote of its HTML (#535).
 
 - Odin and Go have raw strings in backticks that may span lines; Rust has
   `r#"..."#`; Zig has `\\` line literals; C# has `"""` raw string literals;

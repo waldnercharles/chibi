@@ -221,38 +221,39 @@ Suggestion: stage one compiles the maps stage zero accepts, then the
 compiler's name lookups use them. Dispatch on a byte or an operator stays a
 `switch`, as in Odin, since a map would hash on every lookup.
 
-## Stage one compiles only `for name in array`
+## The compiler counts with `while`
 
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
 loops and `for item: ref in items` (#420), and since #542 half-open
-`first..<last` and reverse `for <` loops over ranges and arrays, as the owner
-decided on 2026-10-20 after Odin's `..<` and Jai's `for <`. Stage one rejects
-all of them, so the compiler's own counting loops stay
-`while (index < n) { ...; index += 1; }`. Since stage one compiles
-`core:strings`, every scan there, forward and reverse, is a `while` with its
-own `i += 1` or `i -= 1`, and a `continue` before the step hangs (#503).
+`first..<last` and reverse `for <` loops, as the owner decided on 2026-10-20
+after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
+range, keyed and reverse forms too, but not `ref` loops, and the compiler's
+own counting loops and `core:strings`' scans are still
+`while (index < n) { ...; index += 1; }`, where a `continue` before the step
+hangs (#503).
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
   `for (0..n) |i|`; Jai inclusive `for i: 0..n-1` and `for <` to reverse;
   Python `for i in range(n)`; C, C++ and C# three-part `for`.
 
-Suggestion: stage one compiles range, keyed and reverse loops, then the
-compiler and `core:strings` replace their counting `while` loops.
+Suggestion: `core:strings` and the compiler replace their counting `while`
+loops with range loops, and stage one compiles `ref` loops.
 
-## Stage one constants are literals only
+## Stage one has no constant arrays
 
-Stage one. Stage zero folds constant expressions, constant arrays and calls
-whose body runs at compile time, `while` loops included, but stage one accepts
-only literal constants. A lookup table is therefore a local array built on
-every call: `PowerStep` in `Number.chibi`, and the tokenizer's byte-class,
-keyword and terminator tables in `Tokenize` (#518).
+Stage one. Since #564 stage one folds constant integer expressions, in
+any order and across imports, but stage zero also folds constant arrays and
+calls whose body runs at compile time, `while` loops included. A lookup
+table is therefore a local array built on every call: `PowerStep` in
+`Number.chibi`, and the tokenizer's byte-class, keyword and terminator tables
+in `Tokenize` (#518).
 
 - Odin and Go fold constant expressions; Odin also has constant arrays. Zig
   evaluates `comptime` code, C++ `constexpr` and Rust `const` items.
 
-Suggestion: stage one folds the constant expressions stage zero accepts, and
-constant arrays such as `Steps :: [1, 3, 6]`.
+Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`,
+then calls stage zero runs at compile time.
 
 ## From the core:strings port
 
@@ -372,18 +373,6 @@ write.
 Suggestion: stage one compiles `ref` parameters of locals, then
 `core:strings` gains Odin's iterators. Consider marking reference
 arguments at the call site.
-
-### Stage one has no default parameter values
-
-Stage one. Odin's `cut(s, rune_offset := 0, rune_length := 0)` is
-`Cut(s, offset, count)` with every argument required. Stage zero already
-compiles `Add :: (a: int, b: int = 10) -> int` and `Add(1)`.
-
-- Odin, C#, C++, Python, TypeScript and Ruby default trailing parameters;
-  Rust and Zig don't.
-
-Suggestion: stage one compiles the constant defaults stage zero accepts; low
-priority.
 
 ### Library growth spends the compiler tests' budgets
 
@@ -567,17 +556,20 @@ can end a statement, is a `bool[]` filled from a list.
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
 
-### Stage one switches only on union variants
+### A switch arm takes one value
 
-Stage one. Stage zero compiles `switch c { case 61: ... }`, but stage one
-matches only `.Variant` arms, so the tokenizer's operator table is a chain of
-`if (c == 61) { return Eq; }`.
+Language. Since #561 both compilers switch on an integer,
+`switch c { case 61: ... }`, but an arm takes exactly one value, so the
+tokenizer's operator table stays a chain of `if (c == 61) { return Eq; }`
+and a letter test is `c >= 97 && c <= 122`.
 
-- Odin switches on any integer or rune with ranges, `case 'a'..='z', '_':`;
-  C and C++ `switch` on integers; Rust `match` with `b'a'..=b'z'`; Zig
-  `switch` with `'a'...'z'`; C# relational patterns, `>= 'a' and <= 'z'`.
+- Odin switches on any integer or rune with lists and ranges,
+  `case 'a'..='z', '_':`; C and C++ stack `case` labels; Rust `match` with
+  `b'a'..=b'z'`; Zig `switch` with `'a'...'z'`; C# relational patterns,
+  `>= 'a' and <= 'z'`.
 
-Suggestion: stage one compiles integer `switch`, then Odin's ranges.
+Suggestion: arms take lists and ranges, `case 'a'..'z', '_':`, as in Odin,
+then the tokenizer switches on its bytes.
 
 ### Stage one does not check that functions return
 

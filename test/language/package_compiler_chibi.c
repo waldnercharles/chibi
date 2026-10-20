@@ -168,6 +168,108 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* Constants fold integer expressions of literals and other constants,
+     * declared in any order and in an imported package. */
+    { .name = "constant expressions",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "import lib \"project:lib\"\n"
+                "Area :: Width * Height;\n"
+                "Width :: (Unit << 2) + 1;\n"
+                "Height: int : -(Width - 7) / 2 % 3;\n"
+                "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
+                "Small: byte : 0x10 | 2;\n"
+                "Unit :: 2;\n"
+                "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
+                "int64(Small); }\n",
+      .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
+      .calls = { { "Folded", "[]", "[56313]" } } },
+    /* An omitted argument takes its parameter's literal default. */
+    { .name = "defaults",
+      .source = "package facts\n"
+                "Add :: (a: int, b: int = -10, c: int64 = 0x10) -> int64 { "
+                "return int64(a + b) + c; }\n"
+                "Greet :: (name: string = \"you\", loud: bool = true) -> "
+                "string {\n"
+                "    if (loud) { return format_text(\"HI {}\", name); }\n"
+                "    return name;\n}\n"
+                "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
+                "3); }\n"
+                "Hello :: () -> string { return Greet(); }\n",
+      .calls = { { "Add", "[5,6,7]", "[18]" },
+                 { "Use", "[]", "[32]" },
+                 { "Hello", "[]", "[\"HI you\"]" },
+                 { "Greet", "[\"ada\",false]", "[\"ada\"]" } } },
+    /* An integer switch tests its arms in order and runs the default arm
+     * after them all, wherever it is written. */
+    { .name = "integer switch",
+      .source = "package facts\n"
+                "Kind :: (c: int) -> int {\n"
+                "    switch c {\n"
+                "        case 61: return 1;\n"
+                "        case: return 0;\n"
+                "        case -62: return 2;\n"
+                "    }\n"
+                "}\n"
+                "Spaces :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for x in xs {\n"
+                "        b := byte(x);\n"
+                "        switch b { case 32: total += 1; case 10: total += "
+                "100; }\n"
+                "    }\n"
+                "    return total;\n}\n",
+      .calls = { { "Kind", "[61]", "[1]" },
+                 { "Kind", "[-62]", "[2]" },
+                 { "Kind", "[7]", "[0]" },
+                 { "Spaces", "[[32,10,32,5]]", "[102]" } } },
+    /* Range loops count as stage zero's do: inclusive and half-open,
+     * forward and reversed, ending at a bound without wrapping; `for x, i`
+     * names an array's item and its index, and `for <` walks it backwards. */
+    { .name = "ranges",
+      .source = "package facts\n"
+                "Sum :: (first: int, last: int) -> int {\n"
+                "    total: int = 0;\n    for i in first..last { total += i; "
+                "}\n"
+                "    return total;\n}\n"
+                "Below :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for i in 0..<n { if (i == 2) { continue; } total += i; }\n"
+                "    return total;\n}\n"
+                "Down :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < i in 0..n { total = total * 10 + i; if (i == 1) { "
+                "break; } }\n"
+                "    return total;\n}\n"
+                "DownBelow :: (n: int) -> int {\n"
+                "    total: int = 0;\n    for < i in 0..<n { total = total * "
+                "10 + i; }\n"
+                "    return total;\n}\n"
+                "Count :: (first: int, last: int) -> int {\n"
+                "    count: int = 0;\n    for i in first..last { count += 1; "
+                "}\n"
+                "    for < i in first..last { count += 1; }\n"
+                "    return count;\n}\n"
+                "Small :: (b: byte) -> int {\n"
+                "    total: int = 0;\n    for i in 0..b { total += 1; }\n"
+                "    return total;\n}\n"
+                "Keys :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n    for x, i in xs { total += i * x; }\n"
+                "    return total;\n}\n"
+                "Back :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < x, i in xs { total = total * 100 + x * 10 + i; }\n"
+                "    return total;\n}\n",
+      .calls = { { "Sum", "[1,4]", "[10]" },
+                 { "Below", "[5]", "[8]" },
+                 { "Down", "[3]", "[321]" },
+                 { "DownBelow", "[3]", "[210]" },
+                 { "DownBelow", "[0]", "[0]" },
+                 { "Count", "[2147483646,2147483647]", "[4]" },
+                 { "Count", "[-2147483648,-2147483647]", "[4]" },
+                 { "Small", "[3]", "[4]" },
+                 { "Keys", "[[5,6,7]]", "[20]" },
+                 { "Back", "[[1,2,3]]", "[322110]" } } },
     { .name = "arrays",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
@@ -742,18 +844,19 @@ static const sample samples[] = {
       .message = "index needs an int",
       .line = 2,
       .column = 39 },
-    { .name = "range for",
-      .source = "package facts\nOne :: () -> int { for i in 0..3 { } return 0; "
-                "}",
-      .message = "for loops support only `for name in array`",
-      .line = 2,
-      .column = 20 },
-    { .name = "reverse for",
-      .source = "package facts\nOne :: (xs: int[]) -> int { for < x in xs { } "
+    { .name = "reference for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for x: ref in xs { "
+                "} "
                 "return 0; }",
-      .message = "for loops support only `for name in array`",
+      .message = "for loops do not support `ref` yet",
       .line = 2,
       .column = 29 },
+    { .name = "range assignment",
+      .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
+                "return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 2,
+      .column = 36 },
     { .name = "for scalar",
       .source = "package facts\nOne :: (n: int) -> int { for (x in "
                 "n) { } return 0; }",
@@ -772,12 +875,18 @@ static const sample samples[] = {
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 35 },
-    { .name = "switch scalar",
+    { .name = "switch scalar pattern",
       .source = "package facts\nU :: union { A | B }\nOne :: (n: int) "
                 "-> int { switch n { case .A: return 1; } return 0; }",
-      .message = "switch needs a union value",
+      .message = "an integer switch's arms need values",
       .line = 3,
-      .column = 33 },
+      .column = 42 },
+    { .name = "switch string",
+      .source = "package facts\nOne :: (s: string) -> int { switch s { "
+                "case \"a\": return 1; } return 0; }",
+      .message = "switch needs a union or integer value",
+      .line = 2,
+      .column = 36 },
     { .name = "unknown variant",
       .source = "package facts\nU :: union { A | B }\nOne :: () -> U { "
                 "return U.C; }",
@@ -830,9 +939,14 @@ static const sample samples[] = {
       .message = "constant type is not supported yet",
       .line = 2,
       .column = 5 },
-    { .name = "constant expression",
-      .source = "package facts\nA: int : 1 + 2;",
-      .message = "constant value must be an integer literal",
+    { .name = "constant cycle",
+      .source = "package facts\nA: int : B + 1;\nB: int : A;",
+      .message = "Constant 'A' depends on itself",
+      .line = 2,
+      .column = 10 },
+    { .name = "constant overflow",
+      .source = "package facts\nA: int : 65536 * 65536 / 65536;",
+      .message = "Constant value is outside the range of int",
       .line = 2,
       .column = 10 },
     { .name = "constant clash",
@@ -961,12 +1075,11 @@ static const sample samples[] = {
       .message = "A conversion argument may only be named wrap or clamp",
       .line = 2,
       .column = 33 },
-    { .name = "untyped constant",
-      .source = "package facts\nTwo :: 2;",
-      .message = "an untyped number is a double; give the constant an integer "
-                 "type",
+    { .name = "floating constant",
+      .source = "package facts\nHalf :: 0.5;",
+      .message = "only integer constants are supported yet",
       .line = 2,
-      .column = 8 },
+      .column = 9 },
     { .name = "negative zero byte",
       .source = "package facts\nOne :: () -> byte { x: byte = -0; "
                 "return x; }",

@@ -1,73 +1,164 @@
 # Toolchain
 
-`chibi` is the one command that a Chibi project needs. You can run it from an
-installed SDK, as `PREFIX/bin/chibi`. You can also run it from the build of a
-checkout, as `build/sdk/chibi`. It finds the compiler, the player and the
-engine files beside itself.
+Run `chibi` from an installed SDK or use `build/sdk/chibi` in an engine checkout.
+The command finds the compiler, player and engine resources beside itself.
 
-| Command | What it does |
-| --- | --- |
-| `chibi version` | Prints the SDK version, the build, the compiler, the project format and the artifact formats. |
-| `chibi doctor [--web PLAYER]` | Reports the status of the SDK, the compiler, the player, the platform and the native backend. With `--web`, it also reports the status of browser export. Each status is supported, unavailable or broken. The command changes nothing. |
-| `chibi build [PROJECT]` | Compiles the project into `.chibi/build/game.chibip`. It does not start the player. |
-| `chibi check [PROJECT]` | Parses, resolves and validates the project in the same way as `build`. It does not migrate or write anything. |
-| `chibi fmt [--check] [PATH...]` | Rewrites the sources and KDL assets of a project in their canonical form. For a folder without a `project.kdl`, it formats the package sources. With `--check`, it only reports the changes that it would make. |
-| `chibi test [ROOT]` | Runs the `@test` functions of the packages below ROOT. |
-| `chibi run [PROJECT] [--] [PLAYER OPTIONS]` | Builds the project if it changed, then plays it. |
-| `chibi export [PROJECT] --output DIR` | Assembles a game that you can ship. On macOS, the result is an app. On Windows, it is a folder with an `.exe`. On Linux, it is a folder with a desktop entry. With `--web PLAYER`, the command writes a static site instead. |
-| `chibi web [PROJECT] --player PLAYER` | Exports the browser site into a temporary folder. Then it serves the site on `http://127.0.0.1:8000/` until you press Ctrl+C. |
-| `chibi doc [ROOT] [--serve]` | Writes the documentation site that `ROOT/docs/site.kdl` lists into `ROOT/build/docs`. With `--serve`, it also serves the site. |
+## Build and run
 
-PROJECT is a project directory or its `project.kdl`. If you do not give a
-PROJECT, `chibi` uses the nearest `project.kdl` in or above the working
-directory.
+PROJECT is a project folder or its `project.kdl`. Without a path, these
+commands find the nearest `project.kdl` in or above the working directory.
 
-Each command prints its usage when you give `--help`. The exit status tells you
-the result:
+```sh
+chibi check /path/to/game
+chibi build /path/to/game
+chibi run /path/to/game
+```
 
-- 0: the command succeeded.
-- 2: the command could not start. Examples are an unknown option, a missing
-  project and an older project.
-- A different nonzero status: the work of the command failed.
+`check` checks the project without writing files. `build` writes
+`.chibi/build/game.chibip`. `run` builds changed content and starts the player.
+Pass player options after `--`. Use `chibi-player --help` to list them.
 
-## A project
+An older project must migrate before these commands can use it. The error
+message gives the migration command.
 
-A project is a folder with a `project.kdl` manifest and a `content` folder:
+## Project files
+
+A project has a `project.kdl` manifest and a content folder:
 
 ```kdl
-version 25
+version 29
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
 ```
 
-Behaviors, libraries and systems are `.chibi` source. Scenes, prototypes,
-materials and the other assets are KDL. `chibi fmt` keeps both kinds canonical.
-`chibi check` is a quick gate for a pre-commit hook or for CI.
+The start scene path is relative to the content folder. Behaviors, libraries
+and systems use `.chibi`. Scenes, prototypes and materials use KDL.
 
-## Packages
+## Format files
 
-A package is a folder of `.chibi` files that start with `package NAME`. A
-package imports other packages of the same tree as `project:NAME`. It imports
-the collection of the SDK as `core:NAME`. `chibi test` runs the tests of the
-packages. Refer to [Testing](testing.md). `chibi fmt FOLDER` formats the
-packages.
+```sh
+chibi fmt /path/to/game
+chibi fmt --check /path/to/game
+```
 
-## Browsers
+`fmt` rewrites sources and KDL assets in their canonical form. It keeps UI
+markup unchanged. `--check` reports files that need formatting and writes nothing.
 
-`make package-web-player` builds the browser player separately. Use its folder
-in these ways:
+For a folder without `project.kdl`, `fmt` formats package sources instead.
+Each source file must start with `package NAME`.
 
-- Give it to `chibi export --web` to make a static site that you can host
-  anywhere.
-- Give it to `chibi web` while you develop.
+## Test packages
 
-`chibi doctor --web PLAYER` checks the folder and the `node` that runs its
-compiler.
+```sh
+chibi test /path/to/packages
+```
 
-## Platforms
+The folder contains package files, rather than game behaviors or libraries.
+Tests import local packages with `project:NAME` and SDK packages with `core:NAME`.
+See [Testing](testing.md) for a complete example.
 
-Linux and macOS support all commands. On Windows, these limits apply:
+## Export a game
 
-- `chibi web` does not serve yet.
-- `chibi test` and `chibi doc` cannot read package sources yet.
+Use an installed SDK to assemble a release:
+
+```sh
+chibi export /path/to/game --output /path/to/release
+```
+
+The output contains the player, compiled game and resources. It also contains
+engine shaders, licenses and identity files. Add `--archive` to create a `.tar.gz`
+archive beside the output.
+
+**Export replaces an earlier export, including files you added to it.** The
+exporter uses its `.chibi-export` marker to identify its output. It refuses
+to replace an existing folder without that marker.
+
+### macOS
+
+The output is `/path/to/release.app`, with an `Info.plist` and an ad hoc signature.
+A project icon must be a square PNG. Supported sizes are 16, 32, 64, 128, 256,
+512 and 1024 pixels.
+
+### Linux
+
+The output folder contains an executable named after the project and a desktop
+entry. To install the entry:
+
+1. Create a symlink to the executable in a directory on `PATH`.
+2. Install the project icon in your icon theme with the name from the entry's `Icon` field.
+3. Copy the desktop entry to `~/.local/share/applications`.
+
+### Windows
+
+The output folder contains an `.exe` and a `data` folder. A project icon must
+be a square PNG of at most 256 pixels. The executable embeds the icon.
+The SDK links the release C runtime statically, so the export needs no Visual
+C++ redistributable.
+
+## Export for browsers
+
+Build the browser player from the engine checkout. This step needs Emscripten.
+Browser compilation also needs Node.js.
+
+```sh
+make package-web-player
+chibi export /path/to/game --web dist/web-player --output /path/to/site
+python3 -m http.server -d /path/to/site
+```
+
+Open `http://localhost:8000`. The site contains the browser player and the same
+game resources as a native export. It fetches those resources before the game
+starts. Use a web server or static host. A `file://` URL does not work.
+
+For a temporary local preview:
+
+```sh
+chibi web /path/to/game --player /path/to/dist/web-player
+```
+
+`web` serves on `http://127.0.0.1:8000/` until you press Ctrl+C. It then removes
+the temporary export. Use `--port NUMBER` to select a port. Port 0 selects a
+free port.
+
+## Check the SDK
+
+```sh
+chibi version
+chibi doctor
+chibi doctor --web /path/to/dist/web-player
+```
+
+`version` prints the SDK version, build identity, compiler and format versions.
+`doctor` reports each checked capability as supported, unavailable or broken.
+It changes nothing. It fails only when a checked capability is broken.
+
+## Generate documentation
+
+```sh
+chibi doc /path/to/repository
+chibi doc /path/to/repository --serve
+```
+
+`doc` publishes the pages listed in `docs/site.kdl` to `build/docs`. The manifest
+can select Markdown, package references and grammar rules. Other files stay private.
+`--serve` previews the result locally. It accepts the same `--port` option as `web`.
+
+Each `chibi` code block must parse. A complete package must also pass analysis.
+A link to an unpublished file becomes plain text and produces a warning.
+
+## Exit status
+
+Each command accepts `--help`.
+
+- 0 means success.
+- 2 means the command could not start, such as an unknown option or missing project.
+- Another nonzero status means the command failed.
+
+## Platform limits
+
+Linux and macOS support all commands.
+
+TODO: Windows support for reading package sources in `test` and `doc`.
+
+TODO: Windows support for the local server in `web` and `doc --serve`.

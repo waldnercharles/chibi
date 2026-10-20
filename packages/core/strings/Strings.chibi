@@ -1,8 +1,7 @@
 package strings
 
-// A port of Odin's core:strings over bytes. Where Odin decodes runes, these
-// procedures compare, count and offset bytes, and spaces and case are ASCII.
-// Offsets are byte offsets, and -1 means not found.
+// String operations compare, count and offset bytes.
+// Spaces and case use ASCII. Offsets are byte offsets, and -1 means not found.
 
 // Compiler text operations use bytes, including bytes inside UTF-8 sequences.
 pub ByteLength :: (value: string) -> int {
@@ -121,8 +120,7 @@ pub LastIndexByte :: (s: string, c: int) -> int {
     return -1;
 }
 
-// Rabin-Karp with Odin's 32-bit rolling hash, kept in int64 and masked; pow
-// is the prime to the substring's length. An empty substring is found at 0.
+// Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.
 pub Index :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
@@ -398,8 +396,7 @@ pub TrimSuffix :: (s: string, suffix: string) -> string {
 }
 
 // The count bytes from offset, or all bytes from offset when count is below 1.
-// As in Odin, an offset outside s keeps all of s, and a count past the end
-// keeps the rest.
+// An offset outside s keeps all of s. A count past the end keeps the rest.
 pub Cut :: (s: string, offset: int, count: int) -> string {
     rest: string = s;
     size := ByteLength(s);
@@ -412,9 +409,9 @@ pub Cut :: (s: string, offset: int, count: int) -> string {
     return Slice(rest, 0, count);
 }
 
-// Odin's _split: at most n parts, or every part when n is negative; the last
-// part holds the rest of s. Each other part keeps the first keep bytes of the
-// separator after it. An empty separator splits s into bytes.
+// Produces at most n parts, or every part when n is negative.
+// The last part holds the rest of s. Each other part keeps the first keep
+// bytes of the separator after it. An empty separator splits s into bytes.
 SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
     parts: string[] = [];
     size := ByteLength(sep);
@@ -532,8 +529,8 @@ pub Concatenate :: (a: string[]) -> string {
     return Join(a, "");
 }
 
-// Doubles what it has built, as Odin copies. Where Odin panics on a negative
-// count, a count below 1 gives an empty string, as Slice clamps counts.
+// Doubles the result until it reaches the requested length.
+// A count below 1 gives an empty string.
 pub Repeat :: (s: string, count: int) -> string {
     if (count < 1) {
         return "";

@@ -45,6 +45,9 @@ import:
   as parameters, results and locals; `float` and `double` values as
   parameters, results and locals; string literals decode as JSON strings, as
   stage zero reads them;
+- parameter defaults that are literals, `(name: string = "you", count: int =
+  1)`: a call that omits trailing arguments passes their defaults, as stage
+  zero does;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
   is a local, zero until the body sets it; `return (a, b)` gives each its
   value, and `return` or the body's end returns them. A call's `.name` reads
@@ -53,7 +56,7 @@ import:
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
-  gives, as in `x := 5`, is a double in stage zero, and stage one rejects it.
+  gives, as in `x := 5`, is an `int` in stage zero, and stage one rejects it.
   A literal outside its type, such as `byte` 256, is rejected;
 - `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types,
   of an integer or a floating value: the checked form fails the call when the
@@ -65,8 +68,10 @@ import:
   converts it: exactly to a double, then to a `float`. A literal where a
   floating value is expected is one;
 - local declarations, assignment and compound assignment; `if`/`else`,
-  `while`, `for name in array`, `break`, `continue` and `return`; range,
-  keyed and `ref` loops reject;
+  `while`, `break`, `continue` and `return`; `for` over an `int` range,
+  `first..last` or `first..<last`, and over an array, `for x in xs` or
+  `for x, i in xs` with its index, each counting down with `for <`, as stage
+  zero counts them; `ref` loops reject;
 - integer arithmetic, bitwise and comparison operators where the runtime
   computes them: all of them for `int` and `int64`, only addition,
   multiplication, equality and bit operations for `uint64`, and only equality
@@ -92,7 +97,9 @@ import:
   field, and `switch` over a union with `case .V:`, `case .V(a, b):` binding
   every payload field, and a default `case:`. Bindings are immutable. As in
   stage zero, a switch without a default arm must cover every variant, and a
-  repeated variant or default arm is rejected;
+  repeated variant or default arm is rejected. A `switch` over an integer
+  compares it with one value per arm, `case 61:`, in order, and runs the
+  default arm after them all, wherever it is written;
 - `value is .V` and `value is not .V`, and `value is .V(a, b)` binding the
   payload in an if or while condition, alone or joined by `&&`, as stage zero
   allows bindings. They last through the consequence or loop body, not the
@@ -105,10 +112,12 @@ import:
   native with several results, such as `compiler_json_string`, gives a value
   whose `.name` reads one result, directly or through a local:
   `decoded := compiler_json_string(text); decoded.valid`;
-- integer constants whose value is an integer literal, `-` allowed, with their
-  type (`Mask: uint64 : 0xFF;`). An untyped constant, `Name :: 5;`, is a
-  double in stage zero, and stage one rejects it. A use is the value itself;
-  a local hides a constant of the same name;
+- integer constants, typed (`Mask: int64 : 1 << 40;`) or untyped, which
+  are `int` (`Width :: Unit * 4 + 1;`), whose value folds from literals, other
+  constants of the package in any order or of an import, parentheses and the
+  integer operators. Every intermediate value must fit the constant's type,
+  so stage zero's wrapping never shows, and a uint64 constant is a literal. A
+  use is the value itself; a local hides a constant of the same name;
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
@@ -117,10 +126,10 @@ import:
 Anything else is rejected with its source position. Floating record fields
 and payloads, other integer types, implicit widening of call arguments,
 element stores, literal
-members, payloads and in-place natives, constants of other types or computed
-values, type patterns, record field defaults, fields of array elements, named
+members, payloads and in-place natives, constants of other types, constant
+arrays and constants computed by calls, type patterns, record field defaults, fields of array elements, named
 payload arguments and literal variants come next. A literal passed to a
-wildcard port, as in `format_text("{}", 1)`, is a double in stage zero, and
+wildcard port, as in `format_text("{}", 1)`, is an `int` in stage zero, and
 stage one rejects it. One check stage zero makes at compile time happens at
 run time here: a checked conversion of a named constant that does not fit
 fails the call.

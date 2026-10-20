@@ -111,6 +111,11 @@ Param :: struct {
     storage: int;
     container: int;
     record: int;
+    // A literal default a call that omits the argument passes: its bits, or
+    // its text for a string.
+    has_default: bool;
+    default_bits: uint64;
+    default_text: string;
 }
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
@@ -178,6 +183,10 @@ ConstDecl :: struct {
     package: int;
     storage: int;
     bits: uint64;
+    // Where its value is written, until the value is folded.
+    node: int;
+    file: int;
+    folded: bool;
 }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -601,13 +610,10 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                // Stage zero makes an untyped constant a double.
+                // An untyped constant is an int, as its integer literals are;
+                // its value folds once every constant of the package is known.
                 storage := IntStorage;
                 declared := Field(forest, member, "type");
-                if (declared < 0) {
-                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                                                        "an untyped number is a double; give the constant an integer type"));
-                }
                 if (declared >= 0) {
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
                     storage = constant_type.storage;
@@ -615,19 +621,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
-                switch ParseNumber(forest, text, Field(forest, member, "value")) {
-                    case .Invalid:
-                        return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                                                            "constant value must be an integer literal"));
-                    case .Number(negative, magnitude):
-                        if (!Fits(negative, magnitude, storage)) {
-                            return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                                                                format_text("Numeric literal is outside the range of {}", TypeName(storage))));
-                        }
-                        constant: ConstDecl = {name: name, package: package, storage: storage,
-                                               bits: Bits(negative, magnitude)};
-                        constants = array_add(constants, constant);
-                }
+                constant: ConstDecl = {name: name, package: package, storage: storage, bits: 0,
+                                       node: Field(forest, member, "value"), file: file, folded: false};
+                constants = array_add(constants, constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
@@ -635,9 +631,215 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             member = NextMember(forest, member);
         }
     }
+    // Constants may name one another in any order: fold every one whose
+    // operands are known, until none is left or none can be.
+    progress := true;
+    waiting: int = 0;
+    while (progress) {
+        progress = false;
+        waiting = 0;
+        at: int = 0;
+        while (at < length(constants)) {
+            constant := constants[at];
+            if (constant.package == package && !constant.folded) {
+                switch FoldConstant(forest, documents[constant.file].text, constant.file, constants,
+                                    Aliases(links, constant.file), package, constant.node, constant.storage) {
+                    case .Failed(diagnostic):
+                        return Declarations.Failed(diagnostic);
+                    case .Waiting:
+                        waiting += 1;
+                    case .Folded(value):
+                        constant.bits = value;
+                        constant.folded = true;
+                        constants[at] = constant;
+                        progress = true;
+                }
+            }
+            at += 1;
+        }
+    }
+    for (constant in constants) {
+        if (waiting > 0 && constant.package == package && !constant.folded) {
+            return Declarations.Failed(Diagnose(forest, constant.node, constant.file,
+                                                format_text("Constant '{}' depends on itself", constant.name)));
+        }
+    }
     return Declarations.Collected(callables, params, types, members, constants);
 }
 
+Int64Min: int64 : -9223372036854775808;
+Folding :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Waiting
+    | Folded(bits: uint64)
+}
+// The bits of a constant integer expression of type `storage`, as stage zero
+// folds it: literals, the package's constants and an import's, parentheses
+// and the unary and binary integer operators. Every intermediate value must
+// fit the type, so stage zero's wrapping never shows; `Waiting` when a
+// constant it names is not folded yet. A uint64 constant is a literal.
+FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
+                 package: int, node: int, storage: int) -> Folding {
+    // A literal, `-` on one included, so the most negative value is one.
+    signed_literal := Is(forest, node, "unary_expression") &&
+                      Text(forest, text, Field(forest, node, "operator")) == "-" &&
+                      Is(forest, Field(forest, node, "operand"), "number");
+    if (storage == WordStorage || Is(forest, node, "number") || signed_literal) {
+        switch ParseNumber(forest, text, node) {
+            case .Invalid:
+                return Folding.Failed(Diagnose(forest, node, file, "only integer constants are supported yet"));
+            case .Number(negative, magnitude):
+                if (!Fits(negative, magnitude, storage)) {
+                    return Folding.Failed(Diagnose(forest, node, file,
+                                                   format_text("Numeric literal is outside the range of {}",
+                                                               TypeName(storage))));
+                }
+                return Folding.Folded(Bits(negative, magnitude));
+        }
+    }
+    if (Is(forest, node, "parenthesized_expression")) {
+        return FoldConstant(forest, text, file, constants, aliases, package, Field(forest, node, "expression"), storage);
+    }
+    named := ConstantOf(forest, text, constants, aliases, package, node);
+    if (named >= 0) {
+        if (!constants[named].folded) {
+            return Folding.Waiting;
+        }
+        if (constants[named].storage != storage && !Widens(constants[named].storage, storage)) {
+            return Folding.Failed(Diagnose(forest, node, file, "a constant of another type needs a conversion"));
+        }
+        return Folding.Folded(constants[named].bits);
+    }
+    unary := Is(forest, node, "unary_expression");
+    if (!unary && !Is(forest, node, "binary_expression")) {
+        return Folding.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
+    }
+    operator := Text(forest, text, Field(forest, node, "operator"));
+    left: int64 = 0;
+    right: int64 = 0;
+    operands: int[] = [Field(forest, node, "operand")];
+    if (!unary) {
+        operands = [Field(forest, node, "left"), Field(forest, node, "right")];
+    }
+    folded: int64[] = [];
+    for (operand in operands) {
+        switch FoldConstant(forest, text, file, constants, aliases, package, operand, storage) {
+            case .Failed(diagnostic):
+                return Folding.Failed(diagnostic);
+            case .Waiting:
+                return Folding.Waiting;
+            case .Folded(bits):
+                folded = array_add(folded, int64(wrap: bits));
+        }
+    }
+    left = folded[0];
+    if (!unary) {
+        right = folded[1];
+    }
+    result: int64 = 0;
+    exact := true;
+    if (unary && operator == "-") {
+        result = -left;
+        exact = left != Int64Min;
+    } else if (unary && operator == "+") {
+        result = left;
+    } else if (unary && operator == "~") {
+        result = ~left;
+    } else if (operator == "+") {
+        result = left + right;
+        exact = (left >= 0) != (right >= 0) || (result >= 0) == (left >= 0);
+    } else if (operator == "-") {
+        result = left - right;
+        exact = (left >= 0) == (right >= 0) || (result >= 0) == (left >= 0);
+    } else if (operator == "*") {
+        result = left * right;
+        exact = left == 0 || (result / left == right && !(left == -1 && right == Int64Min));
+    } else if (operator == "/" || operator == "%") {
+        if (right == 0) {
+            return Folding.Failed(Diagnose(forest, node, file, "Constant division by zero"));
+        }
+        exact = !(right == -1 && left == Int64Min);
+        if (exact && operator == "/") {
+            result = left / right;
+        } else if (exact) {
+            result = left % right;
+        }
+    } else if (operator == "&") {
+        result = left & right;
+    } else if (operator == "|") {
+        result = left | right;
+    } else if (operator == "^") {
+        result = left ^ right;
+    } else if (operator == "<<" || operator == ">>") {
+        width: int64 = 32;
+        if (storage == Int64Storage) {
+            width = 64;
+        } else if (storage == ByteStorage) {
+            width = 8;
+        }
+        if (right < 0 || right >= width) {
+            return Folding.Failed(Diagnose(forest, node, file, "Constant shift count is outside the type"));
+        }
+        if (operator == "<<") {
+            result = left << right;
+            exact = right == 0 || (result >> right) == left;
+        } else {
+            result = left >> right;
+        }
+    } else {
+        return Folding.Failed(Diagnose(forest, node, file,
+                                       format_text("constant operator '{}' is not supported yet", operator)));
+    }
+    negative := result < 0;
+    magnitude := uint64(wrap: result);
+    if (negative) {
+        magnitude = ~magnitude + 1;
+    }
+    if (!exact || !Fits(negative, magnitude, storage)) {
+        return Folding.Failed(Diagnose(forest, node, file,
+                                       format_text("Constant value is outside the range of {}", TypeName(storage))));
+    }
+    return Folding.Folded(uint64(wrap: result));
+}
+
+Default :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Read(bits: uint64, text: string)
+}
+// A parameter's default, as the literal stage zero folds it to: an integer of
+// the parameter's type, a bool or a string.
+LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int, declared: ValueType) -> Default {
+    if (declared.container != 0) {
+        return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+    }
+    if (Integer(declared.storage)) {
+        switch ParseNumber(forest, text, node) {
+            case .Invalid:
+                return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+            case .Number(negative, magnitude):
+                if (!Fits(negative, magnitude, declared.storage)) {
+                    return Default.Failed(Diagnose(forest, node, file,
+                                                   format_text("Numeric literal is outside the range of {}",
+                                                               TypeName(declared.storage))));
+                }
+                return Default.Read(Bits(negative, magnitude), "");
+        }
+    }
+    if (declared.storage == BoolStorage && Is(forest, node, "boolean")) {
+        if (Text(forest, text, node) == "true") {
+            return Default.Read(1, "");
+        }
+        return Default.Read(0, "");
+    }
+    if (declared.storage == TextStorage && Is(forest, node, "string")) {
+        decoded := compiler_json_string(Text(forest, text, node));
+        if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+            return Default.Failed(Diagnose(forest, node, file, "Invalid string or embedded NUL"));
+        }
+        return Default.Read(0, decoded.value);
+    }
+    return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+}
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[],
@@ -655,7 +857,18 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
                                              "Invalid string or embedded NUL"));
         }
         param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                        record: declared.record};
+                        record: declared.record, has_default: false, default_bits: 0, default_text: ""};
+        default_value := Field(forest, parameter, "value");
+        if (default_value >= 0) {
+            switch LiteralDefault(forest, text, file, default_value, declared) {
+                case .Failed(diagnostic):
+                    return Signature.Failed(diagnostic);
+                case .Read(bits, literal):
+                    param.has_default = true;
+                    param.default_bits = bits;
+                    param.default_text = literal;
+            }
+        }
         added = array_add(added, param);
         parameter = NextMember(forest, parameter);
     }
@@ -674,7 +887,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
-            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record};
+            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
+                            has_default: false, default_bits: 0, default_text: ""};
             added = array_add(added, param);
             named = NextMember(forest, named);
         }

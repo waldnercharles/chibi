@@ -133,13 +133,14 @@ static bool lists(const char *text, TSNode list, const char *name)
     }
     return false;
 }
-/* Whether a declaration in scope at node binds name, so it reads no global:
- * a parameter of a callable around it, a loop or pattern around it, a local
+/* Whether a declaration in scope at node, below stop, binds name: a
+ * parameter of a callable around it, a loop or pattern around it, a local
  * declared before it in a block around it, or a declaration of the program. */
-static bool shadowed(const char *text, TSNode node, const char *name)
+static bool shadowed(const char *text, TSNode node, const char *name, TSNode stop)
 {
     uint32_t at = ts_node_start_byte(node);
-    for (TSNode up = ts_node_parent(node); !ts_node_is_null(up);
+    for (TSNode up = ts_node_parent(node);
+         !ts_node_is_null(up) && !ts_node_eq(up, stop);
          up = ts_node_parent(up)) {
         if (callable(up) && (lists(text, field(up, "parameters"), name) ||
                              lists(text, field(up, "payload"), name) ||
@@ -197,6 +198,9 @@ static void list_step(step_rewrite *s, TSNode owner, TSNode list, TSNode body)
         }
     }
     apush(s->listed, owner);
+    if (lists(s->text, list, "dt")) {
+        return;
+    }
     if (ts_node_is_null(list)) {
         char clause[64];
         snprintf(clause, sizeof clause, "on Tick :: (%s) ", STEP_FIELD);
@@ -220,12 +224,16 @@ static void step_read(step_rewrite *s, TSNode node)
     char *name = xmalloc(length + 1);
     memcpy(name, s->text + ts_node_start_byte(spelling), length);
     name[length] = '\0';
-    bool local = shadowed(s->text, node, name);
+    bool local = shadowed(s->text, node, name, (TSNode){ 0 });
     free(name);
     if (local) {
         return;
     }
     TSNode owner = evaluator(node);
+    if (!spelled(s->text, node, "dt") && shadowed(s->text, node, "dt", owner)) {
+        refuse(s, node, "reads the frame step where another dt is declared; rename that dt");
+        return;
+    }
     bool handler = is(owner, "handler") &&
                    spelled(s->text, field(owner, "kind"), "on") &&
                    named(s->text, field(owner, "name"), "tick");

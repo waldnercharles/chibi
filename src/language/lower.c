@@ -3156,9 +3156,9 @@ static int call(lower *l, const script_expression *e)
             linked = l->bindings->host(l->bindings->user, e->capability, &host);
         }
     }
-    if (!linked || (!host.call && !host.function && !host.command && !host.query &&
-                    host.intrinsic != BF_DELAY && host.intrinsic != BF_OWNER &&
-                    host.intrinsic != BF_DELTA && host.intrinsic != BF_ASSERT)) {
+    if (!linked || (!host.call && !host.function && !host.command &&
+                    !host.query && host.intrinsic != BF_DELAY &&
+                    host.intrinsic != BF_OWNER && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
         return -1;
     }
@@ -3168,13 +3168,13 @@ static int call(lower *l, const script_expression *e)
     if (host.intrinsic == BF_ASSERT) {
         return assertion(l, e);
     }
-    if (host.intrinsic == BF_OWNER || host.intrinsic == BF_DELTA) {
+    if (host.intrinsic == BF_OWNER) {
         if (l->initializing || e->argument_count || cap->parameter_count ||
             cap->result_count != 1) {
             error(l, e->range, "Context intrinsic requires one result and no arguments");
             return -1;
         }
-        pin_type storage = host.intrinsic == BF_OWNER ? PIN_HANDLE : PIN_F32;
+        pin_type storage = PIN_HANDLE;
         int slot = value_op(
             l,
             (behavior_function_instruction){ .op = host.intrinsic, .type = storage },

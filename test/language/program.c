@@ -8064,6 +8064,13 @@ TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
           "dt := 1; x += dt } } }",
           "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt; "
           "if x > 1 { dt := 1; x += dt } } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "delta } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "S :: system(t: Transform) { delta: retain float = 0; delta += 1; "
+          "t.x = delta }",
+          NULL },
         /* A parameter, local or state of that name reads no global. */
         { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
         { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },
@@ -8087,17 +8094,36 @@ TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
         free(migrated);
         migrated = NULL;
     }
-    const char *refused[] = {
-        "B :: behavior { x: float = 0; F :: () { x += dt } }",
-        "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () { "
-        "go() } }",
-        "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
-        "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { go() "
-        "} after go { x += dt } }",
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "B :: behavior { x: float = 0; F :: () { x += dt } }", "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () "
+          "{ "
+          "go() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { "
+          "go() "
+          "} after go { x += dt } }",
+          "outside a Tick" },
+        /* Renaming a read to `dt` must not capture another `dt`. */
+        { "B :: behavior { x: float = 0; on Tick :: () { dt := 2.0; x += delta "
+          "* "
+          "dt } }",
+          "another dt" },
+        { "B :: behavior { x: float = 0; on Tick :: () { for dt in 0..3 { x += "
+          "delta_time() } } }",
+          "another dt" },
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        REQUIRE(chibi_migrate_step_globals(refused[i], &migrated, error, sizeof error) < 0);
-        REQUIRE(!migrated && strstr(error, "outside a Tick handler or system"));
+        REQUIRE(chibi_migrate_step_globals(refused[i].source, &migrated, error, sizeof error) < 0);
+        if (!strstr(error, refused[i].message)) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, refused[i].message));
     }
     return true;
 }

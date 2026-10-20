@@ -328,8 +328,8 @@ static bool add_binding(
          copy.command->intrinsic > NODE_COMMAND_DELAY)) {
         return reject(error, size, "Invalid native command descriptor", copy.id);
     }
-    if (copy.intrinsic && copy.intrinsic != BF_DELAY && copy.intrinsic != BF_OWNER &&
-        copy.intrinsic != BF_DELTA && copy.intrinsic != BF_ASSERT) {
+    if (copy.intrinsic && copy.intrinsic != BF_DELAY &&
+        copy.intrinsic != BF_OWNER && copy.intrinsic != BF_ASSERT) {
         return reject(error, size, "Unsupported native instruction intrinsic", copy.id);
     }
     for (int i = 0; i < acount(n->bindings); ++i) {

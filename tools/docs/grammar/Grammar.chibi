@@ -10,11 +10,11 @@ import strings "core:strings"
 
 // The rule a line starts, or "".
 RuleName :: (line: string) -> string {
-    if (!markdown.StartsWith(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
-        markdown.StartsWith(line, "    //")) {
+    if (!strings.HasPrefix(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
+        strings.HasPrefix(line, "    //")) {
         return "";
     }
-    colon := markdown.FindText(line, ": ", 4);
+    colon := strings.Index(line, ": ");
     if (colon < 0) {
         return "";
     }
@@ -37,10 +37,10 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
     index += 1;
     // The lines of the comment above the current line.
     comment: int[] = [];
-    while (index < count && !markdown.StartsWith(lines[index], "  }")) {
+    while (index < count && !strings.HasPrefix(lines[index], "  }")) {
         line := lines[index];
         name := RuleName(line);
-        if (markdown.StartsWith(line, "    //")) {
+        if (strings.HasPrefix(line, "    //")) {
             comment = array_add(comment, index);
             index += 1;
             continue;
@@ -63,8 +63,8 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
         md = array_add(md, markdown.From(line, 4));
         origins = array_add(origins, index);
         index += 1;
-        while (index < count && !markdown.StartsWith(lines[index], "  }") &&
-               RuleName(lines[index]) == "" && !markdown.StartsWith(lines[index], "    //")) {
+        while (index < count && !strings.HasPrefix(lines[index], "  }") &&
+               RuleName(lines[index]) == "" && !strings.HasPrefix(lines[index], "    //")) {
             md = array_add(md, markdown.From(lines[index], 4));
             origins = array_add(origins, index);
             index += 1;

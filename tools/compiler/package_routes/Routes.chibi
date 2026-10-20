@@ -140,14 +140,7 @@ pub FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) ->
             if (canonical == "/") {
                 return FileResult.Rejected(FileError("Invalid package file path or root escape", document));
             }
-            slash: int = 0;
-            index: int = 0;
-            while (index < strings.ByteLength(canonical)) {
-                if (strings.ByteAt(canonical, index) == 47) {
-                    slash = index;
-                }
-                index += 1;
-            }
+            slash := strings.LastIndexByte(canonical, 47);
             directory := "/";
             if (slash > 0) {
                 directory = strings.Slice(canonical, 0, slash);
@@ -157,15 +150,7 @@ pub FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) ->
                 return FileResult.Rejected(FileError("Package file is outside the configured roots", document));
             }
             tail := Relative(roots[root].path, directory);
-            depth: int = 0;
-            index = 0;
-            while (index < strings.ByteLength(tail)) {
-                if (strings.ByteAt(tail, index) == 47) {
-                    depth += 1;
-                }
-                index += 1;
-            }
-            if (depth >= 16) {
+            if (strings.Count(tail, "/") >= 16) {
                 return FileResult.Rejected(FileError("Package path nesting exceeds the supported depth", document));
             }
             return FileResult.Accepted({path: canonical, directory: directory,
@@ -184,19 +169,11 @@ pub ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
     path := decoded.value;
     base := request.directory;
     root := request.root;
-    colon: int = -1;
-    index: int = 0;
-    while (index < strings.ByteLength(path)) {
-        if (strings.ByteAt(path, index) == 58) {
-            colon = index;
-            break;
-        }
-        index += 1;
-    }
+    colon := strings.IndexByte(path, 58);
     if (colon >= 0) {
         root = -1;
         name := strings.Slice(path, 0, colon);
-        index = 0;
+        index: int = 0;
         while (index < length(roots)) {
             if (roots[index].name == name) {
                 root = index;

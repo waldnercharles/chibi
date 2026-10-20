@@ -19,29 +19,17 @@ pub Path :: union {
 }
 
 pub Bounded :: (path: string) -> bool {
-    size := strings.ByteLength(path);
-    if (size >= 4096) {
-        return false;
-    }
-    index: int = 0;
-    while (index < size) {
-        if (strings.ByteAt(path, index) == 92) {
-            return false;
-        }
-        index += 1;
-    }
-    return true;
+    return strings.ByteLength(path) < 4096 && strings.IndexByte(path, 92) < 0;
 }
 
 pub Within :: (root: string, path: string) -> bool {
     if (root == "/") {
         return strings.ByteAt(path, 0) == 47;
     }
-    size := strings.ByteLength(root);
-    if (strings.Slice(path, 0, size) != root) {
+    if (!strings.HasPrefix(path, root)) {
         return false;
     }
-    next := strings.ByteAt(path, size);
+    next := strings.ByteAt(path, strings.ByteLength(root));
     return next < 0 || next == 47;
 }
 
@@ -56,25 +44,14 @@ pub Normalize :: (request: Request) -> Path {
         }
         joined = format_text("{}/{}", request.base, request.path);
     }
-    size := strings.ByteLength(joined);
-    if (size >= 4096) {
+    if (strings.ByteLength(joined) >= 4096) {
         return Path.Invalid;
     }
 
     result := "/";
     starts := resize([int(0)], 2048);
     depth: int = 0;
-    position: int = 0;
-    while (position < size) {
-        if (strings.ByteAt(joined, position) == 47) {
-            position += 1;
-            continue;
-        }
-        end := position;
-        while (end < size && strings.ByteAt(joined, end) != 47) {
-            end += 1;
-        }
-        part := strings.Slice(joined, position, end - position);
+    for (part in strings.Split(joined, "/")) {
         if (part == "..") {
             if (depth == 0) {
                 return Path.Invalid;
@@ -85,7 +62,7 @@ pub Normalize :: (request: Request) -> Path {
             if (request.has_floor && !Within(request.floor, result)) {
                 return Path.Invalid;
             }
-        } else if (part != ".") {
+        } else if (part != "." && part != "") {
             starts[depth] = strings.ByteLength(result);
             depth += 1;
             if (strings.ByteLength(result) > 1) {
@@ -94,7 +71,6 @@ pub Normalize :: (request: Request) -> Path {
                 result = format_text("{}{}", result, part);
             }
         }
-        position = end;
     }
     if (request.has_floor && !Within(request.floor, result)) {
         return Path.Invalid;

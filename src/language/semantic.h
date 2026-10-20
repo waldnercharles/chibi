@@ -215,6 +215,7 @@ typedef struct
     bool pure, disabled;
     bool inferred; /* No `->`: its returns give the results. */
     bool test;     /* Marked `@test`: chibi test runs it. */
+    bool named;    /* `on X :: (a: T)`: reads only the fields it lists. */
 } script_function;
 typedef enum
 {

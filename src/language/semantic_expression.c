@@ -775,6 +775,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         script_analyzer_resolve_initializer(a, index);
         script_symbol symbol = a->out->symbols[index];
+        if ((symbol.type.flags & SCRIPT_TYPE_RESULTS) && symbol.kind == SCRIPT_PARAMETER &&
+            symbol.function >= 0 && a->out->functions[symbol.function].named) {
+            script_analyzer_diagnostic(a, node, "This handler reads its payload by the field names it lists; list the field instead");
+        }
         if (hides_parameter(a, &symbol)) {
             script_analyzer_diagnostic(
                 a,

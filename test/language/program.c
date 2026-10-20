@@ -714,6 +714,68 @@ TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
     return true;
 }
 
+/* `on X :: (a: T)` names payload fields in any order and any subset; the
+ * fields it leaves out keep their slots, so each name reads its own field. */
+TEST_CASE(program_handlers_name_payload_fields)
+{
+    const char *sources[] = {
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (enabled: bool, amount: double) { if (enabled) { "
+        "total += amount; } } }",
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (enabled: bool) { if (enabled) { total += 7; } } }",
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (Amount: double) { total += Amount; } }",
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int s = 0; s < 3; s++) {
+        for (int i = 0; i < 2; i++) {
+            prepare();
+            REQUIRE(compile(sources[s], backends[i]));
+            ecs_entity owner = ecs_world_create_entity(world);
+            uint64_t handle = ecs_entity_to_u64(owner);
+            execution_instance *instance = execution_program_attach(program, handle);
+            REQUIRE(instance && state_id("total"));
+            pin_value payload[] = { { .type = PIN_F64, .d = 7 },
+                                    { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, payload, 2, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_state(instance, state_id("total"))->d == 7);
+        }
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "A :: behavior { on Impulse :: (force: double) { } }",
+          "Impulse has no payload field 'force'" },
+        { "A :: behavior { on Impulse :: (amount: double, Amount: double) { } "
+          "}",
+          "listed twice" },
+        { "A :: behavior { on Impulse :: (amount) { } }",
+          "Write the type of payload field 'amount'" },
+        { "A :: behavior { on Impulse :: (amount: bool) { } }", "" },
+        { "A :: behavior { on Impulse :: (amount: double = 1) { } }", "takes no default" },
+        { "A :: behavior { x: double = 0; on Impulse :: () { x = amount; } }", "" },
+        { "A :: behavior { x: double = 0; on Impulse :: () { x = event.amount; "
+          "} }",
+          "list the field instead" },
+        { "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = "
+          "event.dt; } }",
+          "list the field instead" },
+    };
+    for (int i = 0; i < 8; i++) {
+        prepare();
+        syntax = script_parse(refused[i].source);
+        REQUIRE(!syntax->diagnostic_count);
+        analysis = script_analyze(syntax, &catalog);
+        bool found = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
+        }
+        REQUIRE(!analysis->valid && found);
+    }
+    return true;
+}
 TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
 {
     const char *source = "Accumulator :: behavior {\n"
@@ -9124,6 +9186,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_handlers_name_payload_fields);
     RUN_TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source);
     RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);

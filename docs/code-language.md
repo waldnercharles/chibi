@@ -922,12 +922,31 @@ decimal point alone does not require double precision.
 
 ### Host event payloads
 
-Host events infer their registered payload:
+A handler names the payload fields that it reads, with their types:
 
-- `on Tick(dt) { ... }` binds the registered Tick delta to `dt`.
-- `on Tick { ... }` needs no explicit payload list.
-- `event.dt` also reads that payload, independently of the general frame clock.
-- A handler may name its entire payload with `on Tick as tick { ... }`.
+```code
+on Tick :: (dt: s) { ... }
+on ContactBegin :: (other: entity) { ... }
+on Begin :: () { ... }
+```
+
+- Each name selects one payload field. The match ignores case, `_`, spaces
+  and `-`, so `other` reads the field `Other`.
+- List any subset of the fields, in any order. List each field only once.
+- Write the type of each field. A written unit must match the field's unit.
+- A payload parameter takes no default, source or `$`.
+- A handler that reads no field writes `()`.
+- The handler cannot read the fields that it does not list, and it cannot read
+  `event`.
+
+Tick's payload is `dt`, the time in seconds since the last frame.
+
+These older forms still work until a project-format migration rewrites them:
+
+- `on Tick(dt) { ... }` binds the payload fields in order.
+- `on Tick { ... }` binds each field by its own name.
+- `event.dt` reads a field of the payload.
+- `on Tick as tick { ... }` names the whole payload.
 
 Event payload members are read-only unless their reflected signature supplies a
 reference.

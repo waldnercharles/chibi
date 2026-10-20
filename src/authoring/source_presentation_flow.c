@@ -721,16 +721,20 @@ void source_view_function_graph(source_projection *p, int index)
     memset(p->statements, 0, (size_t)p->analysis->statement_count * sizeof *p->statements);
     pin_spec *inputs = NULL, *outputs = NULL;
     apush(outputs, source_view_flow_pin(p, "Then"));
+    const script_catalog_capability *event = f->kind == SCRIPT_FUNCTION_HANDLER
+                                               ? source_view_capability(p, f->event)
+                                               : NULL;
     for (int i = 0; i < f->parameter_count; i++) {
         const script_symbol *s = &p->analysis->symbols[f->parameters[i]];
-        apush(outputs, source_view_data_pin(p, s->name, s->type));
+        /* A payload field the handler leaves out shows the field's name. */
+        const char *pin = !s->name[0] && event && i < event->parameter_count
+                            ? event->parameters[i].name
+                            : s->name;
+        apush(outputs, source_view_data_pin(p, pin, s->type));
     }
     node *entry = source_view_box(p, f->entry ? f->entry : "Entry", NODE_DISPLAY_EVENT, inputs, outputs);
-    if (f->kind == SCRIPT_FUNCTION_HANDLER) {
-        const script_catalog_capability *event = source_view_capability(p, f->event);
-        if (event) {
-            entry->reference_name = source_view_own(p->graph, event->name);
-        }
+    if (event) {
+        entry->reference_name = source_view_own(p->graph, event->name);
     }
     entry->disabled = f->disabled;
     p->graph->entry_id = entry->id;

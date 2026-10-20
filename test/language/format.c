@@ -123,6 +123,13 @@ static bool map_reproduces_source()
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types. */
+TEST_CASE(source_format_keeps_named_payload_fields)
+{
+    REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
+    REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
+    return true;
+}
 TEST_CASE(source_format_spaces_typed_constant_colons)
 {
     REQUIRE(format("L :: library {\n    Limit:int:5\n    Mask :: 255\n}\n"));
@@ -1097,6 +1104,32 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types; the
+ * older positional list that repeats the payload's names still drops. */
+TEST_CASE(source_minimize_keeps_named_payload_fields)
+{
+    REQUIRE(minimize(
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick(dt) {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n",
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_minimize_keeps_argument_order)
 {
     /* Arguments run in source order, so out-of-order labels stay. */
@@ -1727,6 +1760,7 @@ void test_language_root_state()
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_keeps_named_payload_fields);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
@@ -1770,6 +1804,7 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
     RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
+    RUN_TEST_CASE(source_minimize_keeps_named_payload_fields);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

@@ -1692,10 +1692,11 @@ EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collid
 }
 ```
 
-- A system runs on Tick, so the clause names Tick.
+- A system runs on Tick, so the clause names Tick and lists the fields that it
+  reads. Leave the clause out to read none.
 - Only the system's body reads the step. Pass it to the functions that the
   body calls.
-- A system that names its step cannot read `event`.
+- A system cannot read `event`.
 
 ### Required, optional and excluded components
 

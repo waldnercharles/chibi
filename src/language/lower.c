@@ -3506,10 +3506,7 @@ static int system_step(lower *l, const script_symbol *s, script_range range)
 {
     const script_catalog_capability
         *tick = script_catalog_capability_by_id(l->catalog, l->catalog->tick_event);
-    if (!tick || tick->parameter_count != 1) {
-        error(l, range, "A system reads only the step, Tick's one payload field");
-        return -1;
-    }
+    assert(tick && tick->parameter_count == 1);
     int slot = value_op(l, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }, range);
     script_type actual = s->type;
     actual.storage = PIN_F32;

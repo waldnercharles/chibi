@@ -848,18 +848,54 @@ TEST_CASE(program_systems_name_their_step)
         { "Motion :: system(p: Position) on Tick :: (step: double) { p.x += 1; "
           "}",
           "Tick has no payload field 'step'" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "Step :: () { return dt; }\np.x += Step(); }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "on Impulse :: (amount: double) { p.x += dt; } }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
+          "List the step's fields" },
+        { "Motion :: system(p: Position) { p.x += event.dt; }", "Unknown value 'event'" },
+        { "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: double) "
+          "{ p.x += dt; }",
+          "Query predicate cannot read" },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 9; i++) {
         prepare();
         syntax = script_parse(refused[i].source);
         REQUIRE(!syntax->diagnostic_count);
         analysis = script_analyze(syntax, &catalog);
-        bool found = false;
+        bool found = false, inner = false;
         for (int d = 0; d < analysis->diagnostic_count; d++) {
             found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
+            inner |= strstr(analysis->diagnostics[d].message, "Read the step") != NULL;
         }
         REQUIRE(!analysis->valid && found);
+        /* A query reads no callable's step; it says so once. */
+        REQUIRE(i != 8 || !inner);
     }
+    /* Lowering reads Tick's one field as the step, so a Tick with more
+     * fields has no system step. */
+    script_catalog_capability wider[64];
+    REQUIRE(catalog.capability_count <= 64);
+    memcpy(wider, catalog.capabilities, (size_t)catalog.capability_count * sizeof *wider);
+    for (int i = 0; i < catalog.capability_count; i++) {
+        if (wider[i].id == catalog.tick_event) {
+            wider[i].parameters = impulse_parameters;
+            wider[i].parameter_count = 2;
+        }
+    }
+    script_catalog two = catalog;
+    two.capabilities = wider;
+    prepare();
+    syntax = script_parse("Motion :: system(p: Position) on Tick :: (amount: double) { p.x += amount; }");
+    analysis = script_analyze(syntax, &two);
+    bool step = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        step |= strstr(analysis->diagnostics[d].message, "reads only the step") != NULL;
+    }
+    REQUIRE(!analysis->valid && step);
     return true;
 }
 TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)

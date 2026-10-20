@@ -524,7 +524,7 @@ Suggestion: stage one compiles integer `switch`, then Odin's ranges.
 
 ### Stage one does not check that functions return
 
-Stage one. Since #MISSING_PR, stage zero rejects a function with results that
+Stage one. Since #541, stage zero rejects a function with results that
 can fall off its end, with "Missing return", and counts a `while (true)`
 without a `break` as an end, as Go and Odin do; the tokenizer's loop no longer
 needs to break out to a return after it (#518). Stage one compiles only what

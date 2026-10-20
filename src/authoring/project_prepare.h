@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTHORING_PROJECT_PREPARE_H
 #define CHIBI_AUTHORING_PROJECT_PREPARE_H
 #include "assets/project.h"
+#include "runtime/behaviors/package.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/player_prepared.h"
 
@@ -26,6 +27,21 @@ typedef struct
  * descriptors and kernels remain supplied by the eventual player host. */
 bool authoring_project_prepare(
     const authoring_project_options *,
+    authoring_project_artifact *,
+    char *error,
+    size_t size
+);
+/* Prepares the same artifact from modules compiled elsewhere, such as by the
+ * stage-one compiler, instead of compiling the project's sources: one
+ * prepared module per executable content source, identified as stage zero
+ * identifies its own, script_catalog_id("module", the source's content
+ * path). Assembly reads the declarations, scenes, prototypes and resources
+ * itself and links the modules from their bytes. Source graph libraries are
+ * not linked, since no analysis is available. Borrows `modules`. */
+bool authoring_project_assemble(
+    const authoring_project_options *,
+    const package_module *modules,
+    int count,
     authoring_project_artifact *,
     char *error,
     size_t size

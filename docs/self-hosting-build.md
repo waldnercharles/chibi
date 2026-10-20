@@ -395,10 +395,14 @@ before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
 target is the value layout and prepared ABI rather than an operating system,
 so one artifact serves every host with that ABI.
 
-Rewrite the artifact only when it can no longer recover the compiler: when
-`minimum` rises past its version, or when the host's target changes. A change
-to the compiler sources alone needs no new artifact, because recovery reaches
-the fixpoint in a second compile. To rewrite it:
+Rewrite the artifact only when it can no longer recover the compiler:
+- when `minimum` rises past its version;
+- when the host's target changes;
+- when a compiler package gains or loses a source file, because recovery
+  compiles the files the manifest records.
+
+A change to the contents of recorded sources needs no new artifact, because
+recovery reaches the fixpoint in a second compile. To rewrite it:
 1. Run `make bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.

@@ -452,7 +452,12 @@ static void map_collection(value_codec *c, pin_value *v, unsigned depth)
         }
     }
     if (w->reading && !w->error) {
-        pin_map_index(w->storage, map);
+        size_t bytes = pin_map_index_bytes(map->count);
+        pin_map_slot *slots = bytes ? execution_wire_allocate(w, bytes) : NULL;
+        if (bytes && !slots) {
+            return;
+        }
+        pin_map_index(map, slots);
     }
 }
 static void collection(value_codec *c, pin_value *v, unsigned depth)

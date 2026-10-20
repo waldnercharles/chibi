@@ -164,7 +164,9 @@ Loop :: struct {
 // A switch being emitted: the local holding its union, where its exit jumps
 // start in `exits` and its matched variants in `covered`, whether it has a
 // default arm, the pending jump past the current arm, and the names the arm's
-// bindings start at.
+// bindings start at. A switch on an integer of `storage` compares the value
+// with each arm's in turn and runs its default arm, `fallback`, after them
+// all, as stage zero does; -2 once that arm is emitted.
 Switch :: struct {
     subject: int;
     held: int;
@@ -173,6 +175,9 @@ Switch :: struct {
     defaulted: bool;
     skip: int;
     mark: int;
+    value: bool;
+    storage: int;
+    fallback: int;
 }
 // The size of each table when a step starts.
 Bases :: struct {
@@ -1309,19 +1314,34 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 stepped = false;
                 value_top -= 1;
                 subject := values[value_top];
-                if (!Single(subject, UnionStorage)) {
-                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "switch needs a union value"));
+                value_switch := subject.container == 0 && Integer(subject.storage);
+                if (!Single(subject, UnionStorage) && !value_switch) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document,
+                                                "switch needs a union or integer value"));
                 }
-                locals = array_add(locals, ValueLocal(UnionStorage));
-                code = array_add(code, Instruction(ops.save, UnionStorage, 0, subject.slot, 0, length(locals) - 1, node));
+                locals = array_add(locals, ValueLocal(subject.storage));
+                code = array_add(code, Instruction(ops.save, subject.storage, 0, subject.slot, 0, length(locals) - 1, node));
                 current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
-                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
+                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names),
+                                   value: value_switch, storage: subject.storage, fallback: -1};
                 switches = array_add(switches, current);
                 next = array_add(next, Resume(item.node, 2, NextArm(forest, Field(forest, item.node, "value")), 0));
+            } else if (item.phase == 2 && item.a < 0 && switches[length(switches) - 1].fallback >= 0) {
+                // Every value arm missed: the default arm runs last.
+                stepped = false;
+                current := switches[length(switches) - 1];
+                arm := current.fallback;
+                current.fallback = -2;
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes = array_add(scopes, length(names));
+                next = array_add(next, Visit(Field(forest, arm, "body")));
+                next = array_add(next, Resume(item.node, 3, arm, 1));
             } else if (item.phase == 2 && item.a < 0) {
                 stepped = false;
                 current := switches[length(switches) - 1];
-                if (!current.defaulted && length(covered) - current.first_cover < types[current.held].count) {
+                if (!current.value && !current.defaulted &&
+                    length(covered) - current.first_cover < types[current.held].count) {
                     return Body.Failed(Diagnose(forest, item.node, document,
                                                 "Non-exhaustive switch: a union alternative is missing"));
                 }
@@ -1335,6 +1355,53 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     at_exit += 1;
                 }
                 exits = slice(exits, 0, current.first_exit);
+            } else if (item.phase == 2 && switches[length(switches) - 1].value) {
+                stepped = false;
+                current := switches[length(switches) - 1];
+                pattern := Field(forest, item.a, "value");
+                if (pattern < 0) {
+                    if (current.fallback != -1) {
+                        return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm"));
+                    }
+                    current.fallback = item.a;
+                    switches[length(switches) - 1] = current;
+                    next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                } else if (Is(forest, pattern, "variant_pattern")) {
+                    return Body.Failed(Diagnose(forest, pattern, document, "an integer switch's arms need values"));
+                } else {
+                    next = array_add(next, Expect(pattern, current.storage, 0, -1));
+                    next = array_add(next, Resume(item.node, 4, item.a, 0));
+                }
+            } else if (item.phase == 4) {
+                // An integer arm's test: past the arm unless the value equals it.
+                stepped = false;
+                value_top -= 1;
+                candidate := values[value_top];
+                current := switches[length(switches) - 1];
+                if (candidate.container == 0 && Integer(candidate.storage) && candidate.storage != current.storage &&
+                    Widens(candidate.storage, current.storage)) {
+                    slots = array_add(slots, ValueLocal(current.storage));
+                    code = array_add(code, CastCode(ops, current.storage, length(slots) - 1, candidate.slot, 0, node));
+                    candidate = Typed(length(slots) - 1, current.storage, 0, -1);
+                }
+                if (!Single(candidate, current.storage)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.a, "value"), document,
+                                                "case value differs from the switch value"));
+                }
+                slots = array_add(slots, ValueLocal(current.storage));
+                code = array_add(code, Instruction(ops.local, current.storage, length(slots) - 1, current.subject, 0, 0,
+                                                   node));
+                slots = array_add(slots, ValueLocal(BoolStorage));
+                code = array_add(code, Instruction(ops.eq, current.storage, length(slots) - 1, length(slots) - 2,
+                                                   candidate.slot, -1, node));
+                code = array_add(code, Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+                current.skip = length(code);
+                code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes = array_add(scopes, length(names));
+                next = array_add(next, Visit(Field(forest, item.a, "body")));
+                next = array_add(next, Resume(item.node, 3, item.a, 0));
             } else if (item.phase == 2) {
                 current := switches[length(switches) - 1];
                 current.mark = length(names);
@@ -1391,7 +1458,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 switches[length(switches) - 1] = current;
                 names = slice(names, 0, current.mark);
                 scopes = slice(scopes, 0, length(scopes) - 1);
-                next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                if (item.b == 1) {
+                    // The default arm of an integer switch was the last.
+                    next = array_add(next, Resume(item.node, 2, -1, 0));
+                } else {
+                    next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                }
             }
         } else if (kind == "break_statement" || kind == "continue_statement") {
             stepped = false;

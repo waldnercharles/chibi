@@ -561,17 +561,20 @@ can end a statement, is a `bool[]` filled from a list.
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
 
-### Stage one switches only on union variants
+### A switch arm takes one value
 
-Stage one. Stage zero compiles `switch c { case 61: ... }`, but stage one
-matches only `.Variant` arms, so the tokenizer's operator table is a chain of
-`if (c == 61) { return Eq; }`.
+Language. Since #561 both compilers switch on an integer,
+`switch c { case 61: ... }`, but an arm takes exactly one value, so the
+tokenizer's operator table stays a chain of `if (c == 61) { return Eq; }`
+and a letter test is `c >= 97 && c <= 122`.
 
-- Odin switches on any integer or rune with ranges, `case 'a'..='z', '_':`;
-  C and C++ `switch` on integers; Rust `match` with `b'a'..=b'z'`; Zig
-  `switch` with `'a'...'z'`; C# relational patterns, `>= 'a' and <= 'z'`.
+- Odin switches on any integer or rune with lists and ranges,
+  `case 'a'..='z', '_':`; C and C++ stack `case` labels; Rust `match` with
+  `b'a'..=b'z'`; Zig `switch` with `'a'...'z'`; C# relational patterns,
+  `>= 'a' and <= 'z'`.
 
-Suggestion: stage one compiles integer `switch`, then Odin's ranges.
+Suggestion: arms take lists and ranges, `case 'a'..'z', '_':`, as in Odin,
+then the tokenizer switches on its bytes.
 
 ### Stage one does not check that functions return
 

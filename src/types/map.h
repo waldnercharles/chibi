@@ -3,19 +3,34 @@
 
 #include "types/array.h"
 
+#include <stdint.h>
+
 typedef struct
 {
     pin_value key, value;
 } pin_map_entry;
+/* One slot of a map's index: the entry it names, -1 when empty, and the key's
+ * hash, so a probe compares keys only on a hash match. */
+typedef struct
+{
+    uint32_t hash;
+    int32_t entry;
+} pin_map_slot;
 
 /* Ordered associative values. Keys are immutable, and replacing a value keeps
  * its insertion position. Heap copies borrow struct payloads like pin_array;
- * arena snapshots own all managed key/value payloads. */
+ * arena snapshots own all managed key/value payloads.
+ *
+ * Entries stay dense in insertion order. An arena map of more than a few
+ * entries also has an index, Odin's open-addressed Robin Hood table: a power
+ * of two of slots, at most 75% full, each naming an entry. */
 typedef struct pin_map
 {
     pin_value key_type, value_type;
-    int count;
+    int count, capacity;
     pin_map_entry *entries;
+    pin_map_slot *slots; /* NULL: lookups scan the entries. */
+    uint32_t slot_mask;
 } pin_map;
 
 bool pin_map_key_supported(pin_value);
@@ -28,6 +43,12 @@ pin_map *pin_map_snapshot_to_arena(arena *, const pin_map *);
 pin_map *pin_map_create(arena *, pin_value key_type, pin_value value_type, const pin_map_entry *, int count);
 pin_map *pin_map_set(arena *, const pin_map *, const pin_value *key, const pin_value *value);
 pin_map *pin_map_remove(arena *, const pin_map *, const pin_value *key);
+/* A local's own map, updated in place: every store into the local snapshots,
+ * so no other value shares it. Storing grows the map, which may move it. */
+int pin_map_store_owned(arena *, pin_map **, const pin_value *key, const pin_value *value);
+int pin_map_delete_owned(arena *, pin_map *, const pin_value *key);
+/* Builds the index of an arena map read without one. */
+void pin_map_index(arena *, pin_map *);
 void pin_map_free(pin_map *);
 int pin_map_equal(const pin_map *, const pin_map *);
 

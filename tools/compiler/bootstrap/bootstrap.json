@@ -2,12 +2,12 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "f313a94847112104bee99c4c4c210781a61060d5",
+  "revision": "f8b9774b4ec7b60ffa94802f75aab9e8299e6487",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 15090313,
-    "sha256": "f22dc6f6123b9e57348c1fb14785d25e17e59fe7608a557ffa103988ff09d9e2"
+    "bytes": 15090295,
+    "sha256": "93008c980551b78d41e786c0392868227a871446c86cac15dc66f9f1918577b2"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -111,7 +111,7 @@
       "data_failure": 4,
       "argument_failure": 7
     },
-    11156956140951696552,
+    2625531784114038082,
     [
       "CONSTANT",
       "VARIABLE",

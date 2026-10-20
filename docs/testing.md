@@ -1889,6 +1889,11 @@ takes about 6 s.
     `authoring_project_assemble`, writes that artifact again byte for byte.
     A source without its module, or a module of no source, is refused. This
     is the assembly a stage-one route uses for modules stage one compiled.
+  - `chibi-compile --project-root ROOT --stage-one-target FILE` exports what a
+    story's behavior links against, for stage one. The test compares its
+    types with the requirements of the module stage zero writes for Counter
+    (all 112, in order: ID, layout, storage, size and name). It also compares
+    the module's events (ID, ABI and payload fields) and the entity type.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.

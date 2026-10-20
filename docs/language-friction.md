@@ -2,34 +2,56 @@
 
 Where writing Chibi was awkward, how existing languages handle the same need,
 and what Chibi could adopt. Threads add entries when they hit friction; each
-entry checks prior art before it suggests anything, and none of these is
-decided or implemented. Examples come from the stage-one compiler
+entry checks prior art before it suggests anything. An entry that already
+covers a need takes the new example, with the PR that found it, instead of a
+new entry. Examples come from the stage-one compiler
 (`tools/compiler/package_compiler`) unless an entry says otherwise.
+
+Each entry starts with its class:
+
+- **Language**: both compilers. Stage zero builds stage one, so stage one's own
+  source can use a feature only once stage zero accepts it.
+- **Stage one**: stage zero already has it; stage one does not yet.
+- **Runtime**: a value representation or an implementation cost, not syntax.
+- **Toolchain**: build programs, test harnesses and the prepared form.
+
+A **Decision** records the owner's choice; nothing here is implemented unless
+the entry says so.
 
 ## Untyped integer literals are doubles
 
-`xs = array_add(xs, 0)` appends a double, and `index := 0` declares a double,
-because an untyped number literal is a `number`. Integer code writes
+Language. `xs = array_add(xs, 0)` appends a double, and `index := 0` declares
+a double, because an untyped number literal is a `number`. Integer code writes
 `int(0)` and `index: int = 0` instead; stage one rejects untyped locals for
-this reason.
+this reason. `core:strings` declares two dozen counters as `i: int = 0;`
+(#503). A floating value also narrows to an integer silently:
+`x: int = 0; x += 1.5` leaves 1.
 
 - Go and Odin give an untyped constant its type from context and otherwise
   default by spelling: `1` is `int`, `1.0` is `float64`/`f64`.
-- Rust infers a literal's type from its uses and defaults to `i32` or `f64`.
-- C, C++, C# and Python type a literal by its spelling: `1` is an integer and
-  `1.0` a floating value.
+- Rust infers a literal's type from its uses and defaults to `i32` or `f64`,
+  but never turns `0` into a float.
+- C, C++, C#, Jai, Swift and Python type a literal by its spelling: `1` is an
+  integer and `1.0` a floating value.
 - Zig keeps `comptime_int` until a use fixes the type; a runtime variable
   needs one.
+- Go, Odin, Jai, Rust and C# convert a float to an integer only explicitly.
 
-Suggestion: keep contextual typing and default by spelling, as Go and Odin
-do. The trade-off: behavior state such as `elapsed := 0` infers `number` today
-so later assignments can hold fractions; with spelling defaults it needs
-`elapsed := 0.0` or `elapsed: number = 0`.
+Decision (2026-10-20): a literal takes its type from context first, and
+otherwise from its spelling: `0` is `int` and `0.0` is `number`. Converting a
+floating value to an integer needs `int(x)`, which keeps today's truncating,
+saturating conversion; integer to floating stays implicit. Behavior state such
+as `elapsed := 0` followed by `elapsed += dt` then fails at the `+=` and
+becomes `elapsed := 0.0`. Inferring the type from later uses, as Haskell does,
+was rejected: an edit far from the declaration would silently switch `/`
+between integer and floating division.
 
-## Records hold only int, bool and string fields
+## Records hold only scalar fields
 
-Authored records cannot hold arrays, records, unions, floating values or
-64-bit integers. The compiler uses one-variant unions as records with arrays
+Language and runtime. Stage zero's records hold `int`, `bool`, `string`,
+`byte`, `int64`, `uint64`, `float`, `double` and `number` fields, but no
+arrays, unions or other records. Stage one accepts only `int`, `bool` and
+`string` fields. The compiler uses one-variant unions as records with arrays
 (`Step`, `Decimal`), splits 64-bit payloads into `int` halves (`Low`, `High`,
 `Join`) and keeps parallel arrays.
 
@@ -38,76 +60,141 @@ Authored records cannot hold arrays, records, unions, floating values or
 
 Suggestion: record fields of every value type, as Odin's structs.
 
-## Authored functions return one value
+## Stage one returns one value, and nothing destructures
 
-Natives return several named results (`compiler_json_string(s).valid`), but
-authored functions return one. The compiler returns one-variant unions as
-tuples and destructures them with `switch`, which must bind every field.
+Stage one, then language. Stage zero compiles named multiple results,
+`Pair :: (x: int) -> (kind: int, end: int) { return(x, x + 1); }`, read as
+`Pair(3).kind`; stage one returns one value. Neither compiler destructures
+results into locals or assigns several targets at once.
+
+- The compiler returns one-variant unions as tuples and destructures them with
+  `switch`, which must bind every field.
+- Odin's `partition` returns `(head, match, tail)` and `replace` returns
+  `(output, was_allocation)`; the `core:strings` port returns a `Parts` record
+  and drops `was_allocation`, and Odin's `tr, sr = sr, tr` takes a temporary
+  (#503).
+- The tokenizer's `Scan` returns a token's kind, end and error as a `Lexeme`
+  record (#518).
+
+Other languages:
 
 - Odin returns several values, optionally named:
   `proc() -> (value: int, ok: bool)`, with `value, ok := f()`; Go's
   `func() (value int, ok bool)` is the same idea.
 - Rust, F#, Python, C# and TypeScript return tuples and destructure them; Zig
   returns anonymous structs.
+- Odin, Go and Python swap with `a, b = b, a`.
 
-Suggestion: Odin's named multiple results, which behaviors already spell
-(`-> (Result: bool = false)`), with `a, b := F()` destructuring.
+Suggestion: stage one compiles named results, then both compilers gain
+`a, b := F()` destructuring and `a, b = b, a`.
 
-## uint64 has no ordering, subtraction or division
+## Stage one computes less integer arithmetic than stage zero
 
-The runtime computes only addition, multiplication, equality and bit
-operations on `uint64`, so magnitudes move to `int64` and comparisons are
-rewritten.
+Stage one. Stage zero computes every arithmetic and comparison operator on
+`uint64`, `uint`, `uint16`, `int8` and `byte`, with unsigned ordering and
+division. Stage one computes only addition, multiplication, equality and bit
+operations on `uint64`, only equality and bit operations on `byte`, and has no
+`uint`, `uint16` or `int8`, so magnitudes move to `int64` and comparisons are
+rewritten. `core:strings` works in `int` for the same reason (#503).
 
 - C, C++, Rust, Odin, Zig and C# provide every arithmetic and comparison
   operator on unsigned integers.
 
-Suggestion: complete unsigned arithmetic and ordering in the verifier and
-backends.
+Suggestion: stage one computes what stage zero computes.
+
+## Integer overflow wraps silently
+
+Language. Integer arithmetic wraps without a sign: `int` 2147483647 + 1 is
+negative, `byte(3) - byte(200)` is 59 and `uint` 0 - 1 is 4294967295. A
+conversion that does not fit fails instead: `byte(300)` fails the call. Code
+that wants wrapping masks by hand: `core:strings` keeps Odin's wrapping `u32`
+Rabin-Karp hash in `int64`,
+`h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF`
+(#503), and the tokenizer keeps its FNV-1a keyword hash in `uint64` masked to
+32 bits (#518).
+
+- Odin, Go, Jai and C define unsigned overflow to wrap.
+- Swift traps on overflow and wraps with `&+`, `&-` and `&*`.
+- Rust panics in debug builds and has `wrapping_mul` and `Wrapping<u32>`; Zig
+  traps in safe builds and wraps with `+%`, `-%` and `*%`.
+- C# wraps by default and checks in `checked` code, with `unchecked(expr)` to
+  wrap inside it; Python and JavaScript mask (`& 0xFFFFFFFF`, `Math.imul`,
+  `>>> 0`).
+
+Decision (2026-10-20): overflow fails the call, as a checked conversion does,
+on every backend. `T(wrap: expr)` makes the arithmetic written inside it wrap,
+as C#'s `unchecked(expr)`: `hash = uint64(wrap: (hash ^ b) * Prime)`. Trapping
+can be relaxed later without breaking code; wrapping could not be tightened
+later without breaking code that relied on it.
 
 ## No character literals
 
-Bytes are compared by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`.
+Language. Bytes are compared by code: `48` for `'0'`, `46` for `'.'`, `101`
+for `'e'`. `core:strings` writes `ByteAt(path, index) == 47` for `'/'`, and
+`ToLower` tests `c >= 65 && c <= 90` (#503); the tokenizer writes `c == 34` for
+`'"'` (#518).
 
 - C, C++, C#, Odin and Zig have `'0'`; Rust has `'0'` and `b'0'`; Python uses
   `ord("0")`.
+- Odin's `'a'` is an untyped rune constant; Rust's `char` and Odin's `rune`
+  are 32-bit Unicode code points.
 
-Suggestion: character literals typed by context (`byte` or `int`), as Odin
-and Zig type `'0'`.
+Decision (2026-10-20): `'a'` is an untyped character constant. Context gives
+it a type it fits, as in `c: byte = 'a'` or `ByteAt(s, i) == '/'`; otherwise
+it is a `char`. `char` is a distinct 32-bit Unicode scalar, Rust's `char` and
+Odin's `rune`, with integer arithmetic as Odin's. It widens to `int`
+implicitly; `char(n)`, and arithmetic whose result is not a Unicode scalar,
+fail the call. A character literal holds one scalar and takes the escapes
+string literals take, plus `\'`.
 
 ## Strings have no indexing or slicing syntax
 
-Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
-`strings.Slice`. Strings carry no length, so each `ByteAt` measures its
-string: scanning 1 MiB byte by byte took 19.9 s in a Release build on macOS
-arm64, against 0.07 s through `strings.Bytes`, which reads every byte into an
-`int[]` once (2026-10-19).
+Language. Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
+`strings.Slice`; every byte read in `core:strings` is `ByteAt(s, i)` and every
+slice `Slice(s, start, count)` (#503). Strings carry no length, so each
+`ByteAt` measures its string: scanning 1 MiB byte by byte took 19.9 s in a
+Release build on macOS arm64, against 0.07 s through `strings.Bytes`, which
+reads every byte into an `int[]` once (2026-10-19).
 
 - Odin and Go index bytes with `s[i]` and slice with `s[a:b]`; Rust slices a
   `str` by byte offsets with `&s[a..b]` and reads bytes through
   `s.as_bytes()[i]`; Python and C# index characters with `s[i]`.
 
 Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
+Constant time needs the representation in
+[Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
-## Stage one compiles only `for name in array`
+## Loops have no half-open or reverse form, and stage one compiles only `for name in array`
 
-The language now has `for i in first..last` with inclusive bounds, keyed
-loops and `for item: ref in items` (#420), but stage one rejects all three, so
-the compiler's own counting loops stay `while (index < n) { ...; index += 1; }`.
+Language, and stage one. Stage zero has `for i in first..last` with inclusive
+bounds, keyed loops and `for item: ref in items` (#420); stage one rejects all
+three, so the compiler's own counting loops stay
+`while (index < n) { ...; index += 1; }`. Neither compiler has a half-open
+range or a reverse loop, and `3..0` runs no iterations. Since stage one
+compiles `core:strings`, every scan there, forward and reverse, is a `while`
+with its own `i += 1` or `i -= 1`, and a `continue` before the step hangs
+(#503).
 
-- Odin has `for i in 0..<n`, `for i in 0..=n` and `for x, i in xs`; Rust
-  `for i in 0..n`; Zig `for (0..n) |i|`; Python `for i in range(n)`; C, C++
-  and C# three-part `for`.
+- Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
+  `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
+  `for (0..n) |i|`; Jai inclusive `for i: 0..n-1` and `for <` to reverse;
+  Python `for i in range(n)`; C, C++ and C# three-part `for`.
+- No mainstream language counts down when a range's bounds descend: Odin,
+  Rust, Kotlin, Ruby and Python give an empty range, and Swift fails.
 
-Suggestion: stage one compiles range and keyed loops. Chibi's inclusive
-`first..last` makes the common count loop `0..n - 1`; Odin's half-open `0..<n`
-would avoid the `- 1`.
+Decision (2026-10-20): `..` stays inclusive and `a..<b` adds a half-open
+range, so the count loop is `0..<n`. Ranges never count down; a range whose
+constant bounds descend, such as `10..0`, is a compile error. Jai's
+`for < i in 0..10` iterates in reverse, over ranges and arrays. Stage one then
+compiles range, keyed and reverse loops.
 
 ## Stage one constants are literals only
 
-Stage zero folds constant expressions, but stage one accepts only literal
-constants, so a lookup table is a local array built on every call
-(`PowerStep` in `Number.chibi`).
+Stage one. Stage zero folds constant expressions, constant arrays and calls
+whose body runs at compile time, `while` loops included, but stage one accepts
+only literal constants. A lookup table is therefore a local array built on
+every call: `PowerStep` in `Number.chibi`, and the tokenizer's byte-class,
+keyword and terminator tables in `Tokenize` (#518).
 
 - Odin and Go fold constant expressions; Odin also has constant arrays. Zig
   evaluates `comptime` code, C++ `constexpr` and Rust `const` items.
@@ -118,44 +205,11 @@ constant arrays such as `Steps :: [1, 3, 6]`.
 ## From the core:strings port
 
 Porting Odin's `core:strings` to `packages/core/strings` (#503) hit these.
-Where an entry above already covers the need, the port's example is listed
-here with a pointer to it.
-
-### Character literals
-
-`ByteAt(path, index) == 47` stands for `'/'`, and `ToLower` tests
-`c >= 65 && c <= 90`. See [No character literals](#no-character-literals).
-
-### String indexing and slicing
-
-Every byte read is `ByteAt(s, i)` and every slice `Slice(s, start, count)`.
-See [Strings have no indexing or slicing syntax](#strings-have-no-indexing-or-slicing-syntax)
-and the representation entry below.
-
-### Integer locals need a type
-
-The port declares two dozen counters as `i: int = 0;`. See
-[Untyped integer literals are doubles](#untyped-integer-literals-are-doubles).
-
-### Counting loops
-
-Stage one compiles `core:strings`, so every scan, forward and reverse, is a
-`while` with its own `i += 1` or `i -= 1`. See
-[Stage one compiles only `for name in array`](#stage-one-compiles-only-for-name-in-array);
-a reverse form, as Odin's `#reverse for` or Rust's `(0..n).rev()`, would cover
-the reverse scans.
-
-### Several results and swaps
-
-Odin's `partition` returns `(head, match, tail)` and `replace` returns
-`(output, was_allocation)`; the port returns a `Parts` record and drops
-`was_allocation`. Odin's `tr, sr = sr, tr` takes a temporary. See
-[Authored functions return one value](#authored-functions-return-one-value);
-destructuring assignment would also cover swaps, as in Odin, Go and Python.
+Its examples of needs covered above are listed with those entries.
 
 ### Strings are NUL-terminated and carry no length
 
-In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
+Runtime. In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
 quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
 `_split` and `replace` copies the rest of the string on each match. A string
 cannot hold a NUL byte, so Odin's `trim_null` has no use.
@@ -167,40 +221,26 @@ cannot hold a NUL byte, so Odin's `trim_null` has no use.
 Suggestion: strings that carry their length and may hold any byte, with
 slices that share the bytes once ownership allows it.
 
-### No narrow unsigned types or wrapping arithmetic
-
-Odin's Rabin-Karp `index` keeps a `u32` hash that wraps. `core:strings` keeps
-it in `int64` and masks every step:
-`h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF`.
-`byte` itself has only equality and bit operations.
-
-- Odin, Go and C define unsigned overflow to wrap; Rust has
-  `wrapping_mul` and `Wrapping<u32>`; Zig has `+%`, `-%` and `*%` beside
-  checked `+`, `-` and `*`; C# wraps in `unchecked` code; Python and
-  JavaScript mask (`& 0xFFFFFFFF`, `Math.imul`, `>>> 0`).
-
-Suggestion: `u8`, `u16` and `u32` with full arithmetic, and Zig's wrapping
-operators so ordinary arithmetic stays checked.
-
 ### Every top-level declaration is exported
 
-Odin's private `_split` became the exported `SplitKeeping`, and the shared
-line splitter the exported `SplitLinesKeeping`.
+Language. Odin's private `_split` became the exported `SplitKeeping`, and the
+shared line splitter the exported `SplitLinesKeeping`.
 
 - Odin has `@(private)` and `@(private="file")`; Jai `#scope_file` and
   `#scope_module`; Rust, Zig and F# export only `pub` or public items; Go
   exports capitalized names; C has `static`; C# `internal` and `private`;
   TypeScript exports explicitly; Python marks private names with `_`.
 
-Suggestion: an `@private` attribute, beside `@test`, that keeps a declaration
-out of the package's exports and its reference page.
+Decision (2026-10-20): a declaration is private to its package, every file of
+it, unless `pub` exports it, as in Rust and Zig: `pub Join :: (...)`. Game
+projects' `library` blocks follow once they become packages.
 
 ### No way to build a string
 
-Concatenation is `format_text("{}{}", a, b)`, so `Join`, `Repeat`, `Replace`
-and `ToLower` copy everything built so far on each append. No conversion makes
-a string from a byte: `ToLower` slices its letter out of
-`"abcdefghijklmnopqrstuvwxyz"`.
+Language. Concatenation is `format_text("{}{}", a, b)`, so `Join`, `Repeat`,
+`Replace` and `ToLower` copy everything built so far on each append. Neither
+`"a" + "b"` nor `append(s, t)` compiles, and no conversion makes a string from
+a byte: `ToLower` slices its letter out of `"abcdefghijklmnopqrstuvwxyz"`.
 
 - Odin has `strings.Builder` and `string(bytes)`; Go `strings.Builder` and
   `string(b)`; Rust `String::push_str` and `String::from_utf8`; Zig
@@ -212,36 +252,41 @@ Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 
 ### A pure function cannot fail on purpose
 
-Odin's `repeat` panics on a negative count. Purity is inferred since #420, and
-`expect` has an effect, so calling it would make `Repeat` impure; `core:strings`
-returns an empty string instead and hides the caller's mistake. Only a checked
-conversion or an out-of-bounds read fails a pure call.
+Language. Odin's `repeat` panics on a negative count. Purity is inferred since
+#420, and `expect` has an effect, so calling it would make `Repeat` impure;
+`core:strings` returns an empty string instead and hides the caller's mistake.
+Only a checked conversion or an out-of-bounds read fails a pure call.
 
 - Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
   and `unreachable`; C `assert`; C# and F# throw.
 
-Suggestion: a pure `assert(condition, message)` that fails the call as a
-checked conversion does.
+Decision (2026-10-20): a pure `assert(condition, message)`, with an optional
+message, replaces `expect`. A false condition fails the call as a checked
+conversion does, and no optimization removes the call; failing while the
+compiler evaluates a constant is a compile error.
 
 ### No runes
 
-`core:strings` works on bytes: `Cut` takes byte offsets, `EqualFold`,
-`ToLower`, `ToUpper` and the space trims are ASCII, and `Split(s, "")` splits
-into bytes. Odin's `rune_count`, `index_rune`, `reverse`, `expand_tabs`, the
-justify procedures and `levenshtein_distance` are not ported.
+Language. `core:strings` works on bytes: `Cut` takes byte offsets,
+`EqualFold`, `ToLower`, `ToUpper` and the space trims are ASCII, and
+`Split(s, "")` splits into bytes. Odin's `rune_count`, `index_rune`,
+`reverse`, `expand_tabs`, the justify procedures and `levenshtein_distance`
+are not ported. `for c in s` already visits each Unicode scalar, but as a
+one-scalar string.
 
 - Odin has a `rune` type, `for r, i in s` that decodes UTF-8 and
   `core:unicode/utf8`; Go ranges over a string's runes; Rust has `char` and
   `s.chars()`; C# `Rune`; Python and Ruby strings are code points.
 
-Suggestion: a `rune` type and Odin's decoding `for r, i in s`, then a
-`core:utf8` package written in Chibi.
+Suggestion: once `char` exists (see [No character literals](#no-character-literals)),
+`for c, i in s` yields a `char` and its byte offset, as Odin's decoding loop,
+then a `core:utf8` package written in Chibi.
 
 ### No procedure values
 
-Odin builds `trim_space` and `trim` on `trim_left_proc`, `index_proc` and
-`fields_proc`, which take a procedure. `core:strings` repeats each loop
-instead and leaves the `_proc` API out.
+Language. Odin builds `trim_space` and `trim` on `trim_left_proc`,
+`index_proc` and `fields_proc`, which take a procedure. `core:strings` repeats
+each loop instead and leaves the `_proc` API out.
 
 - Odin passes non-capturing `proc` values; C function pointers; Zig function
   types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
@@ -251,8 +296,8 @@ Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 
 ### Stage one has no reference parameters
 
-Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator` and
-`fields_iterator` advance the caller's string. The language has `ref`
+Stage one. Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator`
+and `fields_iterator` advance the caller's string. The language has `ref`
 parameters since #420, but stage one rejects them, and `core:strings`, which
 stage one compiles, has no iterators.
 
@@ -262,25 +307,28 @@ stage one compiles, has no iterators.
 Suggestion: stage one compiles `ref` parameters of locals, then
 `core:strings` gains Odin's iterators.
 
-### No default parameter values
+### Stage one has no default parameter values
 
-Odin's `cut(s, rune_offset := 0, rune_length := 0)` is `Cut(s, offset, count)`
-with every argument required.
+Stage one. Odin's `cut(s, rune_offset := 0, rune_length := 0)` is
+`Cut(s, offset, count)` with every argument required. Stage zero already
+compiles `Add :: (a: int, b: int = 10) -> int` and `Add(1)`.
 
 - Odin, C#, C++, Python, TypeScript and Ruby default trailing parameters;
   Rust and Zig don't.
 
-Suggestion: constant defaults for trailing parameters; low priority.
+Suggestion: stage one compiles the constant defaults stage zero accepts; low
+priority.
 
 ### Library growth spends the compiler tests' budgets
 
-At #503 the 16 KB package prepared to an 837 KB module, about 52 times its
-source, mostly per-function debug metadata. Harnesses embed the shipped
-`core:strings`: writing it with the authored writer on bytecode under ASan took
-22 s, and stage one compiling it in the package compiler's imports sample added
-about 24 s of CPU. The writer now writes modules above 512 KiB on the compiled
-backend only, and the imports sample has its own selector, but each further
-core package spends more of the compiler tests' 60-second budgets.
+Toolchain. At #503 the 16 KB package prepared to an 837 KB module, about 52
+times its source, mostly per-function debug metadata. Harnesses embed the
+shipped `core:strings`: writing it with the authored writer on bytecode under
+ASan took 22 s, and stage one compiling it in the package compiler's imports
+sample added about 24 s of CPU. The writer now writes modules above 512 KiB on
+the compiled backend only, and the imports sample has its own selector, but
+each further core package spends more of the compiler tests' 60-second
+budgets.
 
 - Odin, Go, Rust and Zig keep debug information beside the code (DWARF, PDB)
   rather than in it, and release builds strip it.
@@ -291,10 +339,10 @@ imports a fixed core fixture.
 
 ## Calls nest at most 64 deep
 
-Every authored function shares a call-depth budget of 64 (#420). Stage-one
-twins that walked a graph recursively, the union-members walk and the effect
-analysis query restrictions, failed on deep inputs and became loops over an
-explicit stack.
+Runtime. Every authored function shares a call-depth budget of 64 (#420).
+Stage-one twins that walked a graph recursively, the union-members walk and
+the effect analysis query restrictions, failed on deep inputs and became loops
+over an explicit stack.
 
 - Odin, C, C++, Rust and Zig recurse until the native stack runs out, often
   megabytes deep; Python's default limit is 1,000 frames; C# and F# grow to
@@ -305,8 +353,10 @@ guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
 
 ## Templates are package-local
 
-A template with `$T` parameters cannot be exported, so a generic helper is
-copied into each package that needs it (#420).
+Language. A template with `$T` parameters cannot be called from another
+package, so a generic helper is copied into each package that needs it
+(#420). A `library` block's templates already specialize for qualified
+callers.
 
 - Odin's parametric procedures, Zig's `comptime` functions, Rust generics and
   C++ templates all export from their package, module or header.
@@ -314,12 +364,23 @@ copied into each package that needs it (#420).
 Suggestion: export templates, instantiating each at the caller with the
 callee package's declarations in scope, as Odin does.
 
+## A pattern test fails as a call argument
+
+Language. `found := r is .Found` and `if Find(n) is .Found { ... }` compile,
+but `expect(r is .Found, "...")` reports "Unknown type '.Found'".
+
+- Rust's `matches!(r, R::Found(_))`, C#'s `r is Found` and Odin's
+  `_, ok := r.(Found)` are expressions usable anywhere a value is.
+
+Suggestion: an `is` pattern is a `bool` expression wherever a value may
+appear.
+
 ## Build programs cannot format numbers
 
-The build host offers `build.join`, but neither `format_text` nor any number
-conversion. `test/tools/GameEquivalence.chibi` therefore reports the first
-differing frame by slicing its number out of the trace line, and it cannot
-report how many lines it compared.
+Toolchain. The build host offers `build.join`, but neither `format_text` nor
+any number conversion. `test/tools/GameEquivalence.chibi` therefore reports
+the first differing frame by slicing its number out of the trace line, and it
+cannot report how many lines it compared.
 
 - Odin has `fmt.tprintf("%d", n)` and `strconv.itoa`; Go `strconv.Itoa`; Rust
   `n.to_string()` and `format!`; Zig `std.fmt.allocPrint`; C `snprintf`; C#
@@ -330,9 +391,9 @@ Suggestion: one text library for every Chibi host, with `format_text` and
 
 ## Build programs read files only as text
 
-`build.read_file` returns a NUL-terminated string, so a build program cannot
-read a binary file such as a `.chibip` artifact. Locating an artifact's module
-records for the equivalence harness took a C function,
+Toolchain. `build.read_file` returns a NUL-terminated string, so a build program
+cannot read a binary file such as a `.chibip` artifact. Locating an artifact's
+module records for the equivalence harness took a C function,
 `player_prepared_modules`, although the stage-one compiler already writes
 prepared modules in Chibi.
 
@@ -345,12 +406,13 @@ read prepared formats in Chibi.
 
 ## Build programs have their own string vocabulary
 
-`tools/toolchain/Build.chibi` cannot import `core:strings` or any other
-package. It has only the build host's natives (`build.before`, `build.after`,
-`build.starts_with`, `build.trim`, `build.lines`, `build.join`), with no length,
-index, contains or split. Moving `configure_inputs.py package-enabled` into it
-meant writing `Contains` as `build.before(text, part) != text` and parsing
-`NAME[:TYPE]=VALUE` with nested before/after calls.
+Toolchain. `tools/toolchain/Build.chibi` cannot import `core:strings` or any
+other package. It has only the build host's natives (`build.before`,
+`build.after`, `build.starts_with`, `build.trim`, `build.lines`, `build.join`),
+with no length, index, contains or split. Moving `configure_inputs.py
+package-enabled` into it meant writing `Contains` as
+`build.before(text, part) != text` and parsing `NAME[:TYPE]=VALUE` with nested
+before/after calls.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
   (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.
@@ -367,16 +429,15 @@ capability package, instead of a separate string vocabulary.
 
 ## A host's natives can't form a package
 
-Moving the build host's natives under `build.` (#523) named each one
-`build.read_file` in the host's catalog, the way an imported package's
-functions are named `strings.Join`. That is all a host can do: it cannot
-declare a package that programs import. So a build program uses `build.`
+Language and toolchain. Moving the build host's natives under `build.` (#523)
+named each one `build.read_file` in the host's catalog, the way an imported
+package's functions are named `strings.Join`. That is all a host can do: it
+cannot declare a package that programs import. So a build program uses `build.`
 without an import, and a local named `build` doesn't shadow it; `Build.chibi`
-renamed its build-directory parameters to `buildDir` to stay readable.
-Catalog lookups ignore case and underscores, so `Build.ReadFile` and
-`build.readfile` resolve too. Natives are snake_case (`array_add`) and
-package functions PascalCase, so the same operation is `build.join` beside
-`strings.Join`.
+renamed its build-directory parameters to `buildDir` to stay readable. Catalog
+lookups ignore case and underscores, so `Build.ReadFile` and `build.readfile`
+resolve too. Natives are snake_case (`array_add`) and package functions
+PascalCase, so the same operation is `build.join` beside `strings.Join`.
 
 - Odin's `core:os` and Go's `os` are packages a program imports. Odin
   declares foreign procedures inside the package, Go declares body-less
@@ -394,10 +455,13 @@ for package members.
 
 ## Ordinary nouns are reserved, and the build host doesn't say where
 
-A local named `entry` in `Build.chibi` failed with only "Unexpected syntax".
-`entry` is a keyword, as are `exit`, `query` and `where`, and the build host's
-diagnostic names no file, line, column or token. Finding it took bisecting the
-file. #420 already made `join` contextual and dropped `domain`.
+Language and toolchain. A local named `entry` in `Build.chibi` failed with
+only "Unexpected syntax". `entry` is a keyword, as are `exit`, `query` and
+`where`, and the build host's diagnostic names no file, line, column or
+token. Finding it took bisecting the file. #420 already made `join`
+contextual and dropped `domain`. A local named `prototype` in the tokenizer
+failed the same way, since #420 made `prototype` a reserved word; the flag
+became `prototyping` (#518).
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,
@@ -411,47 +475,16 @@ syntax errors the parser's position and token.
 
 ## From the tokenizer port
 
-Porting Odin's `core:odin/tokenizer` to `tools/compiler/source_tokenizer` hit
-these. Where an entry above already covers the need, the tokenizer's example is
-listed here with a pointer to it.
-
-### Several results
-
-`Scan` returns a token's kind, end and error as a `Lexeme` record. Stage zero
-already compiles named results,
-`Pair :: (x: int) -> (kind: int, end: int) { return (x, x + 1); }`, read as
-`Pair(3).kind`, but stage one does not. See
-[Authored functions return one value](#authored-functions-return-one-value).
-
-### Character literals
-
-Bytes are compared by code throughout, `c == 34` for `'"'`. See
-[No character literals](#no-character-literals).
-
-### Tables built per call
-
-`Tokenize` builds its byte-class, keyword and terminator tables on every call.
-See [Stage one constants are literals only](#stage-one-constants-are-literals-only).
-
-### Reserved nouns
-
-A local named `prototype` failed with "Unexpected syntax" at its line, since
-#420 made `prototype` a reserved word; the tokenizer's flag became
-`prototyping`. See
-[Ordinary nouns are reserved, and the build host doesn't say where](#ordinary-nouns-are-reserved-and-the-build-host-doesnt-say-where).
-
-### Hashing in a wrapping `u32`
-
-Odin's keyword hash is FNV-1a in a wrapping `u32`; the port keeps it in
-`uint64` and masks each step with `& 0xFFFFFFFF`. See
-[No narrow unsigned types or wrapping arithmetic](#no-narrow-unsigned-types-or-wrapping-arithmetic).
+Porting Odin's `core:odin/tokenizer` to `tools/compiler/source_tokenizer`
+(#518) hit these. Its examples of needs covered above are listed with those
+entries.
 
 ### No enumerations
 
-The tokenizer's 114 token kinds are numbered constants, `Ident: int : 3;`
-through `Relationship: int : 113;`, and `KindNames` returns their spellings in
-the same order by hand. A set of kinds, such as those that can end a statement,
-is a `bool[]` filled from a list.
+Language. The tokenizer's 114 token kinds are numbered constants,
+`Ident: int : 3;` through `Relationship: int : 113;`, and `KindNames` returns
+their spellings in the same order by hand. A set of kinds, such as those that
+can end a statement, is a `bool[]` filled from a list.
 
 - Odin has `enum` with implicit values, enumerated arrays such as
   `[Token_Kind]string`, `bit_set[Flag]` and `fmt`'s names for values; Zig
@@ -464,8 +497,8 @@ each value.
 
 ### Stage one switches only on union variants
 
-Stage zero compiles `switch c { case 61: ... }`, but stage one matches only
-`.Variant` arms, so the tokenizer's operator table is a chain of
+Stage one. Stage zero compiles `switch c { case 61: ... }`, but stage one
+matches only `.Variant` arms, so the tokenizer's operator table is a chain of
 `if (c == 61) { return Eq; }`.
 
 - Odin switches on any integer or rune with ranges, `case 'a'..='z', '_':`;
@@ -474,28 +507,35 @@ Stage zero compiles `switch c { case 61: ... }`, but stage one matches only
 
 Suggestion: stage one compiles integer `switch`, then Odin's ranges.
 
-### A `while (true)` loop does not end a function
+### A function can end without returning
 
-`while (true) { ... return x; }` as a function's last statement is rejected
-with "Union result 'Result' requires a value on every return path", so the
-tokenizer's loop breaks out to a return after it.
+Language. `while (true) { ... return x; }` as a function's last statement is
+rejected with "Union result 'Result' requires a value on every return path",
+so the tokenizer's loop breaks out to a return after it. A function with a
+scalar result, meanwhile, may fall off its end and return zero:
+`F :: (n: int) -> int { if n > 0 { return 1; } }` gives `F(-1) == 0`.
 
 - Odin's checker counts `for {}` without a `break` as terminating; Go's spec
-  does the same for a `for` with no condition and no `break`; Rust's `loop`
-  has type `!`; Zig and C# also treat code after `while (true)` without a
-  `break` as unreachable.
+  does the same for a `for` with no condition and no `break`, and both reject
+  a function with results that can fall off its end. Rust's `loop` has type
+  `!`; Zig and C# also treat code after `while (true)` without a `break` as
+  unreachable.
 
-Suggestion: a `while (true)` with no `break` ends the function, as in Odin.
+Decision (2026-10-20): a function with results ends in a terminating
+statement, as in Go and Odin: a `return`, an `if`/`else` or `switch` whose
+every arm terminates, or a `while (true)` with no `break` out of it. Otherwise
+the compiler reports "Missing return". A bare `return` still gives the named
+results' current values.
 
 ### Calls and record snapshots are costly
 
-Profiling the tokenizer showed record validation at the top: storing a record
-in a local snapshots it, and each snapshot checks the record by rehashing its
-type's layout (`pin_record_valid`, `type_layout_hash`); each call also prepares
-an activation. Inlining the hot loops, reading byte classes from a table and
-returning records only for rare tokens took the corpus run from 28 to 4
-seconds on SLJIT in a sanitizer build. The bytecode backend is about eight
-times slower still.
+Runtime. Profiling the tokenizer showed record validation at the top: storing
+a record in a local snapshots it, and each snapshot checks the record by
+rehashing its type's layout (`pin_record_valid`, `type_layout_hash`); each
+call also prepares an activation. Inlining the hot loops, reading byte classes
+from a table and returning records only for rare tokens took the corpus run
+from 28 to 4 seconds on SLJIT in a sanitizer build. The bytecode backend is
+about eight times slower still.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none
@@ -503,3 +543,17 @@ times slower still.
 
 Suggestion: an implementation change rather than a language one: hash each
 record type's layout once, and inline small pure functions.
+
+## Game projects use library blocks, not packages
+
+Language. Tools and `core:` are Odin-style packages (`package strings`,
+`import strings "core:strings"`), but game projects declare
+`MovementActions :: library { ... }` blocks that the project catalog resolves
+and whose functions still read `entry.direction`. Visibility, imports and
+templates therefore work differently in a game than in a package.
+
+- Odin, Go and Zig have one unit, the package or file, for libraries and
+  programs alike; Rust has crates and modules for both.
+
+Suggestion: a game's libraries become packages, with `entry` gone as
+`docs/design-notes.md` decided, so `pub` and imports mean the same everywhere.

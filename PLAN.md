@@ -213,7 +213,7 @@ Current integration constraints:
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -670,8 +670,9 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: implemented and reviewed; the first deployment waits for this branch
-to land on `main`, as the end of this status explains. `chibi doc [ROOT] [--serve] [--port
+Status: implemented, reviewed and published. The site has been live at
+https://waldnercharles.github.io/chibi/ since 2026-10-20, as the end of this
+status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
@@ -715,8 +716,17 @@ on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
 on `gh-pages` keeps serving until the first deployment replaces it. GitHub
 runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
-so the owner's instruction is to run the workflow once this branch reaches
-`main`. No published page uses an
+so the owner's instruction was to run the workflow once this branch reached
+`main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
+job ("recent account payments have failed or your spending limit needs to be
+increased"). At the owner's direction the site was instead built locally from
+`main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
+the Pages source switched back to that branch. The commit, `0b17fddde`,
+replaces the old browser build, whose editor now lives on chibi-studio's own
+Pages site. To publish again, build the site from `main`, commit `build/docs`
+with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
+`gh-pages`, and push. Returning to the workflow means switching the Pages
+source back to GitHub Actions once billing allows. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -1024,9 +1034,17 @@ modules into a game artifact. Project preparation is now split for it:
 `authoring_project_assemble` writes the artifact from the project's
 declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
-its own artifact's modules reproduces that artifact byte for byte. Still to
-come: the route itself, a Chibi program per the owner's decision, which runs
-stage one and then this assembly through a narrow binding. See `docs/testing.md#game-equivalence`.
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
+behavior links against: Compile's six target arguments, then the catalog's
+events, the type requirements stage zero lists, and the entity type. Next,
+in order:
+1. Stage one compiles a behavior asset, Counter first: retained state, an
+   event handler, `self` and a component field write through the reference
+   intrinsics, with the writer's state, event and component tables.
+2. The route: a Chibi program that runs stage one on a story with that
+   target, then this assembly through a narrow binding, as game-equivalence's
+   candidate.
+3. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

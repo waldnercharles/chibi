@@ -606,41 +606,6 @@ NewScope :: (work: Work, tree: reader.Tree, node: int, context: Context) -> Admi
             }
     }
 }
-SyntheticEntry :: (work: Work, symbol_index: int, context: Context, name: string) -> Work {
-    value := named.Value.Typed(15, 0, 8, SymbolID(work, symbol_index), 0);
-    switch work {
-        case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
-            switch environment {
-                case .Tables(signature, source_symbols, functions, parameters, results, generics):
-                    switch signature {
-                        case .Tables(names, constructor_tables, pointer_size):
-                            switch names {
-                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
-                                             identity, package_scope, has_native, has_documents, entity_id):
-                                    switch reader.AddType(types, ids, value) {
-                                        case .Added(new_types, new_ids, type_index):
-                                            switch lexical {
-                                                case .Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys):
-                                                    slot := length(source_ids);
-                                                    lexical_ids := array_add(source_ids, binding.ID("entry", name));
-                                                    updated_lexical := binding.Environment.Tables(scopes, lexical_symbols, lexical_functions, lexical_ids, keys);
-                                                    updated_names := named.Environment.Tables(updated_lexical, new_types, new_ids, merged, own, native, symbol_types,
-                                                                                              imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
-                                                    row: Symbol = {name: "entry", unit: "", has_unit: false, kind: 6, scope: context.scope, initializer: -1,
-                                                                   function: context.function, writable: false, outcome: false, type_index: type_index,
-                                                                   id_slot: slot, capability_slot: -1, start: -1, end: -1, line: 0, column: 0, document: 0};
-                                                    symbols := array_add(source_symbols, row);
-                                                    masks := array_add(source_masks, int(64));
-                                                    updated := Environment.Tables(reader.Environment.Tables(updated_names, constructor_tables, pointer_size),
-                                                                                  symbols, functions, parameters, results, generics);
-                                                    return Work.State(updated, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
-                                            }
-                                    }
-                            }
-                    }
-            }
-    }
-}
 ReturnsValue :: (tree: reader.Tree, root: int) -> bool {
     if (root < 0) {
         return false;
@@ -796,7 +761,6 @@ Register :: (environment: Environment, tree: reader.Tree, node: int, context: Co
     work = Parameters(work, tree, reader.Field(tree, node, "parameters"), active, false);
     result_node := reader.Field(tree, node, "results");
     work = Parameters(work, tree, result_node, active, true);
-    work = SyntheticEntry(work, symbol_index, active, SymbolAt(work, symbol_index).name);
     function = FunctionAt(work, function_index);
     function.inferred = !is_macro && result_node < 0 && ReturnsValue(tree, body);
     work = SetFunction(work, function_index, function);

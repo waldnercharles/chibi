@@ -737,7 +737,10 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
             case .Rejected(diagnostic):
                 return Result.Rejected(diagnostic);
             case .Compiled(module, bytes):
-                fingerprints[package] = writer.Fingerprint(bytes);
+                // Only an importer reads a fingerprint, and none imports the root.
+                if (package != root) {
+                    fingerprints[package] = writer.Fingerprint(bytes);
+                }
                 starts[package] = length(data);
                 lengths[package] = length(bytes);
                 data = append(data, bytes);

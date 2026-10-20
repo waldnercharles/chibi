@@ -846,3 +846,53 @@ bool authoring_project_assemble(
     static const package_module none;
     return prepare(options, count ? modules : &none, count, artifact, error, size);
 }
+struct authoring_project_catalog
+{
+    chibi_project project;
+    declared_components *declared;
+    authoring_language_catalog *native;
+};
+authoring_project_catalog *authoring_project_catalog_open(
+    const authoring_project_options *options,
+    char *error,
+    size_t size
+)
+{
+    assert(options && options->project && options->native);
+    authoring_project_catalog *catalog = xcalloc(1, sizeof *catalog);
+    bool valid = !chibi_project_read(&catalog->project, options->project, error, size) &&
+                 authoring_component_declarations_load(
+                     catalog->project.content,
+                     native_capabilities_catalog(options->native),
+                     &catalog->declared,
+                     error,
+                     size
+                 );
+    if (valid) {
+        catalog->native = authoring_language_catalog_new(
+            &(authoring_language_catalog_input){ .native = options->native },
+            error,
+            size
+        );
+        valid = catalog->native != NULL;
+    }
+    if (!valid) {
+        authoring_project_catalog_free(catalog);
+        return NULL;
+    }
+    return catalog;
+}
+const script_catalog *authoring_project_catalog_view(const authoring_project_catalog *catalog)
+{
+    return authoring_language_catalog_view(catalog->native);
+}
+void authoring_project_catalog_free(authoring_project_catalog *catalog)
+{
+    if (!catalog) {
+        return;
+    }
+    authoring_language_catalog_free(catalog->native);
+    declared_components_free(catalog->declared);
+    chibi_project_free(&catalog->project);
+    free(catalog);
+}

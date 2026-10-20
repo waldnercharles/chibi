@@ -1,0 +1,4 @@
+version 27
+name "Results story"
+content "content"
+start_scene "scenes/Main.kdl"

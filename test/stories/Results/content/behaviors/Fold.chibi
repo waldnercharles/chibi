@@ -1,0 +1,21 @@
+// Member procedures with one result and with named results.
+Fold :: behavior {
+    Wrap :: (value: float, limit: float) -> float {
+        if value > limit {
+            return value - limit * 2
+        }
+        return value
+    }
+
+    Split :: (value: float) -> (whole: int, rest: float) {
+        whole = int(value)
+        rest = value - whole
+        return (whole, rest)
+    }
+
+    on Tick {
+        self.Transform.x = Wrap(self.Transform.x + 7, 20)
+        parts := Split(self.Transform.x)
+        self.Transform.y = parts.whole * 2 + parts.rest
+    }
+}

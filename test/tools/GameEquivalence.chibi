@@ -1,111 +1,157 @@
 GameEquivalence :: library {
-    // Rebuilds one game with a reference and a candidate compiler and compares
-    // what the two artifacts declare and how they play. A compiler is any
-    // program that takes --project-root ROOT --output FILE, as chibi-compile
-    // does. The observer plays an artifact under a scenario and writes a
-    // trace: its declarations, then one line per fixed step.
+    // Rebuilds stories with a reference and a candidate compiler and compares
+    // what their artifacts declare and how they play. A story is a project and
+    // the scenario that plays it. A compiler is any program that takes
+    // --project-root ROOT --output FILE, as chibi-compile does. The observer
+    // plays artifacts under their scenarios and writes one trace: for each
+    // story a play line, its declarations, then one line per fixed step.
     Join :: (parts: string[]) -> string {
-        return BuildJoin(parts, "");
+        return BuildJoin(parts, "")
     }
-    // Compiles project with compiler into NAME.chibip and plays it into
-    // NAME.trace.
-    Play :: (compiler: string, observer: string, project: string, scenario: string, name: string) -> bool {
-        artifact := Join([name, ".chibip"]);
-        if (RunBuildStep([compiler, "--project-root", project, "--output", artifact]) != 0) {
-            BuildReport(Join([compiler, " cannot compile ", project]));
-            return false;
+    // The last part of a path.
+    Base :: (path: string) -> string {
+        rest := path
+        while (BuildAfter(rest, "/") != "") {
+            rest = BuildAfter(rest, "/")
         }
-        if (RunBuildStep([observer, "--game-observe", artifact, scenario, Join([name, ".trace"])]) != 0) {
-            BuildReport(Join([observer, " cannot play ", artifact]));
-            return false;
+        return rest
+    }
+    // Compiles each story's project with compiler into FOLDER/NAME.chibip and
+    // plays them all into FOLDER.trace.
+    Play :: (compiler: string, observer: string, folder: string, stories: string[]) -> bool {
+        if (!BuildMakeDirectory(folder)) {
+            BuildReport(Join(["cannot make ", folder]))
+            return false
         }
-        return true;
+        observe := [observer, "--game-observe", Join([folder, ".trace"])]
+        index: int = 0
+        while (index < BuildLength(stories)) {
+            artifact := Join([folder, "/", Base(stories[index]), ".chibip"])
+            if (RunBuildStep([compiler, "--project-root", stories[index], "--output", artifact]) != 0) {
+                BuildReport(Join([compiler, " cannot compile ", stories[index]]))
+                return false
+            }
+            observe = BuildConcat(observe, [artifact, stories[index + 1]])
+            index += 2
+        }
+        if (RunBuildStep(observe) != 0) {
+            BuildReport(Join([observer, " cannot play the stories in ", folder]))
+            return false
+        }
+        return true
     }
     // A trace's lines, or none when path holds no trace.
     Trace :: (path: string) -> string[] {
         if (!BuildFileExists(path)) {
-            return [];
+            return []
         }
-        lines := BuildLines(BuildReadFile(path));
-        if (BuildLength(lines) == 0 || !BuildStartsWith(lines[0], "declarations ")) {
-            return [];
+        lines := BuildLines(BuildReadFile(path))
+        if (BuildLength(lines) == 0 || !BuildStartsWith(lines[0], "play ")) {
+            return []
         }
-        return lines;
+        return lines
     }
     Differs :: (summary: string, reference: string, candidate: string) -> int {
-        BuildReport(Join([summary, "\n  reference: ", reference, "\n  candidate: ", candidate]));
-        return 1;
+        BuildReport(Join([summary, "\n  reference: ", reference, "\n  candidate: ", candidate]))
+        return 1
     }
     // The frame number a trace line names.
     Frame :: (line: string) -> string {
-        return BuildBefore(BuildAfter(line, "frame "), " ");
+        return BuildBefore(BuildAfter(line, "frame "), " ")
+    }
+    // Whether every story in a trace has at least one frame.
+    Framed :: (lines: string[]) -> bool {
+        framed := false
+        index: int = 0
+        while (index < BuildLength(lines)) {
+            if (BuildStartsWith(lines[index], "play ")) {
+                if (index > 0 && !framed) {
+                    return false
+                }
+                framed = false
+            }
+            if (BuildStartsWith(lines[index], "frame ")) {
+                framed = true
+            }
+            index += 1
+        }
+        return framed
     }
     // 0 when the traces match line for line, 1 with the first line that
-    // differs, 2 when either is not a trace or neither holds a frame.
+    // differs, 2 when either is not a trace or a story holds no frame.
     Compare :: (referencePath: string, candidatePath: string) -> int {
-        reference := Trace(referencePath);
-        candidate := Trace(candidatePath);
+        reference := Trace(referencePath)
+        candidate := Trace(candidatePath)
         if (BuildLength(reference) == 0) {
-            BuildReport(Join([referencePath, " is not a trace"]));
-            return 2;
+            BuildReport(Join([referencePath, " is not a trace"]))
+            return 2
         }
         if (BuildLength(candidate) == 0) {
-            BuildReport(Join([candidatePath, " is not a trace"]));
-            return 2;
+            BuildReport(Join([candidatePath, " is not a trace"]))
+            return 2
         }
-        index: int = 0;
-        last := "";
+        stories: string[] = []
+        story := ""
+        index: int = 0
         while (index < BuildLength(reference) && index < BuildLength(candidate)) {
-            left := reference[index];
-            right := candidate[index];
-            index += 1;
-            played := BuildStartsWith(left, "frame ");
-            if (left != right && played) {
-                return Differs(Join(["the candidate differs from the reference at frame ", Frame(left)]), left, right);
+            left := reference[index]
+            right := candidate[index]
+            index += 1
+            frame := BuildStartsWith(left, "frame ")
+            if (left != right && frame) {
+                return Differs(Join(["the candidate differs from the reference in ", story, " at frame ", Frame(left)]), left, right)
             }
             if (left != right) {
-                return Differs("the candidate declares differently from the reference", left, right);
+                return Differs(Join(["the candidate declares ", story, " differently from the reference"]), left, right)
             }
-            if (played) {
-                last = Frame(left);
+            if (BuildStartsWith(left, "play ")) {
+                story = BuildAfter(left, "play ")
+                stories = BuildConcat(stories, [story])
             }
         }
         if (BuildLength(reference) != BuildLength(candidate)) {
-            BuildReport("the candidate's trace and the reference's differ in length");
-            return 1;
+            BuildReport("the candidate's trace and the reference's differ in length")
+            return 1
         }
-        if (last == "") {
-            BuildReport("the traces hold no frames");
-            return 2;
+        if (!Framed(reference)) {
+            BuildReport("the traces hold no frames for some story")
+            return 2
         }
-        BuildReport(Join(["the candidate matches the reference through frame ", last]));
-        return 0;
+        BuildReport(Join(["the candidate matches the reference in ", BuildJoin(stories, ", ")]))
+        return 0
     }
-    // Arguments: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER. The
-    // artifacts and traces are written to FOLDER.
+    // Arguments: REFERENCE CANDIDATE OBSERVER FOLDER, then a PROJECT and
+    // SCENARIO for each story. Artifacts and traces go in FOLDER.
     Rebuild :: () -> int {
-        arguments := BuildArguments();
-        if (BuildLength(arguments) != 6) {
-            BuildReport("usage: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER");
-            return 2;
+        arguments := BuildArguments()
+        count := BuildLength(arguments)
+        if (count < 6 || (count - 4) % 2 != 0) {
+            BuildReport("usage: REFERENCE CANDIDATE OBSERVER FOLDER PROJECT SCENARIO [PROJECT SCENARIO]...")
+            return 2
         }
-        folder := arguments[5];
-        reference := Join([folder, "/reference"]);
-        candidate := Join([folder, "/candidate"]);
+        stories: string[] = []
+        index: int = 4
+        while (index < count) {
+            stories = BuildConcat(stories, [arguments[index]])
+            index += 1
+        }
+        folder := arguments[3]
+        reference := Join([folder, "/reference"])
+        candidate := Join([folder, "/candidate"])
         if (!BuildMakeDirectory(folder) ||
-            !Play(arguments[0], arguments[2], arguments[3], arguments[4], reference) ||
-            !Play(arguments[1], arguments[2], arguments[3], arguments[4], candidate)) {
-            return 2;
+            !Play(arguments[0], arguments[2], reference, stories) ||
+            !Play(arguments[1], arguments[2], candidate, stories)) {
+            return 2
         }
-        return Compare(Join([reference, ".trace"]), Join([candidate, ".trace"]));
+        return Compare(Join([reference, ".trace"]), Join([candidate, ".trace"]))
     }
     // Arguments: REFERENCE_TRACE CANDIDATE_TRACE.
     Diff :: () -> int {
-        arguments := BuildArguments();
+        arguments := BuildArguments()
         if (BuildLength(arguments) != 2) {
-            BuildReport("usage: REFERENCE_TRACE CANDIDATE_TRACE");
-            return 2;
+            BuildReport("usage: REFERENCE_TRACE CANDIDATE_TRACE")
+            return 2
         }
-        return Compare(arguments[0], arguments[1]);
+        return Compare(arguments[0], arguments[1])
     }
 }

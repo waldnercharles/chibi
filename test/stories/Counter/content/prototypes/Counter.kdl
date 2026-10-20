@@ -1,0 +1,5 @@
+name "Counter"
+components {
+    (object)Transform
+}
+(array)behaviors "Counter"

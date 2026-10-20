@@ -86,7 +86,9 @@ ValueType :: struct {
     container: int;
     record: int;
 }
-// A function of package `package`; its parameters are params[first, first + count).
+// A function of package `package`; its parameters are params[first, first +
+// count). It has one `result` of its own type, storage 0 for none, or
+// `results` named results, the params after its parameters.
 Callable :: struct {
     name: string;
     package: int;
@@ -97,6 +99,11 @@ Callable :: struct {
     result: int;
     result_container: int;
     result_record: int;
+    results: int;
+}
+// A function's parameters, then its named results, and its callable.
+Signature :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Read(callable: Callable, added: Param[])
 }
 Param :: struct {
     name: string;
@@ -268,6 +275,12 @@ ScalarStorage :: (text: string) -> int {
     }
     if (text == "string") {
         return TextStorage;
+    }
+    if (text == "float") {
+        return FloatStorage;
+    }
+    if (text == "double") {
+        return DoubleStorage;
     }
     return 0;
 }
@@ -482,7 +495,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
                         storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
-                        if (storage == 0 || Field(forest, item, "value") >= 0) {
+                        if (storage == 0 || Floating(storage) || Field(forest, item, "value") >= 0) {
                             return Declarations.Failed(Diagnose(forest, item, file,
                                                                 "record field needs an integer, bool or string type and no default"));
                         }
@@ -533,7 +546,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         parameter := FirstMember(forest, Field(forest, variant, "parameters"));
                         while (parameter >= 0) {
                             payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
-                            if (payload.storage == 0) {
+                            if (payload.storage == 0 || Floating(payload.storage)) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
@@ -566,34 +579,13 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                first := length(params);
-                parameter := FirstMember(forest, Field(forest, member, "parameters"));
-                while (parameter >= 0) {
-                    declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
-                    if (declared.storage == 0) {
-                        return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
-                    }
-                    param_name := Text(forest, text, Field(forest, parameter, "name"));
-                    if (param_name == "") {
-                        return Declarations.Failed(Diagnose(forest, Field(forest, parameter, "name"), file, "Invalid string or embedded NUL"));
-                    }
-                    param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                                    record: declared.record};
-                    params = array_add(params, param);
-                    parameter = NextMember(forest, parameter);
+                switch FunctionSignature(forest, text, types, aliases, package, file, member, name, length(params)) {
+                    case .Failed(diagnostic):
+                        return Declarations.Failed(diagnostic);
+                    case .Read(callable, added):
+                        params = append(params, added);
+                        callables = array_add(callables, callable);
                 }
-                result: ValueType = {storage: 0, container: 0, record: -1};
-                results := Field(forest, member, "results");
-                if (results >= 0) {
-                    result = ReadType(forest, text, types, aliases, package, results);
-                    if (result.storage == 0) {
-                        return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
-                    }
-                }
-                callable: Callable = {name: name, package: package, document: file, node: member, first: first,
-                                      count: length(params) - first, result: result.storage, result_container: result.container,
-                                      result_record: result.record};
-                callables = array_add(callables, callable);
             } else if (Is(forest, member, "constant_declaration")) {
                 name := Text(forest, text, Field(forest, member, "name"));
                 if (name == "") {
@@ -640,6 +632,57 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
     return Declarations.Collected(callables, params, types, members, constants);
 }
 
+// The signature of the function `member` named `name`, its params numbered
+// from `first`. A named result is a scalar.
+FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[],
+                      package: int, file: int, member: int, name: string, first: int) -> Signature {
+    added: Param[] = [];
+    parameter := FirstMember(forest, Field(forest, member, "parameters"));
+    while (parameter >= 0) {
+        declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+        if (declared.storage == 0) {
+            return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
+        }
+        param_name := Text(forest, text, Field(forest, parameter, "name"));
+        if (param_name == "") {
+            return Signature.Failed(Diagnose(forest, Field(forest, parameter, "name"), file,
+                                             "Invalid string or embedded NUL"));
+        }
+        param: Param = {name: param_name, storage: declared.storage, container: declared.container,
+                        record: declared.record};
+        added = array_add(added, param);
+        parameter = NextMember(forest, parameter);
+    }
+    count := length(added);
+    result: ValueType = {storage: 0, container: 0, record: -1};
+    results := Field(forest, member, "results");
+    if (Is(forest, results, "parameter_list")) {
+        named := FirstMember(forest, results);
+        if (named < 0) {
+            return Signature.Failed(Diagnose(forest, results, file, "named results need at least one result"));
+        }
+        while (named >= 0) {
+            declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
+            if (declared.storage == 0 || declared.storage == TextStorage ||
+                Pointer(declared.storage, declared.container)) {
+                return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
+            }
+            result_name := Text(forest, text, Field(forest, named, "name"));
+            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record};
+            added = array_add(added, param);
+            named = NextMember(forest, named);
+        }
+    } else if (results >= 0) {
+        result = ReadType(forest, text, types, aliases, package, results);
+        if (result.storage == 0) {
+            return Signature.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
+        }
+    }
+    callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
+                          result: result.storage, result_container: result.container, result_record: result.record,
+                          results: length(added) - count};
+    return Signature.Read(callable, added);
+}
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
     return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
             wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
@@ -903,19 +946,27 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     ints = array_add(ints, int(0));
                     at += 1;
                 }
-                // Result defaults and kinds.
-                result_count: int = 0;
+                // Result defaults and kinds: the one result, or each named one.
+                result_count := callable.results;
                 if (callable.result != 0) {
                     result_count = 1;
                 }
                 spans = array_add(spans, Range(length(values), result_count));
-                if (result_count != 0) {
+                if (callable.result != 0) {
                     values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
                                                       types, layouts));
                 }
+                at = 0;
+                while (at < callable.results) {
+                    named := params[callable.first + callable.count + at];
+                    values = array_add(values, ScalarValue(named.storage, 0));
+                    at += 1;
+                }
                 spans = array_add(spans, Range(length(ints), result_count));
-                if (result_count != 0) {
+                at = 0;
+                while (at < result_count) {
                     ints = array_add(ints, int(0));
+                    at += 1;
                 }
                 // A behavior's states are each function's variables.
                 spans = array_add(spans, Range(length(values), length(kept_states)));
@@ -1101,6 +1152,15 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          effects: length(wide) - 1, body: length(references) - 2,
                                          subscription: length(references) - 1};
                     entries = array_add(entries, row);
+                } else if (owner_type != 0) {
+                    // A behavior's member procedure is a symbol of its source's scope.
+                    wide = array_add(wide, binding.ID("symbol", format_text("{}:1:{}:callable", identity,
+                                                                            callable.name)));
+                    procedure: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: "", has_entry: false,
+                                               event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
+                                               continuation_wait: false, effects: 0, body: length(references) - 2,
+                                               subscription: length(references) - 1};
+                    entries = array_add(entries, procedure);
                 } else {
                     wide = array_add(wide, binding.ID("package-symbol",
                                                       format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));

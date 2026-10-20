@@ -42,18 +42,28 @@ import:
 
 - `int`, `bool`, `string`, `byte`, `int64` and `uint64` values, records of
   those, unions whose variants carry any of them, and arrays of any of these,
-  as parameters, results and locals; string literals decode as
-  JSON strings, as stage zero reads them;
+  as parameters, results and locals; `float` and `double` values as
+  parameters, results and locals; string literals decode as JSON strings, as
+  stage zero reads them;
+- named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
+  is a local, zero until the body sets it; `return (a, b)` gives each its
+  value, and `return` or the body's end returns them. A call's `.name` reads
+  one, directly or through a local, as for a native's several results. A
+  named result is a number or a bool;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
   gives, as in `x := 5`, is a double in stage zero, and stage one rejects it.
   A literal outside its type, such as `byte` 256, is rejected;
-- `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types:
-  the checked form fails the call when the value does not fit, `wrap` keeps
-  its low bits and `clamp` saturates. Mixed integer operands widen to the type
-  that holds both, and local declarations, assignments to locals and returns
-  widen implicitly; `int` or `int64` with `uint64` needs a conversion;
+- `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types,
+  of an integer or a floating value: the checked form fails the call when the
+  value does not fit, `wrap` keeps its low bits and `clamp` saturates. Mixed
+  integer operands widen to the type that holds both, and local
+  declarations, assignments to locals and returns widen implicitly; `int` or
+  `int64` with `uint64` needs a conversion. An integer operand of a floating
+  one, a named result or a component field becomes floating as stage zero
+  converts it: exactly to a double, then to a `float`. A literal where a
+  floating value is expected is one;
 - local declarations, assignment and compound assignment; `if`/`else`,
   `while`, `for name in array`, `break`, `continue` and `return`; range,
   keyed and `ref` loops reject;
@@ -104,8 +114,9 @@ import:
   constant, and `alias.T` names an imported record or union in types,
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
-Anything else is rejected with its source position. Floating and other
-integer types, implicit widening of call arguments, element stores, literal
+Anything else is rejected with its source position. Floating record fields
+and payloads, other integer types, implicit widening of call arguments,
+element stores, literal
 members, payloads and in-place natives, constants of other types or computed
 values, type patterns, record field defaults, fields of array elements, named
 payload arguments and literal variants come next. A literal passed to a
@@ -162,8 +173,10 @@ against (`docs/testing.md#game-equivalence`). Events, components and the
 fields of game types match their names as the catalog matches them: exactly,
 else loosely, ignoring case, spaces, underscores and hyphens.
 
-A behavior may hold integer states with literal initial values, and `on`
-handlers of the game's events with scalar payloads. A handler takes the
+A behavior may hold integer states with literal initial values, member
+procedures, and `on` handlers of the game's events with scalar payloads. A
+member procedure is a function the behavior's handlers call; stage zero
+names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
 event's payload; a parameter names the field in its position. A handler body
 is a function body, as above. In it, states are names that read and store as
 `VARIABLE` and `STORE`, `self` is the owner, and `self.C.f = v` writes the
@@ -185,8 +198,8 @@ record's record field, such as `self.Input.Move`, is the address inside it.
 compare, and an untyped literal takes the other operand's floating type. A
 global's constant field, such as `input.Jump`, is its name, and a field a
 native reads, such as `input.Jump.pressed`, is a call of that native on the
-value. `after` handlers, `self.C = v`, reading a global itself and member
-procedures are not supported yet.
+value. `after` handlers, `self.C = v` and reading a global itself are not
+supported yet.
 
 A handler's function lists the components it reads or writes, and one write
 for each component it writes through a reference, where stage zero lists two,
@@ -306,21 +319,27 @@ Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
-`tool language-package-compiler-chibi-behaviors` compiles five behaviors on
+`tool language-package-compiler-chibi-behaviors` compiles ten behaviors on
 both compiler backends against a game the test declares: a `Spot` component
-of three floats, one read-only; the entity type; and a `Tick` event with a
-`DeltaSeconds` payload. The behaviors are:
+of three floats, one read-only; the entity type; a `Tick` event with a
+`DeltaSeconds` payload; and `self` and a `pace` global. The behaviors are:
 - Counter's;
 - a state store;
 - a payload parameter written to a field;
 - an integer literal written to a float field, handling `tick`;
+- a negative float literal written to a field;
+- a component field read into another field;
+- a field's compound assignment;
+- Results' fold: member procedures, named results, `int(value)` and
+  integers mixed with floats;
+- float division, subtraction, comparison and `*=`;
 - two states and two field writes.
 
 Each module must declare stage zero's module, owner type, requirements,
 services, states, events and payload fields, and handlers, with the same IDs,
 ABIs, kinds and effects. Then stage one's module, read back through a linker,
 and stage zero's each play five ticks on an owner of their own, and the
-`Spot` and the states must match after every tick. Six sources must be
+`Spot` and the states must match after every tick. Eight sources must be
 rejected with their exact messages. With a project's path as its identity,
 Counter's module, state and handler must take stage zero's IDs. A second
 case fails when any of stage one's functions, other than `Compile`,

@@ -214,6 +214,8 @@ ComponentAssignPhase: int : 8;
 // The phase of a compound assignment that combines the two values on top with
 // its operator.
 CombinePhase: int : 9;
+// The phase of `return (a, b)` once each named result's value is ready.
+ReturnsPhase: int : 10;
 
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
@@ -333,6 +335,9 @@ NumberStorage: int : -3;
 // The several results of a native call: the value's slot is the cell of the
 // first result and its record the native; `.name` reads one result.
 ResultsStorage: int : -4;
+// The named results of a function's call, as ResultsStorage, but the record
+// is the callable.
+FunctionResultsStorage: int : -5;
 // The integer types this compiler emits.
 Integer :: (storage: int) -> bool {
     return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
@@ -862,6 +867,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         index += 1;
     }
+    // Named results are locals from `named` on, zero until the body sets them.
+    named := length(locals);
+    index = 0;
+    while (index < callable.results) {
+        result := params[callable.first + callable.count + index];
+        slots = array_add(slots, ValueLocal(result.storage));
+        code = array_add(code, ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+        locals = array_add(locals, ValueLocal(result.storage));
+        code = array_add(code, Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
+                                           declaration));
+        bound: Name = {name: result.name, place: LocalPlace, index: length(locals) - 1, storage: result.storage,
+                       container: 0, record: result.record, writable: true};
+        names = array_add(names, bound);
+        index += 1;
+    }
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
@@ -1199,12 +1219,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                  target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, members, natives, identities, names, scopes[length(scopes) - 1],
-                                 callable.package, values, value_top, function, item, ops, target, at);
+            step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
+                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named, item,
+                                 ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, constants, natives, ports, names,
-                             callable.package, values, value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+                             names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
@@ -1308,6 +1329,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             work_top += 1;
             at_next -= 1;
         }
+    }
+    // A function with named results returns them when its body ends.
+    if (callable.results > 0) {
+        code = append(code, NamedResultsCode(ops, params, callable, named, length(slots), declaration));
+        slots = append(slots, NamedResultsSlots(params, callable));
+        code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
     return Body.Emitted(slots, locals, cells, code, calls, hosts, roots);

@@ -33,6 +33,8 @@
 #define STORY_COUNT 5
 #define HARNESS_ARGUMENTS (5 + 2 * STORY_COUNT)
 #define STAGE_ONE "tools/toolchain/StageOne.chibi"
+/* The stories stage one compiles so far, from the first. */
+#define STAGE_ONE_STORIES 4
 
 /* The stories, in the order the stage-one increments reach them. */
 static const char *const story_names[STORY_COUNT] = { "Counter",
@@ -700,32 +702,31 @@ TEST_CASE(stories_assemble_from_their_own_modules)
     }
     return true;
 }
-/* Stage one's route rebuilds Counter, Motion and Controls as stage zero does:
- * it recovers stage one from the bootstrap artifact and the compiler sources,
- * compiles each story's behavior with it, and has chibi-compile assemble the
- * artifact from that module. Recovery takes one or two compiles of the
- * compiler the first time its sources change, and none once its closure is
- * kept. */
+/* Stage one's route rebuilds the first STAGE_ONE_STORIES stories as stage zero
+ * does: it recovers stage one from the bootstrap artifact and the compiler
+ * sources, compiles each story's behaviors with it, and has chibi-compile
+ * assemble the artifact from those modules. Recovery takes one or two compiles
+ * of the compiler the first time its sources change, and none once its
+ * closure is kept. */
 TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does)
 {
-    char folder[128], route[4096];
-    char counter[4096], counter_scenario[4096], motion[4096], motion_scenario[4096];
-    char controls[4096], controls_scenario[4096];
+    char folder[128], route[4096], projects[STAGE_ONE_STORIES][4096],
+        scenarios[STAGE_ONE_STORIES][4096];
     path(folder, sizeof folder, "stage-one");
-    story_path(counter, sizeof counter, "Counter", "");
-    story_path(counter_scenario, sizeof counter_scenario, "Counter", SCENARIO);
-    story_path(motion, sizeof motion, "Motion", "");
-    story_path(motion_scenario, sizeof motion_scenario, "Motion", SCENARIO);
-    story_path(controls, sizeof controls, "Controls", "");
-    story_path(controls_scenario, sizeof controls_scenario, "Controls", SCENARIO);
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
-    const char *arguments[] = {
-        build_host_path,  reference_path,   route,  observer_path,   folder,
-        counter,          counter_scenario, motion, motion_scenario, controls,
-        controls_scenario
-    };
-    REQUIRE(harness("Rebuild", arguments, 11) == 0);
-    REQUIRE(log_has("the candidate matches the reference in Counter, Motion, Controls"));
+    const char *arguments[5 + 2 * STAGE_ONE_STORIES] = { build_host_path,
+                                                         reference_path,
+                                                         route,
+                                                         observer_path,
+                                                         folder };
+    for (int i = 0; i < STAGE_ONE_STORIES; i++) {
+        story_path(projects[i], sizeof projects[i], story_names[i], "");
+        story_path(scenarios[i], sizeof scenarios[i], story_names[i], SCENARIO);
+        arguments[5 + 2 * i] = projects[i];
+        arguments[6 + 2 * i] = scenarios[i];
+    }
+    REQUIRE(harness("Rebuild", arguments, 5 + 2 * STAGE_ONE_STORIES) == 0);
+    REQUIRE(log_has("the candidate matches the reference in Counter, Motion, Controls, Results"));
     return true;
 }
 static void prepare_scratch()

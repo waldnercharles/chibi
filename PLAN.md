@@ -1047,15 +1047,16 @@ through references, records combined by the game's `*` and `+` natives, and
 the sum written back through the reference it read. It compiles Controls'
 pilot: a field's compound assignment through its reference, `float`
 arithmetic, a record field inside a game record, and `input.Jump.pressed`,
-an input action's name read by the game's native. Its modules have stage
+an input action's name read by the game's native. It compiles Results' fold:
+member procedures, named results and conversions between integers and
+floats. Its modules have stage
 zero's identities and play as stage zero's do
 (`docs/package-compiler.md#behaviors`). Stage one's route,
-`tools/toolchain/StageOne.chibi`, rebuilds Counter, Motion and Controls as
-stage zero does: it recovers stage one from the bootstrap artifact, runs
-`CompileBehaviors` on the exported input, and assembles the artifact with
-`chibi-compile --modules` (`make test-stage-one`). Next: Results and Follow,
-in the stories' order, each added to that selector as stage one compiles
-it. See `docs/testing.md#game-equivalence`.
+`tools/toolchain/StageOne.chibi`, rebuilds Counter, Motion, Controls and
+Results as stage zero does: it recovers stage one from the bootstrap
+artifact, runs `CompileBehaviors` on the exported input, and assembles the
+artifact with `chibi-compile --modules` (`make test-stage-one`). Next:
+Follow, added to that selector once stage one compiles it. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

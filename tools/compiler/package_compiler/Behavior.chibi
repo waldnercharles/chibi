@@ -312,9 +312,21 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
                 return Result.Rejected(Diagnose(forest, parameter, 0, "the event has no such parameter"));
             }
             callable: Callable = {name: handled_name, package: 0, document: 0, node: member, first: first,
-                                  count: game_events[found].count, result: 0, result_container: 0, result_record: -1};
+                                  count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
+                                  results: 0};
             callables = array_add(callables, callable);
             handled = array_add(handled, found);
+        } else if (Is(forest, member, "function_declaration")) {
+            // A member procedure, which the behavior's handlers call.
+            name := Text(forest, source, Field(forest, member, "name"));
+            switch FunctionSignature(forest, source, declared_types, no_names, 0, 0, member, name, length(params)) {
+                case .Failed(diagnostic):
+                    return Result.Rejected(diagnostic);
+                case .Read(procedure, added):
+                    params = append(params, added);
+                    callables = array_add(callables, procedure);
+                    handled = array_add(handled, int(-1));
+            }
         } else {
             return Result.Rejected(Diagnose(forest, member, 0, "unsupported behavior member"));
         }

@@ -1293,6 +1293,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_MAP_HAS: return &EXECUTION_map_has_call;
         case EXECUTION_INTRINSIC_MAP_REMOVE: return &EXECUTION_map_remove_call;
         case EXECUTION_INTRINSIC_MAP_ITEM: return &EXECUTION_map_item_call;
+        case EXECUTION_INTRINSIC_MAP_STORE: return &EXECUTION_map_store_call;
+        case EXECUTION_INTRINSIC_MAP_DELETE: return &EXECUTION_map_delete_call;
         case EXECUTION_INTRINSIC_REFERENCE_KEY:
             return &EXECUTION_reference_key_call;
         case EXECUTION_INTRINSIC_STATE_DEMAND:
@@ -1353,7 +1355,7 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
             return UINT64_C(0x4348494900000000) | (unsigned)id;
         }
     }
-    for (int id = EXECUTION_INTRINSIC_MAP_MAKE; id <= EXECUTION_INTRINSIC_REFERENCE_KEY;
+    for (int id = EXECUTION_INTRINSIC_MAP_MAKE; id <= EXECUTION_INTRINSIC_MAP_DELETE;
          id++) {
         if (call == execution_intrinsic_call((execution_intrinsic)id)) {
             return UINT64_C(0x4348494900000000) | (unsigned)id;

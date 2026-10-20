@@ -1,6 +1,7 @@
 #include "authoring/source_literal.h"
 #include "backend.h"
 #include "ecs/ecs.h"
+#include "execution/definition.h"
 #include "execution/inspection.h"
 #include "execution/intrinsics.h"
 #include "execution/map_intrinsics.h"
@@ -120,6 +121,122 @@ TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order)
         REQUIRE(map && map->count == 4);
         REQUIRE(!strcmp(map->entries[3].key.str, "Bea"));
         REQUIRE(map->entries[3].value.i == 5);
+        cleanup();
+    }
+    return true;
+}
+
+/* Odin's Robin Hood index keeps lookups constant time: a few thousand keys,
+ * strings and floats included, all found, in insertion order, after removals
+ * that rebuild the index; 0.0 and -0.0 are one key. */
+TEST_CASE(maps_index_finds_every_key_in_insertion_order)
+{
+    arena_init_collectable(&storage);
+    pin_map *map = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_I32 },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    REQUIRE(map);
+    enum
+    {
+        KEYS = 3000
+    };
+    for (int i = 0; i < KEYS; i++) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &map, &key, &value));
+    }
+    REQUIRE(map->count == KEYS && map->slots);
+    for (int i = 0; i < KEYS; i += 2) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 };
+        REQUIRE(!pin_map_delete_owned(&storage, map, &key));
+    }
+    REQUIRE(map->count == KEYS / 2);
+    for (int i = 0; i < KEYS; i++) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 };
+        int found = pin_map_find(map, &key);
+        REQUIRE(i % 2 ? found == i / 2 && map->entries[found].value.i == i : found < 0);
+    }
+    pin_value missing = { .type = PIN_I32, .i = -1 };
+    REQUIRE(pin_map_find(map, &missing) < 0);
+    REQUIRE(pin_map_equal(map, pin_map_snapshot_to_arena(&storage, map)));
+
+    pin_map *names = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_STR },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    char text[32];
+    for (int i = 0; i < 200; i++) {
+        snprintf(text, sizeof text, "key %d", i);
+        pin_value key = { .type = PIN_STR, .str = text },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &names, &key, &value));
+    }
+    snprintf(text, sizeof text, "key %d", 137);
+    pin_value named = { .type = PIN_STR, .str = text };
+    REQUIRE(pin_map_find(names, &named) == 137);
+
+    pin_map *floats = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_F64 },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    for (int i = 0; i < 20; i++) {
+        pin_value key = { .type = PIN_F64, .d = i ? i * 0.5 : -0.0 },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &floats, &key, &value));
+    }
+    pin_value zero = { .type = PIN_F64, .d = 0.0 };
+    REQUIRE(floats->slots && pin_map_find(floats, &zero) == 0);
+    arena_free(&storage);
+    return true;
+}
+/* `m[k] = v` and `m = map_remove(m, k)` on a local update it in place, so a
+ * few thousand stores stay within a small budget; a copy keeps its values. */
+TEST_CASE(maps_local_updates_in_place)
+{
+    const char *simple = "Maps :: behavior { result: int = 0; on Run { "
+                         "squares: Map<int, int> = {}; "
+                         "for i in 0..<4000 { squares[i] = i * i; } "
+                         "copy := squares; "
+                         "for i in 0..<4000 { if i % 2 == 0 { squares = "
+                         "map_remove(squares, i); } } "
+                         "squares[3] = 0; "
+                         "total := 0; for key, value in squares { total += "
+                         "value % 1000; } "
+                         "if map_has(squares, 4) { total += 1000000; } "
+                         "result = total + copy[3] * 10000000; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    int expected = 9 * 10000000;
+    for (int i = 1; i < 4000; i += 2) {
+        expected += i == 3 ? 0 : (i * i) % 1000;
+    }
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(simple, backends[b]));
+        bool stores = false, deletes = false;
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            const behavior_function *body = execution_module_function_at(module, f)
+                                                .body;
+            for (int h = 0; body && h < acount(body->host_calls); h++) {
+                uint64_t id = body->host_calls[h].capability_id;
+                stores |= id == execution_intrinsic_id(&EXECUTION_map_store_call);
+                deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_call);
+            }
+        }
+        REQUIRE(stores && deletes);
+        execution_instance *instance = attach();
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 2000000) == FLOW_OK);
+        const pin_value *result = state(instance, "result");
+        REQUIRE(result && result->i == expected);
         cleanup();
     }
     return true;
@@ -446,6 +563,8 @@ void test_language_maps()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(maps_intrinsics_reject_incompatible_result_banks);
     RUN_TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order);
+    RUN_TEST_CASE(maps_index_finds_every_key_in_insertion_order);
+    RUN_TEST_CASE(maps_local_updates_in_place);
     RUN_TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays);
     RUN_TEST_CASE(maps_checked_lookup_reports_missing_keys);
     RUN_TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types);

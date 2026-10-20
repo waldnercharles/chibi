@@ -338,6 +338,12 @@ Example :: library {
 Map iteration visits a snapshot in insertion order. Replacing a value keeps
 the key's position. Map equality compares associations independently of order.
 
+A lookup takes constant time: a map of more than a few entries keeps Odin's
+Robin Hood hash index over its entries. Storing a key and removing one update
+a local map in place, as appending updates a local array, so building a map
+of n keys takes O(n). A removal shifts the later entries down to keep their
+order, so it takes time in proportion to the map.
+
 ```chibi
 Example :: library {
     Total :: (scores: Map<string, int>) -> int {

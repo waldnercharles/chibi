@@ -3507,6 +3507,7 @@ static int system_step(lower *l, const script_symbol *s, script_range range)
     const script_catalog_capability
         *tick = script_catalog_capability_by_id(l->catalog, l->catalog->tick_event);
     assert(tick && tick->parameter_count == 1);
+    (void)tick;
     int slot = value_op(l, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }, range);
     script_type actual = s->type;
     actual.storage = PIN_F32;

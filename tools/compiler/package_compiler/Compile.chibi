@@ -273,6 +273,13 @@ Complete :: (ops: Ops) -> bool {
 // The storage of a scalar type, any of which a record field may hold: an
 // integer, bool or string; 0 for any other.
 ScalarStorage :: (text: string) -> int {
+    integer: int = Int8Storage;
+    while (integer <= WordStorage) {
+        if (text == TypeName(integer)) {
+            return integer;
+        }
+        integer += 1;
+    }
     if (text == "byte") {
         return ByteStorage;
     }
@@ -394,11 +401,8 @@ FieldSize :: (storage: int, target: Target) -> int {
     if (storage == TextStorage) {
         return target.pointer_size;
     }
-    if (storage == IntStorage) {
-        return 4;
-    }
-    if (storage == Int64Storage || storage == WordStorage) {
-        return 8;
+    if (Integer(storage)) {
+        return Width(storage) / 8;
     }
     return 1;
 }
@@ -771,12 +775,7 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
     } else if (operator == "^") {
         result = left ^ right;
     } else if (operator == "<<" || operator == ">>") {
-        width: int64 = 32;
-        if (storage == Int64Storage) {
-            width = 64;
-        } else if (storage == ByteStorage) {
-            width = 8;
-        }
+        width := int64(Width(storage));
         if (right < 0 || right >= width) {
             return Folding.Failed(Diagnose(forest, node, file, "Constant shift count is outside the type"));
         }

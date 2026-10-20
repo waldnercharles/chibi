@@ -438,7 +438,11 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
     }
     return Literal.Number(negative, magnitude);
 }
+Int8Storage: int : 2;
 ByteStorage: int : 3;
+Int16Storage: int : 4;
+Uint16Storage: int : 5;
+UintStorage: int : 7;
 Int64Storage: int : 8;
 // A value no instruction holds yet: an integer literal its use gives a type.
 NumberStorage: int : -3;
@@ -450,39 +454,45 @@ ResultsStorage: int : -4;
 FunctionResultsStorage: int : -5;
 // The integer types this compiler emits.
 Integer :: (storage: int) -> bool {
-    return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
+    return storage >= Int8Storage && storage <= WordStorage;
+}
+Signed :: (storage: int) -> bool {
+    return storage == Int8Storage || storage == Int16Storage || storage == IntStorage || storage == Int64Storage;
+}
+// An integer type's width in bits.
+Width :: (storage: int) -> int {
+    if (storage == Int8Storage || storage == ByteStorage) {
+        return 8;
+    }
+    if (storage == Int16Storage || storage == Uint16Storage) {
+        return 16;
+    }
+    if (storage == IntStorage || storage == UintStorage) {
+        return 32;
+    }
+    return 64;
 }
 TypeName :: (storage: int) -> string {
-    if (storage == ByteStorage) {
-        return "byte";
+    if (!Integer(storage)) {
+        return "";
     }
-    if (storage == IntStorage) {
-        return "int";
-    }
-    if (storage == Int64Storage) {
-        return "int64";
-    }
-    return "uint64";
+    names: string[] = ["int8", "byte", "int16", "uint16", "int", "uint", "int64", "uint64"];
+    return names[storage - Int8Storage];
 }
 // Whether a literal's value fits an integer type.
 Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
-    if (negative && (storage == ByteStorage || storage == WordStorage)) {
+    if (negative && !Signed(storage)) {
         return false;
     }
     if (magnitude == 0) {
         return true;
     }
-    if (storage == ByteStorage) {
-        return (magnitude >> 8) == 0;
+    if (!Signed(storage)) {
+        return storage == WordStorage || (magnitude >> uint64(Width(storage))) == 0;
     }
-    if (storage == IntStorage) {
-        return (magnitude >> 31) == 0 || (negative && magnitude == 0x80000000);
-    }
-    if (storage == Int64Storage) {
-        return (magnitude >> 63) == 0 || (negative && magnitude == 0x8000000000000000);
-    }
-    return !negative;
+    bits := uint64(Width(storage) - 1);
+    return (magnitude >> bits) == 0 || (negative && magnitude == (uint64(1) << bits));
 }
 // A literal's bits in an integer type it fits, sign-extended when negative.
 Bits :: (negative: bool, magnitude: uint64) -> uint64 {
@@ -491,23 +501,34 @@ Bits :: (negative: bool, magnitude: uint64) -> uint64 {
     }
     return magnitude;
 }
-// The type both integer operands convert to without loss: the wider one, or
-// int for a byte and an int; -1 when there is none, as for a signed type with
-// uint64.
+// The type both integer operands convert to without loss, as stage zero's
+// behavior_scalar_common_integer chooses it: the wider operand, or int or
+// int64 for a signed and unsigned pair; -1 when there is none, as for int64
+// with uint64.
 CommonInteger :: (left: int, right: int) -> int {
-    if (left == right) {
-        return left;
-    }
-    if (left == ByteStorage) {
+    if (IntegerWidens(left, right)) {
         return right;
     }
-    if (right == ByteStorage) {
+    if (IntegerWidens(right, left)) {
         return left;
     }
-    if ((left == IntStorage && right == Int64Storage) || (left == Int64Storage && right == IntStorage)) {
+    if (IntegerWidens(left, IntStorage) && IntegerWidens(right, IntStorage)) {
+        return IntStorage;
+    }
+    if (IntegerWidens(left, Int64Storage) && IntegerWidens(right, Int64Storage)) {
         return Int64Storage;
     }
     return -1;
+}
+// Whether every value of the integer type `from` fits `to`.
+IntegerWidens :: (from: int, to: int) -> bool {
+    if (Signed(from) && !Signed(to)) {
+        return false;
+    }
+    if (!Signed(from) && Signed(to)) {
+        return Width(to) > Width(from);
+    }
+    return Width(to) >= Width(from);
 }
 // Whether an integer converts to another without loss, as stores do
 // implicitly.
@@ -515,21 +536,13 @@ Widens :: (from: int, to: int) -> bool {
     return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
 }
 // Whether the runtime computes `op` in a number type: arithmetic other than
-// remainders, and comparisons, for floats; for integers, any comparison for
-// equality and bit operation, the rest for int and int64, and only addition
-// and multiplication for uint64.
+// remainders, and comparisons, for floats; every operator for the integers,
+// negation for the signed ones only.
 Computes :: (ops: Ops, op: int, storage: int) -> bool {
     if (Floating(storage)) {
         return op == ops.add || op == ops.sub || op == ops.mul || op == ops.div || op == ops.neg || Comparison(ops, op);
     }
-    if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
-        op == ops.bit_not || op == ops.shl || op == ops.shr) {
-        return true;
-    }
-    if (storage == IntStorage || storage == Int64Storage) {
-        return true;
-    }
-    return storage == WordStorage && (op == ops.add || op == ops.mul);
+    return op != ops.neg || Signed(storage);
 }
 // A constant of an integer or bool type. One literal holds `bits`: stage
 // zero takes any uint64 for a pointer, and storing one into a local record's

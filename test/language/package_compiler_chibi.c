@@ -168,6 +168,42 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* int8, int16, uint16 and uint as stage zero computes them: mixed
+     * operands widen to the type that holds both, and records hold them. */
+    { .name = "narrow integers",
+      .source = "package facts\n"
+                "P :: struct { a: int8; b: uint16; }\n"
+                "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
+                "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
+                "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
+                "Mixed :: (a: int8, b: byte) -> int { return a + b; }\n"
+                "Big :: (a: uint, b: int) -> int64 { return a + b; }\n"
+                "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
+                "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
+                "int(p.a) + int(p.b); }\n",
+      .calls = { { "Narrow", "[-5,300,9,-7]", "[605]" },
+                 { "Mixed", "[-3,200]", "[197]" },
+                 { "Big", "[4000000000,-1]", "[3999999999]" },
+                 { "Store", "[]", "[65535]" },
+                 { "Make", "[-2]", "[5]" } } },
+    /* uint64 and byte have every operator, unsigned ordering and division
+     * included, as stage zero computes them. */
+    { .name = "unsigned arithmetic",
+      .source =
+          "package facts\n"
+          "Diff :: (a: uint64, b: uint64) -> uint64 { return a - b; }\n"
+          "Less :: (a: uint64, b: uint64) -> bool { return a < b; }\n"
+          "Div :: (a: uint64, b: uint64) -> uint64 { return a / b + a % b; }\n"
+          "Bytes :: (a: byte, b: byte) -> byte { return a + b * 2 - 1; }\n"
+          "Order :: (a: byte, b: byte) -> bool { return a > b && a >= 3; }\n"
+          "Shift :: (a: byte) -> byte { return (a << 1) >> 2; }\n",
+      .calls = { { "Diff", "[10,3]", "[7]" },
+                 { "Less", "[9223372036854775808,1]", "[false]" },
+                 { "Less", "[1,9223372036854775808]", "[true]" },
+                 { "Div", "[18446744073709551615,10]", "[1844674407370955166]" },
+                 { "Bytes", "[20,30]", "[79]" },
+                 { "Order", "[5,3]", "[true]" },
+                 { "Shift", "[12]", "[6]" } } },
     /* Constants fold integer expressions of literals and other constants,
      * declared in any order and in an imported package. */
     { .name = "constant expressions",
@@ -1028,24 +1064,11 @@ static const sample samples[] = {
                  "int(value)",
       .line = 2,
       .column = 47 },
-    { .name = "unsigned subtraction",
-      .source = "package facts\nOne :: (a: uint64, b: uint64) -> uint64 "
-                "{ return a - b; }",
+    { .name = "unsigned negation",
+      .source = "package facts\nOne :: (a: uint64) -> uint64 { return -a; }",
       .message = "unsupported arithmetic type",
       .line = 2,
-      .column = 50 },
-    { .name = "byte arithmetic",
-      .source = "package facts\nOne :: (a: byte) -> byte { return a + "
-                "1; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 35 },
-    { .name = "unsigned ordering",
-      .source = "package facts\nOne :: (a: uint64, b: uint64) -> bool { "
-                "return a < b; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 48 },
+      .column = 39 },
     { .name = "byte literal range",
       .source = "package facts\nOne :: () -> byte { return 256; }",
       .message = "Numeric literal is outside the range of byte",

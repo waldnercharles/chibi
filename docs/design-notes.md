@@ -155,11 +155,14 @@ natives. Terrain Lab writes `-> bool` where the name says nothing.
 fixed step.
 
 - Lockstep games check the same kind of per-step checksums. Factorio's desync
-  report also dumps both states at the first divergent tick.
+  report saves both the client's and the server's game state, a few ticks
+  after their checksums diverge, and the cause is found by comparing them.
 
 Change: at the first differing frame, have the observer write that frame's
 component values from both artifacts, as the controller's runtime snapshot
-does. `Diff` then names the first entity and component that differ.
+does. `Diff` then names the first entity and component that differ. The
+harness replays deterministically, so unlike Factorio it can capture the
+exact frame.
 
 ## Stage one should not inherit stage zero's split
 

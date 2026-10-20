@@ -223,7 +223,8 @@ TEST_CASE(maps_index_finds_every_key_in_insertion_order)
     return true;
 }
 /* `m[k] = v` and `delete m[k]` on a local update it in place, so a
- * few thousand stores stay within a small budget; a copy keeps its values. */
+ * few thousand stores stay within a small budget; a copy keeps its values,
+ * and the debugger still watches a removal's result. */
 TEST_CASE(maps_local_updates_in_place)
 {
     const char *simple = "Maps :: behavior { result: int = 0; on Run :: () { "
@@ -244,7 +245,8 @@ TEST_CASE(maps_local_updates_in_place)
     }
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(simple, backends[b]));
-        bool stores = false, deletes = false;
+        bool stores = false, deletes = false, watched = false;
+        int removal = (int)(strstr(simple, "squares.delete(i)") - simple);
         for (int f = 0; f < execution_module_function_count(module); f++) {
             const behavior_function *body = execution_module_function_at(module, f)
                                                 .body;
@@ -253,8 +255,13 @@ TEST_CASE(maps_local_updates_in_place)
                 stores |= id == execution_intrinsic_id(&EXECUTION_map_store_call);
                 deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_call);
             }
+            for (int w = 0; body && w < acount(body->source_watches); w++) {
+                watched |= body->source_watches[w].origin.start == removal &&
+                           body->source_watches[w].output;
+            }
         }
-        REQUIRE(stores && deletes);
+        /* The debugger still watches the removal's result. */
+        REQUIRE(stores && deletes && watched);
         execution_instance *instance = attach();
         REQUIRE(instance);
         REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 2000000) == FLOW_OK);
@@ -513,6 +520,45 @@ TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads)
     return true;
 }
 
+/* A decoded map's index counts against the reader's storage limit. */
+TEST_CASE(maps_wire_charges_the_index_to_the_storage_limit)
+{
+    pin_map_entry entries[16];
+    for (int i = 0; i < 16; i++) {
+        entries[i] = (pin_map_entry){ { .type = PIN_I32, .i = i },
+                                      { .type = PIN_I32, .i = i * i } };
+    }
+    pin_value ints = { .type = PIN_I32 };
+    pin_value source = { .type = PIN_UNION,
+                         .container = PIN_CONTAINER_MAP,
+                         .type_name = "Map_int_int",
+                         .ptr = pin_map_create(&storage, ints, ints, entries, 16) };
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &source);
+    arena decoded = { 0 };
+    execution_wire reader = { .data = writer.data,
+                              .size = writer.size,
+                              .reading = true,
+                              .storage = &decoded };
+    pin_value output = { 0 };
+    execution_wire_value(&reader, &output);
+    size_t needed = sizeof("Map_int_int") + sizeof(pin_map) +
+                    16 * sizeof(pin_map_entry) + pin_map_index_bytes(16);
+    bool charged = !reader.error && ((const pin_map *)output.ptr)->slots &&
+                   reader.owned_bytes == needed;
+    execution_wire limited = { .data = writer.data,
+                               .size = writer.size,
+                               .reading = true,
+                               .storage = &decoded,
+                               .owned_limit = needed - 1 };
+    execution_wire_value(&limited, &output);
+    bool rejected = limited.error != NULL;
+    arena_free(&decoded);
+    afree(writer.data);
+    REQUIRE(pin_map_index_bytes(16) > 0 && charged && rejected);
+    return true;
+}
+
 TEST_CASE(maps_source_literal_round_trips_typed_keys_and_values)
 {
     REQUIRE(
@@ -688,6 +734,7 @@ void test_language_maps()
     RUN_TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types);
     RUN_TEST_CASE(maps_own_strings_compare_associations_and_reject_nonfinite_keys);
     RUN_TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads);
+    RUN_TEST_CASE(maps_wire_charges_the_index_to_the_storage_limit);
     RUN_TEST_CASE(maps_source_literal_round_trips_typed_keys_and_values);
     RUN_TEST_CASE(maps_retain_nested_task_results_until_the_last_handle_is_removed);
     RUN_TEST_CASE(maps_inspection_owns_nested_snapshots_after_mutation_and_program_release);

@@ -477,7 +477,9 @@ only "Unexpected syntax". `entry` is a keyword, as are `exit`, `query` and
 token. Finding it took bisecting the file. #420 already made `join`
 contextual and dropped `domain`. A local named `prototype` in the tokenizer
 failed the same way, since #420 made `prototype` a reserved word; the flag
-became `prototyping` (#518).
+became `prototyping` (#518). The prepared writer's tables of events and
+states could not be named `events`, `event` or `state`, nor a loop variable
+`state`; they became `event_declarations`, `event_id` and `retained`.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,

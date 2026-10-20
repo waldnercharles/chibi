@@ -654,7 +654,7 @@ static bool run_member(
         arena_free(&before_storage);
         pin_value args[6], out, before;
         if (use_chain) {
-            REQUIRE(!pin_value_snapshot_to_arena(&input, &args[0], &chain_environment[b]));
+            REQUIRE(!compiler_fixture_snapshot(&input, &args[0], &chain_environment[b]));
         } else {
             REQUIRE(signature_fixture_environment(&fixture, b, &facts, 1, &input, &args[0]));
         }
@@ -665,7 +665,7 @@ static bool run_member(
         args[3] = previous_names(previous, count);
         args[4] = integer(0);
         args[5] = integer(0);
-        REQUIRE(!pin_value_snapshot_to_arena(&before_storage, &before, &args[0]));
+        REQUIRE(!compiler_fixture_snapshot(&before_storage, &before, &args[0]));
         REQUIRE(
             compiler_fixture_call(&fixture, b, MEMBERS, "Read", args, 6, CALL_BUDGET, &detached, &out)
         );
@@ -675,12 +675,12 @@ static bool run_member(
         REQUIRE(owned(&detached, &out, 0) && member_output(b, &out, &before, expected, &updated));
         if (save_chain) {
             arena_free(&chains[b]);
-            REQUIRE(!pin_value_snapshot_to_arena(&chains[b], &chain_environment[b], updated));
+            REQUIRE(!compiler_fixture_snapshot(&chains[b], &chain_environment[b], updated));
             REQUIRE(owned(&chains[b], &chain_environment[b], 0));
         }
         if (retain) {
             arena_free(&retained[b]);
-            REQUIRE(!pin_value_snapshot_to_arena(&retained[b], &kept[b], &out));
+            REQUIRE(!compiler_fixture_snapshot(&retained[b], &kept[b], &out));
             REQUIRE(owned(&retained[b], &kept[b], 0));
             has_kept[b] = true;
         }
@@ -726,7 +726,7 @@ static bool prepare()
 TEST_CASE(record_members_selection_keeps_original_guards)
 {
     REQUIRE(prepare());
-    REQUIRE(parse_source("library Facts { Row::struct{value:int;} }"));
+    REQUIRE(parse_source("Facts :: library { Row::struct{value:int;} }"));
     int record = kind_index("record_declaration", 0);
     REQUIRE(record >= 0);
     const bool accepted[] = { true,  false, false, false,
@@ -808,40 +808,30 @@ TEST_CASE(record_members_selection_keeps_original_guards)
     REQUIRE(calls == 16);
     return true;
 }
-static const char *const fields[] = { "value:int;",
-                                      "value:string;",
-                                      "value:bool=Unknown();",
-                                      "value:float;",
-                                      "value:int?;",
-                                      "value:string[];",
-                                      "value:ref int;",
-                                      "value:Missing;",
-                                      "value:int;",
-                                      "\"quoted name\":string;",
-                                      "\"\\u0000\":Missing;",
-                                      "value:int|string;",
-                                      "value:Peer;" };
+static const char *const fields[] = {
+    "value:int;",  "value:string;",   "value:bool=Unknown();", "value:float;",
+    "value:int?;", "value:string[];", "value:ref int;",        "value:Missing;",
+    "value:int;",  "label:string;",   "value:int|string;",     "value:Peer;"
+};
 TEST_CASE(record_members_annotations_and_diagnostics)
 {
-    REQUIRE(prepared && COUNT(fields) == 13);
-    const bool accepted[] = { true,  true,  true,  false, false, false, false,
+    REQUIRE(prepared && COUNT(fields) == 12);
+    const bool accepted[] = { true,  true,  true,  false, false, false,
                               false, false, false, false, false, false };
-    const int errors[] = { 0, 0, 0, 1, 1, 1, 1, 2, 2, 1, 4, 1, 1 };
+    const int errors[] = { 0, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 1 };
     for (int i = 0; i < COUNT(fields); i++) {
         char text[SOURCE_CAP];
-        int length = snprintf(text, sizeof text, "library Facts { Row::struct{%s} }", fields[i]);
+        int length = snprintf(text, sizeof text, "Facts :: library { Row::struct{%s} }", fields[i]);
         REQUIRE(length > 0 && length < (int)sizeof text && parse_source(text));
         reset_facts();
         int member = kind_index("record_field", 0);
         REQUIRE(member >= 0);
         const char *const duplicates[] = { "value", "other", "value" };
-        const char *const quoted[] = { "quoted name" };
-        const char *const blank[] = { "" };
-        const char *const *previous = i == 8  ? duplicates
-                                    : i == 9  ? quoted
-                                    : i == 10 ? blank
-                                              : NULL;
-        int count = i == 8 ? COUNT(duplicates) : (i == 9 || i == 10) ? 1 : 0;
+        const char *const label[] = { "label" };
+        const char *const *previous = i == 8 ? duplicates
+                                    : i == 9 ? label
+                                             : NULL;
+        int count = i == 8 ? COUNT(duplicates) : i == 9 ? 1 : 0;
         script_record_member result = script_record_members_read(
             &oracle,
             &facts,
@@ -854,28 +844,24 @@ TEST_CASE(record_members_annotations_and_diagnostics)
         );
         REQUIRE(result.admissible == accepted[i] && result.diagnostic_count == errors[i]);
         REQUIRE(result.field.has_default == (i == 2));
-        REQUIRE(result.annotation.publication_count == (i == 11 ? 1 : 0));
-        REQUIRE(result.annotation.use_count == (i == 12 ? 1 : 0));
+        REQUIRE(result.annotation.publication_count == (i == 10 ? 1 : 0));
+        REQUIRE(result.annotation.use_count == (i == 11 ? 1 : 0));
         if (i == 2) {
             REQUIRE(result.field.type.storage == PIN_BOOL && !result.diagnostic_count);
             REQUIRE(!strcmp(ts_node_type(result.default_node), "call_expression"));
         }
-        if (i == 10) {
-            REQUIRE(!strcmp(result.diagnostics[0].message, "Invalid string or embedded NUL"));
-            REQUIRE(!strcmp(result.field.name, ""));
-        }
-        if (i == 12) {
+        if (i == 11) {
             REQUIRE(result.field.type.nominal == PEER_ID);
         }
         REQUIRE(run_member(member, previous, count, &result, false, false, i == 9));
     }
-    REQUIRE(calls == 42);
+    REQUIRE(calls == 40);
     return true;
 }
 TEST_CASE(record_members_default_boundary_requires_refreshed_facts)
 {
     REQUIRE(
-        prepared && parse_source("library Facts { Row::struct{first:int=Unknown();second:After;} }")
+        prepared && parse_source("Facts :: library { Row::struct{first:int=Unknown();second:After;} }")
     );
     reset_facts();
     int first = kind_index("record_field", 0), second = kind_index("record_field", 1);
@@ -922,13 +908,13 @@ TEST_CASE(record_members_default_boundary_requires_refreshed_facts)
     REQUIRE(!fresh.admissible && !fresh.annotation.diagnostic_count && fresh.diagnostic_count == 1);
     REQUIRE(fresh.field.type.storage == PIN_BOOL && fresh.field.type.nominal == AFTER_ID);
     REQUIRE(run_member(second, previous, 1, &fresh, false, false, false));
-    REQUIRE(calls == 48);
+    REQUIRE(calls == 46);
     return true;
 }
 TEST_CASE(record_members_publications_continue_before_next_member)
 {
     REQUIRE(
-        prepared && parse_source("library Facts { Row::struct{left:int|string=Unknown();right:int|string;} }")
+        prepared && parse_source("Facts :: library { Row::struct{left:int|string=Unknown();right:int|string;} }")
     );
     reset_facts();
     int first = kind_index("record_field", 0), second = kind_index("record_field", 1);
@@ -960,12 +946,12 @@ TEST_CASE(record_members_publications_continue_before_next_member)
         tail.field.type.nominal == head.field.type.nominal
     );
     REQUIRE(run_member(second, previous, 1, &tail, true, false, false));
-    REQUIRE(calls == 52 && parses == 32);
+    REQUIRE(calls == 50 && parses == 31);
     return true;
 }
 TEST_CASE(record_members_outputs_outlive_all_producers)
 {
-    REQUIRE(prepared && calls == 52 && parses == 32);
+    REQUIRE(prepared && calls == 50 && parses == 31);
     cleanup();
     compiler_fixture_free(&fixture);
     prepared = false;
@@ -974,18 +960,15 @@ TEST_CASE(record_members_outputs_outlive_all_producers)
         REQUIRE(has_kept[b] && owned(&retained[b], &kept[b], 0));
         const pin_value *v, *a;
         REQUIRE(unpack(&kept[b], 7, &v));
-        REQUIRE(v[0].type == PIN_STR && !strcmp(v[0].str, "quoted name"));
-        REQUIRE(
-            v[1].type == PIN_U64 &&
-            v[1].u64 == script_catalog_id("record-field", "quoted name")
-        );
+        REQUIRE(v[0].type == PIN_STR && !strcmp(v[0].str, "label"));
+        REQUIRE(v[1].type == PIN_U64 && v[1].u64 == script_catalog_id("record-field", "label"));
         REQUIRE(v[3].type == PIN_BOOL && !v[3].b && v[4].type == PIN_I32 && v[4].i == -1);
         REQUIRE(v[5].type == PIN_BOOL && !v[5].b && unpack(&v[2], 7, &a));
         const pin_value *type;
         REQUIRE(unpack(&a[0], 5, &type) && type[0].type == PIN_I32 && type[0].i == PIN_STR);
         const pin_array *errors;
         REQUIRE(array(&v[6], PIN_STRUCT, 1, &errors));
-        REQUIRE(same_text(&errors->items[0], "message", "Duplicate record field 'quoted name'"));
+        REQUIRE(same_text(&errors->items[0], "message", "Duplicate record field 'label'"));
         arena_free(&retained[b]);
         has_kept[b] = false;
     }

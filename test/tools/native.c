@@ -1664,6 +1664,75 @@ static const char *call(const node_host_call *host, audio *audio, pin_value a, p
     pin_value in[] = { a, b, { .type = PIN_F32, .f = 0.5f } };
     return host->invoke(audio, in, NULL);
 }
+static const ecs_relationship_desc player_panic = { .id = UINT64_C(0x706c617965725061),
+                                                    .key = "test.player_panic",
+                                                    .name = "PlayerPanic",
+                                                    .on_delete_target = ECS_CLEANUP_PANIC };
+static bool prepare_panic_player(bool disabled, ecs_entity *target, ecs_entity *external)
+{
+    char error[192];
+    test_scene = one_object_scene("Hero", 1, "Player");
+    other_scene = one_object_scene("Goal", 2, NULL);
+    REQUIRE(test_scene && other_scene);
+    const player_named_scene next = { "Next", other_scene };
+    const player_spec spec = {
+        .world = { .components = { .components = REGISTRY_COMPONENTS,
+                                   .component_count = REGISTRY_COMPONENT_COUNT } },
+        .scene = test_scene,
+        .scene_name = "Start",
+        .scenes = &next,
+        .scene_count = 1
+    };
+    test_player = player_new(&spec, error, sizeof error);
+    REQUIRE(test_player);
+    ecs_world *ecs = world_ecs(player_world(test_player));
+    *target = scene_instance_entity(player_scene(test_player), 0);
+    *external = ecs_world_create_entity(ecs);
+    REQUIRE(external->slot);
+    REQUIRE(ecs_world_register_relationship(ecs, &player_panic, NULL) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(ecs, *external, player_panic.id, *target, 0) == ECS_OK);
+    if (disabled) {
+        REQUIRE(ecs_world_record_add(ecs, *external, ECS_DISABLED, NULL, 0) == ECS_OK);
+    }
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    return true;
+}
+TEST_CASE(native_player_refused_scene_release_preserves_current_state)
+{
+    ecs_entity target, external;
+    REQUIRE(prepare_panic_player(false, &target, &external));
+    world *world = player_world(test_player);
+    ecs_world *ecs = world_ecs(world);
+    const scene_instance *before = player_scene(test_player);
+    save *save = world_modules(world)->save;
+    REQUIRE(save_set(save, "unsaved", "keep"));
+    char error[192];
+    REQUIRE(!player_load_scene(test_player, "Next", error, sizeof error));
+    REQUIRE(strstr(error, "external Panic"));
+    REQUIRE(player_scene(test_player) == before && first_x(test_player) == 1);
+    REQUIRE(!strcmp(scene_flow_current(world_scenes(world)), "Start"));
+    REQUIRE(entities_global_name_count(world_entities(world)) == 1);
+    REQUIRE(!strcmp(save_get(save, "unsaved"), "keep"));
+    REQUIRE(ecs_world_live_count(ecs) == 2 && ecs_entity_is_alive(ecs, target));
+    REQUIRE(ecs_has_pair(ecs, external, player_panic.id, target));
+    REQUIRE(ecs_world_record_remove_pair(ecs, external, player_panic.id, target, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    REQUIRE(player_load_scene(test_player, "Next", error, sizeof error));
+    REQUIRE(!ecs_entity_is_alive(ecs, target) && first_x(test_player) == 2);
+    REQUIRE(!strcmp(scene_flow_current(world_scenes(world)), "Next"));
+    return true;
+}
+TEST_CASE(native_player_shutdown_releases_external_panic_sources_including_disabled)
+{
+    for (int disabled = 0; disabled < 2; disabled++) {
+        ecs_entity target, external;
+        REQUIRE(prepare_panic_player(disabled, &target, &external));
+        player_free(test_player);
+        test_player = NULL;
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(native_player_plays_sounds)
 {
     char error[192];
@@ -2116,6 +2185,8 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_player_loads_named_scenes);
+    RUN_TEST_CASE(native_player_refused_scene_release_preserves_current_state);
+    RUN_TEST_CASE(native_player_shutdown_releases_external_panic_sources_including_disabled);
     RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);
     RUN_TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains);

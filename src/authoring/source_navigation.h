@@ -81,6 +81,8 @@ const authoring_document *authoring_navigation_document_at(const authoring_navig
 const char *authoring_navigation_document_text(const authoring_navigation *, int document);
 source_text_kind authoring_navigation_document_kind(const authoring_navigation *, int document);
 const script_catalog *authoring_navigation_catalog(const authoring_navigation *);
+/* Resolves either an authored template ID or a concrete specialization ID. */
+const script_catalog_template *authoring_navigation_template(const authoring_navigation *, uint64_t);
 bool authoring_target_equal(authoring_target, authoring_target);
 const authoring_reference *authoring_navigation_at(const authoring_navigation *, int document, int offset);
 const authoring_reference *authoring_navigation_definition(const authoring_navigation *, authoring_target);

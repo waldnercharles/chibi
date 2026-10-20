@@ -1,6 +1,6 @@
 // Game policy lives here: controls, terrain identity and explicit persistence.
 // Body and raycast read the live terrain colliders, including loaded edits.
-behavior Explorer {
+Explorer :: behavior {
     terrain: entity
     terrainIdentity := "terrain-lab-quarry-v1"
     facing := 1
@@ -18,23 +18,23 @@ behavior Explorer {
         Present()
     }
 
-    Grounded :: fn() -> (Result: bool = false) {
+    Grounded :: () -> (Result: bool = false) {
         hit := raycast(self.Transform, self.Transform + vec2(0, 12), 8, self, false)
         return hit.Found && hit.Normal.y < -0.5 && self.Velocity.y >= -2
     }
 
-    DigPoint :: fn() -> (Point: CF_V2) {
+    DigPoint :: () -> (Point: CF_V2) {
         return self.Transform + vec2(facing * 22, 12)
     }
 
-    Dig :: fn() {
+    Dig :: () {
         damage_material(terrain, DigPoint(), 24, 2, 0, self)
         digCount += 1
         set_ui_text(Element: "#status", Text: "Excavation changed. Press S to save these cells.")
         set_ui_text(Element: "#detail", Text: "F cuts the outlined circle ahead of you. The amber flag marks the reference patch.")
     }
 
-    Save :: fn() {
+    Save :: () {
         if storageRequest > 0 {
             return
         }
@@ -48,7 +48,7 @@ behavior Explorer {
         }
     }
 
-    Load :: fn() {
+    Load :: () {
         if storageRequest > 0 {
             return
         }
@@ -62,12 +62,12 @@ behavior Explorer {
         }
     }
 
-    StorageFailure :: fn(message: string) {
+    StorageFailure :: (message: string) {
         set_ui_text(Element: "#status", Text: format_text("Terrain storage failed: {}", message))
         set_ui_text(Element: "#detail", Text: "Use the native player with --save and a writable save path. Your current terrain is still playable.")
     }
 
-    PollStorage :: fn() {
+    PollStorage :: () {
         if storageRequest == 0 {
             return
         }
@@ -90,12 +90,12 @@ behavior Explorer {
         }
     }
 
-    Respawn :: fn() {
+    Respawn :: () {
         self.Transform = vec2(-42, -16)
         self.Velocity = vec2(0, 0)
     }
 
-    Present :: fn() {
+    Present :: () {
         globals.Visor.Transform = self.Transform + vec2(facing * 3, -4)
         globals.DigTarget.Transform = DigPoint()
     }

@@ -47,7 +47,7 @@ OpShiftLeft: int : 19;
 OpShiftRight: int : 20;
 OpBitNot: int : 21;
 
-Storage :: pure fn(value: Value) -> int {
+Storage :: (value: Value) -> int {
     switch value {
         case .Bool(item):
             return 1;
@@ -78,7 +78,7 @@ Storage :: pure fn(value: Value) -> int {
     }
 }
 
-ToDouble :: pure fn(value: Value) -> Conversion {
+ToDouble :: (value: Value) -> Conversion {
     switch value {
         case .Bool(item):
             if (item) {
@@ -114,7 +114,7 @@ ToDouble :: pure fn(value: Value) -> Conversion {
 
 // Integer storage bounds, matching the runtime cast range checks. Unsigned
 // values compare as int64 bit patterns, so High stops at int64's maximum.
-Low :: pure fn(storage: int) -> int64 {
+Low :: (storage: int) -> int64 {
     if (storage == 2) {
         return -128;
     }
@@ -129,7 +129,7 @@ Low :: pure fn(storage: int) -> int64 {
     }
     return 0;
 }
-High :: pure fn(storage: int) -> int64 {
+High :: (storage: int) -> int64 {
     if (storage == 2) {
         return 127;
     }
@@ -150,11 +150,11 @@ High :: pure fn(storage: int) -> int64 {
     }
     return 9223372036854775807;
 }
-IntegerStorage :: pure fn(storage: int) -> bool {
+IntegerStorage :: (storage: int) -> bool {
     return storage >= 2 && storage <= 9;
 }
 // Every value of `from` fits `to`.
-Widens :: pure fn(from: int, to: int) -> bool {
+Widens :: (from: int, to: int) -> bool {
     if (Signed(from) == Signed(to)) {
         return Width(to) >= Width(from);
     }
@@ -162,7 +162,7 @@ Widens :: pure fn(from: int, to: int) -> bool {
 }
 // The operand storage holding both integers exactly: the wider one, or int or
 // int64 for a signed/unsigned pair. 0 for int64 with uint64.
-CommonInteger :: pure fn(x: int, y: int) -> int {
+CommonInteger :: (x: int, y: int) -> int {
     if (Widens(x, y)) {
         return y;
     }
@@ -177,7 +177,7 @@ CommonInteger :: pure fn(x: int, y: int) -> int {
     }
     return 0;
 }
-Published :: pure fn(bits: uint64, target: int) -> Conversion {
+Published :: (bits: uint64, target: int) -> Conversion {
     published := Publish(bits, target);
     switch published {
         case .Folded(item):
@@ -187,7 +187,7 @@ Published :: pure fn(bits: uint64, target: int) -> Conversion {
     }
 }
 // Modes match the runtime: 0 exact, 1 wrap (low bits), 2 clamp (saturate).
-IntegerConvert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
+IntegerConvert :: (value: Value, target: int, mode: int) -> Conversion {
     bits := Bits(value);
     signed := int64(wrap: bits);
     negative := Signed(Storage(value)) && signed < 0;
@@ -206,7 +206,7 @@ IntegerConvert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
     return Published(uint64(wrap: High(target)), target);
 }
 // Floating sources round toward zero, saturate and map NaN to zero.
-FloatConvert :: pure fn(item: double, target: int) -> Conversion {
+FloatConvert :: (item: double, target: int) -> Conversion {
     if (target == 2) {
         return Conversion.Accepted(Value.I8(int8(item)));
     }
@@ -233,7 +233,7 @@ FloatConvert :: pure fn(item: double, target: int) -> Conversion {
     }
     return Conversion.Rejected;
 }
-Convert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
+Convert :: (value: Value, target: int, mode: int) -> Conversion {
     if (Storage(value) == target) {
         return Conversion.Accepted(value);
     }
@@ -265,16 +265,110 @@ Convert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
     return Conversion.Rejected;
 }
 
-StringValue :: pure fn(value: string, present: bool) -> string {
+StringValue :: (value: string, present: bool) -> string {
     if (!present) {
         return "";
     }
     return value;
 }
 
+// Integer operators compute as C does: signed operands sign extend and
+// unsigned ones zero extend to 64 bits, and the result keeps the low bits of
+// the operand width.
+Integer :: union {
+    Number(value: int64) | Truth(value: bool) | Failed(message: string)
+}
+Unsigned :: union {
+    Number(value: uint64) | Truth(value: bool) | Failed(message: string)
+}
+SignedOperation :: (op: int, x: int64, y: int64, minimum: int64) -> Integer {
+    if (op == OpEq) {
+        return Integer.Truth(x == y);
+    }
+    if (op == OpNe) {
+        return Integer.Truth(x != y);
+    }
+    if (op == OpNeg) {
+        return Integer.Number(-x);
+    }
+    if ((op == OpDiv || op == OpMod) && (y == 0 || (x == minimum && y == -1))) {
+        return Integer.Failed("invalid integer division or remainder");
+    }
+    if (op == OpAdd) {
+        return Integer.Number(x + y);
+    }
+    if (op == OpSub) {
+        return Integer.Number(x - y);
+    }
+    if (op == OpMul) {
+        return Integer.Number(x * y);
+    }
+    if (op == OpDiv) {
+        return Integer.Number(x / y);
+    }
+    if (op == OpMod) {
+        return Integer.Number(x % y);
+    }
+    if (op == OpLt) {
+        return Integer.Truth(x < y);
+    }
+    if (op == OpLe) {
+        return Integer.Truth(x <= y);
+    }
+    if (op == OpGt) {
+        return Integer.Truth(x > y);
+    }
+    if (op == OpGe) {
+        return Integer.Truth(x >= y);
+    }
+    return Integer.Failed("unsupported scalar constant operator");
+}
+UnsignedOperation :: (op: int, x: uint64, y: uint64) -> Unsigned {
+    if (op == OpEq) {
+        return Unsigned.Truth(x == y);
+    }
+    if (op == OpNe) {
+        return Unsigned.Truth(x != y);
+    }
+    if (op == OpNeg) {
+        return Unsigned.Number(uint64(0) - x);
+    }
+    if ((op == OpDiv || op == OpMod) && y == 0) {
+        return Unsigned.Failed("invalid integer division or remainder");
+    }
+    if (op == OpAdd) {
+        return Unsigned.Number(x + y);
+    }
+    if (op == OpSub) {
+        return Unsigned.Number(x - y);
+    }
+    if (op == OpMul) {
+        return Unsigned.Number(x * y);
+    }
+    if (op == OpDiv) {
+        return Unsigned.Number(x / y);
+    }
+    if (op == OpMod) {
+        return Unsigned.Number(x % y);
+    }
+    if (op == OpLt) {
+        return Unsigned.Truth(x < y);
+    }
+    if (op == OpLe) {
+        return Unsigned.Truth(x <= y);
+    }
+    if (op == OpGt) {
+        return Unsigned.Truth(x > y);
+    }
+    if (op == OpGe) {
+        return Unsigned.Truth(x >= y);
+    }
+    return Unsigned.Failed("unsupported unsigned constant operator");
+}
+
 // Operator selection and errors are compiler policy; the selected typed
 // expressions use the same ordinary runtime arithmetic and cast primitives.
-PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
+PhysicalOperation :: (op: int, left: Value, right: Value) -> Result {
     if (op == OpNone) {
         return Result.Folded(left);
     }
@@ -293,45 +387,77 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             }
             return Result.Failed("unsupported scalar constant operator");
         case .I8(x):
-            if (right is .I8(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
+            other: int64 = 0;
+            matched := op == OpNeg;
+            if (right is .I8(z)) {
+                other = int64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch SignedOperation(op, int64(x), other, -128) {
+                    case .Number(value):
+                        return Result.Folded(Value.I8(int8(wrap: value)));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
             return Result.Failed("unsupported scalar constant operator");
         case .U8(x):
-            if (right is .U8(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
+            other: uint64 = 0;
+            matched := op == OpNeg;
+            if (right is .U8(z)) {
+                other = uint64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch UnsignedOperation(op, uint64(x), other) {
+                    case .Number(value):
+                        return Result.Folded(Value.U8(byte(wrap: value)));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
-            return Result.Failed("unsupported scalar constant operator");
+            return Result.Failed("unsupported unsigned constant operator");
         case .I16(x):
-            if (right is .I16(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
+            other: int64 = 0;
+            matched := op == OpNeg;
+            if (right is .I16(z)) {
+                other = int64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch SignedOperation(op, int64(x), other, -32768) {
+                    case .Number(value):
+                        return Result.Folded(Value.I16(int16(wrap: value)));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
             return Result.Failed("unsupported scalar constant operator");
         case .U16(x):
-            if (right is .U16(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
+            other: uint64 = 0;
+            matched := op == OpNeg;
+            if (right is .U16(z)) {
+                other = uint64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch UnsignedOperation(op, uint64(x), other) {
+                    case .Number(value):
+                        return Result.Folded(Value.U16(uint16(wrap: value)));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
-            return Result.Failed("unsupported scalar constant operator");
+            return Result.Failed("unsupported unsigned constant operator");
         case .I32(x):
             if (op == OpNeg) {
                 return Result.Folded(Value.I32(-x));
@@ -376,18 +502,20 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             }
             return Result.Failed("unsupported scalar constant operator");
         case .U32(x):
-            if (right is .U32(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
-                }
-                if (op == OpAdd) {
-                    return Result.Folded(Value.U32(x + y));
-                }
-                if (op == OpMul) {
-                    return Result.Folded(Value.U32(x * y));
+            other: uint64 = 0;
+            matched := op == OpNeg;
+            if (right is .U32(z)) {
+                other = uint64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch UnsignedOperation(op, uint64(x), other) {
+                    case .Number(value):
+                        return Result.Folded(Value.U32(uint(wrap: value)));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
             return Result.Failed("unsupported unsigned constant operator");
@@ -435,18 +563,20 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             }
             return Result.Failed("unsupported scalar constant operator");
         case .U64(x):
-            if (right is .U64(y)) {
-                if (op == OpEq) {
-                    return Result.Folded(Value.Bool(x == y));
-                }
-                if (op == OpNe) {
-                    return Result.Folded(Value.Bool(x != y));
-                }
-                if (op == OpAdd) {
-                    return Result.Folded(Value.U64(x + y));
-                }
-                if (op == OpMul) {
-                    return Result.Folded(Value.U64(x * y));
+            other: uint64 = 0;
+            matched := op == OpNeg;
+            if (right is .U64(z)) {
+                other = uint64(z);
+                matched = true;
+            }
+            if (matched) {
+                switch UnsignedOperation(op, uint64(x), other) {
+                    case .Number(value):
+                        return Result.Folded(Value.U64(value));
+                    case .Truth(value):
+                        return Result.Folded(Value.Bool(value));
+                    case .Failed(message):
+                        return Result.Failed(message);
                 }
             }
             return Result.Failed("unsupported unsigned constant operator");
@@ -472,6 +602,9 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
                 }
                 if (op == OpDiv) {
                     return Result.Folded(Value.F32(x / y));
+                }
+                if (op == OpMod) {
+                    return Result.Folded(Value.F32(x % y));
                 }
                 if (op == OpLt) {
                     return Result.Folded(Value.Bool(x < y));
@@ -509,6 +642,9 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
                 }
                 if (op == OpDiv) {
                     return Result.Folded(Value.F64(x / y));
+                }
+                if (op == OpMod) {
+                    return Result.Folded(Value.F64(x % y));
                 }
                 if (op == OpLt) {
                     return Result.Folded(Value.Bool(x < y));
@@ -566,7 +702,7 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
 // Integer storage publication retains the complete C intermediate word before
 // truncating to the destination width: signed values sign-extend into it and
 // publication keeps its low bits.
-Bits :: pure fn(value: Value) -> uint64 {
+Bits :: (value: Value) -> uint64 {
     switch value {
         case .I8(item):
             return uint64(wrap: item);
@@ -597,7 +733,7 @@ Bits :: pure fn(value: Value) -> uint64 {
     }
 }
 
-Publish :: pure fn(bits: uint64, storage: int) -> Result {
+Publish :: (bits: uint64, storage: int) -> Result {
     if (storage == 2) {
         return Result.Folded(Value.I8(int8(wrap: bits)));
     }
@@ -625,7 +761,7 @@ Publish :: pure fn(bits: uint64, storage: int) -> Result {
     return Result.Failed("unsupported scalar constant operator");
 }
 
-Width :: pure fn(storage: int) -> int {
+Width :: (storage: int) -> int {
     if (storage == 2 || storage == 3) {
         return 8;
     }
@@ -637,10 +773,10 @@ Width :: pure fn(storage: int) -> int {
     }
     return 64;
 }
-Signed :: pure fn(storage: int) -> bool {
+Signed :: (storage: int) -> bool {
     return storage == 2 || storage == 4 || storage == 6 || storage == 8;
 }
-BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result {
+BitOperation :: (op: int, left: Value, right: Value, storage: int) -> Result {
     source := Storage(left);
     width := Width(source);
     mask := ~uint64(0) >> uint64(64 - width);
@@ -680,7 +816,7 @@ BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Res
 // logical not publish Bool, float arithmetic publishes F32/F64, and integer
 // operations publish integer storage. Destination integer width may differ
 // from the operands; publication must not first wrap at the operand width.
-Operation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result {
+Operation :: (op: int, left: Value, right: Value, storage: int) -> Result {
     if (op == OpNone) {
         return Result.Folded(left);
     }

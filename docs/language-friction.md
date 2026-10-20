@@ -86,15 +86,19 @@ Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
 
 Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 
-## No counted loops
+## Stage one compiles only `for name in array`
 
-Counting loops are `while (index < n) { ...; index += 1; }`.
+The language now has `for i in first..last` with inclusive bounds, keyed
+loops and `for item: ref in items` (#420), but stage one rejects all three, so
+the compiler's own counting loops stay `while (index < n) { ...; index += 1; }`.
 
-- Odin has `for i in 0..<n`, Rust `for i in 0..n`, Zig `for (0..n) |i|`,
-  Python `for i in range(n)`, and C, C++ and C# three-part `for`.
+- Odin has `for i in 0..<n`, `for i in 0..=n` and `for x, i in xs`; Rust
+  `for i in 0..n`; Zig `for (0..n) |i|`; Python `for i in range(n)`; C, C++
+  and C# three-part `for`.
 
-Suggestion: Odin's `for i in 0..<n` and `for i in 0..=n`, plus an index in
-`foreach`, as `for x, i in xs`.
+Suggestion: stage one compiles range and keyed loops. Chibi's inclusive
+`first..last` makes the common count loop `0..n - 1`; Odin's half-open `0..<n`
+would avoid the `- 1`.
 
 ## Stage one constants are literals only
 
@@ -167,9 +171,10 @@ Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 
 ## A pure function cannot fail on purpose
 
-Odin's `repeat` panics on a negative count. `expect` is not `pure`, so
-`core:strings` returns an empty string instead and hides the caller's mistake;
-only a checked conversion or an out-of-bounds read fails a pure call.
+Odin's `repeat` panics on a negative count. Purity is inferred since #420, and
+`expect` has an effect, so calling it would make `Repeat` impure; `core:strings`
+returns an empty string instead and hides the caller's mistake. Only a checked
+conversion or an out-of-bounds read fails a pure call.
 
 - Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
   and `unreachable`; C `assert`; C# and F# throw.
@@ -201,19 +206,20 @@ instead and leaves the `_proc` API out.
   types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
   TypeScript, Python and Ruby lambdas.
 
-Suggestion: non-capturing procedure values as `pure fn` parameters, as Odin's.
+Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 
-## No reference parameters
+## Stage one has no reference parameters
 
 Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator` and
-`fields_iterator` advance the caller's string, so `core:strings` has no
-iterators.
+`fields_iterator` advance the caller's string. The language has `ref`
+parameters since #420, but stage one rejects them, and `core:strings`, which
+stage one compiles, has no iterators.
 
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
-Suggestion: `ref` parameters of locals, or the iterator's state as a second
-result once functions return several.
+Suggestion: stage one compiles `ref` parameters of locals, then
+`core:strings` gains Odin's iterators.
 
 ## No default parameter values
 
@@ -224,3 +230,28 @@ with every argument required.
   Rust and Zig don't.
 
 Suggestion: constant defaults for trailing parameters; low priority.
+
+## Calls nest at most 64 deep
+
+Every authored function shares a call-depth budget of 64 (#420). Stage-one
+twins that walked a graph recursively, the union-members walk and the effect
+analysis query restrictions, failed on deep inputs and became loops over an
+explicit stack.
+
+- Odin, C, C++, Rust and Zig recurse until the native stack runs out, often
+  megabytes deep; Python's default limit is 1,000 frames; C# and F# grow to
+  the thread's stack, and F# turns tail calls into jumps.
+
+Suggestion: a deeper budget, counted in frame bytes rather than calls, or
+guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
+
+## Templates are package-local
+
+A template with `$T` parameters cannot be exported, so a generic helper is
+copied into each package that needs it (#420).
+
+- Odin's parametric procedures, Zig's `comptime` functions, Rust generics and
+  C++ templates all export from their package, module or header.
+
+Suggestion: export templates, instantiating each at the caller with the
+callee package's declarations in scope, as Odin does.

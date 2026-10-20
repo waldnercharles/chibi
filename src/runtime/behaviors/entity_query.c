@@ -115,7 +115,8 @@ const char *entity_count_matches(ecs_world *world, const pin_value *inputs, pin_
     entity_condition *plan = NULL;
     const char *error = NULL;
     for (int i = 0; conditions && i < conditions->count; i++) {
-        const pin_value *item = &conditions->items[i];
+        pin_value condition_value = pin_array_get(conditions, i);
+        const pin_value *item = &condition_value;
         if (item->type != PIN_STRUCT ||
             item->container != PIN_CONTAINER_SINGLE || !item->ptr ||
             !item->type_name || strcmp(item->type_name, "EntityCondition")) {
@@ -133,7 +134,7 @@ const char *entity_count_matches(ecs_world *world, const pin_value *inputs, pin_
     }
     out->i = 0;
     for (int i = 0; entities && i < entities->count; i++) {
-        ecs_entity entity = ecs_entity_from_u64(entities->items[i].u64);
+        ecs_entity entity = ecs_entity_from_u64(pin_array_get(entities, i).u64);
         if (!ecs_entity_is_alive(world, entity)) {
             continue;
         }

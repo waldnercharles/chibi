@@ -1,4 +1,4 @@
-behavior InputProbe {
+InputProbe :: behavior {
     on Input {
         pointer := get_pointer_ray()
         if pointer.Active {

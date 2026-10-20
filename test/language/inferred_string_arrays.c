@@ -39,97 +39,101 @@ static const struct
     const char *source, *error, *bad;
 } specimens[] = {
     /* S01 */
-    { "library Arrays { Glyphs :: [\"󰵝\", \"\", \"󰌶\", \"󰙴\", "
+    { "Arrays :: library { Glyphs :: [\"󰵝\", \"\", \"󰌶\", \"󰙴\", "
       "\"󰸊\", \"󰖊\", \"󰊗\", \"󰥻\", \"󰳚\", \"󰋕\", \"󰮋\", "
       "\"󰠲\"]; }",
       NULL,
       NULL },
     /* S02 */
-    { "library Arrays { Items :: [\"beta\", \"alpha\"]; }", NULL, NULL },
+    { "Arrays :: library { Items :: [\"beta\", \"alpha\"]; }", NULL, NULL },
     /* S03 */
-    { "library Arrays { Run :: () -> string { items := [\"alpha\"]; items[0] = "
+    { "Arrays :: library { Run :: () -> string { items := [\"alpha\"]; "
+      "items[0] = "
       "\"beta\"; return items[0]; } }",
       NULL,
       NULL },
     /* S04 */
-    { "library Arrays { Run :: (text: string) -> string { items := [\"alpha\", "
+    { "Arrays :: library { Run :: (text: string) -> string { items := "
+      "[\"alpha\", "
       "text]; return items[1]; } }",
       NULL,
       NULL },
     /* S05 */
-    { "library Arrays { A :: \"alpha\"; Alias :: A; B :: \"beta\"; Items :: "
+    { "Arrays :: library { A :: \"alpha\"; Alias :: A; B :: \"beta\"; Items :: "
       "[Alias, B]; Only :: union { \"alpha\" }; Keep :: () -> Only { return A; "
       "} }",
       NULL,
       NULL },
     /* S06 */
-    { "library Arrays { Items :: [(\"alpha\"), (\"beta\")]; }", NULL, NULL },
+    { "Arrays :: library { Items :: [(\"alpha\"), (\"beta\")]; }", NULL, NULL },
     /* S07 */
-    { "behavior Arrays { items := [\"alpha\", \"beta\"]; }", NULL, NULL },
+    { "Arrays :: behavior { items := [\"alpha\", \"beta\"]; }", NULL, NULL },
     /* S08 */
-    { "library Arrays { Run :: () { return [\"alpha\", \"beta\"]; } }", NULL, NULL },
+    { "Arrays :: library { Run :: () { return [\"alpha\", \"beta\"]; } }", NULL, NULL },
     /* S09 */
-    { "library Arrays { Strings: string[] : [\"alpha\", \"beta\"]; "
+    { "Arrays :: library { Strings: string[] : [\"alpha\", \"beta\"]; "
       "Names: name[] : [\"alpha\", \"beta\"]; Empty: "
       "string[] : []; Run :: () -> string[] { return [\"alpha\", "
       "\"beta\"]; } }",
       NULL,
       NULL },
     /* S10 */
-    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Only :: "
+    { "Arrays :: library { Choice :: union { \"alpha\" | \"beta\" }; Only :: "
       "union { \"alpha\" }; Both: Choice[] : [\"alpha\", \"beta\"]; One"
       ": Only[] : [\"alpha\"]; }",
       NULL,
       NULL },
     /* S11 */
-    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Run :: "
+    { "Arrays :: library { Choice :: union { \"alpha\" | \"beta\" }; Run :: "
       "(first: Choice) -> Choice[] { items := [first, \"beta\"]; return items; "
       "} }",
       NULL,
       NULL },
     /* S12 */
-    { "library Arrays { Bools :: [true, false]; Numbers :: [1, 2]; Ints: "
+    { "Arrays :: library { Bools :: [true, false]; Numbers :: [1, 2]; Ints: "
       "int[] : [1, 2]; Names :: [name(\"alpha\"), \"beta\"]; }",
       NULL,
       NULL },
     /* S13 */
-    { "library Arrays { Items :: [\"alpha\", 1]; }", "Incompatible types", "1" },
+    { "Arrays :: library { Items :: [\"alpha\", 1]; }", "Incompatible types", "1" },
     /* S14 */
-    { "library Arrays { Items :: [1, \"alpha\"]; }", "Incompatible types", "\"alpha\"" },
+    { "Arrays :: library { Items :: [1, \"alpha\"]; }", "Incompatible types", "\"alpha\"" },
     /* S15 */
-    { "library Arrays { Items :: []; }", "Empty arrays need an explicit element type", "[]" },
+    { "Arrays :: library { Items :: []; }", "Empty arrays need an explicit element type", "[]" },
     /* S16 */
-    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Bad: "
+    { "Arrays :: library { Choice :: union { \"alpha\" | \"beta\" }; Bad: "
       "Choice[] : [\"alpha\", \"gamma\"]; }",
       "Incompatible types",
       "\"gamma\"" },
     /* S17 */
-    { "library Arrays { Only :: union { \"alpha\" }; Bad: "
+    { "Arrays :: library { Only :: union { \"alpha\" }; Bad: "
       "Only[] : [\"beta\"]; }",
       "Incompatible types",
       "\"beta\"" },
     /* S18 */
-    { "library Arrays { Only :: union { \"alpha\" }; Bad :: () -> Only { "
+    { "Arrays :: library { Only :: union { \"alpha\" }; Bad :: () -> Only { "
       "return \"beta\"; } }",
       "Incompatible types",
       "\"beta\"" },
     /* S19 */
-    { "library Arrays { Only :: union { \"alpha\" }; Items :: [\"alpha\"]; Bad "
+    { "Arrays :: library { Only :: union { \"alpha\" }; Items :: [\"alpha\"]; "
+      "Bad "
       ":: () -> Only { return Items[0]; } }",
       "Incompatible types",
       "Items[0]" },
     /* S20 */
-    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Bad :: "
+    { "Arrays :: library { Choice :: union { \"alpha\" | \"beta\" }; Bad :: "
       "(first: Choice) { items := [first, \"gamma\"]; } }",
       "Incompatible types",
       "\"gamma\"" },
     /* S21 */
-    { "library Arrays { A :: \"alpha\"; Only :: union { \"beta\" }; Bad :: () "
+    { "Arrays :: library { A :: \"alpha\"; Only :: union { \"beta\" }; Bad :: "
+      "() "
       "-> Only { return A; } }",
       "Incompatible types",
       "return A" },
     /* S22 */
-    { "library Arrays { Bad: int[] : [\"alpha\"]; }", "Incompatible types", "\"alpha\"" },
+    { "Arrays :: library { Bad: int[] : [\"alpha\"]; }", "Incompatible types", "\"alpha\"" },
 };
 _Static_assert(sizeof specimens / sizeof *specimens == 22, "Fixed semantic count");
 _Static_assert(sizeof glyphs / sizeof *glyphs == 12, "Fixed glyph count");
@@ -525,11 +529,12 @@ static bool lookup(behavior_backend backend, int index)
 TEST_CASE(inferred_string_array_runtime)
 {
     static const char *const sources[] = {
-        "library Glyphs { Lookup :: (index: int) -> string { glyphs :: "
+        "Glyphs :: library { Lookup :: (index: int) -> string { glyphs :: "
         "[\"󰵝\", \"\", \"󰌶\", \"󰙴\", \"󰸊\", \"󰖊\", \"󰊗\", "
         "\"󰥻\", "
         "\"󰳚\", \"󰋕\", \"󰮋\", \"󰠲\"]; return glyphs[index]; } }",
-        "library Glyphs { Lookup :: (index: int) -> string { glyphs: string[] "
+        "Glyphs :: library { Lookup :: (index: int) -> string { glyphs: "
+        "string[] "
         ": "
         "[\"󰵝\", \"\", \"󰌶\", \"󰙴\", \"󰸊\", "
         "\"󰖊\", \"󰊗\", "

@@ -212,7 +212,7 @@ static bool pack(
     }
     const script_catalog_variant *table = variant(b, BINDING, "Environment", "Tables");
     REQUIRE(table && table->field_count == 5);
-    REQUIRE(!pin_union_value(&input, table->tag, tables, 5, &values[0]));
+    REQUIRE(!compiler_fixture_union(&input, table->tag, tables, 5, &values[0]));
     REQUIRE(
         record(b, BINDING, "Context", &values[1]) &&
         record(b, PACKAGE, "Context", &values[2]) &&
@@ -400,7 +400,7 @@ static bool compare(
             strcpy(saved_source[b], want.source_name);
             saved[b].name = saved_name[b];
             saved[b].source_name = saved_source[b];
-            REQUIRE(!pin_value_snapshot_to_arena(&retained[b], &kept[b], &result));
+            REQUIRE(!compiler_fixture_snapshot(&retained[b], &kept[b], &result));
             tags[b] = form->tag;
         }
     }
@@ -537,10 +537,10 @@ TEST_CASE(nominal_analyzed_headers_match_metadata_and_origins)
 {
     REQUIRE(prepared);
     static const char *sources[] = {
-        "library Model { Pair :: struct { amount: int; } }",
-        "library Model { Choice :: union { None | Value(amount: int) }; }",
+        "Model :: library { Pair :: struct { amount: int; } }",
+        "Model :: library { Choice :: union { None | Value(amount: int) }; }",
         "package model\nPair :: struct { amount: int; }\n",
-        "behavior Model { Choice :: union { None | Value(amount: int) }; }",
+        "Model :: behavior { Choice :: union { None | Value(amount: int) }; }",
     };
     const script_catalog native = { 0 };
     uint64_t legacy_record = 0;
@@ -607,7 +607,10 @@ TEST_CASE(nominal_analyzed_headers_match_metadata_and_origins)
         }
         int scope = found >= 0 ? analysis->symbols[found].scope : 1;
         script_nominal_context context = {
-            .lexical = { scope, -1, analysis->package_scope, analysis->document_count },
+            .lexical = { .scope = scope,
+                         .function = -1,
+                         .package_scope = analysis->package_scope,
+                         .document_count = analysis->document_count },
             .program_kind = analysis->kind,
             .program_name = analysis->name,
             .pointer_size = sizeof(void *)

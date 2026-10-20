@@ -1,0 +1,5 @@
+Targets :: relationship {
+    exclusive: true,
+    acyclic: true,
+    on_delete_target: Remove
+}

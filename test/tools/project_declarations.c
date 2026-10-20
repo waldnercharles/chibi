@@ -19,17 +19,20 @@
  * their historical anchors and hashes, never manufacture a fresh binding.
  * The existing program migration case covers a valid bound sidecar.
  *
- * Success ceiling: six direct migration calls, three explicit current parses,
- * four metadata checks, two content transactions (four then five files).
+ * Success ceiling: six declaration migration calls, four retention/syntax
+ * migration calls, three explicit current parses, four metadata checks and
+ * two content transactions (four then five files).
  * Two additional in-memory call/unary controls total less than 1 KiB.
- * Including migration internals: at most 33 current/historical syntax parses
- * (twelve direct, three explicit, eight successful-content, ten rejected-content).
+ * Including migration internals: at most 63 current/historical syntax parses
+ * (twenty declaration, twelve retention/syntax, three explicit,
+ * twelve successful-content and sixteen rejected-content).
  * No authored execution, backend, renderer, child process or extra corpus. */
 enum
 {
     SOURCE_COUNT = 2,
     FIXTURE_COUNT = 4,
     MAX_DIRECT_MIGRATIONS = 6,
+    MAX_FOLLOWUP_MIGRATIONS = 4,
     MAX_CURRENT_PARSES = 3,
     MAX_METADATA_CHECKS = 4,
     MAX_TRANSACTIONS = 2,
@@ -67,14 +70,16 @@ static const char
                        "        return !value\n"
                        "    }\n"
                        "}\n";
-static const char current_unary[] = "library Current { Keep :: pure fn(value: "
+static const char current_unary[] = "Current :: library { Keep :: (value: "
                                     "bool) -> (Result: bool) { "
-                                    "return not(value) } }";
+                                    "return not value } }";
 _Static_assert(sizeof legacy_calls + sizeof current_unary <= 1024, "call/unary controls stay below 1 KiB");
 static char directory[64];
 static char *inputs[FIXTURE_COUNT], *migrated[SOURCE_COUNT], *again, *actual;
+static char *retained[SOURCE_COUNT], *current[SOURCE_COUNT];
 static script_syntax *syntax;
-static int direct_migrations, current_parses, metadata_checks, transactions;
+static int direct_migrations, followup_migrations, current_parses,
+    metadata_checks, transactions;
 
 static int occurrences(const char *text, const char *needle)
 {
@@ -116,7 +121,7 @@ static void setup()
         inputs[i] = tool_read(file);
         assert(inputs[i] && strlen(inputs[i]) == fixture_bytes[i]);
     }
-    direct_migrations = current_parses = metadata_checks = transactions = 0;
+    direct_migrations = followup_migrations = current_parses = metadata_checks = transactions = 0;
 }
 
 static void cleanup()
@@ -130,6 +135,10 @@ static void cleanup()
     for (int i = 0; i < SOURCE_COUNT; i++) {
         free(migrated[i]);
         migrated[i] = NULL;
+        free(retained[i]);
+        retained[i] = NULL;
+        free(current[i]);
+        current[i] = NULL;
     }
     for (int i = 0; i < FIXTURE_COUNT; i++) {
         free(inputs[i]);
@@ -230,8 +239,22 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
             REQUIRE(occurrences(migrated[i], "\"not\"(Value: rootclicked.Open)") == 1);
             REQUIRE(!strstr(migrated[i], "= not("));
         }
+        /* Keep the v24 declaration assertions above and content transaction
+         * below exact; only the current-parser check needs the later steps. */
+        REQUIRE(++followup_migrations <= MAX_FOLLOWUP_MIGRATIONS);
+        status = chibi_migrate_retention(migrated[i], &retained[i], error, sizeof error);
+        if (status) {
+            fprintf(stderr, "%s retention: %s\n", names[i], error);
+        }
+        REQUIRE(!status && retained[i]);
+        REQUIRE(++followup_migrations <= MAX_FOLLOWUP_MIGRATIONS);
+        status = chibi_migrate_syntax(retained[i], &current[i], error, sizeof error);
+        if (status) {
+            fprintf(stderr, "%s syntax: %s\n", names[i], error);
+        }
+        REQUIRE(!status && current[i]);
         REQUIRE(++current_parses <= MAX_CURRENT_PARSES);
-        syntax = script_parse(migrated[i]);
+        syntax = script_parse(current[i]);
         REQUIRE(!syntax->diagnostic_count);
         script_syntax_free(syntax);
         syntax = NULL;
@@ -289,13 +312,12 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     TSNode unary = first_node(root, "unary_expression");
     REQUIRE(!ts_node_is_null(unary));
     REQUIRE(!strcmp(ts_node_type(ts_node_child_by_field_name(unary, "operator", 8)), "not"));
-    REQUIRE(
-        !strcmp(ts_node_type(ts_node_child_by_field_name(unary, "operand", 7)), "parenthesized_expression")
-    );
+    REQUIRE(!strcmp(ts_node_type(ts_node_child_by_field_name(unary, "operand", 7)), "identifier"));
     REQUIRE(ts_node_is_null(first_node(root, "call_expression")));
     script_syntax_free(syntax);
     syntax = NULL;
     REQUIRE(direct_migrations == MAX_DIRECT_MIGRATIONS);
+    REQUIRE(followup_migrations == MAX_FOLLOWUP_MIGRATIONS);
     REQUIRE(current_parses == MAX_CURRENT_PARSES);
     REQUIRE(metadata_checks == MAX_METADATA_CHECKS);
     REQUIRE(transactions == MAX_TRANSACTIONS);

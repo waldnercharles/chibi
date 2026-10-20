@@ -7,6 +7,6 @@ components {
         intensity 2.8
         shadows #true
     }
-    Environment ambient_ground=0x303840ff ambient_intensity=1.0 ambient_sky=0x8090a0ff
+    Environment ambient_ground=0x303840ff ambient_intensity=1.0 ambient_sky=0x8090a0ff fog_resolution=0.25 fog_steps=4
     (object)Transform
 }

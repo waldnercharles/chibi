@@ -281,7 +281,7 @@ static bool compare(const char *name, const script_analysis *analysis, request q
             );
         }
         if (retain) {
-            REQUIRE(!pin_value_snapshot_to_arena(&retained[b], &previous[b], &result));
+            REQUIRE(!compiler_fixture_snapshot(&retained[b], &previous[b], &result));
         }
     }
     return true;
@@ -500,9 +500,9 @@ TEST_CASE(constant_proof_raw_facts_match)
 TEST_CASE(constant_proof_analyzer_facts_match)
 {
     const char *sources[] = {
-        "library Facts { Seed: int : 2; Sum :: Seed + 3; Run :: pure "
-        "fn(value: int) -> int { return value + Sum; } }",
-        "library Facts { Run :: pure fn() -> int { local: int = 1; return "
+        "Facts :: library { Seed: int : 2; Sum :: Seed + 3; Run :: "
+        "(value: int) -> int { return value + Sum; } }",
+        "Facts :: library { Run :: () -> int { local: int = 1; return "
         "local; } }",
     };
     const script_catalog catalog = { 0 };

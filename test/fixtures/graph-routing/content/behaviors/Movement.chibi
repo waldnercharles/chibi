@@ -1,4 +1,4 @@
-behavior "Movement" {
+Movement :: behavior {
     on Tick {
         self.Orientation.Radians = atan2(self.Aim.Direction.y, self.Aim.Direction.x)
         if input.Boost.held {

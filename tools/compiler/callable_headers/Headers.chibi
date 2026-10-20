@@ -32,8 +32,8 @@ Function :: struct {
     body: int;
     receiver: int;
     parent: int;
-    "depth_limit": int;
-    "pure": bool;
+    depth_limit: int;
+    pure: bool;
     inferred: bool;
     entry_name: string;
     has_entry: bool;
@@ -94,7 +94,7 @@ Decoded :: union {
 
 // Rebuild only the raw views that sequential lexical admissions have changed.
 // Catalog/type/use pools already extended by the signature reader stay intact.
-Refresh :: pure fn(environment: Environment) -> Environment {
+Refresh :: (environment: Environment) -> Environment {
     switch environment {
         case .Tables(signature, symbols, functions, parameters, results, generics):
             switch signature {
@@ -110,14 +110,14 @@ Refresh :: pure fn(environment: Environment) -> Environment {
                                     lexical_symbols: binding.Symbol[] = [];
                                     lexical_functions: binding.Function[] = [];
                                     symbol_types: int[] = [];
-                                    foreach (symbol in symbols) {
+                                    for (symbol in symbols) {
                                         row: binding.Symbol = {name: symbol.name, kind: symbol.kind, scope: symbol.scope,
                                                                id_slot: symbol.id_slot, start: symbol.start, end: symbol.end, line: symbol.line,
                                                                column: symbol.column, document: symbol.document};
                                         lexical_symbols = array_add(lexical_symbols, row);
                                         symbol_types = array_add(symbol_types, symbol.type_index);
                                     }
-                                    foreach (function in functions) {
+                                    for (function in functions) {
                                         row: binding.Function = {symbol: function.symbol, scope: function.scope};
                                         lexical_functions = array_add(lexical_functions, row);
                                     }
@@ -131,13 +131,13 @@ Refresh :: pure fn(environment: Environment) -> Environment {
                             ids := source_ids;
                             constructor_symbols: constructors.Symbol[] = [];
                             constructor_functions: constructors.Function[] = [];
-                            foreach (symbol in symbols) {
+                            for (symbol in symbols) {
                                 slot := length(ids);
                                 ids = array_add(ids, named.IDAt(lexical_ids, symbol.id_slot));
                                 row: constructors.Symbol = {id_slot: slot};
                                 constructor_symbols = array_add(constructor_symbols, row);
                             }
-                            foreach (function in functions) {
+                            for (function in functions) {
                                 row: constructors.Function = {symbol: function.symbol, result_start: function.result_start,
                                                               result_count: function.result_count};
                                 constructor_functions = array_add(constructor_functions, row);
@@ -150,17 +150,17 @@ Refresh :: pure fn(environment: Environment) -> Environment {
             }
     }
 }
-Start :: pure fn(environment: Environment) -> Work {
+Start :: (environment: Environment) -> Work {
     masks: int[] = [];
     dirty: bool[] = [];
     scope_start: int = 0;
     function_start: int = 0;
     switch environment {
         case .Tables(signature, symbols, functions, parameters, results, generics):
-            foreach (symbol in symbols) {
+            for (symbol in symbols) {
                 masks = array_add(masks, int(0));
             }
-            foreach (function in functions) {
+            for (function in functions) {
                 dirty = array_add(dirty, false);
             }
             function_start = length(functions);
@@ -183,24 +183,24 @@ Start :: pure fn(environment: Environment) -> Work {
     publications: constructors.Plan[] = [];
     return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
 }
-Diagnostic :: pure fn(work: Work, diagnostic: syntax.Diagnostic) -> Work {
+Diagnostic :: (work: Work, diagnostic: syntax.Diagnostic) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, source_diagnostics, uses, publications):
             diagnostics := array_add(source_diagnostics, diagnostic);
             return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
     }
 }
-Name :: pure fn(work: Work, tree: reader.Tree, node: int, document: int) -> Decoded {
+Name :: (work: Work, tree: reader.Tree, node: int, document: int) -> Decoded {
     switch reader.Name(tree, node, document) {
         case .Name(value, diagnostics):
             updated := work;
-            foreach (diagnostic in diagnostics) {
+            for (diagnostic in diagnostics) {
                 updated = Diagnostic(updated, diagnostic);
             }
             return Decoded.Name(updated, value);
     }
 }
-Annotation :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context, signature_mode: bool) -> Read {
+Annotation :: (work: Work, tree: reader.Tree, node: int, context: Context, signature_mode: bool) -> Read {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, old_diagnostics, old_uses, old_publications):
             current := Refresh(environment);
@@ -217,13 +217,13 @@ Annotation :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context
                             all_diagnostics := old_diagnostics;
                             all_uses := old_uses;
                             all_publications := old_publications;
-                            foreach (item in diagnostics) {
+                            for (item in diagnostics) {
                                 all_diagnostics = array_add(all_diagnostics, item);
                             }
-                            foreach (item in uses) {
+                            for (item in uses) {
                                 all_uses = array_add(all_uses, item);
                             }
-                            foreach (item in publications) {
+                            for (item in publications) {
                                 all_publications = array_add(all_publications, item);
                             }
                             updated := Environment.Tables(updated_signature, symbols, functions, parameters, results, generics);
@@ -235,8 +235,8 @@ Annotation :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context
     }
 }
 // Append or reuse exactly the lexical decision; existing row types are retained.
-Declare :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context,
-                   name: string, kind: int, value: named.Value, writable: bool) -> Admission {
+Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
+            name: string, kind: int, value: named.Value, writable: bool) -> Admission {
     switch work {
         case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, old_diagnostics, uses, publications):
             current := Refresh(environment);
@@ -258,12 +258,12 @@ Declare :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context,
                                     switch binding.Declare(lexical, lexical_context, lexical_request) {
                                         case .Appended(symbol_id, errors):
                                             id = symbol_id;
-                                            foreach (error in errors) {
+                                            for (error in errors) {
                                                 diagnostics = array_add(diagnostics, error);
                                             }
                                         case .Existing(index, errors):
                                             existing = index;
-                                            foreach (error in errors) {
+                                            for (error in errors) {
                                                 diagnostics = array_add(diagnostics, error);
                                             }
                                     }
@@ -297,7 +297,7 @@ Declare :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context,
             }
     }
 }
-SymbolAt :: pure fn(work: Work, index: int) -> Symbol {
+SymbolAt :: (work: Work, index: int) -> Symbol {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -306,7 +306,7 @@ SymbolAt :: pure fn(work: Work, index: int) -> Symbol {
             }
     }
 }
-FunctionAt :: pure fn(work: Work, index: int) -> Function {
+FunctionAt :: (work: Work, index: int) -> Function {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -315,7 +315,7 @@ FunctionAt :: pure fn(work: Work, index: int) -> Function {
             }
     }
 }
-SymbolValue :: pure fn(work: Work, index: int) -> named.Value {
+SymbolValue :: (work: Work, index: int) -> named.Value {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -331,7 +331,7 @@ SymbolValue :: pure fn(work: Work, index: int) -> named.Value {
             }
     }
 }
-SymbolID :: pure fn(work: Work, index: int) -> uint64 {
+SymbolID :: (work: Work, index: int) -> uint64 {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -350,7 +350,7 @@ SymbolID :: pure fn(work: Work, index: int) -> uint64 {
             }
     }
 }
-SetSymbol :: pure fn(work: Work, index: int, value: Symbol, fields: int) -> Work {
+SetSymbol :: (work: Work, index: int, value: Symbol, fields: int) -> Work {
     switch work {
         case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -364,7 +364,7 @@ SetSymbol :: pure fn(work: Work, index: int, value: Symbol, fields: int) -> Work
             }
     }
 }
-SetType :: pure fn(work: Work, index: int, value: named.Value) -> Work {
+SetType :: (work: Work, index: int, value: named.Value) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -390,7 +390,7 @@ SetType :: pure fn(work: Work, index: int, value: named.Value) -> Work {
             }
     }
 }
-SetFunction :: pure fn(work: Work, index: int, value: Function) -> Work {
+SetFunction :: (work: Work, index: int, value: Function) -> Work {
     switch work {
         case .State(environment, masks, source_dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -404,7 +404,7 @@ SetFunction :: pure fn(work: Work, index: int, value: Function) -> Work {
             }
     }
 }
-AddMember :: pure fn(work: Work, function: int, symbol: int, kind: int) -> Work {
+AddMember :: (work: Work, function: int, symbol: int, kind: int) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -463,7 +463,7 @@ AddMember :: pure fn(work: Work, function: int, symbol: int, kind: int) -> Work 
             }
     }
 }
-AddInitializer :: pure fn(work: Work, symbol: int, document: int, node: int) -> Work {
+AddInitializer :: (work: Work, symbol: int, document: int, node: int) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, source_initializers, bodies, diagnostics, uses, publications):
             row: Reference = {index: symbol, document: document, node: node};
@@ -471,7 +471,7 @@ AddInitializer :: pure fn(work: Work, symbol: int, document: int, node: int) -> 
             return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
     }
 }
-Parameters :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context, results: bool) -> Work {
+Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, results: bool) -> Work {
     current := work;
     if (results && node >= 0 && !reader.Kind(tree, node, "parameter_list")) {
         switch Annotation(current, tree, node, context, true) {
@@ -539,7 +539,7 @@ Parameters :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context
     }
     return current;
 }
-Token :: pure fn(tree: reader.Tree, node: int, text: string) -> bool {
+Token :: (tree: reader.Tree, node: int, text: string) -> bool {
     if (node < 0) {
         return false;
     }
@@ -555,7 +555,7 @@ Token :: pure fn(tree: reader.Tree, node: int, text: string) -> bool {
     }
     return false;
 }
-NewFunction :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context, kind: int, symbol: int) -> Admission {
+NewFunction :: (work: Work, tree: reader.Tree, node: int, context: Context, kind: int, symbol: int) -> Admission {
     switch work {
         case .State(environment, masks, source_dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -577,7 +577,7 @@ NewFunction :: pure fn(work: Work, tree: reader.Tree, node: int, context: Contex
             }
     }
 }
-NewScope :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context) -> Admission {
+NewScope :: (work: Work, tree: reader.Tree, node: int, context: Context) -> Admission {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {
@@ -606,7 +606,7 @@ NewScope :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context) 
             }
     }
 }
-SyntheticEntry :: pure fn(work: Work, symbol_index: int, context: Context, name: string) -> Work {
+SyntheticEntry :: (work: Work, symbol_index: int, context: Context, name: string) -> Work {
     value := named.Value.Typed(15, 0, 8, SymbolID(work, symbol_index), 0);
     switch work {
         case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
@@ -641,7 +641,7 @@ SyntheticEntry :: pure fn(work: Work, symbol_index: int, context: Context, name:
             }
     }
 }
-ReturnsValue :: pure fn(tree: reader.Tree, root: int) -> bool {
+ReturnsValue :: (tree: reader.Tree, root: int) -> bool {
     if (root < 0) {
         return false;
     }
@@ -685,7 +685,7 @@ ReturnsValue :: pure fn(tree: reader.Tree, root: int) -> bool {
     }
     return false;
 }
-Finish :: pure fn(work: Work, symbol: int, function: int) -> Header {
+Finish :: (work: Work, symbol: int, function: int) -> Header {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             changes: Change[] = [];
@@ -710,7 +710,7 @@ Finish :: pure fn(work: Work, symbol: int, function: int) -> Header {
                                      initializers, bodies, diagnostics, uses, publications);
     }
 }
-Register :: pure fn(environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
+Register :: (environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
     work := Start(environment);
     is_macro := reader.Kind(tree, node, "macro_declaration");
     token := reader.Field(tree, node, "name");

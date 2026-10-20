@@ -13,13 +13,13 @@ DocumentMap :: union {
     Mapped(local_to_source_file: int[], source_file_to_local: int[]) | Missing
 }
 
-LocalLink :: pure fn(link: int, node_start: int) -> int {
+LocalLink :: (link: int, node_start: int) -> int {
     if (link < 0) {
         return link;
     }
     return link - node_start;
 }
-RetainedTree :: pure fn(documents: snapshot.Document[], forest: snapshot.SnapshotNode[], source_file: int) -> DocumentTree {
+RetainedTree :: (documents: snapshot.Document[], forest: snapshot.SnapshotNode[], source_file: int) -> DocumentTree {
     if (source_file < 0 || source_file >= length(documents)) {
         return DocumentTree.Missing;
     }
@@ -50,7 +50,7 @@ RetainedTree :: pure fn(documents: snapshot.Document[], forest: snapshot.Snapsho
     return DocumentTree.Parsed(reader.Tree.Raw(nodes, fields, named_flags, extra_flags, document.text),
                                document.syntax_root - document.node_start);
 }
-TreeForDocument :: pure fn(source: snapshot.Result, source_file: int) -> DocumentTree {
+TreeForDocument :: (source: snapshot.Result, source_file: int) -> DocumentTree {
     switch source {
         case .Accepted(roots, documents, nodes, imports, graph):
             return RetainedTree(documents, nodes, source_file);
@@ -60,7 +60,7 @@ TreeForDocument :: pure fn(source: snapshot.Result, source_file: int) -> Documen
 }
 // Package members are global snapshot file indices. Preserve graph-member order;
 // -1 means a source file is outside this package. Rejected graphs have no map.
-DocumentsForPackage :: pure fn(source: snapshot.Result, package_index: int) -> DocumentMap {
+DocumentsForPackage :: (source: snapshot.Result, package_index: int) -> DocumentMap {
     switch source {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return DocumentMap.Missing;

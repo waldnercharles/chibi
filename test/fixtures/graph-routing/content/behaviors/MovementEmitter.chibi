@@ -1,4 +1,4 @@
-behavior MovementEmitter {
+MovementEmitter :: behavior {
     bind self.ParticleEmitter.Active =
     !input.Boost.held &&
     length(self.ParticleEmitter.Parent.Input.Move) > 0.1

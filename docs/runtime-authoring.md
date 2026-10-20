@@ -97,7 +97,7 @@ comments directly above the component and each field describe them.
 
 ```code
 // Stored energy that refills over time.
-component Charge {
+Charge :: component {
     level: 0..100 charge
     // Charge gained per second.
     rate: charge/s
@@ -164,7 +164,7 @@ Proven mismatches and malformed referenced unit metadata are compile errors;
 `validate_project` reports their source locations and prevents execution:
 
 ```code
-system Recharge(charge: Charge) {
+Recharge :: system(charge: Charge) {
     charge.level += charge.rate * dt // charge
     charge.level += charge.rate      // Units differ: charge += charge/s
 }
@@ -185,6 +185,66 @@ declarations in the prepared artifact, so the player needs no source.
 Projects saved before version 20 declared components in KDL; `--migrate`
 rewrites each into `.chibi`.
 
+## Authored prototypes and relationships
+
+Files under `content/prototypes` can declare prototypes in `.chibi`. Existing KDL
+prototypes remain readable. Component entries supply sparse defaults, and ordered
+bases compose before the declaration's own overrides:
+
+The following declarations belong in separate files:
+
+```chibi
+// content/prototypes/Enemy.chibi
+Enemy :: prototype {
+    Health { current: 100, maximum: 150 }
+    behaviors: [EnemyAI]
+    children: [{name: "enemy", prototype: Child}]
+    links: {Targets: child.enemy}
+}
+// content/prototypes/Elite.chibi
+Elite :: prototype(Enemy, Armored) {
+    Health { current: 200 }
+}
+```
+
+Each file declares one prototype. Referenced prototypes, behaviors and components
+must exist. Defaults support literals, static names, arrays and objects; executable
+calls are rejected. Overrides replace authored fields while preserving unspecified
+inherited defaults. Component/field spellings must resolve uniquely.
+
+Relationship declarations live under `content/relationships`:
+
+```chibi
+Targets :: relationship {
+    exclusive: true
+    acyclic: true
+    traversable: false
+    on_delete_target: Remove
+}
+```
+
+Boolean traits default to false. `traversable` requires `exclusive` and implies
+acyclic traversal. Target deletion defaults to `Remove`; `Delete` and `Panic`
+select the existing ECS policies. Relationships currently have no payload data.
+
+Initial prototype links address instance-local children, such as `child.enemy`.
+A nonexclusive relationship may name several targets in an array. An explicitly
+named relationship overrides inherited links for that relationship. Arbitrary
+scene-global initial targets and queryable embedded components are not supported.
+
+During execution, `add_pair(source, Targets, target)` and
+`remove_pair(source, Targets, target)` stage mutations through ECS commands.
+`has_pair(source, Targets, target)` reads committed state. The relationship is a
+typed symbol reference; a string or numeric ID cannot substitute for it. Mutations
+become visible at the normal structural command boundary, including query refresh
+and target-deletion handling. Prepared projects retain descriptors and initial
+pairs for compiler-free loading.
+
+Relationship iteration also reads committed edges. Removing an existing edge and
+immediately adding it back in the same handler is rejected as a duplicate: the
+removal is still queued. Retain the target and re-add it in a later handler after
+the removal commits.
+
 ## System queries
 
 A system's query header binds components and infers reads and writes from its
@@ -193,7 +253,7 @@ component membership with `and`, `or`, `not` and parentheses; an unqualified
 component always refers to the root entity, as does `self.Component`.
 
 ```code
-system Home query position: Transform, velocity: Velocity
+Home :: system(position: Transform, velocity: Velocity)
     join aim: Targets.Transform?
     where (Player or Ally) and not self.Frozen and not Targets.Frozen {
     if aim {
@@ -203,7 +263,7 @@ system Home query position: Transform, velocity: Velocity
 }
 ```
 
-Here `Targets` must be an engine relationship exposed in the script catalog
+Here `Targets` must be an authored or engine relationship exposed in the script catalog
 with the exclusive trait. A scalar `Targets.Transform` binding follows that
 single target and requires its component. Adding `?` keeps roots with no target
 or no target component; test the binding before reading its fields. Reads and
@@ -236,8 +296,8 @@ if a catalog also exposes a relationship with that name.
 Ancestor sources are explicit and independent of relationship paths:
 
 ```code
-system Inherit query position: Transform,
-    team: Team from ancestor(ChildOf) {
+Inherit :: system(position: Transform,
+    team: Team from ancestor(ChildOf)) {
     position.x = team.spawn_x
 }
 ```
@@ -254,11 +314,11 @@ Filters use the same source notation: `where ancestor(ChildOf).Team` or
 requested component; two ancestor terms need not select the same provider.
 
 For a relationship with multiple targets, a body loop visits one
-target at a time without materializing an array, while the system's state and
-outer body still run once per root:
+target at a time without materializing an array, while the outer body and its
+invocation-local variables still run once per root:
 
 ```code
-system DamageTargets query damage: Damage {
+DamageTargets :: system(damage: Damage) {
     for target in self.Targets {
         if target.Health {
             target.Health.value -= damage.amount
@@ -278,7 +338,7 @@ To give each matching target its own system execution, use an explicit generator
 in the header:
 
 ```code
-system DamageTargets query damage: Damage
+DamageTargets :: system(damage: Damage)
     join target in self.Targets
     join health: Health from target
     where health.value > 0 and changed(damage) {
@@ -299,15 +359,18 @@ has a row. `has(target.Health)` tests component membership on the bound entity,
 and `has(target.Targets)` tests relationship existence without creating more rows.
 The existing scalar join spelling continues to execute once per root.
 
-Each complete root/target tuple owns independent state and suspended work. Entity
-generations participate in identity: a tuple absent at the next membership
-refresh releases its state and cancels its work; a later entity reusing a slot
-cannot inherit it. Removing and restoring the same relationship entirely between
-refreshes preserves the tuple. Reordering
-relationships preserves surviving tuples' state. The cost grows with retained
-matches and live continuations. The query cache's byte cap does not cap this
-separate state. Use a body loop when one root should own the state for all its
-targets. Proven stateless, synchronous generator systems can stream through one
+Each complete root/target tuple owns independent invocation locals and suspended
+work. Ordinary locals survive suspension without `retain`; they end when the
+invocation ends. Explicit `retain` belongs to the system registration and is
+shared across all its tuples. Use components for durable entity state.
+Entity generations participate in identity: a tuple absent at the next membership
+refresh discards its locals and cancels its work; a later entity reusing a slot
+cannot inherit them. Removing and restoring the same relationship entirely
+between refreshes preserves the tuple. Reordering relationships preserves
+surviving continuations. The cost grows with retained matches and live
+continuations. The query cache's byte cap does not cap this separate storage.
+Use a body loop for one invocation covering all of a root's targets.
+Proven stateless, synchronous generator systems can stream through one
 temporary row instead of retaining an instance for every tuple. Each admitted
 body uses an activation. Serial synchronous invocations can reuse one idle
 activation per program, retaining at most 64 KiB of fixed frame storage. Payloads,
@@ -327,7 +390,8 @@ short-circuit order: `where aim and aim.x > 0` guards an optional binding; `wher
 aim or aim.x > 0` does not. Header predicates cannot write, suspend, perform host
 side effects, consume randomness, or read system state or event payloads. These
 restrictions also apply through helpers. Put conditions on persistent system
-state inside the body, so rejecting a query row need not construct that state.
+state inside the body. Registration-owned retained state exists independently of
+query admission, including when no rows match.
 
 `changed(damage)` observes published writes to the whole bound component, not
 only the fields used in the body. A same-value write counts. A new matching row
@@ -338,7 +402,7 @@ observable when their owner calls `ecs_component_modified`.
 The complete dynamic `where` expression gates new work in source order. Required
 header bindings and generators define structural membership; membership tests
 inside a mixed value/change expression belong to that gate. A false gate does not destroy
-existing tuple state or cancel an already suspended body. Structural tuple loss
+existing invocation locals or cancel an already suspended body. Structural tuple loss
 does. Changes are consumed only when new work is admitted, so a busy row does not
 lose a write while waiting. Writing a component watched by the same system can
 make that row eligible again on a later update.
@@ -474,9 +538,9 @@ Keep `game.chibip.resources.json` and all declared resources with the prepared
 artifact. Compilation resolves authored source and dependencies before deployment;
 the player loads the prepared artifact and its declared resource closure. The
 installed compiler and deployed player must satisfy the same format and native
-capability requirements. Final product package acceptance is still in progress.
-Package integrity and installed-consumer linking do not establish rendered
-player, Studio interaction or browser acceptance.
+capability requirements. Package integrity and installed-consumer linking alone
+do not establish rendered player, Studio interaction or browser acceptance;
+validate each affected consumer and report the workload actually exercised.
 
 The controller accepts one plain JSON request per stdin line and produces one
 JSON response per line. Requests use `contract: 1`, an `operation`, and the

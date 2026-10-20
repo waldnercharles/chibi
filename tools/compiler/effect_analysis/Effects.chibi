@@ -20,6 +20,7 @@ Expression :: struct {
     read_slot: int;
     write_slot: int;
     task: bool;
+    range: int;
 }
 Statement :: struct {
     kind: int;
@@ -33,6 +34,7 @@ Statement :: struct {
     child_count: int;
     reduction: int;
     range: int;
+    symbol: int;
 }
 Function :: struct {
     kind: int;
@@ -40,7 +42,7 @@ Function :: struct {
     body: int;
     effects: int;
     range: int;
-    "pure": bool;
+    pure: bool;
 }
 Symbol :: struct {
     kind: int;
@@ -48,6 +50,7 @@ Symbol :: struct {
     initializer: int;
     nominal_slot: int;
     range: int;
+    flags: int;
 }
 Scope :: struct {
     function: int;
@@ -102,106 +105,91 @@ Reduction :: union {
     Checked(access: bool, opaque: bool, task: bool, seen: bool[])
 }
 
-Expressions :: pure fn(environment: Environment) -> Expression[] {
-    depth_limit 0;
+Expressions :: (environment: Environment) -> Expression[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return expressions;
     }
 }
-Arguments :: pure fn(environment: Environment) -> int[] {
-    depth_limit 0;
+Arguments :: (environment: Environment) -> int[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return arguments;
     }
 }
-Statements :: pure fn(environment: Environment) -> Statement[] {
-    depth_limit 0;
+Statements :: (environment: Environment) -> Statement[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return statements;
     }
 }
-Children :: pure fn(environment: Environment) -> int[] {
-    depth_limit 0;
+Children :: (environment: Environment) -> int[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return children;
     }
 }
-Functions :: pure fn(environment: Environment) -> Function[] {
-    depth_limit 0;
+Functions :: (environment: Environment) -> Function[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return functions;
     }
 }
-Symbols :: pure fn(environment: Environment) -> Symbol[] {
-    depth_limit 0;
+Symbols :: (environment: Environment) -> Symbol[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return symbols;
     }
 }
-Scopes :: pure fn(environment: Environment) -> Scope[] {
-    depth_limit 0;
+Scopes :: (environment: Environment) -> Scope[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return scopes;
     }
 }
-Queries :: pure fn(environment: Environment) -> Query[] {
-    depth_limit 0;
+Queries :: (environment: Environment) -> Query[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return queries;
     }
 }
-Bindings :: pure fn(environment: Environment) -> Binding[] {
-    depth_limit 0;
+Bindings :: (environment: Environment) -> Binding[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return bindings;
     }
 }
-Reads :: pure fn(environment: Environment) -> uint64[] {
-    depth_limit 0;
+Reads :: (environment: Environment) -> uint64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return reads;
     }
 }
-Writes :: pure fn(environment: Environment) -> uint64[] {
-    depth_limit 0;
+Writes :: (environment: Environment) -> uint64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return writes;
     }
 }
-Capabilities :: pure fn(environment: Environment) -> Capability[] {
-    depth_limit 0;
+Capabilities :: (environment: Environment) -> Capability[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return capabilities;
     }
 }
-CatalogTypes :: pure fn(environment: Environment) -> CatalogType[] {
-    depth_limit 0;
+CatalogTypes :: (environment: Environment) -> CatalogType[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return catalog_types;
     }
 }
-Ids :: pure fn(environment: Environment) -> uint64[] {
-    depth_limit 0;
+Ids :: (environment: Environment) -> uint64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return ids;
     }
 }
-Ranges :: pure fn(environment: Environment) -> Range[] {
-    depth_limit 0;
+Ranges :: (environment: Environment) -> Range[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
             return ranges;
@@ -209,40 +197,70 @@ Ranges :: pure fn(environment: Environment) -> Range[] {
 }
 
 Call: int : 6;
-Join: int : 16;
+Join: int : 19;
 Member: int : 7;
 Component: int : 8;
 SymbolValue: int : 2;
-Nil: int : 12;
+Nil: int : 15;
 Reduce: int : 16;
 Suspend: int : 16;
 Impure: int : 62;
-IDAt :: pure fn(environment: Environment, slot: int) -> uint64 {
-    depth_limit 0;
+Host: int : 8;
+InvocationRead: int : 64;
+// Retained state, system state and system body parameters or locals, which a
+// query filter cannot read.
+InvocationSymbol :: (environment: Environment, index: int) -> bool {
+    symbol := Symbols(environment)[index];
+    return symbol.kind == 4 || symbol.kind == 5 ||
+           ((symbol.kind == 6 || symbol.kind == 8) && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0);
+}
+// A loop over a reference may not suspend, start tasks, call mutating
+// procedures or reach its borrowed source except through the item.
+ReferenceIteration :: (environment: Environment, expressionEffects: int[], statementEffects: int[],
+                       diagnostics: syntax.Diagnostic[]) -> syntax.Diagnostic[] {
+    for (row in Statements(environment)) {
+        if (row.kind == 7 && row.symbol >= 0 && (Symbols(environment)[row.symbol].flags & 4) != 0 && row.body >= 0) {
+            body := Ranges(environment)[Statements(environment)[row.body].range];
+            source := Expressions(environment)[row.expression];
+            unsafe := (statementEffects[row.body] & 28) != 0;
+            j: int = 0;
+            for (e in Expressions(environment)) {
+                range := Ranges(environment)[e.range];
+                if (range.start >= body.start && range.end <= body.end) {
+                    unsafe = unsafe || (e.kind == SymbolValue && e.symbol == source.symbol);
+                    unsafe = unsafe || (e.kind == Call && (expressionEffects[j] & 2) != 0);
+                }
+                j += 1;
+            }
+            if (unsafe) {
+                diagnostics = Report(environment, diagnostics, row.range, "Reference iteration cannot suspend, start tasks, call mutating procedures or access its borrowed source binding");
+            }
+        }
+    }
+    return diagnostics;
+}
+IDAt :: (environment: Environment, slot: int) -> uint64 {
     if (slot < 0) {
         return 0;
     }
     return Ids(environment)[slot];
 }
-Report :: pure fn(environment: Environment, diagnostics: syntax.Diagnostic[], index: int, message: string) -> syntax.Diagnostic[] {
-    depth_limit 0;
+Report :: (environment: Environment, diagnostics: syntax.Diagnostic[], index: int, message: string) -> syntax.Diagnostic[] {
     range := Ranges(environment)[index];
     row: syntax.Diagnostic = {start: range.start, end: range.end, line: range.line, column: range.column, document: range.document, message: strings.Slice(message, 0, 191)};
     return array_add(diagnostics, row);
 }
-EmptySeen :: pure fn(environment: Environment) -> bool[] {
-    depth_limit 0;
+EmptySeen :: (environment: Environment) -> bool[] {
     seen: bool[] = [];
-    foreach (function in Functions(environment)) {
+    for (function in Functions(environment)) {
         seen = array_add(seen, false);
     }
     return array_add(seen, false);
 }
-StatementEffects :: pure fn(environment: Environment, expressionEffects: int[], statementEffects: int[], row: Statement) -> int {
-    depth_limit 0;
+StatementEffects :: (environment: Environment, expressionEffects: int[], statementEffects: int[], row: Statement) -> int {
     effects := row.effects;
     indices: int[] = [row.expression, row.second, row.third];
-    foreach (index in indices) {
+    for (index in indices) {
         if (index >= 0) {
             effects = effects | expressionEffects[index];
         }
@@ -260,86 +278,74 @@ StatementEffects :: pure fn(environment: Environment, expressionEffects: int[], 
     }
     return effects;
 }
-QueryStatement :: pure fn(environment: Environment, index: int, seen: bool[]) -> Restrictions {
-    depth_limit 0;
-    if (index < 0) {
-        return Restrictions.Restricted(0, seen);
-    }
-    row := Statements(environment)[index];
+// Query filter restrictions over an expression and every function body it
+// reaches: bit 1 starts a task, bit 2 reads retained or per-invocation storage.
+// Items are expression * 2 or statement * 2 + 1. The walk keeps its own stack
+// because callable depth is limited to 64.
+QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen: bool[]) -> Restrictions {
+    stack: int[] = [];
+    depth: int = 0;
     bits: int = 0;
-    indices: int[] = [row.expression, row.second, row.third];
-    foreach (child in indices) {
-        switch QueryExpression(environment, child, seen) {
-            case .Restricted(added, next):
-                bits = bits | added;
-                seen = next;
-        }
+    if (root >= 0) {
+        stack = array_add(stack, root * 2);
+        depth = 1;
     }
-    indices = [row.body, row.alternative];
-    j: int = 0;
-    while (j < row.child_count) {
-        indices = array_add(indices, Children(environment)[row.child_start + j]);
-        j += 1;
-    }
-    foreach (child in indices) {
-        switch QueryStatement(environment, child, seen) {
-            case .Restricted(added, next):
-                bits = bits | added;
-                seen = next;
-        }
-    }
-    return Restrictions.Restricted(bits, seen);
-}
-QueryExpression :: pure fn(environment: Environment, index: int, seen: bool[]) -> Restrictions {
-    depth_limit 0;
-    if (index < 0) {
-        return Restrictions.Restricted(0, seen);
-    }
-    row := Expressions(environment)[index];
-    bits: int = 0;
-    if (row.task) {
-        bits = 1;
-    }
-    if (row.kind == SymbolValue && row.symbol >= 0) {
-        symbol := Symbols(environment)[row.symbol];
-        if (symbol.kind == 4 || symbol.kind == 5 || ((symbol.kind == 6 || symbol.kind == 8) && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0)) {
-            bits = bits | 2;
-        }
-    }
-    switch QueryExpression(environment, row.left, seen) {
-        case .Restricted(added, next):
-            bits = bits | added;
-            seen = next;
-    }
-    if (row.kind == Call || row.kind == Join) {
-        if (row.right >= 0 && !seen[row.right]) {
-            seen[row.right] = true;
-            switch QueryStatement(environment, Functions(environment)[row.right].body, seen) {
-                case .Restricted(added, next):
-                    bits = bits | added;
-                    seen = next;
+    while (depth > 0) {
+        depth -= 1;
+        item := stack[depth];
+        index := item >> 1;
+        pending: int[] = [];
+        if ((item & 1) == 1) {
+            row := Statements(environment)[index];
+            pending = [row.expression * 2, row.second * 2, row.third * 2, row.body * 2 + 1, row.alternative * 2 + 1];
+            j: int = 0;
+            while (j < row.child_count) {
+                pending = array_add(pending, Children(environment)[row.child_start + j] * 2 + 1);
+                j += 1;
+            }
+        } else {
+            row := Expressions(environment)[index];
+            if (row.task) {
+                bits = bits | 1;
+            }
+            if ((effects[index] & InvocationRead) != 0) {
+                bits = bits | 2;
+            }
+            if (row.kind == SymbolValue && row.symbol >= 0) {
+                symbol := Symbols(environment)[row.symbol];
+                if (symbol.kind == 4 || symbol.kind == 5 || ((symbol.kind == 6 || symbol.kind == 8) && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0)) {
+                    bits = bits | 2;
+                }
+            }
+            pending = [row.left * 2];
+            if (row.kind == Call || row.kind == Join) {
+                if (row.right >= 0 && !seen[row.right]) {
+                    seen[row.right] = true;
+                    pending = array_add(pending, Functions(environment)[row.right].body * 2 + 1);
+                }
+            } else {
+                pending = array_add(pending, row.right * 2);
+            }
+            j: int = 0;
+            while (j < row.arg_count) {
+                pending = array_add(pending, Arguments(environment)[row.arg_start + j] * 2);
+                j += 1;
             }
         }
-    } else {
-        switch QueryExpression(environment, row.right, seen) {
-            case .Restricted(added, next):
-                bits = bits | added;
-                seen = next;
+        for (next in pending) {
+            if (next >= 0) {
+                if (depth == length(stack)) {
+                    stack = array_add(stack, next);
+                } else {
+                    stack[depth] = next;
+                }
+                depth += 1;
+            }
         }
-    }
-    j: int = 0;
-    while (j < row.arg_count) {
-        switch QueryExpression(environment, Arguments(environment)[row.arg_start + j], seen) {
-            case .Restricted(added, next):
-                bits = bits | added;
-                seen = next;
-        }
-        j += 1;
     }
     return Restrictions.Restricted(bits, seen);
 }
-ComponentTarget :: pure fn(environment: Environment, index: int) -> uint64 {
-    depth_limit 0;
+ComponentTarget :: (environment: Environment, index: int) -> uint64 {
     expressions := Expressions(environment);
     while (index >= 0 && expressions[index].kind == Member) {
         row := expressions[index];
@@ -360,9 +366,8 @@ ComponentTarget :: pure fn(environment: Environment, index: int) -> uint64 {
     }
     return 0;
 }
-ReductionCapability :: pure fn(environment: Environment, componentID: uint64, check: Reduction, id: uint64) -> Reduction {
-    depth_limit 0;
-    foreach (row in Capabilities(environment)) {
+ReductionCapability :: (environment: Environment, componentID: uint64, check: Reduction, id: uint64) -> Reduction {
+    for (row in Capabilities(environment)) {
         if (IDAt(environment, row.id_slot) == id) {
             switch check {
                 case .Checked(access, opaque, task, seen):
@@ -381,8 +386,7 @@ ReductionCapability :: pure fn(environment: Environment, componentID: uint64, ch
     }
     return check;
 }
-ReductionStatement :: pure fn(environment: Environment, componentID: uint64, check: Reduction, index: int) -> Reduction {
-    depth_limit 0;
+ReductionStatement :: (environment: Environment, componentID: uint64, check: Reduction, index: int) -> Reduction {
     if (index < 0) {
         return check;
     }
@@ -409,8 +413,7 @@ ReductionStatement :: pure fn(environment: Environment, componentID: uint64, che
     }
     return check;
 }
-ReductionExpression :: pure fn(environment: Environment, componentID: uint64, check: Reduction, index: int, condition: bool) -> Reduction {
-    depth_limit 0;
+ReductionExpression :: (environment: Environment, componentID: uint64, check: Reduction, index: int, condition: bool) -> Reduction {
     if (index < 0) {
         return check;
     }
@@ -458,8 +461,7 @@ ReductionExpression :: pure fn(environment: Environment, componentID: uint64, ch
     }
     return check;
 }
-ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[], diagnostics: syntax.Diagnostic[]) -> syntax.Diagnostic[] {
-    depth_limit 0;
+ReductionDiagnostics :: (environment: Environment, functionEffects: int[], diagnostics: syntax.Diagnostic[]) -> syntax.Diagnostic[] {
     checked: uint64[] = [];
     statements := Statements(environment);
     i: int = 0;
@@ -468,7 +470,7 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
         if (row.kind == Reduce) {
             componentID := ComponentTarget(environment, row.expression);
             duplicate := false;
-            foreach (id in checked) {
+            for (id in checked) {
                 duplicate = duplicate || id == componentID;
             }
             if (componentID != 0 && !duplicate) {
@@ -487,7 +489,7 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
                 check := Reduction.Checked(false, false, false, EmptySeen(environment));
                 suspend := false;
                 j = 0;
-                foreach (function in Functions(environment)) {
+                for (function in Functions(environment)) {
                     if (function.kind == 3) {
                         suspend = suspend || (functionEffects[j] & Suspend) != 0;
                         check = ReductionStatement(environment, componentID, check, function.body);
@@ -497,14 +499,14 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
                 name := "unknown";
                 typeIndex: int = -1;
                 j = 0;
-                foreach (type in CatalogTypes(environment)) {
+                for (type in CatalogTypes(environment)) {
                     if (typeIndex < 0 && IDAt(environment, type.id_slot) == componentID) {
                         typeIndex = j;
                         name = type.name;
                     }
                     j += 1;
                 }
-                foreach (queryRow in Queries(environment)) {
+                for (queryRow in Queries(environment)) {
                     if (queryRow.kind == 6) {
                         check = ReductionExpression(environment, componentID, check, queryRow.value, true);
                     }
@@ -515,7 +517,7 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
                         }
                     }
                 }
-                foreach (bindingRow in Bindings(environment)) {
+                for (bindingRow in Bindings(environment)) {
                     check = ReductionExpression(environment, componentID, check, bindingRow.target, false);
                     check = ReductionExpression(environment, componentID, check, bindingRow.value, false);
                 }
@@ -539,18 +541,17 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
 // This is deliberately bounded by function_count + 1 passes. Expressions and
 // statements accumulate seed bits; functions replace seed bits with their body
 // and nested functions, in ascending order within each phase.
-Analyze :: pure fn(environment: Environment) -> Analysis {
-    depth_limit 0;
+Analyze :: (environment: Environment) -> Analysis {
     expressionEffects: int[] = [];
     statementEffects: int[] = [];
     functionEffects: int[] = [];
-    foreach (row in Expressions(environment)) {
+    for (row in Expressions(environment)) {
         expressionEffects = array_add(expressionEffects, row.effects);
     }
-    foreach (row in Statements(environment)) {
+    for (row in Statements(environment)) {
         statementEffects = array_add(statementEffects, row.effects);
     }
-    foreach (row in Functions(environment)) {
+    for (row in Functions(environment)) {
         functionEffects = array_add(functionEffects, row.effects);
     }
     pass: int = 0;
@@ -558,8 +559,16 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
     while (pass <= length(functionEffects) && changed) {
         changed = false;
         i: int = 0;
-        foreach (row in Expressions(environment)) {
+        for (row in Expressions(environment)) {
             effects := expressionEffects[i];
+            if (row.kind == SymbolValue && row.symbol >= 0 && InvocationSymbol(environment, row.symbol)) {
+                effects = effects | InvocationRead;
+            }
+            if (row.task) {
+                // Starting an activation changes execution ownership even if
+                // the callee's only body effect is its own suspension.
+                effects = effects | Host;
+            }
             if (row.left >= 0) {
                 effects = effects | expressionEffects[row.left];
             }
@@ -584,7 +593,7 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
             i += 1;
         }
         i = 0;
-        foreach (row in Statements(environment)) {
+        for (row in Statements(environment)) {
             seeded := row;
             seeded.effects = statementEffects[i];
             effects := StatementEffects(environment, expressionEffects, statementEffects, seeded);
@@ -593,13 +602,13 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
             i += 1;
         }
         i = 0;
-        foreach (row in Functions(environment)) {
+        for (row in Functions(environment)) {
             effects: int = 0;
             if (row.body >= 0) {
                 effects = statementEffects[row.body];
             }
             j: int = 0;
-            foreach (child in Functions(environment)) {
+            for (child in Functions(environment)) {
                 if (child.parent == i) {
                     effects = effects | functionEffects[j];
                 }
@@ -613,9 +622,10 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
     }
     diagnostics: syntax.Diagnostic[] = [];
     diagnostics = ReductionDiagnostics(environment, functionEffects, diagnostics);
-    foreach (queryRow in Queries(environment)) {
+    diagnostics = ReferenceIteration(environment, expressionEffects, statementEffects, diagnostics);
+    for (queryRow in Queries(environment)) {
         if (queryRow.kind == 6) {
-            switch QueryExpression(environment, queryRow.value, EmptySeen(environment)) {
+            switch QueryRestrictions(environment, expressionEffects, queryRow.value, EmptySeen(environment)) {
                 case .Restricted(bits, seen):
                     if ((expressionEffects[queryRow.value] & Impure) != 0 || (bits & 1) != 0) {
                         diagnostics = Report(environment, diagnostics, queryRow.range, "Query predicate requires a deterministic value without side effects or suspension");
@@ -626,32 +636,24 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
             }
         }
     }
-    foreach (row in Statements(environment)) {
-        if (row.kind == 7 && Expressions(environment)[row.expression].kind == 18 && (statementEffects[row.body] & 20) != 0) {
+    for (row in Statements(environment)) {
+        if (row.kind == 7 && Expressions(environment)[row.expression].kind == 21 && (statementEffects[row.body] & 20) != 0) {
             diagnostics = Report(environment, diagnostics, row.range, "Streaming relationship iteration cannot suspend or change entity structure");
         }
     }
-    i: int = 0;
-    foreach (row in Functions(environment)) {
-        if (row.pure && (functionEffects[i] & Impure) != 0) {
-            diagnostics = Report(environment, diagnostics, row.range, "Pure function performs execution effects");
-        }
-        i += 1;
-    }
-    foreach (row in Bindings(environment)) {
+    for (row in Bindings(environment)) {
         if ((expressionEffects[row.value] & Impure) != 0) {
             diagnostics = Report(environment, diagnostics, row.range, "Binding requires a deterministic value without side effects or suspension");
         }
     }
-    foreach (row in Symbols(environment)) {
+    for (row in Symbols(environment)) {
         if ((row.kind == 4 || row.kind == 5) && row.initializer >= 0 && expressionEffects[row.initializer] != 0) {
             diagnostics = Report(environment, diagnostics, row.range, "State default depends on runtime effects");
         }
     }
     return Analysis.Completed(expressionEffects, statementEffects, functionEffects, diagnostics);
 }
-Depends :: pure fn(environment: Environment, reader: Binding, writer: Binding) -> bool {
-    depth_limit 0;
+Depends :: (environment: Environment, reader: Binding, writer: Binding) -> bool {
     x: int = 0;
     while (x < reader.read_count) {
         y: int = 0;
@@ -667,12 +669,11 @@ Depends :: pure fn(environment: Environment, reader: Binding, writer: Binding) -
 }
 // First eligible original index wins. Self-dependencies are cycles. On a
 // partial failure discard the prefix and preserve every original binding.
-Order :: pure fn(environment: Environment) -> Ordering {
-    depth_limit 0;
+Order :: (environment: Environment) -> Ordering {
     bindings := Bindings(environment);
     emitted: bool[] = [];
     permutation: int[] = [];
-    foreach (row in bindings) {
+    for (row in bindings) {
         emitted = array_add(emitted, false);
     }
     pass: int = 0;

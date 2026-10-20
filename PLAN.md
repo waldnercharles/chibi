@@ -187,12 +187,11 @@ Current integration constraints:
 - Engine PR #438 landed on main at `6ea2221c9`. This branch integrates its
   release-build correction for terrain-volume assertions.
 - Engine PR #420, the language and typed-runtime redesign, merged into `main`
-  on 2026-10-19 at `07eb2abaa`. This branch has not integrated it yet. On
-  2026-10-19 a dry-run merge of `main` conflicted in 83 files, among them the
-  language core, prepared execution, SDK contracts and fixtures. `main` is at
-  project version 26 and this branch is at 25, and each side has its own
-  frozen v24 parser. The owner assigned that integration, and landing this
-  branch on `main`, to the self-hosting session.
+  on 2026-10-19 at `07eb2abaa`. This branch integrates it: project format 27
+  (main's v26 syntax step, then this branch's conversions step over a frozen
+  v26 parser) and prepared schema 18. Stage one reads packed arrays and `for`
+  loops, and its twins follow main's expression kinds and inferred purity.
+  The published bootstrap artifact predates schema 18 and must be republished.
 - Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
   contracts, commits, or dependencies as part of this work.
 
@@ -771,7 +770,30 @@ project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified toolchain checkpoint: 2026-10-18, PR #445 transport integration
+Last verified checkpoint: 2026-10-19, the #420 integration of `main` at
+`07eb2abaa` into `codex/toolchain-cleanup-20261017` at `f6633ace1`, verified
+locally on macOS arm64 (Homebrew Clang 23, Debug, ASan/UBSan; Release for the
+bootstrap checks). Each command ran once under its own production 60-second
+deadline:
+
+| Check | Result |
+| --- | --- |
+| `make test-native`, `test-materials`, `test-projects`, `test-language-all`, `test-tools` | Passed; 31.0s, 30.4s, 34.9s, 32.1s and 29.1s. |
+| `make test-wasm`, `check-format` (clang-format 22) | Passed; 7.7s. |
+| 86 standalone language and tool selectors | Passed. |
+| `language-package-compiler-chibi`, `-types`, `-imports` | Passed; 33.2s, 28.2s and 44.2s. |
+| `make test-bootstrap` | Passed; 27.9s. |
+| `make bootstrap-artifact`, `test-recovery` | Run on the committed merge: recovery exports `HEAD`'s sources. |
+
+The merge found and fixed a record copy that left field type names and units
+in the source arena, runtime array copies that scanned every source element for
+packing (quadratic for slices of large arrays), a formatter that could not read
+prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
+to its own selector because it compiles all 605 lines of `core:strings`.
+Next action: commit the merge, run `test-recovery`, open the integration PR
+into `main` and republish the bootstrap artifact after confirmation.
+
+Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
 
 | Check on the macOS arm64 candidate (Homebrew Clang 23, Debug, ASan/UBSan) | Result |

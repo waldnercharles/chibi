@@ -1,4 +1,4 @@
-behavior Recharge {
+Recharge :: behavior {
     charge := 0
     capacity := 100
     rate := 12

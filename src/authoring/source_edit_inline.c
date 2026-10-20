@@ -32,7 +32,7 @@ static bool owned_symbol(const script_analysis *a, int function, int symbol)
 }
 static bool identifier_name(const char *name)
 {
-    static const char prefix[] = "behavior Inline { value := ";
+    static const char prefix[] = "Inline :: behavior { value := ";
     size_t length = strlen(name);
     char *text = xmalloc(sizeof prefix + length + 4);
     snprintf(text, sizeof prefix + length + 4, "%s%s; }", prefix, name);
@@ -216,7 +216,7 @@ bool source_edit_inline(
     const script_function *function = &a->functions[call->right];
     bool macro = function->symbol >= 0 &&
                  a->symbols[function->symbol].kind == SCRIPT_MACRO;
-    if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->type_parameter_count ||
+    if (function->kind != SCRIPT_FUNCTION_AUTHORED ||
         (a->symbols[function->symbol].kind != SCRIPT_FUNCTION && !macro)) {
         return source_refactor_fail(error, size, "Select a concrete authored callable");
     }
@@ -258,7 +258,8 @@ bool source_edit_inline(
     }
     for (int i = 0; i < a->symbol_count; i++) {
         if (source_refactor_contains(function->range, a->symbols[i].declaration) &&
-            (a->symbols[i].kind == SCRIPT_STATE || a->symbols[i].kind == SCRIPT_ACTION)) {
+            (a->symbols[i].kind == SCRIPT_STATE || a->symbols[i].kind == SCRIPT_SHARED_STATE ||
+             a->symbols[i].kind == SCRIPT_ACTION)) {
             return source_refactor_fail(error, size, "Inlining must retain callable-owned persistent or deferred storage");
         }
     }
@@ -484,19 +485,6 @@ bool source_edit_inline(
             script_range range = script_node_range(node);
             apush(returns, ((text_edit){ range.start - body.start, range.end - body.start, xstrdup("") }));
             continue;
-        }
-        if (!strcmp(kind, "metadata_declaration")) {
-            TSNode key = ts_node_child_by_field_name(node, "kind", 4);
-            script_range range = script_node_range(key);
-            char *text = source_refactor_slice(a->text, range);
-            if (strcmp(text, "depth_limit") && strcmp(text, "description")) {
-                valid = source_refactor_fail(error, size, "Inline must preserve callable execution metadata");
-            }
-            free(text);
-        }
-        if (!strcmp(kind, "metadata_declaration")) {
-            script_range range = script_node_range(node);
-            apush(returns, ((text_edit){ range.start - body.start, range.end - body.start, xstrdup("") }));
         }
     }
     script_syntax_free(syntax);

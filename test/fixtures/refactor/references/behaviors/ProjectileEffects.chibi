@@ -1,9 +1,17 @@
-behavior "ProjectileEffects" {
-    action spawn_prototype = engine["Spawn Prototype"]("TrailEmitter")
-    on Begin {
-        spawn_prototype()
+ProjectileEffects :: behavior {
+    import_component_write_1 :: (import_arg_0: entity, import_arg_1: entity = self) -> (Value: ParticleEmitter) {
+        if import_arg_1 == 0 {
+            import_arg_1 = self
+        }
+        import_arg_1.ParticleEmitter.parent = import_arg_0;
+        return import_arg_1.ParticleEmitter
     }
-    after spawn_prototype {
-        set_particle_emitter_parent(self, spawn_prototype.Entity)
+
+    action spawn_prototype_action = spawn_prototype(TrailEmitter)
+    on Begin {
+        spawn_prototype_action()
+    }
+    after spawn_prototype_action {
+        import_component_write_1(self, spawn_prototype_action.Entity)
     }
 }

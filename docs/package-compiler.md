@@ -42,8 +42,8 @@ import:
 
 - `int`, `bool` and `string` values, records of those, `byte`, `int64` and
   `uint64` values, unions whose variants carry any of them, and arrays of any
-  of these, as parameters, results and locals; string literals and quoted
-  names decode as JSON strings, as stage zero reads them;
+  of these, as parameters, results and locals; string literals decode as
+  JSON strings, as stage zero reads them;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
@@ -55,7 +55,8 @@ import:
   that holds both, and local declarations, assignments to locals and returns
   widen implicitly; `int` or `int64` with `uint64` needs a conversion;
 - local declarations, assignment and compound assignment; `if`/`else`,
-  `while`, `foreach`, `break`, `continue` and `return`;
+  `while`, `for name in array`, `break`, `continue` and `return`; range,
+  keyed and `ref` loops reject;
 - integer arithmetic, bitwise and comparison operators where the runtime
   computes them: all of them for `int` and `int64`, only addition,
   multiplication, equality and bit operations for `uint64`, and only equality
@@ -76,7 +77,7 @@ import:
   value converts to the field's type. A record or array parameter whose
   value, fields or elements the function writes is copied into a cell of its
   own on entry, so the caller's value never changes; the others are read in
-  place. Foreach elements, like pattern bindings, cannot be assigned;
+  place. For-loop elements, like pattern bindings, cannot be assigned;
 - union values `U.V` and `U.V(a, b)`, with one positional value per payload
   field, and `switch` over a union with `case .V:`, `case .V(a, b):` binding
   every payload field, and a default `case:`. Bindings are immutable. As in
@@ -137,10 +138,15 @@ Records and arrays follow stage zero's value model:
 - Every store into a local copies the value with the snapshot intrinsic into
   the data cell that is the local. Record and array parameters are read in
   place.
-- An element read checks `0 <= index < count`, as stage zero does.
+- An element read checks `0 <= index < count` and then reads the array's
+  representation, as stage zero does: a nonzero stride means the elements are
+  inline in `data`, where a record element is its own address; otherwise
+  `items` holds value headers. The target supplies the `data` and `stride`
+  offsets. A record element's boxed pointer is loaded only past a branch,
+  through an address local.
 - In-place updates use the array push, extend and store intrinsics on the
   local's header address.
-- A `foreach` loop walks its own copy of the array, so the body may change the
+- A `for` loop walks its own copy of the array, so the body may change the
   original; its continues jump to the increment.
 - A record or array result publishes its whole value header.
 - A union value is a scalar in the locals bank, built by the union-make
@@ -177,15 +183,16 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-Two selectors compile 85 samples on both compiler backends, each under its
+Three selectors compile 85 samples on both compiler backends, each under its
 own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (9,788 assertions in
-  27.4 s);
-- `tool language-package-compiler-chibi-types`: unions, imports, constants,
-  patterns, scopes, integer types and inferred arrays (3,039 assertions in
-  28.6 s).
+  arrays, strings and natives, and every rejection (10,537 assertions in
+  33.2 s);
+- `tool language-package-compiler-chibi-types`: unions, constants, patterns,
+  scopes, integer types and inferred arrays (2,940 assertions in 28.2 s);
+- `tool language-package-compiler-chibi-imports`: the imports sample, which
+  compiles all of `core:strings` (1,946 assertions in 44.2 s).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs

@@ -262,6 +262,9 @@ script_component *script_component_read(
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(*diagnostics, syntax->diagnostics[i]);
     }
+    if (syntax->diagnostic_count) {
+        return NULL;
+    }
     TSNode root = ts_tree_root_node(syntax->tree), declaration = { 0 };
     for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
         TSNode node = ts_node_named_child(root, i);

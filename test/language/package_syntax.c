@@ -108,10 +108,10 @@ static bool create(source_package_code code)
 TEST_CASE(package_syntax_legacy_roots_keep_shape_and_names)
 {
     const char *texts[] = {
-        "behavior package { import := 1; }",
-        "library import { package :: () -> int { return 1; } }",
-        "system package { import := 1; }",
-        "component import { package: int; }",
+        "package :: behavior { import := 1; }",
+        "import :: library { package :: () -> int { return 1; } }",
+        "package :: system() { import := 1; }",
+        "import :: component { package: int; }",
     };
     const char *types[] = { "behavior", "library", "system", "component" };
     for (int i = 0; i < 4; i++) {
@@ -136,14 +136,14 @@ TEST_CASE(package_syntax_rejects_malformed_or_mixed_headers)
 {
     const char *texts[] = {
         "import lib \"x\"\npackage app\n",
-        "behavior Demo {}\npackage app\n",
+        "Demo :: behavior {}\npackage app\n",
         "package app\npackage app\n",
-        "package app\nlibrary Helpers {}\n",
+        "package app\nHelpers :: library {}\n",
         "package app import \"x\"\n",
         "package \"app\"\n",
         "package app\nimport \"x\" as lib\n",
         "package app\nimport lib\n",
-        "package app\nbehavior Demo { import lib \"x\" }\n",
+        "package app\nDemo :: behavior { import lib \"x\" }\n",
     };
     for (int i = 0; i < 9; i++) {
         syntax[0] = script_parse(texts[i]);

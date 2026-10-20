@@ -16,5 +16,14 @@ const char *script_scalar_evaluate(
     pin_type expected,
     pin_value *out
 );
+/* One operator over operands already converted to its operand type; `type`
+ * is the result storage. Returns NULL or a static diagnostic. */
+const char *script_scalar_operation(
+    script_operator,
+    pin_value left,
+    pin_value right,
+    pin_type type,
+    pin_value *out
+);
 
 #endif

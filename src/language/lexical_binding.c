@@ -127,6 +127,19 @@ script_lexical_declaration script_lexical_declare(
     if (package_declaration) {
         snprintf(identity, size, "%s:%d:%s%s", program, kind, name, domain);
         out.id = script_catalog_id("package-symbol", identity);
+    } else if (context.specialization) {
+        size = strlen(name) + strlen(domain) + 64;
+        identity = xrealloc(identity, size);
+        snprintf(
+            identity,
+            size,
+            "%" PRIu64 ":%d:%s%s",
+            context.specialization,
+            range.start,
+            name,
+            domain
+        );
+        out.id = script_catalog_id("symbol", identity);
     } else if (
         context.document_count && context.function >= 0 &&
         facts->functions[context.function].symbol >= 0

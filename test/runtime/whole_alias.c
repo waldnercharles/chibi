@@ -111,10 +111,10 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     snprintf(
         text,
         sizeof text,
-        "behavior AliasCase { output:%s=null; "
-        "Convert :: pure fn(input:%s)->(Value:%s) {return "
+        "AliasCase :: behavior { output:%s=null; "
+        "Convert :: (input:%s)->(Value:%s) {return "
         "AliasConvert(input);} "
-        "Nested :: fn(input:%s)->(Value:%s) {return Convert(input);} "
+        "Nested :: (input:%s)->(Value:%s) {return Convert(input);} "
         "on Pulse(input) {output=%s;} }",
         types[to].name,
         types[from].name,
@@ -195,7 +195,7 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     snprintf(
         text,
         sizeof text,
-        "behavior AliasCase {output:%s=null;on Pulse(input){output=input;}}",
+        "AliasCase :: behavior {output:%s=null;on Pulse(input){output=input;}}",
         types[to].name
     );
     alias_source = authoring_source_prepare_document(

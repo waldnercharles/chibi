@@ -12,6 +12,10 @@ typedef struct
     scene_component **components;
     int *parents;
     scene_link *links;
+    ecs_relationship_desc *relationships;
+    scene_pair *pairs;
+    const prototype_pair *missing_pair;
+    bool relationship_conflict;
     const prototype_link *missing; /* a link naming no entity, if any */
 } authoring_objects;
 /* Appends the prototype as one object, without its children. */

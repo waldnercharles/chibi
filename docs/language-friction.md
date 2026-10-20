@@ -192,6 +192,21 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
+## Stage one has no maps
+
+Stage one. Stage zero has `Map<K, V>` with literals, `m[k]`, `map_has`,
+`map_remove` and insertion-ordered iteration, but stage one compiles none of
+it. The tokenizer therefore builds Odin's keyword hash table by hand from an
+`int[]` with linear probing (#518), and lookups by name elsewhere in the
+compiler scan parallel arrays.
+
+- Odin has `map[K]V`; Go `map[K]V`; Rust `HashMap`; Zig `std.HashMap`;
+  C# `Dictionary`; Python `dict`.
+
+Suggestion: stage one compiles the maps stage zero accepts, then the
+compiler's name lookups use them. Dispatch on a byte or an operator stays a
+`switch`, as in Odin, since a map would hash on every lookup.
+
 ## Stage one compiles only `for name in array`
 
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed

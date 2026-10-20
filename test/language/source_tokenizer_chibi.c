@@ -432,6 +432,25 @@ static void collect(const char *directory, char ***paths)
     }
     closedir(dir);
 }
+/* A corpus file that cannot be read or is over the cap fails by name, so the
+ * files after it are not skipped silently. */
+static bool corpus_file(const char *path)
+{
+    char *text = file_read_text(path);
+    if (!text) {
+        fprintf(stderr, "source tokenizer: cannot read %s\n", path);
+        return false;
+    }
+    size_t size = strlen(text);
+    bool valid = size <= MAX_SOURCE;
+    if (!valid) {
+        fprintf(stderr, "source tokenizer: %s is %zu bytes, over %d\n", path, size, MAX_SOURCE);
+    }
+    valid = valid && differential(path, text, COMPILED);
+    bytes += (int)size;
+    free(text);
+    return valid;
+}
 TEST_CASE(source_tokenizer_corpus)
 {
     REQUIRE(prepare());
@@ -445,19 +464,7 @@ TEST_CASE(source_tokenizer_corpus)
     /* Finding the corpus at all. */
     bool valid = alen(paths) > 100;
     for (int i = 0; valid && i < alen(paths); i++) {
-        char *text = file_read_text(paths[i]);
-        valid = text && strlen(text) <= MAX_SOURCE;
-        if (!valid) {
-            fprintf(
-                stderr,
-                "source tokenizer corpus: %s is unreadable or over %d bytes\n",
-                paths[i],
-                MAX_SOURCE
-            );
-        }
-        valid = valid && differential(paths[i], text, COMPILED);
-        bytes += text ? (int)strlen(text) : 0;
-        free(text);
+        valid = corpus_file(paths[i]);
         files++;
     }
     for (int i = 0; i < alen(paths); i++) {

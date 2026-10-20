@@ -26,10 +26,13 @@ targets.
   `after` goes entirely.
 - **Named results.** A named, defaulted single result whose name adds nothing
   is dropped. Named results remain where natives need them.
-- **Events.** Decided: a handler is written `on Tick :: (dt: s) { ... }`, and
-  its parameters are checked against the event's declaration,
-  `Tick :: event (dt: s)`. Not implemented yet. See "One way to read the
-  step".
+- **Events.** Decided: a handler is written `on Tick :: (dt: s) { ... }`. It
+  names the payload fields it reads, in any order and any subset, each with
+  its type, and `on Begin :: () { }` takes none. Systems declare the step the
+  same way, and `event` goes. Tick's payload is `dt` in seconds (#551).
+  Handlers can use the new form now; a project-format migration will remove
+  the old forms. Declarations name-first, `Tick :: event (dt: s)`, may follow.
+  See "One way to read the step".
 
 The remaining entries are proposals.
 

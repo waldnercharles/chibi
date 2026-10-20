@@ -129,13 +129,13 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
                                      watch_size: 0, component_bindings: false, component_access: false, spans: 0};
             functions: writer.Function[] = [head];
             references: writer.Reference[] = [Reference(0), Reference(-1)];
-            callable: writer.Entry = {id: 1, kind: 0, entry_name: name, has_entry: true, event_id: 0,
-                                      event_abi: 0, event_name: "", has_event_name: false,
+            callable: writer.Entry = {id: 1, kind: 0, entry_name: name, has_entry: true,
+                                      event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
                                       continuation_wait: false, effects: 0, body: 0, subscription: 1};
             entries: writer.Entry[] = [callable];
             requirements: writer.Requirement[] = [];
             fields: writer.Field[] = [];
-            declared_events: writer.Event[] = [];
+            event_declarations: writer.Event[] = [];
             event_fields: writer.EventField[] = [];
             imports: writer.Import[] = [];
             roots: writer.Root[] = [];
@@ -148,10 +148,10 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
             points: writer.Point[] = [];
             watches: writer.Watch[] = [];
             states: writer.State[] = [];
-            return writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints,
-                                                     requirements, fields, declared_events, event_fields, imports, functions,
-                                                     spans, roots, instructions, prepared_locals, parameters, frames,
-                                                     sources, layouts, data, hosts, calls, references, components, points,
-                                                     watches, states, entries));
+            return writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements, fields,
+                                                     event_declarations, event_fields, imports, functions, spans, roots,
+                                                     instructions, prepared_locals, parameters, frames, sources, layouts,
+                                                     data, hosts, calls, references, components, points, watches, states,
+                                                     entries));
     }
 }

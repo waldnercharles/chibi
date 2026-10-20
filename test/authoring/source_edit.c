@@ -361,7 +361,7 @@ TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_default
 TEST_CASE(source_created_handlers_list_payload_fields)
 {
     static const script_catalog_parameter fields[] = {
-        { .name = "amount", .type = { .storage = PIN_F64 } },
+        { .name = "amount", .type = { .storage = PIN_F64 }, .unit = "charge" },
         { .name = "step", .type = { .storage = PIN_F64 }, .unit = "s" },
     };
     static const script_catalog_capability events[] = {
@@ -375,8 +375,10 @@ TEST_CASE(source_created_handlers_list_payload_fields)
     static const script_catalog with = { .capabilities = events,
                                          .capability_count = 2 };
     const char *names[] = { "Impulse", "Tick" };
-    const char *headers[] = { "on Impulse :: (amount: double, step: s) {}",
-                              "on Tick :: () {}" };
+    const char *headers[] = {
+        "on Impulse :: (amount: double charge, step: double s) {}",
+        "on Tick :: () {}"
+    };
     for (int i = 0; i < 2; i++) {
         syntax = script_parse("Edit :: behavior { total:double=0; }");
         analysis = script_analyze_document(syntax, &with, "tests/source-edit");

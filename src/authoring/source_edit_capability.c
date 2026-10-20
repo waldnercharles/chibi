@@ -225,7 +225,9 @@ static const script_catalog_capability *capability(
     return found;
 }
 /* A created handler lists every payload field with its type, so each one can
- * be wired at once; the fields it does not read can be deleted. */
+ * be wired at once; the fields it does not read can be deleted. A measured
+ * field spells its storage before its unit, as `double charge`, since a lone
+ * name reads as a unit only for a few shorthands. */
 static bool handler_header(
     const script_catalog *catalog,
     const char *callee,
@@ -242,11 +244,12 @@ static bool handler_header(
         if (!name) {
             return false;
         }
-        if (field->unit) {
-            source_refactor_append(&type, "%s", field->unit);
-        } else if (!source_refactor_type(catalog, field->type, false, &type, error, size)) {
+        if (!source_refactor_type(catalog, field->type, false, &type, error, size)) {
             free(name);
             return false;
+        }
+        if (field->unit) {
+            source_refactor_append(&type, " %s", field->unit);
         }
         char *spelled = source_refactor_take(&type);
         append(fragment, "%s%s: %s", i ? ", " : "", name, spelled);

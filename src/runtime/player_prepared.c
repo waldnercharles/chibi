@@ -310,6 +310,20 @@ static scene *scene_read(
     }
     return scene;
 }
+/* Reads the module records, which borrow their bytes from the artifact. */
+static void module_records(execution_wire *wire, package_module **modules, int *module_count)
+{
+    count(wire, module_count);
+    for (int i = 0; i < *module_count && !wire->error; i++) {
+        package_module m = { 0 };
+        wire_name(wire, &m.name);
+        execution_wire_u64(wire, &m.id);
+        m.data = blob(wire, NULL, &m.length);
+        if (!wire->error) {
+            apush(*modules, m);
+        }
+    }
+}
 player *player_prepared_read(
     const void *data,
     size_t length,
@@ -408,16 +422,7 @@ player *player_prepared_read(
     input_action *input = NULL;
     actions(&wire, &input, &spec.world.action_count);
     spec.world.actions = input;
-    count(&wire, &spec.module_count);
-    for (int i = 0; i < spec.module_count && !wire.error; i++) {
-        package_module m = { 0 };
-        wire_name(&wire, &m.name);
-        execution_wire_u64(&wire, &m.id);
-        m.data = blob(&wire, NULL, &m.length);
-        if (!wire.error) {
-            apush(modules, m);
-        }
-    }
+    module_records(&wire, &modules, &spec.module_count);
     spec.modules = modules;
     count(&wire, &spec.prototype_count);
     for (int i = 0; i < spec.prototype_count && !wire.error; i++) {
@@ -469,6 +474,59 @@ player *player_prepared_read(
     declared_components_free(declared);
     arena_free(&storage);
     return player;
+}
+/* Skips the sections before the modules in the order player_prepared_read
+ * decodes them; the two must stay in step. */
+bool player_prepared_modules(
+    const void *data,
+    size_t length,
+    arena *names,
+    package_module **modules,
+    size_t *first,
+    size_t *end,
+    char *error,
+    size_t size
+)
+{
+    assert(names && modules && first && end && (!size || error));
+    *modules = NULL;
+    if (!data || length > PLAYER_PREPARED_MAX_BYTES) {
+        return fail(error, size, "Invalid prepared player bytes");
+    }
+    size_t budget = PLAYER_PREPARED_MAX_BYTES;
+    execution_wire wire = { .data = (unsigned char *)data,
+                            .size = length,
+                            .reading = true,
+                            .storage = names,
+                            .storage_budget = &budget };
+    header(&wire);
+    player_application settings = { 0 };
+    application(&wire, &settings);
+    uint64_t flags = 0;
+    execution_wire_u64(&wire, &flags);
+    declared_components *declared = NULL;
+    declared_components_wire(&wire, &declared);
+    declared_components_free(declared);
+    size_t skipped = 0;
+    blob(&wire, NULL, &skipped);
+    const char *start = NULL;
+    wire_name(&wire, &start);
+    blob(&wire, NULL, &skipped);
+    blob(&wire, NULL, &skipped);
+    input_action *input = NULL;
+    int action_count = 0;
+    actions(&wire, &input, &action_count);
+    afree(input);
+    *first = wire.offset;
+    int module_count = 0;
+    module_records(&wire, modules, &module_count);
+    *end = wire.offset;
+    if (wire.error) {
+        afree(*modules);
+        *modules = NULL;
+        return fail(error, size, wire.error);
+    }
+    return true;
 }
 bool player_application_read(const char *path, player_application *app, char *error, size_t size)
 {

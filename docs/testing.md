@@ -1836,6 +1836,38 @@ selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
 
+## Game equivalence
+
+`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
+M5 step 4. It rebuilds Terrain Lab with a reference and a candidate compiler
+and compares what the two artifacts declare and how they play. It is a
+standalone selector, not part of any group, and takes about 7 s.
+
+- **Compilers.** A compiler is any program that takes `--project-root ROOT
+  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
+  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
+  `build/sdk/chibi-compile` until stage one compiles games.
+- **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
+  `chibi-build-host`. Its `Rebuild` entry compiles the project with each
+  compiler and plays each artifact, and `Diff` compares two traces.
+- **Observer.** `test_tools --game-observe ARTIFACT SCENARIO TRACE` reads the
+  artifact on the CPU and replays the authored
+  `content/scenarios/Dig.kdl` from the start scene. It writes a trace:
+  - first, what the artifact declares apart from its code: a digest of every
+    byte outside its module records, located by `player_prepared_modules`,
+    then each module's name and ID (`--native` checks that function);
+  - then one line per fixed step, from frame 0 (after Begin) to the
+    scenario's last frame: hashes of the ECS world, saved state, materials,
+    physics bodies, contacts and events, and UI text. Frame N is the world
+    after N steps, so input keyed at step K first shows in frame K + 1.
+- **Cases.**
+  - Both compilers rebuild Terrain Lab to the same trace through frame 90.
+  - A variant whose jump is weaker is named at frame 21, with both lines,
+    and its declarations still match.
+  - Differing declarations are named. A missing trace, or traces with no
+    frames, are refused rather than matching each other; the observer removes
+    the trace of an artifact it could not play.
+
 ## Compiler artifact runtime checks
 
 `python3 tools/test_policy.py tool compiler-artifact` selects fifteen tooling

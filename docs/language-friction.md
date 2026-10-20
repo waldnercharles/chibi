@@ -313,3 +313,32 @@ copied into each package that needs it (#420).
 
 Suggestion: export templates, instantiating each at the caller with the
 callee package's declarations in scope, as Odin does.
+
+## Build programs cannot format numbers
+
+The build host offers `BuildJoin`, but neither `format_text` nor any number
+conversion. `test/tools/GameEquivalence.chibi` therefore reports the first
+differing frame by slicing its number out of the trace line, and it cannot
+report how many lines it compared.
+
+- Odin has `fmt.tprintf("%d", n)` and `strconv.itoa`; Go `strconv.Itoa`; Rust
+  `n.to_string()` and `format!`; Zig `std.fmt.allocPrint`; C `snprintf`; C#
+  `n.ToString()` and interpolation; Python f-strings; Ruby `n.to_s`.
+
+Suggestion: one text library for every Chibi host, with `format_text` and
+`core:strings` in build programs as in games.
+
+## Build programs read files only as text
+
+`BuildReadFile` returns a NUL-terminated string, so a build program cannot
+read a binary file such as a `.chibip` artifact. Locating an artifact's module
+records for the equivalence harness took a C function,
+`player_prepared_modules`, although the stage-one compiler already writes
+prepared modules in Chibi.
+
+- Odin `os.read_entire_file` and Go `os.ReadFile` return `[]byte`; Rust
+  `fs::read` returns `Vec<u8>`; Zig `readFileAlloc` returns `[]u8`; Python
+  `open(path, "rb").read()` returns `bytes`.
+
+Suggestion: `BuildReadBytes(path) -> byte[]` for build programs, so tools can
+read prepared formats in Chibi.

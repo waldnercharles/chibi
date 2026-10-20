@@ -7677,6 +7677,30 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
     REQUIRE(!chibi_migrate_after_entry(kept, &migrated, error, sizeof error));
     REQUIRE(migrated && strstr(migrated, "return a + c") && !strstr(migrated, "after entry"));
     free(migrated);
+    /* A call names its own library's callable or a qualified one, so a
+     * callable of the same name in another library takes copies. */
+    char project[] = "/tmp/chibi-after-entry-ref-XXXXXX", file[288];
+    REQUIRE(mkdtemp(project));
+    const char *names[] = { "W.chibi", "C.chibi", "L.chibi" };
+    const char *libraries[] = {
+        "W :: library { Bump :: (x: ref int) { x += 1 } }",
+        "C :: library { Bump :: (x: int) { } }",
+        "L :: library { F :: (v: int) -> int { C.Bump(v); after entry { return "
+        "v }\n} }",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        write_whole(file, libraries[i]);
+    }
+    REQUIRE(!chibi_project_migrate_content(project, NULL, 28, error, sizeof error));
+    write_whole(file, "L :: library { F :: (v: int) -> int { W.Bump(v); after entry { return v }\n} }");
+    REQUIRE(chibi_project_migrate_content(project, NULL, 28, error, sizeof error) < 0);
+    REQUIRE(strstr(error, "pass by reference"));
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        REQUIRE(!unlink(file));
+    }
+    REQUIRE(!rmdir(project));
     char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256], json[256];
     REQUIRE(mkdtemp(root));
     snprintf(

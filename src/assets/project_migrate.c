@@ -5834,9 +5834,31 @@ static TSNode expression_root(TSNode node)
     }
     return node;
 }
-/* Appends the names of the callables in node that take a parameter by
- * reference. Natives take copies, so only calls to these can change a
- * variable passed to them. */
+/* The name of the library, behavior or system that holds node, or a null
+ * node. An unqualified call names a callable of its own container. */
+static TSNode container_name(TSNode node)
+{
+    for (TSNode at = ts_node_parent(node); !ts_node_is_null(at);
+         at = ts_node_parent(at)) {
+        if (is(at, "library") || is(at, "behavior") || is(at, "system")) {
+            return ts_node_child_by_field_name(at, "name", 4);
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* A callable's identity across a project: "Container.Name". */
+static char *callable_key(const char *text, TSNode container, TSNode name)
+{
+    char *outer = ts_node_is_null(container) ? xstrdup("")
+                                             : name_text(text, container);
+    char *inner = name_text(text, name);
+    size_t size = strlen(outer) + strlen(inner) + 2;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%s.%s", outer, inner);
+    free(outer);
+    free(inner);
+    return key;
+}
 static bool declares_reference(const char *text, TSNode parameters)
 {
     for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
@@ -5852,43 +5874,51 @@ static bool declares_reference(const char *text, TSNode parameters)
     }
     return false;
 }
-static void collect_reference_callables(const char *text, TSNode node, char ***names)
+/* Appends the identities of the callables in node that take a parameter by
+ * reference. Natives take copies, so only calls to these can change a
+ * variable passed to them. */
+static void collect_reference_callables(const char *text, TSNode node, char ***keys)
 {
     if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
         declares_reference(text, ts_node_child_by_field_name(node, "parameters", 10))) {
-        apush(*names, name_text(text, ts_node_child_by_field_name(node, "name", 4)));
+        apush(*keys, callable_key(text, container_name(node), ts_node_child_by_field_name(node, "name", 4)));
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        collect_reference_callables(text, ts_node_named_child(node, i), names);
+        collect_reference_callables(text, ts_node_named_child(node, i), keys);
     }
 }
-static void collect_source_references(const char *source, char ***names)
+static void collect_source_references(const char *source, char ***keys)
 {
     script_syntax *syntax = parse28(source);
-    collect_reference_callables(source, ts_tree_root_node(syntax->tree), names);
+    collect_reference_callables(source, ts_tree_root_node(syntax->tree), keys);
     script_syntax_free(syntax);
 }
-static void reference_callables_free(char **names)
+static void reference_callables_free(char **keys)
 {
-    for (int i = 0; i < acount(names); i++) {
-        free(names[i]);
+    for (int i = 0; i < acount(keys); i++) {
+        free(keys[i]);
     }
-    afree(names);
+    afree(keys);
 }
-/* Whether a call to function may take an argument by reference. */
-static bool takes_reference(const char *text, TSNode function, char **references)
+/* Whether call may take an argument by reference: `Library.Name(...)` names
+ * Library's callable, and `Name(...)` one in the call's own container. */
+static bool takes_reference(const char *text, TSNode call, char **references)
 {
-    TSNode name = is(function, "member_expression")
-                    ? ts_node_child_by_field_name(function, "member", 6)
-                    : function;
-    size_t length = ts_node_end_byte(name) - ts_node_start_byte(name);
-    for (int i = 0; is(name, "identifier") && i < acount(references); i++) {
-        if (strlen(references[i]) == length &&
-            !strncmp(references[i], text + ts_node_start_byte(name), length)) {
-            return true;
-        }
+    TSNode function = ts_node_child_by_field_name(call, "function", 8);
+    TSNode library = ts_node_child_by_field_name(function, "object", 6);
+    bool qualified = is(function, "member_expression") && is(library, "identifier");
+    if (!qualified && !is(function, "identifier")) {
+        return false;
     }
-    return false;
+    char *key = qualified
+                  ? callable_key(text, library, ts_node_child_by_field_name(function, "member", 6))
+                  : callable_key(text, container_name(call), function);
+    bool found = false;
+    for (int i = 0; !found && i < acount(references); i++) {
+        found = !strcmp(references[i], key);
+    }
+    free(key);
+    return found;
 }
 /* Whether node, outside nested callables and handlers, may change a variable
  * spelled like name: it assigns the variable, a field or an element of it,
@@ -5899,10 +5929,8 @@ static bool may_change(const char *text, TSNode node, TSNode name, char **refere
         spelled_alike(text, expression_root(ts_node_child_by_field_name(node, "target", 6)), name)) {
         return true;
     }
-    TSNode function = ts_node_child_by_field_name(node, "function", 8);
-    if (is(node, "call_expression") && takes_reference(text, function, references) &&
-        (mentions(text, ts_node_child_by_field_name(node, "arguments", 9), name) ||
-         spelled_alike(text, expression_root(function), name))) {
+    if (is(node, "call_expression") && takes_reference(text, node, references) &&
+        mentions(text, ts_node_child_by_field_name(node, "arguments", 9), name)) {
         return true;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {

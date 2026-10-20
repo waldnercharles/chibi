@@ -1186,13 +1186,15 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     int count = signature ? after ? signature->result_count : signature->parameter_count
                           : 0;
     bool named = !ts_node_is_null(script_analyzer_field(node, "binding"));
+    a->out->functions[function].named = named;
     if (named) {
         named_payload(a, function, parameter_nodes, payload, count, name);
     } else {
         positional_payload(a, function, parameter_nodes, payload, count);
     }
     /* The payload aggregate has a semantic identity, independent of aliases.
-     * A handler that names its payload fields reads only those. */
+     * A handler that names its fields still declares it, so that it hides an
+     * enclosing system's `event`, but reading it is an error. */
     script_symbol event = { .name = xstrdup("event"),
                             .kind = SCRIPT_PARAMETER,
                             .id = script_catalog_id("payload", name),
@@ -1204,11 +1206,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
                             .initializer = -1,
                             .function = function,
                             .declaration = { .start = -1, .end = -1 } };
-    if (!named) {
-        apush(a->out->symbols, event);
-    } else {
-        free(event.name);
-    }
+    apush(a->out->symbols, event);
     TSNode alias = script_analyzer_field(node, "alias");
     if (!ts_node_is_null(alias) && declared_alias < 0) {
         int symbol = script_analyzer_symbol_new(

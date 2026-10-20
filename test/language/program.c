@@ -758,9 +758,12 @@ TEST_CASE(program_handlers_name_payload_fields)
         { "A :: behavior { x: double = 0; on Impulse :: () { x = amount; } }", "" },
         { "A :: behavior { x: double = 0; on Impulse :: () { x = event.amount; "
           "} }",
-          "" },
+          "list the field instead" },
+        { "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = "
+          "event.dt; } }",
+          "list the field instead" },
     };
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         prepare();
         syntax = script_parse(refused[i].source);
         REQUIRE(!syntax->diagnostic_count);

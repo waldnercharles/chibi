@@ -220,7 +220,7 @@ compiler's name lookups use them. Dispatch on a byte or an operator stays a
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
 loops and `for item: ref in items` (#420), and since #542 half-open
 `first..<last` and reverse `for <` loops, as the owner decided on 2026-10-20
-after Odin's `..<` and Jai's `for <`. Since #LOOPPR stage one compiles the
+after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step

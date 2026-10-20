@@ -987,7 +987,7 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
         *text = "Discs :: library {\n"
                 "    Disc :: (X: float = 0.0, Y: float = 0.0, Radius: float = "
                 "40.0) -> (Value: float = 0.0) {\n"
-                "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
+                "        return field_circle(X, Y, Radius)\n"
                 "    }\n"
                 "}\n";
     test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
@@ -1021,11 +1021,11 @@ TEST_CASE(field_source_library_calls_follow_names)
     static const char *sources[] = {
         "Values :: library {Other :: () -> (Value: float) { return 111.0 "
         "}Difference :: (X: float = 10.0, Y: float = 3.0) -> (Value: float) { "
-        "return field_subtract(entry.X, entry.Y) } }",
+        "return field_subtract(X, Y) } }",
         "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
         "}Other :: () -> (Value: float) { return 111.0 }Difference :: (Y: "
         "float = 30.0, X: float = 100.0) -> (Value: float) { return "
-        "field_subtract(entry.X, entry.Y) } }",
+        "field_subtract(X, Y) } }",
         "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
         "}Other :: () -> (Value: float) { return 111.0 } }",
     };
@@ -1241,10 +1241,10 @@ TEST_CASE(field_source_library_functions_call_functions)
           .text = "Cave :: library {\n"
                   "Rock :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
-                  "    return field_negate(Shapes.Pair(entry.X, entry.Y))\n"
+                  "    return field_negate(Shapes.Pair(X, Y))\n"
                   "}\n"
                   "Bad :: (X: float = 0.0) -> (Value: float) {\n"
-                  "    return field_abs(Shapes.Twice(entry.X))\n"
+                  "    return field_abs(Shapes.Twice(X))\n"
                   "}\n"
                   "}\n" },
         { .path = "content/libraries/Shapes.chibi",
@@ -1252,22 +1252,22 @@ TEST_CASE(field_source_library_functions_call_functions)
                   "Pair :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
                   "    return field_min(\n"
-                  "        Disc(field_subtract(entry.X, 3.0), entry.Y),\n"
-                  "        Ring(entry.X, entry.Y))\n"
+                  "        Disc(field_subtract(X, 3.0), Y),\n"
+                  "        Ring(X, Y))\n"
                   "}\n"
                   "Disc :: (X: float = 0.0, Y: float = 0.0,\n"
                   "    Radius: float = 4.0) -> (Value: float) {\n"
-                  "    return field_circle(entry.X, entry.Y, entry.Radius)\n"
+                  "    return field_circle(X, Y, Radius)\n"
                   "}\n"
                   "Ring :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
-                  "    return field_abs(Disc(entry.X, entry.Y, 2.0))\n"
+                  "    return field_abs(Disc(X, Y, 2.0))\n"
                   "}\n"
                   "Loop :: (X: float = 0.0) -> (Value: float) {\n"
-                  "    return field_abs(Loop(entry.X))\n"
+                  "    return field_abs(Loop(X))\n"
                   "}\n"
                   "Twice :: (X: float = 0.0) -> (Value: float) {\n"
-                  "    return entry.X * 2.0\n"
+                  "    return X * 2.0\n"
                   "}\n"
                   "}\n" },
     };

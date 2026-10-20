@@ -726,7 +726,7 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
     REQUIRE(project(
         "Edit :: behavior { count:double=0;"
         " Scale :: (input_speed:double,_return:double)->(sum_total:double) {"
-        " local_value:=entry.input_speed+entry._return; return "
+        " local_value:=input_speed+_return; return "
         "local_value; }"
         " on Tick { local_value:=9.0; count=Scale(2.0,1.0); } }"
     ));

@@ -92,4 +92,14 @@ int chibi_migrate_syntax(const char *source, char **migrated, char *error, size_
  * result the current grammar rejects. */
 int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 28 reads parameters by name: `entry.X` of a parameter X becomes
+ * `X`, and otherwise entry names the callable's only parameter, so `entry.x`
+ * becomes `p.x` and a bare `entry` becomes `p`. An `after entry` handler
+ * stays. Sets `migrated` to an owned copy, or NULL when the source reads no
+ * parameter through entry. Returns -1 with `error` set when entry names no
+ * parameter, when a local, constant, loop, handler or pattern binding of the
+ * parameter's name would capture the rewritten read, or when the current
+ * grammar rejects the result. */
+int chibi_migrate_entry(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

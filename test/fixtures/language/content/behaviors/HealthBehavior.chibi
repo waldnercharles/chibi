@@ -24,9 +24,9 @@ HealthBehavior :: behavior {
     }
     Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<ecs.entity> = 0) -> () {
 
-        action current_remaininghealth = HealthChanged(Current: plain double = convert<To_Real>(entry.Current), RemainingHealth: plain double = double(clamp(convert<To_Real>(entry.Current) - clamp(convert<To_Real>(entry.Amount), 0, convert<To_Real>(entry.Current)), 0, convert<To_Real>(entry.Maximum))));
+        action current_remaininghealth = HealthChanged(Current: plain double = convert<To_Real>(Current), RemainingHealth: plain double = double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(Maximum))));
         after entry {
-            if (convert<To_Real>(entry.Current) > 0) {
+            if (convert<To_Real>(Current) > 0) {
                 if (self.Dash != nil) {
                     if (double(self.Dash.remaining) > 0) {
                         return ();
@@ -41,12 +41,12 @@ HealthBehavior :: behavior {
             }
         }
         after current_remaininghealth.True {
-            Current := entry.Current
-            RemainingHealth := double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(entry.Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(entry.Maximum)))
+            current := Current
+            RemainingHealth := double(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum)))
             self.Health.current = convert<To_Integer>(RemainingHealth);
-            await send_event<Damaged>(Entity: self, Amount: int = subtract(A: int = Current, B: int = convert<To_Integer>(RemainingHealth)), Source: entry.Source);
-            if (double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(entry.Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(entry.Maximum))) <= 0) {
-                await send_event<Died>(Entity: self, Source: entry.Source);
+            await send_event<Damaged>(Entity: self, Amount: int = subtract(A: int = current, B: int = convert<To_Integer>(RemainingHealth)), Source: Source);
+            if (double(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum))) <= 0) {
+                await send_event<Died>(Entity: self, Source: Source);
                 return ();
             } else {
                 return ();

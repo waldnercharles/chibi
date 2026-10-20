@@ -72,7 +72,7 @@ functions. Every field node but `Field Output` has a call named after it, such
 as `field_circle`, `field_max`, `field_noise` or `field_cell_edge`, and each
 call becomes the node it names. A function calls functions declared before or
 after it in its library, and functions of other libraries by qualified name,
-such as `"Shapes".Disc(entry.X, entry.Y)`; a field that links the caller links
+such as `"Shapes".Disc(X, Y)`; a field that links the caller links
 those libraries too, and arguments a call omits take the callee's defaults.
 Arithmetic operators and local bindings do not lower yet, so write `field_add`
 rather than `+` and name shared subexpressions as functions; repeated calls

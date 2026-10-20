@@ -316,7 +316,7 @@ callee package's declarations in scope, as Odin does.
 
 ## Build programs cannot format numbers
 
-The build host offers `BuildJoin`, but neither `format_text` nor any number
+The build host offers `build.join`, but neither `format_text` nor any number
 conversion. `test/tools/GameEquivalence.chibi` therefore reports the first
 differing frame by slicing its number out of the trace line, and it cannot
 report how many lines it compared.
@@ -330,7 +330,7 @@ Suggestion: one text library for every Chibi host, with `format_text` and
 
 ## Build programs read files only as text
 
-`BuildReadFile` returns a NUL-terminated string, so a build program cannot
+`build.read_file` returns a NUL-terminated string, so a build program cannot
 read a binary file such as a `.chibip` artifact. Locating an artifact's module
 records for the equivalence harness took a C function,
 `player_prepared_modules`, although the stage-one compiler already writes
@@ -340,16 +340,16 @@ prepared modules in Chibi.
   `fs::read` returns `Vec<u8>`; Zig `readFileAlloc` returns `[]u8`; Python
   `open(path, "rb").read()` returns `bytes`.
 
-Suggestion: `BuildReadBytes(path) -> byte[]` for build programs, so tools can
+Suggestion: `build.read_bytes(path) -> byte[]` for build programs, so tools can
 read prepared formats in Chibi.
 
 ## Build programs have their own string vocabulary
 
 `tools/toolchain/Build.chibi` cannot import `core:strings` or any other
-package. It has only the build host's natives (`BuildBefore`, `BuildAfter`,
-`BuildStartsWith`, `BuildTrim`, `BuildLines`, `BuildJoin`), with no length,
+package. It has only the build host's natives (`build.before`, `build.after`,
+`build.starts_with`, `build.trim`, `build.lines`, `build.join`), with no length,
 index, contains or split. Moving `configure_inputs.py package-enabled` into it
-meant writing `Contains` as `BuildBefore(text, part) != text` and parsing
+meant writing `Contains` as `build.before(text, part) != text` and parsing
 `NAME[:TYPE]=VALUE` with nested before/after calls.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
@@ -364,6 +364,33 @@ meant writing `Contains` as `BuildBefore(text, part) != text` and parsing
 Suggestion: run build programs as ordinary Chibi packages that import the
 `core:` collections, with process and file access in one build-only
 capability package, instead of a separate string vocabulary.
+
+## A host's natives can't form a package
+
+Moving the build host's natives under `build.` (#523) named each one
+`build.read_file` in the host's catalog, the way an imported package's
+functions are named `strings.Join`. That is all a host can do: it cannot
+declare a package that programs import. So a build program uses `build.`
+without an import, and a local named `build` doesn't shadow it; `Build.chibi`
+renamed its build-directory parameters to `buildDir` to stay readable.
+Catalog lookups ignore case and underscores, so `Build.ReadFile` and
+`build.readfile` resolve too. Natives are snake_case (`array_add`) and
+package functions PascalCase, so the same operation is `build.join` beside
+`strings.Join`.
+
+- Odin's `core:os` and Go's `os` are packages a program imports. Odin
+  declares foreign procedures inside the package, Go declares body-less
+  functions implemented in assembly, and a local named `os` shadows the import
+  in both.
+- A `build.zig` receives the build API as a `b: *std.Build` parameter; Cargo's
+  `build.rs` imports `std::fs` and `std::process` with `use`.
+- Odin, Go, Zig, Rust, C#, TypeScript and Python look names up exactly,
+  case included.
+
+Suggestion: let a host register its natives as a package (`host:build`) that
+programs import like `core:strings`, through the same import namespace so
+locals shadow it; look catalog names up exactly; and use one case convention
+for package members.
 
 ## Ordinary nouns are reserved, and the build host doesn't say where
 

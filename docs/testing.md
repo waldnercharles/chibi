@@ -2096,7 +2096,7 @@ their precedence over the cache, failure/retry and exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
-missing host, one that fails the protocol query and one that reports protocol 2,
+missing host, one that fails the protocol query and one that reports protocol 3,
 and authored orchestration for a compatible host, including paths with spaces;
 four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are

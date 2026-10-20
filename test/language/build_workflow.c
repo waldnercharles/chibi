@@ -45,7 +45,7 @@ static const script_catalog_parameter status_result = {
 };
 static const script_catalog_capability run_step = {
     .id = 901,
-    .name = "RunBuildStep",
+    .name = "build.run",
     .kind = SCRIPT_CAPABILITY_FUNCTION,
     .parameters = &arguments_parameter,
     .parameter_count = 1,

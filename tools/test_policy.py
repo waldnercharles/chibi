@@ -264,7 +264,7 @@ TOOLS = {
     # One case: git-archives HEAD's tools/compiler and packages/core and has an
     # unsanitized Release compiler host recover the compiler from the checked-in
     # artifact: one compile, or two when the sources changed since it, about
-    # 7 s or 14 s on macOS arm64 (make test-recovery).
+    # 11 s or 26 s on macOS arm64 (make test-recovery).
     'bootstrap-recovery': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                            '--bootstrap-recovery',
                            str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host')),

@@ -325,15 +325,15 @@ It then compiles the recorded sources from disk with the artifact:
 
 `make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
-check takes one compile, about 7 s, or two when the sources changed, about
-14 s; the whole selector takes about 12 s.
+check takes one compile, about 11 s, or two when the sources changed, about
+26 s; the whole selector takes about 18 s.
 
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
 tools/compiler --core packages/core` and needs neither stage zero, nor a
 compiler built from Chibi, nor a network. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
-before it loads. The closure is 5.8 MB, which Git stores in about 0.9 MB. Its
+before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
 target is the value layout and prepared ABI rather than an operating system,
 so one artifact serves every host with that ABI.
 

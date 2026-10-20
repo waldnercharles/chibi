@@ -556,13 +556,14 @@ Step 5 is implemented for the package compiler on 2026-10-19:
   another target and a version older than the sources' minimum. It then requires the artifact's own bytes, or a
   fixpoint when the sources changed.
 - `make test-recovery` runs that recovery from sources exported from HEAD in
-  about 12 s: one compile, or two when the sources changed.
+  about 18 s: one compile, or two when the sources changed.
 
 At the owner's direction on 2026-10-19 the clean-checkout artifact is checked
 in at `tools/compiler/bootstrap`, as Zig checks in `zig1.wasm`, replacing the
-earlier release-asset download. It was built from revision `da03e96dd` after
-`text_bytes` joined the host's natives; the compiler sources have not changed
-since, so recovery needs one compile. `make bootstrap-recover` recovers the
+earlier release-asset download. It was rebuilt on 2026-10-20 from revision
+`94858a96c`, after #420's syntax and prepared target reached the compiler
+sources; the artifact published before that is refused ("prepared target ABI
+differs"). `make bootstrap-recover` recovers the
 compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 

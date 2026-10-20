@@ -4477,6 +4477,20 @@ TEST_CASE(program_handler_payloads_do_not_hide_parameters)
         }
         REQUIRE(hidden == !i && analysis->valid == (i == 1));
     }
+    /* Only a handler that returns lets the function's body end without one. */
+    prepare();
+    syntax = script_parse(
+        "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
+        "Value * 2) } "
+        "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
+        "after entry { doubled(); } after doubled(twice) { } } }"
+    );
+    analysis = script_analyze(syntax, &catalog);
+    bool missing = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        missing |= !strcmp(analysis->diagnostics[d].message, "Missing return");
+    }
+    REQUIRE(!analysis->valid && missing);
     return true;
 }
 TEST_CASE(program_nested_functions_wait_for_themselves)

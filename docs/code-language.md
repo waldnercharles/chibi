@@ -685,7 +685,8 @@ as Odin's `rune` and Rust's `char` are.
 
 A `char` has integer arithmetic and comparisons. Thus `digit - '0'` is a
 `char`. A `char` converts implicitly to `int`, `uint`, `int64` and `uint64`.
-`c + n` with an `int` `n` is an `int`.
+`c + n` with an `int` `n` is an `int`, and with a `uint` or `uint64` `n` it has
+that type.
 
 `char(n)` converts an integer back. It fails the call with "Value does not fit
 in char" when `n` is not a Unicode scalar. `char` arithmetic whose result is
@@ -1484,8 +1485,8 @@ These statements terminate:
   every arm terminates;
 - a `while (true)` that no `break` leaves.
 
-A function with `after` handlers is exempt: they may return its results after
-the body ends.
+A function with an `after` handler that returns is exempt: it may return the
+results after the body ends.
 
 ### Inferred results
 

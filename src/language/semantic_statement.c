@@ -194,15 +194,33 @@ static bool union_result_paths(
     *falls = !endless(a, s);
     return initialized;
 }
-/* A function with `after` handlers or macro entries may return from them
- * after its body ends; `on` handlers cannot return its results. */
+/* Whether any return lies in this statement. */
+static bool returns(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    if (s->kind == SCRIPT_STMT_RETURN) {
+        return true;
+    }
+    for (int i = 0; i < s->child_count; i++) {
+        if (returns(a, s->children[i])) {
+            return true;
+        }
+    }
+    return returns(a, s->body) || returns(a, s->alternative);
+}
+/* A function whose `after` handler or macro entry returns may give its
+ * results there, after its body ends; `on` handlers cannot return them. */
 static bool handles_actions(const analyzer *a, int function)
 {
     for (int i = 0; i < acount(a->out->functions); i++) {
         const script_function *child = &a->out->functions[i];
         if (child->parent == function &&
             (child->kind == SCRIPT_FUNCTION_CONTINUATION ||
-             child->kind == SCRIPT_FUNCTION_MACRO_ENTRY)) {
+             child->kind == SCRIPT_FUNCTION_MACRO_ENTRY) &&
+            returns(a->out, child->body)) {
             return true;
         }
     }

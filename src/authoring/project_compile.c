@@ -463,6 +463,7 @@ static const behavior_function *generator_function(
                 signature->result_count == 1
             );
             (void)signature;
+            (void)parameters;
             for (int k = 0; k < execution_module_function_count(package->module); k++) {
                 execution_module_function_info
                     info = execution_module_function_at(package->module, k);

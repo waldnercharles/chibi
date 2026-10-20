@@ -91,8 +91,27 @@ Root :: struct {
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
-              hosts: Host[], roots: Root[])
+              hosts: Host[], roots: Root[], points: SourcePoint[])
 }
+// A debugger point: a record of stage zero's kind at a source range, which
+// breakpoints find by its occurrence; `meaning` names what it is, such as the
+// event a handler takes, and a function's completion points mark its returns.
+SourcePoint :: struct {
+    occurrence: uint64;
+    meaning: uint64;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    kind: int;
+    completion: bool;
+}
+// Record kinds, as the SDK numbers them.
+FunctionRecord: int : 1;
+StatementRecord: int : 3;
+// The point index of a step's SOURCE_POINT that EmitBody makes the function's
+// completion point at the statement.
+CompletionPoint: int : -2;
 // A scheduled visit. Storage, container and record are the type a literal at
 // `node` takes from its context; storage 0 means none.
 Work :: struct {
@@ -217,6 +236,81 @@ CombinePhase: int : 9;
 // The phase of `return (a, b)` once each named result's value is ready.
 ReturnsPhase: int : 10;
 
+// The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
+// a word into an identity.
+MixWord :: (hash: uint64, value: uint64) -> uint64 {
+    mixed := hash;
+    rest := value;
+    index: int = 0;
+    while (index < 8) {
+        mixed = (mixed ^ (rest & 255)) * 1099511628211;
+        rest = rest >> 8;
+        index += 1;
+    }
+    return mixed;
+}
+// A record's occurrence, as the SDK's script_occurrence gives it: its
+// document `key`, its kind and its range counted in bytes that are not
+// whitespace.
+Occurrence :: (key: string, kind: int, start: int, end: int) -> uint64 {
+    hash := binding.ID("source-occurrence", "");
+    count := strings.ByteLength(key);
+    hash = MixWord(hash, uint64(count));
+    index: int = 0;
+    while (index < count) {
+        hash = (hash ^ uint64(strings.ByteAt(key, index))) * 1099511628211;
+        index += 1;
+    }
+    hash = MixWord(MixWord(MixWord(hash, uint64(kind)), uint64(start)), uint64(end));
+    if (hash == 0) {
+        return 1;
+    }
+    return hash;
+}
+// How many bytes of `text` before each offset, through its end, are not
+// whitespace.
+SolidOffsets :: (text: string) -> int[] {
+    size := strings.ByteLength(text);
+    solid: int[] = [];
+    count: int = 0;
+    index: int = 0;
+    while (index <= size) {
+        solid = array_add(solid, count);
+        if (index < size) {
+            byte := strings.ByteAt(text, index);
+            if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
+                count += 1;
+            }
+        }
+        index += 1;
+    }
+    return solid;
+}
+// The point at `node` of the record of `kind` at `record`, in the document
+// `key` whose bytes `solid` counts. A completion point is its function's, at
+// a return.
+PointAt :: (key: string, solid: int[], kind: int, meaning: uint64, completion: bool, record: snapshot.SnapshotNode,
+            node: snapshot.SnapshotNode) -> SourcePoint {
+    return {occurrence: Occurrence(key, kind, solid[record.start], solid[record.end]), meaning: meaning,
+            start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
+            completion: completion};
+}
+// A return's SOURCE_POINT, which EmitBody makes the function's completion
+// point at the return.
+CompletionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, CompletionPoint, 0, 0, node);
+}
+// The SOURCE_POINT of points[point].
+PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, point, 0, 0, node);
+}
+// Whether stage zero lowers a node of `kind` as a statement, with a point.
+Statement :: (kind: string) -> bool {
+    return kind == "callable_body" || kind == "block" || kind == "if_statement" || kind == "while_statement" ||
+           kind == "for_statement" || kind == "switch_statement" || kind == "break_statement" ||
+           kind == "continue_statement" || kind == "local_declaration" || kind == "assignment" ||
+           kind == "expression_statement" || kind == "return_statement";
+}
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
@@ -816,8 +910,8 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
-             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], function: int,
-             ops: Ops, target: Target) -> Body {
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+             solid: int[], meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -872,6 +966,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         index += 1;
     }
+    // The function's point, its statements' and its completions', as stage
+    // zero places them.
+    points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
+    code = array_add(code, PointCode(ops, 0, declaration));
     // Named results are locals from `named` on, zero until the body sets them.
     named := length(locals);
     index = 0;
@@ -902,6 +1000,23 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
+        if (item.phase == 0 && Statement(kind)) {
+            points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, node, node));
+            code = array_add(code, PointCode(ops, length(points) - 1, node));
+            // Stage zero assigns each returned value to a result, a statement
+            // of its own.
+            value := Field(forest, item.node, "value");
+            returned: int[] = [];
+            if (kind == "return_statement" && Is(forest, value, "argument_list")) {
+                returned = Members(forest, value);
+            } else if (kind == "return_statement" && value >= 0) {
+                returned = [value];
+            }
+            for (each in returned) {
+                points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
+                code = array_add(code, PointCode(ops, length(points) - 1, forest[each]));
+            }
+        }
         // The step a node other than control flow takes.
         stepped := true;
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
@@ -1267,7 +1382,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         return Body.Failed(diagnostic);
                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                   added_calls, added_names, scheduled, popped, value, kept, marks):
+                        // A return's completion point.
+                        added_at := length(code);
                         code = append(code, added_code);
+                        while (added_at < length(code)) {
+                            if (code[added_at].op == ops.source_point && code[added_at].left == CompletionPoint) {
+                                points = array_add(points, PointAt(key, solid, FunctionRecord, meaning, true,
+                                                                   declaration, node));
+                                code[added_at] = PointCode(ops, length(points) - 1, node);
+                            }
+                            added_at += 1;
+                        }
                         slots = append(slots, added_slots);
                         locals = append(locals, added_locals);
                         cells = append(cells, added_cells);
@@ -1335,12 +1460,28 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             at_next -= 1;
         }
     }
-    // A function with named results returns them when its body ends.
+    // A function completes at its end, and one with named results returns
+    // them.
+    points = array_add(points, PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
+    code = array_add(code, PointCode(ops, length(points) - 1, declaration));
     if (callable.results > 0) {
         code = append(code, NamedResultsCode(ops, params, callable, named, length(slots), declaration));
         slots = append(slots, NamedResultsSlots(params, callable));
         code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
-    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots);
+    // The runtime numbers each instruction that suspends, an invocation or a
+    // point, by its order, and a prepared module's bytes hold that number.
+    suspension: int = 0;
+    at_code: int = 0;
+    while (at_code < length(code)) {
+        if (code[at_code].op == ops.invoke || code[at_code].op == ops.source_point) {
+            numbered := code[at_code];
+            numbered.target = suspension;
+            code[at_code] = numbered;
+            suspension += 1;
+        }
+        at_code += 1;
+    }
+    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots, points);
 }

@@ -323,6 +323,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (callable.result != 0) {
                 return Fail(forest, item.node, document, "return needs a value");
             }
+            code = array_add(code, CompletionCode(ops, node));
             code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
         } else {
             next = array_add(next, expected);
@@ -451,6 +452,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 retained = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, -1, 0));
             } else {
+                code = array_add(code, CompletionCode(ops, node));
                 code = array_add(code, Instruction(ops.result, result.storage, 0, result.slot, 0, 0, node));
                 code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
             }
@@ -485,6 +487,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         } else {
             // Copy the cell's whole header, type name and layout included,
             // into result zero.
+            code = array_add(code, CompletionCode(ops, node));
             slots = array_add(slots, address);
             code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell - 1, 0, 0, node));
             slots = array_add(slots, address);
@@ -1451,8 +1454,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         invocation: Invocation = {callee: item.a, first: at.cell, count: count, result_first: at.cell + count,
                                   result_count: result_count};
         calls = array_add(calls, invocation);
-        // Each invocation suspends the caller once; its index is its order.
-        code = array_add(code, Instruction(ops.invoke, 0, 0, at.call, 0, at.call, node));
+        // Each invocation suspends the caller once; EmitBody numbers it.
+        code = array_add(code, Instruction(ops.invoke, 0, 0, at.call, 0, 0, node));
     }
     if (result.storage > 0) {
         slots = array_add(slots, address);
@@ -2364,7 +2367,8 @@ NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code
     marks: int[] = [];
     next: Work[] = [];
     if (value < 0) {
-        code := append(before, NamedResultsCode(ops, params, callable, named, at.slot, node));
+        code := append(before, [CompletionCode(ops, node)]);
+        code = append(code, NamedResultsCode(ops, params, callable, named, at.slot, node));
         code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
         return Step.Emitted(code, NamedResultsSlots(params, callable), locals, cells, hosts, roots, calls, bound, next,
                             0, NoValue(), NoValue(), marks);
@@ -2403,7 +2407,7 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[],
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    code: Code[] = [];
+    code: Code[] = [CompletionCode(ops, node)];
     slots: Slot[] = [];
     index: int = 0;
     while (index < callable.results) {

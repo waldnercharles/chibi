@@ -77,7 +77,7 @@ Such a function, and every function that calls it, then copies every
 argument on each call. One store in `ConstantCode` and one push in
 `ComponentReferenceStep` each took stage one compiling itself from 25 to over
 60 seconds. Building the record in one literal, and appending to a fresh
-local array, keep the calls free. `tool language-package-compiler-chibi-behaviors`
+local array, keep the calls free. `tool language-package-compiler-chibi-sharing`
 now fails when any function but those that run once per compile copies its
 arguments.
 

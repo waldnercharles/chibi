@@ -716,11 +716,19 @@ TOOLS = {
     # the compiled one. shared60s.
     'language-package-compiler-chibi-literals': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                 '--package-compiler-chibi-literals'],
-    # Stage one compiles a behavior asset, Counter's, against a game the test
-    # declares on both compiler backends; its module declares stage zero's
-    # identities and plays its Tick handler as stage zero's does. shared60s.
+    # Stage one compiles half the behavior samples against a game the test
+    # declares, on both backends; each module declares stage zero's
+    # identities and points and plays as stage zero's does. shared60s.
     'language-package-compiler-chibi-behaviors': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                  '--package-compiler-chibi-behaviors'],
+    # The other half of the samples, the sources stage one rejects and the
+    # identities a project's path gives. shared60s.
+    'language-package-compiler-chibi-behaviors-rest': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                      '--package-compiler-chibi-behaviors-rest'],
+    # No stage-one function but the listed few copies its arguments on each
+    # call. shared60s.
+    'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                               '--package-compiler-chibi-sharing'],
     # The same case over the imports sample, which compiles all of
     # core:strings, split off so it keeps its own shared60s.
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

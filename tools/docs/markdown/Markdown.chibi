@@ -32,29 +32,29 @@ Size :: (text: string) -> int {
     return strings.ByteLength(text);
 }
 
-At :: (text: string, index: int) -> int {
+pub At :: (text: string, index: int) -> int {
     return strings.ByteAt(text, index);
 }
 
-From :: (text: string, start: int) -> string {
+pub From :: (text: string, start: int) -> string {
     return strings.Slice(text, start, Size(text) - start);
 }
 
-StartsWith :: (text: string, prefix: string) -> bool {
+pub StartsWith :: (text: string, prefix: string) -> bool {
     return strings.Slice(text, 0, Size(prefix)) == prefix;
 }
 
-EndsWith :: (text: string, suffix: string) -> bool {
+pub EndsWith :: (text: string, suffix: string) -> bool {
     size := Size(text);
     count := Size(suffix);
     return size >= count && From(text, size - count) == suffix;
 }
 
-IsBlank :: (byte: int) -> bool {
+pub IsBlank :: (byte: int) -> bool {
     return byte == Space || byte == 9 || byte == 13;
 }
 
-Trim :: (text: string) -> string {
+pub Trim :: (text: string) -> string {
     start: int = 0;
     end := Size(text);
     while (start < end && IsBlank(At(text, start))) {
@@ -67,7 +67,7 @@ Trim :: (text: string) -> string {
 }
 
 // The index of the first byte at or after start, or -1.
-Find :: (text: string, byte: int, start: int) -> int {
+pub Find :: (text: string, byte: int, start: int) -> int {
     size := Size(text);
     index := start;
     while (index < size) {
@@ -80,7 +80,7 @@ Find :: (text: string, byte: int, start: int) -> int {
 }
 
 // The index of the first occurrence of pattern at or after start, or -1.
-FindText :: (text: string, pattern: string, start: int) -> int {
+pub FindText :: (text: string, pattern: string, start: int) -> int {
     size := Size(text);
     count := Size(pattern);
     index := start;
@@ -107,7 +107,7 @@ Split :: (text: string, byte: int) -> string[] {
 }
 
 // Text as HTML element content or attribute value.
-Escape :: (text: string) -> string {
+pub Escape :: (text: string) -> string {
     out: string = "";
     size := Size(text);
     start: int = 0;
@@ -159,7 +159,7 @@ Slug :: (text: string) -> string {
 }
 
 // The folder of a site path, without its trailing slash.
-Folder :: (path: string) -> string {
+pub Folder :: (path: string) -> string {
     end := Size(path);
     while (end > 0 && At(path, end - 1) != Slash) {
         end -= 1;
@@ -548,8 +548,8 @@ Entry :: (line: string, level: int, page: string, sources: string[], outputs: st
 // each heading of level 2 or 3. page is the page's source path, and sources
 // and outputs map published sources to their pages for links. Lines arrive
 // split because reading a byte of a string costs the length of the string.
-Page :: (lines: string[], page: string, sources: string[],
-         outputs: string[]) -> (html: string[], at: int[], targets: string[], contents: string[]) {
+pub Page :: (lines: string[], page: string, sources: string[],
+             outputs: string[]) -> (html: string[], at: int[], targets: string[], contents: string[]) {
     index: int = 0;
     while (index < length(lines)) {
         line := Trim(lines[index]);
@@ -572,7 +572,7 @@ Page :: (lines: string[], page: string, sources: string[],
 
 // The page's HTML pieces, as Page renders them, followed by its contents when
 // it has headings of level 2 or 3.
-Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     if (length(rendered.contents) == 0) {
         return rendered.html;
@@ -584,7 +584,7 @@ Render :: (lines: string[], page: string, sources: string[], outputs: string[]) 
 
 // items followed by item until there are count of them; generated pages use
 // it to keep the source line of each Markdown line they write.
-Pad :: (items: int[], count: int, item: int) -> int[] {
+pub Pad :: (items: int[], count: int, item: int) -> int[] {
     padded := items;
     while (length(padded) < count) {
         padded = array_add(padded, item);
@@ -593,12 +593,12 @@ Pad :: (items: int[], count: int, item: int) -> int[] {
 }
 
 // What chibi doc reports for a link written as text at line of source.
-Dropped :: (source: string, line: int, target: string) -> string {
+pub Dropped :: (source: string, line: int, target: string) -> string {
     return format_text("{}:{}: link to {} is not published; written as text\n", source, line, target);
 }
 
 // A report, as Dropped writes it, of each link Render writes as text.
-Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     reports: string[] = [];
     index: int = 0;

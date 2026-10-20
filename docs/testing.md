@@ -1209,18 +1209,19 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately and use
 one shared 60-second deadline; this focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
-C cases for dependency execution, alias isolation, self imports, owned exported
+`python3 tools/test_policy.py tool language-package-imports` selects thirteen
+fixed C cases for dependency execution, alias isolation, self imports, `pub`
+visibility and its private-member diagnostics, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
 generations, constrained generics and constant defaults. It also checks owned
 union payload defaults and malformed public export bindings. Cached closures
 track sibling addition, path-only renames and removal across the dependency
 chain while an unrelated package is reused; failed generations publish no module
 or exports, are never cache hits, and repair replaces them while a separately
-retained valid module keeps working. The workload has 59 preparations, 210
-parses, 113 import declarations, at most 189 package visits before reuse, and 48
+retained valid module keeps working. The workload has 67 preparations, 226
+parses, 121 import declarations, at most 205 package visits before reuse, and 50
 direct calls with instruction budgets of 2,000.
-One catalog snapshot and one additional parse/nine semantic-only analyses cover
+One catalog snapshot and one additional parse/ten semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
 Build separately and run under one shared 60-second deadline. This focused
@@ -1281,10 +1282,10 @@ GPU work. This focused route is outside the language aggregate.
 cases for the shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
-package, with eight tests. They cover discovery order, names and positions,
-passes, a failed `assert` reported inside its helper, an out-of-range read, an
-exhausted 100,000-instruction budget, a wait and a task start on bytecode and
-SLJIT. There is no filesystem, process, service or GPU work. This focused route
+package, with nine tests. They cover discovery order, names and positions,
+passes, a failed `assert` reported inside its helper, an `assert` without a
+message reported by its condition, an out-of-range read, an exhausted
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
 is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the

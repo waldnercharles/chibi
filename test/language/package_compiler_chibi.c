@@ -309,17 +309,18 @@ static const sample samples[] = {
                 "lib.Point[] = [lib.Make(n, n)]; return points; }",
       .library = "package lib\n"
                  "import text \"core:strings\"\n"
-                 "Point :: struct { x: int; y: int; }\n"
-                 "Shape :: union { Dot(at: Point) | Line(size: int) | Nothing "
+                 "pub Point :: struct { x: int; y: int; }\n"
+                 "pub Shape :: union { Dot(at: Point) | Line(size: int) | "
+                 "Nothing "
                  "}\n"
-                 "Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
+                 "pub Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
                  "y: y}; return p; }\n"
-                 "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
-                 "Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
+                 "pub Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                 "pub Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
                  "Helper :: (n: int) -> int { return n + 1; }\n"
-                 "Width :: (s: string) -> int { return "
+                 "pub Width :: (s: string) -> int { return "
                  "text.ByteLength(s); }\n"
-                 "Size :: (shape: Shape) -> int {\n"
+                 "pub Size :: (shape: Shape) -> int {\n"
                  "    switch shape {\n"
                  "        case .Dot(at): return Sum(at);\n"
                  "        case .Line(size): return size;\n"
@@ -349,10 +350,10 @@ static const sample samples[] = {
                 "    return 0;\n}\n"
                 "Scale :: () -> int { return lib.Scaled(2); }",
       .library = "package lib\n"
-                 "Step: int : 100;\n"
-                 "Low: int : -2147483648;\n"
-                 "High: int : 2147483647;\n"
-                 "Scaled :: (n: int) -> int { return n * Step; }",
+                 "pub Step: int : 100;\n"
+                 "pub Low: int : -2147483648;\n"
+                 "pub High: int : 2147483647;\n"
+                 "pub Scaled :: (n: int) -> int { return n * Step; }",
       .calls = { { "Sum", "[3]", "[148]" },
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
@@ -805,21 +806,21 @@ static const sample samples[] = {
     { .name = "unknown imported function",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown function 'Missing'",
       .line = 3,
       .column = 31 },
     { .name = "alias conflict",
       .source = "package facts\nimport lib \"project:lib\"\nlib :: () "
                 "-> int { return 1; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Package import alias conflicts with a package declaration",
       .line = 2,
       .column = 1 },
     { .name = "alias value",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown name 'lib'",
       .line = 3,
       .column = 27 },

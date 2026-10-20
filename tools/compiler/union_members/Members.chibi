@@ -10,27 +10,27 @@ import strings "core:strings"
 // Complete catalog order, including native records and internal constructors.
 // Type/ID pools use the same representation as named binding; graph rows are
 // raw metadata, not precomputed ownership edges or cycle decisions.
-Definition :: struct {
+pub Definition :: struct {
     id_slot: int;
     field_start: int;
     field_count: int;
     variant_start: int;
     variant_count: int;
 }
-Field :: struct {
+pub Field :: struct {
     type: int;
 }
-Variant :: struct {
+pub Variant :: struct {
     type: int;
     tagged: bool;
     field_start: int;
     field_count: int;
 }
-Capability :: struct {
+pub Capability :: struct {
     result_start: int;
     result_count: int;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(reader: reader.Environment, types: named.Type[], ids: uint64[],
            definitions: Definition[], variants: Variant[], fields: Field[],
            capabilities: Capability[], capability_fields: Field[])
@@ -53,15 +53,15 @@ DeclaredVariant :: struct {
     field_start: int;
     field_count: int;
 }
-Update :: union {
+pub Update :: union {
     Added(plan: constructors.Plan)
     | Replaced(id: uint64, variants: DeclaredVariant[], fields: DeclaredField[], types: named.Type[], ids: uint64[])
 }
-Members :: union {
+pub Members :: union {
     Built(environment: Environment, updates: Update[], diagnostics: syntax.Diagnostic[], uses: named.Use[])
 }
 
-Validation :: union {
+pub Validation :: union {
     Checked(root: int, error: int, states: int[])
 }
 MaxDepth: int : 256;
@@ -167,8 +167,8 @@ Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants
     }
     return Validation.Checked(-1, 0, updated);
 }
-Validate :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
-             roots: int[], states: int[]) -> Validation {
+pub Validate :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
+                 roots: int[], states: int[]) -> Validation {
     updated := states;
     index: int = 0;
     while (index < length(roots)) {
@@ -534,7 +534,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
             return Members.Built(updated, all_updates, diagnostics, uses);
     }
 }
-Build :: (environment: Environment, tree: reader.Tree, body: int, scope: int, document: int) -> Members {
+pub Build :: (environment: Environment, tree: reader.Tree, body: int, scope: int, document: int) -> Members {
     updates: Update[] = [];
     diagnostics: syntax.Diagnostic[] = [];
     uses: named.Use[] = [];

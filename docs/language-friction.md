@@ -183,7 +183,7 @@ Constant time needs the representation in
 ## Stage one compiles only `for name in array`
 
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
-loops and `for item: ref in items` (#420), and since #RANGES_PR half-open
+loops and `for item: ref in items` (#420), and since #542 half-open
 `first..<last` and reverse `for <` loops over ranges and arrays, as the owner
 decided on 2026-10-20 after Odin's `..<` and Jai's `for <`. Stage one rejects
 all of them, so the compiler's own counting loops stay

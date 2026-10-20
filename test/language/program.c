@@ -543,6 +543,29 @@ static bool compile_pack(const char *source, behavior_backend backend, const nat
     program = execution_program_new(module, world, NULL);
     return program != NULL;
 }
+/* Whether lowering source against a definition pack reports message. */
+static bool lowering_reports(const char *source, const native_definition_pack *pack, const char *message)
+{
+    const native_capability_pack base = {
+        .catalog = &catalog,
+        .layouts = reflected_types,
+        .layout_count = 2,
+    };
+    char error[256];
+    const native_definition_pack packs[] = { *pack, CORE_DEFINITION_PACK };
+    state_native = native_capabilities_from_definition_packs(&base, 1, packs, 2, error, sizeof error);
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, native_capabilities_catalog(state_native));
+    const script_lower_bindings bindings = { .global = global, .host = pack_host };
+    execution_module_plan
+        *plan = script_lower(analysis, native_capabilities_catalog(state_native), &bindings);
+    bool found = false;
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        found |= !strcmp(plan->diagnostics[i].message, message);
+    }
+    execution_module_plan_free(plan);
+    return found;
+}
 static bool compile(const char *source, behavior_backend backend)
 {
     if (!compile_module(source, backend)) {
@@ -2539,12 +2562,46 @@ TEST_CASE(program_assert_fails_with_its_message_or_condition)
     }
     /* The message is fixed when the call is compiled. */
     prepare();
-    REQUIRE(!compile_pack(
+    REQUIRE(lowering_reports(
         "Checks :: behavior { on Impulse(amount, enabled) { "
         "assert(enabled, format_text(\"{}\", amount)); } }",
-        BEHAVIOR_BYTECODE,
-        &NATIVE_TEXT_DEFINITION_PACK
+        &NATIVE_TEXT_DEFINITION_PACK,
+        "assert's message is a string constant"
     ));
+    return true;
+}
+/* Named arguments bind as for any call, and an asserting helper is pure, so
+ * a narrowed optional stays narrowed across it. */
+TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure)
+{
+    const char *
+        source = "Named :: behavior {\n"
+                 "  total: double = 0;\n"
+                 "  Check :: (n: double) { assert(n >= 0.0); }\n"
+                 "  on Impulse(amount, enabled) {\n"
+                 "    local: double? = amount;\n"
+                 "    if local != nil { Check(amount); total = local + 1.0; }\n"
+                 "    assert(message: \"too small\", condition: amount > "
+                 "2.0);\n"
+                 "  }\n"
+                 "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && !strcmp(failure->message, "Assertion failed: too small"));
+        REQUIRE(failure->line == 7 && failure->column == 5);
+        REQUIRE(number_state(instance, "total", 2));
+        execution_program_free(program);
+        program = NULL;
+    }
     return true;
 }
 /* A failed call stack unwinds at once, so neither payload collection nor a
@@ -8753,6 +8810,7 @@ void test_language_program()
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
+    RUN_TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);

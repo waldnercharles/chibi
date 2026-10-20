@@ -376,19 +376,34 @@ static bool compile_conversion(
            fail(a, call, "constant does not fit the conversion type");
 }
 /* A false assert while the compiler evaluates is a compile error, with the
- * message or the condition's text that it fails a call with at run time. */
+ * message, or else the condition's text, that it fails a call with at run
+ * time. Arguments bind by name or position, as calls bind them. */
 static bool compile_assert(analyzer *a, TSNode node, compile_binding *bindings, compile_value *out, int *budget)
 {
     TSNode arguments = script_analyzer_field(node, "arguments"), values[2] = { 0 };
-    int count = 0;
+    int position = 0;
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
         TSNode child = ts_node_named_child(arguments, i);
-        if (!ts_node_is_extra(child) && count < 2) {
-            values[count++] = child;
+        if (ts_node_is_extra(child)) {
+            continue;
         }
+        TSNode label = script_analyzer_field(child, "name");
+        int index = position++;
+        if (!ts_node_is_null(label)) {
+            char *name = script_analyzer_name_copy(a, label);
+            index = script_name_matches("Condition", name) ? 0
+                  : script_name_matches("Message", name)   ? 1
+                                                           : -1;
+            free(name);
+            child = script_analyzer_field(child, "value");
+        }
+        if (index < 0 || index > 1 || !ts_node_is_null(values[index])) {
+            return fail(a, node, "assert takes a condition and a message");
+        }
+        values[index] = child;
     }
     bool test = false;
-    if (!count ||
+    if (ts_node_is_null(values[0]) ||
         !script_analyzer_compile_expression(a, values[0], bindings, out, budget) ||
         !truth(a, values[0], *out, &test)) {
         return false;
@@ -397,8 +412,13 @@ static bool compile_assert(analyzer *a, TSNode node, compile_binding *bindings, 
     if (test) {
         return true;
     }
-    char *text = count == 2 ? script_analyzer_name_copy(a, values[1])
-                            : script_analyzer_text_copy(a, values[0]);
+    char *text = ts_node_is_null(values[1])
+                   ? xstrdup("")
+                   : script_analyzer_name_copy(a, values[1]);
+    if (!*text) {
+        free(text);
+        text = script_analyzer_text_copy(a, values[0]);
+    }
     size_t size = sizeof "Assertion failed: " + strlen(text);
     char *message = xmalloc(size);
     snprintf(message, size, "Assertion failed: %s", text);

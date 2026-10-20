@@ -86,12 +86,7 @@ static const native_capability_definition DEFINITIONS[] = {
       IN(PRINT),
       OUT(THEN) },
     /* Pure: it lowers to an ASSERT, which no optimization removes. */
-    { .canonical_name = CORE_ASSERT_NAME,
-      .source_name = CORE_ASSERT_SOURCE,
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .completion_output = -1,
-      CORE_ASSERT_PRESENTATION,
-      IN(ASSERT) },
+    { FUNCTION(CORE_ASSERT_NAME, CORE_ASSERT_SOURCE), CORE_ASSERT_PRESENTATION, IN(ASSERT) },
     { FUNCTION(CORE_GET_NAME, CORE_GET_SOURCE), OUT(VALUE), .state_access = SCRIPT_STATE_ACCESS_READ },
     { ACTION(CORE_SET_NAME, CORE_SET_SOURCE, 0),
       IN(SET),

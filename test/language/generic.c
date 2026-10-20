@@ -417,6 +417,23 @@ TEST_CASE(generic_compile_time_assert_fails_compilation)
         "Size :: Half(-4) }"
     ));
     REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
+    /* Arguments bind by name or position; an empty message is no message. */
+    REQUIRE(analyze(
+        "Good :: library { Half :: (n: int) -> int { "
+        "assert(message: \"negative\", condition: n >= 0); return n / 2 } "
+        "Size :: Half(4) }"
+    ));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { "
+        "assert(n >= 0, message: \"negative\"); return n / 2 } Size :: "
+        "Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: negative"));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0, \"\"); "
+        "return n / 2 } Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
     return true;
 }
 TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)

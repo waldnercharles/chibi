@@ -18,7 +18,7 @@
 enum
 {
     BUDGET = 100000,
-    TESTS = 8
+    TESTS = 9
 };
 static native_capabilities *table;
 static authoring_packages *packages;
@@ -55,6 +55,10 @@ static const char
               "@test\n"
               "Starts :: () {\n"
               "    Yields();\n"
+              "}\n"
+              "@test\n"
+              "Unsure :: () {\n"
+              "    assert(strings.ByteLength(\"ab\") == 3);\n"
               "}\n";
 static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 /* The package at the root itself is named by its declaration. */
@@ -124,6 +128,7 @@ TEST_CASE(package_tests_find_the_project_tests_in_order)
         { "facts", "Spins", "/project/facts/Facts.chibi", 20 },
         { "facts", "Yields", "/project/facts/Facts.chibi", 25 },
         { "facts", "Starts", "/project/facts/Facts.chibi", 29 },
+        { "facts", "Unsure", "/project/facts/Facts.chibi", 33 },
     };
     for (int i = 0; i < TESTS; i++) {
         REQUIRE(!strcmp(tests[i].package, expected[i].package));
@@ -166,6 +171,11 @@ TEST_CASE(package_tests_report_where_each_failure_stopped)
         REQUIRE(failure.line == 26 && failure.column == 5);
         REQUIRE(!package_test_run(&tests[7], backends[b], BUDGET, &failure));
         REQUIRE(!strcmp(failure.message, "a test cannot start a task"));
+
+        /* Without a message, the condition's text from its own file. */
+        REQUIRE(!package_test_run(&tests[8], backends[b], BUDGET, &failure));
+        REQUIRE(!strcmp(failure.message, "Assertion failed: strings.ByteLength(\"ab\") == 3"));
+        REQUIRE(failure.line == 34 && failure.column == 5);
     }
     return true;
 }

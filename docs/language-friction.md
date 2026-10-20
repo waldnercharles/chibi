@@ -90,12 +90,13 @@ Suggestion: give raw pointers their own slot type, so the analysis tells them
 from `uint64` values, and let a function that assigns to an array parameter
 work on its own copy without making its callers copy.
 
-## Stage one returns one value, and nothing destructures
+## Nothing destructures results
 
-Stage one, then language. Stage zero compiles named multiple results,
+Language. Both compilers compile named multiple results,
 `Pair :: (x: int) -> (kind: int, end: int) { return(x, x + 1); }`, read as
-`Pair(3).kind`; stage one returns one value. Neither compiler destructures
-results into locals or assigns several targets at once.
+`Pair(3).kind`; stage one compiles them since the Results story. Neither
+compiler destructures results into locals or assigns several targets at
+once.
 
 - The compiler returns one-variant unions as tuples and destructures them with
   `switch`, which must bind every field.
@@ -115,8 +116,8 @@ Other languages:
   returns anonymous structs.
 - Odin, Go and Python swap with `a, b = b, a`.
 
-Suggestion: stage one compiles named results, then both compilers gain
-`a, b := F()` destructuring and `a, b = b, a`.
+Suggestion: both compilers gain `a, b := F()` destructuring and
+`a, b = b, a`.
 
 ## Stage one computes less integer arithmetic than stage zero
 

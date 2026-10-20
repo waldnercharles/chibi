@@ -1926,7 +1926,8 @@ takes about 6 s.
     unless every story played.
 
 `make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
-Counter, Motion and Controls with `chibi-compile` and with stage one's route,
+Counter, Motion, Controls and Results with `chibi-compile` and with stage
+one's route,
 `tools/toolchain/StageOne.chibi`, and compares them as above. The route:
 1. recovers stage one from the bootstrap artifact and the compiler sources
    with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and

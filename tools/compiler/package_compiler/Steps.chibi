@@ -174,11 +174,11 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
 
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
+// A function's named results are locals from `named` on.
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                  types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[], names: Name[],
-                  scope: int, package: int, values: Value[],
-                  top: int,
-                  function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[],
+                  names: Name[], scope: int, package: int, values: Value[], top: int, function: int, named: int,
+                  item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
     kind := node.kind;
@@ -316,6 +316,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                     NoValue(), retained, marks);
             }
         }
+        if (kind == "return_statement" && callable.results > 0) {
+            return NamedReturnStep(forest, document, code, params, callable, named, value, item, ops, at, node);
+        }
         if (kind == "return_statement" && value < 0) {
             if (callable.result != 0) {
                 return Fail(forest, item.node, document, "return needs a value");
@@ -329,7 +332,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         popped = 1;
         result := values[top - 1];
         if (result.storage < 0 && result.storage != NumberStorage && !Single(result, ResultsStorage) &&
-            kind != "expression_statement") {
+            !Single(result, FunctionResultsStorage) && kind != "expression_statement") {
             return Fail(forest, item.node, document, "call has no value");
         }
         if (kind == "local_declaration") {
@@ -359,9 +362,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (Declared(names, scope, name)) {
                 return Fail(forest, Field(forest, item.node, "name"), document, format_text("Duplicate declaration '{}'", name));
             }
-            if (Single(result, ResultsStorage) && declared < 0) {
+            if ((Single(result, ResultsStorage) || Single(result, FunctionResultsStorage)) && declared < 0) {
                 // The local reads the call's result cells.
-                binding: Name = {name: name, place: ResultsPlace, index: result.slot, storage: ResultsStorage,
+                binding: Name = {name: name, place: ResultsPlace, index: result.slot, storage: result.storage,
                                  container: 0, record: result.record, writable: false};
                 bound = array_add(bound, binding);
             } else if (Pointer(local.storage, local.container)) {
@@ -461,6 +464,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                   node);
     } else if (item.phase == ComponentAssignPhase) {
         return ComponentAssignStep(values[top - 1], item, ops, target, at, node);
+    } else if (item.phase == ReturnsPhase) {
+        return ResultsStep(forest, document, params, callable, values, top, item, ops, at, node);
     } else if (item.phase == RetainedPhase) {
         // A retained copy, in the last cell: bind it, store it in a local's
         // cell, or publish its header.
@@ -613,10 +618,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 }
 
 // Literals, names, parentheses, field reads and element reads.
-ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-              members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[], names: Name[],
-              package: int, values: Value[], top: int, item: Work, ops: Ops, target: Target,
-              at: Bases) -> Step {
+ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+              params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
+              ports: Port[], names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops,
+              target: Target, at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
     code: Code[] = [];
@@ -632,6 +637,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (kind == "number" && Floating(item.storage)) {
+        // A literal where a floating value is expected is one.
+        return FloatConstantStep(forest, text, document, Typed(-1, NumberStorage, 0, item.node), item.storage, ops, at,
+                                 node);
+    }
     if (kind == "number" && !Integer(item.storage)) {
         // An untyped literal: its use gives it a type.
         produced = Typed(-1, NumberStorage, 0, item.node);
@@ -688,7 +698,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         binding := names[found];
         if (binding.place == ResultsPlace) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
-                                Typed(binding.index, ResultsStorage, 0, binding.record), NoValue(), marks);
+                                Typed(binding.index, binding.storage, 0, binding.record), NoValue(), marks);
         }
         if (binding.place == GlobalPlace) {
             return Fail(forest, item.node, document,
@@ -807,6 +817,19 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
             }
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
                                 Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
+        }
+        if (Single(object, FunctionResultsStorage)) {
+            // One of a function's named results, read from its cell.
+            called := callables[object.record];
+            index := NamedResult(params, called, member);
+            if (index < 0) {
+                return Fail(forest, item.node, document, format_text("Unknown result '{}'", member));
+            }
+            result := params[called.first + called.count + index];
+            slots = [address, ValueLocal(result.storage)];
+            code = CellRead(result.storage, object.slot + index, ops, target, at.slot, node);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                Typed(at.slot + 1, result.storage, 0, -1), NoValue(), marks);
         }
         found: int = -1;
         if (Single(object, StructStorage) ||
@@ -1206,8 +1229,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     value = typed_value;
             }
         }
-        if (!Integer(value.storage) || value.container != 0) {
-            return Fail(forest, item.node, document, "conversion needs an integer value");
+        if (value.container != 0 || (!Integer(value.storage) && !Floating(value.storage))) {
+            return Fail(forest, item.node, document, "conversion needs a number");
         }
         if (value.storage == item.a) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, value, NoValue(), marks);
@@ -1334,12 +1357,24 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             result = Typed(-1, inferred.storage, port.container, inferred.record);
         }
         result_count = 1;
+    } else if (!linked && callables[item.a].results > 0) {
+        // Named results land in cells a local or `.name` reads.
+        called := callables[item.a];
+        at_result: int = 0;
+        while (at_result < called.results) {
+            named := params[called.first + called.count + at_result];
+            cell: Cell = {storage: named.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+            cells = array_add(cells, cell);
+            at_result += 1;
+        }
+        result_count = called.results;
+        result = Typed(at.cell + count, FunctionResultsStorage, 0, item.a);
     } else if (!linked && callables[item.a].result != 0) {
         called := callables[item.a];
         result = Typed(-1, called.result, called.result_container, called.result_record);
         result_count = 1;
     }
-    if (result_count == 1) {
+    if (result.storage > 0) {
         cell: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
                       kind: ValueKind};
         cells = array_add(cells, cell);
@@ -1368,7 +1403,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // Each invocation suspends the caller once; its index is its order.
         code = array_add(code, Instruction(ops.invoke, 0, 0, at.call, 0, at.call, node));
     }
-    if (result_count == 1) {
+    if (result.storage > 0) {
         slots = array_add(slots, address);
         code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + count, at.cell + count, 0, 0, node));
         loaded: Slot = {storage: SlotStorage(result.storage, result.container, target),
@@ -1429,8 +1464,12 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
             if (operator == "+") {
                 literal = operand;
             }
-            if (Integer(item.storage)) {
-                switch ConstantStep(forest, text, document, literal, item.storage, ops, at, node) {
+            if (Integer(item.storage) || Floating(item.storage)) {
+                typed := ConstantStep(forest, text, document, literal, item.storage, ops, at, node);
+                if (Floating(item.storage)) {
+                    typed = FloatConstantStep(forest, text, document, literal, item.storage, ops, at, node);
+                }
+                switch typed {
                     case .Failed(diagnostic):
                         return Step.Failed(diagnostic);
                     case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
@@ -1552,6 +1591,19 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
             code = array_add(code, CastCode(ops, common, at.slot + length(slots) - 1, right.slot, 0, node));
             right = Typed(at.slot + length(slots) - 1, common, 0, -1);
         }
+    }
+    // An integer with a floating value becomes one, as stage zero converts it.
+    if (Single(left, left.storage) && Single(right, right.storage) && Integer(left.storage) &&
+        Floating(right.storage)) {
+        code = append(code, NumberCode(ops, left.storage, right.storage, left.slot, at.slot + length(slots), node));
+        slots = append(slots, NumberSlots(left.storage, right.storage));
+        left = Typed(at.slot + length(slots) - 1, right.storage, 0, -1);
+    }
+    if (Single(left, left.storage) && Single(right, right.storage) && Floating(left.storage) &&
+        Integer(right.storage)) {
+        code = append(code, NumberCode(ops, right.storage, left.storage, right.slot, at.slot + length(slots), node));
+        slots = append(slots, NumberSlots(right.storage, left.storage));
+        right = Typed(at.slot + length(slots) - 1, left.storage, 0, -1);
     }
     numeric := Single(left, left.storage) && Single(right, left.storage) && Numeric(left.storage);
     equality := op == ops.eq || op == ops.ne;
@@ -2064,22 +2116,10 @@ ComponentWriteStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
                 slots = typed_slots;
                 stored = typed_value;
         }
-    } else if (value.container == 0 && Integer(value.storage) && floating) {
-        exact: Slot = {storage: DoubleStorage, kind: ValueKind};
-        slots = array_add(slots, exact);
-        code = array_add(code, Instruction(ops.cast, DoubleStorage, at.slot, value.slot, 0, 0, node));
-        stored = Typed(at.slot, DoubleStorage, 0, -1);
-        if (field.storage == FloatStorage) {
-            narrow: Slot = {storage: FloatStorage, kind: ValueKind};
-            slots = array_add(slots, narrow);
-            code = array_add(code, Instruction(ops.convert, FloatStorage, at.slot + 1, at.slot, 0, 0, node));
-            stored = Typed(at.slot + 1, FloatStorage, 0, -1);
-        }
-    } else if (value.container == 0 && Widens(value.storage, field.storage)) {
-        widened: Slot = {storage: field.storage, kind: ValueKind};
-        slots = array_add(slots, widened);
-        code = array_add(code, CastCode(ops, field.storage, at.slot, value.slot, 0, node));
-        stored = Typed(at.slot, field.storage, 0, -1);
+    } else if (value.container == 0 && Converts(value.storage, field.storage)) {
+        code = NumberCode(ops, value.storage, field.storage, value.slot, at.slot, node);
+        slots = NumberSlots(value.storage, field.storage);
+        stored = Typed(at.slot + length(slots) - 1, field.storage, 0, -1);
     }
     if (!SameType(field.storage, 0, -1, stored)) {
         return Fail(forest, item.node, document, "field value differs from its type");
@@ -2126,6 +2166,139 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     code: Code[] = [ConstantCode(ops, storage, bits, at.slot, node)];
     slots: Slot[] = [ValueLocal(storage)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
+                        NoValue(), marks);
+}
+// Whether a number of type `from` converts to `to` implicitly: an integer
+// widens, or becomes a floating value.
+Converts :: (from: int, to: int) -> bool {
+    return Widens(from, to) || (Integer(from) && Floating(to));
+}
+// The conversion of the number in slot `input` from `from` to `to`, through
+// the NumberSlots from `slot`, as stage zero converts: an integer becomes a
+// floating value exactly as a double first; anything else casts.
+NumberCode :: (ops: Ops, from: int, to: int, input: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (!Integer(from) || !Floating(to)) {
+        return [CastCode(ops, to, slot, input, 0, node)];
+    }
+    exact := Instruction(ops.cast, DoubleStorage, slot, input, 0, 0, node);
+    if (to == DoubleStorage) {
+        return [exact];
+    }
+    return [exact, Instruction(ops.convert, FloatStorage, slot + 1, slot, 0, 0, node)];
+}
+NumberSlots :: (from: int, to: int) -> Slot[] {
+    if (Integer(from) && to == FloatStorage) {
+        return [ValueLocal(DoubleStorage), ValueLocal(FloatStorage)];
+    }
+    return [ValueLocal(to)];
+}
+// The index of the named result `name` of `called`, -1 when none.
+NamedResult :: (params: Param[], called: Callable, name: string) -> int {
+    index: int = 0;
+    while (index < called.results) {
+        if (params[called.first + called.count + index].name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Returns each named result of `callable` from its local, which start at
+// `named`, through the NamedResultsSlots from `slot`.
+NamedResultsCode :: (ops: Ops, params: Param[], callable: Callable, named: int, slot: int,
+                     node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [];
+    index: int = 0;
+    while (index < callable.results) {
+        storage := params[callable.first + callable.count + index].storage;
+        code = array_add(code, Instruction(ops.local, storage, slot + index, named + index, 0, 0, node));
+        code = array_add(code, Instruction(ops.result, storage, 0, slot + index, 0, index, node));
+        index += 1;
+    }
+    return code;
+}
+NamedResultsSlots :: (params: Param[], callable: Callable) -> Slot[] {
+    slots: Slot[] = [];
+    index: int = 0;
+    while (index < callable.results) {
+        slots = array_add(slots, ValueLocal(params[callable.first + callable.count + index].storage));
+        index += 1;
+    }
+    return slots;
+}
+// `return` in a function with named results, after `before`: alone, it
+// returns them; `return (a, b)` gives each its value, with ReturnsPhase.
+NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code[], params: Param[],
+                    callable: Callable, named: int, value: int, item: Work, ops: Ops, at: Bases,
+                    node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    marks: int[] = [];
+    next: Work[] = [];
+    if (value < 0) {
+        code := append(before, NamedResultsCode(ops, params, callable, named, at.slot, node));
+        code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
+        return Step.Emitted(code, NamedResultsSlots(params, callable), locals, cells, hosts, roots, calls, bound, next,
+                            0, NoValue(), NoValue(), marks);
+    }
+    if (!Is(forest, value, "argument_list")) {
+        return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
+    }
+    index: int = 0;
+    argument := FirstMember(forest, value);
+    while (argument >= 0) {
+        if (index >= callable.results || Is(forest, argument, "named_argument")) {
+            return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
+        }
+        result := params[callable.first + callable.count + index];
+        next = array_add(next, Expect(argument, result.storage, 0, result.record));
+        index += 1;
+        argument = NextMember(forest, argument);
+    }
+    if (index != callable.results) {
+        return Fail(forest, value, document, "a function with named results returns `(...)`, one value for each");
+    }
+    next = array_add(next, Resume(item.node, ReturnsPhase, 0, 0));
+    slots: Slot[] = [];
+    return Step.Emitted(before, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(),
+                        marks);
+}
+// `return (a, b)` once its values are on top: each converted as a store
+// converts it, then returned as its named result.
+ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[], callable: Callable, values: Value[],
+                top: int, item: Work, ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    code: Code[] = [];
+    slots: Slot[] = [];
+    index: int = 0;
+    while (index < callable.results) {
+        result := params[callable.first + callable.count + index];
+        returned := values[top - callable.results + index];
+        if (returned.container == 0 && Converts(returned.storage, result.storage)) {
+            code = append(code, NumberCode(ops, returned.storage, result.storage, returned.slot,
+                                           at.slot + length(slots), node));
+            slots = append(slots, NumberSlots(returned.storage, result.storage));
+            returned = Typed(at.slot + length(slots) - 1, result.storage, 0, -1);
+        }
+        if (!SameType(result.storage, 0, result.record, returned)) {
+            return Fail(forest, item.node, document, "returned value differs from the result type");
+        }
+        code = array_add(code, Instruction(ops.result, result.storage, 0, returned.slot, 0, index, node));
+        index += 1;
+    }
+    code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, callable.results, NoValue(),
                         NoValue(), marks);
 }
 // The number types this compiler emits.

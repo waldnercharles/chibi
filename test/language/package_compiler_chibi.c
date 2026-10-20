@@ -84,6 +84,16 @@ static const sample samples[] = {
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
+    { .name = "named results",
+      .source = "package facts\nPair :: (x: int) -> (kind: int, end: int) {\n  "
+                "  end = x + 1;\n"
+                "    return (x, end);\n}\nRest :: (x: int) -> (low: int, high: "
+                "int) {\n    low = x - 1;\n    return;\n}\n"
+                "Use :: (x: int) -> int {\n    p := Pair(x);\n    q := "
+                "Rest(x);\n"
+                "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
+                "1000 + q.high;\n}",
+      .calls = { { "Use", "[3]", "[2434]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
@@ -2069,6 +2079,18 @@ static const behavior_sample behavior_samples[] = {
     { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
     { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
     { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Fold",
+      "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
+      "{\n"
+      "        if value > limit {\n            return value - limit * 2\n      "
+      "  }\n        return value\n    }\n"
+      "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
+      "whole = int(value)\n"
+      "        rest = value - whole\n        return (whole, rest)\n    }\n    "
+      "on Tick {\n"
+      "        self.Spot.x = Wrap(self.Spot.x + 7, 20)\n        parts := "
+      "Split(self.Spot.x)\n"
+      "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
     { "Halve",
       "Halve :: behavior {\n    on Tick(dt) {\n        self.Spot.y = "
       "self.Spot.w / 2 - dt\n"
@@ -2486,8 +2508,10 @@ static bool same_declarations(const execution_module *expected, const execution_
         const execution_module_function *x = &e->functions[i], *y = &a->functions[i];
         REQUIRE(y->id == x->id && y->event == x->event && y->event_abi == x->event_abi);
         REQUIRE(y->kind == x->kind && y->effects == x->effects);
-        REQUIRE(!strcmp(y->event_name, x->event_name) && !y->entry == !x->entry);
+        REQUIRE(!y->event_name == !x->event_name && !y->entry == !x->entry);
+        REQUIRE(!x->event_name || !strcmp(y->event_name, x->event_name));
         REQUIRE(y->body->argument_count == x->body->argument_count);
+        REQUIRE(y->body->result_count == x->body->result_count);
         REQUIRE(y->body->variable_count == x->body->variable_count);
         REQUIRE(y->body->component_access == x->body->component_access);
         REQUIRE(acount(y->body->components) == acount(x->body->components));

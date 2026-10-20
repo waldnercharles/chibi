@@ -1174,6 +1174,11 @@ The migration refuses these cases:
 
 Rewrite these cases by hand before you migrate.
 
+The migration does not see events that a game's own native table declares.
+Before you migrate, write each handler of such an event in the named form,
+`on X :: (Field: Type)`. Version 29 accepts that form, and the migration
+leaves it as it is.
+
 ### Keyword migrations
 
 Project version 24 migrates existing `function` declarations and `match`

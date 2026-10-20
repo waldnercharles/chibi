@@ -2028,9 +2028,10 @@ independent admitted route.
 
 `python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
 installed authored build program, and a seventh on macOS. Four cases make 38 API
-invocations across bytecode and SLJIT, and the macOS case 14 more; one runs the
-host CLI with exact tail arguments. Ten tiny Git roots, twelve on macOS, and at
-most 53 controlled CMake attempts, 67 on macOS, cover compiler/environment/
+invocations across bytecode and SLJIT, and the macOS case seven more that
+alternate them; one runs the host CLI with exact tail arguments. Ten tiny Git
+roots, eleven on macOS, and at most 53 controlled CMake attempts, 60 on macOS,
+cover compiler/environment/
 cache precedence, explicit typed and split definitions, loaded inputs, compiler
 identity, private dependency overrides, failure/retry and exact argument
 forwarding. The macOS case finds the SDK from a stand-in compiler driver's

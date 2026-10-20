@@ -890,10 +890,6 @@ authoring_project_catalog *authoring_project_catalog_open(
     }
     return catalog;
 }
-const script_catalog *authoring_project_catalog_view(const authoring_project_catalog *catalog)
-{
-    return authoring_language_catalog_view(catalog->native);
-}
 const source_catalog *authoring_project_catalog_sources(const authoring_project_catalog *catalog)
 {
     return catalog->sources;

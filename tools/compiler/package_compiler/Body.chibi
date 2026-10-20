@@ -183,6 +183,8 @@ ResultsPlace: int : 4;
 StatePlace: int : 5;
 // `self`, the entity that owns the behavior.
 SelfPlace: int : 6;
+// A name the game binds; its index is the global's.
+GlobalPlace: int : 7;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -205,10 +207,13 @@ PushPhase: int : 3;
 StorePhase: int : 4;
 FieldPhase: int : 5;
 ComponentPhase: int : 6;
-// The phase of a binary operator or compound assignment that combines the two
-// values on top through a numeric aggregate native.
+// The phase of a binary operator or compound assignment whose two values on
+// top are records, which a numeric aggregate native combines.
 AggregatePhase: int : 7;
 ComponentAssignPhase: int : 8;
+// The phase of a compound assignment that combines the two values on top with
+// its operator.
+CombinePhase: int : 9;
 
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
@@ -394,10 +399,14 @@ CommonInteger :: (left: int, right: int) -> int {
 Widens :: (from: int, to: int) -> bool {
     return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
 }
-// Whether the runtime computes `op` in an integer type: any comparison for
+// Whether the runtime computes `op` in a number type: arithmetic other than
+// remainders, and comparisons, for floats; for integers, any comparison for
 // equality and bit operation, the rest for int and int64, and only addition
 // and multiplication for uint64.
 Computes :: (ops: Ops, op: int, storage: int) -> bool {
+    if (Floating(storage)) {
+        return op == ops.add || op == ops.sub || op == ops.mul || op == ops.div || op == ops.neg || Comparison(ops, op);
+    }
     if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
         op == ops.bit_not || op == ops.shl || op == ops.shr) {
         return true;
@@ -423,6 +432,10 @@ CastCode :: (ops: Ops, storage: int, output: int, input: int, mode: int, node: s
     cast.message = format_text("Value does not fit in {}", TypeName(storage));
     cast.has_message = true;
     return cast;
+}
+// The floating types this compiler emits.
+Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
 BinaryOp :: (ops: Ops, operator: string) -> int {
@@ -497,15 +510,29 @@ FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     }
     return -1;
 }
+// The field of types[record] named `name`; a native type's matches as the
+// catalog matches it: an exact name first, else the one that matches
+// loosely. -1 for none or several.
 FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+    found: int = -1;
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
         if (members[at].name == name) {
             return at;
         }
+        if (types[record].kind == NativeDecl && NameMatches(members[at].name, name)) {
+            if (found != -1) {
+                found = -2;
+            } else {
+                found = at;
+            }
+        }
         at += 1;
     }
-    return -1;
+    if (found < 0) {
+        return -1;
+    }
+    return found;
 }
 // The innermost binding of `wanted`, -1 when none.
 Lookup :: (names: Name[], wanted: string) -> int {
@@ -1165,6 +1192,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code = array_add(code, Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
+        } else if (item.phase == CombinePhase) {
+            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (item.phase == AggregatePhase) {
             step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
                                  target, at);

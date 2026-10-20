@@ -251,7 +251,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     return Fail(forest, item.node, document, "assigning a whole component is not supported yet");
                 }
                 write := Resume(item.node, ComponentAssignPhase, at.slot + ComponentReferenceSlot, whole);
-                combine := Resume(item.node, AggregatePhase, 0, 0);
+                combine := Resume(item.node, CombinePhase, 0, 0);
                 return ComponentReadStep(code, types, whole, true, [Visit(value), combine, write], ops, target, at,
                                          node);
             } else if (owned >= 0) {
@@ -264,10 +264,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (!members[field].writable) {
                     return Fail(forest, destination, document, "Assignment requires a writable value");
                 }
-                if (operator != "") {
-                    return Fail(forest, item.node, document, "compound assignment to a component field is not supported yet");
-                }
-                return ComponentReferenceStep(code, types, members, owned, field, value, item, ops, target, at, node);
+                return ComponentReferenceStep(code, types, members, owned, field, value, operator != "", item, ops,
+                                              target, at, node);
             } else if (Is(forest, destination, "member_expression")) {
                 // `x.f = v` on a local record, written as stage zero writes it.
                 object := Field(forest, destination, "object");
@@ -692,6 +690,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                 Typed(binding.index, ResultsStorage, 0, binding.record), NoValue(), marks);
         }
+        if (binding.place == GlobalPlace) {
+            return Fail(forest, item.node, document,
+                        format_text("reading the global '{}' is not supported yet", wanted));
+        }
         if (binding.place == LocalPlace || binding.place == StatePlace || binding.place == SelfPlace) {
             op := ops.local;
             if (binding.place == StatePlace) {
@@ -753,6 +755,16 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         code = array_add(code, load);
         produced = Typed(at.slot + 1, UnionStorage, 0, sum_type);
     } else if (item.phase == 0 && kind == "member_expression" &&
+               ConstantMember(forest, text, types, members, names, item.node) >= 0) {
+        // A constant member of a global, such as an input action, is its name.
+        field := members[ConstantMember(forest, text, types, members, names, item.node)];
+        slots = array_add(slots, ValueLocal(field.storage));
+        constant := ConstantCode(ops, field.storage, 0, at.slot, node);
+        constant.text = field.name;
+        constant.has_text = true;
+        code = array_add(code, constant);
+        produced = Typed(at.slot, field.storage, 0, field.record);
+    } else if (item.phase == 0 && kind == "member_expression" &&
                SelfComponent(forest, text, types, names, item.node) >= 0) {
         return ComponentReadStep([], types, SelfComponent(forest, text, types, names, item.node), false, [], ops,
                                  target, at, node);
@@ -797,13 +809,33 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
                                 Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
         }
         found: int = -1;
-        if (Single(object, StructStorage)) {
+        if (Single(object, StructStorage) ||
+            (object.container == 0 && object.record >= 0 && types[object.record].kind == NativeDecl)) {
             found = FindField(types, members, object.record, member);
         }
         if (found < 0) {
             return Fail(forest, item.node, document, format_text("Unknown field '{}'", member));
         }
         field := members[found];
+        if (field.read >= 0) {
+            // A native reads the field, such as an input action's `pressed`.
+            return NativeReadStep(object, field, ops, target, at, node);
+        }
+        if (field.storage == StructStorage && field.record < 0) {
+            return Fail(forest, item.node, document,
+                        format_text("field '{}' has a type this compiler cannot read", member));
+        }
+        if (field.storage == StructStorage) {
+            // A native record's record field lies inside it.
+            word: Slot = {storage: target.pointer_storage, kind: ValueKind};
+            slots = array_add(slots, word);
+            code = array_add(code, ConstantCode(ops, target.pointer_storage, uint64(field.offset), at.slot, node));
+            slots = array_add(slots, address);
+            code = array_add(code, Instruction(ops.add, target.pointer_storage, at.slot + 1, object.slot, at.slot, -1,
+                                               node));
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                Typed(at.slot + 1, StructStorage, 0, field.record), NoValue(), marks);
+        }
         slot: Slot = {storage: field.storage, kind: ValueKind};
         slots = array_add(slots, slot);
         read := Instruction(ops.load, field.storage, at.slot, object.slot, 0, 0, node);
@@ -1384,6 +1416,9 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
     operator := Text(forest, text, Field(forest, item.node, "operator"));
+    if (node.kind == "assignment") {
+        operator = CompoundOperator(operator);
+    }
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
     if (unary) {
         operand := values[top - 1];
@@ -1476,12 +1511,15 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
     side: int = 0;
     while (side < 2) {
         if (operands[side].storage == NumberStorage) {
-            if (!Integer(wanted)) {
+            if (!Integer(wanted) && !Floating(wanted)) {
                 return Fail(forest, operands[side].record, document, "a number needs an integer type here");
             }
             shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local, cell: at.cell,
                               host: at.host, call: at.call};
             typed := ConstantStep(forest, text, document, operands[side], wanted, ops, shifted, node);
+            if (Floating(wanted)) {
+                typed = FloatConstantStep(forest, text, document, operands[side], wanted, ops, shifted, node);
+            }
             switch typed {
                 case .Failed(diagnostic):
                     return Step.Failed(diagnostic);
@@ -1515,13 +1553,13 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
             right = Typed(at.slot + length(slots) - 1, common, 0, -1);
         }
     }
-    integral := Single(left, left.storage) && Single(right, left.storage) && Integer(left.storage);
+    numeric := Single(left, left.storage) && Single(right, left.storage) && Numeric(left.storage);
     equality := op == ops.eq || op == ops.ne;
     same := Single(right, left.storage) && (Single(left, BoolStorage) || Single(left, TextStorage));
-    if (op < 0 || (!integral && !(equality && same))) {
+    if (op < 0 || (!numeric && !(equality && same))) {
         return Fail(forest, item.node, document, "operator does not apply to these operands");
     }
-    if (integral && !Computes(ops, op, left.storage)) {
+    if (numeric && !Computes(ops, op, left.storage)) {
         return Fail(forest, item.node, document, "unsupported arithmetic type");
     }
     storage := left.storage;
@@ -1767,6 +1805,24 @@ SelfComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     }
     return component;
 }
+// The constant field `g.F` names on the global `g`, as an index into
+// `members`; -1 for any other node.
+ConstantMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                   names: Name[], node: int) -> int {
+    global := Field(forest, node, "object");
+    if (!Is(forest, global, "identifier")) {
+        return -1;
+    }
+    found := Lookup(names, Text(forest, text, global));
+    if (found < 0 || names[found].place != GlobalPlace || names[found].record < 0) {
+        return -1;
+    }
+    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, "member")));
+    if (field < 0 || !members[field].constant) {
+        return -1;
+    }
+    return field;
+}
 // The native type named `name`, matched as the catalog matches names: an
 // exact name first, else the one that matches loosely; -1 for none or
 // several.
@@ -1886,10 +1942,12 @@ OwnerSlots :: (target: Target) -> Slot[] {
 }
 // `self.C.f = v` as stage zero orders it: the references to the owner's
 // component types[component] and to its field members[field] first, after
-// `before`; then the value, and the write in ComponentPhase. Pushing onto
-// `before` would make this step and its callers copy their arguments.
+// `before`; then the value, and the write in ComponentPhase. A `compound`
+// assignment reads the field through the reference first and combines it
+// with the value. Pushing onto `before` would make this step and its callers
+// copy their arguments.
 ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMember[], component: int, field: int,
-                           value: int, item: Work, ops: Ops, target: Target, at: Bases,
+                           value: int, compound: bool, item: Work, ops: Ops, target: Target, at: Bases,
                            node: snapshot.SnapshotNode) -> Step {
     locals: Slot[] = [];
     roots: Root[] = [];
@@ -1897,15 +1955,36 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     bound: Name[] = [];
     marks: int[] = [];
     first := at.cell;
-    cells := ReferenceCells(target, component, ComponentFacts(types[component]), members[field]);
+    declared := members[field];
+    cells := ReferenceCells(target, component, ComponentFacts(types[component]), declared);
     code := OwnerCode(ops, target, first, at.slot, node);
     code = append(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
     slots := append(OwnerSlots(target), FieldReferenceSlots(target));
+    reference := at.slot + length(slots) - 1;
     write := Resume(item.node, ComponentPhase, first, field);
-    write.c = at.slot + length(slots) - 1;
-    next: Work[] = [Expect(value, members[field].storage, 0, -1), write];
-    return Step.Emitted(append(before, code), slots, locals, cells, FieldReferenceHosts(first), roots, calls, bound,
-                        next, 0, NoValue(), NoValue(), marks);
+    write.c = reference;
+    hosts := FieldReferenceHosts(first);
+    if (!compound) {
+        next: Work[] = [Expect(value, declared.storage, 0, -1), write];
+        return Step.Emitted(append(before, code), slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                            NoValue(), NoValue(), marks);
+    }
+    // The read takes the field reference and returns the field's value, in
+    // cells after the write's.
+    typed: Cell = {storage: declared.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells = append(cells, [ReferenceCell(target), typed]);
+    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 18, result_first: first + 19,
+                  result_count: 1, written: false};
+    hosts = array_add(hosts, copy);
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    current: Slot = {storage: declared.storage, kind: ValueKind};
+    code = append(code, CellWrite(target.pointer_storage, reference, first + 18, ops, target, reference + 1, node));
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 2, node));
+    code = append(code, CellRead(declared.storage, first + 19, ops, target, reference + 2, node));
+    slots = append(slots, [address, address, current]);
+    next: Work[] = [Visit(value), Resume(item.node, CombinePhase, 0, 0), write];
+    return Step.Emitted(append(before, code), slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                        Typed(reference + 3, declared.storage, 0, -1), NoValue(), marks);
 }
 // Where ComponentReadStep leaves the make's reference, from its first slot.
 ComponentReferenceSlot: int : 5;
@@ -1976,21 +2055,14 @@ ComponentWriteStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     floating := field.storage == FloatStorage || field.storage == DoubleStorage;
     stored := value;
     if (Single(value, NumberStorage) && floating) {
-        switch NumberBits(forest, text, value.record) {
-            case .OutOfRange:
-                return Fail(forest, value.record, document, "Numeric literal is outside the range of its type");
-            case .Finite(double_bits, float_fits, float_bits):
-                bits := double_bits;
-                if (field.storage == FloatStorage) {
-                    if (!float_fits) {
-                        return Fail(forest, value.record, document, "Numeric literal is outside the range of float");
-                    }
-                    bits = float_bits;
-                }
-                constant: Slot = {storage: field.storage, kind: ValueKind};
-                slots = array_add(slots, constant);
-                code = array_add(code, ConstantCode(ops, field.storage, bits, at.slot, node));
-                stored = Typed(at.slot, field.storage, 0, -1);
+        switch FloatConstantStep(forest, text, document, value, field.storage, ops, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots, typed_calls,
+                          typed_bound, typed_next, typed_popped, typed_value, typed_retain, typed_marks):
+                code = typed_code;
+                slots = typed_slots;
+                stored = typed_value;
         }
     } else if (value.container == 0 && Integer(value.storage) && floating) {
         exact: Slot = {storage: DoubleStorage, kind: ValueKind};
@@ -2027,9 +2099,38 @@ NumberBits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Floa
     }
     return LiteralBits(Text(forest, text, node), false);
 }
+// The untyped literal `literal` as a constant of the floating type `storage`.
+FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, literal: Value, storage: int,
+                      ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    bits: uint64 = 0;
+    switch NumberBits(forest, text, literal.record) {
+        case .OutOfRange:
+            return Fail(forest, literal.record, document, "Numeric literal is outside the range of its type");
+        case .Finite(double_bits, float_fits, float_bits):
+            if (storage == FloatStorage && !float_fits) {
+                return Fail(forest, literal.record, document, "Numeric literal is outside the range of float");
+            }
+            bits = double_bits;
+            if (storage == FloatStorage) {
+                bits = float_bits;
+            }
+    }
+    code: Code[] = [ConstantCode(ops, storage, bits, at.slot, node)];
+    slots: Slot[] = [ValueLocal(storage)];
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
+                        NoValue(), marks);
+}
 // The number types this compiler emits.
 Numeric :: (storage: int) -> bool {
-    return Integer(storage) || storage == FloatStorage || storage == DoubleStorage;
+    return Integer(storage) || Floating(storage);
 }
 // Whether a value combines through a numeric aggregate native: a number, or a
 // record of numbers. Stage zero also takes records of such records, whose
@@ -2115,45 +2216,100 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     if (Single(left, StructStorage)) {
         result = left;
     }
-    // Each operand into its cell, an untyped one as a double constant first.
+    // An untyped operand is a double constant first.
     code: Code[] = [];
     slots: Slot[] = [];
-    cells: Cell[] = [];
-    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    operands: Value[] = [left, right];
-    for (operand in operands) {
+    operands: Value[] = [];
+    pair: Value[] = [left, right];
+    for (operand in pair) {
         value := operand;
         if (value.storage == NumberStorage) {
-            switch NumberBits(forest, text, value.record) {
-                case .OutOfRange:
-                    return Fail(forest, value.record, document, "Numeric literal is outside the range of its type");
-                case .Finite(double_bits, float_fits, float_bits):
-                    slots = array_add(slots, ValueLocal(DoubleStorage));
-                    code = array_add(code, ConstantCode(ops, DoubleStorage, double_bits, at.slot + length(slots) - 1,
-                                                        node));
-                    value = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+            shifted: Bases = {pc: at.pc, slot: at.slot + length(slots), local: at.local, cell: at.cell,
+                              host: at.host, call: at.call};
+            switch FloatConstantStep(forest, text, document, value, DoubleStorage, ops, shifted, node) {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
+                              typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
+                              typed_marks):
+                    code = append(code, typed_code);
+                    slots = append(slots, typed_slots);
+                    value = typed_value;
             }
         }
-        cell: Cell = {storage: value.storage, container: 0, record: value.record, constant: 0, variant: -1,
-                      kind: ValueKind};
-        cells = array_add(cells, cell);
-        slots = array_add(slots, address);
-        code = append(code, CellWrite(SlotStorage(value.storage, 0, target), value.slot, at.cell + length(cells) - 1,
-                                      ops, target, at.slot + length(slots) - 1, node));
+        operands = array_add(operands, value);
     }
     combined: Cell = {storage: StructStorage, container: 0, record: result.record, constant: 0, variant: -1,
                       kind: ValueKind};
-    cells = array_add(cells, combined);
     host: Host = {intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
                   written: false};
-    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
-    code = append(code, CellRead(target.pointer_storage, at.cell + 2, ops, target, at.slot + length(slots), node));
-    slots = append(slots, [address, address]);
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    code = append(code, CallCode(operands, at.cell, at.host, target.pointer_storage, at.slot + length(slots), ops,
+                                 target, node));
+    slots = append(slots, CallSlots(2, address, target));
     made := at.slot + length(slots) - 1;
     root: Root = {slot: made, storage: StructStorage, container: 0, record: result.record};
     roots = array_add(roots, root);
-    return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, 2,
+    return Step.Emitted(code, slots, locals, CallCells(operands, combined), [host], roots, calls, bound, next, 2,
                         Typed(made, StructStorage, 0, result.record), NoValue(), marks);
+}
+// `v.f`, where natives[f.read] reads the field: a call of it on `v`.
+NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
+                   node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    arguments: Value[] = [object];
+    read: Cell = {storage: field.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
+                  written: false};
+    value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
+    code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
+    return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
+                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, -1), NoValue(), marks);
+}
+// The cells of a native call: one for each argument, then its result.
+CallCells :: (arguments: Value[], result: Cell) -> Cell[] {
+    cells: Cell[] = [];
+    for (argument in arguments) {
+        record: int = -1;
+        if (argument.storage == StructStorage) {
+            record = argument.record;
+        }
+        cell: Cell = {storage: argument.storage, container: argument.container, record: record, constant: 0,
+                      variant: -1, kind: ValueKind};
+        cells = array_add(cells, cell);
+    }
+    return array_add(cells, result);
+}
+// Each argument into its cell from `first`, the call as host `host`, and its
+// result, of slot storage `storage`, from the cell after them, through the
+// CallSlots from `slot`.
+CallCode :: (arguments: Value[], first: int, host: int, storage: int, slot: int, ops: Ops, target: Target,
+             node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [];
+    index: int = 0;
+    for (argument in arguments) {
+        code = append(code, CellWrite(SlotStorage(argument.storage, argument.container, target), argument.slot,
+                                      first + index, ops, target, slot + index, node));
+        index += 1;
+    }
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
+    return append(code, CellRead(storage, first + index, ops, target, slot + index, node));
+}
+// An address for each of `count` arguments and the result's, then the result.
+CallSlots :: (count: int, result: Slot, target: Target) -> Slot[] {
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    slots: Slot[] = [];
+    index: int = 0;
+    while (index <= count) {
+        slots = array_add(slots, address);
+        index += 1;
+    }
+    return array_add(slots, result);
 }
 // A record or array parameter the body writes, item.a: phase 0 reads it and
 // copies it into a fresh cell; phase 1 binds its name to that cell.

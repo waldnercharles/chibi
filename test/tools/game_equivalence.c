@@ -526,12 +526,14 @@ enum
     INPUT_TYPE_FIELDS,
     INPUT_ENTITY,
     INPUT_OPERATORS,
+    INPUT_GLOBALS,
     INPUT_ARGUMENTS
 };
 /* Whether the exported input holds the story's behavior and lists the type
  * requirements and events of the module stage zero prepared for it, in
- * order, as a stage-one module must, and the binary operators of the natives
- * stage zero calls for records, + among them. */
+ * order, as a stage-one module must, the binary operators of the natives
+ * stage zero calls for records, + among them, and the globals, `self` of the
+ * owner's type among them. */
 static bool target_matches(yyjson_val *root, const execution_module *module, const char *source)
 {
     const execution_module_plan *plan = &module->plan;
@@ -597,6 +599,16 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
                !strcmp(yyjson_get_str(yyjson_obj_get(native, "name")), "add");
     }
     REQUIRE(add);
+    yyjson_val *globals = yyjson_arr_get(root, INPUT_GLOBALS);
+    bool owner = false;
+    for (size_t i = 0; i < yyjson_arr_size(globals); i++) {
+        yyjson_val *global = yyjson_arr_get(globals, i);
+        yyjson_val *type = yyjson_arr_get(types, yyjson_get_uint(yyjson_obj_get(global, "record")));
+        owner |= !strcmp(yyjson_get_str(yyjson_obj_get(global, "name")), "self") &&
+                 type &&
+                 yyjson_get_uint(yyjson_obj_get(type, "id")) == plan->owner_type;
+    }
+    REQUIRE(owner);
     return true;
 }
 /* chibi-compile --stage-one-input exports stage one's input for a story: its
@@ -688,8 +700,8 @@ TEST_CASE(stories_assemble_from_their_own_modules)
     }
     return true;
 }
-/* Stage one's route rebuilds Counter and Motion as stage zero does: it
- * recovers stage one from the bootstrap artifact and the compiler sources,
+/* Stage one's route rebuilds Counter, Motion and Controls as stage zero does:
+ * it recovers stage one from the bootstrap artifact and the compiler sources,
  * compiles each story's behavior with it, and has chibi-compile assemble the
  * artifact from that module. Recovery takes one or two compiles of the
  * compiler the first time its sources change, and none once its closure is
@@ -698,18 +710,22 @@ TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does)
 {
     char folder[128], route[4096];
     char counter[4096], counter_scenario[4096], motion[4096], motion_scenario[4096];
+    char controls[4096], controls_scenario[4096];
     path(folder, sizeof folder, "stage-one");
     story_path(counter, sizeof counter, "Counter", "");
     story_path(counter_scenario, sizeof counter_scenario, "Counter", SCENARIO);
     story_path(motion, sizeof motion, "Motion", "");
     story_path(motion_scenario, sizeof motion_scenario, "Motion", SCENARIO);
+    story_path(controls, sizeof controls, "Controls", "");
+    story_path(controls_scenario, sizeof controls_scenario, "Controls", SCENARIO);
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
     const char *arguments[] = {
-        build_host_path, reference_path,   route,  observer_path,  folder,
-        counter,         counter_scenario, motion, motion_scenario
+        build_host_path,  reference_path,   route,  observer_path,   folder,
+        counter,          counter_scenario, motion, motion_scenario, controls,
+        controls_scenario
     };
-    REQUIRE(harness("Rebuild", arguments, 9) == 0);
-    REQUIRE(log_has("the candidate matches the reference in Counter, Motion"));
+    REQUIRE(harness("Rebuild", arguments, 11) == 0);
+    REQUIRE(log_has("the candidate matches the reference in Counter, Motion, Controls"));
     return true;
 }
 static void prepare_scratch()

@@ -39,11 +39,24 @@ GameType :: struct {
     first: int;
     count: int;
 }
+// A game type's field: of the type types[record] when that is not -1; a
+// constant whose value is its name; read by natives[read] when that is not
+// -1.
 GameField :: struct {
     name: string;
     storage: int;
     offset: int;
     writable: bool;
+    record: int;
+    constant: bool;
+    read: int;
+}
+// A name the game binds in every behavior, of the type types[record] when
+// that is not -1.
+GameGlobal :: struct {
+    name: string;
+    storage: int;
+    record: int;
 }
 // A native that combines numbers, and records of them field by field, for a
 // binary operator: natives[native].
@@ -60,11 +73,11 @@ StateDecl :: struct {
 }
 // What a module holds beyond its functions. A behavior's functions keep its
 // states, and handled[i] is the event function i handles, -1 for none; its
-// operators may combine records.
+// operators may combine records, and its globals are names.
 Game :: union {
     Package
     | Behavior(kept: StateDecl[], handled: int[], declared: GameEvent[], payloads: GameEventField[],
-               entity: uint64, operators: NumericOperator[])
+               entity: uint64, operators: NumericOperator[], globals: GameGlobal[])
 }
 // Prepared function kinds.
 HandlerFunction: int : 1;
@@ -75,10 +88,18 @@ ReadEffect: int : 1;
 WriteEffect: int : 2;
 InvocationReadEffect: int : 64;
 
-// A behavior's states as names, then `self`, its owner.
-BehaviorNames :: (kept_states: StateDecl[]) -> Name[] {
+// A behavior's names: the game's globals, its states, then `self`, its owner,
+// whatever global the game names so.
+BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     names: Name[] = [];
     index: int = 0;
+    while (index < length(globals)) {
+        bound: Name = {name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
+                       container: 0, record: globals[index].record, writable: false};
+        names = array_add(names, bound);
+        index += 1;
+    }
+    index = 0;
     while (index < length(kept_states)) {
         kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
                       storage: kept_states[index].storage, container: 0, record: -1, writable: true};
@@ -152,8 +173,9 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
 NativeFields :: (type_fields: GameField[]) -> TypeMember[] {
     fields: TypeMember[] = [];
     for (linked in type_fields) {
-        row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: -1, offset: linked.offset,
-                           writable: linked.writable};
+        row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: linked.record,
+                           offset: linked.offset, writable: linked.writable, constant: linked.constant,
+                           read: linked.read};
         fields = array_add(fields, row);
     }
     return fields;
@@ -195,12 +217,12 @@ ScalarPayload :: (declared: GameEvent, event_fields: GameEventField[]) -> bool {
 }
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
-// from it. The target, natives, events, types, entity and operators are the
-// game's, as `chibi-compile --stage-one-input` exports them.
+// from it. The target, natives, events, types, entity, operators and globals
+// are the game's, as `chibi-compile --stage-one-input` exports them.
 CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
                     natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                     event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                    entity: uint64, operators: NumericOperator[]) -> Result {
+                    entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> Result {
     ops := ResolveOps(names);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
@@ -307,7 +329,7 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
     constants: ConstDecl[] = [];
     return Assemble(forest, [document], 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
-                    Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators));
+                    Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals));
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
@@ -316,7 +338,7 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
 CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                      natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                      event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                     entity: uint64, operators: NumericOperator[]) -> byte[] {
+                     entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> byte[] {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return [];
     }
@@ -327,7 +349,8 @@ CompileBehaviors :: (identities: string[], sources: string[], target: Target, ab
     index: int = 0;
     while (index < length(identities)) {
         switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
-                               game_events, event_fields, types, type_fields, entity, operators) {
+                               game_events, event_fields, types, type_fields, entity, operators,
+                               globals) {
             case .Rejected(diagnostic):
                 return [];
             case .Compiled(module, bytes):
@@ -345,14 +368,15 @@ CompileBehaviors :: (identities: string[], sources: string[], target: Target, ab
 BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                       natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                       event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                      entity: uint64, operators: NumericOperator[]) -> string {
+                      entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> string {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return "the behaviors' identities and sources differ in number, or there are none";
     }
     index: int = 0;
     while (index < length(identities)) {
         switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
-                               game_events, event_fields, types, type_fields, entity, operators) {
+                               game_events, event_fields, types, type_fields, entity, operators,
+                               globals) {
             case .Rejected(diagnostic):
                 return format_text("{}:{}:{}: {}", identities[index], diagnostic.line, diagnostic.column,
                                    diagnostic.message);

@@ -146,7 +146,8 @@ TypeDecl :: struct {
     component: uint64;
 }
 // A record field, with its byte offset, or a variant's payload field. A
-// native type's field may be read-only.
+// native type's field may be read-only, a constant whose value is its name,
+// or read by natives[read] when that is not -1.
 TypeMember :: struct {
     name: string;
     storage: int;
@@ -154,6 +155,8 @@ TypeMember :: struct {
     record: int;
     offset: int;
     writable: bool;
+    constant: bool;
+    read: int;
 }
 Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
@@ -494,7 +497,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
-                                             writable: true};
+                                             writable: true, constant: false, read: -1};
                         members = array_add(members, field);
                         size += width;
                         if (width > alignment) {
@@ -535,7 +538,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
-                                                 writable: true};
+                                                 writable: true, constant: false, read: -1};
                             members = array_add(members, field);
                             parameter = NextMember(forest, parameter);
                         }
@@ -794,13 +797,13 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     switch game {
         case .Package:
             owner_type = 0;
-        case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators):
+        case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators, globals):
             kept_states = declared_states;
             handled = handlers;
             game_events = declared_events;
             game_fields = payloads;
             owner_type = entity;
-            behaving = BehaviorNames(declared_states);
+            behaving = BehaviorNames(declared_states, globals);
             aggregates = operators;
     }
     wide: uint64[] = [0];

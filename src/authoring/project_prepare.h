@@ -56,8 +56,8 @@ authoring_project_catalog *authoring_project_catalog_open(
     char *error,
     size_t size
 );
-const script_catalog *authoring_project_catalog_view(const authoring_project_catalog *);
-/* The project's executable sources, each with its identity and text. */
+/* The project's executable sources, each with its identity and text, and
+ * the catalog they compile against: source_catalog_view. */
 const source_catalog *authoring_project_catalog_sources(const authoring_project_catalog *);
 void authoring_project_catalog_free(authoring_project_catalog *);
 /* The manifest's application settings as preparation reads them: a title

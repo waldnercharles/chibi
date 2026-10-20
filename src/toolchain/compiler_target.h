@@ -18,10 +18,14 @@ char *compiler_target_json(const script_catalog *, size_t *length);
  * - each type a module requires, as stage zero lists them: every type that is
  *   not internal, a namespace or a union, with its ID, layout hash, storage,
  *   size, component ID (0 for none) and range of fields, then each field's
- *   name, storage, byte offset and whether it is writable;
+ *   name, storage, byte offset, whether it is writable, the index of its
+ *   nominal type among these types, whether it is a constant whose value is
+ *   its name, and the index among the natives of the one that reads it (-1
+ *   for no type or native);
  * - the entity type's ID;
  * - each native that combines numbers, and records of them field by field,
- *   for a binary operator: its index among the natives and the operator.
+ *   for a binary operator: its index among the natives and the operator;
+ * - each global's name, storage and the index of its nominal type.
  * Malloc-owned; release with free(). */
 char *compiler_behavior_input_json(
     const script_catalog *,

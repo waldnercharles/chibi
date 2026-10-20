@@ -850,6 +850,16 @@ compiler without them, since with watches stage two outgrew the compiler
 host's bounds. Next action: the bootstrap
 sequence on every supported host configuration.
 
+Host status on 2026-10-20:
+- macOS arm64 runs the whole sequence locally.
+- On the 32-bit Wasm host, stage one compiles every sample and behavior, and
+  the closures run there and match stage zero's points and watches
+  (`wasm-package-compiler-chibi*`, `docs/package-compiler.md#hosts`).
+- The bootstrap itself stays native: stage one compiling itself outgrows
+  Wasm's 2 GiB linear memory.
+- Linux x86_64 and Windows x64 wait for a host, since CI has been disabled
+  since 2026-09-25 and a local container needs the owner's approval.
+
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
 

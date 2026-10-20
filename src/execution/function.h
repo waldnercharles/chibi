@@ -20,6 +20,8 @@ typedef struct
     uint64_t bytecode_entries, sljit_entries, wasm_entries;
     uint64_t inspected_sljit_entries, inspected_wasm_entries;
     uint64_t inspection_bytecode_fallbacks;
+    /* Entries of definitions past the Wasm JIT's size budget. */
+    uint64_t size_bytecode_fallbacks;
     bool overflow; /* Sticky saturation makes the sample inexact. */
 } behavior_run_counts;
 typedef struct behavior_run_scope

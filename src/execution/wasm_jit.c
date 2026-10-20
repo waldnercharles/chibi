@@ -267,6 +267,11 @@ bool behavior_function_compile_wasm(behavior_function *f)
     if (!jit) {
         return false;
     }
+    if (jit->size > EXECUTION_WASM_JIT_MAX_BYTES) {
+        release(jit);
+        f->artifact->interpreted = true;
+        return true;
+    }
     if (!entry_for(jit)) {
         release(jit);
         return false;

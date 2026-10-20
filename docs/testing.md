@@ -270,7 +270,10 @@ frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
 
-Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. `make
+test-wasm` also runs the package compiler's base samples on both backends
+(`wasm-package-compiler-chibi` and `-compiled`); every other package-compiler
+selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples, and run under the production 60-second deadline. Configuration and

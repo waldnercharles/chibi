@@ -59,7 +59,7 @@ Cell :: struct {
     storage: int;
     container: int;
     record: int;
-    constant: int;
+    constant: uint64;
     variant: int;
     kind: int;
 }
@@ -110,8 +110,8 @@ Value :: struct {
     record: int;
 }
 // A name in scope: a locals-bank value, a record or array held in a data
-// cell, or a record or array parameter read in place. Pattern bindings are
-// not writable.
+// cell, a record or array parameter read in place, or a behavior's state or
+// owner. Pattern bindings are not writable.
 Name :: struct {
     name: string;
     place: int;
@@ -177,6 +177,10 @@ AliasPlace: int : 3;
 // A local holding a native call's several results: its index is the first
 // result's cell and its record the native.
 ResultsPlace: int : 4;
+// A behavior's retained state; its index is the state's.
+StatePlace: int : 5;
+// `self`, the entity that owns the behavior.
+SelfPlace: int : 6;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -197,6 +201,7 @@ RetainedPhase: int : 2;
 PushPhase: int : 3;
 StorePhase: int : 4;
 FieldPhase: int : 5;
+ComponentPhase: int : 6;
 
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {

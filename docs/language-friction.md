@@ -61,23 +61,34 @@ from when stage one's records held only `int`, `bool` and `string` fields.
 
 Suggestion: record fields of every value type, as Odin's structs.
 
-## Storing a `uint64` in a record field makes calls copy
+## Ordinary writes make calls copy their arguments
 
 Runtime. Stage zero passes a function's arguments without copying them only
-when its analysis proves the function leaves the caller's storage alone. Raw
-pointers have the `uint64` slot type, so the analysis takes any `uint64`
-value for a pointer: once a function stores a `uint64` parameter into a field
-of a local record, the next write to that record looks like a write through
-the caller's pointer. That function, and every function that calls it, then
-copies every argument on each call. One such store in `ConstantCode` took
-stage one compiling itself from 25 to over 60 seconds; building the record in
-one literal keeps its calls free.
+when its analysis proves the function leaves the caller's storage alone. Two
+ordinary writes defeat that proof:
+- Raw pointers have the `uint64` slot type, so the analysis takes any
+  `uint64` value for a pointer. Once a function stores a `uint64` parameter
+  into a field of a local record, the next write to that record looks like a
+  write through the caller's pointer.
+- A function that assigns to an array parameter, as `code = array_add(code,
+  x)` does, writes the caller's array.
 
-- Odin, C, Zig and Rust type pointers apart from integers, so neither their
-  aliasing rules nor their optimizers take a `u64` for an address.
+Such a function, and every function that calls it, then copies every
+argument on each call. One store in `ConstantCode` and one push in
+`ComponentReferenceStep` each took stage one compiling itself from 25 to over
+60 seconds. Building the record in one literal, and appending to a fresh
+local array, keep the calls free. `tool language-package-compiler-chibi-behaviors`
+now fails when any function but those that run once per compile copies its
+arguments.
+
+- Odin, C, Zig and Rust type pointers apart from integers, and pass slices
+  and arrays by reference or by an explicit copy, so neither their aliasing
+  rules nor their optimizers take a `u64` for an address or a local append
+  for a caller's write.
 
 Suggestion: give raw pointers their own slot type, so the analysis tells them
-from `uint64` values.
+from `uint64` values, and let a function that assigns to an array parameter
+work on its own copy without making its callers copy.
 
 ## Stage one returns one value, and nothing destructures
 

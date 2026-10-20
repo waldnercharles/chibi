@@ -121,6 +121,52 @@ difference remains, and only for programs stage zero rejects: stage zero
 declares a local for its whole scope, so `n := n + 1` with a parameter `n` is
 a cyclic dependency there, while stage one reads the parameter.
 
+## Behaviors
+
+`CompileBehavior(identity: string, source: string, target: Target, abi: uint64,
+names: string[], game_events: GameEvent[], event_fields: GameEventField[],
+types: GameType[], type_fields: GameField[], entity: uint64) -> Result`
+compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
+whose bytes are one prepared module of the game the arguments describe, or to
+`Rejected(diagnostic)`. `identity` names the source as the project does, such
+as `behaviors/Counter.chibi`. The module, its states and its handlers take the
+IDs stage zero gives them from it:
+- the module is `module:<identity>`;
+- a state is `symbol:<identity>:1:<name>`;
+- a handler is `function:<identity>:<offset>:1`, where `<offset>` is the
+  handler's byte offset.
+
+The game arguments are flat tables, since records hold no arrays:
+- each event, with its ID, its ABI and a range of payload fields;
+- each type the game links, with its ID, layout, storage and size, its
+  component ID when it is a component, and a range of fields with their
+  storage, offsets and whether they are writable;
+- the entity type that owns behaviors.
+
+As in stage zero, the module lists every type as a requirement, and lists the
+events its handlers take. Events and components match their names as the
+catalog matches them: exactly, else loosely, ignoring case, spaces,
+underscores and hyphens.
+
+A behavior may hold integer states with literal initial values, and `on`
+handlers of the game's events with scalar payloads. A handler takes the
+event's payload; a parameter names the field in its position. A handler body
+is a function body, as above. In it, states are names that read and store as
+`VARIABLE` and `STORE`, `self` is the owner, and `self.C.f = v` writes the
+writable field `f` of the owner's component `C`. As in stage zero, the write
+makes the component and field references, then evaluates `v`, then writes
+through them. An integer converts to a `float` or `double` field exactly to a
+double first; an integer literal is a constant of the field's type. `after`
+handlers, compound assignment to a component field, reading components,
+member procedures and natives are not supported yet.
+
+A handler's function lists the components it writes and one write for each
+field write, where stage zero lists two, and has the behavior's states as its
+variables. Its effects are stage zero's: reading a state reads the
+invocation's retained values; storing one also reads them and writes; writing
+a component's field reads and writes. The function has no debugger points or
+watches.
+
 ## Output
 
 `Body.chibi` emits each function in one pass. A work stack visits statements
@@ -231,6 +277,29 @@ local array in place: doubling the count at most doubles the values it copies.
 Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
+
+`tool language-package-compiler-chibi-behaviors` compiles five behaviors on
+both compiler backends against a game the test declares: a `Spot` component
+of three floats, one read-only; the entity type; and a `Tick` event with a
+`DeltaSeconds` payload. The behaviors are:
+- Counter's;
+- a state store;
+- a payload parameter written to a field;
+- an integer literal written to a float field, handling `tick`;
+- two states and two field writes.
+
+Each module must declare stage zero's module, owner type, requirements,
+services, states, events and payload fields, and handlers, with the same IDs,
+ABIs, kinds and effects. Then stage one's module, read back through a linker,
+and stage zero's each play five ticks on an owner of their own, and the
+`Spot` and the states must match after every tick. Six sources must be
+rejected with their exact messages. With a project's path as its identity,
+Counter's module, state and handler must take stage zero's IDs. A second
+case fails when any of stage one's functions, other than `Compile`,
+`CompileClosure`, `CompileBehavior`, `Declare` and `DeclarePackage`, copies
+its arguments on each call: one such function, through its callers, takes
+stage one compiling itself past its ceiling (4,329 assertions in 33.2 s; see
+`docs/language-friction.md`).
 
 `tool language-package-compiler-chibi-literals` checks stage zero's build of
 `LiteralBits` against that rule, computed with `strtod` (3,962

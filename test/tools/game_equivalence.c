@@ -16,15 +16,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define FNV_BASIS UINT64_C(14695981039346656037)
 #define FNV_PRIME UINT64_C(1099511628211)
 #define HARNESS "test/tools/GameEquivalence.chibi"
 #define HARNESS_MILLISECONDS "50000"
-#define HARNESS_ARGUMENTS 6
-#define TERRAIN_LAB "test/fixtures/terrain-lab"
-#define DIG_SCENARIO TERRAIN_LAB "/content/scenarios/Dig.kdl"
+#define STORIES "test/stories"
+#define SCENARIO "/content/scenarios/Story.kdl"
+#define STORY_COUNT 5
+#define HARNESS_ARGUMENTS (4 + 2 * STORY_COUNT)
+
+/* The stories, in the order the stage-one increments reach them. */
+static const char *const story_names[STORY_COUNT] = { "Counter",
+                                                      "Motion",
+                                                      "Controls",
+                                                      "Results",
+                                                      "Follow" };
 
 static const char *observer_path, *build_host_path, *reference_path, *candidate_path;
 static char scratch[64], log_path[128];
@@ -197,9 +206,49 @@ static bool play(
     return valid;
 }
 
-/* Plays an artifact on the default natives with the graph palette installed,
- * whose type catalog also reads the scenario's controls. */
-int test_tool_game_observe(const char *artifact, const char *scenario_path, const char *trace)
+/* The name a trace gives a played artifact: its file name without folder or
+ * extension, so artifacts of one story from two compilers share it. */
+static void story_name(const char *artifact, char *out, size_t size)
+{
+    const char *slash = strrchr(artifact, '/');
+    const char *name = slash ? slash + 1 : artifact;
+    const char *dot = strrchr(name, '.');
+    size_t length = dot ? (size_t)(dot - name) : strlen(name);
+    snprintf(out, size, "%.*s", (int)length, name);
+}
+
+/* Writes one story's section of the trace: its name, what its artifact
+ * declares, then one line per fixed step of its scenario. */
+static bool observe_story(
+    native_capabilities *native,
+    const char *artifact,
+    const char *scenario_path,
+    FILE *out
+)
+{
+    char error[512] = { 0 }, name[256];
+    size_t length = 0;
+    unsigned char *data = read_file(artifact, &length);
+    char *text = file_read_text(scenario_path);
+    scenario_document *scenario = text ? scenario_document_load(text, error, sizeof error)
+                                       : NULL;
+    if (!data || !scenario) {
+        fprintf(stderr, "observer cannot read %s or %s (%s)\n", artifact, scenario_path, error);
+    }
+    story_name(artifact, name, sizeof name);
+    bool valid = data && scenario && fprintf(out, "play %s\n", name) > 0 &&
+                 declarations(out, data, length) &&
+                 play(native, data, length, scenario, out);
+    scenario_document_free(scenario);
+    free(text);
+    afree(data);
+    return valid;
+}
+
+/* Plays each artifact under its scenario on the default natives, with the
+ * graph palette installed so the type catalog reads the scenarios' controls.
+ * The trace is removed unless every story played. */
+int test_tool_game_observe(const char *trace, const char *const *stories, int count)
 {
     char error[512] = { 0 };
     native_capabilities *native = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
@@ -223,26 +272,20 @@ int test_tool_game_observe(const char *artifact, const char *scenario_path, cons
     int pack_count;
     const registry_pack *const *packs = authoring_graph_catalog_packs(palette, &pack_count);
     registry_set_packs(packs, pack_count);
-    size_t length = 0;
-    unsigned char *data = read_file(artifact, &length);
-    char *text = file_read_text(scenario_path);
-    scenario_document *scenario = text ? scenario_document_load(text, error, sizeof error)
-                                       : NULL;
-    FILE *out = data && scenario ? fopen(trace, "w") : NULL;
+    FILE *out = fopen(trace, "w");
     if (!out) {
-        fprintf(stderr, "observer cannot read %s, %s (%s) or write %s\n", artifact, scenario_path, error, trace);
+        fprintf(stderr, "observer cannot write %s\n", trace);
     }
-    bool valid = out && declarations(out, data, length) &&
-                 play(native, data, length, scenario, out);
+    bool valid = out != NULL;
+    for (int i = 0; valid && i < count; i++) {
+        valid = observe_story(native, stories[2 * i], stories[2 * i + 1], out);
+    }
     if (out && fclose(out)) {
         valid = false;
     }
     if (out && !valid) {
         unlink(trace);
     }
-    scenario_document_free(scenario);
-    free(text);
-    afree(data);
     registry_set_packs(NULL, 0);
     authoring_graph_catalog_free(palette);
     native_capabilities_free(native);
@@ -252,6 +295,12 @@ int test_tool_game_observe(const char *artifact, const char *scenario_path, cons
 static void path(char *out, size_t size, const char *name)
 {
     int n = snprintf(out, size, "%s/%s", scratch, name);
+    assert(n > 0 && (size_t)n < size);
+}
+
+static void story_path(char *out, size_t size, const char *story, const char *file)
+{
+    int n = snprintf(out, size, "%s/" STORIES "/%s%s", tool_root(), story, file);
     assert(n > 0 && (size_t)n < size);
 }
 
@@ -292,70 +341,85 @@ static bool compile(const char *project, const char *output)
     return tool_run(argv, scratch, log_path) == 0;
 }
 
-static bool observe_artifact(const char *artifact, const char *trace)
+static bool observe_motion(const char *artifact, const char *trace)
 {
     char scenario[4096];
-    snprintf(scenario, sizeof scenario, "%s/" DIG_SCENARIO, tool_root());
-    const char *argv[] = { observer_path, "--game-observe",
-                           artifact,      scenario,
-                           trace,         NULL };
+    story_path(scenario, sizeof scenario, "Motion", SCENARIO);
+    const char *argv[] = { observer_path, "--game-observe", trace,
+                           artifact,      scenario,         NULL };
     return tool_run(argv, scratch, log_path) == 0;
 }
 
-/* The pluggable compilers rebuild Terrain Lab to the same declarations and
- * the same play: today both are stage zero until stage one compiles games. */
-TEST_CASE(terrain_lab_plays_alike_under_both_compilers)
+/* The pluggable compilers rebuild every story to the same declarations and
+ * the same play: today both are stage zero until stage one compiles them. */
+TEST_CASE(stories_play_alike_under_both_compilers)
 {
-    char project[4096], scenario[4096], folder[128];
-    snprintf(project, sizeof project, "%s/" TERRAIN_LAB, tool_root());
-    snprintf(scenario, sizeof scenario, "%s/" DIG_SCENARIO, tool_root());
+    char folder[128], projects[STORY_COUNT][4096], scenarios[STORY_COUNT][4096];
     path(folder, sizeof folder, "compare");
-    const char *arguments[] = { reference_path, candidate_path, observer_path,
-                                project,        scenario,       folder };
-    REQUIRE(harness("Rebuild", arguments, 6) == 0);
-    REQUIRE(log_has("the candidate matches the reference through frame 90"));
+    const char *arguments[HARNESS_ARGUMENTS] = { reference_path,
+                                                 candidate_path,
+                                                 observer_path,
+                                                 folder };
+    int count = 4;
+    for (int i = 0; i < STORY_COUNT; i++) {
+        story_path(projects[i], sizeof projects[i], story_names[i], "");
+        story_path(scenarios[i], sizeof scenarios[i], story_names[i], SCENARIO);
+        arguments[count++] = projects[i];
+        arguments[count++] = scenarios[i];
+    }
+    REQUIRE(harness("Rebuild", arguments, count) == 0);
+    REQUIRE(
+        log_has("the candidate matches the reference in Counter, Motion, Controls, Results, Follow")
+    );
     return true;
 }
 
-/* A candidate whose behavior differs is named at the first frame it shows,
- * with both lines; its declarations still match. The variant stands in for a
- * candidate that miscompiles the jump. Dig.kdl presses jump from step 20, so
- * the weaker jump first shows after the 21st step. */
+/* A candidate whose behavior differs is named in its story at the first
+ * frame it shows, with both lines; its declarations still match. The variant
+ * stands in for a candidate that miscompiles Motion's drift, which first
+ * shows after the first step. */
 TEST_CASE(a_changed_behavior_is_named_at_its_first_frame)
 {
-    char project[4096], copy[128], explorer[256];
-    snprintf(project, sizeof project, "%s/" TERRAIN_LAB, tool_root());
-    path(copy, sizeof copy, "variant");
+    char project[4096], copy[128], drift[256];
+    story_path(project, sizeof project, "Motion", "");
+    path(copy, sizeof copy, "Motion");
 #ifdef __APPLE__
     const char *clone[] = { "cp", "-c", "-R", project, copy, NULL };
 #else
     const char *clone[] = { "cp", "--reflink=auto", "-R", project, copy, NULL };
 #endif
     REQUIRE(tool_run(clone, scratch, log_path) == 0);
-    snprintf(explorer, sizeof explorer, "%s/content/behaviors/Explorer.chibi", copy);
-    char *source = tool_read(explorer);
+    snprintf(drift, sizeof drift, "%s/content/behaviors/Drift.chibi", copy);
+    char *source = tool_read(drift);
     REQUIRE(source);
-    char *jump = strstr(source, "-175");
-    if (jump) {
-        memcpy(jump, "-150", 4);
-        tool_write(explorer, source);
+    char *step = strstr(source, "* dt");
+    char *edited = NULL;
+    if (step) {
+        edited = xmalloc(strlen(source) + 5);
+        snprintf(edited, strlen(source) + 5, "%.*s* dt * 2%s", (int)(step - source), source, step + 4);
+        tool_write(drift, edited);
     }
+    free(edited);
     free(source);
-    REQUIRE(jump);
-    char reference[128], variant[128], reference_trace[128], variant_trace[128];
-    path(reference, sizeof reference, "reference.chibip");
-    path(variant, sizeof variant, "variant.chibip");
-    path(reference_trace, sizeof reference_trace, "reference.trace");
-    path(variant_trace, sizeof variant_trace, "variant.trace");
-    REQUIRE(compile(project, reference) && compile(copy, variant));
+    REQUIRE(step);
+    const char *folders[] = { "reference", "variant" };
+    char artifacts[2][128], traces[2][128];
+    for (int i = 0; i < 2; i++) {
+        char folder[128];
+        path(folder, sizeof folder, folders[i]);
+        REQUIRE(!mkdir(folder, 0700));
+        snprintf(artifacts[i], sizeof artifacts[i], "%s/Motion.chibip", folder);
+        snprintf(traces[i], sizeof traces[i], "%s.trace", folder);
+    }
+    REQUIRE(compile(project, artifacts[0]) && compile(copy, artifacts[1]));
     REQUIRE(
-        observe_artifact(reference, reference_trace) &&
-        observe_artifact(variant, variant_trace)
+        observe_motion(artifacts[0], traces[0]) &&
+        observe_motion(artifacts[1], traces[1])
     );
-    const char *arguments[] = { reference_trace, variant_trace };
+    const char *arguments[] = { traces[0], traces[1] };
     REQUIRE(harness("Diff", arguments, 2) == 1);
-    REQUIRE(log_has("the candidate differs from the reference at frame 21"));
-    REQUIRE(log_has("reference: frame 21 ") && log_has("candidate: frame 21 "));
+    REQUIRE(log_has("the candidate differs from the reference in Motion at frame 1"));
+    REQUIRE(log_has("reference: frame 1 ") && log_has("candidate: frame 1 "));
     return true;
 }
 
@@ -367,19 +431,19 @@ TEST_CASE(declarations_and_missing_traces_are_refused)
     path(reference, sizeof reference, "declared.trace");
     path(candidate, sizeof candidate, "redeclared.trace");
     path(missing, sizeof missing, "missing.trace");
-    tool_write(reference, "declarations 0000000000000001\nmodule Explorer 1\nframe 0 ecs 1\n");
-    tool_write(candidate, "declarations 0000000000000002\nmodule Explorer 1\nframe 0 ecs 1\n");
+    tool_write(reference, "play Motion\ndeclarations 0000000000000001\nmodule Drift 1\nframe 0 ecs 1\n");
+    tool_write(candidate, "play Motion\ndeclarations 0000000000000002\nmodule Drift 1\nframe 0 ecs 1\n");
     const char *declared[] = { reference, candidate };
     REQUIRE(harness("Diff", declared, 2) == 1);
-    REQUIRE(log_has("the candidate declares differently from the reference"));
+    REQUIRE(log_has("the candidate declares Motion differently from the reference"));
     REQUIRE(log_has("reference: declarations 0000000000000001"));
     const char *absent[] = { missing, missing };
     REQUIRE(harness("Diff", absent, 2) == 2);
     REQUIRE(log_has("is not a trace"));
-    tool_write(reference, "declarations 0000000000000001\nmodule Explorer 1\n");
+    tool_write(reference, "play Motion\ndeclarations 0000000000000001\nmodule Drift 1\n");
     const char *unplayed[] = { reference, reference };
     REQUIRE(harness("Diff", unplayed, 2) == 2);
-    REQUIRE(log_has("the traces hold no frames"));
+    REQUIRE(log_has("the traces hold no frames for some story"));
     return true;
 }
 
@@ -402,7 +466,7 @@ void test_tool_game_equivalence(
     snprintf(scratch, sizeof scratch, "%s", resolved);
     free(resolved);
     path(log_path, sizeof log_path, "harness.log");
-    RUN_TEST_CASE(terrain_lab_plays_alike_under_both_compilers);
+    RUN_TEST_CASE(stories_play_alike_under_both_compilers);
     RUN_TEST_CASE(a_changed_behavior_is_named_at_its_first_frame);
     RUN_TEST_CASE(declarations_and_missing_traces_are_refused);
     tool_remove_tree(scratch);

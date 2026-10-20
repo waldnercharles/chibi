@@ -997,14 +997,17 @@ milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
 Lab's behaviors need behaviors, events, state, doubles, vectors, named
 arguments and results, and effectful natives).
 
-Step 4's gate exists since 2026-10-19; stage one does not yet pass it. The
-`game-equivalence` selector rebuilds Terrain Lab with a reference and a
+Step 4's gate exists since 2026-10-19; stage one does not yet pass it. At
+the owner's direction (2026-10-20) it gates on purpose-made stories in
+`test/stories`, one feature each, rather than on a playable game; playable
+examples such as Terrain Lab are to live outside the engine repository. The
+`game-equivalence` selector rebuilds each story with a reference and a
 candidate compiler, each a program that takes `--project-root ROOT --output
-FILE`. It then compares the two artifacts:
+FILE`. It then compares the two artifacts of each story:
 - what they declare apart from their code: every byte outside the module
   records, and each module's name and ID;
-- one observation per fixed step while both play `content/scenarios/Dig.kdl`
-  on the CPU.
+- one observation per fixed step while both play the story's scenario on the
+  CPU.
 
 `test/tools/GameEquivalence.chibi` orchestrates and compares in the build
 host. C reads and plays the artifact. Both compilers are stage zero until

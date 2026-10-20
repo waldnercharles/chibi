@@ -1,0 +1,4 @@
+version 27
+name "Controls story"
+content "content"
+start_scene "scenes/Main.kdl"

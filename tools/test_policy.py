@@ -124,7 +124,7 @@ NATIVE = {
     ('--terrain-storage-commands',): 'Bounded controller save/load commands in fresh children on a tiny terrain fixture under one shared60s deadline; no GPU.',
     ('--terrain-playable',): 'Authored terrain-lab controls and restart restore in VM and SLJIT fresh children under one shared60s deadline; no GPU.',
     ('--terrain-checkpoint',): 'Bounded finite and streamed terrain snapshots, malformed input refusal and one fresh-process restore child under shared60s; no GPU.',
-    ('--game-equivalence',): 'Terrain Lab rebuilt by a reference and a candidate compiler (both chibi-compile until stage one compiles games), each artifact played on the CPU under content/scenarios/Dig.kdl and the traces compared by test/tools/GameEquivalence.chibi; 3 cases, about 12 children, no GPU.',
+    ('--game-equivalence',): 'The test/stories projects rebuilt by a reference and a candidate compiler (both chibi-compile until stage one compiles them), each artifact played on the CPU under its Story.kdl and the traces compared by test/tools/GameEquivalence.chibi; 3 cases, about 20 children, no GPU.',
     ('--terrain-playable-render',): 'One installed player child, four hidden 640x360 frames with bounded PNG readback under shared60s; compilation occurs before the test.',
     ('--surface-transport',): 'One hidden 64x64 draw of twelve mesh/SDF actors, two bounded texture readbacks checking absorption/filter and opacity; shared60s.',
     ('--material-terrain-seams',): 'Reviewed hidden 64x64 app: six terrain readbacks covering shared edge contours, borders, LOD and checkpoint restore, under one shared60s deadline.',

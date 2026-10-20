@@ -963,10 +963,19 @@ Ordinary blocks support these statements:
 - `switch`
 - `while`
 - `for i in first..last` with inclusive bounds
+- `for i in first..<last`, which stops before `last`
 - `for item in array`
+- `for <`, which counts a range or an array down: `for < i in 0..<n` visits
+  `n - 1` down to 0, and `for < item, i in items` visits the last item first,
+  with its own index
 - `break`
 - `continue`
 - calls
+
+Ranges never count down by themselves: a range whose first bound is above its
+last runs no iterations, and one whose constant bounds descend, such as
+`10..0`, is a compile error. Neither form wraps at the `int` bounds. `for <`
+does not reverse a `Map` or a string.
 
 ### Ordinary and awaited calls
 

@@ -3123,6 +3123,22 @@
           "type": "CHOICE",
           "members": [
             {
+              "type": "FIELD",
+              "name": "reverse",
+              "content": {
+                "type": "STRING",
+                "value": "<"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
               "type": "SYMBOL",
               "name": "_range_header"
             },
@@ -3192,8 +3208,21 @@
           }
         },
         {
-          "type": "STRING",
-          "value": ".."
+          "type": "FIELD",
+          "name": "bound",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ".."
+              },
+              {
+                "type": "STRING",
+                "value": "..<"
+              }
+            ]
+          }
         },
         {
           "type": "FIELD",

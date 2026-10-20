@@ -928,7 +928,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "for_statement") {
             if (item.phase == 0) {
                 if (Field(forest, item.node, "first") >= 0 || Field(forest, item.node, "key") >= 0 ||
-                    Field(forest, item.node, "reference") >= 0) {
+                    Field(forest, item.node, "reference") >= 0 || Field(forest, item.node, "reverse") >= 0) {
                     return Body.Failed(Diagnose(forest, item.node, document, "for loops support only `for name in array`"));
                 }
                 stepped = false;

@@ -919,6 +919,21 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
     REQUIRE(!analysis->valid);
     return true;
 }
+/* Ranges never count down: `for <` reverses a range or an array instead. */
+TEST_CASE(language_loops_reverse_explicitly)
+{
+    parse("L :: library { F :: (n: int) { for < i in 0..<n {} for i in 0..<n {} for < x, i in [1, 2] {} } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: () { for i in 10..0 {} } }");
+    REQUIRE(diagnostic("Range bounds descend; count down with for <"));
+    parse("L :: library { Top :: 10; F :: () { for < i in Top..<1 {} } }");
+    REQUIRE(diagnostic("Range bounds descend; for < takes the low bound first, as in for < i in 0..10"));
+    parse("L :: library { F :: () { for < c in \"ab\" {} } }");
+    REQUIRE(diagnostic("for < reverses only ranges and arrays"));
+    parse("L :: library { F :: (m: Map<string, int>) { for < k, v in m {} } }");
+    REQUIRE(diagnostic("for < reverses only ranges and arrays"));
+    return true;
+}
 /* A function with results ends in a terminating statement, as Go and Odin
  * require: a return, an if/else or exhaustive switch whose every branch
  * terminates, or a while (true) that nothing breaks out of. */
@@ -2184,6 +2199,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_query_filters_reject_effects_and_unbound_variables);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
+    RUN_TEST_CASE(language_loops_reverse_explicitly);
     RUN_TEST_CASE(language_functions_with_results_must_return);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
     RUN_TEST_CASE(language_character_literals_take_their_type_from_context);

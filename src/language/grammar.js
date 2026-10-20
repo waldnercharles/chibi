@@ -453,9 +453,11 @@ module.exports = grammar({
       ),
     while_statement: ($) =>
       seq(K.while, field("condition", $._expression), field("body", $.block)),
+    // `for <` iterates in reverse, as Jai's does.
     for_statement: ($) =>
       seq(
         K.for,
+        optional(field("reverse", "<")),
         choice(
           $._range_header,
           $._foreach_header,
@@ -468,7 +470,7 @@ module.exports = grammar({
         field("name", $._name),
         K.in,
         field("first", $._expression),
-        "..",
+        field("bound", choice("..", "..<")),
         field("last", $._expression),
       ),
     _foreach_header: ($) =>

@@ -46,6 +46,9 @@ static const char *statement_name(source_projection *p, const script_statement *
         p->analysis->functions[p->function].kind == SCRIPT_FUNCTION_HANDLER) {
         return "End Event";
     }
+    if (s->reverse) {
+        return s->kind == SCRIPT_STMT_FOR ? "For Reverse" : "For Each Reverse";
+    }
     if (s->kind != SCRIPT_STMT_ASSIGN && s->kind != SCRIPT_STMT_DECLARE &&
         s->kind != SCRIPT_STMT_REDUCE) {
         return names[s->kind];
@@ -215,7 +218,7 @@ static node *statement_box(source_projection *p, int index)
                  : entity_receiver ? "Entity"
                                    : "Object";
         } else if (s->kind == SCRIPT_STMT_FOR) {
-            name = i ? "Last" : "First";
+            name = !i ? "First" : s->exclusive ? "Before" : "Last";
         } else if (s->kind == SCRIPT_STMT_FOREACH) {
             name = "Collection";
         }

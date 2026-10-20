@@ -74,9 +74,8 @@ static const char *binding_kind_name(pin_binding_kind kind)
         case PIN_BINDING_COMPONENT_FIELD: return "component_field";
         case PIN_BINDING_COMPONENT: return "component";
         case PIN_BINDING_EVENT_OUTPUT: return "event_output";
-        case PIN_BINDING_DELTA_TIME: return "delta_time";
     }
-    return "delta_time";
+    return "event_output";
 }
 
 /* Writes <key>: "<node>.<pin>", or the node and pin IDs when the pin's key is

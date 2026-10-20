@@ -636,7 +636,12 @@ from a table and returning records only for rare tokens took the corpus run
 from 28 to 4 seconds on SLJIT in a sanitizer build. The bytecode backend is
 about eight times slower still. On 2026-10-20 a profile of stage one compiling
 the compiler put over half of its time in `pin_record_valid` and
-`type_layout_hash`, mostly under value snapshots.
+`type_layout_hash`, mostly under value snapshots. A per-thread memo of
+validated descriptors, keyed by address and a checksum of their bytes, answered
+94% of the bootstrap's 63 million checks, yet saved no time on Release or
+Debug: checksumming a descriptor costs about as much as validating it. A hit
+that costs O(1) would have to trust a stamp of the header alone and stop
+catching a field changed in place.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none

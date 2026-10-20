@@ -127,7 +127,6 @@ static const char *binding_text(
                 b->field_name ? b->field_name : ""
             );
             return buf;
-        case PIN_BINDING_DELTA_TIME: return "Delta Time";
         case PIN_BINDING_EVENT_OUTPUT: return NULL;
     }
     return NULL;

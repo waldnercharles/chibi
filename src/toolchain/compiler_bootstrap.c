@@ -27,10 +27,13 @@
 #define MANIFEST_FILE "bootstrap.json"
 #define CONTRACT_FILE "bootstrap.kdl"
 /* Compile's arguments: the project, its collections' names and paths, the
- * source paths and texts, then the six that describe the target: Target,
- * prepared ABI, instruction names, natives, ports and native identities. */
-#define ARGUMENTS 11
-#define TARGET_FIRST 5
+ * source paths and texts, whether to emit debugger points and watches, which
+ * the compiler is compiled without, then the six that describe the target:
+ * Target, prepared ABI, instruction names, natives, ports and native
+ * identities. */
+#define ARGUMENTS 12
+#define DEBUG_ARGUMENT 5
+#define TARGET_FIRST 6
 
 static char *join(const char *base, const char *name)
 {
@@ -252,7 +255,8 @@ static void free_seed(seed *s)
 }
 
 /* Reads the seed folder; false with why. Its arguments name one project, the
- * core collection, matched source paths and texts, and a target. */
+ * core collection, matched source paths and texts, no debugger points and
+ * watches, and a target. */
 static bool read_seed(const char *folder, seed *s, char *error, size_t size)
 {
     char *closure = join(folder, CLOSURE_FILE), *json = join(folder, "compile.json");
@@ -276,7 +280,8 @@ static bool read_seed(const char *folder, seed *s, char *error, size_t size)
                  yyjson_arr_size(paths) == 1 &&
                  yyjson_is_str(yyjson_arr_get(paths, 0)) &&
                  yyjson_arr_size(files) > 0 &&
-                 yyjson_arr_size(texts) == yyjson_arr_size(files);
+                 yyjson_arr_size(texts) == yyjson_arr_size(files) &&
+                 yyjson_is_false(yyjson_arr_get(s->args, DEBUG_ARGUMENT));
     if (!valid) {
         snprintf(error, size, "%s needs %s and compile.json, Compile's arguments", folder, CLOSURE_FILE);
     }
@@ -603,6 +608,7 @@ static char *disk_arguments(
         free(text);
         free(file);
     }
+    yyjson_mut_arr_add_false(doc, args);
     for (size_t i = 0; i < yyjson_arr_size(target); i++) {
         yyjson_mut_arr_append(args, yyjson_val_mut_copy(doc, yyjson_arr_get(target, i)));
     }

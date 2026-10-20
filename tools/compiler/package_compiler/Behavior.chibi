@@ -245,7 +245,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                         make_fields: int[]) -> Result {
-    ops := ResolveOps(names);
+    ops := ResolveOps(names, true);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
     }
@@ -272,6 +272,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     declared_types := NativeTypes(types);
     members := NativeFields(type_fields);
     no_names: Name[] = [];
+    solid := SolidOffsets(source);
     kept_states: StateDecl[] = [];
     callables: Callable[] = [];
     params: Param[] = [];
@@ -357,7 +358,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         } else if (Is(forest, member, "function_declaration")) {
             // A member procedure, which the behavior's handlers call.
             name := Text(forest, source, Field(forest, member, "name"));
-            switch FunctionSignature(forest, source, identity, declared_types, no_names, 0, 0, member, name,
+            switch FunctionSignature(forest, source, identity, solid, declared_types, no_names, 0, 0, member, name,
                                      length(params)) {
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);
@@ -378,7 +379,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    return Assemble(forest, [document], 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+    return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
                                   make_fields));

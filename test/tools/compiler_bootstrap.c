@@ -296,7 +296,7 @@ TEST_CASE(bootstrap_write_checks_the_seed)
     write_file(
         "seed/compile.json",
         "[\"/project\", [\"core\"], [\"/sdk/core\"], [\"two/A.chibi\"], "
-        "[\"package other\\n\"], {}, 0, "
+        "[\"package other\\n\"], false, {}, 0, "
         "[], [], [], []]"
     );
     REQUIRE(

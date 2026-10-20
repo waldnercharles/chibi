@@ -91,7 +91,7 @@ Root :: struct {
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
-              hosts: Host[], roots: Root[], points: SourcePoint[])
+              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[])
 }
 // A debugger point: a record of stage zero's kind at a source range, which
 // breakpoints find by its occurrence; `meaning` names what it is, such as the
@@ -105,6 +105,22 @@ SourcePoint :: struct {
     column: int;
     kind: int;
     completion: bool;
+}
+// A debugger watch: the value of the expression whose occurrence and range it
+// holds, of the type that storage, container and record give, or, unless
+// `output`, its input numbered `ordinal`, such as a call's argument.
+SourceWatch :: struct {
+    occurrence: uint64;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    storage: int;
+    container: int;
+    record: int;
+    ordinal: int;
+    output: bool;
+    reference: bool;
 }
 // Record kinds, as the SDK numbers them.
 SymbolRecord: int : 0;
@@ -300,35 +316,16 @@ OccurrenceIn :: (document: uint64, kind: int, start: int, end: int) -> uint64 {
     }
     return hash;
 }
-// How many bytes of `text` before `offset` are not whitespace.
-SolidBefore :: (text: string, offset: int) -> int {
+// How many bytes of `text` before each offset, through its end, are not
+// whitespace. It reads the bytes at once: each ByteAt measures the text.
+SolidOffsets :: (text: string) -> int[] {
+    solid: int[] = [0];
     count: int = 0;
-    index: int = 0;
-    while (index < offset) {
-        byte := strings.ByteAt(text, index);
+    for (byte in strings.Bytes(text)) {
         if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
             count += 1;
         }
-        index += 1;
-    }
-    return count;
-}
-// How many bytes of `text` before each offset, through its end, are not
-// whitespace.
-SolidOffsets :: (text: string) -> int[] {
-    size := strings.ByteLength(text);
-    solid: int[] = [];
-    count: int = 0;
-    index: int = 0;
-    while (index <= size) {
         solid = array_add(solid, count);
-        if (index < size) {
-            byte := strings.ByteAt(text, index);
-            if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
-                count += 1;
-            }
-        }
-        index += 1;
     }
     return solid;
 }
@@ -385,6 +382,11 @@ LiteralNode :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     return kind == "number" || kind == "string" || kind == "boolean" ||
            (kind == "unary_expression" && Is(forest, Field(forest, node, "operand"), "number"));
 }
+// Whether `node` is a number literal, negated or not.
+NumberLiteral :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    return Is(forest, node, "number") ||
+           (Is(forest, node, "unary_expression") && Is(forest, Field(forest, node, "operand"), "number"));
+}
 // Whether `node` is an element of an array literal of literals, which stage
 // zero makes as one constant.
 ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
@@ -432,13 +434,111 @@ Expression :: (kind: string) -> bool {
            kind == "array_expression" || kind == "call_expression" || kind == "unary_expression" ||
            kind == "binary_expression" || kind == "is_expression";
 }
-// The occurrence of the symbol the node `declared` declares. One the source
-// declares nowhere spans the document, as stage zero clamps its unset range.
-SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: uint64, solid: int[], declared: int) -> uint64 {
+// The occurrence of the symbol the node `declared` declares, or `undeclared`
+// for one the source declares nowhere.
+SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: uint64, solid: int[], undeclared: uint64,
+                     declared: int) -> uint64 {
     if (declared < 0) {
-        return OccurrenceIn(document, SymbolRecord, 0, solid[length(solid) - 1]);
+        return undeclared;
     }
     return OccurrenceIn(document, SymbolRecord, solid[forest[declared].start], solid[forest[declared].end]);
+}
+// The SOURCE_WATCH of slot `slot`, holding a value of the type storage,
+// container and record give, that EmitBody makes the watch of the expression
+// at `node`: its output, or its input `ordinal`.
+WatchCode :: (ops: Ops, slot: int, storage: int, container: int, record: int, ordinal: int, output: bool,
+              node: snapshot.SnapshotNode, target: Target) -> Code {
+    flag: int = 0;
+    if (output) {
+        flag = 1;
+    }
+    code := Instruction(ops.source_watch, SlotStorage(storage, container, target), flag, slot, ordinal, Pending,
+                        node);
+    code.value_storage = storage;
+    code.value_container = container;
+    code.value_record = record;
+    return code;
+}
+// The SOURCE_WATCH of slot `slot`, holding a number or bool of `storage`,
+// that EmitBody makes the watch of the expression at `node`.
+ScalarWatch :: (ops: Ops, slot: int, storage: int, ordinal: int, output: bool, node: snapshot.SnapshotNode) -> Code {
+    flag: int = 0;
+    if (output) {
+        flag = 1;
+    }
+    code := Instruction(ops.source_watch, storage, flag, slot, ordinal, Pending, node);
+    code.value_storage = storage;
+    return code;
+}
+// The output watch of slot `slot`, holding a default of `storage` that a call
+// omits, at `node`. The default of a function in the same package is its own
+// expression, with that occurrence. Stage zero reads another package's default
+// from that package's catalog as a constant at the call's arguments. Its
+// occurrence is 0 and is resolved in the caller's document.
+DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+    return {op: ops.source_watch, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: occurrence, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end,
+            line: node.row + 1, column: node.column + 1};
+}
+// The watch of the number literal at `node` once slot `slot` holds it as
+// `storage`; an element of an array of literals has none.
+LiteralWatch :: (forest: snapshot.SnapshotNode[], ops: Ops, slot: int, storage: int, node: int) -> Code[] {
+    if (ConstantElement(forest, node)) {
+        return [];
+    }
+    return [ScalarWatch(ops, slot, storage, 0, true, forest[node])];
+}
+// The owner read into slot `slot` and watched as the `self` at `node`.
+OwnerWatch :: (ops: Ops, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (!ops.debug) {
+        return [];
+    }
+    watch := Instruction(ops.source_watch, HandleStorage, 1, slot, 0, Pending, node);
+    watch.value_storage = HandleStorage;
+    return [Instruction(ops.owner, HandleStorage, slot, 0, 0, 0, node), watch];
+}
+// The name an assignment's target starts from, through its members.
+TargetRoot :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := node;
+    while (Is(forest, at, "member_expression")) {
+        at = Field(forest, at, "object");
+    }
+    return at;
+}
+// Bases `count` slots past `at`, for a step whose slots follow others.
+SlotsPast :: (at: Bases, count: int) -> Bases {
+    return {pc: at.pc, slot: at.slot + count, local: at.local, cell: at.cell, host: at.host, call: at.call};
+}
+// The source position an instruction records, as a node to place at.
+Located :: (code: Code) -> snapshot.SnapshotNode {
+    return {kind: "", start: code.start, end: code.end, row: code.line - 1, column: code.column - 1, parent: -1,
+            first_child: -1, next_sibling: -1, error: false, missing: false, has_error: false, field: "",
+            is_named: false, is_extra: false};
+}
+// `code` without its points and watches. A jump or branch to one goes to the
+// next instruction kept.
+WithoutDebug :: (ops: Ops, code: Code[]) -> Code[] {
+    kept: int[] = [];
+    count: int = 0;
+    for (item in code) {
+        kept = array_add(kept, count);
+        if (item.op != ops.source_point && item.op != ops.source_watch) {
+            count += 1;
+        }
+    }
+    kept = array_add(kept, count);
+    stripped: Code[] = [];
+    for (item in code) {
+        if (item.op == ops.jump || item.op == ops.branch_if) {
+            moved := item;
+            moved.target = kept[item.target];
+            stripped = array_add(stripped, moved);
+        } else if (item.op != ops.source_point && item.op != ops.source_watch) {
+            stripped = array_add(stripped, item);
+        }
+    }
+    return stripped;
 }
 // The SOURCE_POINT of points[point].
 PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
@@ -1088,7 +1188,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
+             solid: int[], undeclared: uint64, meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
@@ -1152,6 +1252,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     }
     // The function's point; the body places the others as stage zero does.
     points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
+    watches: SourceWatch[] = [];
     code = array_add(code, PointCode(ops, 0, declaration));
     // Named results are locals from `named` on, zero until the body sets them.
     named := length(locals);
@@ -1183,7 +1284,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
-        if (item.phase == 0 && Statement(kind)) {
+        if (ops.debug && item.phase == 0 && Statement(kind)) {
             points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, node, node));
             code = array_add(code, PointCode(ops, length(points) - 1, node));
             // Stage zero assigns each returned value to a result, a statement
@@ -1203,7 +1304,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // Stage zero reads `-1` as one literal.
         negated := kind == "number" && Is(forest, node.parent, "unary_expression") &&
                    Text(forest, text, Field(forest, node.parent, "operator")) == "-";
-        if (item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
+        if (ops.debug && item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
             points = array_add(points, PointIn(document_hash, solid, ExpressionRecord, node));
             code = array_add(code, PointCode(ops, length(points) - 1, node));
             // A name's symbol, or a package constant's, which is a symbol of
@@ -1221,6 +1322,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 // `self.C` reads the owner's component without visiting `self`.
                 if (constant < 0 && SelfComponent(forest, text, types, names, item.node) >= 0) {
                     code = append(code, NamePoints(forest, text, names, ops, Field(forest, item.node, "object")));
+                    slots = array_add(slots, ValueLocal(HandleStorage));
+                    code = append(code, OwnerWatch(ops, length(slots) - 1, forest[Field(forest, item.node, "object")]));
                 }
             }
             if (constant >= 0) {
@@ -1648,7 +1751,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
                     }
                     step = MatchStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
-                                     current.subject, -1, variant, bindings, true, false, ops, target, at, node);
+                                     current.subject, -1, variant, bindings, true, false,
+                                     Field(forest, item.node, "value"), pattern, ops, target, at, node);
                 }
                 next = array_add(next, Visit(Field(forest, item.a, "body")));
                 next = array_add(next, Resume(item.node, 3, item.a, 0));
@@ -1847,6 +1951,49 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
             pass += 1;
         }
+        // The value an expression produced is watched as its output; the
+        // step that gives a number literal its type watches it.
+        if (ops.debug && produced.storage > 0 && Expression(kind) && !negated &&
+            !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
+            code = array_add(code, WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
+                                             0, true, node, target));
+        }
+        // A call's several results are each watched, numbered.
+        if (ops.debug && kind == "call_expression" &&
+            (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
+            count: int = 0;
+            if (produced.storage == FunctionResultsStorage) {
+                count = callables[produced.record].results;
+            } else {
+                count = natives[produced.record].results;
+            }
+            at_result: int = 0;
+            while (at_result < count) {
+                storage: int = 0;
+                container: int = 0;
+                if (produced.storage == FunctionResultsStorage) {
+                    called := callables[produced.record];
+                    storage = params[called.first + called.count + at_result].storage;
+                } else {
+                    linked := natives[produced.record];
+                    storage = ports[linked.first + linked.parameters + at_result].storage;
+                    container = ports[linked.first + linked.parameters + at_result].container;
+                }
+                address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
+                slots = append(slots, [address, loaded]);
+                code = append(code, CellRead(loaded.storage, produced.slot + at_result, ops, target, length(slots) - 2,
+                                             node));
+                code = array_add(code, WatchCode(ops, length(slots) - 1, storage, container, -1, at_result, true, node,
+                                                 target));
+                at_result += 1;
+            }
+        }
+        // A compound assignment watches the value it stores at its target.
+        if (item.phase == CombinePhase && kind == "assignment" && produced.storage > 0) {
+            code = array_add(code, WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
+                                             0, true, forest[Field(forest, item.node, "target")], target));
+        }
         if (produced.storage != 0) {
             if (value_top < length(values)) {
                 values[value_top] = produced;
@@ -1877,6 +2024,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
+    if (!ops.debug) {
+        code = WithoutDebug(ops, code);
+        points = [];
+    }
     // The points the steps placed, each at its instruction's position. The
     // runtime numbers each instruction that suspends, an invocation or a
     // point, by its order, and a prepared module's bytes hold that number.
@@ -1895,7 +2046,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 point_meaning = meaning;
                 point_kind = FunctionRecord;
             } else if (placed.left == SymbolPoint) {
-                occurrence = SymbolOccurrence(forest, document_hash, solid, placed.right);
+                occurrence = SymbolOccurrence(forest, document_hash, solid, undeclared, placed.right);
                 point_kind = SymbolRecord;
             } else if (placed.left == OccurrencePoint) {
                 occurrence = placed.payload;
@@ -1915,8 +2066,23 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             numbered.target = suspension;
             code[at_point] = numbered;
             suspension += 1;
+        } else if (op == ops.source_watch) {
+            placed := code[at_point];
+            // A default of another document carries its occurrence.
+            occurrence := placed.payload;
+            if (occurrence == 0) {
+                occurrence = OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
+            }
+            watch: SourceWatch = {occurrence: occurrence,
+                                  start: placed.start, end: placed.end, line: placed.line, column: placed.column,
+                                  storage: placed.value_storage, container: placed.value_container,
+                                  record: placed.value_record, ordinal: placed.right, output: placed.output == 1,
+                                  reference: false};
+            watches = array_add(watches, watch);
+            code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0, length(watches) - 1,
+                                         Located(placed));
         }
         at_point += 1;
     }
-    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots, points);
+    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches);
 }

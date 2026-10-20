@@ -694,7 +694,7 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick(dt) {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);

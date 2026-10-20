@@ -40,7 +40,8 @@ native_capabilities *host_native_catalog_new(
                                                 .kind = NATIVE_PARAMETER_DATA,
                                                 .storage = field->type,
                                                 .container = field->container,
-                                                .type_name = field->type_name })
+                                                .type_name = field->type_name,
+                                                .unit = field->unit })
             );
         }
         apush(

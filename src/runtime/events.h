@@ -9,6 +9,7 @@ typedef struct
     pin_type type;
     const char *type_name;
     pin_container container;
+    const char *unit; /* Optional erased numeric dimension, such as "s". */
 } event_field;
 
 typedef enum

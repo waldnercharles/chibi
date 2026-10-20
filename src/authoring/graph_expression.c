@@ -40,7 +40,7 @@ static const char *expression_label(const behavior_asset *asset, const node *exp
         if (graph_input_source(g, expression, index, &event, &output) &&
             event->desc == &NODE_Event && event->reference_name &&
             !strcmp(event->reference_name, "Tick") &&
-            !strcmp(event->output_pins[output].name, "DeltaSeconds")) {
+            !strcmp(event->output_pins[output].name, "dt")) {
             return "event.dt";
         }
     }

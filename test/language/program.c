@@ -7841,10 +7841,6 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
     REQUIRE(rejected);
     return true;
 }
-/* Version 29 runs a function's own body: the statements of `after entry`
- * move after the function's statements, before the handlers that follow, and
- * macros keep theirs. The current analyzer refuses `after entry` in a
- * function. */
 /* Version 30 handlers name the payload fields they read, typed from the
  * engine's version 29 events or the project's event declarations. */
 TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
@@ -7854,6 +7850,15 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
                          "    - id=2 name=\"Amount\" type=\"int\"\n"
                          "    - id=3 name=\"Source\" type=\"handle\" "
                          "type_name=\"ecs.entity\"\n}\n";
+    const char *declarations[] = {
+        damage,
+        "version 3\nname \"Died\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"Source\" type=\"handle\" "
+        "type_name=\"ecs.entity\"\n}\n",
+        "version 3\nname \"Big\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"Count\" type=\"int64\"\n"
+        "    - id=2 name=\"Tags\" type=\"int\" container=\"set\"\n}\n",
+    };
     const struct
     {
         const char *source, *expected;
@@ -7878,19 +7883,62 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
           "handle<ecs.entity>) { last = Source } }" },
         { "B :: behavior { on Repair as repair() { } }",
           "B :: behavior { on Repair :: () { } }" },
+        /* `event.F` names a field before a listed parameter. */
+        { "B :: behavior { on Contact_Begin(Point, Other) { last = "
+          "event.Other; at = Other } }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>, "
+          "Point: struct<CF_V2>) { last = Other; at = Point } }" },
+        { "B :: behavior { on Contact_Begin(other, point) { last = event.Other "
+          "} }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "last = Other } }" },
+        /* An empty list binds the fields' own names, and comments take no
+         * position. */
+        { "B :: behavior { on Damage() { total += Amount } }",
+          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
+        { "B :: behavior { on Damage as d() { total += d.Amount } }",
+          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
+        { "B :: behavior { on Contact_Begin(/* note */ o, p) { destroy(o) } }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "destroy(Other) } }" },
+        /* An alias declared in source names the event. */
+        { "B :: behavior { event hurt = Damage; on hurt { total += Amount } }",
+          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
+          "total += Amount } }" },
+        { "B :: behavior { event hurt = Damage; on hurt(a: int, s: "
+          "handle<ecs.entity>) { total += a } }",
+          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
+          "total += Amount } }" },
+        /* A computed key reads its value; a function's own parameter and a
+         * named argument do not read an alias. */
+        { "B :: behavior { on Damage(a, s) { values := { [a]: 1 } } }",
+          "B :: behavior { on Damage :: (Amount: int) { values := { [Amount]: "
+          "1 } } }" },
+        { "B :: behavior { Add :: (hit: int) { total += hit } on Damage as hit "
+          "{ Add(hit: hit.Amount) } }",
+          "B :: behavior { Add :: (hit: int) { total += hit } on Damage :: "
+          "(Amount: int) { Add(hit: Amount) } }" },
+        { "B :: behavior { on Vanished(Source: handle<ecs.entity>, Count: int) "
+          "{ last = Source } }",
+          "B :: behavior { on Vanished :: (Source: handle<ecs.entity>) { last "
+          "= Source } }" },
+        /* Every scalar spells as itself, and a field the migration cannot
+         * spell stops only a handler that reads it. */
+        { "B :: behavior { on Big { steps += Count } }",
+          "B :: behavior { on Big :: (Count: int64) { steps += Count } }" },
     };
     char error[256], *migrated = NULL;
-    for (int i = 0; i < 7; i++) {
-        REQUIRE(
-            !chibi_migrate_handlers(cases[i].source, &damage, 1, &migrated, error, sizeof error)
-        );
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_handlers(cases[i].source, declarations, 3, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
         if (!migrated || strcmp(migrated, cases[i].expected)) {
-            fprintf(stderr, "case %d: %s\n", i, migrated ? migrated : "(unchanged)");
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
         }
         REQUIRE(migrated && !strcmp(migrated, cases[i].expected));
         free(migrated);
         REQUIRE(
-            !chibi_migrate_handlers(cases[i].expected, &damage, 1, &migrated, error, sizeof error)
+            !chibi_migrate_handlers(cases[i].expected, declarations, 3, &migrated, error, sizeof error)
         );
         REQUIRE(!migrated);
     }
@@ -7904,19 +7952,33 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
         { "B :: behavior { on Damage { Keep(event) } }", "the whole `event`" },
         { "B :: behavior { on Damage as hit { Keep(hit) } }", "the whole payload" },
         { "B :: behavior { x: float = 0; on Tick(t) { dt := 1.0; x += t } }",
-          "declares a name" },
+          "declares a name that a payload field" },
         { "B :: behavior { Other: int = 0; on Contact_Begin(o) { Other = 1; "
           "destroy(o) } }",
           "another meaning" },
-        { "B :: behavior { on Died(source) { } }", "untyped payload field" },
         { "B :: behavior { on Damage { Keep(event.Force) } }", "does not have" },
+        /* A local, loop or pattern that rebinds a listed parameter. */
+        { "B :: behavior { on Contact_Begin(o, p) { o := self; last = o } }",
+          "declares a name that a payload parameter" },
+        { "B :: behavior { on Contact_Begin(o, p) { for o in items { Keep(o) } "
+          "} }",
+          "declares a name that a payload parameter" },
+        { "B :: behavior { on Contact_Begin(o, p) { if p is Point o { Keep(o) "
+          "} } }",
+          "declares a name that a payload parameter" },
+        /* An event the migration cannot find has only the fields of a typed
+         * list. */
+        { "B :: behavior { on Vanished(source) { } }", "untyped payload field" },
+        { "B :: behavior { on Vanished { Keep(event.Source) } }", "does not have" },
+        { "B :: behavior { event a = Damage; event b = a; on b { } }", "alias of an alias" },
+        { "B :: behavior { on Big { Keep(Tags) } }", "cannot spell" },
     };
-    for (int i = 0; i < 7; i++) {
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
         REQUIRE(
-            chibi_migrate_handlers(refused[i].source, &damage, 1, &migrated, error, sizeof error) < 0
+            chibi_migrate_handlers(refused[i].source, declarations, 3, &migrated, error, sizeof error) < 0
         );
         if (!strstr(error, refused[i].message)) {
-            fprintf(stderr, "refusal %d: %s\n", i, error);
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
         }
         REQUIRE(!migrated && strstr(error, refused[i].message));
     }
@@ -7965,6 +8027,10 @@ TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated)
     REQUIRE(!rmdir(root));
     return true;
 }
+/* Version 29 runs a function's own body: the statements of `after entry`
+ * move after the function's statements, before the handlers that follow, and
+ * macros keep theirs. The current analyzer refuses `after entry` in a
+ * function. */
 TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
 {
     const char *source = "Moves :: library {\n"

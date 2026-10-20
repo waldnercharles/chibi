@@ -16,7 +16,7 @@
  * declared them, then the project's event declarations. */
 typedef struct
 {
-    char *name, *type;
+    char *name, *type; /* type is NULL when the migration cannot spell it. */
 } payload_field;
 typedef struct
 {
@@ -39,6 +39,12 @@ static const struct
     { "Contact End 3D", "Other", "handle<ecs.entity>" },
 };
 
+/* The scalar type names version 29 read from an event field's `type`. */
+static const char *const VERSION_29_SCALARS[] = {
+    "bool",  "int8",   "byte",  "int16",  "uint16", "int",    "uint",
+    "int64", "uint64", "float", "double", "name",   "string",
+};
+
 static bool is(TSNode node, const char *type)
 {
     return !ts_node_is_null(node) && !strcmp(ts_node_type(node), type);
@@ -50,10 +56,6 @@ static TSNode field(TSNode node, const char *name)
 static char *text_of(const char *text, TSNode node)
 {
     uint32_t start = ts_node_start_byte(node), length = ts_node_end_byte(node) - start;
-    if (is(node, "string")) {
-        start++;
-        length -= 2;
-    }
     char *out = xmalloc(length + 1);
     memcpy(out, text + start, length);
     out[length] = '\0';
@@ -68,9 +70,9 @@ static bool spelled(const char *text, TSNode node, const char *name)
     return strlen(name) == length &&
            !strncmp(text + ts_node_start_byte(node), name, length);
 }
-/* Event names match as the catalog matches them: without case, spaces,
+/* Names match as the catalog matches them: without case, spaces,
  * underscores or hyphens. */
-static bool same_event(const char *a, const char *b)
+static bool same_name(const char *a, const char *b)
 {
     for (;;) {
         while (*a == ' ' || *a == '_' || *a == '-') {
@@ -90,7 +92,7 @@ static bool same_event(const char *a, const char *b)
 static payload_event *find_event(payload_event *events, const char *name)
 {
     for (int i = 0; i < acount(events); i++) {
-        if (same_event(events[i].name, name)) {
+        if (same_name(events[i].name, name)) {
             return &events[i];
         }
     }
@@ -98,7 +100,16 @@ static payload_event *find_event(payload_event *events, const char *name)
 }
 static void add_field(payload_event *event, const char *name, const char *type)
 {
-    apush(event->fields, ((payload_field){ xstrdup(name), xstrdup(type) }));
+    apush(event->fields, ((payload_field){ xstrdup(name), type ? xstrdup(type) : NULL }));
+}
+static bool scalar(const char *type)
+{
+    for (size_t i = 0; i < sizeof VERSION_29_SCALARS / sizeof *VERSION_29_SCALARS; i++) {
+        if (!strcmp(type, VERSION_29_SCALARS[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 /* The source spelling of an event variable's type, or NULL. */
 static char *variable_type(const av_value *variable)
@@ -112,9 +123,8 @@ static char *variable_type(const av_value *variable)
     if (!type) {
         return NULL;
     }
-    if (!strcmp(type, "int") || !strcmp(type, "float") || !strcmp(type, "double") ||
-        !strcmp(type, "bool") || !strcmp(type, "string")) {
-        snprintf(spelling, sizeof spelling, "%s", type);
+    if (scalar(name ? name : type)) {
+        snprintf(spelling, sizeof spelling, "%s", name ? name : type);
     } else if (!strcmp(type, "const char *")) {
         snprintf(spelling, sizeof spelling, "string");
     } else if (!strcmp(type, "handle") && name && !strcmp(name, "ecs.entity")) {
@@ -131,7 +141,9 @@ static char *variable_type(const av_value *variable)
     }
     return xstrdup(spelling);
 }
-/* Reads one event declaration into events; skips other documents. */
+/* Reads one event declaration into events; skips other documents. A field
+ * keeps a NULL type when the migration cannot spell it, so only a handler
+ * that reads it is refused. */
 static bool read_event(const char *kdl, payload_event **events, char *error, size_t size)
 {
     char problem[256];
@@ -152,19 +164,17 @@ static bool read_event(const char *kdl, payload_event **events, char *error, siz
              i++) {
             const av_value *variable = av_arr_get(variables, i),
                            *label = av_obj_get(variable, "name");
-            char *type = variable_type(variable);
-            if (!type || !label || !av_is_str(label)) {
+            if (!label || !av_is_str(label)) {
                 snprintf(
                     error,
                     size,
-                    "event %s has a payload field of a type the migration "
-                    "cannot spell",
+                    "event %s has a payload field without a name",
                     event.name
                 );
-                free(type);
                 ok = false;
                 break;
             }
+            char *type = variable_type(variable);
             add_field(&event, av_get_str(label), type);
             free(type);
         }
@@ -189,8 +199,8 @@ static void events_free(payload_event *events)
 typedef struct
 {
     const char *text;
-    const payload_event *event; /* NULL when the migration cannot type it */
-    TSNode parameters;          /* The positional list, or a null node. */
+    const payload_event *event;
+    TSNode parameters; /* The positional list, or a null node for hidden names. */
     const char *alias;
     bool *used;
     char **others; /* Bare names that read no payload field. */
@@ -213,38 +223,67 @@ static void replace(handler_rewrite *r, TSNode node, const char *with)
     apush(*r->owned, owned);
     apush(*r->edits, ((text_edit){ (int)ts_node_start_byte(node), (int)ts_node_end_byte(node), owned }));
 }
+static uint32_t named_count(TSNode node)
+{
+    return ts_node_is_null(node) ? 0 : ts_node_named_child_count(node);
+}
+/* The payload position of the listed parameter spelled name; comments take
+ * none. */
 static int positional(const handler_rewrite *r, const char *name)
 {
-    for (uint32_t i = 0; i < ts_node_named_child_count(r->parameters); i++) {
+    int ordinal = 0;
+    for (uint32_t i = 0; i < named_count(r->parameters); i++) {
         TSNode parameter = ts_node_named_child(r->parameters, i);
-        if (spelled(r->text, field(parameter, "name"), name)) {
-            return (int)i;
+        if (ts_node_is_extra(parameter)) {
+            continue;
         }
+        if (spelled(r->text, field(parameter, "name"), name)) {
+            return ordinal;
+        }
+        ordinal++;
     }
     return -1;
 }
-static int field_index(const handler_rewrite *r, const char *name)
+static int exact_field(const payload_event *event, const char *name)
 {
-    for (int k = 0; r->event && k < acount(r->event->fields); k++) {
-        if (!strcmp(r->event->fields[k].name, name)) {
+    for (int k = 0; k < acount(event->fields); k++) {
+        if (!strcmp(event->fields[k].name, name)) {
             return k;
         }
     }
     return -1;
 }
-/* The field a version 29 read of `name` reached: by position with a list,
- * else by the field's own name. */
-static int payload_index(const handler_rewrite *r, const char *name)
+/* The field spelled name, else the only one matching it as the catalog
+ * matches names. */
+static int matching_field(const payload_event *event, const char *name)
 {
-    int k = ts_node_is_null(r->parameters) ? field_index(r, name)
-                                           : positional(r, name);
-    return r->event && k < acount(r->event->fields) ? k : -1;
+    int found = exact_field(event, name);
+    if (found >= 0) {
+        return found;
+    }
+    for (int k = 0; k < acount(event->fields); k++) {
+        if (same_name(event->fields[k].name, name)) {
+            if (found >= 0) {
+                return -1;
+            }
+            found = k;
+        }
+    }
+    return found;
 }
-/* A field read through `event.F` or the alias reads F by name. */
+static int in_payload(const handler_rewrite *r, int k)
+{
+    return k < acount(r->event->fields) ? k : -1;
+}
+/* Version 29 read `event.F` or `alias.F` as the field F names, else as the
+ * listed parameter F. */
 static void member_read(handler_rewrite *r, TSNode node, TSNode member)
 {
     char *name = text_of(r->text, member);
-    int k = payload_index(r, name);
+    int k = matching_field(r->event, name);
+    if (k < 0 && !ts_node_is_null(r->parameters)) {
+        k = in_payload(r, positional(r, name));
+    }
     free(name);
     if (k < 0) {
         refuse(r, node, "reads a payload field its event does not have");
@@ -253,13 +292,18 @@ static void member_read(handler_rewrite *r, TSNode node, TSNode member)
     r->used[k] = true;
     replace(r, node, r->event->fields[k].name);
 }
+/* A bare name read the listed parameter it spells, or without a list the
+ * field of its own name. */
 static void name_read(handler_rewrite *r, TSNode node)
 {
     char *name = text_of(r->text, node);
     if (r->alias && !strcmp(name, r->alias)) {
         refuse(r, node, "reads the whole payload through its alias; read its fields");
     }
-    int k = r->event ? payload_index(r, name) : -1;
+    int k = in_payload(
+        r,
+        ts_node_is_null(r->parameters) ? exact_field(r->event, name) : positional(r, name)
+    );
     if (k >= 0) {
         r->used[k] = true;
         if (strcmp(name, r->event->fields[k].name)) {
@@ -270,7 +314,32 @@ static void name_read(handler_rewrite *r, TSNode node)
     }
     apush(r->others, name);
 }
-/* Visits the values node reads, past the names it declares or selects. */
+/* Roles whose identifiers name or select rather than read a value. */
+static const char *const NAMING_ROLES[] = {
+    "alias",   "attribute", "binding",        "bindings", "comptime",   "event",
+    "kind",    "member",    "name",           "outcome",  "package",    "path",
+    "storage", "type",      "type_arguments", "unit",     "visibility",
+};
+/* Whether child i of node is read as a value: not a name it declares or
+ * selects, a type, a loop key or a callee. */
+static bool read_child(TSNode node, uint32_t i)
+{
+    TSNode child = ts_node_child(node, i);
+    const char *role = ts_node_field_name_for_child(node, i);
+    if (!ts_node_is_named(child) || !role) {
+        return ts_node_is_named(child);
+    }
+    for (size_t k = 0; k < sizeof NAMING_ROLES / sizeof *NAMING_ROLES; k++) {
+        if (!strcmp(role, NAMING_ROLES[k])) {
+            return false;
+        }
+    }
+    if (!strcmp(role, "key")) {
+        return !is(node, "for_statement");
+    }
+    return strcmp(role, "function") || !is(child, "identifier");
+}
+/* Visits the values node reads. */
 static void reads(handler_rewrite *r, TSNode node)
 {
     if (r->refusal) {
@@ -298,43 +367,47 @@ static void reads(handler_rewrite *r, TSNode node)
         return;
     }
     for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
-        const char *role = ts_node_field_name_for_child(node, i);
-        TSNode child = ts_node_child(node, i);
-        bool name = role && (!strcmp(role, "name") || !strcmp(role, "type") ||
-                             !strcmp(role, "key"));
-        bool callee = role && !strcmp(role, "function") && is(child, "identifier");
-        if (ts_node_is_named(child) && !name && !callee) {
-            reads(r, child);
+        if (read_child(node, i)) {
+            reads(r, ts_node_child(node, i));
         }
     }
 }
-/* Whether node declares a local, constant or loop name spelled like name. */
+/* Whether node declares a parameter, local, constant, loop or pattern name
+ * spelled like name. */
 static bool declares(const char *text, TSNode node, const char *name)
 {
-    bool binds = is(node, "local_declaration") ||
-                 is(node, "constant_declaration") || is(node, "for_statement");
+    bool binds = is(node, "parameter") || is(node, "local_declaration") ||
+                 is(node, "constant_declaration") ||
+                 is(node, "for_statement") || is(node, "is_expression");
     if (binds && (spelled(text, field(node, "name"), name) ||
-                  spelled(text, field(node, "key"), name))) {
+                  spelled(text, field(node, "key"), name) ||
+                  spelled(text, field(node, "binding"), name))) {
         return true;
     }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (declares(text, ts_node_named_child(node, i), name)) {
+    for (uint32_t i = 0; i < named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if ((is(node, "pattern_bindings") && spelled(text, child, name)) ||
+            declares(text, child, name)) {
             return true;
         }
     }
     return false;
 }
-/* Whether a name read outside handler spells alias. */
+/* Whether code outside handler reads alias, where no callable around the
+ * read declares that name itself. */
 static bool reads_alias(const char *text, TSNode node, TSNode handler, const char *alias)
 {
-    if (ts_node_eq(node, handler)) {
+    bool callable = is(node, "function_declaration") ||
+                    is(node, "macro_declaration") || is(node, "handler");
+    if (ts_node_eq(node, handler) || (callable && declares(text, node, alias))) {
         return false;
     }
-    if (is(node, "identifier") && spelled(text, node, alias)) {
-        return true;
+    if (is(node, "identifier")) {
+        return spelled(text, node, alias);
     }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (reads_alias(text, ts_node_named_child(node, i), handler, alias)) {
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        if (read_child(node, i) &&
+            reads_alias(text, ts_node_child(node, i), handler, alias)) {
             return true;
         }
     }
@@ -356,13 +429,15 @@ typedef struct
 static char *header_text(const payload_event *event, const bool *used)
 {
     size_t size = 8;
-    for (int k = 0; event && k < acount(event->fields); k++) {
-        size += strlen(event->fields[k].name) + strlen(event->fields[k].type) + 4;
+    for (int k = 0; k < acount(event->fields); k++) {
+        size += used[k]
+                  ? strlen(event->fields[k].name) + strlen(event->fields[k].type) + 4
+                  : 0;
     }
     char *header = xmalloc(size);
     int at = snprintf(header, size, " :: (");
     const char *separator = "";
-    for (int k = 0; event && k < acount(event->fields); k++) {
+    for (int k = 0; k < acount(event->fields); k++) {
         if (used[k]) {
             at += snprintf(
                 header + at,
@@ -378,49 +453,89 @@ static char *header_text(const payload_event *event, const bool *used)
     snprintf(header + at, size - (size_t)at, ") ");
     return header;
 }
+/* The `event name = Other` declaration that names an event alias, or a null
+ * node. */
+static TSNode event_alias(const char *text, TSNode node, TSNode name)
+{
+    if (is(node, "event_declaration")) {
+        TSNode declared = field(node, "name");
+        uint32_t length = ts_node_end_byte(name) - ts_node_start_byte(name);
+        bool same = ts_node_end_byte(declared) - ts_node_start_byte(declared) == length &&
+                    !strncmp(text + ts_node_start_byte(declared), text + ts_node_start_byte(name), length);
+        return same ? node : (TSNode){ 0 };
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode found = event_alias(text, ts_node_named_child(node, i), name);
+        if (!ts_node_is_null(found)) {
+            return found;
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* An event the migration cannot find, such as one a test catalog declares,
+ * takes its fields from the handler's typed list; without a list it has no
+ * payload, as input actions and named events have none. */
+static void listed_fields(handler_rewrite *r, payload_event *written)
+{
+    for (uint32_t i = 0; i < named_count(r->parameters); i++) {
+        TSNode parameter = ts_node_named_child(r->parameters, i),
+               type = field(parameter, "type");
+        if (ts_node_is_extra(parameter)) {
+            continue;
+        }
+        if (ts_node_is_null(type)) {
+            refuse(r, parameter, "names an untyped payload field of an event the migration cannot find");
+            return;
+        }
+        char *label = text_of(r->text, field(parameter, "name")),
+             *spelling = text_of(r->text, type);
+        add_field(written, label, spelling);
+        free(label);
+        free(spelling);
+    }
+}
 /* `on X(a)`, `on X as e` and `on X` become `on X :: (F: T)`, listing the
  * fields the handler read under their own names, in payload order. */
 static void rewrite_handler(source_rewrite *s, TSNode handler)
 {
     TSNode name = field(handler, "name"), body = field(handler, "body");
-    TSNode alias = field(handler, "alias");
-    char *event_name = is(name, "identifier") || is(name, "string")
-                         ? text_of(s->text, name)
-                         : NULL;
+    TSNode alias = field(handler, "alias"), parameters = field(handler, "parameters");
+    TSNode declared = event_alias(s->text, s->root, name);
+    TSNode event = ts_node_is_null(declared) ? name : field(declared, "value");
     char *alias_name = ts_node_is_null(alias) ? NULL : text_of(s->text, alias);
-    TSNode parameters = field(handler, "parameters");
-    payload_event *known = event_name ? find_event(s->events, event_name) : NULL,
-                  written = { 0 };
+    char *event_name = is(event, "identifier") ? text_of(s->text, event) : NULL;
+    payload_event written = { 0 };
+    const payload_event *known = event_name ? find_event(s->events, event_name) : NULL;
     handler_rewrite r = { .text = s->text,
-                          .event = known,
-                          .parameters = parameters,
+                          .event = known ? known : &written,
+                          .parameters = named_count(parameters) ? parameters
+                                                                : (TSNode){ 0 },
                           .alias = alias_name,
                           .edits = &s->edits,
                           .owned = &s->owned };
-    /* An event the migration cannot find, such as one a graph declared in
-     * its handler, takes its fields from a typed parameter list. */
-    for (uint32_t i = 0; !known && !ts_node_is_null(parameters) &&
-                         i < ts_node_named_child_count(parameters);
-         i++) {
-        TSNode parameter = ts_node_named_child(parameters, i),
-               type = field(parameter, "type");
-        if (ts_node_is_null(type)) {
-            refuse(&r, parameter, "names an untyped payload field of an event the migration cannot type");
-            break;
-        }
-        char *label = text_of(s->text, field(parameter, "name")),
-             *spelling = text_of(s->text, type);
-        add_field(&written, label, spelling);
-        free(label);
-        free(spelling);
-        r.event = &written;
+    if (!event_name || !ts_node_is_null(event_alias(s->text, s->root, event))) {
+        refuse(&r, name, "names its event by a path or an alias of an alias; rewrite it by hand");
     }
-    int count = r.event ? acount(r.event->fields) : 0;
+    if (!known) {
+        listed_fields(&r, &written);
+    }
+    int count = acount(r.event->fields);
     r.used = xcalloc((size_t)count + 1, sizeof *r.used);
-    bool listed = !ts_node_is_null(parameters) &&
-                  ts_node_named_child_count(parameters);
-    if (r.event && listed && (int)ts_node_named_child_count(parameters) > count) {
-        refuse(&r, parameters, "lists more parameters than its event's payload has");
+    int listed = 0;
+    for (uint32_t i = 0; i < named_count(r.parameters); i++) {
+        TSNode parameter = ts_node_named_child(r.parameters, i);
+        if (ts_node_is_extra(parameter)) {
+            continue;
+        }
+        listed++;
+        char *parameter_name = text_of(s->text, field(parameter, "name"));
+        if (declares(s->text, body, parameter_name)) {
+            refuse(&r, handler, "declares a name that a payload parameter uses; rename it");
+        }
+        free(parameter_name);
+    }
+    if (listed > count) {
+        refuse(&r, r.parameters, "lists more parameters than its event's payload has");
     }
     reads(&r, body);
     for (int k = 0; k < count && !r.refusal; k++) {
@@ -432,6 +547,9 @@ static void rewrite_handler(source_rewrite *s, TSNode handler)
             if (!strcmp(r.others[i], field_name)) {
                 refuse(&r, handler, "reads a payload field's name with another meaning; rename it");
             }
+        }
+        if (r.used[k] && !r.event->fields[k].type) {
+            refuse(&r, handler, "reads a payload field whose declared type the migration cannot spell; name it by hand");
         }
     }
     if (alias_name && !r.refusal && reads_alias(s->text, s->root, handler, alias_name)) {

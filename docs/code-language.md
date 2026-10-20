@@ -1153,8 +1153,10 @@ parameters to `F`.
 The migration types each field from these sources:
 
 - The engine's events as version 29 declared them. Tick's field is `dt: float s`.
-- The project's event declarations.
-- A typed parameter list, for an event that it cannot find.
+- The project's event declarations. A handler on an alias such as
+  `event hurt = Damage` uses the event that the alias names.
+- A typed parameter list, for an event that it cannot find. Without a list,
+  such an event has no fields.
 
 The migration refuses these cases:
 
@@ -1162,8 +1164,11 @@ The migration refuses these cases:
 - A handler reads a field that its event does not have.
 - An alias is read outside its handler, for example by an action. Move that
   code into the handler.
-- The handler declares a name that a field uses, or reads a field's name with
-  another meaning.
+- The handler declares a name that a field or a listed parameter uses, or
+  reads a field's name with another meaning.
+- A handler reads a field whose declared type the migration cannot spell,
+  such as a set.
+- A handler names its event by a path, or by an alias of another alias.
 - An event that the migration cannot find has untyped parameters.
 - An `after` handler has an alias.
 

@@ -12,6 +12,7 @@
 static const char *worker_path, *host_path;
 static char suite[256], root[512], program_path[1024];
 static char *program;
+static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
 static const char *const environment_names[] = {
     "PATH",
     "CC",
@@ -105,6 +106,7 @@ static bool invoke(const char *const *arguments, int count, int backend, int val
     };
     chibi_build_result result;
     bool success = chibi_build_invoke(&options, &result);
+    snprintf(last_stderr, sizeof last_stderr, "%s", result.stderr_text);
     if (!success || result.value != value) {
         fprintf(
             stderr,
@@ -303,6 +305,97 @@ TEST_CASE(private_source_overrides_disable_immutable_dependency_packages)
     return true;
 }
 
+static void make_build(const char *name, const char *cache)
+{
+    char directory[1024], file[1100];
+    path(directory, root, name);
+    assert(!mkdir(directory, 0700));
+    snprintf(file, sizeof file, "%s/CMakeCache.txt", name);
+    write_file(file, cache);
+}
+/* Dependency preparation runs only when configuration chooses packages. Here
+ * it fails at once: a multi-configuration generator or a private override is
+ * not packageable. */
+static bool packages_chosen(const char *const *arguments, int count, int backend)
+{
+    char file[1100];
+    snprintf(file, sizeof file, "%s/%s/.chibi-dependency-package.cmake", root, arguments[1]);
+    return invoke(arguments, count, backend, 1) &&
+           strstr(last_stderr, "dependency preparation failed") &&
+           access(file, F_OK);
+}
+static bool packages_declined(const char *const *arguments, int count, int backend)
+{
+    char file[1100];
+    snprintf(file, sizeof file, "%s/.chibi-dependency-package.cmake", arguments[1]);
+    return invoke(arguments, count, backend, 0) &&
+           file_contains(file, "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)");
+}
+
+TEST_CASE(dependency_overrides_follow_definitions_then_cache)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("dependency overrides", b);
+        assert(!setenv("CHIBI_DEPENDENCY_PACKAGES", "1", 1));
+        make_build(
+            "inside",
+            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
+            "FETCHCONTENT_SOURCE_DIR_TEST:PATH=inside/_deps/test-src\n"
+        );
+        char directory[1024];
+        path(directory, root, "inside/_deps");
+        assert(!mkdir(directory, 0700));
+        path(directory, root, "inside/_deps/test-src");
+        assert(!mkdir(directory, 0700));
+        const char *inside[] = { "native", "inside", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
+        REQUIRE(packages_chosen(inside, 5, b));
+
+        const char *sljit_cache = "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
+                                  "CHIBI_SJLIT_SOURCE_DIR:PATH=/opt/sljit\n";
+        make_build("cached", sljit_cache);
+        const char *cached[] = { "native", "cached", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
+        REQUIRE(packages_declined(cached, 5, b));
+        make_build("cleared", sljit_cache);
+        const char *cleared[] = {
+            "native",
+            "cleared",
+            "--configure-only",
+            "--",
+            "-DCHIBI_SJLIT_SOURCE_DIR:PATH=",
+            "-DCMAKE_GENERATOR=Xcode",
+        };
+        REQUIRE(packages_chosen(cleared, 6, b));
+
+        const char *valueless[] = {
+            "native",
+            "valueless",
+            "--configure-only",
+            "--",
+            "-DFETCHCONTENT_FULLY_DISCONNECTED",
+            "-DCMAKE_GENERATOR=Xcode",
+        };
+        REQUIRE(packages_chosen(valueless, 6, b));
+        const char *quiet[] = { "native", "quiet", "--configure-only", "--", "-DFETCHCONTENT_QUIET=OFF" };
+        REQUIRE(packages_declined(quiet, 5, b));
+
+        const char *dangling[] = { "native",
+                                   "dangling",
+                                   "--configure-only",
+                                   "--",
+                                   "-DCMAKE_C_COMPILER=clang",
+                                   "-D" };
+        REQUIRE(invoke(dangling, 6, b, 1));
+#ifdef __APPLE__
+        /* The SDK definition configuration appends completes the dangling -D. */
+        REQUIRE(strstr(last_stderr, "dependency preparation failed"));
+#else
+        REQUIRE(strstr(last_stderr, "-D requires a definition"));
+#endif
+        REQUIRE(trace_count("CONFIGURE\n") == 2 && !trace_count("BUILD\n"));
+    }
+    return true;
+}
+
 TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
 {
     reset_fixture("CLI tail", 0);
@@ -407,6 +500,7 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(private_source_overrides_disable_immutable_dependency_packages);
+    RUN_TEST_CASE(dependency_overrides_follow_definitions_then_cache);
     RUN_TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments);
     RUN_TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol);
     for (size_t i = 0; i < sizeof environment_names / sizeof *environment_names; i++) {

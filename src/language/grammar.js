@@ -283,13 +283,23 @@ module.exports = grammar({
         field("value", $._expression),
         $._end,
       ),
+    // `on X :: (a: T)` names payload fields; the other form is migrating away.
     handler: ($) =>
-      seq(
-        field("kind", choice(K.on, K.after)),
-        field("name", $._handler_name),
-        optional(seq(K.as, field("alias", $._name))),
-        optional(field("parameters", $.parameter_list)),
-        field("body", $.block),
+      choice(
+        seq(
+          field("kind", K.on),
+          field("name", $._handler_name),
+          field("binding", "::"),
+          field("parameters", $.parameter_list),
+          field("body", $.block),
+        ),
+        seq(
+          field("kind", choice(K.on, K.after)),
+          field("name", $._handler_name),
+          optional(seq(K.as, field("alias", $._name))),
+          optional(field("parameters", $.parameter_list)),
+          field("body", $.block),
+        ),
       ),
     _handler_name: ($) =>
       choice(

@@ -2503,6 +2503,16 @@
           }
         ]
       },
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "::",
+            "named": false
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,

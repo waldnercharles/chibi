@@ -548,9 +548,8 @@ static int assertion(lower *l, const script_expression *e)
     );
     return -1;
 }
-/* A fractional value, such as a `number`, truncates to the int an array index
- * or a range bound takes. Integers keep their width: casts only narrow floats. */
-/* A range bound as an int: a narrower integer such as a byte widens. */
+/* An array index or a range bound as an int: a narrower integer such as a
+ * byte widens. A floating value needs int(x) before it gets here. */
 static int int_slot(lower *l, int value, script_range range)
 {
     script_type from = l->a->expressions[value].type;

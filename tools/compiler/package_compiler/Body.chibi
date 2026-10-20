@@ -963,7 +963,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
                                                 "Invalid string or embedded NUL"));
                 }
-                step = ForStep(values[value_top], ops, target, at, node);
+                array := values[value_top];
+                step = ForStep(array, Packable(array.storage, array.record, types, members), ops, target, at, node);
             } else if (item.phase == 3) {
                 // A record element was copied into the last cell.
                 stepped = false;

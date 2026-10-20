@@ -2632,11 +2632,17 @@ static const behavior_sample behavior_samples[] = {
       "   a *= 2\n"
       "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
       " }\n}\n" },
+    { "Steer",
+      "Steer :: behavior {\n    on Move :: (y: float, x: float) {\n        "
+      "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
+    { "Lift", "Lift :: behavior {\n    on Move :: (y: float) {\n        self.Spot.y += y\n    }\n}\n" },
 };
-/* Sources stage one rejects, with its message. */
+/* Sources stage one rejects, with its message. Where stage zero rejects one
+ * too, stage one gives its message at its position. */
 typedef struct
 {
     const char *source, *message;
+    bool stage_zero;
 } behavior_rejection;
 static const behavior_rejection behavior_rejections[] = {
     { "Late :: behavior {\n    after Tick {\n    }\n}\n",
@@ -2650,7 +2656,14 @@ static const behavior_rejection behavior_rejections[] = {
       "state needs a number type" },
     { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
       "{\n    }\n}\n",
-      "the event has no such parameter" },
+      "Tick has no payload field 'more'",
+      true },
+    { "Drift :: behavior {\n    on Move :: (z: float, x: float) {\n    }\n}\n",
+      "Move has no payload field 'z'",
+      true },
+    { "Twice :: behavior {\n    on Move :: (x: float, X: float) {\n    }\n}\n",
+      "Payload field 'x' is listed twice",
+      true },
     { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
       "}\n}\n",
       "operator does not apply to these operands" },
@@ -2664,6 +2677,7 @@ enum
     SPOT = 101,
     SPOT_COMPONENT = 901,
     TICK = 11,
+    MOVE = 12,
     OWNER = 30,
     ENTITY = 700,
     BEHAVIOR_ARGUMENTS = 17,
@@ -2709,6 +2723,10 @@ static const script_catalog_field spot_members[] = {
 };
 static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
                                                         .type = { .storage = PIN_F32 } };
+static const script_catalog_parameter move_payload[] = {
+    { .name = "x", .type = { .storage = PIN_F32 } },
+    { .name = "y", .type = { .storage = PIN_F32 } },
+};
 static const script_catalog_capability game_events[] = {
     { .id = TICK,
       .name = "Tick",
@@ -2716,13 +2734,19 @@ static const script_catalog_capability game_events[] = {
       .parameters = &delta_seconds,
       .parameter_count = 1,
       .completion_outcome = -1 },
+    { .id = MOVE,
+      .name = "Move",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = move_payload,
+      .parameter_count = 2,
+      .completion_outcome = -1 },
 };
 static const script_catalog_global game_globals[] = {
     { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
     { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
 };
-/* The game: the Spot component and the entity type, Tick, `self` and
- * `pace`, a global stage one cannot read yet. */
+/* The game: the Spot component and the entity type, Tick, Move with two
+ * fields, `self` and `pace`, a global stage one cannot read yet. */
 static script_catalog game_catalog()
 {
     static script_catalog_type types[2];
@@ -2742,7 +2766,7 @@ static script_catalog game_catalog()
     return (script_catalog){ .types = types,
                              .type_count = 2,
                              .capabilities = game_events,
-                             .capability_count = 1,
+                             .capability_count = 2,
                              .globals = game_globals,
                              .global_count = 2,
                              .entity_type = ENTITY,
@@ -3058,19 +3082,29 @@ static bool same_declarations(const execution_module *expected, const execution_
     }
     return true;
 }
-/* Each Tick, both modules' owners hold the same Spot and states. */
+/* A dispatch that ran, or found no handler in a module that handles only
+ * other events. */
+static bool handled(int status)
+{
+    return status == FLOW_OK || status == FLOW_ERR_UNKNOWN_EVENT;
+}
+/* Each Tick and Move, both modules' owners hold the same Spot and states. */
 static bool plays_alike(execution_module *expected, execution_module *actual)
 {
     player e = { 0 }, a = { 0 };
     bool alike = play(expected, &e) && play(actual, &a);
     pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    const pin_value move[] = { { .type = PIN_F32, .f = 1.5f },
+                               { .type = PIN_F32, .f = -4.0f } };
     for (int tick = 0; alike && tick < TICKS; tick++) {
         int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
         int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
+        int moved = execution_instance_dispatch(e.instance, MOVE, move, 2, 0, 0, 1000);
+        int moving = execution_instance_dispatch(a.instance, MOVE, move, 2, 0, 0, 1000);
         const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
         const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
-        alike = left == FLOW_OK && right == FLOW_OK && x && y &&
-                !memcmp(x, y, sizeof *x);
+        alike = left == right && moved == moving && handled(left) &&
+                handled(moved) && x && y && !memcmp(x, y, sizeof *x);
         for (int i = 0; alike && i < expected->plan.state_count; i++) {
             const pin_value *kept = execution_instance_state(
                 e.instance,
@@ -3117,15 +3151,37 @@ static bool behaves_alike(int b, const behavior_sample *sample)
     execution_module_free(expected);
     return same;
 }
-/* Stage one rejects the source with exactly the message. */
+/* Stage zero's first diagnostic of `source`. */
+static script_diagnostic stage_zero_diagnostic(const char *source)
+{
+    script_catalog catalog = game_catalog();
+    script_syntax *syntax = script_parse(source);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    script_diagnostic first = analysis->diagnostic_count
+                                ? analysis->diagnostics[0]
+                                : (script_diagnostic){ 0 };
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    return first;
+}
+/* Stage one rejects the source with exactly the message, and where stage zero
+ * rejects it too, with stage zero's message at its position. */
 static bool rejects(int b, const behavior_rejection *rejection)
 {
-    pin_value out, message;
+    pin_value out, message, line, column;
     REQUIRE(compile_behavior(b, "Rejected", rejection->source, &out));
     const pin_union *value = out.ptr;
     bool rejected = value->tag == tag(b, "Rejected") &&
                     get(&value->values[0], "message", &message) &&
+                    get(&value->values[0], "line", &line) &&
+                    get(&value->values[0], "column", &column) &&
                     !strcmp(message.str, rejection->message);
+    if (rejected && rejection->stage_zero) {
+        script_diagnostic expected = stage_zero_diagnostic(rejection->source);
+        rejected = !strcmp(expected.message, rejection->message) &&
+                   expected.range.line == line.i &&
+                   expected.range.column == column.i;
+    }
     if (!rejected) {
         fprintf(stderr, "behavior rejection: wanted '%s'\n", rejection->message);
     }

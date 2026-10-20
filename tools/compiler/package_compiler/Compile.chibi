@@ -1004,18 +1004,24 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 references = array_add(references, Own(index - first_own));
                 references = array_add(references, Own(-1));
                 exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
+                                          event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
                                           continuation_wait: false, effects: 0, body: length(references) - 2,
                                           subscription: length(references) - 1};
                 entries = array_add(entries, exported);
         }
         index += 1;
     }
+    event_declarations: writer.Event[] = [];
+    event_fields: writer.EventField[] = [];
     layouts_table: writer.ResultLayout[] = [];
+    components: writer.Component[] = [];
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
+    states: writer.State[] = [];
     return Result.Compiled(module, writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
-                                                                     fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
-                                                                     layouts_table, data, hosts, calls, references, points, watches, entries)));
+                                                                     fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
+                                                                     locals, parameters, frames, sources, layouts_table, data, hosts, calls,
+                                                                     references, components, points, watches, states, entries)));
 }
 
 // `paths` and `sources` are the files of every package, `paths[0]` one of the

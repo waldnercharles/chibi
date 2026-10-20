@@ -74,8 +74,10 @@ Foot :: () -> string[] {
 // The stylesheet, as lines to write in order. Its colours are custom
 // properties that the dark palette redefines when the reader's system asks for
 // a dark scheme, so no script is needed. Wide windows show the page's contents
-// in a column on the right; narrow ones drop that column, then move the page
-// list below the page. The bar keeps one row of a fixed height, scrolling its
+// in a column on the right; narrow ones drop that column, then show the page
+// list as one compact block of links above the page, in its place in the
+// markup so focus follows what the reader sees, and drop the bar's sections,
+// which it repeats. The bar keeps one row of a fixed height, scrolling its
 // sections sideways when they do not fit, so anchors scroll clear of it.
 Style :: () -> string[] {
     return [
@@ -113,6 +115,6 @@ Style :: () -> string[] {
         "th { background: var(--panel); }\n",
         "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }\n",
         "@media (max-width: 64rem) { .page { padding-right: 0; } .contents { display: none; } }\n",
-        "@media (max-width: 48rem) { .bar { gap: 1rem; padding: 0 1rem; } .page { flex-direction: column; } .pages { order: 1; width: auto; position: static; align-self: stretch; max-height: none; border-top: 1px solid var(--line); } main { padding: 1rem; } }\n"
+        "@media (max-width: 48rem) { .bar { padding: 0 1rem; } .bar nav { display: none; } .page { display: block; } .pages { width: auto; position: static; max-height: none; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); } .pages h2 { display: none; } .pages ul { display: inline; } .pages li { display: inline-block; margin: 0.1rem 0; } main { padding: 1rem; } }\n"
     ];
 }

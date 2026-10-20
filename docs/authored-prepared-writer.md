@@ -8,19 +8,21 @@ with it (`docs/bounded-authored-compiler.md`).
 
 ## Model
 
-`Write(module: Module) -> byte[]` encodes one module of authored functions:
-requirements, imports, functions and entries. Format 18 also has events, states,
-queries, bindings and actions; the writer emits them as empty. The caller's
-lowering supplies the target ABI hash in the header, because it hashes C
-layouts.
+`Write(module: Module) -> byte[]` encodes one module of authored functions or
+of a behavior: requirements, event declarations, imports, functions with their
+component tables, retained states and entries, which may handle events. Format
+18 also has queries, bindings, actions, observers, captures and debugger tables;
+the writer emits them as empty. The caller's lowering supplies the target ABI
+hash in the header, because it hashes C layouts.
 
-Authored records hold only text, `int` and `bool` fields, so `Module` is one
-union case of flat pools:
+`Module` is one union case of flat pools, since records hold no arrays:
 - Every 64-bit value (ids, layouts, scalar bits, union tags, fingerprints) is an
   index into `wide: uint64[]`, whose entry 0 is zero for an absent value.
 - A nested value lists its fields, payload or items as a range of `values` after
   itself.
-- Each function names 21 consecutive `spans`, one range per table.
+- Each function names 23 consecutive `spans`, one range per table.
+- An absent native struct, such as a reference's type, is a header with no
+  fields; an absent authored one keeps its field count.
 
 `Fingerprint(bytes)` is the FNV-1a import fingerprint. `Closure` writes the
 CHIBICLO header and rows sorted bytewise by name.
@@ -51,20 +53,24 @@ in the module size: about 100 KB/s on bytecode and 500 KB/s on SLJIT, against
 27 KB/s and 120 KB/s before. `Fingerprint` walks every byte at about 150 KB/s
 on bytecode.
 
-`entry`, `owner`, `component` and `depth_limit` are keywords, so the model uses
-`entry_name`, `owner_type`, `component_index` and `depth_bound`.
+`entry`, `owner`, `component`, `depth_limit`, `event`, `events` and `state` are
+keywords, so the model uses `entry_name`, `owner_type`, `component_index`,
+`depth_bound`, `event_id`, `event_declarations` and `retained`.
 
 ## Test
 
 `tool language-prepared-writer-chibi` prepares the writer with
 `core:strings`, `syntax_diagnostics`, `package_paths` and a sample package that
 uses records, unions, arrays, imports, wide integers and floats. Its two cases
-pass with 1,045 assertions in 22.0 s under the 60-second supervisor (macOS
-arm64, 2026-10-19):
+pass with 1,026 assertions in 24.1 s under the 60-second supervisor (macOS
+arm64, 2026-10-20):
 - Every module's stage-zero plan is marshalled into the model and written on
   both compiler backends, then compared byte for byte with
   `execution_prepared_write`. Modules above 512 KiB, the writer's own 1.3 MiB
   and `core:strings`' 0.8 MiB, take 14 s and 10 s on bytecode, so they are
   written on the compiled backend only.
+- So is a behavior's module, lowered against a small catalog: a retained
+  state, handlers of an event with and without a payload, and a write to a
+  field of the owner's component, with its event, state and component tables.
 - `Fingerprint` matches `execution_prepared_measure`, and `Closure` over the four
   smaller modules matches `compiler_artifact_write`, on both backends.

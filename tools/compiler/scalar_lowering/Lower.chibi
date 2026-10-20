@@ -141,23 +141,23 @@ BitXor: int : 26;
 ShiftLeft: int : 27;
 ShiftRight: int : 28;
 
-Reject :: pure fn(range: int, message: string) -> Plan {
+Reject :: (range: int, message: string) -> Plan {
     diagnostics: Diagnostic[] = [];
     item: Diagnostic = {range: range, message: message};
     return Plan.Rejected(array_add(diagnostics, item));
 }
-ValidIndex :: pure fn(index: int, count: int) -> bool {
+ValidIndex :: (index: int, count: int) -> bool {
     return index >= 0 && index < count;
 }
-Scalar :: pure fn(type: Type) -> bool {
+Scalar :: (type: Type) -> bool {
     return (type.storage == Boolean || type.storage == Integer) && type.container == 0 &&
            type.flags == 0 && type.nominal_slot == -1 && type.parameter_slot == -1;
 }
-ValidLiteral :: pure fn(item: Literal, storage: int) -> bool {
+ValidLiteral :: (item: Literal, storage: int) -> bool {
     return item.storage == storage && (storage == Integer ||
                                        (storage == Boolean && (item.payload == 0 || item.payload == 1)));
 }
-Opcode :: pure fn(op: int) -> int {
+Opcode :: (op: int) -> int {
     if (op >= 1 && op <= 5) {
         return Add + op - 1;
     }
@@ -169,18 +169,18 @@ Opcode :: pure fn(op: int) -> int {
     }
     return -1;
 }
-Code :: pure fn(op: int, storage: int, left: int, right: int, target: int) -> Instruction {
+Code :: (op: int, storage: int, left: int, right: int, target: int) -> Instruction {
     return {op: op, storage: storage, output: 0, left: left, right: right, target: target,
             frame: 0, source: 0, stack: -1, pin: 0, offset: 0, indirect: false, component: 0,
             node_id: 0, value_storage: 0, payload: 0, layout: 0, message: ""};
 }
-ConstantCode :: pure fn(item: Literal) -> Instruction {
+ConstantCode :: (item: Literal) -> Instruction {
     code := Code(Constant, item.storage, 0, 0, 0);
     code.value_storage = item.storage;
     code.payload = item.payload;
     return code;
 }
-Emit :: pure fn(output: Emitter, item: Instruction, origin: Range, storage: int, kind: int) -> Emitter {
+Emit :: (output: Emitter, item: Instruction, origin: Range, storage: int, kind: int) -> Emitter {
     switch output {
         case .Emitted(raw_slots, raw_locals, raw_origins, raw_code):
             slots := raw_slots;
@@ -204,32 +204,32 @@ Emit :: pure fn(output: Emitter, item: Instruction, origin: Range, storage: int,
             return Emitter.Emitted(slots, locals, origins, code);
     }
 }
-PC :: pure fn(output: Emitter) -> int {
+PC :: (output: Emitter) -> int {
     switch output {
         case .Emitted(slots, locals, origins, code):
             return length(code);
     }
 }
-LastSlot :: pure fn(output: Emitter) -> int {
+LastSlot :: (output: Emitter) -> int {
     switch output {
         case .Emitted(slots, locals, origins, code):
             return length(slots) - 1;
     }
 }
-LocalCount :: pure fn(output: Emitter) -> int {
+LocalCount :: (output: Emitter) -> int {
     switch output {
         case .Emitted(slots, locals, origins, code):
             return length(locals);
     }
 }
-AddLocal :: pure fn(output: Emitter) -> Emitter {
+AddLocal :: (output: Emitter) -> Emitter {
     switch output {
         case .Emitted(slots, locals, origins, code):
             item: Local = {storage: Boolean, payload: 0, kind: 0};
             return Emitter.Emitted(slots, array_add(locals, item), origins, code);
     }
 }
-Patch :: pure fn(output: Emitter, pc: int, target: int) -> Emitter {
+Patch :: (output: Emitter, pc: int, target: int) -> Emitter {
     switch output {
         case .Emitted(slots, locals, origins, raw_code):
             code := raw_code;
@@ -239,11 +239,11 @@ Patch :: pure fn(output: Emitter, pc: int, target: int) -> Emitter {
             return Emitter.Emitted(slots, locals, origins, code);
     }
 }
-NewFrame :: pure fn(expression: int) -> Frame {
+NewFrame :: (expression: int) -> Frame {
     return {expression: expression, phase: 0, left: -1, local: -1, branch_pc: -1, skip: -1};
 }
 
-Lower :: pure fn(request: Request) -> Plan {
+Lower :: (request: Request) -> Plan {
     switch request {
         case .Tables(types, expressions, symbols, variables, results, literals, ids, ranges, documents, abi, request_range):
             // Finite component contract, independent of the executor's budget.
@@ -254,7 +254,7 @@ Lower :: pure fn(request: Request) -> Plan {
                 !ValidIndex(request_range, length(ranges))) {
                 return Reject(-1, "scalar lowering input exceeds its schema limits");
             }
-            if (abi.schema != 1 || abi.prepared != 15 ||
+            if (abi.schema != 1 || abi.prepared != 18 ||
                 (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
                 abi.value_size < 1 || abi.value_size > 256 || abi.payload_offset < 0 ||
                 abi.payload_offset > abi.value_size - 4 || abi.results_offset < 0 || abi.results_offset > 4096) {

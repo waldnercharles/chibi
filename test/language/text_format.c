@@ -3,6 +3,7 @@
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/map.h"
 
 #include <string.h>
 
@@ -97,10 +98,32 @@ TEST_CASE(native_text_rejects_unsafe_modifiers_and_bounds_placeholder_indices)
     return true;
 }
 
+TEST_CASE(native_text_formats_maps_with_their_entry_counts)
+{
+    pin_value key_type = { .type = PIN_STR }, value_type = { .type = PIN_I32 };
+    pin_map_entry entry = { .key = { .type = PIN_STR, .str = "Ada" },
+                            .value = { .type = PIN_I32, .i = 1 } };
+    pin_map *map = pin_map_create(&storage, key_type, value_type, &entry, 1);
+    pin_map *empty = pin_map_create(&storage, key_type, value_type, NULL, 0);
+    REQUIRE(map && empty);
+    pin_value inputs[] = {
+        { .type = PIN_STR, .str = "{}|{}|{}" },
+        { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = map },
+        { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = empty },
+        { .type = PIN_I32, .container = PIN_CONTAINER_MAP },
+    };
+    pin_value output = { 0 };
+    REQUIRE(!NATIVE_FORMAT_TEXT_CALL.value(&storage, inputs, 4, &output));
+    REQUIRE(output.type == PIN_STR);
+    REQUIRE(!strcmp(output.str, "Map[1]|Map[0]|Map[0]"));
+    return true;
+}
+
 void test_language_text_format()
 {
     pu_setup(setup, teardown);
     RUN_TEST_CASE(native_text_formats_scalar_families_and_owns_results);
     RUN_TEST_CASE(native_text_rejects_unsafe_modifiers_and_bounds_placeholder_indices);
+    RUN_TEST_CASE(native_text_formats_maps_with_their_entry_counts);
     pu_clear_setup();
 }

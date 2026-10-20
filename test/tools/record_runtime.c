@@ -4,6 +4,7 @@
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
 
@@ -164,9 +165,10 @@ static bool run(int index, behavior_backend backend)
             REQUIRE(array && array->count == counts[index - 1]);
             REQUIRE(array->record == result.record);
             for (int i = 0; i < array->count; i++) {
-                REQUIRE(array->items[i].record == array->record);
-                REQUIRE(check_row(&array->items[i], "a", "A"));
-                REQUIRE(owned_row(&array->items[i]));
+                pin_value item = pin_array_get(array, i);
+                REQUIRE(pin_array_get(array, i).record == array->record);
+                REQUIRE(check_row(&item, "a", "A"));
+                REQUIRE(owned_row(&item));
             }
         }
     }
@@ -206,7 +208,8 @@ TEST_CASE(installed_records_outlive_producer_and_modules)
         for (int i = 3; i < 5; i++) {
             const pin_array *array = saved[i].ptr;
             for (int item = 0; item < array->count; item++) {
-                REQUIRE(check_row(&array->items[item], "a", "A"));
+                pin_value row = pin_array_get(array, item);
+                REQUIRE(check_row(&row, "a", "A"));
             }
         }
         REQUIRE(!type_catalog_find("Rows.Row"));

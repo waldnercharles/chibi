@@ -94,6 +94,8 @@ authoring_sources *authoring_sources_prepare_incremental(
     sources->bindings = *bindings;
     sources->backend = backend;
     const script_catalog *catalog = source_catalog_view(sources->catalog);
+    int request_count = 0;
+    const script_specialization_request *requests = source_catalog_requests(owned, &request_count);
     int count = source_catalog_source_count(sources->catalog);
     bool compatible = previous && bindings->generation &&
                       bindings->generation == previous->bindings.generation &&
@@ -114,11 +116,13 @@ authoring_sources *authoring_sources_prepare_incremental(
         apush(
             sources->sources,
             prior ? prior
-                  : authoring_source_analyze(
+                  : authoring_source_analyze_requested(
                         source->path,
                         source->identity,
                         source->syntax,
-                        catalog
+                        catalog,
+                        requests,
+                        request_count
                     )
         );
     }
@@ -165,11 +169,13 @@ authoring_sources *authoring_sources_prepare_incremental(
         authoring_source *source = sources->sources[i];
         if (source->module && !reuse[i]) {
             const source_catalog_source *input = source_catalog_source_at(owned, i);
-            sources->sources[i] = authoring_source_analyze(
+            sources->sources[i] = authoring_source_analyze_requested(
                 input->path,
                 input->identity,
                 input->syntax,
-                catalog
+                catalog,
+                requests,
+                request_count
             );
             authoring_source_free(source);
         }
@@ -241,6 +247,10 @@ int authoring_sources_reused(const authoring_sources *sources)
 const script_catalog *authoring_sources_catalog(const authoring_sources *sources)
 {
     return source_catalog_view(sources->catalog);
+}
+const source_catalog *authoring_sources_source_catalog(const authoring_sources *sources)
+{
+    return sources->catalog;
 }
 const input_action *authoring_sources_input(const authoring_sources *sources)
 {

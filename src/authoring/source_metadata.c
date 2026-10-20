@@ -243,6 +243,63 @@ static int token_at(const token *values, uint64_t offset)
     return lo < acount(values) && values[lo].start == offset ? lo : -1;
 }
 
+char *authoring_source_metadata_remap_positions(
+    const char *json,
+    const script_syntax *before,
+    const script_syntax *after,
+    const int *positions
+)
+{
+    if (!positions || !before || !after || strlen(before->text) > METADATA_MAX_BYTES ||
+        strlen(after->text) > METADATA_MAX_BYTES) {
+        return NULL;
+    }
+    size_t length = strlen(before->text), next_length = strlen(after->text);
+    for (size_t i = 0; i <= length; i++) {
+        if (positions[i] < 0 || (size_t)positions[i] > next_length ||
+            (i && positions[i] < positions[i - 1])) {
+            return NULL;
+        }
+    }
+    yyjson_doc *doc = read_metadata(json);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    token *old = NULL, *next = NULL;
+    bool valid = doc && matches(root, before->text) &&
+                 yyjson_get_uint(yyjson_obj_get(root, "version")) == 2 &&
+                 tokens(before, &old) && tokens(after, &next);
+    yyjson_mut_doc *copy = valid ? yyjson_doc_mut_copy(doc, NULL) : NULL;
+    yyjson_mut_val *anchors = yyjson_mut_obj_get(yyjson_mut_doc_get_root(copy), "anchors");
+    if (anchors && (!yyjson_mut_is_arr(anchors) ||
+                    yyjson_mut_arr_size(anchors) > METADATA_MAX_TOKENS)) {
+        valid = false;
+    }
+    size_t i, count;
+    yyjson_mut_val *anchor;
+    yyjson_mut_arr_foreach(anchors, i, count, anchor)
+    {
+        yyjson_mut_val *start = yyjson_mut_obj_get(anchor, "start");
+        uint64_t offset = yyjson_mut_get_uint(start);
+        if (!yyjson_mut_is_obj(anchor) || !yyjson_mut_is_uint(start) || offset > length ||
+            token_at(old, offset) < 0 || token_at(next, positions[offset]) < 0 ||
+            !yyjson_mut_get_uint(yyjson_mut_obj_get(anchor, "id")) ||
+            !yyjson_mut_get_str(yyjson_mut_obj_get(anchor, "kind"))) {
+            valid = false;
+            break;
+        }
+        yyjson_mut_obj_put(
+            anchor,
+            yyjson_mut_str(copy, "start"),
+            yyjson_mut_uint(copy, positions[offset])
+        );
+    }
+    char *out = valid ? write_bound(copy, after->text) : NULL;
+    yyjson_mut_doc_free(copy);
+    yyjson_doc_free(doc);
+    afree(old);
+    afree(next);
+    return out;
+}
+
 char *authoring_source_metadata_remap(const char *json, const script_syntax *before, const script_syntax *after)
 {
     if (strlen(before->text) > METADATA_MAX_BYTES ||

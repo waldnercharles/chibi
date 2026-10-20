@@ -123,7 +123,7 @@ static bool tagged(
         }
     }
     REQUIRE(tag && tag->field_count == count);
-    REQUIRE(!pin_union_value(p->storage, tag->tag, fields, count, out));
+    REQUIRE(!compiler_fixture_union(p->storage, tag->tag, fields, count, out));
     return true;
 }
 static int slot(packing *p, uint64_t id)

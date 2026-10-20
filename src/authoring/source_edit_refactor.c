@@ -43,13 +43,8 @@ bool source_refactor_contains(script_range outer, script_range inner)
 }
 char *source_refactor_quote(const script_catalog *catalog, const char *name)
 {
-    return authoring_source_literal(
-        catalog,
-        (script_type){ .storage = PIN_STR },
-        &(pin_value){ .type = PIN_STR, .str = name },
-        NULL,
-        0
-    );
+    (void)catalog;
+    return authoring_source_identifier(name, NULL, 0);
 }
 char *source_refactor_slice(const char *text, script_range range)
 {
@@ -59,29 +54,51 @@ char *source_refactor_slice(const char *text, script_range range)
     copy[count] = '\0';
     return copy;
 }
-bool source_refactor_type(
+static bool type_text(
     const script_catalog *catalog,
     script_type type,
     bool reference,
     char **text,
     char *error,
-    size_t size
+    size_t size,
+    int depth
 )
 {
+    if (depth == 64) {
+        return source_refactor_fail(error, size, "Refactor type nesting exceeds 64 levels");
+    }
     if (type.flags & (SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_GENERIC |
                       SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_ERROR)) {
         return source_refactor_fail(error, size, "Refactor requires a concrete declared value type");
     }
-    if (type.container != PIN_CONTAINER_SINGLE && type.container != PIN_CONTAINER_ARRAY) {
+    if (reference) {
+        source_refactor_append(text, "ref ");
+    }
+    if (type.container == PIN_CONTAINER_MAP || type.container == PIN_CONTAINER_ARRAY) {
+        bool map = type.container == PIN_CONTAINER_MAP;
+        if (map) {
+            source_refactor_append(text, "Map<");
+            if (!type_text(catalog, script_catalog_key_type(catalog, type), false, text, error, size, depth + 1)) {
+                return false;
+            }
+            source_refactor_append(text, ", ");
+        }
+        if (!type_text(catalog, script_catalog_element_type(catalog, type), false, text, error, size, depth + 1)) {
+            return false;
+        }
+        source_refactor_append(text, "%s%s", map ? ">" : "[]", type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
+        return true;
+    }
+    if (type.container != PIN_CONTAINER_SINGLE) {
         return source_refactor_fail(error, size, "This container has no callable source annotation");
     }
-    const char *name = NULL;
-    if (type.nominal) {
+    const char *name = script_reference_type_name(script_reference_kind_for_type(type));
+    if (!name && type.nominal) {
         const script_catalog_type *nominal = script_catalog_type_by_id(catalog, type.nominal);
         if (nominal) {
             name = nominal->source_name ? nominal->source_name : nominal->name;
         }
-    } else {
+    } else if (!name) {
         switch (type.storage) {
             case PIN_BOOL: name = "bool"; break;
             case PIN_I8: name = "int8"; break;
@@ -102,17 +119,25 @@ bool source_refactor_type(
     if (!name) {
         return source_refactor_fail(error, size, "Refactor type is absent from the authoritative catalog");
     }
-    char *quoted = source_refactor_quote(catalog, name);
-    source_refactor_append(
-        text,
-        "%s%s%s%s",
-        reference ? "ref " : "",
-        quoted,
-        type.container == PIN_CONTAINER_ARRAY ? "[]" : "",
-        type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
-    );
+    char *quoted = strchr(name, '(') ? xstrdup(name)
+                                     : source_refactor_quote(catalog, name);
+    if (!quoted) {
+        return source_refactor_fail(error, size, "Refactor type has no identifier source spelling");
+    }
+    source_refactor_append(text, "%s%s", quoted, type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
     free(quoted);
     return true;
+}
+bool source_refactor_type(
+    const script_catalog *catalog,
+    script_type type,
+    bool reference,
+    char **text,
+    char *error,
+    size_t size
+)
+{
+    return type_text(catalog, type, reference, text, error, size, 0);
 }
 static bool lexical_value(const script_symbol *symbol)
 {
@@ -173,8 +198,7 @@ static bool closed_control(
         for (node = ts_node_parent(node); !ts_node_is_null(node);
              node = ts_node_parent(node)) {
             const char *kind = ts_node_type(node);
-            if (!strcmp(kind, "while_statement") || !strcmp(kind, "for_statement") ||
-                !strcmp(kind, "foreach_statement")) {
+            if (!strcmp(kind, "while_statement") || !strcmp(kind, "for_statement")) {
                 inside = source_refactor_contains(range, script_node_range(node));
                 break;
             }
@@ -221,6 +245,11 @@ static bool extract(
     for (int i = 0; valid && i < a->symbol_count; i++) {
         const script_symbol *symbol = &a->symbols[i];
         if (source_refactor_contains(range, symbol->declaration)) {
+            if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+                symbol->kind == SCRIPT_ACTION) {
+                valid = source_refactor_fail(error, size, "Extraction must retain persistent or deferred storage identity");
+                break;
+            }
             if (escapes(a, i, range)) {
                 if (symbol->kind != SCRIPT_LOCAL ||
                     (symbol->type.flags & SCRIPT_TYPE_REFERENCE)) {
@@ -238,6 +267,11 @@ static bool extract(
     }
     char *definition = NULL, *call = NULL;
     char *name = source_refactor_quote(catalog, request->name);
+    if (!name) {
+        afree(inputs);
+        afree(outputs);
+        return source_refactor_fail(error, size, "Extracted declaration needs an identifier name");
+    }
     bool macro = request->kind == AUTHORING_EDIT_EXTRACT_MACRO;
     int input_namespace = 0;
     bool input_collision;
@@ -249,7 +283,7 @@ static bool extract(
             input_collision |= !strncmp(a->symbols[i].name, prefix, strlen(prefix));
         }
     } while (input_collision);
-    source_refactor_append(&definition, macro ? "\nmacro %s(" : "\n%s :: fn(", name);
+    source_refactor_append(&definition, macro ? "\nmacro %s(" : "\n%s :: (", name);
     for (int i = 0; valid && i < acount(inputs); i++) {
         const script_symbol *symbol = &a->symbols[inputs[i]];
         char parameter[64];

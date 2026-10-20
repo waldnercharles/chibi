@@ -7,7 +7,11 @@ id_counter 10
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Field Constant" { inputs Value=-1.0; }
+            - {
+                id 1
+                type "Field Constant"
+                inputs Value=-1.0
+            }
             - id=4 type="Field Output"
         }
         (array)edges {

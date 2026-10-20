@@ -28,37 +28,38 @@
  * core:strings' 0.8 MiB, take 38 s and 22 s on bytecode under ASan, so they are
  * written on the compiled backend only. */
 static const char PACKAGE[] = "project:prepared_writer";
-static const char SAMPLE[] =
-    "package sample\n"
-    "import strings \"core:strings\"\n"
-    "Point :: struct { x: int; y: int; label: string; }\n"
-    "Shape :: union { Circle(radius: int) | Path(points: Point[]) | Empty }\n"
-    "Limit: int : 3;\n"
-    "Area :: pure fn(shape: Shape) -> int {\n"
-    "    switch shape {\n"
-    "        case .Circle(radius): return radius * radius * Limit;\n"
-    "        case .Path(points):\n"
-    "            total: int = 0;\n"
-    "            foreach (point in points) { total += point.x * point.y; }\n"
-    "            return total;\n"
-    "        case .Empty: return 0;\n"
-    "    }\n"
-    "}\n"
-    "Build :: pure fn(count: int, label: string) -> Shape {\n"
-    "    points: Point[] = [];\n"
-    "    i: int = 0;\n"
-    "    while (i < count) {\n"
-    "        point: Point = {x: i, y: strings.ByteLength(label), label: "
-    "label};\n"
-    "        points = array_add(points, point);\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    if (count == 0) { return Shape.Empty; }\n"
-    "    return Shape.Path(points);\n"
-    "}\n"
-    "Wide :: pure fn(seed: uint64) -> uint64 { return (seed ^ "
-    "0x9e3779b97f4a7c15) * 3; }\n"
-    "Ratio :: pure fn(a: double, b: float) -> double { return a / b + 0.5; }\n";
+static const char SAMPLE
+    [] = "package sample\n"
+         "import strings \"core:strings\"\n"
+         "Point :: struct { x: int; y: int; label: string; }\n"
+         "Shape :: union { Circle(radius: int) | Path(points: Point[]) | Empty "
+         "}\n"
+         "Limit: int : 3;\n"
+         "Area :: (shape: Shape) -> int {\n"
+         "    switch shape {\n"
+         "        case .Circle(radius): return radius * radius * Limit;\n"
+         "        case .Path(points):\n"
+         "            total: int = 0;\n"
+         "            for (point in points) { total += point.x * point.y; }\n"
+         "            return total;\n"
+         "        case .Empty: return 0;\n"
+         "    }\n"
+         "}\n"
+         "Build :: (count: int, label: string) -> Shape {\n"
+         "    points: Point[] = [];\n"
+         "    i: int = 0;\n"
+         "    while (i < count) {\n"
+         "        point: Point = {x: i, y: strings.ByteLength(label), label: "
+         "label};\n"
+         "        points = array_add(points, point);\n"
+         "        i += 1;\n"
+         "    }\n"
+         "    if (count == 0) { return Shape.Empty; }\n"
+         "    return Shape.Path(points);\n"
+         "}\n"
+         "Wide :: (seed: uint64) -> uint64 { return (seed ^ "
+         "0x9e3779b97f4a7c15) * 3; }\n"
+         "Ratio :: (a: double, b: float) -> double { return a / b + 0.5; }\n";
 static const char *const CORPUS[] = { "project:prepared_writer",
                                       "core:strings",
                                       "project:syntax_diagnostics",
@@ -157,7 +158,12 @@ static pin_value value_row(model *m, const pin_value *v)
         const pin_array *array = v->ptr;
         put_bool(&row, "present", array != NULL);
         put_int(&row, "count", array ? array->count : 0);
-        put_int(&row, "first", array ? value_rows(m, array->items, array->count) : 0);
+        pin_value *items = NULL;
+        for (int i = 0; array && i < array->count; i++) {
+            apush(items, pin_array_get(array, i));
+        }
+        put_int(&row, "first", array ? value_rows(m, items, array->count) : 0);
+        afree(items);
         return row;
     }
     if (v->type == PIN_STRUCT) {
@@ -595,6 +601,13 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
             pin_value field = record(m, "Field");
             put_text(&field, "name", NULL, v->record->type.fields[f].name);
             put_int(&field, "kind", v->record->type.fields[f].type);
+            put_text(
+                &field,
+                "type_name",
+                "has_type_name",
+                v->record->type.fields[f].type_name
+            );
+            put_text(&field, "unit", "has_unit", v->record->type.fields[f].unit);
             apush(m->fields, field);
         }
         apush(m->requirements, row);
@@ -666,7 +679,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
     uint64_t tables = tag(m->backend, "Module", "Tables");
     REQUIRE(tables);
     REQUIRE(
-        !pin_union_value(&input, tables, payload, (int)(sizeof payload / sizeof *payload), out)
+        !compiler_fixture_union(&input, tables, payload, (int)(sizeof payload / sizeof *payload), out)
     );
     out->type_name = "Module";
     return true;
@@ -701,7 +714,7 @@ static size_t first_difference(const unsigned char *a, size_t a_size, const pin_
 {
     size_t n = a_size < (size_t)b->count ? a_size : (size_t)b->count;
     for (size_t i = 0; i < n; i++) {
-        if (a[i] != b->items[i].u8) {
+        if (a[i] != pin_array_get(b, i).u8) {
             return i;
         }
     }
@@ -753,7 +766,7 @@ TEST_CASE(prepared_writer_reproduces_native_modules)
             bool same = called && written.type == PIN_U8 && bytes &&
                         (size_t)bytes->count == length;
             for (size_t i = 0; same && i < length; i++) {
-                same = bytes->items[i].u8 == expected[i];
+                same = pin_array_get(bytes, i).u8 == expected[i];
             }
             if (!same) {
                 fprintf(

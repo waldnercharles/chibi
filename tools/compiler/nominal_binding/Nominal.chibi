@@ -47,8 +47,8 @@ StructStorage: int : 15;
 UnionStorage: int : 18;
 UnionFlag: int : 256;
 
-Declare :: pure fn(environment: binding.Environment, lexical: binding.Context, context: Context,
-                   types: SymbolType[], type_ids: uint64[], request: Request) -> Declaration {
+Declare :: (environment: binding.Environment, lexical: binding.Context, context: Context,
+            types: SymbolType[], type_ids: uint64[], request: Request) -> Declaration {
     record := request.kind == RecordKind;
     diagnostics: syntax.Diagnostic[] = [];
     if (record && (context.program_kind != LibraryKind || lexical.function >= 0)) {

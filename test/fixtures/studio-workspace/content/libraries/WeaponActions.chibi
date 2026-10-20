@@ -1,22 +1,27 @@
-library "WeaponActions" {
-    "Spawn Prototype At" :: fn(Prototype: name = "", Transform: struct<"Transform"> = null) -> (Entity: handle<"ecs.entity"> = 0) {
-        action spawn_prototype = engine["Spawn Prototype"](entry.Prototype)
+WeaponActions :: library {
+    import_component_write_1 :: (import_arg_0: entity = null, import_arg_1: Transform) -> (Value: Transform) {
+        import_arg_0.Transform = import_arg_1
+        return import_arg_1
+    }
+
+    Spawn_Prototype_At :: (Prototype: Prototype, Transform: struct<Transform> = null) -> (Entity: handle<ecs.entity> = 0) {
+        action spawn_prototype_action = spawn_prototype(entry.Prototype)
         after entry {
-            spawn_prototype()
+            spawn_prototype_action()
         }
-        after spawn_prototype {
-            await set_entity_transform(spawn_prototype.Entity, convert<"transform_to_cf">(entry.Transform))
-            return spawn_prototype.Entity
+        after spawn_prototype_action {
+            import_component_write_1(spawn_prototype_action.Entity, convert<transform_to_cf>(entry.Transform))
+            return spawn_prototype_action.Entity
         }
     }
-    "Fire Projectile" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "Projectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
-        action spawn_prototype_at = "Spawn Prototype At"(entry.Prototype, convert<"transform_to_cf">(entry.Origin))
+    Fire_Projectile :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: handle<ecs.entity> = 0) -> (Entity: handle<ecs.entity> = 0) {
+        action spawn_prototype_at = Spawn_Prototype_At(entry.Prototype, convert<transform_to_cf>(entry.Origin))
         after entry {
             spawn_prototype_at()
         }
         after spawn_prototype_at {
             spawn_prototype_at.Entity.Velocity = vec2_norm(entry.Direction).Result * spawn_prototype_at.Entity.Projectile.speed
-            spawn_prototype_at.Entity.Orientation = "DirectionMath"."Direction Orientation"(vec2_norm(entry.Direction).Result.x, vec2_norm(entry.Direction).Result.y)
+            spawn_prototype_at.Entity.Orientation = DirectionMath.Direction_Orientation(vec2_norm(entry.Direction).Result.x, vec2_norm(entry.Direction).Result.y)
             spawn_prototype_at.Entity.Projectile.damage = entry.Damage
             spawn_prototype_at.Entity.Collider.ignore_entity = entry.Shooter
             return spawn_prototype_at.Entity

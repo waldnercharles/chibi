@@ -466,6 +466,7 @@ native_capabilities *native_capabilities_new(
         const native_capability_pack *pack = &packs[p];
         const script_catalog *catalog = pack->catalog;
         if (!catalog || catalog->type_count < 0 || catalog->capability_count < 0 ||
+            catalog->template_count || catalog->specialization_count ||
             catalog->global_count < 0 || (catalog->type_count && !catalog->types) ||
             (catalog->capability_count && !catalog->capabilities) ||
             (catalog->global_count && !catalog->globals) ||

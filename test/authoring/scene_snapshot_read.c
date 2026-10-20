@@ -23,7 +23,7 @@
 #define READ_ERROR "Scene snapshot is not current"
 #define DISPATCH_BUDGET 1000
 static const char SOURCE
-    [] = "behavior SceneReadSpecimen {"
+    [] = "SceneReadSpecimen :: behavior {"
          "ids:entity[]=[]; parents:int[]=[]; names:string[]=[];"
          "observed:entity=0; parent:int=-1; text:string=\"\"; "
          "completed:bool=false;"
@@ -346,26 +346,15 @@ static bool result(int count, const char *child)
     REQUIRE(state("ids")->type_name && !strcmp(state("ids")->type_name, "ecs.entity"));
     REQUIRE(arrays[0]->type_name && !strcmp(arrays[0]->type_name, "ecs.entity"));
     for (int i = 0; i < count; i++) {
-        REQUIRE(
-            !arrays[0]->items[i].record && !arrays[1]->items[i].record &&
-            !arrays[2]->items[i].record
-        );
-        REQUIRE(
-            arrays[0]->items[i].type == PIN_HANDLE &&
-            arrays[0]->items[i].u64 == IDENTITIES[i]
-        );
-        REQUIRE(
-            arrays[0]->items[i].type_name &&
-            !strcmp(arrays[0]->items[i].type_name, "ecs.entity")
-        );
-        REQUIRE(
-            arrays[1]->items[i].type == PIN_I32 &&
-            arrays[1]->items[i].i == (i == 1 ? 0 : -1)
-        );
+        pin_value items[] = { pin_array_get(arrays[0], i),
+                              pin_array_get(arrays[1], i),
+                              pin_array_get(arrays[2], i) };
+        REQUIRE(!items[0].record && !items[1].record && !items[2].record);
+        REQUIRE(items[0].type == PIN_HANDLE && items[0].u64 == IDENTITIES[i]);
+        REQUIRE(items[0].type_name && !strcmp(items[0].type_name, "ecs.entity"));
+        REQUIRE(items[1].type == PIN_I32 && items[1].i == (i == 1 ? 0 : -1));
         const char *name = i == 0 ? "Root" : i == 1 ? child : "Other";
-        REQUIRE(
-            arrays[2]->items[i].type == PIN_STR && !strcmp(arrays[2]->items[i].str, name)
-        );
+        REQUIRE(items[2].type == PIN_STR && !strcmp(items[2].str, name));
     }
     return true;
 }

@@ -8,7 +8,7 @@ const K = Object.fromEntries(
     "system",
     "without",
     "state",
-    "shared",
+    "retain",
     "action",
     "event",
     "disabled",
@@ -17,8 +17,6 @@ const K = Object.fromEntries(
     "as",
     "bind",
     "events",
-    "pure",
-    "fn",
     "union",
     "struct",
     "switch",
@@ -30,18 +28,12 @@ const K = Object.fromEntries(
     "macro",
     "entry",
     "exit",
-    "owner",
-    "description",
-    "domain",
-    "dataflow",
-    "depth_limit",
     "query",
     "join",
     "if",
     "else",
     "while",
     "for",
-    "foreach",
     "in",
     "case",
     "sequence",
@@ -59,7 +51,6 @@ const K = Object.fromEntries(
     "false",
     "nil",
     "null",
-    "engine",
     "plain",
     "ref",
     "service",
@@ -68,6 +59,8 @@ const K = Object.fromEntries(
     "from",
     "split",
     "component",
+    "prototype",
+    "relationship",
   ].map((word) => [word, word]),
 );
 
@@ -109,24 +102,28 @@ module.exports = grammar({
     [$._common_declaration, $._statement],
     [$._single_type],
     [$.type_name],
-    [$._name, $._member_name],
-    [$._expression, $._name],
+    [$.query_parameter_list],
+    [$.record_declaration, $._name],
     [$.argument_list, $.parenthesized_expression],
-    [$._state_declaration_value, $.constant_declaration, $.local_declaration, $.label_statement],
+    [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
-    [$._state_declaration_value, $.local_declaration],
+    [$.constant_declaration, $.local_declaration, $.label_statement, $._member_name],
     [$._expression, $._member_name],
-    [$._expression, $._call_target, $._name],
+    [$.builtin_reference, $._member_name],
+    [$.boolean, $._member_name],
+    [$.nil, $._member_name],
     [$._expression, $._call_target],
-    [$.reduce_statement, $._expression],
-    [$.reduce_statement, $._call_target],
-    [$.measured_type, $._signature_type],
-    [$._compound_unit, $._expression],
+    [$.type_name, $._call_target],
+    [$.type_name, $._expression],
+    [$.type_name, $._expression, $._call_target],
+    [$.reduce_statement, $._name],
+    [$._name, $.unary_expression],
   ],
   rules: {
     source_file: ($) =>
       choice(
         $.behavior, $.library, $.system, $.component,
+        $.prototype_declaration, $.relationship_declaration,
         seq(field("package", $.package_header), repeat(choice(
           $.import_declaration,
           $.behavior, $.system, $.component,
@@ -142,22 +139,32 @@ module.exports = grammar({
       field("path", $.string),
       $._end,
     ),
+    prototype_declaration: ($) =>
+      seq(field("name", $._name), "::", K.prototype,
+        optional(field("bases", $.prototype_bases)),
+        field("body", $.prototype_body)),
+    prototype_bases: ($) => seq("(", comma($._name), ")"),
+    prototype_body: ($) =>
+      seq("{", repeat(choice($.prototype_component,
+        seq($.struct_field, choice(",", $._end)))), "}"),
+    prototype_component: ($) =>
+      seq(field("name", $._name), field("body", $.struct_expression)),
+    relationship_declaration: ($) =>
+      seq(field("name", $._name), "::", K.relationship,
+        field("body", $.struct_expression)),
     behavior: ($) =>
       seq(
-        K.behavior,
         field("name", $._name),
+        "::", K.behavior,
         field("body", $.declaration_body),
       ),
     library: ($) =>
-      seq(K.library, field("name", $._name), field("body", alias($.library_body, $.declaration_body))),
+      seq(field("name", $._name), "::", K.library, field("body", alias($.library_body, $.declaration_body))),
     system: ($) =>
       seq(
-        K.system,
         field("name", $._name),
-        optional(choice(
-          field("parameters", $.parameter_list),
-          seq(K.query, field("parameters", $.query_parameter_list)),
-        )),
+        "::", K.system,
+        field("parameters", $.parameter_list),
         repeat(field("join", $.query_join)),
         optional(field("without", $.without_clause)),
         optional(seq(K.where, field("where", $._expression))),
@@ -167,14 +174,14 @@ module.exports = grammar({
     // optional range and unit.
     component: ($) =>
       seq(
-        K.component,
         field("name", $._name),
+        "::", K.component,
         field("body", $.component_body),
       ),
     component_body: ($) => seq("{", repeat($.component_field), "}"),
     component_field: ($) =>
       seq(
-        field("name", $._name),
+        field("name", $._member_name),
         ":",
         field("type", choice($.type, $.measure, $.measured_type)),
         $._end,
@@ -204,13 +211,16 @@ module.exports = grammar({
     declaration_body: ($) => seq("{", repeat($._declaration), "}"),
     library_body: ($) => seq("{", repeat(choice($._declaration, $.record_declaration)), "}"),
     record_declaration: ($) =>
-      seq(field("name", $._name), "::", K.struct, field("body", $.record_body), optional(";")),
+      seq(field("name", $._name), "::", K.struct,
+        optional(field("parameters", $.parameter_list)),
+        field("body", $.record_body), optional(";")),
     record_body: ($) => seq("{", repeat($.record_field), "}"),
     record_field: ($) =>
-      seq(field("name", $._name), ":", field("type", $.type),
+      seq(field("name", $._member_name), ":", field("type", $.type),
         optional(seq("=", field("value", $._expression))), $._end),
     system_body: ($) =>
-      seq("{", repeat(choice($._declaration, $._statement)), "}"),
+      seq("{", repeat(choice($._common_declaration,
+        alias($._explicit_state_declaration, $.state_declaration), $._statement)), "}"),
     _declaration: ($) =>
       choice($.state_declaration, $._common_declaration),
     _common_declaration: ($) =>
@@ -226,18 +236,21 @@ module.exports = grammar({
         $.events_declaration,
         $.entry_declaration,
         $.exit_declaration,
-        $.metadata_declaration,
         $.query_declaration,
       ),
-    // Systems accept both declarations and statements at their root. Prefer
-    // persistent state there. Callable bodies require explicit state storage.
+    // Behavior/library roots retain implicit declarations. Executable bodies
+    // require an explicit retained qualifier; ordinary declarations are locals.
     state_declaration: ($) =>
-      prec.dynamic(2, seq(
-        optional(field("storage", choice(K.state, K.shared))),
-        $._state_declaration_value,
-      )),
+      prec.dynamic(1, choice($._state_declaration_value, $._explicit_state_declaration)),
     _explicit_state_declaration: ($) =>
-      seq(field("storage", choice(K.state, K.shared)), $._state_declaration_value),
+      seq(
+        field("name", $._name), ":", field("storage", K.retain),
+        choice(
+          seq(field("type", $.type), optional(seq("=", field("value", $._expression)))),
+          seq("=", field("value", $._expression)),
+        ),
+        $._end,
+      ),
     _state_declaration_value: ($) =>
       seq(
         choice(
@@ -247,12 +260,6 @@ module.exports = grammar({
             ":",
             field("type", $.type),
             optional(seq("=", field("value", $._expression))),
-          ),
-          seq(
-            field("type", $.type),
-            field("name", $._name),
-            "=",
-            field("value", $._expression),
           ),
         ),
         $._end,
@@ -300,7 +307,7 @@ module.exports = grammar({
     attribute: ($) => seq("@", field("name", $.identifier)),
     function_declaration: ($) =>
       seq(repeat(field("attribute", $.attribute)), field("name", $._name), "::",
-        optional(K.pure), optional(K.fn), $._callable_signature, optional(";")),
+        $._callable_signature, optional(";")),
     constant_declaration: ($) =>
       seq(field("name", $._name), choice("::", seq(":", field("type", $.type), ":")),
         field("value", $._expression), $._end),
@@ -309,7 +316,7 @@ module.exports = grammar({
         $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";")),
     union_variant: ($) => choice(
       field("literal", $.string),
-      seq(field("name", $.identifier), optional(field("parameters", $.parameter_list))),
+      seq(field("name", $._name), optional(field("parameters", $.parameter_list))),
     ),
     macro_declaration: ($) => seq(K.macro, $._callable_declaration),
     _callable_declaration: ($) =>
@@ -319,20 +326,13 @@ module.exports = grammar({
       ),
     _callable_signature: ($) =>
       seq(
-        optional(field("type_parameters", $.type_parameter_list)),
         field("parameters", $.parameter_list),
         optional(seq("->", field("results", choice($.parameter_list, $._signature_type)))),
-        field("body", $.callable_body),
+        optional("=>"), field("body", $.callable_body),
       ),
     callable_body: ($) =>
       seq("{", repeat(choice($._common_declaration,
         alias($._explicit_state_declaration, $.state_declaration), $._statement)), "}"),
-    type_parameter_list: ($) => seq("<", comma($.type_parameter), ">"),
-    type_parameter: ($) =>
-      seq(
-        field("name", $.identifier),
-        optional(seq(":", field("type", $.type))),
-      ),
     parameter_list: ($) => seq("(", optional(comma($.parameter)), ")"),
     query_parameter_list: ($) => comma($.parameter),
     query_join: ($) => seq(K.join, choice(
@@ -344,13 +344,9 @@ module.exports = grammar({
     ),
     parameter: ($) =>
       seq(
-        choice(
-          seq(
-            field("name", $._name),
-            optional(seq(":", field("type", $._signature_type))),
-          ),
-          seq(field("type", $._signature_type), field("name", $._name)),
-        ),
+        optional(field("comptime", "$")),
+        field("name", $._name),
+        optional(seq(":", field("type", $._signature_type))),
         optional(seq(choice(K.from, K.split), field("source", $._expression))),
         optional(seq("=", field("value", $._expression))),
       ),
@@ -359,15 +355,6 @@ module.exports = grammar({
     entry_declaration: ($) =>
       seq(K.entry, field("name", $._name), field("body", $.block)),
     exit_declaration: ($) => seq(K.exit, field("name", $._name), $._end),
-    metadata_declaration: ($) =>
-      seq(
-        field(
-          "kind",
-          choice(K.owner, K.description, K.domain, K.depth_limit, K.dataflow),
-        ),
-        optional(field("value", choice($._name, $.number))),
-        $._end,
-      ),
     query_declaration: ($) =>
       seq(K.query, field("value", $._expression), $._end),
     type: ($) => choice($._single_type, $.union_type),
@@ -390,11 +377,17 @@ module.exports = grammar({
             ),
           ),
         ),
-        field("name", $.type_name),
-        optional(field("arguments", $.type_argument_list)),
+        choice(
+          seq(field("name", choice($.type_name, $.type_binder)),
+            optional(field("arguments", $.type_argument_list))),
+          $.type_application,
+        ),
         repeat(choice(seq("[", "]"), "?")),
       ),
     type_name: ($) => seq($._name, repeat(seq(".", $._name))),
+    type_binder: ($) => seq("$", field("name", $._name)),
+    type_application: ($) =>
+      seq(field("function", $.type_name), field("arguments", $.argument_list)),
     type_argument_list: ($) => seq("<", comma($.type), ">"),
     block: ($) => seq("{", repeat($._statement), "}"),
     _statement: ($) =>
@@ -406,7 +399,6 @@ module.exports = grammar({
         $.if_statement,
         $.while_statement,
         $.for_statement,
-        $.foreach_statement,
         $.switch_statement,
         $.constant_declaration,
         $.sequence_statement,
@@ -419,13 +411,12 @@ module.exports = grammar({
         $.label_statement,
       ),
     local_declaration: ($) =>
-      choice(
-        seq(field("name", $._name), ":=", field("value", $._expression), $._end),
-        prec.dynamic(1, seq(
-          field("name", $._name), ":", field("type", $.type), "=",
-          field("value", $._expression), $._end,
-        )),
-      ),
+      prec.dynamic(2, seq(
+        field("name", $._name),
+        choice(":=", seq(":", field("type", $.type), "=")),
+        field("value", $._expression),
+        $._end,
+      )),
     assignment: ($) =>
       seq(
         field("target", $._expression),
@@ -479,23 +470,20 @@ module.exports = grammar({
         "..",
         field("last", $._expression),
       ),
-    foreach_statement: ($) =>
-      seq(
-        K.foreach,
-        choice($._foreach_header, seq("(", $._foreach_header, ")")),
-        field("body", $.block),
-      ),
     _foreach_header: ($) =>
-      seq(field("name", $._name), K.in, field("value", $._expression)),
+      seq(optional(seq(field("key", $._name), ",")),
+        field("name", $._name),
+        optional(seq(":", field("reference", K.ref))),
+        K.in, field("value", $._expression)),
     switch_statement: ($) =>
       seq(K.switch, field("value", $._expression), "{", repeat($.switch_arm), "}"),
     switch_arm: ($) =>
       seq(K.case, optional(field("value", choice($.variant_pattern, $._expression))),
         ":", field("body", choice($.block, alias($._case_statements, $.block)))),
     _case_statements: ($) => repeat1($._statement),
-    variant_pattern: ($) => seq(".", field("name", $.identifier),
+    variant_pattern: ($) => seq(".", field("name", $._name),
       optional(field("bindings", $.pattern_bindings))),
-    pattern_bindings: ($) => seq("(", optional(comma($.identifier)), ")"),
+    pattern_bindings: ($) => seq("(", optional(comma($._name)), ")"),
     sequence_statement: ($) =>
       seq(K.sequence, "{", repeat($.branch_statement), "}"),
     branch_statement: ($) => seq(K.branch, field("body", $.block)),
@@ -518,15 +506,13 @@ module.exports = grammar({
     ),
     _expression: ($) =>
       choice(
-        $.identifier,
-        alias(K.unordered, $.identifier),
+        $._name,
         alias("self", $.identifier),
         $.string,
         $.number,
         $.boolean,
         $.nil,
         $.builtin_reference,
-        $.engine_reference,
         $.member_expression,
         $.index_expression,
         $.call_expression,
@@ -540,7 +526,6 @@ module.exports = grammar({
         $.await_expression,
       ),
     builtin_reference: ($) => choice(K.state, K.event, K.entry),
-    engine_reference: ($) => seq(K.engine, "[", field("name", $.string), "]"),
     member_expression: ($) =>
       prec.left(
         P.member,
@@ -570,7 +555,7 @@ module.exports = grammar({
         ),
       )),
     _call_target: ($) => choice(
-      $.identifier, alias(K.unordered, $.identifier), $.string, $.engine_reference, $.builtin_reference,
+      $._name, $.builtin_reference,
       $.member_expression, $.index_expression, $.call_expression,
       $.parenthesized_expression,
     ),
@@ -599,8 +584,15 @@ module.exports = grammar({
       )),
     argument_name: ($) => seq($._member_name, repeat(seq(".", $._member_name))),
     is_expression: ($) => prec.left(P.comparison, seq(
-      field("value", $._expression), K.is, optional(field("negated", K.not)),
-      field("type", choice($.type, $.variant_pattern)), optional(field("binding", $.identifier)),
+      field("value", $._expression), K.is,
+      choice($._negated_is_pattern, seq(
+        field("type", choice($.type, $.variant_pattern)),
+        optional(field("binding", $._name)))),
+    )),
+    _negated_is_pattern: ($) => prec.left(P.member, seq(
+      field("negated", K.not),
+      field("type", choice($.type, $.variant_pattern)),
+      optional(field("binding", $._name)),
     )),
     as_expression: ($) => prec.left(P.comparison, seq(
       field("value", $._expression), K.as, field("type", $.type),
@@ -654,9 +646,21 @@ module.exports = grammar({
     array_expression: ($) => seq("[", optional(comma($._expression)), "]"),
     struct_expression: ($) => seq("{", optional(comma($.struct_field)), "}"),
     struct_field: ($) =>
-      seq(field("name", $._member_name), ":", field("value", $._expression)),
-    _name: ($) => choice($.identifier, $.string),
-    _member_name: ($) => reserved("member", choice($.identifier, $.string)),
+      seq(choice(
+        field("name", choice($._member_name, $.string)),
+        field("key", $.number),
+        seq("[", field("key", $._expression), "]"),
+      ), ":", field("value", $._expression)),
+    // Keep the callable path alive beside unary `not` until arguments resolve
+    // it; otherwise `not(Value: value)` commits to a parenthesized operand.
+    _name: ($) => choice($.identifier,
+      ...CONTEXTUAL.map((word) => alias(
+        word === "not" ? prec(P.unary, K[word]) : K[word], $.identifier))),
+    _member_name: ($) => reserved("member", choice(
+      $._name,
+      ...Object.entries(K).filter(([word]) => !CONTEXTUAL.includes(word))
+        .map(([, rule]) => alias(rule, $.identifier)),
+    )),
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
     number: ($) =>
       /(?:0[xX][0-9a-fA-F]+|[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/,

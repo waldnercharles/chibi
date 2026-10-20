@@ -10,10 +10,10 @@ Frame :: struct {
     phase: int;
 }
 
-FrameValue :: pure fn(expression: int, depth: int) -> Frame {
+FrameValue :: (expression: int, depth: int) -> Frame {
     return {expression: expression, depth: depth, phase: 0};
 }
-Frames :: pure fn(count: int) -> Frame[] {
+Frames :: (count: int) -> Frame[] {
     frames: Frame[] = [];
     index: int = 0;
     while (index < count) {
@@ -22,7 +22,7 @@ Frames :: pure fn(count: int) -> Frame[] {
     }
     return frames;
 }
-Values :: pure fn(count: int) -> scalar.Value[] {
+Values :: (count: int) -> scalar.Value[] {
     values: scalar.Value[] = [];
     index: int = 0;
     while (index < count) {
@@ -31,11 +31,11 @@ Values :: pure fn(count: int) -> scalar.Value[] {
     }
     return values;
 }
-Numeric :: pure fn(type: ir.Type) -> bool {
+Numeric :: (type: ir.Type) -> bool {
     return type.container == 0 && (!type.has_nominal || (type.flags & 32) != 0) &&
            type.storage >= 2 && type.storage <= 11 && (type.flags & 75) == 0;
 }
-ArithmeticStorage :: pure fn(left: ir.Type, right: ir.Type) -> int {
+ArithmeticStorage :: (left: ir.Type, right: ir.Type) -> int {
     if ((left.flags & ir.Untyped) != 0) {
         if ((right.flags & ir.Untyped) == 0) {
             return right.storage;
@@ -53,14 +53,14 @@ ArithmeticStorage :: pure fn(left: ir.Type, right: ir.Type) -> int {
     }
     return scalar.CommonInteger(left.storage, right.storage);
 }
-StringStorage :: pure fn(storage: int) -> bool {
+StringStorage :: (storage: int) -> bool {
     return storage == 12 || storage == 13;
 }
 
 // Evaluation revisits shared expressions. Only admissibility memoizes proofs:
 // caching values here would change which programs exceed the fixed step limit.
-Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                    literals: scalar.Value[], expression: int) -> scalar.Result {
+Evaluate :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+             literals: scalar.Value[], expression: int) -> scalar.Result {
     frames := Frames(257);
     lefts := Values(257);
     frames[0] = FrameValue(expression, 0);
@@ -202,9 +202,9 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
 // F32/F64, and integer operations produce integer storage (possibly wider or
 // narrower than operands). Arbitrary cross-family C union byte interpretations
 // are not an input format for this compiler component.
-Fold :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                arguments: ir.Argument[], literals: scalar.Value[],
-                expression: int, expected_storage: int) -> scalar.Result {
+Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+         arguments: ir.Argument[], literals: scalar.Value[],
+         expression: int, expected_storage: int) -> scalar.Result {
     checked := proof.Check(expressions, types, symbols, arguments,
                            {expression: expression, steps: 65536, scalar: true, has_steps: true});
     switch checked {

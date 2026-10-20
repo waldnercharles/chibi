@@ -44,7 +44,7 @@ static bool port(
         source->storage < PIN_FLOW || source->storage > PIN_ENUM ||
         source->container < PIN_CONTAINER_SINGLE || source->container > PIN_CONTAINER_MAP ||
         source->reference_kind < SCRIPT_REFERENCE_NONE ||
-        source->reference_kind > SCRIPT_REFERENCE_COMPONENT) {
+        source->reference_kind > SCRIPT_REFERENCE_RELATIONSHIP) {
         return fail(error, size, definition->canonical_name, "Invalid port declaration");
     }
     if ((source->type_name && !*source->type_name) ||
@@ -73,6 +73,19 @@ static bool port(
     if (source->type_name && (source->storage == PIN_STRUCT || source->storage == PIN_HANDLE ||
                               source->storage == PIN_ENUM)) {
         result->type.nominal = script_catalog_id("type", source->type_name);
+    }
+    if (source->reference_kind != SCRIPT_REFERENCE_NONE) {
+        script_type reference = script_reference_type(source->reference_kind);
+        if (source->storage != reference.storage ||
+            source->container != PIN_CONTAINER_SINGLE) {
+            return fail(error, size, definition->canonical_name, "Symbol reference has incompatible native storage");
+        }
+        result->type.nominal = reference.nominal;
+        result->has_default = source->has_default &&
+                              (reference.storage == PIN_U64
+                                   ? source->default_value.u64 != 0
+                                   : source->default_value.str &&
+                                         *source->default_value.str);
     }
     if (source->generic_group) {
         size_t bytes = strlen(definition->canonical_name) + 32;

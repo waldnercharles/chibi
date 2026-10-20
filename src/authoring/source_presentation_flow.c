@@ -393,7 +393,7 @@ static source_flow_target expression_flow(source_projection *p, int index, sourc
         return next;
     }
     const script_expression *e = &p->analysis->expressions[index];
-    if (!(e->effects & ~SCRIPT_EFFECT_READ)) {
+    if (!(e->effects & ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ))) {
         return next;
     }
     bool lazy = e->kind == SCRIPT_EXPR_FALLBACK ||
@@ -508,7 +508,8 @@ static source_flow_target statement(source_projection *p, int index, source_flow
         s->kind == SCRIPT_STMT_FOREACH) {
         source_flow_target repeat = { n, 1 };
         if (s->kind == SCRIPT_STMT_WHILE && s->expression >= 0 &&
-            (p->analysis->expressions[s->expression].effects & ~SCRIPT_EFFECT_READ)) {
+            (p->analysis->expressions[s->expression].effects &
+             ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ))) {
             repeat = entry;
         }
         source_flow body = { .next = repeat, .stop = flow.next, .repeat = repeat };
@@ -760,9 +761,6 @@ void source_view_function_graph(source_projection *p, int index)
             s->capability
         );
     }
-    for (int i = 0; i < f->type_parameter_count; i++) {
-        source_view_declaration(p, f->type_parameters[i]);
-    }
     node *returned = NULL;
     if (f->kind != SCRIPT_FUNCTION_HANDLER || f->result_count) {
         pin_spec *return_inputs = NULL, *return_outputs = NULL;
@@ -843,6 +841,7 @@ void source_view_function_graph(source_projection *p, int index)
             continue;
         }
         if (s->kind == SCRIPT_CONSTANT || s->kind == SCRIPT_LOCAL ||
+            s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE ||
             s->kind == SCRIPT_ACTION || s->kind == SCRIPT_RESULT ||
             s->kind == SCRIPT_LABEL) {
             source_view_declaration(p, i);

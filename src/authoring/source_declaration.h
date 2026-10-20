@@ -18,6 +18,7 @@ typedef struct
     source_text_kind text_kind;
     /* A project field definition, rather than a callable or prototype. */
     bool field;
+    bool relationship;
     uint64_t owner;
 } source_catalog_definition;
 typedef enum
@@ -26,6 +27,7 @@ typedef enum
     SOURCE_REFERENCE_PROTOTYPE,
     SOURCE_REFERENCE_PROGRAM,
     SOURCE_REFERENCE_SYSTEM,
+    SOURCE_REFERENCE_RELATIONSHIP,
 } source_catalog_reference_kind;
 typedef struct
 {

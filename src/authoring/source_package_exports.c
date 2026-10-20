@@ -175,8 +175,11 @@ static bool members(exports_builder *b)
     const script_analysis *a = b->analysis;
     for (int i = 0; i < a->symbol_count; i++) {
         const script_symbol *symbol = &a->symbols[i];
+        /* A template has no function until a call specializes it, and only
+         * its own package specializes it. */
         if (symbol->scope != a->package_scope ||
-            symbol->declaration.start < 0 || symbol->disabled) {
+            symbol->declaration.start < 0 || symbol->disabled ||
+            (symbol->kind == SCRIPT_FUNCTION && symbol->function < 0)) {
             continue;
         }
         script_package_export member = { .name = symbol->name,

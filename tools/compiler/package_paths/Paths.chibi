@@ -18,7 +18,7 @@ Path :: union {
     | Invalid
 }
 
-Bounded :: pure fn(path: string) -> bool {
+Bounded :: (path: string) -> bool {
     size := strings.ByteLength(path);
     if (size >= 4096) {
         return false;
@@ -33,7 +33,7 @@ Bounded :: pure fn(path: string) -> bool {
     return true;
 }
 
-Within :: pure fn(root: string, path: string) -> bool {
+Within :: (root: string, path: string) -> bool {
     if (root == "/") {
         return strings.ByteAt(path, 0) == 47;
     }
@@ -45,7 +45,7 @@ Within :: pure fn(root: string, path: string) -> bool {
     return next < 0 || next == 47;
 }
 
-Normalize :: pure fn(request: Request) -> Path {
+Normalize :: (request: Request) -> Path {
     if (!request.has_path || !Bounded(request.path)) {
         return Path.Invalid;
     }

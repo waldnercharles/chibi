@@ -51,6 +51,97 @@ static bool same_component(const ecs_component_desc *a, const ecs_component_desc
            a->index == b->index &&
            (a->type == b->type || ecs_layout_hash(a->type) == ecs_layout_hash(b->type));
 }
+static bool same_relationship(const ecs_relationship_desc *a, const ecs_relationship_desc *b)
+{
+    return a->id == b->id && same_name(a->name, b->name) &&
+           same_name(a->key, b->key) && a->traits == b->traits &&
+           a->on_delete_target == b->on_delete_target;
+}
+static bool prepare_relationships(scene *scene, const scene_spec *spec, char *error, size_t size)
+{
+    if (spec->relationship_count < 0 || spec->relationship_count > 1024 ||
+        spec->pair_count < 0 || spec->pair_count > 1024 ||
+        (spec->relationship_count && !spec->relationships) ||
+        (spec->pair_count && !spec->pairs)) {
+        return fail(error, size, "invalid prepared relationship count or storage");
+    }
+    ecs_relationship_desc *relationships = arena_alloc(
+        &scene->storage,
+        (size_t)spec->relationship_count * sizeof *relationships
+    );
+    scene->spec.relationships = relationships;
+    scene_pair *pairs = arena_alloc(&scene->storage, (size_t)spec->pair_count * sizeof *pairs);
+    scene->spec.pairs = pairs;
+    if (!spec->relationship_count) {
+        return !spec->pair_count ||
+               fail(error, size, "prepared pairs have no relationship declarations");
+    }
+    ecs_world *world = ecs_world_new();
+    bool valid = true;
+    for (int i = 0; valid && i < spec->relationship_count; i++) {
+        ecs_relationship_desc desc = spec->relationships[i];
+        valid = desc.id && desc.name && desc.name[0] && desc.key && desc.key[0] &&
+                !(desc.traits &
+                  ~(ECS_REL_EXCLUSIVE | ECS_REL_ACYCLIC | ECS_REL_TRAVERSABLE)) &&
+                desc.on_delete_target >= ECS_CLEANUP_REMOVE &&
+                desc.on_delete_target <= ECS_CLEANUP_PANIC;
+        if (desc.traits & ECS_REL_TRAVERSABLE) {
+            desc.traits |= ECS_REL_ACYCLIC;
+        }
+        for (int j = 0; valid && j < i; j++) {
+            valid = strcmp(desc.name, relationships[j].name) &&
+                    strcmp(desc.key, relationships[j].key);
+        }
+        for (int j = 0; valid && j < spec->object_count; j++) {
+            for (int k = 0; valid && k < spec->objects[j].component_count; k++) {
+                const ecs_component_desc
+                    *component = spec->objects[j].components[k].desc;
+                valid = desc.id != component->id &&
+                        !same_name(desc.name, component->name) &&
+                        !same_name(desc.key, component->key);
+            }
+        }
+        valid = valid && !ecs_world_register_relationship(world, &desc, NULL);
+        relationships[i] = desc;
+        relationships[i].name = own(&scene->storage, desc.name);
+        relationships[i].key = own(&scene->storage, desc.key);
+    }
+    ecs_entity *entities = NULL;
+    for (int i = 0; valid && spec->pair_count && i < spec->object_count; i++) {
+        apush(entities, ecs_world_create_entity(world));
+    }
+    for (int i = 0; valid && i < spec->pair_count; i++) {
+        scene_pair pair = spec->pairs[i];
+        valid = pair.object >= 0 && pair.object < spec->object_count &&
+                pair.target >= 0 && pair.target < spec->object_count &&
+                pair.relationship >= 0 &&
+                pair.relationship < spec->relationship_count;
+        for (int j = 0; valid && j < i; j++) {
+            scene_pair previous = pairs[j];
+            if (previous.object == pair.object &&
+                previous.relationship == pair.relationship &&
+                (previous.target == pair.target ||
+                 (relationships[pair.relationship].traits & ECS_REL_EXCLUSIVE))) {
+                valid = false;
+            }
+        }
+        if (valid) {
+            valid = !ecs_world_record_add_pair(
+                world,
+                entities[pair.object],
+                relationships[pair.relationship].id,
+                entities[pair.target],
+                (uint64_t)i
+            );
+        }
+        pairs[i] = pair;
+    }
+    valid = valid && !ecs_world_apply_commands(world);
+    afree(entities);
+    ecs_world_free(world);
+    return valid ||
+           fail(error, size, "invalid prepared relationship identity, target or cycle");
+}
 typedef struct
 {
     const ecs_component_desc *desc;
@@ -264,6 +355,9 @@ scene *scene_prepare(const scene_spec *spec, char *error, size_t size)
         }
         links[i] = spec->links[i];
     }
+    if (!prepare_relationships(scene, spec, error, size)) {
+        goto failed;
+    }
     return scene;
 failed:
     afree(rows);
@@ -341,6 +435,14 @@ scene_component scene_object_component_at(const scene *scene, int object, int co
 }
 static bool validate_world(const scene *scene, ecs_world *world, bool installed, char *error, size_t size)
 {
+    for (int i = 0; i < scene->spec.relationship_count; i++) {
+        const ecs_relationship_desc *desc = &scene->spec.relationships[i];
+        const ecs_relationship_desc *found = ecs_world_relationship(world, desc->id);
+        if ((found && !same_relationship(desc, found)) ||
+            (installed && !found) || ecs_world_component(world, desc->id)) {
+            return fail(error, size, "prepared relationship schema differs from the world");
+        }
+    }
     for (int i = 0; i < scene->spec.object_count; i++) {
         const scene_object *object = &scene->spec.objects[i];
         for (int j = 0; j < object->component_count; j++) {
@@ -368,6 +470,14 @@ int scene_register_components(const scene *scene, ecs_world *world, char *error,
     if (!validate_world(scene, world, false, error, size)) {
         return -1;
     }
+    for (int i = 0; i < scene->spec.relationship_count; i++) {
+        const ecs_relationship_desc *desc = &scene->spec.relationships[i];
+        if (!ecs_world_relationship(world, desc->id) &&
+            ecs_world_register_relationship(world, desc, NULL)) {
+            fail(error, size, "prepared relationship could not be registered");
+            return -1;
+        }
+    }
     for (int i = 0; i < scene->spec.object_count; i++) {
         const scene_object *object = &scene->spec.objects[i];
         for (int j = 0; j < object->component_count; j++) {
@@ -381,10 +491,18 @@ int scene_register_components(const scene *scene, ecs_world *world, char *error,
     }
     return 0;
 }
-void scene_instance_free(scene_instance *instance)
+bool scene_instance_release(scene_instance *instance, char *error, size_t size)
 {
     if (!instance) {
-        return;
+        return true;
+    }
+    if (ecs_world_prepare_owned_destruction(
+            instance->world,
+            instance->entities,
+            acount(instance->entities)
+        )) {
+        fail(error, size, "scene release requires a quiescent world without external Panic links");
+        return false;
     }
     /* Children go before their parents, whose destruction would take them. */
     for (int i = acount(instance->entities) - 1; i >= 0; i--) {
@@ -401,6 +519,13 @@ void scene_instance_free(scene_instance *instance)
     afree(instance->entities);
     scene_free(instance->scene);
     free(instance);
+    return true;
+}
+void scene_instance_free(scene_instance *instance)
+{
+    bool released = scene_instance_release(instance, NULL, 0);
+    assert(released);
+    (void)released;
 }
 static scene_instance *instantiate(
     scene *scene,
@@ -473,6 +598,21 @@ static scene_instance *instantiate(
             }
         }
     }
+    for (int i = 0; i < scene->spec.pair_count; i++) {
+        scene_pair pair = scene->spec.pairs[i];
+        if (ecs_world_record_add_pair(
+                world,
+                instance->entities[pair.object],
+                scene->spec.relationships[pair.relationship].id,
+                instance->entities[pair.target],
+                (uint64_t)i
+            )) {
+            goto failed;
+        }
+    }
+    if (scene->spec.pair_count && ecs_world_apply_commands(world)) {
+        goto failed;
+    }
     for (int i = 0; i < scene->spec.link_count; i++) {
         scene_link link = scene->spec.links[i];
         const ecs_component_desc *desc = scene->spec.objects[link.object]
@@ -519,6 +659,24 @@ scene_link scene_link_at(const scene *scene, int index)
 {
     assert(index >= 0 && index < scene->spec.link_count);
     return scene->spec.links[index];
+}
+int scene_relationship_count(const scene *scene)
+{
+    return scene->spec.relationship_count;
+}
+const ecs_relationship_desc *scene_relationship_at(const scene *scene, int index)
+{
+    assert(index >= 0 && index < scene->spec.relationship_count);
+    return &scene->spec.relationships[index];
+}
+int scene_pair_count(const scene *scene)
+{
+    return scene->spec.pair_count;
+}
+scene_pair scene_pair_at(const scene *scene, int index)
+{
+    assert(index >= 0 && index < scene->spec.pair_count);
+    return scene->spec.pairs[index];
 }
 int scene_object_behavior_count(const scene *scene, int index)
 {

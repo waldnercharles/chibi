@@ -19,6 +19,7 @@ static pin_value set_result(arena *a, const pin_array *source)
     pin_array_index(a, copy);
     return (pin_value){ .type = source->element_type,
                         .type_name = copy->type_name,
+                        .record = copy->record,
                         .container = PIN_CONTAINER_SET,
                         .ptr = copy };
 }
@@ -60,17 +61,20 @@ pin_value native_set_add(const pin_value *inputs, int count, arena *a)
         return set_result(a, set);
     }
     int length = set ? set->count : 0;
-    pin_value *items = arena_alloc(a, ((size_t)length + 1) * sizeof *items);
-    if (length) {
-        memcpy(items, set->items, (size_t)length * sizeof *items);
-    }
-    items[length] = inputs[1];
     pin_array source = { .element_type = set ? set->element_type : inputs[1].type,
                          .type_name = set ? set->type_name : inputs[1].type_name,
-                         .count = length + 1,
-                         .capacity = length + 1,
-                         .items = items };
-    return set_result(a, &source);
+                         .record = set ? set->record : inputs[1].record };
+    pin_array *out = pin_array_snapshot_like(a, &source, length + 1);
+    if (!out || (length && pin_array_snapshot_copy(a, out, 0, set, 0, length)) ||
+        pin_array_snapshot_set(a, out, length, &inputs[1])) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    pin_array_index(a, out);
+    return (pin_value){ .type = source.element_type,
+                        .type_name = out->type_name,
+                        .record = out->record,
+                        .container = PIN_CONTAINER_SET,
+                        .ptr = out };
 }
 
 pin_value native_set_remove(const pin_value *inputs, int count, arena *a)
@@ -80,32 +84,25 @@ pin_value native_set_remove(const pin_value *inputs, int count, arena *a)
     int removed = pin_array_find(set, &inputs[1]);
     int length = set ? set->count : 0;
     int result_count = length - (removed >= 0);
-    pin_value *items = arena_alloc(a, (size_t)result_count * sizeof *items);
-    if (result_count && !items) {
-        return (pin_value){ .type = PIN_STRUCT, .container = PIN_CONTAINER_SET };
-    }
-    if (removed < 0 && length) {
-        memcpy(items, set->items, (size_t)length * sizeof *items);
-    } else if (removed >= 0) {
-        if (removed) {
-            memcpy(items, set->items, (size_t)removed * sizeof *items);
-        }
-        if (removed + 1 < length) {
-            memcpy(
-                items + removed,
-                set->items + removed + 1,
-                (size_t)(length - removed - 1) * sizeof *items
-            );
-        }
-    }
     pin_array source = {
         .element_type = set ? set->element_type : inputs[0].type,
         .type_name = set ? set->type_name : inputs[0].type_name,
-        .count = result_count,
-        .capacity = result_count,
-        .items = items,
+        .record = set ? set->record : inputs[0].record,
     };
-    return set_result(a, &source);
+    pin_array *out = pin_array_snapshot_like(a, &source, result_count);
+    if (!out ||
+        (removed < 0 && length && pin_array_snapshot_copy(a, out, 0, set, 0, length)) ||
+        (removed >= 0 &&
+         (pin_array_snapshot_copy(a, out, 0, set, 0, removed) ||
+          pin_array_snapshot_copy(a, out, removed, set, removed + 1, length - removed - 1)))) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    pin_array_index(a, out);
+    return (pin_value){ .type = source.element_type,
+                        .type_name = out->type_name,
+                        .record = out->record,
+                        .container = PIN_CONTAINER_SET,
+                        .ptr = out };
 }
 
 #define CALL(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                                                   \

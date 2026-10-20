@@ -258,13 +258,13 @@ static bool compile(const char *source, behavior_backend backend, bool roundtrip
 TEST_CASE(reductions_prepared_ordered_fold_preserves_storage_and_clamps)
 {
     const char
-        *source = "system Fold(input: ReductionInput) {"
-                  "reduce input.target.ReductionResult.total += input.amount;"
-                  "reduce input.target.ReductionResult.clamped += input.amount;"
-                  "reduce input.target.ReductionResult.count += 1;"
-                  "reduce input.target.ReductionResult.small += 1;"
-                  "reduce input.target.ReductionResult.single += 1;"
-                  "reduce input.target.ReductionResult.wide += 1; }";
+        *source = "Fold :: system(input: ReductionInput) {reduce "
+                  "input.target.ReductionResult.total += input.amount;reduce "
+                  "input.target.ReductionResult.clamped += input.amount;reduce "
+                  "input.target.ReductionResult.count += 1;reduce "
+                  "input.target.ReductionResult.small += 1;reduce "
+                  "input.target.ReductionResult.single += 1;reduce "
+                  "input.target.ReductionResult.wide += 1; }";
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         ecs_entity entity = target((reduction_result){
@@ -310,8 +310,8 @@ TEST_CASE(reductions_unordered_opt_in_regroups_contributions)
             snprintf(
                 source,
                 sizeof source,
-                "system Sum(input: ReductionInput) { reduce %s"
-                "input.target.ReductionResult.total += input.amount; }",
+                "Sum :: system(input: ReductionInput) { reduce "
+                "%sinput.target.ReductionResult.total += input.amount; }",
                 unordered ? "unordered " : ""
             );
             REQUIRE(compile(source, backends[backend], false));
@@ -326,11 +326,11 @@ TEST_CASE(reductions_unordered_opt_in_regroups_contributions)
 }
 TEST_CASE(reductions_min_max_preserve_candidate_nan_and_signed_zero)
 {
-    const char *source = "system Bounds(input: ReductionInput) {"
-                         "reduce min(input.target.ReductionResult.minimum, "
-                         "input.amount);"
-                         "reduce max(input.target.ReductionResult.maximum, "
-                         "input.amount); }";
+    const char
+        *source = "Bounds :: system(input: ReductionInput) {reduce "
+                  "min(input.target.ReductionResult.minimum, "
+                  "input.amount);reduce "
+                  "max(input.target.ReductionResult.maximum, input.amount); }";
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         ecs_entity negative = target((reduction_result){ 0 });
@@ -353,9 +353,9 @@ TEST_CASE(reductions_min_max_preserve_candidate_nan_and_signed_zero)
 }
 TEST_CASE(reductions_failures_and_discard_do_not_publish_partial_results)
 {
-    const char *
-        source = "system Sum(input: ReductionInput) {"
-                 "reduce input.target.ReductionResult.total += input.amount; }";
+    const char
+        *source = "Sum :: system(input: ReductionInput) {reduce "
+                  "input.target.ReductionResult.total += input.amount; }";
     for (int backend = 0; backend < 2; backend++) {
         for (int mode = 0; mode < 3; mode++) {
             prepare();
@@ -390,21 +390,21 @@ TEST_CASE(reductions_failures_and_discard_do_not_publish_partial_results)
 TEST_CASE(reductions_scalar_helper_closure_streams_and_preserves_fallbacks)
 {
     static const char *const sources[] = {
-        "system Sum(input: ReductionInput) {"
-        "Twice :: (amount: double) -> double { return amount * 2; }"
-        "Adjust :: (amount: double) -> double { adjusted := Twice(amount);"
-        "if adjusted > 0 { adjusted += 1; } return adjusted; }"
-        "reduce input.target.ReductionResult.total += Adjust(input.amount); }",
-        "system Sum(input: ReductionInput) {"
-        "Read :: (extra: double) -> double { if self.ReductionInput {"
-        "return self.ReductionInput.amount + extra; } return extra; }"
-        "reduce input.target.ReductionResult.total += Read(0); }",
-        "system Sum(input: ReductionInput) {"
-        "First :: (amounts: double[]) -> double { return amounts[0]; }"
-        "reduce input.target.ReductionResult.total += First([input.amount]); }",
-        "system Sum(input: ReductionInput) {"
-        "Unused :: (amount: double) -> double { return amount * 2; }"
-        "reduce input.target.ReductionResult.total += input.amount; }"
+        "Sum :: system(input: ReductionInput) {Twice :: (amount: double) -> "
+        "double { return amount * 2; }Adjust :: (amount: double) -> double { "
+        "adjusted := Twice(amount);if adjusted > 0 { adjusted += 1; } return "
+        "adjusted; }reduce input.target.ReductionResult.total += "
+        "Adjust(input.amount); }",
+        "Sum :: system(input: ReductionInput) {Read :: (extra: double) -> "
+        "double { if self.ReductionInput {return self.ReductionInput.amount + "
+        "extra; } return extra; }reduce input.target.ReductionResult.total += "
+        "Read(0); }",
+        "Sum :: system(input: ReductionInput) {First :: (amounts: double[]) -> "
+        "double { return amounts[0]; }reduce "
+        "input.target.ReductionResult.total += First([input.amount]); }",
+        "Sum :: system(input: ReductionInput) {Unused :: (amount: double) -> "
+        "double { return amount * 2; }reduce "
+        "input.target.ReductionResult.total += input.amount; }"
     };
     for (int backend = 0; backend < 2; backend++) {
         for (int example = 0; example < 4; example++) {
@@ -578,7 +578,7 @@ TEST_CASE(reductions_mixed_public_ir_preserves_serial_failure_owner)
         prepare();
         ecs_entity first = target((reduction_result){ .total = 10 });
         ecs_entity second = target((reduction_result){ .total = 20 });
-        REQUIRE(lower_source("system Mixed(result: ReductionResult) { reduce result.total += 1; }"));
+        REQUIRE(lower_source("Mixed :: system(result: ReductionResult) { reduce result.total += 1; }"));
         REQUIRE(plan->function_count == 1);
         behavior_function *body = raw_mixed_reductions();
         REQUIRE(body);
@@ -719,7 +719,7 @@ TEST_CASE(reductions_effects_include_component_payload_reads)
      * predicate load, and pure native payload reads all retain dependencies. */
     for (int mode = 0; mode < 3; mode++) {
         prepare();
-        REQUIRE(lower_source("system Add(result: ReductionResult) { reduce result.total += 1; }"));
+        REQUIRE(lower_source("Add :: system(result: ReductionResult) { reduce result.total += 1; }"));
         behavior_function *predicate = raw_predicate(mode);
         REQUIRE(predicate);
         int leaf = plan->query_count;

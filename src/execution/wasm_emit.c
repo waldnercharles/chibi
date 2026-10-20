@@ -249,8 +249,7 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
     if (i->op == BF_EQ || i->op == BF_NE || behavior_function_bitwise(i->op)) {
         return binary_op(i->op, type) != 0;
     }
-    if (type != PIN_F32 && type != PIN_F64 && type != PIN_I32 &&
-        type != PIN_I64 && type != PIN_U32 && type != PIN_U64) {
+    if (type != PIN_F32 && type != PIN_F64 && !(type >= PIN_I8 && type <= PIN_U64)) {
         return false;
     }
     return binary_op(i->op, type) != 0;

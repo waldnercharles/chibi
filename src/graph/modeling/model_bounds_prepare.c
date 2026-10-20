@@ -68,7 +68,7 @@ model_bounds_plan *model_prepare_bounds(
                 row.point_count = points->count;
                 int width = !strcmp(points->type_name, "ShaderVec2") ? 2 : 3;
                 for (int k = 0; k < points->count; k++) {
-                    memcpy(row.points[k], points->items[k].ptr, (size_t)width * sizeof(float));
+                    memcpy(row.points[k], pin_array_data(points, k), (size_t)width * sizeof(float));
                 }
             } else if (pin->type == PIN_STR) {
                 input->resource = acount(p->resources);

@@ -63,6 +63,16 @@ script_constructor_plan script_constructor_await(
     script_range,
     size_t pointer_size
 );
+/* The internal catalog row naming one collection's key and element types. Its
+ * identity depends only on the container and both type tags; storage owns the
+ * name. Callers publish it when the catalog lacks that identity. */
+script_catalog_type script_constructor_collection(
+    arena *,
+    pin_container,
+    script_type key,
+    script_type value,
+    size_t pointer_size
+);
 /* Pure ownership adapter: copies exactly the selected variants/fields. No
  * lookup, deduplication, type selection or publication policy is performed.
  * False means no publication or a failed metadata snapshot. Accepted output

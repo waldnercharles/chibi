@@ -31,25 +31,25 @@ static const script_catalog catalog = { 0 };
 static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
 static const input siblings[] = {
-    { "/display/pkg/a.chibi", "pkg/a.chibi", "package sample\nMain :: fn(value: int) -> int { return Add(value) + Bias(); }\n" },
-    { "/display/pkg/z.chibi", "pkg/z.chibi", "package sample\nAdd :: fn(value: int) -> int { return value + 2; }\nBias :: fn() -> int { return 3; }\nBase: int : 4;\n" },
+    { "/display/pkg/a.chibi", "pkg/a.chibi", "package sample\nMain :: (value: int) -> int { return Add(value) + Bias(); }\n" },
+    { "/display/pkg/z.chibi", "pkg/z.chibi", "package sample\nAdd :: (value: int) -> int { return value + 2; }\nBias :: () -> int { return 3; }\nBase: int : 4;\n" },
 };
 static const input unrelated = {
     "/display/pkg/00-extra.chibi",
     "pkg/00-extra.chibi",
     "package sample\nPair :: struct { left: int; right: int = Base; }\n"
     "Choice :: union { None | Value(amount: int) };\n"
-    "Unrelated :: fn() -> int { return 99; }\n",
+    "Unrelated :: () -> int { return 99; }\n",
 };
 static const input good = {
     "/display/pkg/good.chibi",
     "pkg/good.chibi",
-    "package sample\nGood :: fn() -> int { return 1; }\n",
+    "package sample\nGood :: () -> int { return 1; }\n",
 };
 static const input bad = {
     "/display/pkg/bad.chibi",
     "pkg/bad.chibi",
-    "package sample\nBroken :: fn() -> int { return missing; }\n",
+    "package sample\nBroken :: () -> int { return missing; }\n",
 };
 
 static void clear_runtime()
@@ -215,8 +215,8 @@ TEST_CASE(package_sibling_functions_execute_on_each_native_backend)
 TEST_CASE(package_sibling_mutual_recursion_executes_on_each_native_backend)
 {
     const input recursive[] = {
-        { "/display/pkg/even.chibi", "pkg/even.chibi", "package sample\nEven :: fn(n: int) -> int { if (n == 0) { return 1; } return Odd(n - 1); }\n" },
-        { "/display/pkg/odd.chibi", "pkg/odd.chibi", "package sample\nOdd :: fn(n: int) -> int { if (n == 0) { return 0; } return Even(n - 1); }\n" },
+        { "/display/pkg/even.chibi", "pkg/even.chibi", "package sample\nEven :: (n: int) -> int { if (n == 0) { return 1; } return Odd(n - 1); }\n" },
+        { "/display/pkg/odd.chibi", "pkg/odd.chibi", "package sample\nOdd :: (n: int) -> int { if (n == 0) { return 0; } return Even(n - 1); }\n" },
     };
     REQUIRE(analyze(0, recursive, 2, false));
     REQUIRE(valid(0));
@@ -236,7 +236,7 @@ TEST_CASE(package_sibling_records_unions_and_constants_execute)
     const input consumer = {
         "/display/pkg/typed.chibi",
         "pkg/typed.chibi",
-        "package sample\nTyped :: fn(value: int) -> int { "
+        "package sample\nTyped :: (value: int) -> int { "
         "pair: Pair = {left: value}; "
         "choice := Choice.Value(pair.left + pair.right); "
         "if (value == 0) { choice = Choice.None; } "
@@ -279,11 +279,11 @@ TEST_CASE(package_secondary_document_diagnostics_keep_local_origins)
     const input invalid[] = {
         { "/display/pkg/syntax.chibi",
           "pkg/syntax.chibi",
-          "package sample\nBroken :: fn() -> int { return 1;\n" },
+          "package sample\nBroken :: () -> int { return 1;\n" },
         bad,
         { "/display/pkg/header.chibi",
           "pkg/header.chibi",
-          "package other\nOther :: fn() -> int { return 2; }\n" },
+          "package other\nOther :: () -> int { return 2; }\n" },
         { "/display/pkg/import.chibi",
           "pkg/import.chibi",
           "package sample\nimport math \"core:math\"\n" },
@@ -345,7 +345,7 @@ TEST_CASE(package_duplicate_exports_reject_and_declaration_discovery_skips_bodie
     const input duplicate = {
         "/display/pkg/duplicate.chibi",
         "pkg/duplicate.chibi",
-        "package sample\nGood :: fn() -> int { return 9; }\n"
+        "package sample\nGood :: () -> int { return 9; }\n"
     };
     const input documents[] = { good, duplicate };
     REQUIRE(analyze(0, documents, 2, false));

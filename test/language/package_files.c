@@ -69,7 +69,7 @@ static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 static const char
     *main_text = "package app\nimport lib \"../math\"\nimport core "
-                 "\"core:base\"\nMain :: fn(value: int) -> int { return "
+                 "\"core:base\"\nMain :: (value: int) -> int { return "
                  "Add(value) + lib.Offset() + core.Bias(); }\n";
 
 static void path(char out[1024], const char *base, const char *name)
@@ -119,9 +119,9 @@ static void tree(const char *project_root, const char *core_root)
     directory(project_root, "math");
     directory(core_root, "base");
     write_source(project_root, "app/a.chibi", main_text);
-    write_source(project_root, "app/z.chibi", "package app\nAdd :: fn(value: int) -> int { return value + 1; }\n");
-    write_source(project_root, "math/a.chibi", "package numbers\nOffset :: fn() -> int { return 2; }\n");
-    write_source(core_root, "base/a.chibi", "package base\nBias :: fn() -> int { return 3; }\n");
+    write_source(project_root, "app/z.chibi", "package app\nAdd :: (value: int) -> int { return value + 1; }\n");
+    write_source(project_root, "math/a.chibi", "package numbers\nOffset :: () -> int { return 2; }\n");
+    write_source(core_root, "base/a.chibi", "package base\nBias :: () -> int { return 3; }\n");
 }
 static void setup()
 {
@@ -281,12 +281,12 @@ TEST_CASE(package_files_relocation_preserves_logical_identity)
 TEST_CASE(package_files_reload_reuses_and_invalidates_dependents)
 {
     for (int b = 0; b < 2; b++) {
-        write_source(project, "math/a.chibi", "package numbers\nOffset :: fn() -> int { return 2; }\n");
+        write_source(project, "math/a.chibi", "package numbers\nOffset :: () -> int { return 2; }\n");
         REQUIRE(prepare(0, -1, backends[b], project, core));
         REQUIRE(prepare(1, 0, backends[b], project, core));
         REQUIRE(authoring_packages_reused(owners[1]) == 3);
         REQUIRE(app(0)->generation == app(1)->generation);
-        write_source(project, "math/a.chibi", "package numbers\nOffset :: fn() -> int { return 5; }\n");
+        write_source(project, "math/a.chibi", "package numbers\nOffset :: () -> int { return 5; }\n");
         REQUIRE(prepare(2, 1, backends[b], project, core));
         REQUIRE(
             authoring_packages_reused(owners[2]) == 1 &&
@@ -304,7 +304,7 @@ TEST_CASE(package_files_reload_reuses_and_invalidates_dependents)
 TEST_CASE(package_files_missing_import_retains_parsed_diagnostic)
 {
     const char *text = "package app\nimport missing \"../absent\"\nMain :: "
-                       "fn(value: int) -> int { return value; }\n";
+                       "(value: int) -> int { return value; }\n";
     write_source(project, "app/a.chibi", text);
     snapshot = load(project, core);
     REQUIRE(snapshot);
@@ -382,7 +382,7 @@ TEST_CASE(package_files_duplicate_physical_roots_reject_and_overlaps_scan_once)
     REQUIRE(!snapshot && load_error.message[0]);
     char nested[1024];
     path(nested, project, "math");
-    write_source(project, "app/a.chibi", "package app\nimport lib \"core:\"\nMain :: fn(value: int) -> int { return Add(value) + lib.Offset(); }\n");
+    write_source(project, "app/a.chibi", "package app\nimport lib \"core:\"\nMain :: (value: int) -> int { return Add(value) + lib.Offset(); }\n");
     snapshot = load(project, nested);
     REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
     int count;
@@ -403,7 +403,7 @@ TEST_CASE(package_files_duplicate_physical_roots_reject_and_overlaps_scan_once)
     directory(hidden_parent, "core");
     path(hidden_core, hidden_parent, "core");
     directory(hidden_core, "base");
-    write_source(hidden_core, "base/a.chibi", "package base\nBias :: fn() -> int { return 3; }\n");
+    write_source(hidden_core, "base/a.chibi", "package base\nBias :: () -> int { return 3; }\n");
     write_source(project, "app/a.chibi", main_text);
     snapshot = load(project, hidden_core);
     REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));

@@ -202,7 +202,7 @@ static bool environment(
     }
     const script_catalog_variant *tables = variant(b, "Environment", "Tables");
     REQUIRE(tables && tables->field_count == 5);
-    REQUIRE(!pin_union_value(&input, tables->tag, values, 5, out));
+    REQUIRE(!compiler_fixture_union(&input, tables->tag, values, 5, out));
     return true;
 }
 static bool read(const pin_value *row, const char *name, pin_value *out)
@@ -376,9 +376,7 @@ static bool compare(
         );
         REQUIRE(declaration(&detached, &result, &declared));
         if (retain >= 0) {
-            REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b][retain], &kept[b][retain], &result)
-            );
+            REQUIRE(!compiler_fixture_snapshot(&retained[b][retain], &kept[b][retain], &result));
             REQUIRE(declaration(&retained[b][retain], &kept[b][retain], &declared));
         }
     }
@@ -579,13 +577,13 @@ TEST_CASE(lexical_binding_raw_facts_match)
 TEST_CASE(lexical_binding_analyzer_facts_match)
 {
     const char *sources[] = {
-        "library Facts { Run :: pure fn(value: int) -> int { local: int = "
+        "Facts :: library { Run :: (value: int) -> int { local: int = "
         "value; return local; } }",
-        "library Facts { Seed: int : 3; Run :: pure fn(value: int) -> "
+        "Facts :: library { Seed: int : 3; Run :: (value: int) -> "
         "int { local: int = value + Seed; return local; } }",
-        "package facts\nRun :: pure fn(value: int) -> int { local: int = "
+        "package facts\nRun :: (value: int) -> int { local: int = "
         "value; return local; }",
-        "package facts\nRun :: pure fn(value: int) -> int { if value > 0 { "
+        "package facts\nRun :: (value: int) -> int { if value > 0 { "
         "local: int = value; return local; } return value; }",
     };
     const script_catalog native = { 0 };

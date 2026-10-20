@@ -96,33 +96,33 @@ Result :: union {
                cycle: int[], documents: Document[], nodes: SnapshotNode[], imports: ResolvedImport[])
 }
 
-FileRange :: pure fn(file: int) -> Range {
+FileRange :: (file: int) -> Range {
     return {start: 0, end: 0, line: 1, column: 1, document: file};
 }
-HeaderRange :: pure fn(document: Document) -> Range {
+HeaderRange :: (document: Document) -> Range {
     return {start: document.header_start, end: document.header_end,
             line: document.header_line, column: document.header_column,
             document: document.header_document};
 }
-ImportRange :: pure fn(imported: ResolvedImport) -> Range {
+ImportRange :: (imported: ResolvedImport) -> Range {
     return {start: imported.range_start, end: imported.range_end,
             line: imported.range_line, column: imported.range_column,
             document: imported.range_document};
 }
-PathRange :: pure fn(imported: ResolvedImport) -> Range {
+PathRange :: (imported: ResolvedImport) -> Range {
     return {start: imported.path_start, end: imported.path_end,
             line: imported.path_line, column: imported.path_column, document: imported.file};
 }
-Diagnostic :: pure fn(range: Range, message: string) -> syntax.Diagnostic {
+Diagnostic :: (range: Range, message: string) -> syntax.Diagnostic {
     return {start: range.start, end: range.end, line: range.line,
             column: range.column, document: range.document, message: message};
 }
-Stamp :: pure fn(diagnostic: syntax.Diagnostic, file: int) -> syntax.Diagnostic {
+Stamp :: (diagnostic: syntax.Diagnostic, file: int) -> syntax.Diagnostic {
     diagnostic.document = file;
     return diagnostic;
 }
-Reject :: pure fn(diagnostic: syntax.Diagnostic, documents: Document[],
-                  nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
+Reject :: (diagnostic: syntax.Diagnostic, documents: Document[],
+           nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
     error: graph.Error = {code: 0, file: -1, import_index: -1,
                           related_file: -1, related_import: -1, cycle_count: 0};
     return Result.Rejected(diagnostic, FileRange(-1), error,
@@ -131,15 +131,15 @@ Reject :: pure fn(diagnostic: syntax.Diagnostic, documents: Document[],
 
 // Byte input is retained as a bounded prefix by the external adapter. Its exact
 // declared size stays separate so NUL detection follows routing, as in stage zero.
-FileSize :: pure fn(size: uint64) -> bool {
+FileSize :: (size: uint64) -> bool {
     return (size & 0xfffffffffff80000) == 0 ||
            size == 524288;
 }
-TotalSize :: pure fn(size: uint64) -> bool {
+TotalSize :: (size: uint64) -> bool {
     return (size & 0xffffffffff800000) == 0 ||
            size == 8388608;
 }
-ValidUTF8 :: pure fn(text: string) -> bool {
+ValidUTF8 :: (text: string) -> bool {
     size := strings.ByteLength(text);
     index: int = 0;
     while (index < size) {
@@ -185,27 +185,27 @@ ValidUTF8 :: pure fn(text: string) -> bool {
     }
     return true;
 }
-Retained :: pure fn(input: Input) -> Document {
+Retained :: (input: Input) -> Document {
     return {original_path: input.path, path: input.path, directory: "", key: "", identity: "",
             text: input.text, root: 0, syntax_root: -1, header_start: 0, header_end: 0,
             header_line: 0, header_column: 0, header_document: 0,
             node_start: 0, node_count: 0, first_import: 0, import_count: 0,
             has_key: false, has_syntax: false, has_header: false};
 }
-Rebase :: pure fn(link: int, offset: int) -> int {
+Rebase :: (link: int, offset: int) -> int {
     if (link < 0) {
         return link;
     }
     return link + offset;
 }
-Node :: pure fn(node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
+Node :: (node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
     return {kind: node.kind, start: node.start, end: node.end, row: node.row, column: node.column,
             parent: Rebase(node.parent, offset), first_child: Rebase(node.first_child, offset),
             next_sibling: Rebase(node.next_sibling, offset), error: node.error,
             missing: node.missing, has_error: node.has_error, field: field,
             is_named: is_named, is_extra: is_extra};
 }
-Resolved :: pure fn(imported: extract.Import, directory: string) -> ResolvedImport {
+Resolved :: (imported: extract.Import, directory: string) -> ResolvedImport {
     return {file: imported.file, alias: imported.alias, explicit_alias: imported.explicit_alias,
             range_start: imported.range_start, range_end: imported.range_end,
             range_line: imported.range_line, range_column: imported.range_column,
@@ -217,8 +217,8 @@ Resolved :: pure fn(imported: extract.Import, directory: string) -> ResolvedImpo
             alias_line: imported.alias_line, alias_column: imported.alias_column,
             alias_document: imported.alias_document, directory: directory};
 }
-GraphFailure :: pure fn(error: graph.Error, cycle: int[], documents: Document[],
-                        nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
+GraphFailure :: (error: graph.Error, cycle: int[], documents: Document[],
+                 nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
     range := FileRange(-1);
     if (error.import_index >= 0) {
         range = ImportRange(imports[error.import_index]);
@@ -261,7 +261,7 @@ GraphFailure :: pure fn(error: graph.Error, cycle: int[], documents: Document[],
 
 // The parser supplies syntax facts only. All validation, phase ordering,
 // retention, routing and graph diagnostics below are ordinary authored policy.
-Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Input[], sizes: uint64[]) -> Result {
+Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: uint64[]) -> Result {
     documents: Document[] = [];
     nodes: SnapshotNode[] = [];
     imports: ResolvedImport[] = [];
@@ -348,7 +348,7 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
                         files = array_add(files, graphFile);
                         pendingStarts = array_add(pendingStarts, length(pending));
                         pendingCounts = array_add(pendingCounts, length(items));
-                        foreach (item in items) {
+                        for (item in items) {
                             pending = array_add(pending, item);
                         }
                 }

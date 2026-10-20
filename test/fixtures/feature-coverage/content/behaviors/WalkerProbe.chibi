@@ -1,4 +1,4 @@
-behavior WalkerProbe {
+WalkerProbe :: behavior {
     on Tick(dt) {
         if !self.Character3D.on_floor {
             self.Body3D.linear_velocity.y -= 320 * dt

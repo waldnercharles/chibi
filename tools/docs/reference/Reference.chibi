@@ -10,17 +10,17 @@ import strings "core:strings"
 Colon :: 58;
 
 // A comment line's text, without its slashes.
-CommentText :: pure fn(line: string) -> string {
+CommentText :: (line: string) -> string {
     return markdown.Trim(markdown.From(markdown.Trim(line), 2));
 }
 
-IsComment :: pure fn(line: string) -> bool {
+IsComment :: (line: string) -> bool {
     return markdown.StartsWith(markdown.Trim(line), "//");
 }
 
 // The name a top-level declaration line declares, or "" for any other line:
 // `Name :: ...` and typed constants such as `Name: int : 5;`.
-Declared :: pure fn(line: string) -> string {
+Declared :: (line: string) -> string {
     if (line == "" || markdown.IsBlank(markdown.At(line, 0)) || IsComment(line) ||
         markdown.StartsWith(line, "package ") || markdown.StartsWith(line, "import ") ||
         markdown.StartsWith(line, "@")) {
@@ -38,7 +38,7 @@ Declared :: pure fn(line: string) -> string {
 }
 
 // The last index of pattern in text, or -1.
-FindLast :: pure fn(text: string, pattern: string) -> int {
+FindLast :: (text: string, pattern: string) -> int {
     found := -1;
     index := markdown.FindText(text, pattern, 0);
     while (index >= 0) {
@@ -50,7 +50,7 @@ FindLast :: pure fn(text: string, pattern: string) -> int {
 
 // A declaration's signature: a record's or union's lines as written, and
 // otherwise its lines joined up to the body or the closing semicolon.
-Signature :: pure fn(lines: string[], start: int, end: int) -> string {
+Signature :: (lines: string[], start: int, end: int) -> string {
     text: string = "";
     whole := markdown.FindText(lines[start], ":: struct", 0) > 0 ||
              markdown.FindText(lines[start], ":: union", 0) > 0;
@@ -83,15 +83,15 @@ Signature :: pure fn(lines: string[], start: int, end: int) -> string {
 }
 
 // The package folder of a path inside the collection.
-Package :: pure fn(path: string) -> string {
+Package :: (path: string) -> string {
     return markdown.Folder(path);
 }
 
 // The Markdown of one file's declarations, under its package's heading when
 // the file starts a package, and the index in lines of each of its lines:
 // a comment's own, and its declaration's for the lines written around it.
-FileMarkdown :: pure fn(collection: string, path: string, first: bool, lines: string[], start: int,
-                        end: int) -> (md: string[], origins: int[]) {
+FileMarkdown :: (collection: string, path: string, first: bool, lines: string[], start: int,
+                 end: int) -> (md: string[], origins: int[]) {
     if (first) {
         md = array_add(md, format_text("## {}", strings.BaseName(Package(path))));
         md = array_add(md, "");
@@ -126,7 +126,7 @@ FileMarkdown :: pure fn(collection: string, path: string, first: bool, lines: st
             md = array_add(md, "```");
             md = array_add(md, "");
             origins = markdown.Pad(origins, length(md), index);
-            foreach (at in comment) {
+            for (at in comment) {
                 md = array_add(md, CommentText(lines[at]));
                 origins = array_add(origins, at);
             }
@@ -146,8 +146,8 @@ FileMarkdown :: pure fn(collection: string, path: string, first: bool, lines: st
 // The Markdown of the reference page, and the index in lines of each of its
 // lines. paths names each file relative to the collection's folder, and
 // starts[i] is where file i begins in lines.
-Markdown :: pure fn(collection: string, paths: string[], starts: int[],
-                    lines: string[]) -> (md: string[], origins: int[]) {
+Markdown :: (collection: string, paths: string[], starts: int[],
+             lines: string[]) -> (md: string[], origins: int[]) {
     md = [format_text("# The {} packages", collection), "",
           "Each package's declarations and the comments written above them in its source.", ""];
     origins = markdown.Pad(origins, length(md), 0);
@@ -171,16 +171,16 @@ Markdown :: pure fn(collection: string, paths: string[], starts: int[],
 // The reference page's body, with Markdown's arguments; page is the
 // collection's folder, and the last two arguments map links as
 // markdown.Render does.
-Render :: pure fn(collection: string, paths: string[], starts: int[], lines: string[], page: string,
-                  sources: string[], outputs: string[]) -> string[] {
+Render :: (collection: string, paths: string[], starts: int[], lines: string[], page: string,
+           sources: string[], outputs: string[]) -> string[] {
     reference := Markdown(collection, paths, starts, lines);
     return markdown.Render(reference.md, page, sources, outputs);
 }
 
 // A report, as markdown.Dropped writes it, of each link Render writes as text,
 // at the file and line of the comment that holds it.
-Unpublished :: pure fn(collection: string, paths: string[], starts: int[], lines: string[], page: string,
-                       sources: string[], outputs: string[]) -> string[] {
+Unpublished :: (collection: string, paths: string[], starts: int[], lines: string[], page: string,
+                sources: string[], outputs: string[]) -> string[] {
     reference := Markdown(collection, paths, starts, lines);
     rendered := markdown.Page(reference.md, page, sources, outputs);
     reports: string[] = [];

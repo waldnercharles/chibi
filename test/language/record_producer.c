@@ -12,9 +12,9 @@
     "behaviors: int = 0; active: bool = true; marked: bool = false; "          \
     "hidden: bool = false; locked: bool = false; renaming: bool = false; } "
 static const char *const sources[] = {
-    "library Rows { " ROW
+    "Rows :: library { " ROW
     "Make :: (text: string) -> Row { return {key: text, label: text}; } }",
-    "library Rows { " ROW
+    "Rows :: library { " ROW
     "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return empty; } "
     "if n == 0 { return []; } a: Row = {key: \"a\", label: \"A\"}; "
     "if n == 1 { return [a]; } return [a, a, a]; } }"

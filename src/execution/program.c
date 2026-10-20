@@ -15,6 +15,7 @@
 #include "runtime/tasks.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
 
@@ -314,11 +315,25 @@ static void collect_imports(const execution_module *m, execution_module ***modul
         collect_imports(import, modules);
     }
 }
+static bool registration_state(const execution_program *p, int index)
+{
+    return p->registration_state || p->module->plan.states[index].shared;
+}
+static bool system_module(const execution_module *module)
+{
+    for (int i = 0; i < module->plan.function_count; i++) {
+        if (module->plan.functions[i].kind == EXECUTION_FUNCTION_SYSTEM) {
+            return true;
+        }
+    }
+    return false;
+}
 static execution_program *program_new(
     execution_module *m,
     ecs_world *world,
     const service_binding *services,
-    bool imports
+    bool imports,
+    bool registration
 )
 {
     assert(m);
@@ -330,6 +345,7 @@ static execution_program *program_new(
     p->enabled = true;
     p->module = m;
     p->owner_program = p;
+    p->registration_state = registration;
     execution_module_retain(m);
     p->world = world;
     p->budget = 10000;
@@ -359,7 +375,7 @@ static execution_program *program_new(
     }
     p->shared = xcalloc((size_t)(m->plan.state_count + 1), sizeof *p->shared);
     for (int i = 0; i < m->plan.state_count; i++) {
-        if (m->plan.states[i].shared &&
+        if (registration_state(p, i) &&
             state_assign(&p->shared[i], &m->plan.states[i].initial)) {
             execution_program_free(p);
             return NULL;
@@ -399,7 +415,7 @@ static execution_program *program_new(
                     apush(child_services, p->services[j]);
                 }
             }
-            execution_program *child = program_new(modules[i], world, child_services, false);
+            execution_program *child = program_new(modules[i], world, child_services, false, registration);
             afree(child_services);
             if (!child) {
                 afree(modules);
@@ -437,11 +453,11 @@ static execution_program *program_new(
 }
 execution_program *execution_program_new(execution_module *m, ecs_world *world, const service_binding *services)
 {
-    return program_new(m, world, services, true);
+    return program_new(m, world, services, true, system_module(m));
 }
 static state_value *instance_storage(execution_instance *instance, int index)
 {
-    return instance->program->module->plan.states[index].shared
+    return registration_state(instance->program, index)
              ? &instance->program->shared[index]
              : &instance->states[index];
 }
@@ -510,7 +526,7 @@ static void collect_state(execution_program *p, state_value *state)
 static void collect_scope(execution_program *owner, execution_program *scope)
 {
     for (int s = 0; s < scope->module->plan.state_count; s++) {
-        if (scope->module->plan.states[s].shared) {
+        if (registration_state(scope, s)) {
             collect_state(owner, &scope->shared[s]);
         } else {
             for (int i = 0; i < acount(scope->instances); i++) {
@@ -802,7 +818,7 @@ static execution_instance *attach_row(execution_program *p, uint64_t owner, cons
         );
     }
     for (int i = 0; i < count; i++) {
-        if (!p->module->plan.states[i].shared) {
+        if (!registration_state(p, i)) {
             int result = state_assign(
                 &instance->states[i],
                 &p->module->plan.states[i].initial
@@ -1414,7 +1430,7 @@ static int subscription_matches(
     if (value.container >= PIN_CONTAINER_ARRAY) {
         const pin_array *array = value.ptr;
         for (int i = 0; array && i < array->count; i++) {
-            matches |= array->items[i].u64 == owner;
+            matches |= pin_array_get(array, i).u64 == owner;
         }
     } else {
         matches = value.u64 == owner;
@@ -2567,11 +2583,11 @@ static void preserve_shared(execution_program *next, const execution_program *be
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
-        if (!state->shared) {
+        if (!registration_state(next, i)) {
             continue;
         }
         int old = matching_state(before->module, state);
-        if (old >= 0) {
+        if (old >= 0 && registration_state(before, old)) {
             int status = state_assign(&next->shared[i], &before->shared[old].value);
             assert(!status);
             (void)status;
@@ -2616,7 +2632,8 @@ static void preserve_state(
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
         int index = matching_state(before->module, state);
-        if (state->shared || index < 0) {
+        if (registration_state(next, i) || index < 0 ||
+            registration_state(before, index)) {
             continue;
         }
         int status = execution_instance_set_state(

@@ -393,13 +393,32 @@ static bool declares(const char *text, TSNode node, const char *name)
     }
     return false;
 }
+/* Whether callable binds name throughout its body: as a parameter, or a
+ * local or constant at the top of the body. */
+static bool shadows(const char *text, TSNode callable, const char *name)
+{
+    TSNode parameters = field(callable, "parameters"), body = field(callable, "body");
+    for (uint32_t i = 0; i < named_count(parameters); i++) {
+        if (spelled(text, field(ts_node_named_child(parameters, i), "name"), name)) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < named_count(body); i++) {
+        TSNode child = ts_node_named_child(body, i);
+        if ((is(child, "local_declaration") || is(child, "constant_declaration")) &&
+            spelled(text, field(child, "name"), name)) {
+            return true;
+        }
+    }
+    return false;
+}
 /* Whether code outside handler reads alias, where no callable around the
- * read declares that name itself. */
+ * read binds that name itself. */
 static bool reads_alias(const char *text, TSNode node, TSNode handler, const char *alias)
 {
     bool callable = is(node, "function_declaration") ||
                     is(node, "macro_declaration") || is(node, "handler");
-    if (ts_node_eq(node, handler) || (callable && declares(text, node, alias))) {
+    if (ts_node_eq(node, handler) || (callable && shadows(text, node, alias))) {
         return false;
     }
     if (is(node, "identifier")) {
@@ -453,21 +472,21 @@ static char *header_text(const payload_event *event, const bool *used)
     snprintf(header + at, size - (size_t)at, ") ");
     return header;
 }
-/* The `event name = Other` declaration that names an event alias, or a null
+/* The nearest `event name = Other` declaration in scope at node, or a null
  * node. */
 static TSNode event_alias(const char *text, TSNode node, TSNode name)
 {
-    if (is(node, "event_declaration")) {
-        TSNode declared = field(node, "name");
-        uint32_t length = ts_node_end_byte(name) - ts_node_start_byte(name);
-        bool same = ts_node_end_byte(declared) - ts_node_start_byte(declared) == length &&
-                    !strncmp(text + ts_node_start_byte(declared), text + ts_node_start_byte(name), length);
-        return same ? node : (TSNode){ 0 };
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        TSNode found = event_alias(text, ts_node_named_child(node, i), name);
-        if (!ts_node_is_null(found)) {
-            return found;
+    uint32_t length = ts_node_end_byte(name) - ts_node_start_byte(name);
+    for (TSNode scope = ts_node_parent(node); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        for (uint32_t i = 0; i < named_count(scope); i++) {
+            TSNode child = ts_node_named_child(scope, i),
+                   declared = field(child, "name");
+            if (is(child, "event_declaration") &&
+                ts_node_end_byte(declared) - ts_node_start_byte(declared) == length &&
+                !strncmp(text + ts_node_start_byte(declared), text + ts_node_start_byte(name), length)) {
+                return child;
+            }
         }
     }
     return (TSNode){ 0 };
@@ -500,7 +519,7 @@ static void rewrite_handler(source_rewrite *s, TSNode handler)
 {
     TSNode name = field(handler, "name"), body = field(handler, "body");
     TSNode alias = field(handler, "alias"), parameters = field(handler, "parameters");
-    TSNode declared = event_alias(s->text, s->root, name);
+    TSNode declared = event_alias(s->text, handler, name);
     TSNode event = ts_node_is_null(declared) ? name : field(declared, "value");
     char *alias_name = ts_node_is_null(alias) ? NULL : text_of(s->text, alias);
     char *event_name = is(event, "identifier") ? text_of(s->text, event) : NULL;
@@ -513,7 +532,8 @@ static void rewrite_handler(source_rewrite *s, TSNode handler)
                           .alias = alias_name,
                           .edits = &s->edits,
                           .owned = &s->owned };
-    if (!event_name || !ts_node_is_null(event_alias(s->text, s->root, event))) {
+    if (!event_name || (!ts_node_is_null(declared) &&
+                        !ts_node_is_null(event_alias(s->text, declared, event)))) {
         refuse(&r, name, "names its event by a path or an alias of an alias; rewrite it by hand");
     }
     if (!known) {
@@ -536,6 +556,9 @@ static void rewrite_handler(source_rewrite *s, TSNode handler)
     }
     if (listed > count) {
         refuse(&r, r.parameters, "lists more parameters than its event's payload has");
+    }
+    if (alias_name && declares(s->text, body, alias_name)) {
+        refuse(&r, handler, "declares a name that its payload alias uses; rename it");
     }
     reads(&r, body);
     for (int k = 0; k < count && !r.refusal; k++) {

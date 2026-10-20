@@ -7857,7 +7857,8 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
         "type_name=\"ecs.entity\"\n}\n",
         "version 3\nname \"Big\"\ndomain \"event\"\n(array)variables {\n"
         "    - id=1 name=\"Count\" type=\"int64\"\n"
-        "    - id=2 name=\"Tags\" type=\"int\" container=\"set\"\n}\n",
+        "    - id=2 name=\"Tags\" type=\"int\" container=\"set\"\n"
+        "    - id=3 name=\"Level\" type=\"int\" type_name=\"int\"\n}\n",
     };
     const struct
     {
@@ -7888,6 +7889,11 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
           "event.Other; at = Other } }",
           "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>, "
           "Point: struct<CF_V2>) { last = Other; at = Point } }" },
+        { "B :: behavior { on Contact_Begin(point, other) { "
+          "destroy(event.other) "
+          "} }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "destroy(Other) } }" },
         { "B :: behavior { on Contact_Begin(other, point) { last = event.Other "
           "} }",
           "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
@@ -7905,6 +7911,11 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
         { "B :: behavior { event hurt = Damage; on hurt { total += Amount } }",
           "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
           "total += Amount } }" },
+        { "B :: behavior { Watch :: () { event moved = Died; on moved(a) { "
+          "last = a } } event moved = Damage; on moved(a, b) { total += a } }",
+          "B :: behavior { Watch :: () { event moved = Died; on moved :: "
+          "(Source: handle<ecs.entity>) { last = Source } } event moved = "
+          "Damage; on moved :: (Amount: int) { total += Amount } }" },
         { "B :: behavior { event hurt = Damage; on hurt(a: int, s: "
           "handle<ecs.entity>) { total += a } }",
           "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
@@ -7924,8 +7935,9 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
           "= Source } }" },
         /* Every scalar spells as itself, and a field the migration cannot
          * spell stops only a handler that reads it. */
-        { "B :: behavior { on Big { steps += Count } }",
-          "B :: behavior { on Big :: (Count: int64) { steps += Count } }" },
+        { "B :: behavior { on Big { steps += Count + Level } }",
+          "B :: behavior { on Big :: (Count: int64, Level: int) { steps += "
+          "Count + Level } }" },
     };
     char error[256], *migrated = NULL;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -7966,6 +7978,12 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
         { "B :: behavior { on Contact_Begin(o, p) { if p is Point o { Keep(o) "
           "} } }",
           "declares a name that a payload parameter" },
+        { "B :: behavior { on Damage as m { for m in items { total += m.Amount "
+          "} } }",
+          "its payload alias" },
+        { "B :: behavior { Peek :: () -> float { if total > 0 { m := 1.0 } "
+          "return m.x } on Damage as m { total += m.Amount } }",
+          "outside the handler" },
         /* An event the migration cannot find has only the fields of a typed
          * list. */
         { "B :: behavior { on Vanished(source) { } }", "untyped payload field" },

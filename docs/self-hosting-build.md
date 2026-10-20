@@ -263,15 +263,17 @@ No self-hosting or serializer completion is claimed by this handoff.
 
 ## Bootstrap artifact
 
-`make bootstrap-artifact` writes the recovery artifact of the stage-one package
-compiler to `build-release/bootstrap` (`BOOTSTRAP_ARTIFACT`). It runs in two
-steps:
+The recovery artifact of the stage-one package compiler is checked in at
+`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`.
+`make bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
+folder). It runs in two steps:
 
 1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
    stage zero, compiles the compiler sources to stage two and has the compiler
    host compile them again with stage two, to the same bytes. With
    `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`.
+   arguments there as `compiler.chibip` and `compile.json`. The target
+   leaves the seed in `build-release/bootstrap.seed` and removes it after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
    sources the seed compiled are the ones on disk, with every file of their
@@ -326,31 +328,22 @@ It then compiles the recorded sources from disk with the artifact:
 check takes one compile, about 7 s, or two when the sources changed, about
 14 s; the whole selector takes about 12 s.
 
-The recovery artifact for clean checkouts is published, not checked in. It is
-a prerelease of this repository, tagged `compiler-bootstrap-VERSION-` followed
-by the start of the closure's SHA-256, with `compiler.chibip` and
-`bootstrap.json` as its assets. Studio only selects `engine-<commit>` tags, so
-it never mistakes one for an engine release. `tools/compiler/bootstrap.kdl`
-pins the published artifact with `published repository=... tag=...
-manifest=SHA256`. The manifest's own SHA-256 is pinned, and the manifest in
-turn pins the closure's.
+A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
+`chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
+tools/compiler --core packages/core` and needs neither stage zero, nor a
+compiler built from Chibi, nor a network. Git stores the artifact by content,
+and the manifest pins the closure's SHA-256, so a damaged closure is refused
+before it loads. The closure is 5.8 MB, which Git stores in about 0.9 MB. Its
+target is the value layout and prepared ABI rather than an operating system,
+so one artifact serves every host with that ABI.
 
-`make bootstrap-recover` runs `tools/toolchain/Bootstrap.chibi` in the build
-host. That program:
-1. downloads the release with `gh release download` into
-   `build-release/bootstrap-published`;
-2. runs `chibi-compiler-host --bootstrap ... --published`, which refuses a
-   manifest without the pinned SHA-256 before it loads anything.
-
-The repository is private, so `gh` must be signed in. This needs no stage zero
-and no compiler built from Chibi.
-
-To publish a new artifact, for example when `minimum` rises or the host's
-target changes:
-1. Run `make bootstrap-artifact` on a clean tree.
-2. Run `gh release create compiler-bootstrap-VERSION-PREFIX --prerelease
-   --target REVISION`, uploading both files.
-3. Update the pin in `bootstrap.kdl`.
+Rewrite the artifact only when it can no longer recover the compiler: when
+`minimum` rises past its version, or when the host's target changes. A change
+to the compiler sources alone needs no new artifact, because recovery reaches
+the fixpoint in a second compile. To rewrite it:
+1. Run `make bootstrap-artifact` on a clean tree, so that it records a
+   revision without `-dirty`.
+2. Commit `tools/compiler/bootstrap` together with the change that needs it.
 
 The final normal installed workflow remains subject to `PLAN.md`: it must
 compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables

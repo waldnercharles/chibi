@@ -1,0 +1,1003 @@
+{
+  "format": 1,
+  "version": 1,
+  "minimum": 1,
+  "revision": "da03e96ddc5b2400e2b9723317612e26264778bf",
+  "entry": "0x140a9546d9e8c296",
+  "closure": {
+    "file": "compiler.chibip",
+    "bytes": 5835640,
+    "sha256": "fd1b5aaf8c6c8662f22db611d7e76c4febf84a7431f848776b29df3b0f947f67"
+  },
+  "project": "/project",
+  "core": "/sdk/core",
+  "sources": [
+    {
+      "path": "package_compiler/Compile.chibi",
+      "bytes": 53772,
+      "sha256": "3d0f80bb83b11d3efd8c872ebf28a6e768985a887077304e7862974f7151756e"
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "bytes": 54446,
+      "sha256": "6e88e4035bfd793f957949252ec5808a80835b6ad2f9560865d0f8db5cbb0397"
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "bytes": 100926,
+      "sha256": "7c30fb54f340075fdefd79085cf06268c39dd0c46fa376a5a5b6034f0f9cd452"
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "bytes": 2857,
+      "sha256": "528e8178ce82747ec6d29e799becce49752a832bde3eefdc616140bf8b5b9a4e"
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2295,
+      "sha256": "910f369a28ebf299d0f579860c09647a9534121fa31b59145f87ba13b38b1574"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 16315,
+      "sha256": "36e8d012bc9321abf0524d9b3200f8c7a9e613fe5299d27245064f446a0b4c4a"
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "bytes": 16032,
+      "sha256": "9ac64a0e0342299e63e6c3df105cdb442641fc42a8f4678b7c62a3c6209e141a"
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "bytes": 1572,
+      "sha256": "08033bb48962808699170e19e84deaacd4943e3a8f46ce58b5c72692fc258f80"
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "bytes": 8412,
+      "sha256": "220ee54fe1d287e85bcdb05165dbc2b3c09d2e5b7cf45c16a4d01d5f7fd044ed"
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "bytes": 4295,
+      "sha256": "33fb84c382eeace1fcee9d2abb85324ccaf5e87108f488db2c0494f5509510ad"
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "bytes": 13356,
+      "sha256": "13227cbbe9f1f7e6f68e617c82f38b14e33fc63a32fbe8a746a2cd7914e62723"
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "bytes": 2820,
+      "sha256": "1af79ba59e3de5dcb1287381289573f8e0a4e64f6f8a9518fdca09b67f7c3254"
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "bytes": 8755,
+      "sha256": "f4301ccccf7d8a50b9ca58274258fba181b79f663d7239786e84b52b46956dc7"
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "bytes": 24709,
+      "sha256": "126f146128bba8e105fc39d717d6886e59383c733944bbd8cd0ec6ad6c441de0"
+    }
+  ],
+  "target": [
+    {
+      "pointer_storage": 9,
+      "pointer_size": 8,
+      "value_size": 40,
+      "payload_offset": 8,
+      "results_offset": 184,
+      "type_offset": 0,
+      "container_offset": 16,
+      "name_offset": 24,
+      "record_offset": 32,
+      "count_offset": 24,
+      "items_offset": 32,
+      "data_failure": 4,
+      "argument_failure": 7
+    },
+    815607347564551042,
+    [
+      "CONSTANT",
+      "VARIABLE",
+      "DELTA",
+      "ARGUMENT",
+      "LOCAL",
+      "PRESENT",
+      "TYPE_NAME",
+      "OWNER",
+      "WORLD",
+      "CONTEXT",
+      "STORAGE_NAME",
+      "ARRAY",
+      "QUERY_VARIABLE",
+      "QUERY",
+      "HOST_SLOT",
+      "HOST_SERVICE",
+      "COMMAND_SERVICE",
+      "COMMAND_RESULT",
+      "OWN_NAME",
+      "COPY_STRING",
+      "COPY_ARRAY",
+      "INTERN_STRING",
+      "STRING_EQUAL",
+      "STATE_SELECT",
+      "RANDOM",
+      "ADD",
+      "SUB",
+      "MUL",
+      "DIV",
+      "MOD",
+      "NEG",
+      "ABS",
+      "MIN",
+      "MAX",
+      "CONVERT",
+      "CAST",
+      "FLAGS",
+      "LT",
+      "LE",
+      "GT",
+      "GE",
+      "EQ",
+      "NE",
+      "SELECT",
+      "BIT_AND",
+      "BIT_OR",
+      "BIT_XOR",
+      "BIT_NOT",
+      "SHL",
+      "SHR",
+      "SIN",
+      "COS",
+      "TAN",
+      "ASIN",
+      "ACOS",
+      "ATAN",
+      "EXP",
+      "LOG",
+      "LOG10",
+      "FRACT",
+      "SIGN",
+      "SQRT",
+      "FLOOR",
+      "CEIL",
+      "ROUND",
+      "POW",
+      "ATAN2",
+      "MOD_F32",
+      "MOD_F64",
+      "HYPOT",
+      "FMA",
+      "RANDOM_RANGE",
+      "ENTITY",
+      "COMPONENT",
+      "COMPONENT_READ",
+      "COLUMN",
+      "COLUMN_TRY",
+      "ROW",
+      "INDEX",
+      "LOAD",
+      "READ",
+      "RETRIGGER",
+      "STORE",
+      "STORE_VALUE",
+      "RESULT",
+      "SAVE",
+      "RESULT_PRESENT",
+      "RESULT_TYPE_NAME",
+      "RESULT_ARRAY",
+      "STORE_HEADER",
+      "STORE_TYPE_NAME",
+      "REQUIRE",
+      "ASSERT",
+      "WRITE",
+      "COMPONENT_WRITE",
+      "COMMAND_ARGUMENT",
+      "COMMAND_OUTPUT",
+      "COMMAND",
+      "COMMAND_BEGIN",
+      "HOST_CALL",
+      "INVOKE",
+      "SUSPEND",
+      "DELAY",
+      "POINT",
+      "WATCH_BEGIN",
+      "WATCH_RESET",
+      "WATCH_VALUE",
+      "WATCH_PRESENT",
+      "WATCH_END",
+      "TRACE",
+      "CHECK",
+      "CALL_CHECK",
+      "ENTER",
+      "LEAVE",
+      "FAIL",
+      "JUMP",
+      "BRANCH",
+      "RETURN",
+      "SOURCE_POINT",
+      "SOURCE_WATCH",
+      "END"
+    ],
+    [
+      {
+        "name": "format_text",
+        "first": 0,
+        "parameters": 2,
+        "results": 1,
+        "variadic": true
+      },
+      {
+        "name": "text_equal",
+        "first": 3,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "text_byte_length",
+        "first": 6,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "text_byte_at",
+        "first": 8,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "text_slice",
+        "first": 11,
+        "parameters": 3,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "text_bytes",
+        "first": 15,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "make_array",
+        "first": 17,
+        "parameters": 1,
+        "results": 1,
+        "variadic": true
+      },
+      {
+        "name": "get",
+        "first": 19,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "length",
+        "first": 22,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "last_index",
+        "first": 24,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "is_empty",
+        "first": 26,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "is_not_empty",
+        "first": 28,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "is_valid_index",
+        "first": 30,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "contains",
+        "first": 33,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "find",
+        "first": 36,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "identical",
+        "first": 39,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "array_add",
+        "first": 42,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "add_unique",
+        "first": 45,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "append",
+        "first": 48,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "set_array_elem",
+        "first": 51,
+        "parameters": 3,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "insert",
+        "first": 55,
+        "parameters": 3,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "remove_index",
+        "first": 59,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "remove_item",
+        "first": 62,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "clear",
+        "first": 65,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "reverse",
+        "first": 67,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "swap",
+        "first": 69,
+        "parameters": 3,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "resize",
+        "first": 73,
+        "parameters": 2,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "slice",
+        "first": 76,
+        "parameters": 3,
+        "results": 1,
+        "variadic": false
+      },
+      {
+        "name": "compiler_json_string",
+        "first": 80,
+        "parameters": 1,
+        "results": 3,
+        "variadic": false
+      },
+      {
+        "name": "compiler_syntax_parse",
+        "first": 84,
+        "parameters": 1,
+        "results": 15,
+        "variadic": false
+      }
+    ],
+    [
+      {
+        "name": "Format",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Arg0",
+        "storage": -2,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "A",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "B",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Value",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Value",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Value",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Start",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Count",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Value",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "Result",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Return Value",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Return Value",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Return Value",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Return Value",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Return Value",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Return Value",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Return Value",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Other Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Return Value",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Other Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Item",
+        "storage": 0,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Other Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Index",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "Start",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Count",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "Array",
+        "storage": 0,
+        "container": 1
+      },
+      {
+        "name": "literal",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "valid",
+        "storage": 1,
+        "container": 0
+      },
+      {
+        "name": "value",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "byte_length",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "text",
+        "storage": 13,
+        "container": 0
+      },
+      {
+        "name": "root",
+        "storage": 6,
+        "container": 0
+      },
+      {
+        "name": "kinds",
+        "storage": 13,
+        "container": 1
+      },
+      {
+        "name": "starts",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "ends",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "rows",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "columns",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "parents",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "first_children",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "next_siblings",
+        "storage": 6,
+        "container": 1
+      },
+      {
+        "name": "errors",
+        "storage": 1,
+        "container": 1
+      },
+      {
+        "name": "missing",
+        "storage": 1,
+        "container": 1
+      },
+      {
+        "name": "has_errors",
+        "storage": 1,
+        "container": 1
+      },
+      {
+        "name": "fields",
+        "storage": 13,
+        "container": 1
+      },
+      {
+        "name": "is_named",
+        "storage": 1,
+        "container": 1
+      },
+      {
+        "name": "is_extra",
+        "storage": 1,
+        "container": 1
+      }
+    ],
+    [
+      11766263161483317927,
+      10494896164864478179,
+      2253635698253073560,
+      3545186885134103698,
+      9751228472515978090,
+      9079334054886234411,
+      17242165570387488779,
+      15611305736115236302,
+      17083074289450012770,
+      14730657925333559858,
+      1683859838082548203,
+      3897318674008839882,
+      9113434692769582988,
+      16968130279783662884,
+      13611205187560399313,
+      6063958455404969420,
+      10031281214538873543,
+      1225576146421030831,
+      15392606041591830683,
+      16815397326884185863,
+      10131322737650309994,
+      8686900167993886145,
+      16727144441193224855,
+      11021353979073179169,
+      11519237158948198813,
+      2032728369878169042,
+      3978275859795887710,
+      15735865941761214627,
+      18085313995829699436,
+      4500792823789291856,
+      10923784612712179670,
+      2323413773869247326,
+      8053404902459487799,
+      6941953229735808065,
+      8687968834157511617,
+      15902881118060789108,
+      894073180469776815,
+      5578419286397934401,
+      4384905729313988471,
+      11007163083803899143,
+      8746412179663267998,
+      13948631672380756278,
+      17840489223285925927,
+      8932652110083250049,
+      11088276214961122186,
+      7533381888762471414,
+      4051959292006589208,
+      9991672834146632352,
+      11477201415349259395,
+      13802500892196498968,
+      13246221053306855936,
+      787077107874229638,
+      14634955569547237247,
+      9995390253799023417,
+      9047479961286963383,
+      17827638205886914042,
+      2237180186179475025,
+      10743352089547211829,
+      7774473451661455710,
+      12374633677054704434
+    ]
+  ]
+}

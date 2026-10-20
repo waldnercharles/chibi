@@ -370,6 +370,26 @@ static const authoring_completion *completion(const char *name)
     return NULL;
 }
 
+/* Completion offers the payload fields a handler lists, and nothing for the
+ * fields it leaves out. */
+TEST_CASE(intelligence_completes_listed_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 } },
+        { .name = "scale", .type = { .storage = PIN_F64 } },
+    };
+    base_catalog();
+    capabilities[0].parameters = fields;
+    capabilities[0].parameter_count = 2;
+    const char *sources[] = { "Use :: behavior { total: double = 0; on Tick :: "
+                              "(scale: double) { total = scale; } }" };
+    REQUIRE(load(sources, 1));
+    const char *text = documents[0].syntax->text;
+    int cursor = (int)(strstr(text, "= scale;") - text) + 2;
+    authoring_source_complete(navigation, 0, cursor, &completions);
+    REQUIRE(completion("scale") && !completion("amount") && !completion(""));
+    return true;
+}
 TEST_CASE(intelligence_scope_identity_and_owned_outputs)
 {
     const char *sources[] = { "Scope :: library { F :: (x:int)->(r:int){ if "
@@ -1762,6 +1782,7 @@ void test_language_navigation()
     RUN_TEST_CASE(rename_rejects_collisions_and_invalid_project_drafts);
     RUN_TEST_CASE(rename_rejects_capture_before_hoisted_declaration);
     RUN_TEST_CASE(rename_groups_event_alias_handlers);
+    RUN_TEST_CASE(intelligence_completes_listed_payload_fields);
     RUN_TEST_CASE(intelligence_scope_identity_and_owned_outputs);
     RUN_TEST_CASE(intelligence_signatures_and_semantic_highlights);
     RUN_TEST_CASE(intelligence_presents_character_literals_and_char);

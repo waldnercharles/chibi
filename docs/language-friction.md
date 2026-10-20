@@ -671,7 +671,7 @@ description became a leading comment, and each variable category became a
 `// State` or `// Wave` line above its variables (see
 `test/fixtures/content/behaviors/WaveBehavior.chibi`). A tool cannot tell those
 comments from any other, so Studio cannot show a declaration's description in
-hover, completion or the graph, or group variables by category (#PR).
+hover, completion or the graph, or group variables by category (#563).
 
 - Go and Odin treat a comment directly above a declaration, with no blank line,
   as its documentation; `go doc` and Odin's `core:odin/ast` attach it to the

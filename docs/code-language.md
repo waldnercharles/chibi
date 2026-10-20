@@ -32,10 +32,10 @@ A decimal point or exponent gives a double-precision `number`.
 ```chibi
 Example :: library {
     Run :: () {
-        lives := 3       // int
-        elapsed := 0.0  // number
-        half := 1 / 2   // 0: integer division
-        ratio := 1 / 2.0 // 0.5
+        lives := 3        // int
+        elapsed := 0.0    // number
+        half := 1 / 2     // 0: integer division
+        ratio := 1 / 2.0  // 0.5
         visible := true
         message := "Ready"
     }
@@ -94,9 +94,9 @@ integer type's bounds.
 Example :: library {
     Run :: () {
         value: int = 300
-        checked := byte(value)      // Fails: 300 does not fit in a byte.
-        wrapped := byte(wrap: value) // 44
-        limited := byte(clamp: value) // 255
+        checked := byte(value)        // Fails: 300 does not fit in a byte.
+        wrapped := byte(wrap: value)   // 44
+        limited := byte(clamp: value)  // 255
     }
 }
 ```
@@ -244,9 +244,9 @@ A range with `..<` excludes its upper bound. A range with `..` includes it.
 Example :: library {
     Run :: () {
         score: int = 0
-        for i in 0..<4 { score += i } // 0, 1, 2, 3
-        for i in 1..3 { score += i }  // 1, 2, 3
-        for < i in 0..<4 { score += i } // 3, 2, 1, 0
+        for i in 0..<4 { score += i }    // 0, 1, 2, 3
+        for i in 1..3 { score += i }     // 1, 2, 3
+        for < i in 0..<4 { score += i }  // 3, 2, 1, 0
     }
 }
 ```
@@ -399,6 +399,7 @@ Example :: library {
         name: string
         points: int = 0
     }
+
     Run :: () {
         scoreEntry: ScoreEntry = {name: "Player"}
         scoreEntry.points = 10
@@ -417,6 +418,7 @@ Example :: library {
     AttackState :: union {
         Idle | Windup(remaining: number) | Active(damage: int)
     }
+
     Run :: () {
         ready := false
         countdown: number = 0.0
@@ -561,9 +563,11 @@ reads no payload fields writes `()`.
 ```chibi
 Timer :: behavior {
     elapsed: number = 0.0
+
     on Begin :: () {
         elapsed = 0.0
     }
+
     on Tick :: (dt: s) {
         elapsed += dt
     }
@@ -618,8 +622,10 @@ A system runs its body for each matching entity. Its header names the required
 components. `?` makes a component optional. `without` excludes components.
 
 ```chibi
-EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider
-    on Tick :: (dt: s) {
+EmitterControl :: system(
+    emitter: ParticleEmitter,
+    trigger: Aim?
+) without Collider on Tick :: (dt: s) {
     if trigger {
         emitter.Active = trigger.Firing
     }

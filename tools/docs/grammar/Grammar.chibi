@@ -9,7 +9,7 @@ import strings "core:strings"
 // four-space-indented `name: ($) =>` line.
 
 // The rule a line starts, or "".
-RuleName :: pure fn(line: string) -> string {
+RuleName :: (line: string) -> string {
     if (!strings.HasPrefix(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
         strings.HasPrefix(line, "    //")) {
         return "";
@@ -24,7 +24,7 @@ RuleName :: pure fn(line: string) -> string {
 // The Markdown of the grammar page, generated from the grammar file's lines,
 // and the index in lines of each of its lines: a comment's or definition's
 // own, and its rule's for the lines written around them.
-Markdown :: pure fn(lines: string[]) -> (md: string[], origins: int[]) {
+Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
     md = ["# Grammar", "",
           "The syntax of `.chibi` source, rule by rule, as the parser defines it. A rule whose name starts with `_` shapes others without appearing in syntax trees.",
           ""];
@@ -53,7 +53,7 @@ Markdown :: pure fn(lines: string[]) -> (md: string[], origins: int[]) {
         md = array_add(md, format_text("### {}", name));
         md = array_add(md, "");
         origins = markdown.Pad(origins, length(md), index);
-        foreach (at in comment) {
+        for (at in comment) {
             md = array_add(md, markdown.Trim(markdown.From(lines[at], 6)));
             origins = array_add(origins, at);
         }
@@ -79,14 +79,14 @@ Markdown :: pure fn(lines: string[]) -> (md: string[], origins: int[]) {
 
 // The grammar page's body: lines are the grammar file's, and the last three
 // arguments map links as markdown.Render does.
-Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     return markdown.Render(grammar.md, page, sources, outputs);
 }
 
 // A report, as markdown.Dropped writes it, of each link Render writes as text,
 // at the line of the grammar file that holds it.
-Unpublished :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     rendered := markdown.Page(grammar.md, page, sources, outputs);
     reports: string[] = [];

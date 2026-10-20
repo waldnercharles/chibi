@@ -21,7 +21,7 @@ ExpressionFrame :: struct {
 
 // Accumulate in int64 so even signed minimum is exact. Other literal syntax
 // and implicit numeric promotion are outside this first source subset.
-DecimalValue :: pure fn(text: string, negative: bool) -> Decimal {
+DecimalValue :: (text: string, negative: bool) -> Decimal {
     size := strings.ByteLength(text);
     if (size == 0) {
         return Decimal.Invalid;
@@ -49,7 +49,7 @@ DecimalValue :: pure fn(text: string, negative: bool) -> Decimal {
 }
 
 // The one positional argument of a call, or -1.
-SoleArgument :: pure fn(tree: reader.Tree, call: int) -> int {
+SoleArgument :: (tree: reader.Tree, call: int) -> int {
     arguments := reader.Field(tree, call, "arguments");
     if (arguments < 0) {
         return -1;
@@ -65,13 +65,13 @@ SoleArgument :: pure fn(tree: reader.Tree, call: int) -> int {
     }
 }
 
-ExpressionRange :: pure fn(tree: reader.Tree, node: int, document: int) -> lower.Range {
+ExpressionRange :: (tree: reader.Tree, node: int, document: int) -> lower.Range {
     place := reader.Request(tree, node, 0, document, "");
     return {start: place.start, end: place.end, line: place.line,
             column: place.column, document: document};
 }
 
-BinaryOperator :: pure fn(text: string) -> int {
+BinaryOperator :: (text: string) -> int {
     if (text == "+") {
         return 1;
     }
@@ -117,13 +117,13 @@ BinaryOperator :: pure fn(text: string) -> int {
     return -1;
 }
 
-ExpressionFailure :: pure fn(tree: reader.Tree, node: int, document: int, message: string) -> ScalarExpression {
+ExpressionFailure :: (tree: reader.Tree, node: int, document: int, message: string) -> ScalarExpression {
     return ScalarExpression.Rejected(reader.Diagnostic(tree, node, document, message));
 }
 
 // Explicit frames bound source traversal independently of callable depth. The
 // only native input is a raw parser tree; all typed rows are constructed here.
-ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected: int) -> ScalarExpression {
+ReadExpression :: (tree: reader.Tree, root: int, document: int, expected: int) -> ScalarExpression {
     expressions: lower.Expression[] = [];
     literals: lower.Literal[] = [];
     ranges: lower.Range[] = [];

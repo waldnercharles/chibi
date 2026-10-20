@@ -41,6 +41,9 @@ authoring_sources *authoring_sources_prepare_incremental(
 /* Number of complete source generations reused in this preparation. */
 int authoring_sources_reused(const authoring_sources *);
 const script_catalog *authoring_sources_catalog(const authoring_sources *);
+/* Borrowed static declarations and completion context; valid for this
+ * retained immutable source collection's lifetime. */
+const source_catalog *authoring_sources_source_catalog(const authoring_sources *);
 /* The project's input map, an array.h vector owned by the collection. */
 const input_action *authoring_sources_input(const authoring_sources *);
 int authoring_sources_definition_count(const authoring_sources *);

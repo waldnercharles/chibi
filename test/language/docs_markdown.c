@@ -320,7 +320,7 @@ TEST_CASE(docs_reference_lists_declarations)
         "package shapes",
         "",
         "// The area of a square.",
-        "Area :: pure fn(side: int,",
+        "Area :: (side: int,",
         "                 scale: int) -> int {",
         "    return side * side;",
         "}",
@@ -331,9 +331,9 @@ TEST_CASE(docs_reference_lists_declarations)
         "Shape :: struct { sides: int; }",
         "Greeting :: \"Hello {}\";",
         "@test",
-        "Checks :: fn() {",
+        "Checks :: () {",
         "}",
-        "@test Also :: fn() {}",
+        "@test Also :: () {}",
         "Vec :: struct {",
         "    // Horizontal.",
         "    x: int;",
@@ -357,7 +357,7 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\">Area :: pure fn(side: "
+                          "class=\"language-chibi\">Area :: (side: "
                           "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
                           "area of a square.</p>"
                       ) &&
@@ -427,7 +427,7 @@ TEST_CASE(docs_generated_pages_report_unpublished_links)
         "// Not [attached](a.md).",
         "",
         "// The [area](area.md).",
-        "Area :: pure fn() -> int {",
+        "Area :: () -> int {",
         "    return 1;",
         "}",
         "package shapes",

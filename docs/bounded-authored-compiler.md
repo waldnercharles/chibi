@@ -44,8 +44,8 @@ bytes must reject embedded NUL before converting them to runtime strings.
 
 The accepted graph contains exactly one import-free package. Every file is
 walked before lowering; package-header/comment-only sibling files are accepted.
-Exactly one declaration may occur across the complete package: an explicitly
-`pure`, nongeneric, identifier-named, zero-argument function returning one
+Exactly one declaration may occur across the complete package: an
+identifier-named, zero-argument function returning one
 ordinary `int` or `bool`, not itself named `int` or `bool`. Its body contains
 exactly one ordinary return. Other
 declarations, extra statements and unhandled expressions reject. The driver

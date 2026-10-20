@@ -8,12 +8,73 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/map.h"
+#include "types/union.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+/* Differentials compare values, not packing: results box every packed array
+ * in place, in the result's own storage, through unions and record fields. */
+static void box(arena *storage, const pin_value *value, int depth);
+static void box_record(arena *storage, const pin_value *value, int depth)
+{
+    const type_desc *type = pin_value_type(value);
+    for (int i = 0; type && i < type->field_count; i++) {
+        pin_value field;
+        pin_read_field(value->ptr, &type->fields[i], &field);
+        if (field.type == PIN_UNION) {
+            box(storage, &field, depth + 1);
+        }
+    }
+}
+static void box(arena *storage, const pin_value *value, int depth)
+{
+    if (!value->ptr || depth > 64) {
+        return;
+    }
+    if (value->container == PIN_CONTAINER_ARRAY || value->container == PIN_CONTAINER_SET) {
+        pin_array *array = value->ptr;
+        if (array->stride) {
+            pin_value *items = array->count
+                                 ? arena_alloc(storage, (size_t)array->count * sizeof *items)
+                                 : NULL;
+            for (int i = 0; i < array->count; i++) {
+                items[i] = pin_array_get(array, i);
+            }
+            *array = (pin_array){ .element_type = array->element_type,
+                                  .type_name = array->type_name,
+                                  .record = array->record,
+                                  .count = array->count,
+                                  .capacity = array->count,
+                                  .items = items };
+        }
+        for (int i = 0; i < array->count; i++) {
+            box(storage, &array->items[i], depth + 1);
+        }
+        return;
+    }
+    if (value->container == PIN_CONTAINER_MAP) {
+        pin_map *map = value->ptr;
+        for (int i = 0; i < map->count; i++) {
+            box(storage, &map->entries[i].key, depth + 1);
+            box(storage, &map->entries[i].value, depth + 1);
+        }
+        return;
+    }
+    if (value->type == PIN_UNION) {
+        pin_union *tagged = value->ptr;
+        for (int i = 0; i < tagged->count; i++) {
+            box(storage, &tagged->values[i], depth + 1);
+        }
+        return;
+    }
+    if (value->type == PIN_STRUCT && value->record) {
+        box_record(storage, value, depth);
+    }
+}
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *fixture,
     int backend,
@@ -271,8 +332,28 @@ static bool run(
     REQUIRE(backend == 0 ? runs.counts.bytecode_entries > 0 : !runs.counts.bytecode_entries);
     REQUIRE(backends[backend] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
     REQUIRE(backends[backend] != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
-    REQUIRE(!pin_value_snapshot_to_arena(detached, out, &state->result));
+    REQUIRE(!compiler_fixture_snapshot(detached, out, &state->result));
     return true;
+}
+int compiler_fixture_snapshot(arena *storage, pin_value *out, const pin_value *value)
+{
+    if (pin_value_snapshot_to_arena(storage, out, value)) {
+        return -1;
+    }
+    box(storage, out, 0);
+    return 0;
+}
+void compiler_fixture_box(arena *storage, const pin_value *value)
+{
+    box(storage, value, 0);
+}
+int compiler_fixture_union(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+{
+    if (pin_union_value(storage, tag, values, count, out)) {
+        return -1;
+    }
+    box(storage, out, 0);
+    return 0;
 }
 bool compiler_fixture_call(
     const compiler_fixture *fixture,

@@ -3,12 +3,14 @@
 #include "assets/input_map.h"
 #include "assets/ui_document.h"
 #include "authoring/reference_index.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_catalog_snapshot.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "types/array.h"
+#include "types/scalar.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -28,6 +30,7 @@ enum
     MAX_DEPTH = 16,
     MAX_PATH = 4096,
     MAX_VALUES = 65536,
+    MAX_SPECIALIZATIONS = 256,
     /* SCENE_DEPTH_MAX: a scene nested deeper does not load. */
     MAX_ENTITY_DEPTH = 256
 };
@@ -38,6 +41,7 @@ typedef enum
     DECLARATION_SOURCE,
     DECLARATION_SCENE,
     DECLARATION_UI,
+    DECLARATION_RELATIONSHIP,
 } declaration_kind;
 struct source_catalog
 {
@@ -49,6 +53,11 @@ struct source_catalog
     source_catalog_reference *references;
     source_catalog_diagnostic *diagnostics;
     script_catalog_capability *capabilities;
+    script_catalog_relationship *relationships;
+    script_catalog_template *templates;
+    script_catalog_specialization *specializations;
+    script_specialization_request *requests;
+    const char **request_paths;
     input_action *input;
     int native_capabilities;
     size_t bytes;
@@ -59,6 +68,7 @@ struct source_catalog
     int edit_count;
     unsigned char *default_key;
     bool defaults_known;
+    bool migration;
 };
 static const char *own(source_catalog *c, const char *text)
 {
@@ -72,6 +82,15 @@ static const char *own(source_catalog *c, const char *text)
 }
 static void error(source_catalog *c, const char *path, script_range range, const char *message)
 {
+    for (int i = 0; i < acount(c->diagnostics); i++) {
+        const source_catalog_diagnostic *previous = &c->diagnostics[i];
+        bool same_path = previous->path == path ||
+                         (previous->path && path && !strcmp(previous->path, path));
+        if (same_path && previous->range.start == range.start &&
+            previous->range.end == range.end && !strcmp(previous->message, message)) {
+            return;
+        }
+    }
     source_catalog_diagnostic diagnostic = { .path = own(c, path), .range = range };
     snprintf(diagnostic.message, sizeof diagnostic.message, "%s", message);
     apush(c->diagnostics, diagnostic);
@@ -80,6 +99,12 @@ static void update_view(source_catalog *c)
 {
     c->view.capabilities = c->capabilities;
     c->view.capability_count = acount(c->capabilities);
+    c->view.relationships = c->relationships;
+    c->view.relationship_count = acount(c->relationships);
+    c->view.templates = c->templates;
+    c->view.template_count = acount(c->templates);
+    c->view.specializations = c->specializations;
+    c->view.specialization_count = acount(c->specializations);
 }
 static void capability(source_catalog *c, const char *path, script_catalog_capability value)
 {
@@ -343,6 +368,10 @@ static void project_references(
         return;
     }
     value_reference(c, path, text, av_obj_get(value, "prototype"), SOURCE_REFERENCE_PROTOTYPE);
+    const av_value *pairs = av_obj_get(value, "links");
+    for (size_t i = 0; i < av_obj_size(pairs); i++) {
+        value_reference(c, path, text, av_obj_key_at(pairs, i), SOURCE_REFERENCE_RELATIONSHIP);
+    }
     const av_value *behaviors = av_obj_get(value, "behaviors");
     for (size_t i = 0; i < av_arr_size(behaviors); i++) {
         if (!project_value(c, path)) {
@@ -406,7 +435,11 @@ static void project_references(
 static void declarative(source_catalog *c, const char *path, const char *text, bool event)
 {
     char message[192];
-    av_doc *document = asset_text_read(text, message, sizeof message);
+    size_t length = strlen(path);
+    bool source = !event && length > 6 && !strcmp(path + length - 6, ".chibi");
+    av_doc *document = source
+                         ? authoring_prototype_source_read(text, NULL, message, sizeof message)
+                         : asset_text_read(text, message, sizeof message);
     if (!document) {
         error(c, path, (script_range){ 0 }, message);
         return;
@@ -448,6 +481,7 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
         value.parameter_count = (int)count;
     }
     capability(c, path, value);
+    int first_reference = acount(c->references);
     const char *owned_path = own(c, path), *owned_text = own(c, text);
     apush(
         c->definitions,
@@ -456,11 +490,22 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
                                       .name = value.name,
                                       .path = owned_path,
                                       .text = owned_text,
-                                      .range = value_range(text, name_value) })
+                                      .range = value_range(text, name_value),
+                                      .text_kind = source ? SOURCE_TEXT_CHIBI
+                                                          : SOURCE_TEXT_KDL })
     );
     if (!event) {
         project_references(c, owned_path, owned_text, root, 0);
         entity_references(c, owned_path, owned_text, av_obj_get(root, "children"), 1);
+        const av_value *includes = av_obj_get(root, "includes");
+        for (size_t i = 0; i < av_arr_size(includes); i++) {
+            value_reference(c, owned_path, owned_text, av_arr_get(includes, i), SOURCE_REFERENCE_PROTOTYPE);
+        }
+    }
+    if (source) {
+        for (int i = first_reference; i < acount(c->references); i++) {
+            c->references[i].text_kind = SOURCE_TEXT_CHIBI;
+        }
     }
     av_doc_free(document);
 }
@@ -497,6 +542,56 @@ static void load_file(source_catalog *c, const char *path, declaration_kind kind
         text = read_source(c, path);
     }
     if (!text) {
+        return;
+    }
+    if (kind == DECLARATION_RELATIONSHIP) {
+        char message[192];
+        ecs_relationship_desc *desc = authoring_relationship_source_read(text, message, sizeof message);
+        if (!desc) {
+            error(c, path, (script_range){ 0 }, message);
+        } else {
+            bool duplicate = false;
+            for (int i = 0; i < acount(c->relationships); i++) {
+                duplicate |= c->relationships[i].id == desc->id ||
+                             !strcmp(c->relationships[i].name, desc->name);
+            }
+            if (duplicate || !strcmp(desc->name, "ChildOf")) {
+                error(c, path, (script_range){ 0 }, "Duplicate relationship name or identity");
+            } else {
+                apush(
+                    c->relationships,
+                    ((script_catalog_relationship){
+                        .id = desc->id,
+                        .name = own(c, desc->name),
+                        .exclusive = !!(desc->traits & ECS_REL_EXCLUSIVE),
+                        .traversable = !!(desc->traits & ECS_REL_TRAVERSABLE) })
+                );
+                script_syntax *syntax = script_parse(text);
+                TSNode root = ts_tree_root_node(syntax->tree), declaration = { 0 };
+                for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+                    TSNode node = ts_node_named_child(root, i);
+                    if (!strcmp(ts_node_type(node), "relationship_declaration")) {
+                        declaration = node;
+                        break;
+                    }
+                }
+                TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
+                apush(
+                    c->definitions,
+                    ((source_catalog_definition){ .id = desc->id,
+                                                  .name = own(c, desc->name),
+                                                  .path = own(c, path),
+                                                  .text = own(c, text),
+                                                  .range = script_node_range(name),
+                                                  .text_kind = SOURCE_TEXT_CHIBI,
+                                                  .relationship = true })
+                );
+                script_syntax_free(syntax);
+                update_view(c);
+            }
+            authoring_relationship_source_free(desc);
+        }
+        free(text);
         return;
     }
     if (kind == DECLARATION_UI) {
@@ -572,9 +667,10 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
         }
         return;
     }
-    const char *suffix = kind == DECLARATION_SOURCE ? ".chibi"
-                       : kind == DECLARATION_UI     ? ".rml"
-                                                    : ".kdl";
+    const char *suffix = kind == DECLARATION_SOURCE || kind == DECLARATION_RELATIONSHIP
+                           ? ".chibi"
+                       : kind == DECLARATION_UI ? ".rml"
+                                                : ".kdl";
     struct dirent *entry;
     while (c->entries < MAX_ENTRIES && (entry = readdir(directory))) {
         c->entries++;
@@ -597,8 +693,10 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
             continue;
         }
         size_t size = strlen(child), end = strlen(suffix);
-        if (S_ISREG(info.st_mode) && size >= end &&
-            !strcmp(child + size - end, suffix)) {
+        if (S_ISREG(info.st_mode) &&
+            ((size >= end && !strcmp(child + size - end, suffix)) ||
+             (kind == DECLARATION_PROTOTYPE && size > 6 &&
+              !strcmp(child + size - 6, ".chibi")))) {
             load_file(c, child, kind);
         }
     }
@@ -640,11 +738,20 @@ static void declared_types(source_catalog *c)
             if (!library_type_source(source->syntax)) {
                 continue;
             }
-            script_analysis *analysis = script_declarations_document(
-                source->syntax,
-                &c->view,
-                source->identity
-            );
+            script_analysis *analysis = c->migration
+                                          ? script_analyze_migration_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity,
+                                                NULL,
+                                                0,
+                                                true
+                                            )
+                                          : script_declarations_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity
+                                            );
             if (analysis->kind != SCRIPT_PROGRAM_LIBRARY || !analysis->type_count) {
                 script_analysis_free(analysis);
                 continue;
@@ -964,9 +1071,12 @@ static script_catalog_parameter *parameters(
     script_catalog_parameter *values = arena_alloc(&c->storage, (size_t)count * sizeof *values);
     for (int i = 0; i < count; i++) {
         const script_symbol *symbol = &a->symbols[symbols[i]];
-        values[i] = (script_catalog_parameter){ .name = own(c, symbol->name),
-                                                .unit = own(c, symbol->unit),
-                                                .type = symbol->type };
+        values[i] = (script_catalog_parameter){
+            .name = own(c, symbol->name),
+            .unit = own(c, symbol->unit),
+            .type = symbol->type,
+            .reference_kind = script_reference_kind_for_type(symbol->type)
+        };
         if (symbol->initializer >= 0) {
             const script_expression *expression = &a->expressions[symbol->initializer];
             bool zero = expression->kind == SCRIPT_EXPR_NIL ||
@@ -1042,6 +1152,631 @@ static void callable_ports(source_catalog *c, const script_analysis *a, int func
     afree(entries);
     afree(outcomes);
 }
+
+static bool same_compile_value(script_compile_value a, script_compile_value b)
+{
+    if (a.is_type != b.is_type) {
+        return false;
+    }
+    if (a.is_type) {
+        return script_type_equal(a.type, b.type);
+    }
+    if (a.value.type != b.value.type || a.value.container != b.value.container) {
+        return false;
+    }
+    if (strcmp(
+            a.value.type_name ? a.value.type_name : "",
+            b.value.type_name ? b.value.type_name : ""
+        )) {
+        return false;
+    }
+    if (a.value.type == PIN_FLOW) {
+        return true; /* An executable specialization has no compile-time result. */
+    }
+    if (a.value.container == PIN_CONTAINER_SINGLE && a.value.type == PIN_F32) {
+        return !memcmp(&a.value.f, &b.value.f, sizeof a.value.f);
+    }
+    if (a.value.container == PIN_CONTAINER_SINGLE && a.value.type == PIN_F64) {
+        return !memcmp(&a.value.d, &b.value.d, sizeof a.value.d);
+    }
+    if (a.value.container == PIN_CONTAINER_SINGLE &&
+        ((a.value.type >= PIN_BOOL && a.value.type <= PIN_F64) ||
+         a.value.type == PIN_ENUM || a.value.type == PIN_HANDLE)) {
+        return behavior_scalar_bits(a.value) == behavior_scalar_bits(b.value);
+    }
+    return pin_value_equal(&a.value, &b.value);
+}
+
+static bool same_compile_bindings(
+    const script_compile_binding *a,
+    const script_compile_binding *b,
+    int count
+)
+{
+    for (int i = 0; i < count; i++) {
+        if (strcmp(a[i].name, b[i].name) ||
+            !same_compile_value(a[i].value, b[i].value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static const script_compile_binding *own_compile_bindings(
+    source_catalog *c,
+    const char *path,
+    const script_compile_binding *bindings,
+    int count
+)
+{
+    script_compile_binding *owned = arena_alloc(&c->storage, (size_t)count * sizeof *owned);
+    for (int i = 0; i < count; i++) {
+        owned[i] = bindings[i];
+        owned[i].name = (char *)own(c, bindings[i].name);
+        if (!bindings[i].value.is_type && pin_value_snapshot_to_arena(
+                                              &c->storage,
+                                              &owned[i].value.value,
+                                              &bindings[i].value.value
+                                          )) {
+            error(c, path, (script_range){ 0 }, "Cannot retain imported specialization argument");
+            return NULL;
+        }
+    }
+    return owned;
+}
+
+static bool export_templates(source_catalog *c, const source_catalog_source *source, const script_analysis *analysis)
+{
+    if (analysis->kind != SCRIPT_PROGRAM_LIBRARY) {
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < analysis->template_count; i++) {
+        const script_catalog_template *input = &analysis->templates[i];
+        int existing = -1;
+        for (int j = 0; j < acount(c->templates); j++) {
+            if (c->templates[j].id == input->id) {
+                existing = j;
+                break;
+            }
+        }
+        if (existing >= 0) {
+            const script_catalog_template *previous = &c->templates[existing];
+            bool equal = previous->kind == input->kind &&
+                         previous->generic == input->generic &&
+                         previous->parameter_count == input->parameter_count;
+            for (int j = 0; equal && j < input->parameter_count; j++) {
+                const script_template_parameter *a = &previous->parameters[j],
+                                                *b = &input->parameters[j];
+                equal = !strcmp(a->name, b->name) && (!a->binder == !b->binder) &&
+                        (!a->binder || !strcmp(a->binder, b->binder)) &&
+                        script_type_equal(a->type, b->type) &&
+                        a->comptime == b->comptime && a->type_value == b->type_value &&
+                        a->binds_type == b->binds_type;
+            }
+            if (equal) {
+                continue;
+            }
+        }
+        script_catalog_template value = *input;
+        size_t length = strlen(analysis->name) + strlen(input->name) + 2;
+        char *qualified = arena_alloc(&c->storage, length);
+        snprintf(qualified, length, "%s.%s", analysis->name, input->name);
+        value.name = qualified;
+        value.owner = own(c, source->identity);
+        script_template_parameter *parameters = arena_alloc(
+            &c->storage,
+            (size_t)value.parameter_count * sizeof *parameters
+        );
+        for (int j = 0; j < value.parameter_count; j++) {
+            parameters[j] = input->parameters[j];
+            parameters[j].name = own(c, parameters[j].name);
+            parameters[j].binder = own(c, parameters[j].binder);
+        }
+        value.parameters = parameters;
+        for (int j = 0; j < acount(c->templates); j++) {
+            if (j != existing && !strcmp(c->templates[j].name, value.name)) {
+                TSNode declaration = ts_node_named_descendant_for_byte_range(
+                    ts_tree_root_node(source->syntax->tree),
+                    (uint32_t)value.start,
+                    (uint32_t)value.end
+                );
+                TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
+                char message[192];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "Duplicate exported %s name '%s'",
+                    value.kind == SCRIPT_TEMPLATE_RECORD ? "type" : "callable",
+                    value.name
+                );
+                error(c, source->path, script_node_range(name), message);
+                return changed;
+            }
+        }
+        if (existing < 0) {
+            apush(c->templates, value);
+            TSNode declaration = ts_node_named_descendant_for_byte_range(
+                ts_tree_root_node(source->syntax->tree),
+                (uint32_t)value.start,
+                (uint32_t)value.end
+            );
+            TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
+            if (!ts_node_is_null(name)) {
+                apush(
+                    c->definitions,
+                    ((source_catalog_definition){
+                        .id = value.id,
+                        .kind = SCRIPT_CAPABILITY_FUNCTION,
+                        .name = own(c, input->name),
+                        .path = source->path,
+                        .text = source->text,
+                        .range = script_node_range(name),
+                        .text_kind = SOURCE_TEXT_CHIBI,
+                    })
+                );
+            }
+        } else {
+            c->templates[existing] = value;
+        }
+        changed = true;
+    }
+    update_view(c);
+    return changed;
+}
+
+static bool collect_specialization_requests(
+    source_catalog *c,
+    const source_catalog_source *source,
+    const script_analysis *analysis
+)
+{
+    bool changed = false;
+    for (int i = 0; i < analysis->request_count; i++) {
+        const script_specialization_request *input = &analysis->requests[i];
+        bool known = false;
+        for (int j = 0; j < acount(c->requests); j++) {
+            const script_specialization_request *existing = &c->requests[j];
+            if (existing->id != input->id) {
+                continue;
+            }
+            known = true;
+            if (existing->template_id != input->template_id ||
+                existing->evaluate != input->evaluate ||
+                strcmp(existing->owner, input->owner) ||
+                existing->binding_count != input->binding_count ||
+                !same_compile_bindings(
+                    existing->bindings,
+                    input->bindings,
+                    input->binding_count
+                )) {
+                error(c, source->path, input->origin, "Imported specialization identity collides with different arguments");
+            }
+            break;
+        }
+        if (known) {
+            continue;
+        }
+        if (acount(c->requests) >= MAX_SPECIALIZATIONS) {
+            error(c, source->path, input->origin, "Project polymorphic specialization budget exceeded");
+            return changed;
+        }
+        script_specialization_request request = *input;
+        request.owner = own(c, input->owner);
+        request.bindings = own_compile_bindings(
+            c,
+            source->path,
+            input->bindings,
+            input->binding_count
+        );
+        if (request.binding_count && !request.bindings) {
+            return changed;
+        }
+        apush(c->requests, request);
+        apush(c->request_paths, own(c, source->path));
+        changed = true;
+    }
+    return changed;
+}
+
+static bool export_specialization_types(
+    source_catalog *c,
+    const source_catalog_source *source,
+    const script_analysis *analysis
+)
+{
+    if (analysis->kind != SCRIPT_PROGRAM_LIBRARY) {
+        return false;
+    }
+    if (!analysis->type_count) {
+        return false;
+    }
+    script_catalog input = { .types = analysis->types,
+                             .type_count = analysis->type_count },
+                   owned;
+    bool valid = script_catalog_snapshot(&c->storage, &input, &owned);
+    if (!valid) {
+        error(c, source->path, (script_range){ 0 }, "Cannot retain specialized record layout");
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < owned.type_count; i++) {
+        script_catalog_type value = owned.types[i];
+        if (!value.internal) {
+            const char *local = value.source_name ? value.source_name : value.name;
+            size_t length = strlen(analysis->name) + strlen(local) + 2;
+            char *qualified = arena_alloc(&c->storage, length);
+            snprintf(qualified, length, "%s.%s", analysis->name, local);
+            value.name = qualified;
+            value.source_name = local;
+        }
+        int existing = -1;
+        for (int j = 0; j < c->view.type_count; j++) {
+            if (c->view.types[j].id == value.id) {
+                existing = j;
+                break;
+            }
+        }
+        if (existing >= 0) {
+            script_catalog left = { .types = &c->view.types[existing],
+                                    .type_count = 1 },
+                           right = { .types = &value, .type_count = 1 };
+            unsigned char *left_defaults = NULL, *right_defaults = NULL;
+            bool equal = source_catalog_metadata_equal(&left, &right) &&
+                         source_catalog_default_key(&left, &left_defaults) &&
+                         source_catalog_default_key(&right, &right_defaults) &&
+                         acount(left_defaults) == acount(right_defaults) &&
+                         (!acount(left_defaults) ||
+                          !memcmp(left_defaults, right_defaults, (size_t)acount(left_defaults)));
+            afree(left_defaults);
+            afree(right_defaults);
+            if (equal) {
+                continue;
+            }
+            ((script_catalog_type *)c->view.types)[existing] = value;
+        } else {
+            script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 1, sizeof *types);
+            types[c->view.type_count++] = value;
+            c->view.types = types;
+        }
+        changed = true;
+    }
+    return changed;
+}
+
+static bool export_specializations(
+    source_catalog *c,
+    const source_catalog_source *source,
+    const script_analysis *analysis
+)
+{
+    if (analysis->kind != SCRIPT_PROGRAM_LIBRARY) {
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < analysis->specialization_count; i++) {
+        const script_catalog_specialization *input = &analysis->specializations[i];
+        int index = -1;
+        for (int j = 0; j < acount(c->specializations); j++) {
+            if (c->specializations[j].id == input->id) {
+                index = j;
+                break;
+            }
+        }
+        if (index >= 0) {
+            const script_catalog_specialization *existing = &c->specializations[index];
+            if (existing->template_id != input->template_id ||
+                existing->binding_count != input->binding_count ||
+                !same_compile_bindings(
+                    existing->bindings,
+                    input->bindings,
+                    input->binding_count
+                )) {
+                error(c, source->path, (script_range){ 0 }, "Specialization identity collides with another binding tuple");
+                continue;
+            }
+            if (existing->executable == input->executable &&
+                same_compile_value(existing->result, input->result)) {
+                continue;
+            }
+        } else if (acount(c->specializations) >= MAX_SPECIALIZATIONS) {
+            error(c, source->path, (script_range){ 0 }, "Project polymorphic specialization budget exceeded");
+            return changed;
+        }
+        script_catalog_specialization value = *input;
+        value.bindings = own_compile_bindings(
+            c,
+            source->path,
+            input->bindings,
+            input->binding_count
+        );
+        if (value.binding_count && !value.bindings) {
+            continue;
+        }
+        if (!value.result.is_type && pin_value_snapshot_to_arena(
+                                         &c->storage,
+                                         &value.result.value,
+                                         &input->result.value
+                                     )) {
+            error(c, source->path, (script_range){ 0 }, "Cannot retain compile-time specialization result");
+            continue;
+        }
+        if (index < 0) {
+            apush(c->specializations, value);
+        } else {
+            c->specializations[index] = value;
+        }
+        changed = true;
+    }
+    update_view(c);
+    return changed;
+}
+
+static bool specialized_function(const script_analysis *analysis, const script_function *function, uint64_t id)
+{
+    for (int i = 0; i < analysis->specialization_count; i++) {
+        if (analysis->specializations[i].id == id &&
+            analysis->specializations[i].executable) {
+            return true;
+        }
+    }
+    for (int i = 0; i < analysis->template_count; i++) {
+        const script_catalog_template *definition = &analysis->templates[i];
+        if (definition->generic && definition->id != id &&
+            definition->start == function->range.start &&
+            definition->end == function->range.end) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool export_functions(
+    source_catalog *c,
+    const source_catalog_source *source,
+    const script_analysis *analysis,
+    bool update
+)
+{
+    if (analysis->kind != SCRIPT_PROGRAM_LIBRARY) {
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < analysis->function_count; i++) {
+        const script_function *function = &analysis->functions[i];
+        if (function->kind != SCRIPT_FUNCTION_AUTHORED ||
+            function->symbol < 0 || function->parent >= 0) {
+            continue;
+        }
+        const script_symbol *symbol = &analysis->symbols[function->symbol];
+        bool specialized = specialized_function(analysis, function, symbol->id);
+        bool requested = false, published = false;
+        for (int j = 0; j < acount(c->requests); j++) {
+            requested |= c->requests[j].id == symbol->id;
+        }
+        for (int j = 0; j < analysis->specialization_count; j++) {
+            published |= analysis->specializations[j].id == symbol->id &&
+                         analysis->specializations[j].executable;
+        }
+        if (specialized && requested && !published) {
+            continue;
+        }
+        char suffix[40] = { 0 };
+        if (specialized) {
+            snprintf(
+                suffix,
+                sizeof suffix,
+                "$%016llx",
+                (unsigned long long)symbol->id
+            );
+        }
+        size_t length = strlen(analysis->name) + strlen(symbol->name) +
+                        strlen(suffix) + 2;
+        char *qualified = arena_alloc(&c->storage, length);
+        snprintf(qualified, length, "%s.%s%s", analysis->name, symbol->name, suffix);
+        script_catalog_capability value = {
+            .id = symbol->id,
+            .name = qualified + strlen(analysis->name) + 1,
+            .qualified_name = qualified,
+            .kind = symbol->kind == SCRIPT_MACRO ? SCRIPT_CAPABILITY_ACTION
+                                                 : SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = parameters(
+                c,
+                source->path,
+                analysis,
+                function->parameters,
+                function->parameter_count
+            ),
+            .parameter_count = function->parameter_count,
+            .results = parameters(
+                c,
+                source->path,
+                analysis,
+                function->results,
+                function->result_count
+            ),
+            .result_count = function->result_count,
+            .pure = function->pure,
+            .effects = function->effects,
+        };
+        callable_ports(c, analysis, i, &value);
+        int existing = -1;
+        for (int j = 0; j < acount(c->capabilities); j++) {
+            if (c->capabilities[j].id == value.id) {
+                existing = j;
+                break;
+            }
+        }
+        if (existing >= 0 && update) {
+            if (existing < c->native_capabilities) {
+                error(c, source->path, symbol->declaration, "Specialized authored callable collides with native identity");
+                continue;
+            }
+            const script_catalog_capability *previous = &c->capabilities[existing];
+            bool contract_changed = script_catalog_capability_abi(&c->view, previous) !=
+                                    script_catalog_capability_abi(&c->view, &value);
+            changed |= contract_changed || previous->effects != value.effects ||
+                       previous->pure != value.pure;
+            c->capabilities[existing] = value;
+        } else {
+            int before = acount(c->capabilities);
+            exported_callable(c, source->path, symbol->declaration, value);
+            changed |= acount(c->capabilities) != before;
+        }
+    }
+    update_view(c);
+    return changed;
+}
+
+static int compare_requests(const void *left, const void *right)
+{
+    const script_specialization_request *a = left, *b = right;
+    return (a->id > b->id) - (a->id < b->id);
+}
+
+static void sort_requests(source_catalog *c)
+{
+    for (int i = 1; i < acount(c->requests); i++) {
+        for (int j = i; j > 0 && c->requests[j].id < c->requests[j - 1].id; j--) {
+            script_specialization_request request = c->requests[j];
+            c->requests[j] = c->requests[j - 1];
+            c->requests[j - 1] = request;
+            const char *path = c->request_paths[j];
+            c->request_paths[j] = c->request_paths[j - 1];
+            c->request_paths[j - 1] = path;
+        }
+    }
+}
+
+static script_analysis *analyze_requested(source_catalog *c, const source_catalog_source *source)
+{
+    script_specialization_request *requests = NULL;
+    for (int i = 0; i < acount(c->requests); i++) {
+        if (!strcmp(c->requests[i].owner, source->identity)) {
+            apush(requests, c->requests[i]);
+        }
+    }
+    asort(requests, compare_requests);
+    script_analysis *analysis = c->migration ? script_analyze_migration_document(
+                                                   source->syntax,
+                                                   &c->view,
+                                                   source->identity,
+                                                   requests,
+                                                   acount(requests),
+                                                   false
+                                               )
+                                             : script_analyze_document_requested(
+                                                   source->syntax,
+                                                   &c->view,
+                                                   source->identity,
+                                                   requests,
+                                                   acount(requests)
+                                               );
+    afree(requests);
+    return analysis;
+}
+
+static void library_specializations(source_catalog *c)
+{
+    if (!acount(c->templates)) {
+        return;
+    }
+    for (int pass = 0; pass <= MAX_SPECIALIZATIONS && !acount(c->diagnostics); pass++) {
+        bool changed = false;
+        for (int i = 0; i < acount(c->sources); i++) {
+            source_catalog_source *source = &c->sources[i];
+            script_analysis *analysis = analyze_requested(c, source);
+            changed |= export_templates(c, source, analysis);
+            changed |= collect_specialization_requests(c, source, analysis);
+            changed |= export_specialization_types(c, source, analysis);
+            changed |= export_specializations(c, source, analysis);
+            changed |= export_functions(c, source, analysis, true);
+            script_analysis_free(analysis);
+            if (acount(c->diagnostics)) {
+                break;
+            }
+        }
+        if (!changed) {
+            for (int i = 0; i < acount(c->requests); i++) {
+                bool resolved = false;
+                for (int j = 0; j < acount(c->specializations); j++) {
+                    resolved |= c->requests[i].id == c->specializations[j].id;
+                }
+                if (!resolved) {
+                    bool owner_diagnosed = false;
+                    for (int owner = 0; owner < acount(c->sources); owner++) {
+                        const source_catalog_source *source = &c->sources[owner];
+                        if (strcmp(source->identity, c->requests[i].owner)) {
+                            continue;
+                        }
+                        script_analysis *analysis = analyze_requested(c, source);
+                        owner_diagnosed = analysis->diagnostic_count > 0;
+                        for (int j = 0; j < analysis->diagnostic_count; j++) {
+                            bool duplicate = false;
+                            for (int k = 0; k < acount(c->diagnostics); k++) {
+                                const source_catalog_diagnostic *existing = &c->diagnostics[k];
+                                duplicate |= !strcmp(existing->path, source->path) &&
+                                             existing->range.start ==
+                                                 analysis->diagnostics[j].range.start &&
+                                             !strcmp(
+                                                 existing->message,
+                                                 analysis->diagnostics[j].message
+                                             );
+                            }
+                            if (!duplicate) {
+                                error(
+                                    c,
+                                    source->path,
+                                    analysis->diagnostics[j].range,
+                                    analysis->diagnostics[j].message
+                                );
+                            }
+                        }
+                        script_analysis_free(analysis);
+                        break;
+                    }
+                    if (!owner_diagnosed) {
+                        error(c, c->request_paths[i], c->requests[i].origin, "Imported template has no concrete specialization");
+                    }
+                }
+            }
+            return;
+        }
+    }
+    if (!acount(c->diagnostics)) {
+        error(c, c->root, (script_range){ 0 }, "Imported specialization fixed-point budget exceeded");
+    }
+}
+
+static void discover_templates(source_catalog *c)
+{
+    for (int pass = 0; pass <= acount(c->sources); pass++) {
+        bool changed = false;
+        for (int i = 0; i < acount(c->sources); i++) {
+            source_catalog_source *source = &c->sources[i];
+            script_analysis *analysis = c->migration
+                                          ? script_analyze_migration_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity,
+                                                NULL,
+                                                0,
+                                                true
+                                            )
+                                          : script_declarations_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity
+                                            );
+            changed |= export_templates(c, source, analysis);
+            script_analysis_free(analysis);
+        }
+        if (!changed) {
+            return;
+        }
+    }
+    error(c, c->root, (script_range){ 0 }, "Template signature discovery budget exceeded");
+}
 bool source_catalog_identity_valid(const char *key)
 {
     if (!key || !key[0] || strlen(key) >= MAX_PATH || key[0] == '/' ||
@@ -1115,12 +1850,15 @@ bool source_catalog_edit_path(const char *root, const char *path)
     if (!strcmp(relative, INPUT_MAP_FILE)) {
         return true;
     }
-    const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/" };
-    for (int i = 0; i < 4; i++) {
-        const char *extension = i == 3 ? ".rml" : DECLARATIVE_ASSET_EXTENSION;
+    const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/", "relationships/" };
+    for (int i = 0; i < 5; i++) {
+        const char *extension = i == 3 ? ".rml"
+                              : i == 4 ? ".chibi"
+                                       : DECLARATIVE_ASSET_EXTENSION;
         size_t size = strlen(relative), suffix = strlen(extension);
         if (!strncmp(relative, folders[i], strlen(folders[i])) &&
-            size > suffix && !strcmp(relative + size - suffix, extension)) {
+            ((size > suffix && !strcmp(relative + size - suffix, extension)) ||
+             (i == 1 && size > 6 && !strcmp(relative + size - 6, ".chibi")))) {
             return true;
         }
     }
@@ -1137,21 +1875,85 @@ static declaration_kind edit_kind(const char *root, const char *path)
         length--;
     }
     const char *relative = path + length + 1;
-    return !strncmp(relative, "events/", 7)      ? DECLARATION_EVENT
-         : !strncmp(relative, "prototypes/", 11) ? DECLARATION_PROTOTYPE
-         : !strncmp(relative, "ui/", 3)          ? DECLARATION_UI
-                                                 : DECLARATION_SCENE;
+    return !strncmp(relative, "events/", 7)         ? DECLARATION_EVENT
+         : !strncmp(relative, "prototypes/", 11)    ? DECLARATION_PROTOTYPE
+         : !strncmp(relative, "relationships/", 14) ? DECLARATION_RELATIONSHIP
+         : !strncmp(relative, "ui/", 3)             ? DECLARATION_UI
+                                                    : DECLARATION_SCENE;
+}
+/* Signatures must all exist before bodies can establish imported effects.
+ * Effects only grow; N callables require at most N dependency propagation
+ * passes. Invalid or unresolved libraries export a conservative contract. */
+static bool library_effect_pass(source_catalog *c, bool unresolved)
+{
+    const unsigned unknown = SCRIPT_EFFECT_READ | SCRIPT_EFFECT_WRITE |
+                             SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_HOST |
+                             SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_RANDOM |
+                             SCRIPT_EFFECT_INVOCATION_READ;
+    bool changed = false;
+    for (int i = 0; i < acount(c->sources); i++) {
+        source_catalog_source *source = &c->sources[i];
+        if (!source->declarations ||
+            source->declarations->kind != SCRIPT_PROGRAM_LIBRARY) {
+            continue;
+        }
+        script_analysis *analysis = analyze_requested(c, source);
+        for (int j = 0; j < analysis->function_count; j++) {
+            const script_function *function = &analysis->functions[j];
+            if (function->kind != SCRIPT_FUNCTION_AUTHORED ||
+                function->symbol < 0 || function->parent >= 0) {
+                continue;
+            }
+            uint64_t id = analysis->symbols[function->symbol].id;
+            for (int k = c->native_capabilities; k < acount(c->capabilities); k++) {
+                script_catalog_capability *cap = &c->capabilities[k];
+                if (cap->id != id) {
+                    continue;
+                }
+                unsigned effects = cap->effects | function->effects;
+                if (unresolved && (!analysis->valid || function->body < 0)) {
+                    effects |= unknown;
+                }
+                changed |= effects != cap->effects;
+                cap->effects = effects;
+                cap->pure = analysis->valid && function->pure &&
+                            !(effects & ~(SCRIPT_EFFECT_READ |
+                                          SCRIPT_EFFECT_INVOCATION_READ));
+                break;
+            }
+        }
+        script_analysis_free(analysis);
+    }
+    return changed;
+}
+static void library_effects(source_catalog *c)
+{
+    int count = acount(c->capabilities) - c->native_capabilities;
+    for (int pass = 0; pass <= count; pass++) {
+        if (!library_effect_pass(c, false)) {
+            break;
+        }
+    }
+    /* Resolve provisional signature-only assumptions before consumers see the
+     * catalog, then propagate any conservative fallback through import chains. */
+    for (int pass = 0; pass <= count; pass++) {
+        if (!library_effect_pass(c, true)) {
+            break;
+        }
+    }
 }
 static source_catalog *build(
     const char *root,
     const script_catalog *native,
     const source_catalog_edit *edits,
     int edit_count,
-    bool replace
+    bool replace,
+    bool migration
 )
 {
     assert(root && native && edit_count >= 0 && (!edit_count || edits));
     source_catalog *c = xcalloc(1, sizeof *c);
+    c->migration = migration;
     size_t root_length = strlen(root);
     while (root_length && root[root_length - 1] == '/') {
         root_length--;
@@ -1194,15 +1996,25 @@ static source_catalog *build(
     for (int i = 0; i < c->view.capability_count; i++) {
         apush(c->capabilities, c->view.capabilities[i]);
     }
+    for (int i = 0; i < c->view.relationship_count; i++) {
+        apush(c->relationships, c->view.relationships[i]);
+    }
+    for (int i = 0; i < c->view.template_count; i++) {
+        apush(c->templates, c->view.templates[i]);
+    }
+    for (int i = 0; i < c->view.specialization_count; i++) {
+        apush(c->specializations, c->view.specializations[i]);
+    }
     update_view(c);
-    const char *folders[] = { "events",  "prototypes", "libraries", "behaviors",
-                              "systems", "scenes",     "ui" };
+    const char *folders[] = { "events",    "prototypes",   "libraries",
+                              "behaviors", "systems",      "scenes",
+                              "ui",        "relationships" };
     const declaration_kind kinds[] = {
-        DECLARATION_EVENT,  DECLARATION_PROTOTYPE, DECLARATION_SOURCE,
-        DECLARATION_SOURCE, DECLARATION_SOURCE,    DECLARATION_SCENE,
-        DECLARATION_UI
+        DECLARATION_EVENT,  DECLARATION_PROTOTYPE,   DECLARATION_SOURCE,
+        DECLARATION_SOURCE, DECLARATION_SOURCE,      DECLARATION_SCENE,
+        DECLARATION_UI,     DECLARATION_RELATIONSHIP
     };
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         if (replace && kinds[i] == DECLARATION_SOURCE) {
             continue;
         }
@@ -1233,46 +2045,50 @@ static source_catalog *build(
             }
         }
     }
+    discover_templates(c);
     declared_types(c);
     for (int i = 0; i < acount(c->sources); i++) {
         source_catalog_source *source = &c->sources[i];
-        script_analysis
-            *a = script_declarations_document(source->syntax, &c->view, source->identity);
+        script_analysis *a = c->migration ? script_analyze_migration_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity,
+                                                NULL,
+                                                0,
+                                                true
+                                            )
+                                          : script_declarations_document(
+                                                source->syntax,
+                                                &c->view,
+                                                source->identity
+                                            );
         source->declarations = a;
-        for (int j = 0; j < a->diagnostic_count; j++) {
+        for (int j = 0; !a->request_count && j < a->diagnostic_count; j++) {
             error(c, source->path, a->diagnostics[j].range, a->diagnostics[j].message);
         }
         if (!a->valid || a->kind != SCRIPT_PROGRAM_LIBRARY) {
             continue;
         }
-        for (int j = 0; j < a->function_count; j++) {
-            const script_function *f = &a->functions[j];
-            if (f->kind != SCRIPT_FUNCTION_AUTHORED || f->symbol < 0 || f->parent >= 0) {
-                continue;
-            }
-            const script_symbol *symbol = &a->symbols[f->symbol];
-            size_t size = strlen(a->name) + strlen(symbol->name) + 2;
-            char *qualified = arena_alloc(&c->storage, size);
-            snprintf(qualified, size, "%s.%s", a->name, symbol->name);
-            script_catalog_capability value = {
-                .id = symbol->id,
-                .name = own(c, symbol->name),
-                .qualified_name = qualified,
-                .kind = symbol->kind == SCRIPT_MACRO ? SCRIPT_CAPABILITY_ACTION
-                                                     : SCRIPT_CAPABILITY_FUNCTION,
-                .parameters = parameters(c, source->path, a, f->parameters, f->parameter_count),
-                .parameter_count = f->parameter_count,
-                .results = parameters(c, source->path, a, f->results, f->result_count),
-                .result_count = f->result_count,
-                .pure = f->pure,
-                .effects = f->effects,
-            };
-            callable_ports(c, a, j, &value);
-            exported_callable(c, source->path, symbol->declaration, value);
-        }
+        export_templates(c, source, a);
+        export_functions(c, source, a, false);
     }
+    library_specializations(c);
+    sort_requests(c);
+    library_effects(c);
     for (int i = 0; i < acount(c->references); i++) {
         source_catalog_reference *reference = &c->references[i];
+        if (reference->kind == SOURCE_REFERENCE_RELATIONSHIP) {
+            for (int j = 0; j < c->view.relationship_count; j++) {
+                if (!strcmp(c->view.relationships[j].name, reference->name)) {
+                    reference->id = c->view.relationships[j].id;
+                    break;
+                }
+            }
+            if (!reference->id) {
+                error(c, reference->path, reference->range, "Unknown authored relationship");
+            }
+            continue;
+        }
         if (reference->kind == SOURCE_REFERENCE_PROGRAM ||
             reference->kind == SOURCE_REFERENCE_SYSTEM) {
             for (int j = 0; j < acount(c->sources); j++) {
@@ -1326,7 +2142,11 @@ static source_catalog *build(
 }
 source_catalog *source_catalog_new(const char *root, const script_catalog *native)
 {
-    return build(root, native, NULL, 0, false);
+    return build(root, native, NULL, 0, false, false);
+}
+source_catalog *source_catalog_new_for_migration(const char *root, const script_catalog *native)
+{
+    return build(root, native, NULL, 0, false, true);
 }
 source_catalog *source_catalog_edited(
     const char *root,
@@ -1335,7 +2155,7 @@ source_catalog *source_catalog_edited(
     int count
 )
 {
-    return build(root, native, edits, count, false);
+    return build(root, native, edits, count, false, false);
 }
 source_catalog *source_catalog_replaced(
     const char *root,
@@ -1344,19 +2164,87 @@ source_catalog *source_catalog_replaced(
     int count
 )
 {
-    return build(root, native, sources, count, true);
+    return build(root, native, sources, count, true, false);
 }
 const script_catalog *source_catalog_view(const source_catalog *c)
 {
     return &c->view;
 }
+const script_specialization_request *source_catalog_requests(const source_catalog *c, int *count)
+{
+    *count = acount(c->requests);
+    return c->requests;
+}
+static bool authored_template(const source_catalog *c, const script_catalog_template *definition)
+{
+    if (!definition->owner) {
+        return false;
+    }
+    for (int i = 0; i < acount(c->sources); i++) {
+        if (!strcmp(c->sources[i].identity, definition->owner)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static script_catalog compatibility_view(
+    const source_catalog *c,
+    script_catalog_capability **capabilities,
+    script_catalog_template **templates
+)
+{
+    script_catalog view = c->view;
+    *capabilities = xmalloc((size_t)view.capability_count * sizeof **capabilities);
+    *templates = xmalloc((size_t)view.template_count * sizeof **templates);
+    if (view.capability_count) {
+        memcpy(*capabilities, view.capabilities, (size_t)view.capability_count * sizeof **capabilities);
+    }
+    if (view.template_count) {
+        memcpy(*templates, view.templates, (size_t)view.template_count * sizeof **templates);
+    }
+    view.capabilities = *capabilities;
+    view.templates = *templates;
+    /* Source text and the collection's transitive executable dependency graph
+     * invalidate authored bodies. Their inferred effects and source locations
+     * must not invalidate unrelated source generations globally. Signatures,
+     * native contracts, constructed types and compile-time results stay exact. */
+    for (int i = c->native_capabilities; i < view.capability_count; i++) {
+        script_catalog_capability *capability = &(*capabilities)[i];
+        if (capability->kind == SCRIPT_CAPABILITY_FUNCTION ||
+            capability->kind == SCRIPT_CAPABILITY_ACTION) {
+            capability->effects = 0;
+            capability->pure = false;
+        }
+    }
+    for (int i = 0; i < view.template_count; i++) {
+        script_catalog_template *definition = &(*templates)[i];
+        if (authored_template(c, definition)) {
+            definition->source_generation = 0;
+            definition->start = definition->end = 0;
+        }
+    }
+    return view;
+}
+
 bool source_catalog_same(const source_catalog *a, const source_catalog *b)
 {
     int bytes = acount(a->default_key);
-    return a->defaults_known && b->defaults_known &&
-           bytes == acount(b->default_key) &&
-           (!bytes || !memcmp(a->default_key, b->default_key, (size_t)bytes)) &&
-           source_catalog_metadata_equal(&a->view, &b->view);
+    if (a->migration != b->migration || !a->defaults_known ||
+        !b->defaults_known || bytes != acount(b->default_key) ||
+        (bytes && memcmp(a->default_key, b->default_key, (size_t)bytes))) {
+        return false;
+    }
+    script_catalog_capability *left_capabilities, *right_capabilities;
+    script_catalog_template *left_templates, *right_templates;
+    script_catalog left = compatibility_view(a, &left_capabilities, &left_templates),
+                   right = compatibility_view(b, &right_capabilities, &right_templates);
+    bool same = source_catalog_metadata_equal(&left, &right);
+    free(left_capabilities);
+    free(right_capabilities);
+    free(left_templates);
+    free(right_templates);
+    return same;
 }
 const input_action *source_catalog_input(const source_catalog *c)
 {
@@ -1411,6 +2299,11 @@ void source_catalog_free(source_catalog *c)
     afree(c->references);
     afree(c->diagnostics);
     afree(c->capabilities);
+    afree(c->relationships);
+    afree(c->templates);
+    afree(c->specializations);
+    afree(c->requests);
+    afree(c->request_paths);
     afree(c->default_key);
     input_map_free(c->input);
     arena_free(&c->storage);

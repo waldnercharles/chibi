@@ -2,26 +2,52 @@
 
 #include "support/arena.h"
 #include "types/catalog.h"
+#include "types/scalar.h"
 
 #include <string.h>
 
 _Static_assert(sizeof(pin_record) % _Alignof(type_field) == 0, "record fields must be aligned");
 
-static size_t field_size(pin_type type)
+static size_t field_size(const type_field *field)
 {
-    switch (type) {
-        case PIN_STR: return sizeof(const char *);
-        case PIN_I32: return sizeof(int32_t);
-        case PIN_BOOL: return sizeof(bool);
-        default: return 0;
+    pin_type type = field->type;
+    if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR ||
+        type == PIN_NAME || type == PIN_ENUM || type == PIN_HANDLE) {
+        return behavior_scalar_size(type);
     }
+    const type_desc *nested = type == PIN_STRUCT ? type_catalog_find(field->type_name)
+                                                 : NULL;
+    if (!type_is_plain(nested)) {
+        return 0;
+    }
+    for (int i = 0; i < nested->field_count; i++) {
+        if (!field_size(&nested->fields[i])) {
+            return 0;
+        }
+    }
+    return nested->size;
 }
-static size_t field_align(pin_type type)
+static size_t field_align(const type_field *field)
 {
-    switch (type) {
-        case PIN_STR: return _Alignof(const char *);
-        case PIN_I32: return _Alignof(int32_t);
-        case PIN_BOOL: return _Alignof(bool);
+    if (!field_size(field)) {
+        return 0;
+    }
+    if (field->type == PIN_STRUCT) {
+        const type_desc *type = type_catalog_find(field->type_name);
+        size_t alignment = 1;
+        for (int i = 0; type && i < type->field_count; i++) {
+            size_t step = field_align(&type->fields[i]);
+            if (step > alignment) {
+                alignment = step;
+            }
+        }
+        return alignment;
+    }
+    switch (field->type) {
+#define ALIGN(pin, type, member)                                               \
+    case pin: return _Alignof(type);
+        BEHAVIOR_SCALARS(ALIGN)
+#undef ALIGN
         default: return 0;
     }
 }
@@ -66,10 +92,14 @@ static bool shape(
     }
     for (int i = 0; i < count; i++) {
         const type_field *field = &fields[i];
-        size_t width = field_size(field->type), step = field_align(field->type);
+        size_t width = field_size(field), step = field_align(field);
         if (!field->name || !*field->name || !width ||
             !add(&bytes, strlen(field->name) + 1) || !align(&size, step) ||
             !add(&size, width)) {
+            return false;
+        }
+        if ((field->type_name && !add(&bytes, strlen(field->type_name) + 1)) ||
+            (field->unit && !add(&bytes, strlen(field->unit) + 1))) {
             return false;
         }
         for (int j = 0; j < i; j++) {
@@ -109,13 +139,22 @@ static const pin_record *initialize(
                             .bytes = bytes };
     size_t offset = 0;
     for (int i = 0; i < count; i++) {
-        size_t step = field_align(fields[i].type);
+        size_t step = field_align(&fields[i]);
         size_t remainder = offset % step;
         offset += remainder ? step - remainder : 0;
-        owned[i] = (type_field){ .name = copy_name(&text, fields[i].name),
+        /* Validation requires the name, type name and unit in this order, so
+         * each is copied in its own statement, not within one initializer. */
+        const char *name = copy_name(&text, fields[i].name);
+        const char *type_name = fields[i].type_name
+                                  ? copy_name(&text, fields[i].type_name)
+                                  : NULL;
+        const char *unit = fields[i].unit ? copy_name(&text, fields[i].unit) : NULL;
+        owned[i] = (type_field){ .name = name,
                                  .type = fields[i].type,
                                  .offset = offset,
-                                 .size = field_size(fields[i].type) };
+                                 .size = field_size(&fields[i]),
+                                 .type_name = type_name,
+                                 .unit = unit };
         offset += owned[i].size;
     }
     record->layout = type_layout_hash(&record->type);
@@ -152,7 +191,11 @@ const pin_record *pin_record_create(
     return initialize(arena_alloc(storage, bytes), bytes, size, name, id, fields, count);
 }
 /* A valid descriptor is exactly what initialize writes, so its copy is the
- * same bytes with every name pointer moved into the copy. */
+ * same bytes with every text pointer moved into the copy. */
+static const char *moved(const char *text, const char *from, char *to)
+{
+    return text ? to + (text - from) : NULL;
+}
 static const pin_record *copy_record(arena *storage, const pin_record *record)
 {
     pin_record *copy = arena_alloc(storage, record->bytes);
@@ -161,9 +204,12 @@ static const pin_record *copy_record(arena *storage, const pin_record *record)
     char *to = (char *)copy;
     type_field *fields = (type_field *)(copy + 1);
     copy->type.fields = fields;
-    copy->type.name = to + (record->type.name - from);
+    copy->type.name = moved(record->type.name, from, to);
     for (int i = 0; i < record->type.field_count; i++) {
-        fields[i].name = to + (record->type.fields[i].name - from);
+        const type_field *field = &record->type.fields[i];
+        fields[i].name = moved(field->name, from, to);
+        fields[i].type_name = moved(field->type_name, from, to);
+        fields[i].unit = moved(field->unit, from, to);
     }
     return copy;
 }
@@ -207,15 +253,27 @@ bool pin_record_valid(const pin_record *record)
     }
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
-        size_t width = field_size(field->type), step = field_align(field->type);
-        if (field->name != text || !*field->name || !width || !align(&size, step) ||
-            field->offset != size || field->size != width || !add(&size, width) ||
-            !add(&bytes, strlen(field->name) + 1) || field->type_name ||
-            field->description || field->color || field->unit || field->min ||
-            field->max || field->range_contract || field->range_default) {
+        size_t width = field_size(field), step = field_align(field);
+        if (field->name != text || !*field->name || !width ||
+            !align(&size, step) || field->offset != size || field->size != width ||
+            !add(&size, width) || !add(&bytes, strlen(field->name) + 1) ||
+            field->description || field->color || field->min || field->max ||
+            field->range_contract || field->range_default) {
             return false;
         }
         text += strlen(text) + 1;
+        if (field->type_name) {
+            if (field->type_name != text || !add(&bytes, strlen(text) + 1)) {
+                return false;
+            }
+            text += strlen(text) + 1;
+        }
+        if (field->unit) {
+            if (field->unit != text || !add(&bytes, strlen(text) + 1)) {
+                return false;
+            }
+            text += strlen(text) + 1;
+        }
         for (int j = 0; j < i; j++) {
             if (!strcmp(field->name, record->type.fields[j].name)) {
                 return false;

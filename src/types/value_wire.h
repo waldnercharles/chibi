@@ -38,7 +38,7 @@ void execution_wire_string(execution_wire *, const char **);
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Struct names/layouts must resolve in the supplied global type catalog. No
  * process pointer is encoded; HANDLE values must be zero. Collections preserve
- * ordered items, including maps' existing typed item representation. */
+ * ordered items. Maps encode full typed key/value headers and ordered pairs. */
 void execution_wire_value(execution_wire *, pin_value *);
 /* Explicit execution-prepared variant. Each recursive value carries an authored
  * discriminator; resolve validates original writer headers or supplies an owned

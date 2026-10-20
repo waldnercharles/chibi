@@ -256,6 +256,10 @@ int ecs_world_command_count(const ecs_world *world);
  * uses the command buffer and sync point internally. */
 ecs_entity ecs_world_create_entity(ecs_world *world);
 int ecs_world_destroy_entity(ecs_world *world, ecs_entity entity);
+/* At a quiescent point, preflight destruction of an owned set and unlink its
+ * internal custom relationships. External PANIC links refuse without changes.
+ * ChildOf stays intact; callers can then destroy children before parents. */
+int ecs_world_prepare_owned_destruction(ecs_world *, const ecs_entity *, int count);
 
 uint64_t ecs_entity_to_u64(ecs_entity entity);
 ecs_entity ecs_entity_from_u64(uint64_t value);

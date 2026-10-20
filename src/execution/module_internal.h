@@ -9,6 +9,7 @@ struct execution_module
     execution_module_plan plan;
     behavior_backend backend;
     unsigned references;
+    bool retained_tasks; /* Immutable transitive summary of finalized imports. */
     execution_effect_summary effects;
     uint64_t *effect_ids;
     size_t effect_bytes;

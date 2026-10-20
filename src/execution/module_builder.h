@@ -19,6 +19,7 @@ typedef struct
     uint64_t id;
     pin_value initial; /* Payload may be borrowed until finish snapshots it. */
     bool shared;
+    bool contains_tasks; /* Schema fact, including empty task collections. */
 } execution_module_state;
 typedef struct
 {

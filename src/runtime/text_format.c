@@ -457,9 +457,27 @@ static const char *text_slice_call(arena *storage, const pin_value *arguments, i
     *result = (pin_value){ .type = PIN_STR, .type_name = "const char *", .str = copy };
     return NULL;
 }
+static const char *text_bytes_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 1, &text, &length);
+    if (error) {
+        return error;
+    }
+    pin_array *bytes = pin_array_snapshot_allocate(storage, PIN_I32, "int", (int)length);
+    for (size_t i = 0; i < length; i++) {
+        bytes->items[i] = (pin_value){ .type = PIN_I32,
+                                       .type_name = bytes->type_name,
+                                       .i = (unsigned char)text[i] };
+    }
+    *result = (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = bytes };
+    return NULL;
+}
 const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL = { .value = text_byte_length_call };
 const node_host_call NATIVE_TEXT_BYTE_AT_CALL = { .value = text_byte_at_call };
 const node_host_call NATIVE_TEXT_SLICE_CALL = { .value = text_slice_call };
+const node_host_call NATIVE_TEXT_BYTES_CALL = { .value = text_bytes_call };
 #define SNAPSHOT(KEY, FN, VARIADIC)                                                                       \
     static const char *KEY##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *out) \
     {                                                                                                     \

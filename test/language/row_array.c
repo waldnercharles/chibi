@@ -177,8 +177,9 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
     REQUIRE(a->count == count && a->element_type == PIN_STRUCT);
     REQUIRE(a->record == value->record && a->type_name == value->type_name);
     for (int i = 0; i < count; i++) {
-        REQUIRE(a->items[i].record == a->record);
-        REQUIRE(check_row(&a->items[i], i, shared_text, &storage));
+        REQUIRE(pin_array_get(a, i).record == a->record);
+        pin_value item = pin_array_get(a, i);
+        REQUIRE(check_row(&item, i, shared_text, &storage));
     }
     return true;
 }
@@ -455,7 +456,17 @@ static bool compile(const char *source, behavior_backend backend)
     script_lower_bindings bindings = authoring_native_bindings(native);
     syntax = script_parse(source);
     for (int i = 0; i < syntax->diagnostic_count; i++) {
-        fprintf(stderr, "row-array parse: %s\n", syntax->diagnostics[i].message);
+        const script_diagnostic *d = &syntax->diagnostics[i];
+        fprintf(
+            stderr,
+            "row-array parse %d:%d [%d,%d): %s: %.64s\n",
+            d->range.line,
+            d->range.column,
+            d->range.start,
+            d->range.end,
+            d->message,
+            source + d->range.start
+        );
     }
     REQUIRE(!syntax->diagnostic_count);
     analysis = script_analyze(syntax, catalog);
@@ -569,11 +580,11 @@ TEST_CASE(row_array_authored_construction)
                                               { 0, 270, 1080, 4320 } };
     static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 22, 73, 277 } };
     static const char *sources[] = {
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
         "rows=array_add(rows,row); i=i+1; } return rows; } }",
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
         "rows=append(rows,[row]); i=i+1; } return rows; } }",
@@ -606,7 +617,7 @@ TEST_CASE(row_array_authored_construction)
 TEST_CASE(row_array_authored_retained_prefix)
 {
     static const char source
-        [] = "library Rows { " ROW "Keep::(count:int,text:string)->Row[] { "
+        [] = "Rows :: library { " ROW "Keep::(count:int,text:string)->Row[] { "
              "rows:Row[]=[]; prefix:Row[]=[]; i:int=0; "
              "while i<count { " MAKE_ROW
              "rows=array_add(rows,row); if i==0 { prefix=rows; } i=i+1; } "
@@ -665,14 +676,14 @@ TEST_CASE(row_array_local_arrays_update_in_place)
         [] = "package arrays\n"
              "Row :: struct { a: int; b: string; }\n"
              "Holder :: union { Some(items: int[]) }\n"
-             "Build :: pure fn(n: int) -> int {\n"
+             "Build :: (n: int) -> int {\n"
              "    items: int[] = [];\n"
              "    i: int = 0;\n"
              "    while (i < n) { items = array_add(items, i); i += 1; }\n"
              "    items[n - 1] = 7;\n"
              "    return length(items) + items[n - 1] + items[n - 2];\n"
              "}\n"
-             "Alias :: pure fn() -> int {\n"
+             "Alias :: () -> int {\n"
              "    a: int[] = [1, 2];\n"
              "    b := a;\n"
              "    a = array_add(a, int(3));\n"
@@ -680,21 +691,21 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "    return b[0] * 1000 + length(b) * 100 + a[0] * 10 + "
              "length(a);\n"
              "}\n"
-             "Count :: pure fn(xs: int[]) -> int { return length(xs); }\n"
-             "Borrow :: pure fn() -> int {\n"
+             "Count :: (xs: int[]) -> int { return length(xs); }\n"
+             "Borrow :: () -> int {\n"
              "    xs: int[] = [];\n"
              "    xs = array_add(xs, int(1));\n"
              "    n := Count(xs);\n"
              "    xs = array_add(xs, int(2));\n"
              "    return n * 10 + Count(xs);\n"
              "}\n"
-             "Iterate :: pure fn() -> int {\n"
+             "Iterate :: () -> int {\n"
              "    xs: int[] = [1, 2, 3];\n"
              "    total: int = 0;\n"
-             "    foreach (x in xs) { xs = array_add(xs, x); total += x; }\n"
+             "    for (x in xs) { xs = array_add(xs, x); total += x; }\n"
              "    return total * 10 + length(xs);\n"
              "}\n"
-             "Records :: pure fn() -> int {\n"
+             "Records :: () -> int {\n"
              "    rows: Row[] = [];\n"
              "    row: Row = {a: 1, b: \"x\"};\n"
              "    rows = array_add(rows, row);\n"
@@ -702,7 +713,7 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "    rows[0] = {a: rows[0].a + 1, b: \"y\"};\n"
              "    return rows[0].a * 10 + row.a;\n"
              "}\n"
-             "Extend :: pure fn() -> int {\n"
+             "Extend :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    ys: int[] = [2, 3];\n"
              "    xs = append(xs, ys);\n"
@@ -715,20 +726,20 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "    return rows[1].a * 1000 + length(xs) * 100 + xs[1] * 10 + "
              "xs[5];\n"
              "}\n"
-             "Named :: pure fn() -> int {\n"
+             "Named :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    ys: int[] = [2];\n"
              "    xs = append(other_array: xs, array: ys);\n"
              "    return xs[0] * 10 + xs[1];\n"
              "}\n"
-             "Bump :: fn(values: ref int[]) -> int { values = "
+             "Bump :: (values: ref int[]) -> int { values = "
              "array_add(values, int(9)); return 5; }\n"
-             "Order :: fn() -> int {\n"
+             "Order :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    xs = array_add(xs, Bump(xs));\n"
              "    return length(xs) * 10 + xs[length(xs) - 1];\n"
              "}\n"
-             "Rows :: pure fn(n: int) -> int {\n"
+             "Rows :: (n: int) -> int {\n"
              "    rows: Row[] = [];\n"
              "    i: int = 0;\n"
              "    while (i < n) {\n"
@@ -738,21 +749,21 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "    }\n"
              "    return rows[n - 1].a + length(rows);\n"
              "}\n"
-             "Branch :: pure fn() -> bool {\n"
+             "Branch :: () -> bool {\n"
              "    xs: bool[] = [];\n"
              "    a := length(xs) == 0;\n"
              "    xs = array_add(xs, a && !a);\n"
              "    xs[0] = a || !a;\n"
              "    return length(xs) == 1;\n"
              "}\n"
-             "Ready :: pure fn() -> bool {\n"
+             "Ready :: () -> bool {\n"
              "    xs: int[] = [];\n"
              "    xs = array_add(xs, int(1));\n"
              "    xs = append(xs, xs);\n"
              "    xs[0] = 2;\n"
              "    return length(xs) == 2;\n"
              "}\n"
-             "Payload :: pure fn() -> int {\n"
+             "Payload :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    h := Holder.Some(xs);\n"
              "    xs = array_add(xs, int(2));\n"

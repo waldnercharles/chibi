@@ -14,10 +14,27 @@ struct authoring_navigation
     authoring_document *documents;
     const script_catalog *catalog;
     authoring_reference *references;
+    int *reference_heads, *reference_previous;
     authoring_call *calls;
     const char **texts;
     source_text_kind *text_kinds;
 };
+
+const script_catalog_template *authoring_navigation_template(const authoring_navigation *index, uint64_t id)
+{
+    for (int i = 0; i < index->catalog->specialization_count; i++) {
+        if (index->catalog->specializations[i].id == id) {
+            id = index->catalog->specializations[i].template_id;
+            break;
+        }
+    }
+    for (int i = 0; i < index->catalog->template_count; i++) {
+        if (index->catalog->templates[i].id == id) {
+            return &index->catalog->templates[i];
+        }
+    }
+    return NULL;
+}
 
 bool authoring_target_equal(authoring_target a, authoring_target b)
 {
@@ -106,15 +123,32 @@ static authoring_target member_target(const authoring_navigation *index, int doc
 
 static void add_reference(authoring_navigation *index, authoring_reference reference)
 {
+    const script_catalog_template
+        *definition = authoring_navigation_template(index, reference.target.id);
+    if (definition) {
+        if (reference.kind == AUTHORING_DEFINE &&
+            reference.target.id != definition->id) {
+            return; /* Generated declarations reuse ranges from another source. */
+        }
+        reference.target = (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD
+                                                   ? AUTHORING_TYPE
+                                                   : AUTHORING_CALLABLE,
+                                               -1,
+                                               definition->id,
+                                               0 };
+    }
     if (!reference.target.id || reference.location.range.start < 0 ||
         reference.location.range.end <= reference.location.range.start) {
         return;
     }
-    for (int i = acount(index->references) - 1; i >= 0; i--) {
+    while (acount(index->reference_heads) <= reference.location.document) {
+        apush(index->reference_heads, -1);
+    }
+    /* Catalog/template definitions arrive after the initial document walk,
+     * so references to one document are not necessarily contiguous. */
+    for (int i = index->reference_heads[reference.location.document]; i >= 0;
+         i = index->reference_previous[i]) {
         const authoring_reference *previous = &index->references[i];
-        if (previous->location.document != reference.location.document) {
-            break;
-        }
         if (previous->kind == reference.kind &&
             previous->location.range.start == reference.location.range.start &&
             previous->location.range.end == reference.location.range.end &&
@@ -122,6 +156,8 @@ static void add_reference(authoring_navigation *index, authoring_reference refer
             return;
         }
     }
+    apush(index->reference_previous, index->reference_heads[reference.location.document]);
+    index->reference_heads[reference.location.document] = acount(index->references);
     apush(index->references, reference);
 }
 
@@ -268,6 +304,11 @@ static void expressions(authoring_navigation *index, int document)
             call_names(index, document, expression, node);
             node = name_node(ts_node_child_by_field_name(node, "function", 8));
             target = (authoring_target){ AUTHORING_CALLABLE, -1, expression->capability, 0 };
+            const script_catalog_template
+                *definition = authoring_navigation_template(index, target.id);
+            if (definition) {
+                target.id = definition->id;
+            }
             kind = AUTHORING_CALL;
             apush(
                 index->calls,
@@ -496,6 +537,35 @@ authoring_navigation *authoring_navigation_new_project(
     for (int i = 0; i < count; i++) {
         document_references(index, i);
     }
+    for (int i = 0; i < catalog->template_count; i++) {
+        const script_catalog_template *definition = &catalog->templates[i];
+        for (int d = 0; d < count; d++) {
+            const script_analysis *analysis = documents[d].analysis;
+            if (!definition->owner || !analysis->identity ||
+                strcmp(definition->owner, analysis->identity)) {
+                continue;
+            }
+            TSNode declaration = expression_node(
+                documents[d].syntax,
+                (script_range){ .start = definition->start, .end = definition->end }
+            );
+            TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
+            if (!ts_node_is_null(name)) {
+                add_reference(
+                    index,
+                    (authoring_reference){ { definition->kind == SCRIPT_TEMPLATE_RECORD
+                                                 ? AUTHORING_TYPE
+                                                 : AUTHORING_CALLABLE,
+                                             -1,
+                                             definition->id,
+                                             0 },
+                                           { d, script_node_range(name) },
+                                           AUTHORING_DEFINE,
+                                           { 0 } }
+                );
+            }
+        }
+    }
     prototype_names(index);
     for (int i = 0; i < definition_count; i++) {
         const source_catalog_definition *definition = &definitions[i];
@@ -506,7 +576,8 @@ authoring_navigation *authoring_navigation_new_project(
             definition->text,
             definition->text_kind
         );
-        authoring_target target = { definition->field ? AUTHORING_FIELD
+        authoring_target target = { definition->relationship ? AUTHORING_TYPE
+                                    : definition->field      ? AUTHORING_FIELD
                                     : definition->kind == SCRIPT_CAPABILITY_PROTOTYPE
                                         ? AUTHORING_PROTOTYPE
                                         : AUTHORING_CALLABLE,
@@ -545,6 +616,8 @@ authoring_navigation *authoring_navigation_new_project(
         authoring_target_kind kind = reference->kind == SOURCE_REFERENCE_PROGRAM ||
                                              reference->kind == SOURCE_REFERENCE_SYSTEM
                                        ? AUTHORING_PROGRAM
+                                   : reference->kind == SOURCE_REFERENCE_RELATIONSHIP
+                                       ? AUTHORING_TYPE
                                    : reference->kind == SOURCE_REFERENCE_PROTOTYPE
                                        ? AUTHORING_PROTOTYPE
                                        : AUTHORING_CALLABLE;
@@ -568,6 +641,8 @@ void authoring_navigation_free(authoring_navigation *index)
     afree(index->texts);
     afree(index->text_kinds);
     afree(index->references);
+    afree(index->reference_heads);
+    afree(index->reference_previous);
     afree(index->calls);
     free(index);
 }
@@ -621,6 +696,16 @@ const authoring_reference *authoring_navigation_definition(
     authoring_target target
 )
 {
+    const script_catalog_template
+        *definition = authoring_navigation_template(index, target.id);
+    if (definition) {
+        target = (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD
+                                         ? AUTHORING_TYPE
+                                         : AUTHORING_CALLABLE,
+                                     -1,
+                                     definition->id,
+                                     0 };
+    }
     for (int i = 0; i < acount(index->references); i++) {
         const authoring_reference *reference = &index->references[i];
         if (reference->kind == AUTHORING_DEFINE &&
@@ -684,6 +769,12 @@ authoring_target authoring_navigation_caller(const authoring_navigation *index, 
 
 const char *authoring_navigation_name(const authoring_navigation *index, authoring_target target)
 {
+    const script_catalog_template
+        *definition = authoring_navigation_template(index, target.id);
+    if (definition) {
+        const char *name = strrchr(definition->name, '.');
+        return name ? name + 1 : definition->name;
+    }
     if (target.kind == AUTHORING_PROGRAM) {
         for (int i = 0; i < acount(index->documents); i++) {
             const script_analysis *analysis = index->documents[i].analysis;
@@ -710,7 +801,15 @@ const char *authoring_navigation_name(const authoring_navigation *index, authori
         target.kind == AUTHORING_FIELD ? target.owner : target.id
     );
     if (target.kind == AUTHORING_TYPE) {
-        return type ? type->name : NULL;
+        if (type) {
+            return type->name;
+        }
+        for (int i = 0; i < index->catalog->relationship_count; i++) {
+            if (index->catalog->relationships[i].id == target.id) {
+                return index->catalog->relationships[i].name;
+            }
+        }
+        return NULL;
     }
     if (target.kind == AUTHORING_FIELD && type) {
         for (int i = 0; i < type->field_count; i++) {

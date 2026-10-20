@@ -83,9 +83,8 @@ static void parse(const char *text)
 TEST_CASE(language_declarations_actions_and_bindings)
 {
     parse(
-        "behavior Demo {\n"
-        "owner \"ecs.entity\"; description \"fixture\";\n"
-        "state count: int = 0; shared enabled := true;\n"
+        "Demo :: behavior {\n"
+        "count: retain int = 0; enabled: retain = true;\n"
         "target := self.Velocity.Parent;\n"
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
@@ -97,25 +96,234 @@ TEST_CASE(language_declarations_actions_and_bindings)
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
-    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 5)), "action_declaration"));
-    TSNode handler = ts_node_named_child(body, 8);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 3)), "action_declaration"));
+    TSNode handler = ts_node_named_child(body, 6);
     REQUIRE(!strcmp(ts_node_type(handler), "handler"));
     REQUIRE(node_text(field(handler, "kind"), "on"));
     REQUIRE(node_text(field(handler, "alias"), "frame"));
     return true;
 }
 
+TEST_CASE(language_retained_binding_syntax)
+{
+    parse(
+        "Counters :: system() { visits: retain int = 0; total: retain "
+        "= 0; "
+        "pending: retain task; Run :: () { calls: retain = 0; "
+        "shared_calls: retain int = 0; } }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode body = declaration_body();
+    TSNode visits = ts_node_named_child(body, 0);
+    REQUIRE(!strcmp(ts_node_type(visits), "state_declaration"));
+    REQUIRE(node_text(field(visits, "name"), "visits"));
+    REQUIRE(node_text(field(visits, "storage"), "retain"));
+    REQUIRE(node_text(field(visits, "type"), "int"));
+    REQUIRE(node_text(field(visits, "value"), "0"));
+    REQUIRE(ts_node_is_null(field(visits, "owner")));
+    TSNode total = ts_node_named_child(body, 1);
+    REQUIRE(ts_node_is_null(field(total, "owner")));
+    REQUIRE(node_text(field(total, "storage"), "retain"));
+    REQUIRE(ts_node_is_null(field(total, "type")));
+    TSNode callable = ts_node_named_child(body, 3);
+    TSNode calls = ts_node_named_child(field(callable, "body"), 0);
+    REQUIRE(!strcmp(ts_node_type(calls), "state_declaration"));
+    REQUIRE(node_text(field(calls, "storage"), "retain"));
+    return true;
+}
+
+TEST_CASE(language_unified_declarations_and_generic_map_shapes)
+{
+    parse(
+        "Types :: library { Vector :: struct($Element: Type, $Size: int) { "
+        "items: Element[]; } Identity :: (value: $T) -> T => { return value; } "
+        "Product :: (left: $L, right: $R) -> ProductType(L, R) { return left; "
+        "} "
+        "Composed :: (value: ref Vector(float, 2)[]) -> Vector(float, 2)? { "
+        "return nil; } "
+        "Use :: () { values: Map<string, int> = {\"Ada\": 1, [key]: 2, 3: 4}; "
+        "for key, value in values { consume(key, value); } "
+        "for item: ref in items { item += 1; } } }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode body = declaration_body();
+    TSNode record = ts_node_named_child(body, 0);
+    REQUIRE(!strcmp(ts_node_type(record), "record_declaration"));
+    TSNode parameter = ts_node_named_child(field(record, "parameters"), 0);
+    REQUIRE(node_text(field(parameter, "comptime"), "$"));
+    REQUIRE(node_text(field(parameter, "name"), "Element"));
+    TSNode identity = ts_node_named_child(body, 1);
+    parameter = ts_node_named_child(field(identity, "parameters"), 0);
+    TSNode binder = field(field(parameter, "type"), "name");
+    REQUIRE(!strcmp(ts_node_type(binder), "type_binder"));
+    REQUIRE(node_text(field(binder, "name"), "T"));
+    TSNode product = ts_node_named_child(body, 2);
+    TSNode results = field(product, "results");
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(results, 0)), "type_application"));
+    TSNode composed = ts_node_named_child(body, 3);
+    parameter = ts_node_named_child(field(composed, "parameters"), 0);
+    TSNode composed_type = field(parameter, "type");
+    REQUIRE(node_text(field(composed_type, "trait"), "ref"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(composed_type, 0)), "type_application"));
+    REQUIRE(node_text(composed_type, "ref Vector(float, 2)[]"));
+    REQUIRE(node_text(field(composed, "results"), "Vector(float, 2)?"));
+    TSNode use = ts_node_named_child(body, 4);
+    TSNode statements = field(use, "body");
+    TSNode value = field(ts_node_named_child(statements, 0), "value");
+    REQUIRE(!strcmp(ts_node_type(value), "struct_expression"));
+    REQUIRE(node_text(field(ts_node_named_child(value, 0), "name"), "\"Ada\""));
+    REQUIRE(node_text(field(ts_node_named_child(value, 1), "key"), "key"));
+    TSNode loop = ts_node_named_child(statements, 1);
+    REQUIRE(!strcmp(ts_node_type(loop), "for_statement"));
+    REQUIRE(node_text(field(loop, "key"), "key"));
+    REQUIRE(node_text(field(loop, "name"), "value"));
+    loop = ts_node_named_child(statements, 2);
+    REQUIRE(node_text(field(loop, "reference"), "ref"));
+    REQUIRE(node_text(field(loop, "name"), "item"));
+    return true;
+}
+
+TEST_CASE(language_authored_asset_declarations)
+{
+    parse(
+        "Boss :: prototype(Enemy, Armored) { identity: \"stable\", "
+        "links: {Targets: child.enemy}, Health {current: 100, maximum: 100} }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode prototype = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    REQUIRE(!strcmp(ts_node_type(prototype), "prototype_declaration"));
+    REQUIRE(node_text(field(prototype, "name"), "Boss"));
+    REQUIRE(ts_node_named_child_count(field(prototype, "bases")) == 2);
+    TSNode component = ts_node_named_child(field(prototype, "body"), 2);
+    REQUIRE(!strcmp(ts_node_type(component), "prototype_component"));
+    REQUIRE(node_text(field(component, "name"), "Health"));
+    parse("Targets :: relationship {exclusive: true, traversable: false, on_delete_target: Remove}");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode relationship = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    REQUIRE(!strcmp(ts_node_type(relationship), "relationship_declaration"));
+    REQUIRE(node_text(field(relationship, "name"), "Targets"));
+    return true;
+}
+
+TEST_CASE(language_obsolete_symbol_spellings_rejected)
+{
+    const char *invalid[] = {
+        "behavior Old {}",
+        "Old :: system {}",
+        "Old :: system query p: Position {}",
+        "Old :: library { Run :: fn() {} }",
+        "Old :: library { Run :: pure () {} }",
+        "Old :: library { Run :: (int value) {} }",
+        "Old :: behavior { int value = 0; }",
+        "Old :: library { \"Run\" :: () {} }",
+        "Old :: behavior { \"count\" := 0; }",
+        "Old :: behavior { on Tick { foreach value in [] {} } }",
+        "Old :: behavior { on Tick { \"done\": goto \"done\"; } }",
+        "Old :: library { Run :: () { return.\"Done\"; } }",
+        "Old :: library { Run :: (value: struct<\"Position\">) {} }",
+        "Old :: library { Run :: () { \"Call\"(); } }",
+        "Old :: behavior { on Tick { self.\"Health\" = 0; } }",
+        "Old :: behavior { on Tick { call(\"Value\": 0); } }",
+        "Old :: library { return :: () {} }",
+        "Old :: behavior { on Tick { for ref item in items {} } }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
+    return true;
+}
+
+TEST_CASE(language_keywords_are_contextual_data_member_names)
+{
+    parse(
+        "Use :: library { Identity :: (value: int) -> int { return value; } "
+        "Run :: () { component := 1; from := 2; split := 3; join := 4; "
+        "unordered := 5; not := 6; struct := 7; "
+        "Identity(component); Identity(from); Identity(split); Identity(join); "
+        "Identity(unordered); Identity(not); Identity(struct); } }"
+    );
+    REQUIRE(!original->diagnostic_count);
+    cleanup();
+    parse(
+        "Rows :: library { Row :: struct { prototype: string; system: int; if: "
+        "bool; } "
+        "Make :: () -> Row { return {prototype: \"Drone\", system: 1, if: "
+        "true}; } "
+        "Read :: (row: Row) -> string { return row.prototype; } }"
+    );
+    REQUIRE(!original->diagnostic_count);
+    cleanup();
+    parse("Metadata :: component { prototype: string; system: int; if: bool; }");
+    REQUIRE(!original->diagnostic_count);
+    return true;
+}
+
+TEST_CASE(language_not_callable_and_unary_spellings_disambiguate)
+{
+    parse(
+        "Negation :: library { Evaluate :: (enabled: bool) -> bool { "
+        "value: bool = not(Value: not(Value: enabled)); return not(value); } "
+        "Unary :: (enabled: bool) -> bool { return not enabled; } "
+        "not :: (Value: bool) -> bool { return Value; } "
+        "Narrow :: (value: bool) { if value is not Cancelled {} } }"
+    );
+    REQUIRE(!original->diagnostic_count);
+    TSNode body = declaration_body();
+    TSNode evaluate = ts_node_named_child(body, 0);
+    TSNode statements = field(evaluate, "body");
+    TSNode call = field(ts_node_named_child(statements, 0), "value");
+    REQUIRE(!strcmp(ts_node_type(call), "call_expression"));
+    REQUIRE(node_text(field(call, "function"), "not"));
+    TSNode arguments = field(call, "arguments");
+    REQUIRE(
+        !strcmp(ts_node_type(field(ts_node_named_child(arguments, 0), "value")), "call_expression")
+    );
+    TSNode unary = ts_node_named_child(body, 1);
+    TSNode returned = ts_node_named_child(field(unary, "body"), 0);
+    REQUIRE(!strcmp(ts_node_type(field(returned, "value")), "unary_expression"));
+    TSNode narrow = ts_node_named_child(body, 3);
+    TSNode conditional = ts_node_named_child(field(narrow, "body"), 0);
+    TSNode pattern = field(conditional, "condition");
+    REQUIRE(!strcmp(ts_node_type(pattern), "is_expression"));
+    REQUIRE(node_text(field(pattern, "negated"), "not"));
+    REQUIRE(node_text(field(pattern, "type"), "Cancelled"));
+    REQUIRE(ts_node_is_null(field(pattern, "binding")));
+    return true;
+}
+
+TEST_CASE(language_retained_bindings_reject_prefixes_and_value_types)
+{
+    const char *invalid[] = {
+        "Old :: system() { count: retain(system) int = 0; }",
+        "Old :: behavior { count: retain(system) = 0; }",
+        "Old :: behavior { state count: int = 0; }",
+        "Old :: system() { shared count := 0; }",
+        "Old :: behavior { Run :: () { state count := 0; } }",
+        "Bad :: behavior { count: retain; }",
+        "Bad :: behavior { count: retain(owner) int = 0; }",
+        "Bad :: library { Run :: (count: retain int) {} }",
+        "Bad :: library { Run :: () -> retain int {} }",
+        "Bad :: behavior { counts: array<retain int> = []; }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
+    return true;
+}
+
 TEST_CASE(language_callable_types_entries_and_results)
 {
     parse(
-        "library Helpers {\n"
-        "Identity :: pure fn<T: plain int>(ref int source, item: T = 1) "
+        "Helpers :: library {\n"
+        "Identity :: (source: ref int, item: $T = 1) "
         "-> (Result: T) { return item }\n"
-        "Apply :: fn(amount: int) -> () { entry Run { return(); } exit "
+        "Apply :: (amount: int) -> () { entry Run { return(); } exit "
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
-        "converted := engine[\"To Real\"](Value: int = 3);\n"
-        "chosen := Identity<int>(source: ref int from state.count, "
+        "converted := to_real(Value: int = 3);\n"
+        "chosen := Identity(source: ref int from state.count, "
         "item: 2);\n"
         "}"
     );
@@ -123,17 +331,26 @@ TEST_CASE(language_callable_types_entries_and_results)
     TSNode callable = ts_node_named_child(declaration_body(), 0);
     REQUIRE(!strcmp(ts_node_type(callable), "function_declaration"));
     REQUIRE(node_text(field(callable, "name"), "Identity"));
-    REQUIRE(!ts_node_is_null(field(callable, "type_parameters")));
+    REQUIRE(ts_node_is_null(field(callable, "type_parameters")));
     TSNode parameters = field(callable, "parameters");
     REQUIRE(ts_node_named_child_count(parameters) == 2);
     REQUIRE(node_text(field(ts_node_named_child(parameters, 0), "name"), "source"));
+    cleanup();
+    parse(
+        "Use :: library { Run :: () { result: Units.ProductType(A, B) = {}; "
+        "speed: Units.Quantity(double, 1, -1) = {}; return speed; } }"
+    );
+    REQUIRE(!original->diagnostic_count);
+    TSNode body = field(ts_node_named_child(declaration_body(), 0), "body");
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "local_declaration"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 1)), "local_declaration"));
     return true;
 }
 
 TEST_CASE(language_system_queries_and_control_flow)
 {
     parse(
-        "system Motion(position: Transform, velocity: Velocity, damping: "
+        "Motion :: system(position: Transform, velocity: Velocity, damping: "
         "Igniter?) "
         "without Collider, Body {\n"
         "query components();\n"
@@ -142,7 +359,7 @@ TEST_CASE(language_system_queries_and_control_flow)
         "velocity; }\n"
         "while dt > 0 { break; }\n"
         "for (i in 0..3) { continue; }\n"
-        "foreach (item in [1, 2]) { consume(item); }\n"
+        "for (item in [1, 2]) { consume(item); }\n"
         "switch (choice) { case 0: { consume(0); } case: { consume(1); } "
         "}\n"
         "sequence { branch { destroy(self); } branch { await delay(Duration: "
@@ -163,9 +380,10 @@ TEST_CASE(language_system_queries_and_control_flow)
 TEST_CASE(language_nested_typed_records_and_explicit_labels)
 {
     parse(
-        "library Parser { Package :: struct { directory: string; name: string; "
+        "Parser :: library { Package :: struct { directory: string; name: "
+        "string; "
         "member_start: int; member_count: int; }\n"
-        "Main :: fn(enabled: bool) -> int {\n"
+        "Main :: (enabled: bool) -> int {\n"
         " result: int = 0;\n"
         " if enabled {\n"
         "  item: Package = {directory: \"app\", name: \"sample\",\n"
@@ -200,7 +418,7 @@ TEST_CASE(language_nested_typed_records_and_explicit_labels)
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 1)), "assignment"));
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 2)), "label_statement"));
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 3)), "assignment"));
-    parse("system State { inferred := 1; typed: int = 2; }");
+    parse("State :: system() { inferred: retain = 1; typed: retain int = 2; }");
     REQUIRE(original->diagnostic_count == 0);
     body = declaration_body();
     REQUIRE(ts_node_named_child_count(body) == 2);
@@ -212,9 +430,9 @@ TEST_CASE(language_nested_typed_records_and_explicit_labels)
 TEST_CASE(language_definitions_unions_and_type_patterns)
 {
     parse(
-        "library Combat {\n"
+        "Combat :: library {\n"
         "BaseDamage :: 12\n"
-        "DamageFor :: pure fn(level: int) -> number { return level * 2 }\n"
+        "DamageFor :: (level: int) -> number { return level * 2 }\n"
         "OtherDamage :: (level: int) -> number { return level + BaseDamage }\n"
         "AttackState :: union { Idle | Windup(remaining: number) | "
         "Active(damage: number) }\n"
@@ -245,9 +463,9 @@ TEST_CASE(language_definitions_unions_and_type_patterns)
 TEST_CASE(language_query_header_and_cancel_deadline)
 {
     parse(
-        "system Home query position: Transform, aim: Targets.Transform, "
+        "Home :: system(position: Transform, aim: Targets.Transform, "
         "parent: Velocity? from ancestor(ChildOf) "
-        "where position and (aim or not parent) {\n"
+        ") where position and (aim or not parent) {\n"
         "on Tick { charge := Charge(); cancel charge after 1.5 }\n"
         "}"
     );
@@ -264,7 +482,7 @@ TEST_CASE(language_query_header_and_cancel_deadline)
 TEST_CASE(language_query_generators_preserve_authored_order)
 {
     parse(
-        "system Track query p: Position join target in self.Targets "
+        "Track :: system(p: Position ) join target in self.Targets "
         "join next in target.Targets join aim: Position? from next "
         "where aim and aim.x > p.x and changed(p) {}"
     );
@@ -281,9 +499,9 @@ TEST_CASE(language_query_generators_preserve_authored_order)
 
 TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
-    parse("library Old { function Compute() { return 1 } }");
+    parse("Old :: library { function Compute() { return 1 } }");
     REQUIRE(original->diagnostic_count > 0);
-    parse("behavior Old { on Tick { match (1) { case 1 { return } } } }");
+    parse("Old :: behavior { on Tick { match (1) { case 1 { return } } } }");
     REQUIRE(original->diagnostic_count > 0);
     return true;
 }
@@ -307,6 +525,7 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode call = field(waiting, "value");
     REQUIRE(!strcmp(ts_node_type(call), "call_expression"));
     REQUIRE(node_text(field(call, "function"), "set_variable"));
+    REQUIRE(!ts_node_is_null(field(call, "type_arguments")));
     TSNode arguments = field(call, "arguments");
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(arguments, 0)), "typed_argument"));
     call = ts_node_named_child(ts_node_named_child(statements, 1), 0);
@@ -323,6 +542,10 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     REQUIRE(!strcmp(ts_node_type(converted), "call_expression"));
     REQUIRE(node_text(field(converted, "function"), "convert"));
     REQUIRE(!ts_node_is_null(field(converted, "type_arguments")));
+    TSNode operand = ts_node_named_child(field(converted, "arguments"), 0);
+    REQUIRE(!strcmp(ts_node_type(operand), "call_expression"));
+    REQUIRE(node_text(field(operand, "function"), "component"));
+    REQUIRE(node_text(ts_node_named_child(field(operand, "arguments"), 0), "Transform"));
     return true;
 }
 
@@ -551,6 +774,13 @@ void test_language_syntax()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
+    RUN_TEST_CASE(language_retained_binding_syntax);
+    RUN_TEST_CASE(language_unified_declarations_and_generic_map_shapes);
+    RUN_TEST_CASE(language_authored_asset_declarations);
+    RUN_TEST_CASE(language_obsolete_symbol_spellings_rejected);
+    RUN_TEST_CASE(language_retained_bindings_reject_prefixes_and_value_types);
+    RUN_TEST_CASE(language_keywords_are_contextual_data_member_names);
+    RUN_TEST_CASE(language_not_callable_and_unary_spellings_disambiguate);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);

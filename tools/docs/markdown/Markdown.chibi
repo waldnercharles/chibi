@@ -27,29 +27,29 @@ Backtick :: 96;
 Pipe :: 124;
 Question :: 63;
 
-Size :: pure fn(text: string) -> int {
+Size :: (text: string) -> int {
     return strings.ByteLength(text);
 }
 
-At :: pure fn(text: string, index: int) -> int {
+At :: (text: string, index: int) -> int {
     return strings.ByteAt(text, index);
 }
 
-From :: pure fn(text: string, start: int) -> string {
+From :: (text: string, start: int) -> string {
     return strings.Slice(text, start, Size(text) - start);
 }
 
-IsBlank :: pure fn(byte: int) -> bool {
+IsBlank :: (byte: int) -> bool {
     return byte == Space || byte == 9 || byte == 13;
 }
 
 // text without the blanks IsBlank names at either end.
-Trim :: pure fn(text: string) -> string {
+Trim :: (text: string) -> string {
     return strings.Trim(text, " \t\r");
 }
 
 // The index of the first substr in text at or after start, or -1.
-IndexFrom :: pure fn(text: string, substr: string, start: int) -> int {
+IndexFrom :: (text: string, substr: string, start: int) -> int {
     index := strings.Index(From(text, start), substr);
     if (index < 0) {
         return -1;
@@ -58,7 +58,7 @@ IndexFrom :: pure fn(text: string, substr: string, start: int) -> int {
 }
 
 // Text as HTML element content or attribute value.
-Escape :: pure fn(text: string) -> string {
+Escape :: (text: string) -> string {
     out: string = "";
     size := Size(text);
     start: int = 0;
@@ -89,7 +89,7 @@ Escape :: pure fn(text: string) -> string {
 
 // A heading's anchor as GitHub writes it: lowercase letters, digits, hyphens
 // and underscores, with spaces as hyphens.
-Slug :: pure fn(text: string) -> string {
+Slug :: (text: string) -> string {
     letters := "abcdefghijklmnopqrstuvwxyz";
     out: string = "";
     size := Size(text);
@@ -110,7 +110,7 @@ Slug :: pure fn(text: string) -> string {
 }
 
 // The folder of a site path, without its trailing slash.
-Folder :: pure fn(path: string) -> string {
+Folder :: (path: string) -> string {
     end := strings.LastIndexByte(path, Slash);
     if (end < 0) {
         return "";
@@ -120,13 +120,13 @@ Folder :: pure fn(path: string) -> string {
 
 // A link path relative to folder, with . and .. segments resolved; "" when it
 // leaves the site.
-Resolve :: pure fn(folder: string, path: string) -> string {
+Resolve :: (folder: string, path: string) -> string {
     segments: string[] = [];
     if (folder != "" && !strings.HasPrefix(path, "/")) {
         segments = strings.Split(folder, "/");
     }
     outside := false;
-    foreach (segment in strings.Split(path, "/")) {
+    for (segment in strings.Split(path, "/")) {
         if (segment == "..") {
             if (length(segments) == 0) {
                 outside = true;
@@ -141,7 +141,7 @@ Resolve :: pure fn(folder: string, path: string) -> string {
         return "";
     }
     out: string = "";
-    foreach (segment in segments) {
+    for (segment in segments) {
         if (out == "") {
             out = segment;
         } else {
@@ -154,7 +154,7 @@ Resolve :: pure fn(folder: string, path: string) -> string {
 // Where a link goes on the site: unchanged when it leaves the site or stays
 // on the page, the published page for a source the site maps, and "" for a
 // local file the site does not publish.
-Target :: pure fn(url: string, page: string, sources: string[], outputs: string[]) -> string {
+Target :: (url: string, page: string, sources: string[], outputs: string[]) -> string {
     if (strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") ||
         strings.HasPrefix(url, "mailto:") || strings.HasPrefix(url, "#")) {
         return url;
@@ -182,7 +182,7 @@ Target :: pure fn(url: string, page: string, sources: string[], outputs: string[
     return "";
 }
 
-Punctuation :: pure fn(byte: int) -> bool {
+Punctuation :: (byte: int) -> bool {
     return byte == Backslash || byte == Backtick || byte == Star || byte == Underscore ||
            byte == OpenBracket || byte == CloseBracket || byte == Hash || byte == Pipe ||
            byte == Less || byte == Greater || byte == Dash || byte == Dot;
@@ -190,8 +190,8 @@ Punctuation :: pure fn(byte: int) -> bool {
 
 // The inline content of a block as HTML, and the target of each link written
 // as text, in order.
-Inline :: pure fn(text: string, page: string, sources: string[],
-                  outputs: string[]) -> (html: string, dropped: string[]) {
+Inline :: (text: string, page: string, sources: string[],
+           outputs: string[]) -> (html: string, dropped: string[]) {
     out: string = "";
     size := Size(text);
     start: int = 0;
@@ -274,7 +274,7 @@ Inline :: pure fn(text: string, page: string, sources: string[],
 }
 
 // 1 to 6 for an ATX heading line, otherwise 0.
-HeadingLevel :: pure fn(line: string) -> int {
+HeadingLevel :: (line: string) -> int {
     level: int = 0;
     while (level < Size(line) && At(line, level) == Hash) {
         level += 1;
@@ -286,7 +286,7 @@ HeadingLevel :: pure fn(line: string) -> int {
 }
 
 // The text after a list marker, "- ", "* " or "1. ", or "" for no item.
-ItemText :: pure fn(line: string) -> string {
+ItemText :: (line: string) -> string {
     if (strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ")) {
         return Trim(From(line, 2));
     }
@@ -300,11 +300,11 @@ ItemText :: pure fn(line: string) -> string {
     return "";
 }
 
-Ordered :: pure fn(line: string) -> bool {
+Ordered :: (line: string) -> bool {
     return !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ");
 }
 
-IsTableRule :: pure fn(line: string) -> bool {
+IsTableRule :: (line: string) -> bool {
     if (!strings.HasPrefix(line, "|")) {
         return false;
     }
@@ -320,7 +320,7 @@ IsTableRule :: pure fn(line: string) -> bool {
 }
 
 // The cells of a pipe-table row, split at pipes outside code spans.
-Cells :: pure fn(line: string) -> string[] {
+Cells :: (line: string) -> string[] {
     row := strings.TrimPrefix(Trim(line), "|");
     if (!strings.HasSuffix(row, "\\|")) {
         row = strings.TrimSuffix(row, "|");
@@ -348,10 +348,10 @@ Cells :: pure fn(line: string) -> string[] {
     return cells;
 }
 
-TableRow :: pure fn(line: string, tag: string, page: string, sources: string[],
-                    outputs: string[]) -> (html: string, dropped: string[]) {
+TableRow :: (line: string, tag: string, page: string, sources: string[],
+             outputs: string[]) -> (html: string, dropped: string[]) {
     out := "<tr>";
-    foreach (cell in Cells(line)) {
+    for (cell in Cells(line)) {
         inline := Inline(cell, page, sources, outputs);
         out = format_text("{}<{}>{}</{}>", out, tag, inline.html, tag);
         dropped = append(dropped, inline.dropped);
@@ -360,15 +360,15 @@ TableRow :: pure fn(line: string, tag: string, page: string, sources: string[],
 }
 
 // Whether a line begins a block other than a paragraph.
-BlockStart :: pure fn(line: string) -> bool {
+BlockStart :: (line: string) -> bool {
     return strings.HasPrefix(line, "```") || HeadingLevel(line) > 0 || ItemText(line) != "" ||
            strings.HasPrefix(line, ">") || strings.HasPrefix(line, "|");
 }
 
 // The block that starts at the line first, which is not blank: its HTML
 // pieces, the line after it, and the target of each link it writes as text.
-Block :: pure fn(lines: string[], first: int, page: string, sources: string[],
-                 outputs: string[]) -> (html: string[], end: int, dropped: string[]) {
+Block :: (lines: string[], first: int, page: string, sources: string[],
+          outputs: string[]) -> (html: string[], end: int, dropped: string[]) {
     count := length(lines);
     index := first;
     line := Trim(lines[index]);
@@ -455,11 +455,11 @@ Block :: pure fn(lines: string[], first: int, page: string, sources: string[],
 // first to end: the first line, from where the previous target was found on,
 // that holds "](target)", or the previous target's line for a link that a line
 // break splits.
-Locate :: pure fn(lines: string[], first: int, end: int, targets: string[]) -> int[] {
+Locate :: (lines: string[], first: int, end: int, targets: string[]) -> int[] {
     found: int[] = [];
     line := first;
     column: int = 0;
-    foreach (target in targets) {
+    for (target in targets) {
         link := format_text("]({})", target);
         at := line;
         index := IndexFrom(lines[at], link, column);
@@ -481,8 +481,8 @@ Locate :: pure fn(lines: string[], first: int, end: int, targets: string[]) -> i
 // page's source path, and sources and outputs map published sources to their
 // pages for links. Lines arrive split because reading a byte of a string costs
 // the length of the string.
-Page :: pure fn(lines: string[], page: string, sources: string[],
-                outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
+Page :: (lines: string[], page: string, sources: string[],
+         outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
     index: int = 0;
     while (index < length(lines)) {
         if (Trim(lines[index]) == "") {
@@ -499,14 +499,14 @@ Page :: pure fn(lines: string[], page: string, sources: string[],
 }
 
 // The page's HTML pieces, as Page renders them.
-Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     return rendered.html;
 }
 
 // items followed by item until there are count of them; generated pages use
 // it to keep the source line of each Markdown line they write.
-Pad :: pure fn(items: int[], count: int, item: int) -> int[] {
+Pad :: (items: int[], count: int, item: int) -> int[] {
     padded := items;
     while (length(padded) < count) {
         padded = array_add(padded, item);
@@ -515,12 +515,12 @@ Pad :: pure fn(items: int[], count: int, item: int) -> int[] {
 }
 
 // What chibi doc reports for a link written as text at line of source.
-Dropped :: pure fn(source: string, line: int, target: string) -> string {
+Dropped :: (source: string, line: int, target: string) -> string {
     return format_text("{}:{}: link to {} is not published; written as text\n", source, line, target);
 }
 
 // A report, as Dropped writes it, of each link Render writes as text.
-Unpublished :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     reports: string[] = [];
     index: int = 0;

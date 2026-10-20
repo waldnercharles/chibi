@@ -8,6 +8,7 @@
 #include "runtime/arrays_definition.h"
 #include "runtime/text_definition.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +30,7 @@ static pin_value output;
 static const char APP[] =
     "package app\nimport strings \"core:strings\"\n"
     "Row :: struct { value: int; tag: string; }\n"
-    "Check :: fn() -> int {\n"
+    "Check :: () -> int {\n"
     " numbers: int[] = [1, 2]; third: int = 3; numbers = "
     "array_add(numbers, third);\n"
     " words: string[] = [\"alpha\"]; words = array_add(words, \"beta\");\n"
@@ -43,11 +44,11 @@ static const char APP[] =
     "return -4; }\n"
     " return strings.ByteLength(strings.Slice(words[1], 1, 3));\n"
     "}\n"
-    "View :: fn(parts: string[]) -> string {\n"
+    "View :: (parts: string[]) -> string {\n"
     " return format_text(\"{}:{}\", length(parts), strings.Join(parts, "
     "\"|\"));\n"
     "}\n"
-    "Split :: fn(kind: int, s: string, sep: string, n: int) -> string {\n"
+    "Split :: (kind: int, s: string, sep: string, n: int) -> string {\n"
     " if kind == 0 { return View(strings.Split(s, sep)); }\n"
     " if kind == 1 { return View(strings.SplitN(s, sep, n)); }\n"
     " if kind == 2 { return View(strings.SplitAfter(s, sep)); }\n"
@@ -59,7 +60,7 @@ static const char APP[] =
     " if kind == 8 { return strings.Concatenate(strings.Split(s, sep)); }\n"
     " return View(strings.Fields(s));\n"
     "}\n"
-    "Partition :: fn(s: string, sep: string) -> string {\n"
+    "Partition :: (s: string, sep: string) -> string {\n"
     " parts: strings.Parts = strings.Partition(s, sep);\n"
     " return format_text(\"{}|{}|{}\", parts.head, parts.match, parts.tail);\n"
     "}\n";
@@ -317,8 +318,18 @@ TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
                 output.i == expected[i]
             );
         }
+        REQUIRE(core_call("Bytes", args, 1, PIN_I32, backends[b]));
+        const pin_array *read = output.ptr;
+        REQUIRE(output.container == PIN_CONTAINER_ARRAY && read && read->count == 3);
+        for (int i = 0; i < 3; i++) {
+            pin_value item = pin_array_get(read, i);
+            REQUIRE(item.type == PIN_I32 && item.i == expected[i + 1]);
+        }
         args[0] = text("");
         REQUIRE(core_call("ByteLength", args, 1, PIN_I32, backends[b]) && output.i == 0);
+        REQUIRE(core_call("Bytes", args, 1, PIN_I32, backends[b]));
+        read = output.ptr;
+        REQUIRE(output.container == PIN_CONTAINER_ARRAY && read && read->count == 0);
         args[1] = integer(0);
         REQUIRE(core_call("ByteAt", args, 2, PIN_I32, backends[b]) && output.i == -1);
         char source[] = "abcdef";
@@ -618,7 +629,7 @@ TEST_CASE(package_core_pure_exports_and_generic_native_arrays)
             REQUIRE(signature && signature->pure && !signature->effects);
             functions++;
         }
-        REQUIRE(functions == 50 && types == 1);
+        REQUIRE(functions == 51 && types == 1);
         REQUIRE(invoke(app->module, exported(app, "Check"), NULL, 0, PIN_I32, backends[b]));
         REQUIRE(output.i == 3);
         cleanup();

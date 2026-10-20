@@ -116,6 +116,7 @@ static bool read_asset(
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
         case REFERENCE_ASSET_BEHAVIOR:
+        case REFERENCE_ASSET_RELATIONSHIP:
             snprintf(why, size, "Executable source uses canonical source refactoring");
             return false;
         case REFERENCE_ASSET_PROTOTYPE:
@@ -187,7 +188,8 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
 {
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
-        case REFERENCE_ASSET_BEHAVIOR: return NULL;
+        case REFERENCE_ASSET_BEHAVIOR:
+        case REFERENCE_ASSET_RELATIONSHIP: return NULL;
         case REFERENCE_ASSET_PROTOTYPE: return prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
             return scene_document_save(l->scene, project_components());
@@ -710,8 +712,8 @@ static bool name_taken(const work *w, reference_asset_kind kind, int asset, cons
 }
 
 static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
-    "scene", "prototype", "behavior", "event",  "material",
-    "shape", "field",     "library",  "system", "ui document",
+    "scene", "prototype", "behavior", "event",       "material",     "shape",
+    "field", "library",   "system",   "ui document", "relationship",
 };
 
 static const reference **uses_of(const work *w, reference_symbol symbol)

@@ -18,11 +18,11 @@ Path :: union {
     | Invalid
 }
 
-Bounded :: pure fn(path: string) -> bool {
+Bounded :: (path: string) -> bool {
     return strings.ByteLength(path) < 4096 && strings.IndexByte(path, 92) < 0;
 }
 
-Within :: pure fn(root: string, path: string) -> bool {
+Within :: (root: string, path: string) -> bool {
     if (root == "/") {
         return strings.ByteAt(path, 0) == 47;
     }
@@ -33,7 +33,7 @@ Within :: pure fn(root: string, path: string) -> bool {
     return next < 0 || next == 47;
 }
 
-Normalize :: pure fn(request: Request) -> Path {
+Normalize :: (request: Request) -> Path {
     if (!request.has_path || !Bounded(request.path)) {
         return Path.Invalid;
     }
@@ -51,7 +51,7 @@ Normalize :: pure fn(request: Request) -> Path {
     result := "/";
     starts := resize([int(0)], 2048);
     depth: int = 0;
-    foreach (part in strings.Split(joined, "/")) {
+    for (part in strings.Split(joined, "/")) {
         if (part == "..") {
             if (depth == 0) {
                 return Path.Invalid;

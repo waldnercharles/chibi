@@ -253,7 +253,7 @@ static bool pack_value(int b, script_type type, pin_value *out)
                                  integer((int)type.flags),
                                  number(type.nominal),
                                  number(type.parameter) };
-    REQUIRE(!pin_union_value(&input, v->tag, values, COUNT(values), out));
+    REQUIRE(!compiler_fixture_union(&input, v->tag, values, COUNT(values), out));
     return true;
 }
 static bool pack_catalog(int b, const script_catalog *catalog, pin_value *out)
@@ -312,7 +312,7 @@ static bool pack_catalog(int b, const script_catalog *catalog, pin_value *out)
         numbers->items[i] = number(ids[i]);
     }
     const script_catalog_variant *v = variant(b, PACKAGE, "Environment", "Tables");
-    REQUIRE(v && !pin_union_value(&input, v->tag, tables, COUNT(tables), out));
+    REQUIRE(v && !compiler_fixture_union(&input, v->tag, tables, COUNT(tables), out));
     return true;
 }
 static bool same_type(script_type a, script_type b)
@@ -1044,7 +1044,7 @@ TEST_CASE(type_relations_canonical_tables_match_native_oracle)
             arena_free(&input);
             REQUIRE(type_value(&result, tag, expected));
             if (test->catalog == CYCLE) {
-                REQUIRE(!pin_value_snapshot_to_arena(&retained[b], &kept[b], &result));
+                REQUIRE(!compiler_fixture_snapshot(&retained[b], &kept[b], &result));
                 kept_tags[b] = tag;
                 kept_types[b] = expected;
             }

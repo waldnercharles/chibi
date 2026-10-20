@@ -16,7 +16,8 @@ struct pin_record
     size_t bytes;
 };
 
-/* Fields supply only unique nonempty names and PIN_STR/PIN_I32/PIN_BOOL types.
+/* Fields supply unique nonempty names and fixed scalar/handle/enum/string types,
+ * or registered plain nested layouts. Nominal names and units are owned here.
  * Natural target offsets, sizes and the layout hash are computed here. Invalid
  * input returns NULL before allocation. The result belongs to storage. */
 const pin_record *pin_record_create(

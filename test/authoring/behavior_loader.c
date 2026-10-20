@@ -116,7 +116,15 @@ TEST_CASE(sources_load_into_both_worlds_or_neither)
     live = preview_world_new(ecs);
     preview = prototype_preview_new(&prototypes);
     preview_world *preview_live = prototype_preview_live(preview);
-    write_behavior("Counter", "behavior Counter {\n    steps := 0\n    on Tick {\n        steps += 1\n    }\n}\n");
+    write_behavior(
+        "Counter",
+        "Counter :: behavior {\n"
+        "    steps := 0\n"
+        "    on Tick {\n"
+        "        steps += 1\n"
+        "    }\n"
+        "}\n"
+    );
     char messages[4096];
     REQUIRE(load(messages, sizeof messages) == 1);
     REQUIRE(applied(live) == 1 && applied(preview_live) == 1);
@@ -127,7 +135,7 @@ TEST_CASE(sources_load_into_both_worlds_or_neither)
 
     /* One broken source refuses the whole collection; both worlds keep the
      * generation they had, and the failure names the root and stage. */
-    write_behavior("Broken", "behavior Broken { on Tick(\n");
+    write_behavior("Broken", "Broken :: behavior { on Tick(\n");
     REQUIRE(load(messages, sizeof messages) == -1);
     REQUIRE(strstr(messages, "Could not load graph asset") && strstr(messages, root));
     REQUIRE(strstr(messages, "(source preparation)"));

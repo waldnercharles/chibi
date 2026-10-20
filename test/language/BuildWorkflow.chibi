@@ -1,5 +1,5 @@
-library BuildWorkflow {
-    Build :: fn() -> int {
+BuildWorkflow :: library {
+    Build :: () -> int {
         configure := RunBuildStep([
             "cmake", "-S", ".", "-B", "build self-hosting",
             "-DCHIBI_NOTE=space \"quote\";$literal*"

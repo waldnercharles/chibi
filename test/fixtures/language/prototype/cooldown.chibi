@@ -1,4 +1,4 @@
-behavior Cooldown {
+Cooldown :: behavior {
     remaining := 2
     ready := false
 

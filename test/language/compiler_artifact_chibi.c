@@ -506,16 +506,16 @@ static bool write_byte_input(const char *name, const unsigned char *bytes, size_
 }
 TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
 {
-    static const char source
-        [] = "package binary_fixture\n"
-             "Echo :: pure fn(values: byte[]) -> byte[] { return values; }\n"
-             "Scalar :: pure fn() -> byte { return byte(7); }\n"
-             "Integers :: pure fn() -> int[] { values: int[] = []; return "
-             "values; }\n"
-             "Loop :: pure fn(spin: bool) -> byte[] {\n"
-             "  while (spin) {}\n"
-             "  values: byte[] = []; return values;\n"
-             "}\n";
+    static const char
+        source[] = "package binary_fixture\n"
+                   "Echo :: (values: byte[]) -> byte[] { return values; }\n"
+                   "Scalar :: () -> byte { return byte(7); }\n"
+                   "Integers :: () -> int[] { values: int[] = []; return "
+                   "values; }\n"
+                   "Loop :: (spin: bool) -> byte[] {\n"
+                   "  while (spin) {}\n"
+                   "  values: byte[] = []; return values;\n"
+                   "}\n";
     REQUIRE(sizeof source - 1 <= 4096);
     source_package_input input = { "binary_fixture/Fixture.chibi",
                                    source,

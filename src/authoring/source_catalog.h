@@ -22,6 +22,9 @@ typedef struct
  * Files are limited to 512 KiB, 256 executable sources and 8 MiB total text.
  * Diagnostics make an incomplete snapshot explicit; it must not be published. */
 source_catalog *source_catalog_new(const char *content_root, const script_catalog *native);
+/* One-time normalization may analyze retired generated accessors. Normal
+ * catalog construction never admits those source spellings. */
+source_catalog *source_catalog_new_for_migration(const char *content_root, const script_catalog *native);
 typedef struct
 {
     const char *path, *text; /* NULL text removes this source from the snapshot. */
@@ -48,6 +51,9 @@ source_catalog *source_catalog_replaced(
     int edit_count
 );
 const script_catalog *source_catalog_view(const source_catalog *);
+/* Owned by this snapshot, sorted by canonical specialization identity. The
+ * requested-analysis API selects requests belonging to its document key. */
+const script_specialization_request *source_catalog_requests(const source_catalog *, int *count);
 /* The project's input map, content/input.kdl, as a support/array.h vector. */
 const input_action *source_catalog_input(const source_catalog *);
 int source_catalog_source_count(const source_catalog *);

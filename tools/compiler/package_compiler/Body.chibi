@@ -16,9 +16,14 @@ import strings "core:strings"
 // step (Steps.chibi) that returns only what it adds, so no one definition
 // grows past what the runtime's verifier admits.
 
+// A slot's or a local's storage and kind.
 Slot :: struct {
     storage: int;
     kind: int;
+}
+// A local holding a value of `storage`.
+ValueLocal :: (storage: int) -> Slot {
+    return {storage: storage, kind: ValueKind};
 }
 // An instruction with the value a constant or header read carries, the
 // message a failing check reports and the source range it lowers. A scalar's
@@ -85,7 +90,7 @@ Root :: struct {
 }
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
-    | Emitted(slots: Slot[], locals: int[], cells: Cell[], code: Code[], calls: Invocation[],
+    | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
               hosts: Host[], roots: Root[])
 }
 // A scheduled visit. Storage, container and record are the type a literal at
@@ -118,7 +123,7 @@ Name :: struct {
     record: int;
     writable: bool;
 }
-// A loop being emitted. A while loop's continues jump to `head`; a foreach
+// A loop being emitted. A while loop's continues jump to `head`; a for
 // loop patches them to its increment, and owns its index local, the names to
 // drop and its exit jump, `leave`.
 Loop :: struct {
@@ -157,8 +162,8 @@ Bases :: struct {
 // into a fresh cell, and positions it reports to EmitBody.
 Step :: union {
     Failed(diagnostic: syntax.Diagnostic)
-    | Emitted(code: Code[], slots: Slot[], locals: int[], cells: Cell[], hosts: Host[], roots: Root[],
-              calls: Invocation[], bound: Name[], next: Work[], popped: int, produced: Value, retain: Value,
+    | Emitted(code: Code[], slots: Slot[], locals: Slot[], cells: Cell[], hosts: Host[], roots: Root[],
+              calls: Invocation[], bound: Name[], next: Work[], popped: int, produced: Value, retained: Value,
               marks: int[])
 }
 
@@ -195,55 +200,55 @@ PushPhase: int : 3;
 StorePhase: int : 4;
 FieldPhase: int : 5;
 
-Instruction :: pure fn(op: int, type: int, output: int, left: int, right: int, target: int,
-                       item: snapshot.SnapshotNode) -> Code {
+Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
+                item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
             offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
             has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
             column: item.column + 1};
 }
-Visit :: pure fn(node: int) -> Work {
+Visit :: (node: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
 }
-Expect :: pure fn(node: int, storage: int, container: int, record: int) -> Work {
+Expect :: (node: int, storage: int, container: int, record: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
 }
-Resume :: pure fn(node: int, phase: int, a: int, b: int) -> Work {
+Resume :: (node: int, phase: int, a: int, b: int) -> Work {
     return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
 }
-NoValue :: pure fn() -> Value {
+NoValue :: () -> Value {
     return {slot: -1, storage: 0, container: 0, record: -1};
 }
-Typed :: pure fn(slot: int, storage: int, container: int, record: int) -> Value {
+Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
     return {slot: slot, storage: storage, container: container, record: record};
 }
-Fail :: pure fn(forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
+Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
     return Step.Failed(Diagnose(forest, node, document, message));
 }
 // Records and arrays are pointers to their storage.
-Pointer :: pure fn(storage: int, container: int) -> bool {
+Pointer :: (storage: int, container: int) -> bool {
     return container != 0 || storage == StructStorage;
 }
-SlotStorage :: pure fn(storage: int, container: int, target: Target) -> int {
+SlotStorage :: (storage: int, container: int, target: Target) -> int {
     if (Pointer(storage, container)) {
         return target.pointer_storage;
     }
     return storage;
 }
-SlotKind :: pure fn(storage: int, container: int) -> int {
+SlotKind :: (storage: int, container: int) -> int {
     if (Pointer(storage, container)) {
         return AddressKind;
     }
     return ValueKind;
 }
-SameType :: pure fn(storage: int, container: int, record: int, value: Value) -> bool {
+SameType :: (storage: int, container: int, record: int, value: Value) -> bool {
     return storage == value.storage && container == value.container && record == value.record;
 }
-Single :: pure fn(value: Value, storage: int) -> bool {
+Single :: (value: Value, storage: int) -> bool {
     return value.storage == storage && value.container == 0;
 }
 // The digit a hexadecimal character stands for, -1 for any other.
-HexDigit :: pure fn(character: int) -> int {
+HexDigit :: (character: int) -> int {
     if (character >= 48 && character <= 57) {
         return character - 48;
     }
@@ -258,7 +263,7 @@ HexDigit :: pure fn(character: int) -> int {
 // The value of a number literal, or of `-` on one; not valid for anything
 // else or beyond 64 bits. Only the operations the runtime allows on uint64
 // touch the magnitude: addition, multiplication and comparison for equality.
-ParseNumber :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> Literal {
+ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Literal {
     invalid := Literal.Invalid;
     digits := node;
     negative := false;
@@ -314,10 +319,10 @@ NumberStorage: int : -3;
 // first result and its record the native; `.name` reads one result.
 ResultsStorage: int : -4;
 // The integer types this compiler emits.
-Integer :: pure fn(storage: int) -> bool {
+Integer :: (storage: int) -> bool {
     return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
 }
-TypeName :: pure fn(storage: int) -> string {
+TypeName :: (storage: int) -> string {
     if (storage == ByteStorage) {
         return "byte";
     }
@@ -330,7 +335,7 @@ TypeName :: pure fn(storage: int) -> string {
     return "uint64";
 }
 // Whether a literal's value fits an integer type.
-Fits :: pure fn(negative: bool, magnitude: uint64, storage: int) -> bool {
+Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
     if (negative && (storage == ByteStorage || storage == WordStorage)) {
         return false;
@@ -350,26 +355,26 @@ Fits :: pure fn(negative: bool, magnitude: uint64, storage: int) -> bool {
     return !negative;
 }
 // A literal's bits in an integer type it fits, sign-extended when negative.
-Bits :: pure fn(negative: bool, magnitude: uint64) -> uint64 {
+Bits :: (negative: bool, magnitude: uint64) -> uint64 {
     if (negative) {
         return ~magnitude + 1;
     }
     return magnitude;
 }
 // The low and high 32 bits of a 64-bit pattern, and the pattern again.
-Low :: pure fn(bits: uint64) -> int {
+Low :: (bits: uint64) -> int {
     return int(wrap: bits & 0xFFFFFFFF);
 }
-High :: pure fn(bits: uint64) -> int {
+High :: (bits: uint64) -> int {
     return int(wrap: bits >> 32);
 }
-Join :: pure fn(high: int, low: int) -> uint64 {
+Join :: (high: int, low: int) -> uint64 {
     return (uint64(wrap: int64(high)) << 32) | (uint64(wrap: int64(low)) & 0xFFFFFFFF);
 }
 // The type both integer operands convert to without loss: the wider one, or
 // int for a byte and an int; -1 when there is none, as for a signed type with
 // uint64.
-CommonInteger :: pure fn(left: int, right: int) -> int {
+CommonInteger :: (left: int, right: int) -> int {
     if (left == right) {
         return left;
     }
@@ -386,13 +391,13 @@ CommonInteger :: pure fn(left: int, right: int) -> int {
 }
 // Whether an integer converts to another without loss, as stores do
 // implicitly.
-Widens :: pure fn(from: int, to: int) -> bool {
+Widens :: (from: int, to: int) -> bool {
     return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
 }
 // Whether the runtime computes `op` in an integer type: any comparison for
 // equality and bit operation, the rest for int and int64, and only addition
 // and multiplication for uint64.
-Computes :: pure fn(ops: Ops, op: int, storage: int) -> bool {
+Computes :: (ops: Ops, op: int, storage: int) -> bool {
     if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
         op == ops.bit_not || op == ops.shl || op == ops.shr) {
         return true;
@@ -403,7 +408,7 @@ Computes :: pure fn(ops: Ops, op: int, storage: int) -> bool {
     return storage == WordStorage && (op == ops.add || op == ops.mul);
 }
 // A constant of an integer or bool type.
-ConstantCode :: pure fn(ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
+ConstantCode :: (ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
     constant := Instruction(ops.constant, storage, output, 0, 0, 0, node);
     constant.value_storage = storage;
     constant.payload = Low(bits);
@@ -412,14 +417,14 @@ ConstantCode :: pure fn(ops: Ops, storage: int, bits: uint64, output: int, node:
 }
 // A conversion to an integer type: `mode` 0 fails when the value does not
 // fit, 1 keeps its low bits and 2 saturates.
-CastCode :: pure fn(ops: Ops, storage: int, output: int, input: int, mode: int, node: snapshot.SnapshotNode) -> Code {
+CastCode :: (ops: Ops, storage: int, output: int, input: int, mode: int, node: snapshot.SnapshotNode) -> Code {
     cast := Instruction(ops.cast, storage, output, input, 0, mode, node);
     cast.message = format_text("Value does not fit in {}", TypeName(storage));
     cast.has_message = true;
     return cast;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
-BinaryOp :: pure fn(ops: Ops, operator: string) -> int {
+BinaryOp :: (ops: Ops, operator: string) -> int {
     if (operator == "+") {
         return ops.add;
     }
@@ -470,18 +475,18 @@ BinaryOp :: pure fn(ops: Ops, operator: string) -> int {
     }
     return -1;
 }
-Comparison :: pure fn(ops: Ops, op: int) -> bool {
+Comparison :: (ops: Ops, op: int) -> bool {
     return op == ops.lt || op == ops.le || op == ops.gt || op == ops.ge || op == ops.eq || op == ops.ne;
 }
 // The operator of a compound assignment, "" for plain assignment.
-CompoundOperator :: pure fn(text: string) -> string {
+CompoundOperator :: (text: string) -> string {
     if (text == "=") {
         return "";
     }
     return strings.Slice(text, 0, strings.ByteLength(text) - 1);
 }
 // The function of `package` named `name`, -1 when none.
-FindCallable :: pure fn(callables: Callable[], package: int, name: string) -> int {
+FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(callables)) {
         if (callables[index].package == package && callables[index].name == name) {
@@ -491,7 +496,7 @@ FindCallable :: pure fn(callables: Callable[], package: int, name: string) -> in
     }
     return -1;
 }
-FindField :: pure fn(types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
         if (members[at].name == name) {
@@ -502,7 +507,7 @@ FindField :: pure fn(types: TypeDecl[], members: TypeMember[], record: int, name
     return -1;
 }
 // The innermost binding of `wanted`, -1 when none.
-Lookup :: pure fn(names: Name[], wanted: string) -> int {
+Lookup :: (names: Name[], wanted: string) -> int {
     at := length(names) - 1;
     while (at >= 0) {
         if (names[at].name == wanted) {
@@ -512,10 +517,10 @@ Lookup :: pure fn(names: Name[], wanted: string) -> int {
     }
     return -1;
 }
-Separator :: pure fn(byte: int) -> bool {
+Separator :: (byte: int) -> bool {
     return byte == 95 || byte == 32 || byte == 45;
 }
-Lower :: pure fn(byte: int) -> int {
+Lower :: (byte: int) -> int {
     if (byte >= 65 && byte <= 90) {
         return byte + 32;
     }
@@ -523,7 +528,7 @@ Lower :: pure fn(byte: int) -> int {
 }
 // Whether two names match as the native catalog matches them: ignoring case,
 // spaces, underscores and hyphens.
-NameMatches :: pure fn(left: string, right: string) -> bool {
+NameMatches :: (left: string, right: string) -> bool {
     i: int = 0;
     j: int = 0;
     left_length := strings.ByteLength(left);
@@ -548,7 +553,7 @@ NameMatches :: pure fn(left: string, right: string) -> bool {
 }
 // The native an exact name or one unique matching name selects: -1 when none,
 // -2 when several match.
-FindNative :: pure fn(natives: Native[], name: string) -> int {
+FindNative :: (natives: Native[], name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < length(natives)) {
@@ -569,7 +574,7 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
 // The package a name of package `package` qualified by `node` names: that
 // package for none, the imported one when `node` is an import alias no local
 // hides, and -1 otherwise.
-QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
+QualifierOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
     if (node < 0) {
         return package;
     }
@@ -584,8 +589,8 @@ QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Nam
 }
 // The package constant `node` names: `Name` when no local hides it, or
 // `alias.Name`; -1 otherwise.
-ConstantOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
-                      node: int) -> int {
+ConstantOf :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
+               node: int) -> int {
     if (Is(forest, node, "identifier")) {
         if (Lookup(names, Text(forest, text, node)) >= 0) {
             return -1;
@@ -599,12 +604,12 @@ ConstantOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, constants: 
     if (home < 0) {
         return -1;
     }
-    return FindConstant(constants, home, NameText(forest, text, Field(forest, node, "member")));
+    return FindConstant(constants, home, Text(forest, text, Field(forest, node, "member")));
 }
 // The union `U` names when `node` is a member expression `U.Variant` or
 // `alias.U.Variant` and no local hides U or the alias; -1 otherwise.
-UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
-                   node: int) -> int {
+UnionOf :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+            node: int) -> int {
     object := Field(forest, node, "object");
     qualifier: int = -1;
     if (Is(forest, object, "member_expression")) {
@@ -617,14 +622,14 @@ UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     if (home < 0) {
         return -1;
     }
-    declared := FindType(types, home, NameText(forest, text, object));
+    declared := FindType(types, home, Text(forest, text, object));
     if (declared < 0 || types[declared].kind != UnionDecl) {
         return -1;
     }
     return declared;
 }
 // Whether `variant` is among `covered` from `first` on.
-Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
+Covers :: (covered: int[], first: int, variant: int) -> bool {
     at := first;
     while (at < length(covered)) {
         if (covered[at] == variant) {
@@ -636,7 +641,7 @@ Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
 }
 // Whether `name` is declared in the innermost scope, whose names start at
 // names[scope].
-Declared :: pure fn(names: Name[], scope: int, name: string) -> bool {
+Declared :: (names: Name[], scope: int, name: string) -> bool {
     at := scope;
     while (at < length(names)) {
         if (names[at].name == name) {
@@ -648,7 +653,7 @@ Declared :: pure fn(names: Name[], scope: int, name: string) -> bool {
 }
 // Whether the `is` expression `node` is an if or while condition, alone or
 // joined by `&&` and parentheses, where its bindings may hold the payload.
-BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     at := node;
     parent := forest[at].parent;
     while (parent >= 0) {
@@ -669,7 +674,7 @@ BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node:
     return false;
 }
 // The next switch arm after `node` among its siblings, -1 when none.
-NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
+NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     at := NextMember(forest, node);
     while (at >= 0 && !Is(forest, at, "switch_arm")) {
         at = NextMember(forest, at);
@@ -679,7 +684,7 @@ NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
 // The index of a native's result named `name`, matched as natives are: an
 // exact name first, else the one name that matches loosely; -1 for none and
 // -2 when several match.
-FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
+FindResult :: (ports: Port[], native: Native, name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < native.results) {
@@ -700,7 +705,7 @@ FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
 }
 // Whether the statements under `node` assign `name`, a field of it or an
 // element of it.
-Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
+Assigns :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
     pending: int[] = [node];
     top: int = 1;
     while (top > 0) {
@@ -730,7 +735,7 @@ Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, nam
 }
 // The port of a native's argument `index`; a variadic native's last
 // parameter takes every argument from it on.
-NativePort :: pure fn(native: Native, index: int) -> int {
+NativePort :: (native: Native, index: int) -> int {
     if (index >= native.parameters && native.variadic && native.parameters > 0) {
         return native.first + native.parameters - 1;
     }
@@ -739,9 +744,9 @@ NativePort :: pure fn(native: Native, index: int) -> int {
 // How `xs = name(xs, value)` updates the local array names[found] in place:
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
 // zero, the native is recognized by its capability identity.
-InPlaceUpdate :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                         identities: uint64[], names: Name[], package: int, found: int, destination: int,
-                         value: int) -> int {
+InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
+                  identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  value: int) -> int {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
         !Is(forest, value, "call_expression")) {
@@ -771,15 +776,15 @@ InPlaceUpdate :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
     return -1;
 }
 
-EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
-                    callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-                    constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], aliases: Name[],
-                    function: int, ops: Ops, target: Target) -> Body {
+EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], aliases: Name[],
+             function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
     // The storage of each locals-bank value; records and arrays never live there.
-    locals: int[] = [];
+    locals: Slot[] = [];
     cells: Cell[] = [];
     code: Code[] = [];
     calls: Invocation[] = [];
@@ -820,7 +825,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             read := Instruction(ops.argument, param.storage, length(slots) - 1, index, 0, 0, declaration);
             read.value_storage = param.storage;
             code = array_add(code, read);
-            locals = array_add(locals, param.storage);
+            locals = array_add(locals, ValueLocal(param.storage));
             code = array_add(code, Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
                                                length(locals) - 1, declaration));
             name: Name = {name: param.name, place: LocalPlace, index: length(locals) - 1,
@@ -840,7 +845,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         // A value this item leaves for its consumer, when `produced.storage` is set.
         produced := NoValue();
         // A record or array to copy into a fresh cell; the copy is produced.
-        retain := NoValue();
+        retained := NoValue();
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
@@ -931,8 +936,12 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 end.target = length(code);
                 code[item.b] = end;
             }
-        } else if (kind == "foreach_statement") {
+        } else if (kind == "for_statement") {
             if (item.phase == 0) {
+                if (Field(forest, item.node, "first") >= 0 || Field(forest, item.node, "key") >= 0 ||
+                    Field(forest, item.node, "reference") >= 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "for loops support only `for name in array`"));
+                }
                 stepped = false;
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
                 next = array_add(next, Visit(Field(forest, item.node, "value")));
@@ -943,24 +952,24 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top -= 1;
                 array := values[value_top];
                 if (array.container != ArrayContainer) {
-                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "foreach needs an array"));
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
                 }
-                retain = array;
+                retained = array;
                 next = array_add(next, Resume(item.node, 2, 0, 0));
             } else if (item.phase == 2) {
                 // The copy is in the last cell; the step loads each element.
                 value_top -= 1;
-                if (NameText(forest, text, Field(forest, item.node, "name")) == "") {
+                if (Text(forest, text, Field(forest, item.node, "name")) == "") {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
                                                 "Invalid string or embedded NUL"));
                 }
-                step = ForeachStep(values[value_top], ops, target, at, node);
+                step = ForStep(values[value_top], ops, target, at, node);
             } else if (item.phase == 3) {
                 // A record element was copied into the last cell.
                 stepped = false;
                 value_top -= 1;
                 kept := values[value_top];
-                binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
+                binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
                                  index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: false};
                 names = array_add(names, binding);
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
@@ -1017,7 +1026,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 if (!Single(subject, UnionStorage)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "switch needs a union value"));
                 }
-                locals = array_add(locals, UnionStorage);
+                locals = array_add(locals, ValueLocal(UnionStorage));
                 code = array_add(code, Instruction(ops.save, UnionStorage, 0, subject.slot, 0, length(locals) - 1, node));
                 current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
                                    first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
@@ -1126,7 +1135,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 if (!Single(left, BoolStorage)) {
                     return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
                 }
-                locals = array_add(locals, BoolStorage);
+                locals = array_add(locals, ValueLocal(BoolStorage));
                 answer := length(locals) - 1;
                 code = array_add(code, Instruction(ops.save, BoolStorage, 0, left.slot, 0, answer, node));
                 escape := length(code);
@@ -1185,11 +1194,11 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         pass: int = 0;
         while (pass < 2) {
             if (pass == 1) {
-                stepped = retain.storage != 0;
+                stepped = retained.storage != 0;
                 if (stepped) {
                     at = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                           host: length(hosts), call: length(calls)};
-                    step = RetainStep(retain, ops, target, at, node);
+                    step = RetainStep(retained, ops, target, at, node);
                 }
             }
             if (stepped) {
@@ -1212,7 +1221,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                             produced = value;
                         }
                         if (pass == 0) {
-                            retain = kept;
+                            retained = kept;
                         }
                         if (length(marks) == 1) {
                             // A switch arm's test: the jump past the arm.
@@ -1221,20 +1230,20 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                             switches[length(switches) - 1] = current;
                         }
                         if (length(marks) == 3) {
-                            // A foreach head: its loop, then its element's binding.
+                            // A for head: its loop, then its element's binding.
                             loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
                                           each: true, index: marks[2], mark: length(names), leave: marks[1]};
                             loops = array_add(loops, loop);
                             element := produced;
                             produced = NoValue();
                             if (element.storage == StructStorage) {
-                                retain = element;
+                                retained = element;
                                 next = array_add(next, Resume(item.node, 3, 0, 0));
                             } else {
-                                locals = array_add(locals, element.storage);
+                                locals = array_add(locals, ValueLocal(element.storage));
                                 code = array_add(code, Instruction(ops.save, element.storage, 0, element.slot, 0,
                                                                    length(locals) - 1, node));
-                                binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")),
+                                binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")),
                                                  place: LocalPlace, index: length(locals) - 1, storage: element.storage,
                                                  container: 0, record: element.record, writable: false};
                                 names = array_add(names, binding);

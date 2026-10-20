@@ -29,14 +29,14 @@ static const script_catalog native = { 0 };
 static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
 static const source_package_input chain[] = {
-    { "app/main.chibi", "package app\nimport middle \"../middle\"\nMain :: fn(value: int) -> int { return middle.Value(value) + 1; }\n", 0 },
-    { "middle/main.chibi", "package middle\nimport math \"../math\"\nValue :: fn(value: int) -> int { return math.Value(value) * 2; }\n", 0 },
+    { "app/main.chibi", "package app\nimport middle \"../middle\"\nMain :: (value: int) -> int { return middle.Value(value) + 1; }\n", 0 },
+    { "middle/main.chibi", "package middle\nimport math \"../math\"\nValue :: (value: int) -> int { return math.Value(value) * 2; }\n", 0 },
     { "math/main.chibi",
-      "package numbers\nValue :: fn(value: int) -> int { return value + 2; }\n",
+      "package numbers\nValue :: (value: int) -> int { return value + 2; }\n",
       0 },
-    { "blank/main.chibi", "package blank\nimport _ \"../math\"\nUnused :: fn(value: int) -> int { return value + 7; }\n", 0 },
+    { "blank/main.chibi", "package blank\nimport _ \"../math\"\nUnused :: (value: int) -> int { return value + 7; }\n", 0 },
     { "other/main.chibi",
-      "package other\nUnused :: fn(value: int) -> int { return value + 99; }\n",
+      "package other\nUnused :: (value: int) -> int { return value + 99; }\n",
       0 },
 };
 static void finish_call()
@@ -218,10 +218,14 @@ TEST_CASE(package_imports_transitive_calls_execute_on_each_backend)
 TEST_CASE(package_imports_reused_alias_spelling_remains_file_local)
 {
     const source_package_input files[] = {
-        { "app/a.chibi", "package app\nimport lib \"../left\"\nA :: fn(value: int) -> int { return lib.Value(value); }\n", 0 },
-        { "app/b.chibi", "package app\nimport lib \"../right\"\nB :: fn(value: int) -> int { return lib.Value(value); }\n", 0 },
-        { "left/a.chibi", "package left\nValue :: fn(value: int) -> int { return value + 2; }\n", 0 },
-        { "right/a.chibi", "package right\nValue :: fn(value: int) -> int { return value + 5; }\n", 0 },
+        { "app/a.chibi", "package app\nimport lib \"../left\"\nA :: (value: int) -> int { return lib.Value(value); }\n", 0 },
+        { "app/b.chibi", "package app\nimport lib \"../right\"\nB :: (value: int) -> int { return lib.Value(value); }\n", 0 },
+        { "left/a.chibi",
+          "package left\nValue :: (value: int) -> int { return value + 2; }\n",
+          0 },
+        { "right/a.chibi",
+          "package right\nValue :: (value: int) -> int { return value + 5; }\n",
+          0 },
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 4, backends[b], -1, "/project"));
@@ -234,10 +238,8 @@ TEST_CASE(package_imports_reused_alias_spelling_remains_file_local)
 TEST_CASE(package_imports_self_alias_resolves_sibling_function)
 {
     const source_package_input files[] = {
-        { "app/a.chibi", "package app\nimport self \".\"\nMain :: fn(value: int) -> int { return self.Add(value); }\n", 0 },
-        { "app/b.chibi",
-          "package app\nAdd :: fn(value: int) -> int { return value + 3; }\n",
-          0 },
+        { "app/a.chibi", "package app\nimport self \".\"\nMain :: (value: int) -> int { return self.Add(value); }\n", 0 },
+        { "app/b.chibi", "package app\nAdd :: (value: int) -> int { return value + 3; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
@@ -249,20 +251,20 @@ TEST_CASE(package_imports_self_alias_resolves_sibling_function)
 TEST_CASE(package_imports_do_not_leak_unqualified_names_package_names_or_blank_bindings)
 {
     static const char *invalid[] = {
-        "package app\nimport lib \"../math\"\nMain :: fn(value: int) -> int { "
+        "package app\nimport lib \"../math\"\nMain :: (value: int) -> int { "
         "return Value(value); }\n",
-        "package app\nimport lib \"../math\"\nMain :: fn(value: int) -> int { "
+        "package app\nimport lib \"../math\"\nMain :: (value: int) -> int { "
         "return numbers.Value(value); }\n",
-        "package app\nimport _ \"../math\"\nMain :: fn(value: int) -> int { "
+        "package app\nimport _ \"../math\"\nMain :: (value: int) -> int { "
         "return math.Value(value); }\n",
-        "package app\nMain :: fn(value: int) -> int { return "
+        "package app\nMain :: (value: int) -> int { return "
         "math.Value(value); }\n",
-        "package app\nMain :: fn(value: int) -> int { return lib.Value(value); "
+        "package app\nMain :: (value: int) -> int { return lib.Value(value); "
         "}\n",
     };
     const source_package_input imported = {
         "app/a.chibi",
-        "package app\nimport lib \"../math\"\nA :: fn(value: int) -> int { "
+        "package app\nimport lib \"../math\"\nA :: (value: int) -> int { "
         "return lib.Value(value); }\n",
         0
     };
@@ -288,7 +290,7 @@ TEST_CASE(package_imports_own_record_union_and_aggregate_constant_values)
 {
     const source_package_input files[] = {
         { "app/a.chibi",
-          "package app\nimport data \"../data\"\nTyped :: fn(value: int) -> "
+          "package app\nimport data \"../data\"\nTyped :: (value: int) -> "
           "int { "
           "pair: data.Pair = data.Make(value); choice: data.Choice = "
           "data.Choice.None; "
@@ -306,7 +308,7 @@ TEST_CASE(package_imports_own_record_union_and_aggregate_constant_values)
           "int : 4;\n"
           "Words :: [\"alpha\", \"beta\"];\nSeed :: Choice.Amount(Base);\n",
           0 },
-        { "data/b.chibi", "package data\nMake :: fn(value: int) -> Pair { return {value: value + Base, tag: Words[1]}; }\n", 0 },
+        { "data/b.chibi", "package data\nMake :: (value: int) -> Pair { return {value: value + Base, tag: Words[1]}; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 3, backends[b], -1, "/project"));
@@ -363,7 +365,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
         source_package_input changed[5];
         memcpy(changed, chain, sizeof changed);
         changed[0].text = "package app\nimport middle \"../middle\"\nMain :: "
-                          "fn(value: int) -> int { return middle.Value(value) "
+                          "(value: int) -> int { return middle.Value(value) "
                           "+ 5; }\n";
         REQUIRE(prepare(0, changed, 5, backends[b], 1, "/project"));
         REQUIRE(valid(0) && authoring_packages_reused(owners[0]) == 4);
@@ -371,7 +373,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
             package(0, identities[0])->generation != package(1, identities[0])->generation
         );
         REQUIRE(run(0, identities[0], "Main", backends[b], 3, 15));
-        changed[2].text = "package numbers\nValue :: fn(value: int) -> int { "
+        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
                           "return value + 4; }\n";
         REQUIRE(prepare(2, changed, 5, backends[b], 0, "/project"));
         REQUIRE(valid(2) && authoring_packages_reused(owners[2]) == 1);
@@ -389,7 +391,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
         authoring_packages_free(owners[1]);
         owners[1] = NULL;
         REQUIRE(run(2, identities[0], "Main", backends[b], 3, 19));
-        changed[2].text = "package numbers\nValue :: fn(value: int) -> int { "
+        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
                           "return missing; }\n";
         REQUIRE(prepare(3, changed, 5, backends[b], 2, "/project"));
         REQUIRE(!authoring_packages_valid(owners[3]));
@@ -426,7 +428,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
         owners[2] = NULL;
         authoring_packages_free(owners[3]);
         owners[3] = NULL;
-        changed[2].text = "package numbers\nValue :: fn(value: int) -> int { "
+        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
                           "return value + 4; }\n";
         REQUIRE(prepare(1, changed, 5, backends[b], 0, "/project"));
         REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 1);
@@ -461,7 +463,7 @@ TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths)
         files[1],
         files[2],
         files[3],
-        { "math/extra.chibi", "package numbers\nExtra :: fn(value: int) -> int { return value + 40; }\n", 0 },
+        { "math/extra.chibi", "package numbers\nExtra :: (value: int) -> int { return value + 40; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
         expanded[4].path = "math/extra.chibi";
@@ -525,35 +527,34 @@ TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths)
     }
     return true;
 }
-TEST_CASE(package_imports_concrete_constrained_generic_preserves_execution_metadata)
+TEST_CASE(package_imports_keep_templates_package_local)
 {
     const source_package_input files[] = {
-        { "app/a.chibi", "package app\nimport math \"../math\"\nMain :: fn(value: int) -> int { return math.Identity<int>(value); }\n", 0 },
-        { "math/a.chibi", "package numbers\nIdentity :: fn<T: int>(value: T) -> T { return value; }\n", 0 },
+        { "app/a.chibi", "package app\nimport math \"../math\"\nMain :: (value: int) -> int { return math.Twice(value); }\n", 0 },
+        { "math/a.chibi",
+          "package numbers\nIdentity :: (value: $T) -> T { return value; "
+          "}\nTwice :: (value: int) -> int { return Identity(value) * 2; }\n",
+          0 },
+    };
+    const source_package_input direct[] = {
+        { "app/a.chibi", "package app\nimport math \"../math\"\nMain :: (value: int) -> int { return math.Identity(value); }\n", 0 },
+        files[1],
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
         REQUIRE(valid(0));
         const authoring_package *math = package(0, "project:math");
-        REQUIRE(math && math->exports && math->exports->metadata);
-        uint64_t identity = function_id(math, "Identity");
-        const script_catalog_capability *signature = NULL;
-        for (int i = 0; i < math->exports->metadata->capability_count; i++) {
-            const script_catalog_capability
-                *candidate = &math->exports->metadata->capabilities[i];
-            if (candidate->id == identity) {
-                signature = candidate;
-            }
+        REQUIRE(math && math->exports);
+        bool exported = false;
+        for (int i = 0; i < math->exports->member_count; i++) {
+            exported |= !strcmp(math->exports->members[i].name, "Identity");
         }
-        REQUIRE(signature && signature->parameter_count == 1 && signature->result_count == 1);
-        REQUIRE(signature->parameters[0].type.flags & SCRIPT_TYPE_GENERIC);
-        REQUIRE(signature->results[0].type.flags & SCRIPT_TYPE_GENERIC);
-        REQUIRE(
-            signature->parameters[0].type.parameter &&
-            signature->parameters[0].type.parameter ==
-                signature->results[0].type.parameter
-        );
-        REQUIRE(run(0, "project:app", "Main", backends[b], 7, 7));
+        REQUIRE(!exported);
+        REQUIRE(run(0, "project:app", "Main", backends[b], 7, 14));
+        REQUIRE(prepare(1, direct, 2, backends[b], -1, "/project"));
+        REQUIRE(!authoring_packages_valid(owners[1]));
+        const authoring_package *app = package(1, "project:app");
+        REQUIRE(app && !app->valid && app->diagnostic_count > 0);
     }
     return true;
 }
@@ -623,7 +624,7 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
     );
     REQUIRE(!strcmp(words->items[0].str, "first") && !strcmp(words->items[1].str, "second"));
     const source_package_input files[] = {
-        { "app/a.chibi", "package app\nMain :: fn(value: int) -> int { return value; }\n", 0 },
+        { "app/a.chibi", "package app\nMain :: (value: int) -> int { return value; }\n", 0 },
     };
     REQUIRE(prepare_catalog(0, files, 1, BEHAVIOR_BYTECODE, -1, "/project", &snapshot, &bindings));
     REQUIRE(valid(0));
@@ -663,20 +664,20 @@ static bool default_probe_binding(void *, uint64_t id, script_lower_host *out)
 TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution)
 {
     const source_package_input positive[] = {
-        { "app/a.chibi", "package app\nimport lib \"../defaults\"\nMain :: fn(value: int) -> int { return value + lib.Binary() + lib.Named() + lib.Aggregate(); }\n", 0 },
+        { "app/a.chibi", "package app\nimport lib \"../defaults\"\nMain :: (value: int) -> int { return value + lib.Binary() + lib.Named() + lib.Aggregate(); }\n", 0 },
         { "defaults/a.chibi",
           "package defaults\nBase: int : 7;\nWords :: [\"alpha\", "
           "\"beta\"];\n"
-          "Binary :: fn(amount: int = 2 + 3) -> int { return amount; }\n"
-          "Named :: fn(amount: int = Base) -> int { return amount; }\n"
-          "Aggregate :: fn(words: string[] = Words) -> int { if (words[1] == "
+          "Binary :: (amount: int = 2 + 3) -> int { return amount; }\n"
+          "Named :: (amount: int = Base) -> int { return amount; }\n"
+          "Aggregate :: (words: string[] = Words) -> int { if (words[1] == "
           "\"beta\") { return 9; } return -99; }\n",
           0 },
     };
     static const char *negative[] = {
-        "package defaults\nNeeds :: fn(first: int, second: int = first) -> int "
+        "package defaults\nNeeds :: (first: int, second: int = first) -> int "
         "{ return second; }\n",
-        "package defaults\nNeeds :: fn(amount: int = Probe()) -> int { return "
+        "package defaults\nNeeds :: (amount: int = Probe()) -> int { return "
         "amount; }\n",
     };
     static const script_catalog_parameter output = { .name = "value",
@@ -699,11 +700,10 @@ TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_exe
         for (int i = 0; i < 2; i++) {
             const source_package_input rejected[] = {
                 { "app/a.chibi",
-                  i == 0
-                      ? "package app\nimport lib \"../defaults\"\nMain :: "
-                        "fn(value: int) -> int { return lib.Needs(value); }\n"
-                      : "package app\nimport lib \"../defaults\"\nMain :: "
-                        "fn(value: int) -> int { return lib.Needs(); }\n",
+                  i == 0 ? "package app\nimport lib \"../defaults\"\nMain :: "
+                           "(value: int) -> int { return lib.Needs(value); }\n"
+                         : "package app\nimport lib \"../defaults\"\nMain :: "
+                           "(value: int) -> int { return lib.Needs(); }\n",
                   0 },
                 { "defaults/a.chibi", negative[i], 0 },
             };
@@ -727,7 +727,7 @@ TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_exe
 TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
 {
     static const char *text = "package app\nimport lib \"../lib\"\nMain :: "
-                              "fn() -> int { return lib.F(); }\n";
+                              "() -> int { return lib.F(); }\n";
     direct_syntax = script_parse(text);
     REQUIRE(direct_syntax && !direct_syntax->diagnostic_count);
     const script_package_document document = { "/project/app/a.chibi",
@@ -825,7 +825,7 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_ids_and_results_survive_input_order_and_root_relocation);
     RUN_TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_valid_generation);
     RUN_TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths);
-    RUN_TEST_CASE(package_imports_concrete_constrained_generic_preserves_execution_metadata);
+    RUN_TEST_CASE(package_imports_keep_templates_package_local);
     RUN_TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution);
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
     RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);

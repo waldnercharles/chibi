@@ -1,4 +1,4 @@
-behavior SceneProbe {
+SceneProbe :: behavior {
     steps := 0
     on Tick {
         steps += 1

@@ -8,6 +8,7 @@
 #include "authoring/component_declarations.h"
 #include "authoring/language_catalog.h"
 #include "authoring/project_prepare_internal.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_prototype_flow.h"
 #include "authoring/studio_project.h"
@@ -65,13 +66,14 @@ typedef struct
     char **includes;
 } prototype_entry;
 
-static char project_root[PATH_MAX], content_root[PATH_MAX];
+static char project_root[PATH_MAX], content_root[PATH_MAX], controller[PATH_MAX];
 static char scratch[] = "/tmp/chibi-feature-coverage-XXXXXX";
 static authoring_language_catalog *native;
 static source_catalog *project;
 static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *loaded_prototypes;
+static ecs_relationship_desc **relationships;
 static script_analysis **analyses; /* One per project source, in catalog order. */
 /* Constants that reach a prototype parameter through values, by analysis. */
 static authoring_prototype_name *prototype_names;
@@ -424,6 +426,13 @@ static void use_prototypes()
         .component_count = components.component_count,
     };
     char error[256];
+    if (!project_prepare_relationships(content_root, &relationships, error, sizeof error)) {
+        fprintf(stderr, "%s/relationships: %s\n", content_root, error);
+        problems++;
+        return;
+    }
+    registry.relationships = (const ecs_relationship_desc *const *)relationships;
+    registry.relationship_count = acount(relationships);
     if (!project_prepare_prototypes(content_root, &registry, &values, error, sizeof error)) {
         fprintf(stderr, "%s/prototypes: %s\n", content_root, error);
         problems++;
@@ -522,9 +531,13 @@ static bool reach_library(uint64_t id)
     return true;
 }
 
-/* Reaches the prototype a spawn call names by reference, as
- * spawn_prototype("Drone") and spawn_prototype(Drone) do. */
-static bool reach_spawned(const script_analysis *analysis, const script_expression *call)
+/* Direct spawn arguments carry typed prototype identities. Alias/parameter
+ * origins are collected separately by authoring_prototype_names. */
+static bool reach_spawned(
+    const script_catalog *catalog,
+    const script_analysis *analysis,
+    const script_expression *call
+)
 {
     bool reached = false;
     for (int i = 0; i < call->argument_count; i++) {
@@ -533,7 +546,11 @@ static bool reach_spawned(const script_analysis *analysis, const script_expressi
                                               ? NULL
                                               : &analysis->expressions[value];
         if (argument && argument->kind == SCRIPT_EXPR_CONSTANT && argument->capability) {
-            reached |= reach_prototype(argument->constant.str, true);
+            const script_catalog_capability
+                *prototype = script_catalog_capability_by_id(catalog, argument->capability);
+            if (prototype && prototype->kind == SCRIPT_CAPABILITY_PROTOTYPE) {
+                reached |= reach_prototype(prototype->name, true);
+            }
         }
     }
     return reached;
@@ -564,7 +581,7 @@ static bool reach_from(int document)
             *capability = script_catalog_capability_by_id(catalog, expression->capability);
         reached |= reach_library(expression->capability);
         if (capability && !strcmp(capability->name, ENTITY_SPAWN_SOURCE)) {
-            reached |= reach_spawned(analysis, expression);
+            reached |= reach_spawned(catalog, analysis, expression);
         }
     }
     for (int i = 0; i < analysis->use_count; i++) {
@@ -619,6 +636,10 @@ static void free_reach()
     }
     afree(loaded_prototypes);
     project_prepare_prototypes_free(values);
+    for (int i = 0; i < acount(relationships); i++) {
+        authoring_relationship_source_free(relationships[i]);
+    }
+    afree(relationships);
     free_paths(reached_prototypes);
     free_paths(spawned_prototypes);
     free_paths(reached_behaviors);
@@ -793,13 +814,11 @@ static bool run_scene(const char *path)
     snprintf(log_path, sizeof log_path, "%s/feature-coverage-%s.log", scratch, name);
     tool_write(request_path, request);
     free(request);
-    const char *argv[] = { "/bin/sh",
-                           "-c",
-                           "exec \"$0\" --project-root \"$1\" < \"$2\"",
-                           CHIBI_CTL_PATH,
-                           project_root,
-                           request_path,
-                           NULL };
+    const char *argv[] = {
+        "/bin/sh",  "-c",         "exec \"$0\" --project-root \"$1\" < \"$2\"",
+        controller, project_root, request_path,
+        NULL
+    };
     int status = tool_run(argv, project_root, log_path);
     char *output = tool_read(log_path);
     /* The log also holds the controller's diagnostics; the response is its own line. */
@@ -835,10 +854,14 @@ TEST_CASE(test_scenes_run)
     return true;
 }
 
-int run_feature_coverage(const char *root)
+int run_feature_coverage(const char *root, const char *binary)
 {
     char error[256];
     chibi_project manifest = { 0 };
+    if (!realpath(binary, controller)) {
+        perror(binary);
+        return 1;
+    }
     if (!realpath(root, project_root)) {
         perror(root);
         return 1;

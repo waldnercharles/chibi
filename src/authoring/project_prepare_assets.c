@@ -1,4 +1,5 @@
 #include "authoring/project_prepare_internal.h"
+#include "authoring/source_asset.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -98,7 +99,9 @@ bool project_prepare_prototypes(
     struct dirent *entry;
     while (valid && (entry = readdir(dir))) {
         size_t n = strlen(entry->d_name);
-        if (entry->d_name[0] == '.' || n < 4 || strcmp(entry->d_name + n - 4, ".kdl")) {
+        bool source = n > 6 && !strcmp(entry->d_name + n - 6, ".chibi");
+        if (entry->d_name[0] == '.' ||
+            (!source && (n < 4 || strcmp(entry->d_name + n - 4, ".kdl")))) {
             continue;
         }
         char path[4096];
@@ -109,7 +112,19 @@ bool project_prepare_prototypes(
             break;
         }
         char *text = project_prepare_read(path, &budget, error, size);
-        av_doc *document = text ? av_doc_read(text, error, size) : NULL;
+        av_doc *document = !text ? NULL
+                         : source
+                             ? authoring_prototype_source_read(text, registry, error, size)
+                             : av_doc_read(text, error, size);
+        if (source && document) {
+            free(text);
+            text = av_doc_write(document);
+        }
+        if (!document) {
+            free(text);
+            valid = false;
+            break;
+        }
         av_value *name = document ? av_obj_get(av_doc_root(document), "name") : NULL;
         if (!name || !av_is_str(name) || !av_get_len(name) ||
             av_get_len(name) > PROTOTYPE_NAME_MAX) {
@@ -150,6 +165,10 @@ bool project_prepare_prototypes(
         }
     }
     return true;
+}
+bool project_prepare_relationships(const char *root, ecs_relationship_desc ***out, char *error, size_t size)
+{
+    return authoring_relationship_declarations_load(root, out, error, size);
 }
 bool project_prepare_expand(project_expansion *expansion, const prototype *prototype, char *error, size_t size)
 {

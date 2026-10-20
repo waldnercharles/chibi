@@ -5,21 +5,27 @@ package strings
 // Offsets are byte offsets, and -1 means not found.
 
 // Compiler text operations use bytes, including bytes inside UTF-8 sequences.
-ByteLength :: pure fn(value: string) -> int {
+ByteLength :: (value: string) -> int {
     return text_byte_length(value);
 }
 
 // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
-ByteAt :: pure fn(value: string, index: int) -> int {
+// Each call measures the string, so a loop over a long one should read Bytes.
+ByteAt :: (value: string, index: int) -> int {
     return text_byte_at(value, index);
 }
 
+// Every byte of the string, from 0 to 255, read in one pass.
+Bytes :: (value: string) -> int[] {
+    return text_bytes(value);
+}
+
 // Start clamps to the string and count clamps to its remaining bytes.
-Slice :: pure fn(value: string, start: int, count: int) -> string {
+Slice :: (value: string, start: int, count: int) -> string {
     return text_slice(value, start, count);
 }
 
-Compare :: pure fn(left: string, right: string) -> int {
+Compare :: (left: string, right: string) -> int {
     leftLength := ByteLength(left);
     rightLength := ByteLength(right);
     index: int = 0;
@@ -43,7 +49,7 @@ Compare :: pure fn(left: string, right: string) -> int {
     return 0;
 }
 
-IsIdentifier :: pure fn(value: string) -> bool {
+IsIdentifier :: (value: string) -> bool {
     size := ByteLength(value);
     if (size == 0) {
         return false;
@@ -60,7 +66,7 @@ IsIdentifier :: pure fn(value: string) -> bool {
     return true;
 }
 
-BaseName :: pure fn(path: string) -> string {
+BaseName :: (path: string) -> string {
     size := ByteLength(path);
     start: int = 0;
     index: int = 0;
@@ -73,26 +79,26 @@ BaseName :: pure fn(path: string) -> string {
     return Slice(path, start, size - start);
 }
 
-Contains :: pure fn(s: string, substr: string) -> bool {
+Contains :: (s: string, substr: string) -> bool {
     return Index(s, substr) >= 0;
 }
 
-ContainsAny :: pure fn(s: string, chars: string) -> bool {
+ContainsAny :: (s: string, chars: string) -> bool {
     return IndexAny(s, chars) >= 0;
 }
 
-HasPrefix :: pure fn(s: string, prefix: string) -> bool {
+HasPrefix :: (s: string, prefix: string) -> bool {
     size := ByteLength(prefix);
     return ByteLength(s) >= size && Slice(s, 0, size) == prefix;
 }
 
-HasSuffix :: pure fn(s: string, suffix: string) -> bool {
+HasSuffix :: (s: string, suffix: string) -> bool {
     size := ByteLength(s);
     count := ByteLength(suffix);
     return size >= count && Slice(s, size - count, count) == suffix;
 }
 
-IndexByte :: pure fn(s: string, c: int) -> int {
+IndexByte :: (s: string, c: int) -> int {
     size := ByteLength(s);
     i: int = 0;
     while (i < size) {
@@ -104,7 +110,7 @@ IndexByte :: pure fn(s: string, c: int) -> int {
     return -1;
 }
 
-LastIndexByte :: pure fn(s: string, c: int) -> int {
+LastIndexByte :: (s: string, c: int) -> int {
     i: int = ByteLength(s) - 1;
     while (i >= 0) {
         if (ByteAt(s, i) == c) {
@@ -117,7 +123,7 @@ LastIndexByte :: pure fn(s: string, c: int) -> int {
 
 // Rabin-Karp with Odin's 32-bit rolling hash, kept in int64 and masked; pow
 // is the prime to the substring's length. An empty substring is found at 0.
-Index :: pure fn(s: string, substr: string) -> int {
+Index :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
     if (n == 0) {
@@ -159,7 +165,7 @@ Index :: pure fn(s: string, substr: string) -> int {
 }
 
 // Index's search from the end. An empty substring is found at the length of s.
-LastIndex :: pure fn(s: string, substr: string) -> int {
+LastIndex :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
     if (n == 0) {
@@ -203,7 +209,7 @@ LastIndex :: pure fn(s: string, substr: string) -> int {
 }
 
 // The offset of the first byte of s that is any byte of chars.
-IndexAny :: pure fn(s: string, chars: string) -> int {
+IndexAny :: (s: string, chars: string) -> int {
     size := ByteLength(s);
     i: int = 0;
     while (i < size) {
@@ -215,7 +221,7 @@ IndexAny :: pure fn(s: string, chars: string) -> int {
     return -1;
 }
 
-LastIndexAny :: pure fn(s: string, chars: string) -> int {
+LastIndexAny :: (s: string, chars: string) -> int {
     i: int = ByteLength(s) - 1;
     while (i >= 0) {
         if (IndexByte(chars, ByteAt(s, i)) >= 0) {
@@ -228,7 +234,7 @@ LastIndexAny :: pure fn(s: string, chars: string) -> int {
 
 // Non-overlapping occurrences. An empty substring occurs at every byte
 // boundary, one more than the byte length.
-Count :: pure fn(s: string, substr: string) -> int {
+Count :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     if (n == 0) {
         return ByteLength(s) + 1;
@@ -257,7 +263,7 @@ Count :: pure fn(s: string, substr: string) -> int {
 }
 
 // Everything before the first c, or all of s when c is absent.
-TruncateToByte :: pure fn(s: string, c: int) -> string {
+TruncateToByte :: (s: string, c: int) -> string {
     n := IndexByte(s, c);
     if (n < 0) {
         return s;
@@ -266,7 +272,7 @@ TruncateToByte :: pure fn(s: string, c: int) -> string {
 }
 
 // ASCII letters match in either case; every other byte must be equal.
-EqualFold :: pure fn(u: string, v: string) -> bool {
+EqualFold :: (u: string, v: string) -> bool {
     size := ByteLength(u);
     if (size != ByteLength(v)) {
         return false;
@@ -289,7 +295,7 @@ EqualFold :: pure fn(u: string, v: string) -> bool {
 }
 
 // ASCII letters only; other bytes, including those of UTF-8 sequences, stay.
-ToLower :: pure fn(s: string) -> string {
+ToLower :: (s: string) -> string {
     size := ByteLength(s);
     result: string = "";
     start: int = 0;
@@ -309,7 +315,7 @@ ToLower :: pure fn(s: string) -> string {
     return format_text("{}{}", result, Slice(s, start, size - start));
 }
 
-ToUpper :: pure fn(s: string) -> string {
+ToUpper :: (s: string) -> string {
     size := ByteLength(s);
     result: string = "";
     start: int = 0;
@@ -330,12 +336,12 @@ ToUpper :: pure fn(s: string) -> string {
 }
 
 // Tab, line feed, vertical tab, form feed, carriage return and space.
-IsAsciiSpace :: pure fn(c: int) -> bool {
+IsAsciiSpace :: (c: int) -> bool {
     return c == 32 || (c >= 9 && c <= 13);
 }
 
 // Removes the leading bytes that are bytes of cutset.
-TrimLeft :: pure fn(s: string, cutset: string) -> string {
+TrimLeft :: (s: string, cutset: string) -> string {
     size := ByteLength(s);
     i: int = 0;
     while (i < size && IndexByte(cutset, ByteAt(s, i)) >= 0) {
@@ -344,7 +350,7 @@ TrimLeft :: pure fn(s: string, cutset: string) -> string {
     return Slice(s, i, size - i);
 }
 
-TrimRight :: pure fn(s: string, cutset: string) -> string {
+TrimRight :: (s: string, cutset: string) -> string {
     i := ByteLength(s);
     while (i > 0 && IndexByte(cutset, ByteAt(s, i - 1)) >= 0) {
         i -= 1;
@@ -352,11 +358,11 @@ TrimRight :: pure fn(s: string, cutset: string) -> string {
     return Slice(s, 0, i);
 }
 
-Trim :: pure fn(s: string, cutset: string) -> string {
+Trim :: (s: string, cutset: string) -> string {
     return TrimRight(TrimLeft(s, cutset), cutset);
 }
 
-TrimLeftSpace :: pure fn(s: string) -> string {
+TrimLeftSpace :: (s: string) -> string {
     size := ByteLength(s);
     i: int = 0;
     while (i < size && IsAsciiSpace(ByteAt(s, i))) {
@@ -365,7 +371,7 @@ TrimLeftSpace :: pure fn(s: string) -> string {
     return Slice(s, i, size - i);
 }
 
-TrimRightSpace :: pure fn(s: string) -> string {
+TrimRightSpace :: (s: string) -> string {
     i := ByteLength(s);
     while (i > 0 && IsAsciiSpace(ByteAt(s, i - 1))) {
         i -= 1;
@@ -373,18 +379,18 @@ TrimRightSpace :: pure fn(s: string) -> string {
     return Slice(s, 0, i);
 }
 
-TrimSpace :: pure fn(s: string) -> string {
+TrimSpace :: (s: string) -> string {
     return TrimRightSpace(TrimLeftSpace(s));
 }
 
-TrimPrefix :: pure fn(s: string, prefix: string) -> string {
+TrimPrefix :: (s: string, prefix: string) -> string {
     if (HasPrefix(s, prefix)) {
         return Slice(s, ByteLength(prefix), ByteLength(s));
     }
     return s;
 }
 
-TrimSuffix :: pure fn(s: string, suffix: string) -> string {
+TrimSuffix :: (s: string, suffix: string) -> string {
     if (HasSuffix(s, suffix)) {
         return Slice(s, 0, ByteLength(s) - ByteLength(suffix));
     }
@@ -394,7 +400,7 @@ TrimSuffix :: pure fn(s: string, suffix: string) -> string {
 // The count bytes from offset, or all bytes from offset when count is below 1.
 // As in Odin, an offset outside s keeps all of s, and a count past the end
 // keeps the rest.
-Cut :: pure fn(s: string, offset: int, count: int) -> string {
+Cut :: (s: string, offset: int, count: int) -> string {
     rest: string = s;
     size := ByteLength(s);
     if (offset >= 0 && offset < size) {
@@ -409,7 +415,7 @@ Cut :: pure fn(s: string, offset: int, count: int) -> string {
 // Odin's _split: at most n parts, or every part when n is negative; the last
 // part holds the rest of s. Each other part keeps the first keep bytes of the
 // separator after it. An empty separator splits s into bytes.
-SplitKeeping :: pure fn(s: string, sep: string, keep: int, n: int) -> string[] {
+SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
     parts: string[] = [];
     size := ByteLength(sep);
     limit := n;
@@ -445,49 +451,49 @@ SplitKeeping :: pure fn(s: string, sep: string, keep: int, n: int) -> string[] {
     return parts;
 }
 
-Split :: pure fn(s: string, sep: string) -> string[] {
+Split :: (s: string, sep: string) -> string[] {
     return SplitKeeping(s, sep, 0, -1);
 }
 
-SplitN :: pure fn(s: string, sep: string, n: int) -> string[] {
+SplitN :: (s: string, sep: string, n: int) -> string[] {
     return SplitKeeping(s, sep, 0, n);
 }
 
-SplitAfter :: pure fn(s: string, sep: string) -> string[] {
+SplitAfter :: (s: string, sep: string) -> string[] {
     return SplitKeeping(s, sep, ByteLength(sep), -1);
 }
 
-SplitAfterN :: pure fn(s: string, sep: string, n: int) -> string[] {
+SplitAfterN :: (s: string, sep: string, n: int) -> string[] {
     return SplitKeeping(s, sep, ByteLength(sep), n);
 }
 
 // Splits at line feeds; a line that ends in a carriage return loses it.
-SplitLinesKeeping :: pure fn(s: string, keep: int, n: int) -> string[] {
+SplitLinesKeeping :: (s: string, keep: int, n: int) -> string[] {
     lines: string[] = [];
-    foreach (line in SplitKeeping(s, "\n", keep, n)) {
+    for (line in SplitKeeping(s, "\n", keep, n)) {
         lines = array_add(lines, TrimSuffix(line, "\r"));
     }
     return lines;
 }
 
-SplitLines :: pure fn(s: string) -> string[] {
+SplitLines :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 0, -1);
 }
 
-SplitLinesN :: pure fn(s: string, n: int) -> string[] {
+SplitLinesN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 0, n);
 }
 
-SplitLinesAfter :: pure fn(s: string) -> string[] {
+SplitLinesAfter :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 1, -1);
 }
 
-SplitLinesAfterN :: pure fn(s: string, n: int) -> string[] {
+SplitLinesAfterN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 1, n);
 }
 
 // The runs of bytes between ASCII spaces.
-Fields :: pure fn(s: string) -> string[] {
+Fields :: (s: string) -> string[] {
     fields: string[] = [];
     size := ByteLength(s);
     start: int = -1;
@@ -509,7 +515,7 @@ Fields :: pure fn(s: string) -> string[] {
     return fields;
 }
 
-Join :: pure fn(a: string[], sep: string) -> string {
+Join :: (a: string[], sep: string) -> string {
     if (length(a) == 0) {
         return "";
     }
@@ -522,13 +528,13 @@ Join :: pure fn(a: string[], sep: string) -> string {
     return result;
 }
 
-Concatenate :: pure fn(a: string[]) -> string {
+Concatenate :: (a: string[]) -> string {
     return Join(a, "");
 }
 
 // Doubles what it has built, as Odin copies. Where Odin panics on a negative
 // count, a count below 1 gives an empty string, as Slice clamps counts.
-Repeat :: pure fn(s: string, count: int) -> string {
+Repeat :: (s: string, count: int) -> string {
     if (count < 1) {
         return "";
     }
@@ -543,7 +549,7 @@ Repeat :: pure fn(s: string, count: int) -> string {
 
 // Replaces the first n non-overlapping matches of old, or all of them when n is
 // negative. An empty old matches at every byte boundary.
-Replace :: pure fn(s: string, old: string, new: string, n: int) -> string {
+Replace :: (s: string, old: string, new: string, n: int) -> string {
     if (old == new || n == 0) {
         return s;
     }
@@ -575,15 +581,15 @@ Replace :: pure fn(s: string, old: string, new: string, n: int) -> string {
     return format_text("{}{}", result, Slice(s, start, size - start));
 }
 
-ReplaceAll :: pure fn(s: string, old: string, new: string) -> string {
+ReplaceAll :: (s: string, old: string, new: string) -> string {
     return Replace(s, old, new, -1);
 }
 
-Remove :: pure fn(s: string, key: string, n: int) -> string {
+Remove :: (s: string, key: string, n: int) -> string {
     return Replace(s, key, "", n);
 }
 
-RemoveAll :: pure fn(s: string, key: string) -> string {
+RemoveAll :: (s: string, key: string) -> string {
     return Remove(s, key, -1);
 }
 
@@ -595,7 +601,7 @@ Parts :: struct {
 
 // The text before the first sep, sep and the text after it; when sep is
 // absent, head is all of str and the others are empty.
-Partition :: pure fn(str: string, sep: string) -> Parts {
+Partition :: (str: string, sep: string) -> Parts {
     i := Index(str, sep);
     if (i < 0) {
         return {head: str, match: "", tail: ""};

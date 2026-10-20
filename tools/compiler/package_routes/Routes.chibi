@@ -41,17 +41,17 @@ ImportResult :: union {
     Accepted(directory: string) | Rejected(diagnostic: syntax.Diagnostic)
 }
 
-FileError :: pure fn(message: string, document: int) -> syntax.Diagnostic {
+FileError :: (message: string, document: int) -> syntax.Diagnostic {
     return {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
 }
 
-ImportError :: pure fn(message: string, request: ImportInput) -> ImportResult {
+ImportError :: (message: string, request: ImportInput) -> ImportResult {
     return ImportResult.Rejected({start: request.start, end: request.end,
                                   line: request.line, column: request.column,
                                   document: request.document, message: message});
 }
 
-AddRoot :: pure fn(roots: Root[], item: Collection) -> RootResult {
+AddRoot :: (roots: Root[], item: Collection) -> RootResult {
     if (!item.has_name || !paths.Bounded(item.name) || !strings.IsIdentifier(item.name)) {
         return RootResult.Rejected(FileError("Invalid collection name", -1));
     }
@@ -63,7 +63,7 @@ AddRoot :: pure fn(roots: Root[], item: Collection) -> RootResult {
         case .Normalized(path):
             // Name and path checks interleave for each earlier root. The first
             // conflicting earlier root determines the diagnostic.
-            foreach (root in roots) {
+            for (root in roots) {
                 if (root.name == item.name) {
                     return RootResult.Rejected(FileError("Duplicate collection name", -1));
                 }
@@ -76,7 +76,7 @@ AddRoot :: pure fn(roots: Root[], item: Collection) -> RootResult {
     }
 }
 
-RootSet :: pure fn(project: string, has_project: bool, collections: Collection[]) -> RootResult {
+RootSet :: (project: string, has_project: bool, collections: Collection[]) -> RootResult {
     // Snapshot option validation already bounds explicit collections to 255.
     roots: Root[] = [];
     first := AddRoot(roots, {name: "project", path: project, has_name: true, has_path: has_project});
@@ -86,7 +86,7 @@ RootSet :: pure fn(project: string, has_project: bool, collections: Collection[]
         case .Accepted(items):
             roots = items;
     }
-    foreach (item in collections) {
+    for (item in collections) {
         added := AddRoot(roots, item);
         switch added {
             case .Rejected(diagnostic):
@@ -100,7 +100,7 @@ RootSet :: pure fn(project: string, has_project: bool, collections: Collection[]
 
 // Roots are the nonempty canonical result of RootSet. Inputs use lexical paths;
 // neither routing function inspects the filesystem or proves containment there.
-OwningRoot :: pure fn(roots: Root[], directory: string) -> int {
+OwningRoot :: (roots: Root[], directory: string) -> int {
     selected: int = -1;
     index: int = 0;
     while (index < length(roots)) {
@@ -114,7 +114,7 @@ OwningRoot :: pure fn(roots: Root[], directory: string) -> int {
     return selected;
 }
 
-Relative :: pure fn(root: string, path: string) -> string {
+Relative :: (root: string, path: string) -> string {
     offset := strings.ByteLength(root);
     if (root != "/" && strings.ByteAt(path, offset) == 47) {
         offset += 1;
@@ -122,11 +122,11 @@ Relative :: pure fn(root: string, path: string) -> string {
     return strings.Slice(path, offset, strings.ByteLength(path) - offset);
 }
 
-Key :: pure fn(root: Root, path: string) -> string {
+Key :: (root: Root, path: string) -> string {
     return format_text("{}:{}", root.name, Relative(root.path, path));
 }
 
-FileRoute :: pure fn(roots: Root[], path: string, has_path: bool, document: int) -> FileResult {
+FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> FileResult {
     if (!has_path || !paths.Bounded(path) || strings.ByteLength(path) == 0) {
         return FileResult.Rejected(FileError("Invalid package file path", document));
     }
@@ -161,7 +161,7 @@ FileRoute :: pure fn(roots: Root[], path: string, has_path: bool, document: int)
 
 // The foreign primitive supplies JSON decoding facts only. Collection lookup,
 // path validity, root ownership and diagnostics remain authored policy.
-ImportRoute :: pure fn(roots: Root[], request: ImportInput) -> ImportResult {
+ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
     decoded := compiler_json_string(request.literal);
     if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
         return ImportError("Invalid import string or embedded NUL", request);

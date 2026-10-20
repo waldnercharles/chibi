@@ -170,23 +170,51 @@ static void copy_begin(bool enabled)
         pin_copy_scope_begin(&fixture.copy[0]);
     }
 }
-static bool copy_end(uint64_t headers, uint64_t text, uint64_t nominal, uint64_t record)
+static bool copy_buffer_end(uint64_t headers, uint64_t text, uint64_t nominal, uint64_t record, uint64_t buffer)
 {
     if (fixture.measured) {
         pin_copy_scope_end(&fixture.copy[0]);
     } else {
-        headers = text = nominal = record = 0;
+        headers = text = nominal = record = buffer = 0;
     }
     pin_copy_counts counts = fixture.copy[0].counts;
+    if (counts.overflow || counts.value_header_moves != headers ||
+        counts.text_bytes != text || counts.nominal_bytes != nominal ||
+        counts.record_bytes != record || counts.value_buffer_bytes != buffer) {
+        fprintf(
+            stderr,
+            "copy operation=%d measured=%d actual H=%" PRIu64 " T=%" PRIu64
+            " N=%" PRIu64 " R=%" PRIu64 " B=%" PRIu64 " overflow=%d; "
+            "expected H=%" PRIu64 " T=%" PRIu64 " N=%" PRIu64 " R=%" PRIu64
+            " B=%" PRIu64 "\n",
+            fixture.operations + 1,
+            fixture.measured,
+            counts.value_header_moves,
+            counts.text_bytes,
+            counts.nominal_bytes,
+            counts.record_bytes,
+            counts.value_buffer_bytes,
+            counts.overflow,
+            headers,
+            text,
+            nominal,
+            record,
+            buffer
+        );
+    }
     REQUIRE(!counts.overflow);
     REQUIRE(counts.value_header_moves == headers);
     REQUIRE(counts.text_bytes == text);
     REQUIRE(counts.nominal_bytes == nominal);
     REQUIRE(counts.record_bytes == record);
-    REQUIRE(counts.value_buffer_bytes == 0);
+    REQUIRE(counts.value_buffer_bytes == buffer);
     fixture.header_sum += counts.value_header_moves;
     fixture.operations++;
     return true;
+}
+static bool copy_end(uint64_t headers, uint64_t text, uint64_t nominal, uint64_t record)
+{
+    return copy_buffer_end(headers, text, nominal, record, 0);
 }
 static void producer_record()
 {
@@ -236,7 +264,7 @@ TEST_CASE(runtime_attribution_copy_sites)
         copy_begin(enabled);
         REQUIRE(pin_array_push(fixture.array, &scalar) == 0);
         REQUIRE(copy_end(2, 0, 0, 0));
-        REQUIRE(fixture.array->count == 1 && fixture.array->items[0].i == 37);
+        REQUIRE(fixture.array->count == 1 && pin_array_get(fixture.array, 0).i == 37);
         pin_array_free(fixture.array);
         fixture.array = NULL;
         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
@@ -298,7 +326,16 @@ TEST_CASE(runtime_attribution_copy_sites)
         REQUIRE(pin_value_equal(&result, &array_value));
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &array_value) == 0);
-        REQUIRE(copy_end(4, 0, 25, 0));
+        /* The owning snapshot packs three uint64 handles. Only the outer
+         * value moves a header; outer and array each own one "Elem" name.
+         * Three scalar payload writes account for exactly 3*sizeof(uint64_t). */
+        REQUIRE(copy_buffer_end(1, 0, 2 * sizeof("Elem"), 0, 3 * sizeof(uint64_t)));
+        const pin_array *packed = result.ptr;
+        REQUIRE(
+            packed && packed->stride == sizeof(uint64_t) && packed->data &&
+            !packed->items
+        );
+        REQUIRE(packed->count == 3);
         REQUIRE(pin_value_equal(&result, &array_value));
         /* S4: actual delegated descriptor assignments remain distinct. */
         pin_value children[] = { scalar, scalar }, union_value;
@@ -379,13 +416,17 @@ TEST_CASE(runtime_attribution_copy_sites)
         fixture.context.world = NULL;
         release_producer();
         REQUIRE(record_survives(&result));
-        /* S7: the owned-set name and its item's name are separate copies. */
+        /* S7: one packed handle shares the owned set's sole nominal name.
+         * No outer pin_value or stored item descriptor is copied. */
         pin_array *set = NULL;
         pin_value handle = { .type = PIN_HANDLE, .type_name = "ProbeHandle", .u64 = 1 };
         copy_begin(enabled);
         REQUIRE(pin_set_add_owned(&fixture.output, &set, &handle) == 1);
-        REQUIRE(copy_end(1, 0, 24, 0));
-        REQUIRE(set && set->count == 1 && pin_value_equal(&set->items[0], &handle));
+        REQUIRE(copy_buffer_end(0, 0, sizeof("ProbeHandle"), 0, sizeof(uint64_t)));
+        REQUIRE(set && set->count == 1 && set->stride == sizeof(uint64_t));
+        REQUIRE(set->data && !set->items);
+        pin_value item = pin_array_get(set, 0);
+        REQUIRE(pin_value_equal(&item, &handle));
         copy_begin(enabled);
         REQUIRE(pin_set_add_owned(&fixture.output, &set, &handle) == 0);
         REQUIRE(copy_end(0, 0, 0, 0));
@@ -409,7 +450,7 @@ TEST_CASE(runtime_attribution_copy_sites)
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &record) == -1);
         REQUIRE(copy_end(1, 3, 13, sizeof(BrokenRecord)));
-        REQUIRE(fixture.operations == 22 && fixture.header_sum == (enabled ? 46 : 0));
+        REQUIRE(fixture.operations == 22 && fixture.header_sum == (enabled ? 42 : 0));
         arena_free(&fixture.input);
         arena_free(&fixture.output);
     }
@@ -869,12 +910,11 @@ static const script_catalog_capability workload_events[] = {
 };
 static const script_catalog workload_catalog = { .capabilities = workload_events,
                                                  .capability_count = 2 };
-static const char workload_task_source
-    [] = "behavior Attribution { worker: task<string>; text: string = \"\";"
-         "Work :: fn(input: string) -> string { yield; return input; }"
-         "on Start(input) { worker = Work(input); }"
-         "on Save() { result := await worker; "
-         "if result is string value { text = value; } worker = nil; } }";
+static const char workload_task_source[] =
+    "Attribution :: behavior { worker: task<string>; text: string = \"\";Work "
+    ":: (input: string) -> string { yield; return input; }on Start(input) { "
+    "worker = Work(input); }on Save() { result := await worker; if result is "
+    "string value { text = value; } worker = nil; } }";
 static script_syntax *workload_syntax[2];
 static script_analysis *workload_analysis[2];
 static execution_module_plan *workload_plan[2];
@@ -1381,7 +1421,9 @@ static uint64_t workload_checksum(int managed, const pin_value *result)
     }
     uint64_t sum = (uint64_t)array->count;
     for (int i = 0; i < 3; i++) {
-        sum += array->items[i].str ? (unsigned char)array->items[i].str[0] : 0;
+        sum += pin_array_get(array, i).str
+                 ? (unsigned char)pin_array_get(array, i).str[0]
+                 : 0;
     }
     return sum;
 }
@@ -1405,10 +1447,13 @@ static bool workload_check_results(int managed, int count)
         REQUIRE(arena_contains(&workload_storage, array));
         REQUIRE(arena_contains(&workload_storage, array->items));
         for (int j = 0; j < 3; j++) {
-            REQUIRE(array->items[j].type == PIN_STR && array->items[j].str);
-            REQUIRE(array->items[j].str != workload_input_items[j].str);
-            REQUIRE(arena_contains(&workload_storage, array->items[j].str));
-            REQUIRE(!strcmp(array->items[j].str, workload_input_items[j].str));
+            REQUIRE(
+                pin_array_get(array, j).type == PIN_STR &&
+                pin_array_get(array, j).str
+            );
+            REQUIRE(pin_array_get(array, j).str != workload_input_items[j].str);
+            REQUIRE(arena_contains(&workload_storage, pin_array_get(array, j).str));
+            REQUIRE(!strcmp(pin_array_get(array, j).str, workload_input_items[j].str));
         }
     }
     size_t used, capacity;

@@ -26,17 +26,72 @@ unsigned script_analyzer_statement_effects(script_analysis *out, script_statemen
     }
     return effects;
 }
-static bool waits(TSNode node)
+/* Only registered component accessors promise identical synchronous execution
+ * with and without await. Local callables and ordinary host actions keep their
+ * task/completion contract even when their current body has no suspension. */
+static bool authored_callable_named(const analyzer *a, TSNode node, const char *name)
 {
-    if (script_analyzer_is(node, "await_expression") ||
-        script_analyzer_is(node, "yield_statement")) {
+    if (script_analyzer_is(node, "function_declaration") ||
+        script_analyzer_is(node, "macro_declaration") ||
+        script_analyzer_is(node, "action_declaration")) {
+        if (script_analyzer_text_is(a, script_analyzer_field(node, "name"), name)) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        if (authored_callable_named(a, ts_node_named_child(node, i), name)) {
+            return true;
+        }
+    }
+    return false;
+}
+bool script_analyzer_synchronous_await(const analyzer *a, TSNode node)
+{
+    if (!script_analyzer_is(node, "call_expression")) {
+        return false;
+    }
+    TSNode target = script_analyzer_field(node, "function");
+    if (!script_analyzer_is(target, "identifier")) {
+        return false;
+    }
+    char *name = script_analyzer_text_copy(a, target);
+    /* Task hints precede body declarations. Check authored syntax, rather
+     * than the growing symbol table, so this proof is identical in both phases. */
+    if (authored_callable_named(a, ts_tree_root_node(a->syntax->tree), name)) {
+        free(name);
+        return false;
+    }
+    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    if (index == -1) {
+        index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION);
+    }
+    free(name);
+    if (index < 0) {
+        return false;
+    }
+    const script_catalog_capability *cap = &a->catalog->capabilities[index];
+    return cap->component_access != SCRIPT_COMPONENT_ACCESS_NONE &&
+           !(cap->effects & SCRIPT_EFFECT_SUSPEND) && cap->completion_outcome >= 0;
+}
+static bool waits(const analyzer *a, TSNode node)
+{
+    if (script_analyzer_is(node, "yield_statement")) {
         return true;
+    }
+    if (script_analyzer_is(node, "await_expression")) {
+        TSNode value = script_analyzer_field(node, "value");
+        while (script_analyzer_is(value, "parenthesized_expression")) {
+            value = script_analyzer_field(value, "expression");
+        }
+        if (!script_analyzer_synchronous_await(a, value)) {
+            return true;
+        }
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         TSNode child = ts_node_named_child(node, i);
         /* A nested function waits for itself, not for its parent. */
         if (!script_analyzer_is(child, "function_declaration") &&
-            !script_analyzer_is(child, "macro_declaration") && waits(child)) {
+            !script_analyzer_is(child, "macro_declaration") && waits(a, child)) {
             return true;
         }
     }
@@ -48,10 +103,104 @@ bool script_analyzer_function_waits(const analyzer *a, int function)
 {
     for (int i = 0; i < acount(a->bodies); i++) {
         if (a->bodies[i].function == function) {
-            return waits(a->bodies[i].node);
+            return waits(a, a->bodies[i].node);
         }
     }
     return false;
+}
+static bool readonly_function(const analyzer *, int, bool *);
+/* Narrowing needs a proof before all bodies have semantic records. This
+ * deliberately accepts less than final purity inference: writes, reflected
+ * member reads and unresolved/cyclic calls keep the conservative invalidation. */
+static bool readonly_syntax(const analyzer *a, TSNode node, bool *active)
+{
+    if (script_analyzer_is(node, "assignment") ||
+        script_analyzer_is(node, "await_expression") ||
+        script_analyzer_is(node, "yield_statement") ||
+        script_analyzer_is(node, "cancel_statement") ||
+        script_analyzer_is(node, "reduce_statement") ||
+        script_analyzer_is(node, "state_declaration") ||
+        script_analyzer_is(node, "action_declaration") ||
+        script_analyzer_is(node, "event_declaration") ||
+        script_analyzer_is(node, "bind_declaration") ||
+        script_analyzer_is(node, "function_declaration") ||
+        script_analyzer_is(node, "macro_declaration") ||
+        script_analyzer_is(node, "member_expression")) {
+        return false;
+    }
+    if (script_analyzer_is(node, "binary_expression") ||
+        script_analyzer_is(node, "unary_expression")) {
+        TSNode op = script_analyzer_field(node, "operator");
+        const unsigned changes = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
+                                 SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND;
+        for (int i = 0; i < a->catalog->capability_count; i++) {
+            const script_catalog_capability *cap = &a->catalog->capabilities[i];
+            if (cap->operator_name &&
+                script_analyzer_text_is(a, op, cap->operator_name) &&
+                (cap->effects & changes)) {
+                return false;
+            }
+        }
+    }
+    if (script_analyzer_is(node, "call_expression")) {
+        TSNode target = script_analyzer_field(node, "function");
+        if (!script_analyzer_is(target, "identifier")) {
+            return false;
+        }
+        char *name = script_analyzer_text_copy(a, target);
+        int symbol = script_analyzer_callable_symbol(a, name);
+        int function = symbol >= 0 ? a->out->symbols[symbol].function : -1;
+        if (symbol >= 0 && function < 0 &&
+            a->out->symbols[symbol].declaration.start >= 0) {
+            free(name);
+            return false;
+        }
+        bool safe;
+        if (function >= 0) {
+            safe = readonly_function(a, function, active);
+        } else {
+            int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+            const unsigned changes = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
+                                     SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND;
+            safe = index >= 0 && a->catalog->capabilities[index].pure &&
+                   !(a->catalog->capabilities[index].effects & changes);
+        }
+        free(name);
+        if (!safe) {
+            return false;
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!readonly_syntax(a, child, active)) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool readonly_function(const analyzer *a, int function, bool *active)
+{
+    if (active[function]) {
+        return false;
+    }
+    for (int i = 0; i < acount(a->bodies); i++) {
+        if (a->bodies[i].function == function) {
+            analyzer scope = *a;
+            scope.scope = a->out->functions[function].scope;
+            active[function] = true;
+            bool safe = readonly_syntax(&scope, a->bodies[i].node, active);
+            active[function] = false;
+            return safe;
+        }
+    }
+    return false;
+}
+bool script_analyzer_readonly_callable(const analyzer *a, int function)
+{
+    bool *active = xcalloc((size_t)acount(a->out->functions) + 1, sizeof *active);
+    bool safe = readonly_function(a, function, active);
+    free(active);
+    return safe;
 }
 enum
 {
@@ -82,6 +231,9 @@ static unsigned query_expression_restrictions(const script_analysis *out, int in
     }
     const script_expression *value = &out->expressions[index];
     unsigned restrictions = value->task ? QUERY_STARTS_TASK : 0;
+    if (value->effects & SCRIPT_EFFECT_INVOCATION_READ) {
+        restrictions |= QUERY_READS_INVOCATION;
+    }
     if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
         const script_symbol *symbol = &out->symbols[value->symbol];
         if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
@@ -290,6 +442,38 @@ static void finish_reductions(analyzer *a)
     }
     afree(checked);
 }
+static void finish_reference_iteration(analyzer *a)
+{
+    const script_analysis *out = a->out;
+    for (int i = 0; i < acount(out->statements); i++) {
+        const script_statement *loop = &out->statements[i];
+        if (loop->kind != SCRIPT_STMT_FOREACH || loop->symbol < 0 ||
+            !(out->symbols[loop->symbol].type.flags & SCRIPT_TYPE_REFERENCE) ||
+            loop->body < 0) {
+            continue;
+        }
+        const script_statement *body = &out->statements[loop->body];
+        const script_expression *source = &out->expressions[loop->expression];
+        bool unsafe = (body->effects & (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST |
+                                        SCRIPT_EFFECT_STRUCTURAL)) != 0;
+        for (int j = 0; j < acount(out->expressions); j++) {
+            const script_expression *e = &out->expressions[j];
+            if (e->range.start < body->range.start || e->range.end > body->range.end) {
+                continue;
+            }
+            /* While borrowed, the source can only be reached through item.
+             * Other bindings hold snapshots, not aliases to its mutable bank. */
+            unsafe |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol == source->symbol;
+            unsafe |= e->kind == SCRIPT_EXPR_CALL &&
+                      (e->effects & SCRIPT_EFFECT_WRITE);
+        }
+        if (unsafe) {
+            script_diagnostic d = { .range = loop->range };
+            snprintf(d.message, sizeof d.message, "Reference iteration cannot suspend, start tasks, call mutating procedures or access its borrowed source binding");
+            apush(a->out->diagnostics, d);
+        }
+    }
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -298,6 +482,19 @@ void script_analyzer_finish_effects(analyzer *a)
         for (int i = 0; i < acount(out->expressions); i++) {
             script_expression *expression = &out->expressions[i];
             unsigned effects = expression->effects;
+            if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0) {
+                const script_symbol *symbol = &out->symbols[expression->symbol];
+                if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+                    ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
+                     symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+                    effects |= SCRIPT_EFFECT_INVOCATION_READ;
+                }
+            }
+            if (expression->task) {
+                /* Starting an activation changes execution ownership even if
+                 * the callee's only body effect is its own suspension. */
+                effects |= SCRIPT_EFFECT_HOST;
+            }
             if (expression->left >= 0) {
                 effects |= out->expressions[expression->left].effects;
             }
@@ -339,6 +536,7 @@ void script_analyzer_finish_effects(analyzer *a)
         }
     }
     finish_reductions(a);
+    finish_reference_iteration(a);
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;
@@ -375,11 +573,12 @@ void script_analyzer_finish_effects(analyzer *a)
     }
     for (int i = 0; i < acount(out->functions); i++) {
         script_function *function = &out->functions[i];
-        if (function->pure && function->effects & impure) {
-            script_diagnostic d = { .range = function->range };
-            snprintf(d.message, sizeof d.message, "Pure function performs execution effects");
-            apush(out->diagnostics, d);
-        }
+        bool *functions = xcalloc((size_t)acount(out->functions) + 1, sizeof *functions);
+        functions[i] = true;
+        unsigned restrictions = query_statement_restrictions(out, function->body, functions);
+        free(functions);
+        function->pure = function->body >= 0 && !(function->effects & impure) &&
+                         !(restrictions & QUERY_STARTS_TASK);
     }
     for (int i = 0; i < acount(out->bindings); i++) {
         script_binding *binding = &out->bindings[i];

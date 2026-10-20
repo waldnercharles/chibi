@@ -1,4 +1,4 @@
-behavior WatchedPayload {
+WatchedPayload :: behavior {
     on Tick {
         self.Velocity = vec2(0, 0)
     }

@@ -1,5 +1,5 @@
-behavior "MeshSurfaceSweep01" {
-    state elapsed: float = 0.0
+MeshSurfaceSweep01 :: behavior {
+    elapsed: retain float = 0.0
     on Tick {
         elapsed += double(delta)
         self.Orientation.Radians = double(elapsed) * 0.5235987756

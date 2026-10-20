@@ -23,15 +23,26 @@ script_type script_analyzer_char_operand(script_type operand, script_type other)
     return (script_type){ .storage = wide_unsigned ? PIN_U32 : PIN_I32,
                           .flags = operand.flags };
 }
+/* Two untyped constants combine as a char, then a floating number, then the
+ * wider integer, as Go's untyped constant kinds do. */
+static script_type untyped_common(script_type left, script_type right)
+{
+    if (script_type_char(left) || script_type_char(right)) {
+        return script_char_type();
+    }
+    if (left.storage > PIN_U64 || right.storage > PIN_U64) {
+        return (script_type){ .storage = PIN_F64 };
+    }
+    pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
+    return (script_type){ .storage = common == PIN_FLOW ? PIN_U64 : common };
+}
 script_type script_analyzer_arithmetic_type(script_type left, script_type right)
 {
     if (left.flags & SCRIPT_TYPE_UNTYPED) {
         if (!(right.flags & SCRIPT_TYPE_UNTYPED)) {
             return right;
         }
-        script_type untyped = script_type_char(left) || script_type_char(right)
-                                ? script_char_type()
-                                : (script_type){ .storage = PIN_F64 };
+        script_type untyped = untyped_common(left, right);
         untyped.flags = SCRIPT_TYPE_UNTYPED;
         return untyped;
     }
@@ -197,8 +208,41 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
     return true;
 }
 
+/* Without a type from context a literal is typed by its spelling, as in C#:
+ * an integer is int, or the first of int64 and uint64 that holds it, and a
+ * decimal point or exponent makes a number. Hex digits include e. */
+static script_type untyped_number(const char *text, long double value)
+{
+    script_type type = { .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+    if (!strpbrk(text, "xX") && strpbrk(text, ".eE")) {
+        return type;
+    }
+    type.storage = value >= -0x1p31L && value < 0x1p31L ? PIN_I32
+                 : value >= -0x1p63L && value < 0x1p63L ? PIN_I64
+                                                        : PIN_U64;
+    return type;
+}
+/* A union such as `number | Cancelled` gives a literal its one numeric
+ * alternative's type. */
+static script_type numeric_alternative(const analyzer *a, script_type expected)
+{
+    const script_catalog_type
+        *type = (expected.flags & SCRIPT_TYPE_UNION) && expected.container == PIN_CONTAINER_SINGLE
+                  ? script_catalog_type_by_id(a->catalog, expected.nominal)
+                  : NULL;
+    script_type found = expected;
+    int count = 0;
+    for (int i = 0; type && i < type->variant_count; i++) {
+        if (!type->variants[i].tagged && script_type_numeric(type->variants[i].type)) {
+            found = type->variants[i].type;
+            count++;
+        }
+    }
+    return count == 1 ? found : expected;
+}
 script_expression script_analyzer_number_literal(analyzer *a, TSNode node, script_type expected, bool negate)
 {
+    expected = numeric_alternative(a, expected);
     expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     script_expression result = { .kind = SCRIPT_EXPR_CONSTANT,
                                  .symbol = -1,
@@ -224,7 +268,7 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
     result.type = (script_type_numeric(expected) || enumeration) &&
                           !(expected.flags & SCRIPT_TYPE_UNTYPED)
                     ? expected
-                    : (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+                    : untyped_number(text, value);
     if (enumeration && expected.nominal) {
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
@@ -327,7 +371,9 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         script_analyzer_diagnostic(
             a,
             node,
-            "Numeric literal is outside the range of %s",
+            integer && isfinite(value) && truncl(value) != value
+                ? "Numeric literal has a fraction, which %s cannot hold"
+                : "Numeric literal is outside the range of %s",
             script_numeric_name(result.type)
         );
         value = 0;
@@ -405,7 +451,12 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
     if (expression->kind == SCRIPT_EXPR_CONSTANT) {
         script_range range = expression->range;
-        bool negative = signbit(expression->constant.d);
+        pin_value constant = expression->constant;
+        bool negative = constant.type == PIN_F32 ? signbit(constant.f)
+                      : constant.type == PIN_F64
+                          ? signbit(constant.d)
+                          : behavior_scalar_signed(constant.type) &&
+                                (int64_t)behavior_scalar_bits(constant) < 0;
         TSNode node = ts_node_descendant_for_byte_range(
             ts_tree_root_node(script_analyzer_document_syntax(a, range.document)->tree),
             (uint32_t)range.start,

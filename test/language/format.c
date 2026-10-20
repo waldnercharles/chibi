@@ -1083,16 +1083,16 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     REQUIRE(minimize_valid(
         &catalog,
         input,
-        "Demo :: library { count: int = 0\n"
-        "F :: () -> (r: int) { local: retain int = 1\n"
+        "Demo :: library { count := 0\n"
+        "F :: () -> (r: int) { local: retain = 1\n"
         "r = (/* keep */ count + local); return } }"
     ));
     free(again);
     char error[192];
     again = authoring_source_format(formatted, error, sizeof error);
     REQUIRE(again);
-    REQUIRE(strstr(again, "count: int = 0") && !strstr(again, "count: retain"));
-    REQUIRE(strstr(again, "local: retain int = 1"));
+    REQUIRE(strstr(again, "count := 0") && !strstr(again, "count: retain"));
+    REQUIRE(strstr(again, "local: retain = 1"));
     REQUIRE(strstr(again, "r = (/* keep */ count + local)"));
     return true;
 }
@@ -1664,9 +1664,9 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "F :: () -> number { count: retain number = 1\n"
         "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
         "}",
-        "Demo :: system() { total: retain = 0\n"
-        "F :: () -> number { count: retain = 1\n"
-        "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
+        "Demo :: system() { total: retain number = 0\n"
+        "F :: () -> number { count: retain number = 1\n"
+        "integer: retain = 1\nfractional: retain float = 1\nreturn count } "
         "}"
     ));
     cleanup();
@@ -1675,7 +1675,7 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "Demo :: behavior { count: retain = 1\nAdvance :: (dt: number) { "
         "elapsed: retain number = 0\nelapsed += dt } }",
         "Demo :: behavior { count:= 1\nAdvance :: (dt: number) { "
-        "elapsed: retain = 0\nelapsed += dt } }"
+        "elapsed: retain number = 0\nelapsed += dt } }"
     ));
     return true;
 }

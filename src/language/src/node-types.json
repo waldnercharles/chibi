@@ -2513,16 +2513,6 @@
     "type": "handler",
     "named": true,
     "fields": {
-      "alias": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
       "binding": {
         "multiple": false,
         "required": false,

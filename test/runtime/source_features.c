@@ -210,7 +210,7 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                   "(Rotation:struct<CF_V3>,Target:handle<ecs.entity>)->(){ "
                   "await delay(Duration:0.125); await "
                   "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } on "
-                  "Tick { await Apply(Rotation:rotation,Target:target); "
+                  "Tick :: () { await Apply(Rotation:rotation,Target:target); "
                   "done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
         for (int explicit_target = 0; explicit_target < 2; explicit_target++) {

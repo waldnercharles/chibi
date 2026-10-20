@@ -3471,15 +3471,15 @@ TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state
     }
     return true;
 }
-TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once)
+TEST_CASE(program_retrigger_evaluates_each_duration_once)
 {
     const char
         *source = "Retriggers :: behavior { evaluations:double=0; "
-                  "completions:double=0; captured:double=0; Duration :: "
+                  "completions:double=0; Duration :: "
                   "()->(seconds:double){evaluations+=1;return(3);} action "
                   "pending=retriggerable_delay(Duration:Duration()); on "
-                  "Impulse as signal(amount,enabled){pending();} after "
-                  "pending.Completed{completions+=1;captured=signal.amount;} }";
+                  "Impulse :: (){pending();} after "
+                  "pending.Completed{completions+=1;} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3498,10 +3498,7 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         REQUIRE(execution_program_update(program, 3.5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "completions", 0));
         REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
-        REQUIRE(
-            number_state(instance, "completions", 1) &&
-            number_state(instance, "captured", 1)
-        );
+        REQUIRE(number_state(instance, "completions", 1));
         args[0].d = 7;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "evaluations", 3));
@@ -9369,7 +9366,7 @@ void test_language_program()
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
     RUN_TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state);
-    RUN_TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once);
+    RUN_TEST_CASE(program_retrigger_evaluates_each_duration_once);
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);

@@ -128,6 +128,21 @@ TEST_CASE(language_handlers_name_payload_fields)
     );
     parse("Demo :: behavior { after spawned :: () { } }");
     REQUIRE(original->diagnostic_count > 0);
+    /* Version 30 removed the positional, aliased and bare `on` forms and the
+     * `after` alias; `after` keeps its results list. */
+    const char *removed[] = {
+        "Demo :: behavior { on Tick { } }",
+        "Demo :: behavior { on Tick(dt) { } }",
+        "Demo :: behavior { on Tick as tick { } }",
+        "Demo :: behavior { action go = delay(Duration: 1); after go as done { "
+        "} }",
+    };
+    for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+        parse(removed[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
+    parse("Demo :: behavior { action go = delay(Duration: 1); after go(seconds) { } }");
+    REQUIRE(original->diagnostic_count == 0);
     return true;
 }
 /* A system names its step's payload fields after its query clauses. */

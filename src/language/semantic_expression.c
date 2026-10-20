@@ -776,7 +776,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         script_analyzer_resolve_initializer(a, index);
         script_symbol symbol = a->out->symbols[index];
         if (symbol.kind == SCRIPT_PARAMETER && symbol.function >= 0 &&
-            a->function >= 0 && symbol.function != a->function &&
+            !a->query && symbol.function != a->function &&
             a->out->functions[symbol.function].kind == SCRIPT_FUNCTION_SYSTEM) {
             script_analyzer_diagnostic(a, node, "Read the step in the system's body, and pass it to what it calls");
         }

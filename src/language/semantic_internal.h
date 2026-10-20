@@ -90,6 +90,7 @@ typedef struct
     TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
+    bool query; /* Analyzing a system's `where`, which reports its own reads. */
 } analyzer;
 
 script_named_facts script_analyzer_named_facts(const analyzer *);

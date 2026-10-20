@@ -856,12 +856,15 @@ TEST_CASE(program_systems_name_their_step)
           "Read the step in the system's body" },
         { "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
           "List the step's fields" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "bind self.Position.x = dt;\np.x += 1; }",
+          "Read the step in the system's body" },
         { "Motion :: system(p: Position) { p.x += event.dt; }", "Unknown value 'event'" },
         { "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: double) "
           "{ p.x += dt; }",
           "Query predicate cannot read" },
     };
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 10; i++) {
         prepare();
         syntax = script_parse(refused[i].source);
         REQUIRE(!syntax->diagnostic_count);
@@ -873,7 +876,7 @@ TEST_CASE(program_systems_name_their_step)
         }
         REQUIRE(!analysis->valid && found);
         /* A query reads no callable's step; it says so once. */
-        REQUIRE(i != 8 || !inner);
+        REQUIRE(i != 9 || !inner);
     }
     /* Lowering reads Tick's one field as the step, so a Tick with more
      * fields has no system step. */

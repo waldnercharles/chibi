@@ -225,7 +225,9 @@ static script_analysis *analyze(
             script_analyzer_callable_definitions(&a, false);
             TSNode where = script_analyzer_field(program, "where");
             if (out->kind == SCRIPT_PROGRAM_SYSTEM && !ts_node_is_null(where)) {
+                a.query = true;
                 out->query_filter = script_analyzer_query_expression(&a, where);
+                a.query = false;
                 script_analyzer_query_intersect(&a, out->query_filter);
             }
         }

@@ -2115,6 +2115,20 @@
           }
         ]
       },
+      "bound": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "..<",
+            "named": false
+          }
+        ]
+      },
       "first": {
         "multiple": false,
         "required": false,
@@ -2297,6 +2311,16 @@
         "types": [
           {
             "type": "ref",
+            "named": false
+          }
+        ]
+      },
+      "reverse": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "<",
             "named": false
           }
         ]
@@ -6157,6 +6181,10 @@
   },
   {
     "type": "..",
+    "named": false
+  },
+  {
+    "type": "..<",
     "named": false
   },
   {

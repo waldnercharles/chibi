@@ -180,29 +180,24 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
-## Loops have no half-open or reverse form, and stage one compiles only `for name in array`
+## Stage one compiles only `for name in array`
 
-Language, and stage one. Stage zero has `for i in first..last` with inclusive
-bounds, keyed loops and `for item: ref in items` (#420); stage one rejects all
-three, so the compiler's own counting loops stay
-`while (index < n) { ...; index += 1; }`. Neither compiler has a half-open
-range or a reverse loop, and `3..0` runs no iterations. Since stage one
-compiles `core:strings`, every scan there, forward and reverse, is a `while`
-with its own `i += 1` or `i -= 1`, and a `continue` before the step hangs
-(#503).
+Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
+loops and `for item: ref in items` (#420), and since #RANGES_PR half-open
+`first..<last` and reverse `for <` loops over ranges and arrays, as the owner
+decided on 2026-10-20 after Odin's `..<` and Jai's `for <`. Stage one rejects
+all of them, so the compiler's own counting loops stay
+`while (index < n) { ...; index += 1; }`. Since stage one compiles
+`core:strings`, every scan there, forward and reverse, is a `while` with its
+own `i += 1` or `i -= 1`, and a `continue` before the step hangs (#503).
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
   `for (0..n) |i|`; Jai inclusive `for i: 0..n-1` and `for <` to reverse;
   Python `for i in range(n)`; C, C++ and C# three-part `for`.
-- No mainstream language counts down when a range's bounds descend: Odin,
-  Rust, Kotlin, Ruby and Python give an empty range, and Swift fails.
 
-Decision (2026-10-20): `..` stays inclusive and `a..<b` adds a half-open
-range, so the count loop is `0..<n`. Ranges never count down; a range whose
-constant bounds descend, such as `10..0`, is a compile error. Jai's
-`for < i in 0..10` iterates in reverse, over ranges and arrays. Stage one then
-compiles range, keyed and reverse loops.
+Suggestion: stage one compiles range, keyed and reverse loops, then the
+compiler and `core:strings` replace their counting `while` loops.
 
 ## Stage one constants are literals only
 

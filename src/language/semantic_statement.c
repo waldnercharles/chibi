@@ -866,8 +866,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.key_symbol = -1;
         TSNode item_name = script_analyzer_field(node, "name");
         bool reference_iteration = !ts_node_is_null(script_analyzer_field(node, "reference"));
+        result.reverse = !ts_node_is_null(script_analyzer_field(node, "reverse"));
         script_type element;
         if (range) {
+            result.exclusive = script_analyzer_text_is(a, script_analyzer_field(node, "bound"), "..<");
             result.expression = script_analyzer_expression(a, first, (script_type){ .storage = PIN_I32 });
             result.second = script_analyzer_expression(
                 a,
@@ -887,6 +889,14 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 element,
                 script_analyzer_expr_type(a, result.second)
             );
+            /* Ranges never count down, so constant bounds that descend are a
+             * mistake rather than an empty loop. */
+            pin_value low, high;
+            if (!script_analyzer_scalar_constant(a, result.expression, PIN_I32, &low) &&
+                !script_analyzer_scalar_constant(a, result.second, PIN_I32, &high) &&
+                low.i > high.i) {
+                script_analyzer_diagnostic(a, node, "Range bounds descend; count down with for <");
+            }
         } else {
             result.expression = script_analyzer_expression(
                 a,
@@ -900,6 +910,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             if (element.container != PIN_CONTAINER_ARRAY &&
                 element.container != PIN_CONTAINER_MAP && !text) {
                 script_analyzer_diagnostic(a, collection, "For requires an array, Map or string");
+            }
+            if (result.reverse && (element.container != PIN_CONTAINER_ARRAY ||
+                                   a->out->expressions[result.expression].kind ==
+                                       SCRIPT_EXPR_RELATION)) {
+                script_analyzer_diagnostic(a, collection, "for < reverses only ranges and arrays");
             }
             TSNode key = script_analyzer_field(node, "key");
             if (!ts_node_is_null(key)) {

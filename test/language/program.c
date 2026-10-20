@@ -2797,6 +2797,57 @@ TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
     }
     return true;
 }
+/* `..<` stops before its last bound and `for <` counts down, over ranges and
+ * arrays alike; neither wraps at the int bounds or runs an empty range. */
+TEST_CASE(program_loops_count_half_open_and_in_reverse)
+{
+    const char *
+        source = "Loops :: behavior {\n"
+                 "  up: int = 0; half: int = 0; down: int = 0; back: int = 0;\n"
+                 "  empty: int = 0; skips: int = 0; items: int = 0; order: int "
+                 "= 0;\n"
+                 "  edges: int = 0;\n"
+                 "  on Impulse(amount, enabled) {\n"
+                 "    for i in 1..4 { up = up * 10 + i; }\n"
+                 "    for i in 1..<4 { half = half * 10 + i; }\n"
+                 "    for < i in 1..4 { down = down * 10 + i; }\n"
+                 "    for < i in 1..<4 { back = back * 10 + i; }\n"
+                 "    n: int = 0;\n"
+                 "    for i in 0..<n { empty += 1; }\n"
+                 "    for < i in 0..<n { empty += 1; }\n"
+                 "    for < i in 1..4 { if i == 3 { continue; } skips = skips "
+                 "* 10 + i; }\n"
+                 "    xs: int[] = [1, 2, 3];\n"
+                 "    for < x, i in xs { items = items * 10 + x; order = order "
+                 "* 10 + i; }\n"
+                 "    for < i in -2147483648..-2147483647 { edges += 1; }\n"
+                 "    for i in 2147483646..<2147483647 { edges += 1; }\n"
+                 "  }\n"
+                 "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "up", PIN_I32, 1234));
+        REQUIRE(int_state(instance, "half", PIN_I32, 123));
+        REQUIRE(int_state(instance, "down", PIN_I32, 4321));
+        REQUIRE(int_state(instance, "back", PIN_I32, 321));
+        REQUIRE(int_state(instance, "empty", PIN_I32, 0));
+        REQUIRE(int_state(instance, "skips", PIN_I32, 421));
+        REQUIRE(int_state(instance, "items", PIN_I32, 321));
+        REQUIRE(int_state(instance, "order", PIN_I32, 210));
+        REQUIRE(int_state(instance, "edges", PIN_I32, 3));
+        execution_program_free(program);
+        program = NULL;
+    }
+    return true;
+}
 /* A write outside a local's array fails at the assignment, as other writes do. */
 /* Suspending mid-build collects the payload while the local keeps its grown
  * items: the collection keeps the current buffer and reclaims the outgrown
@@ -8812,6 +8863,7 @@ void test_language_program()
     RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
     RUN_TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);

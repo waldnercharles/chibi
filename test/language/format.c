@@ -129,6 +129,14 @@ TEST_CASE(source_format_spaces_typed_constant_colons)
     REQUIRE(strstr(text, "Limit: int : 5") && strstr(text, "Mask :: 255"));
     return true;
 }
+TEST_CASE(source_format_spaces_reverse_and_half_open_loops)
+{
+    REQUIRE(
+        format("L :: library {\n    F :: (n: int) {\n        for<i in 0 ..< n {}\n        for <x in [1] {}\n    }\n}\n")
+    );
+    REQUIRE(strstr(text, "for < i in 0..<n {}") && strstr(text, "for < x in [1] {}"));
+    return true;
+}
 TEST_CASE(source_format_keeps_attributes_on_their_line)
 {
     REQUIRE(format("package facts\n@test\nAdds :: () { }\n@ test Second :: () { }\n"));
@@ -1704,6 +1712,7 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
+    RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
     RUN_TEST_CASE(source_format_spaces_variant_patterns);
     RUN_TEST_CASE(source_format_aligns_bracket_continuations);

@@ -4,6 +4,9 @@
 void test_language_package_compiler_chibi();
 void test_language_package_compiler_chibi_types();
 void test_language_package_compiler_chibi_imports();
+void test_language_package_compiler_chibi_compiled();
+void test_language_package_compiler_chibi_types_compiled();
+void test_language_package_compiler_chibi_imports_compiled();
 void test_language_package_compiler_chibi_bootstrap();
 void test_language_package_compiler_chibi_literals();
 void test_language_package_compiler_chibi_behaviors();

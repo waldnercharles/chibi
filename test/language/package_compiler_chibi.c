@@ -1565,11 +1565,30 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     return true;
 }
 /* Whether a point is one this compiler places as stage zero does: a
- * function's entry and completions and each statement's. */
+ * function's entry and completions, each statement's, each evaluated
+ * expression's and each symbol's it reads or stores. */
 static bool placed(const behavior_source_point *point)
 {
     return point->kind == BEHAVIOR_SOURCE_FUNCTION ||
-           point->kind == BEHAVIOR_SOURCE_STATEMENT;
+           point->kind == BEHAVIOR_SOURCE_STATEMENT ||
+           point->kind == BEHAVIOR_SOURCE_EXPRESSION ||
+           point->kind == BEHAVIOR_SOURCE_SYMBOL;
+}
+static void print_points(const char *compiler, const behavior_function *f)
+{
+    for (int k = 0; k < acount(f->source_points); k++) {
+        const behavior_source_point *p = &f->source_points[k];
+        fprintf(
+            stderr,
+            "  %s point kind %d at %d..%d occurrence %016llx completion %d\n",
+            compiler,
+            p->kind,
+            p->start,
+            p->end,
+            (unsigned long long)p->occurrence,
+            p->completion
+        );
+    }
 }
 static bool same_point(const behavior_source_point *x, const behavior_source_point *y)
 {
@@ -1630,17 +1649,8 @@ static bool same_points(const execution_module *expected, const execution_module
         }
         free(used);
         if (!alike || placed_count != 0) {
-            for (int k = 0; k < count; k++) {
-                const behavior_source_point *p = &y->source_points[k];
-                fprintf(
-                    stderr,
-                    "  stage one point kind %d at %d..%d completion %d\n",
-                    p->kind,
-                    p->start,
-                    p->end,
-                    p->completion
-                );
-            }
+            print_points("stage zero", x);
+            print_points("stage one", y);
             return false;
         }
     }
@@ -2047,95 +2057,108 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
     native_capabilities_free(native);
     return alike;
 }
-static bool run_samples(sample_group group)
+/* The samples of `group` compiled by stage one on compiler backend `b`.
+ * Stage one compiles slowest on the bytecode backend, so each backend has a
+ * selector of its own; only it compares with stage zero's closure. */
+static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < (int)SAMPLES; i++) {
-            const sample *s = &samples[i];
-            if (s->group != group) {
-                continue;
-            }
-            source_package_input inputs[3];
-            int count = sample_inputs(s, inputs);
-            pin_value out;
-            REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
-            if (s->message) {
-                REQUIRE(value->tag == tag(b, "Rejected"));
-                pin_value message, line, column;
-                REQUIRE(get(&value->values[0], "message", &message));
-                REQUIRE(
-                    get(&value->values[0], "line", &line) &&
-                    get(&value->values[0], "column", &column)
-                );
-                if (strcmp(message.str, s->message) || line.i != s->line ||
-                    column.i != s->column) {
-                    fprintf(
-                        stderr,
-                        "package compiler %s: %s at %d:%d\n",
-                        s->name,
-                        message.str,
-                        line.i,
-                        column.i
-                    );
-                }
-                REQUIRE(
-                    !strcmp(message.str, s->message) && line.i == s->line &&
-                    column.i == s->column
-                );
-                arena_free(&detached);
-                continue;
-            }
-            if (value->tag != tag(b, "Compiled")) {
-                pin_value message, line, column;
-                get(&value->values[0], "message", &message);
-                get(&value->values[0], "line", &line);
-                get(&value->values[0], "column", &column);
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        const sample *s = &samples[i];
+        if (s->group != group) {
+            continue;
+        }
+        source_package_input inputs[3];
+        int count = sample_inputs(s, inputs);
+        pin_value out;
+        REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        if (s->message) {
+            REQUIRE(value->tag == tag(b, "Rejected"));
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(
+                get(&value->values[0], "line", &line) &&
+                get(&value->values[0], "column", &column)
+            );
+            if (strcmp(message.str, s->message) || line.i != s->line ||
+                column.i != s->column) {
                 fprintf(
                     stderr,
-                    "package compiler %s rejected: %s at %d:%d\n",
+                    "package compiler %s: %s at %d:%d\n",
                     s->name,
                     message.str,
                     line.i,
                     column.i
                 );
             }
-            REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
-            size_t length;
-            unsigned char *bytes = closure_bytes(value, &length);
+            REQUIRE(
+                !strcmp(message.str, s->message) && line.i == s->line &&
+                column.i == s->column
+            );
             arena_free(&detached);
-            unsigned char *expected = NULL;
-            size_t expected_length = 0;
-            bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
-                       (!s->boxed || reads_boxed(bytes, length)) &&
-                       (b || (oracle_closure(s, &expected, &expected_length) &&
-                              points_like_oracle(bytes, length)));
-            for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
-                for (int backend = 0; ran && backend < 2; backend++) {
-                    ran = run(bytes, length, &s->calls[c], backend);
-                }
-                ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
-            }
-            free(bytes);
-            free(expected);
-            REQUIRE(ran);
+            continue;
         }
+        if (value->tag != tag(b, "Compiled")) {
+            pin_value message, line, column;
+            get(&value->values[0], "message", &message);
+            get(&value->values[0], "line", &line);
+            get(&value->values[0], "column", &column);
+            fprintf(
+                stderr,
+                "package compiler %s rejected: %s at %d:%d\n",
+                s->name,
+                message.str,
+                line.i,
+                column.i
+            );
+        }
+        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        arena_free(&detached);
+        unsigned char *expected = NULL;
+        size_t expected_length = 0;
+        bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
+                   (!s->boxed || reads_boxed(bytes, length)) &&
+                   (b || (oracle_closure(s, &expected, &expected_length) &&
+                          points_like_oracle(bytes, length)));
+        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+            for (int backend = 0; ran && backend < 2; backend++) {
+                ran = run(bytes, length, &s->calls[c], backend);
+            }
+            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
+        }
+        free(bytes);
+        free(expected);
+        REQUIRE(ran);
     }
     return true;
 }
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
-    return run_samples(BASE_SAMPLES);
+    return run_samples(BASE_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_builds_runnable_packages_compiled)
+{
+    return run_samples(BASE_SAMPLES, 1);
 }
 TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
-    return run_samples(TYPE_SAMPLES);
+    return run_samples(TYPE_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
+{
+    return run_samples(TYPE_SAMPLES, 1);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
-    return run_samples(IMPORT_SAMPLES);
+    return run_samples(IMPORT_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
+{
+    return run_samples(IMPORT_SAMPLES, 1);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -3035,6 +3058,24 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_compiled()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_packages_compiled);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_types_compiled()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_imports_compiled()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()

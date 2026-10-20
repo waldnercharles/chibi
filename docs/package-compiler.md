@@ -143,7 +143,9 @@ Records and arrays follow stage zero's value model:
   inline in `data`, where a record element is its own address; otherwise
   `items` holds value headers. The target supplies the `data` and `stride`
   offsets. A record element's boxed pointer is loaded only past a branch,
-  through an address local.
+  through an address local. The runtime never packs strings, unions or records
+  with a string field, so a read of those indexes `items` and loads the
+  header's payload in three instructions, where the choice takes 15 or 16.
 - In-place updates use the array push, extend and store intrinsics on the
   local's header address.
 - A `for` loop walks its own copy of the array, so the body may change the
@@ -183,32 +185,38 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-Three selectors compile 85 samples on both compiler backends, each under its
+Three selectors compile 86 samples on both compiler backends, each under its
 own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
   arrays, strings and natives, and every rejection (10,581 assertions in
-  31.5 s);
+  28.2 s);
 - `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types and inferred arrays (2,984 assertions in 27.0 s);
+  scopes, integer types, inferred arrays and element reads (3,197 assertions in
+  24.6 s);
 - `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,990 assertions in 43.2 s).
+  compiles all of `core:strings` (1,990 assertions in 35.7 s).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
 on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
 same packages must return the same JSON; calls that must fail, such as
 out-of-bounds reads, fail on all three. Rejections check the exact message and
-position. In the push and extension samples, `Build(count)` must update its
+position. In the boxed elements sample, the closure's functions that read
+arrays of strings, unions and records with a string field must not load an
+array's stride, and the one that reads an array of records of scalars must. In
+the push and extension samples, `Build(count)` must update its
 local array in place: doubling the count at most doubles the values it copies.
 Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
-Compiling is slow. In this build, compiling all the samples takes about 17 s
-of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT
-and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
-3.2 s. Two runtime changes cut the selector from 34 s to 28 s:
+Compiling is slow. In this build, stage one compiles the base selector's 16
+accepted samples in 2.5 s on SLJIT and 5.7 s on bytecode. The arrays sample,
+about 50 lines, takes 0.8 s and 1.8 s; the imports sample, which compiles all
+of `core:strings`, takes 5.7 s and 13.7 s, and stage zero's build of the
+compiler takes about 11 s of every selector. Two runtime changes cut the base
+selector from 34 s to 28 s:
 
 - A running call stack keeps up to 8 MiB of retired frames, evicting the least
   recently retired, and settles back to the 64 KiB idle budget. Before, the
@@ -216,6 +224,15 @@ and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
   afresh on every call.
 - Copying a record descriptor into another arena copies its bytes instead of
   re-deriving and re-hashing its layout.
+
+The rest is the interpreter running the compiler's code and copying its values:
+calls that return arrays, records copied into locals, and `for` loops over
+arrays of records, which copy each record. `docs/authored-prepared-writer.md`
+measures what each costs. On 2026-10-19, encoding a row's fields in one call in
+the prepared writer, and reading arrays that are never packed without the
+stride choice, cut the CPU time of the base, types and imports selectors from
+31, 26 and 41 s to 27, 24 and 36 s, and of the writer's own selector from 36 s
+to 21 s.
 
 `make test-bootstrap` builds an unsanitized Release `test_language` and runs
 `tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
@@ -225,14 +242,15 @@ and runs its `CompileClosure` on the same sources and arguments, as JSON, and
 the bytes must equal stage one's. Stage two then compiles every sample, and
 each `Compile` result, closure or rejection, must project to the same JSON as
 stage one's; the existing selectors check stage one's against stage zero and
-run its closures on bytecode and SLJIT. The run takes about 30 s, with a peak
-memory footprint of about 5 GB (macOS arm64, 2026-10-19). Most of that is
-stage one, stage zero's build, writing the package compiler's module: that one
-`prepared_writer.Write` frame grows to 2.7 GB, against 92 MB for stage two's
-build of the same function on the same module. Stage two alone, loaded in a
-fresh process, compiles the compiler in 7.9 s with a 3.6 GB peak footprint;
-each copy of its 5.6 MB closure is about 224 MB as a `byte[]` of 40-byte
-values. Under Debug and the sanitizers one
+run its closures on bytecode and SLJIT. The run takes about 22 s, with a peak
+memory footprint of about 3.1 GB (macOS arm64, 2026-10-19): stage one compiles
+the compiler in 10.9 s of CPU time and stage two in 7.2 s, against 12.5 s and
+8.2 s before the changes above, and stage two's samples take 2.4 s. Stage one,
+stage zero's build, peaks at 2.7 GB; an earlier measurement put most of that in
+the `prepared_writer.Write` frame writing the package compiler's module,
+against 92 MB for stage two's build of the same function on the same module.
+Each copy of the closure is about 250 MB as a `byte[]` of 40-byte values.
+Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
 

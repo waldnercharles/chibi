@@ -61,12 +61,14 @@ typedef enum
 /* `source` is package facts; `library` is package lib when present, and
  * `core` adds core:strings. An `updates` sample's `Build(count)` updates a
  * local array in place: doubling its count at most doubles the values it
- * copies, where copying the array on each update would quadruple them. */
+ * copies, where copying the array on each update would quadruple them. A
+ * `boxed` sample's Boxed functions read only arrays that are never packed,
+ * and its Packed functions arrays that may be. */
 typedef struct
 {
     const char *name, *source, *library;
     sample_group group;
-    bool core, updates;
+    bool core, updates, boxed;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -480,6 +482,50 @@ static const sample samples[] = {
                  { "Words", "[]", "[3]" },
                  { "Points", "[]", "[4]" },
                  { "Wide", "[]", "[257]" } } },
+    { .name = "boxed elements",
+      .group = TYPE_SAMPLES,
+      .boxed = true,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Shape :: union { Circle(radius: int) | Empty }\n"
+                "BoxedWord :: (words: string[], i: int) -> string { return "
+                "words[i]; }\n"
+                "BoxedWords :: (words: string[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for (word in words) { if (word == \"b\") { total += 1; } "
+                "}\n"
+                "    return total;\n}\n"
+                "BoxedNotes :: (notes: Note[], i: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for (note in notes) { total += note.count; }\n"
+                "    return total + notes[i].count * 100;\n}\n"
+                "BoxedShapes :: (i: int) -> int {\n"
+                "    shapes: Shape[] = [Shape.Circle(2), Shape.Empty, "
+                "Shape.Circle(5)];\n"
+                "    total: int = 0;\n"
+                "    for (shape in shapes) {\n"
+                "        switch shape { case .Circle(radius): total += radius; "
+                "case .Empty: total += 10; }\n"
+                "    }\n"
+                "    picked := shapes[i];\n"
+                "    switch picked { case .Circle(radius): return total + "
+                "radius * 100; case .Empty: return total; }\n"
+                "    return -1;\n}\n"
+                "PackedPoints :: (points: Point[], i: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for (point in points) { total += point.y; }\n"
+                "    return total + points[i].x * 100;\n}",
+      .calls = { { "BoxedWord", "[[\"a\",\"b\",\"c\"],1]", "[\"b\"]" },
+                 { "BoxedWord", "[[\"a\"],1]", NULL },
+                 { "BoxedWord", "[[\"a\"],-1]", NULL },
+                 { "BoxedWords", "[[\"a\",\"b\",\"b\"]]", "[2]" },
+                 { "BoxedNotes", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}],1]", "[203]" },
+                 { "BoxedNotes", "[[{\"text\":\"x\",\"count\":1}],1]", NULL },
+                 { "BoxedShapes", "[2]", "[517]" },
+                 { "BoxedShapes", "[1]", "[17]" },
+                 { "BoxedShapes", "[3]", NULL },
+                 { "PackedPoints", "[[{\"x\":1,\"y\":2},{\"x\":3,\"y\":4}],1]", "[306]" } } },
     { .name = "formatting",
       .source = "package facts\n"
                 "Label :: (n: int, name: string) -> string { return "
@@ -1370,6 +1416,61 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
     host = NULL;
     return true;
 }
+/* How many of `f`'s instructions load an array's stride. */
+static int stride_loads(const behavior_function *f)
+{
+    int loads = 0;
+    for (int i = 0; i < acount(f->instructions); i++) {
+        loads += f->instructions[i].op == BF_LOAD &&
+                 f->instructions[i].offset == offsetof(pin_array, stride);
+    }
+    return loads;
+}
+/* An array of strings, unions or records with a string field is never packed,
+ * so stage one reads its elements from `items` alone; any other array may be,
+ * so its reads still choose the representation by its stride. In the root
+ * module, only the Packed functions load a stride. */
+static bool reads_boxed(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler boxed load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int boxed = 0, packed = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool box = !strncmp(f.entry, "Boxed", 5),
+                 pack = !strncmp(f.entry, "Packed", 6);
+            int loads = stride_loads(f.body);
+            boxed += box;
+            packed += pack;
+            if ((box && loads) || (pack && !loads)) {
+                fprintf(stderr, "package compiler %s loads a stride %d times\n", f.entry, loads);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(boxed == 4 && packed == 1 && !wrong);
+    return true;
+}
 static bool run_samples(sample_group group)
 {
     REQUIRE(prepare());
@@ -1432,6 +1533,7 @@ static bool run_samples(sample_group group)
             unsigned char *expected = NULL;
             size_t expected_length = 0;
             bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
+                       (!s->boxed || reads_boxed(bytes, length)) &&
                        (b || oracle_closure(s, &expected, &expected_length));
             for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
                 for (int backend = 0; ran && backend < 2; backend++) {

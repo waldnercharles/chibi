@@ -199,6 +199,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
+script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);

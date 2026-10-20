@@ -1282,7 +1282,7 @@ cases for the shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
 package, with eight tests. They cover discovery order, names and positions,
-passes, a failed `expect` reported inside its helper, an out-of-range read, an
+passes, a failed `assert` reported inside its helper, an out-of-range read, an
 exhausted 100,000-instruction budget, a wait and a task start on bytecode and
 SLJIT. There is no filesystem, process, service or GPU work. This focused route
 is outside the language aggregate.

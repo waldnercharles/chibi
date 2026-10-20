@@ -191,29 +191,24 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
-## Loops have no half-open or reverse form, and stage one compiles only `for name in array`
+## Stage one compiles only `for name in array`
 
-Language, and stage one. Stage zero has `for i in first..last` with inclusive
-bounds, keyed loops and `for item: ref in items` (#420); stage one rejects all
-three, so the compiler's own counting loops stay
-`while (index < n) { ...; index += 1; }`. Neither compiler has a half-open
-range or a reverse loop, and `3..0` runs no iterations. Since stage one
-compiles `core:strings`, every scan there, forward and reverse, is a `while`
-with its own `i += 1` or `i -= 1`, and a `continue` before the step hangs
-(#503).
+Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
+loops and `for item: ref in items` (#420), and since #542 half-open
+`first..<last` and reverse `for <` loops over ranges and arrays, as the owner
+decided on 2026-10-20 after Odin's `..<` and Jai's `for <`. Stage one rejects
+all of them, so the compiler's own counting loops stay
+`while (index < n) { ...; index += 1; }`. Since stage one compiles
+`core:strings`, every scan there, forward and reverse, is a `while` with its
+own `i += 1` or `i -= 1`, and a `continue` before the step hangs (#503).
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
   `for (0..n) |i|`; Jai inclusive `for i: 0..n-1` and `for <` to reverse;
   Python `for i in range(n)`; C, C++ and C# three-part `for`.
-- No mainstream language counts down when a range's bounds descend: Odin,
-  Rust, Kotlin, Ruby and Python give an empty range, and Swift fails.
 
-Decision (2026-10-20): `..` stays inclusive and `a..<b` adds a half-open
-range, so the count loop is `0..<n`. Ranges never count down; a range whose
-constant bounds descend, such as `10..0`, is a compile error. Jai's
-`for < i in 0..10` iterates in reverse, over ranges and arrays. Stage one then
-compiles range, keyed and reverse loops.
+Suggestion: stage one compiles range, keyed and reverse loops, then the
+compiler and `core:strings` replace their counting `while` loops.
 
 ## Stage one constants are literals only
 
@@ -277,20 +272,17 @@ a byte: `ToLower` slices its letter out of `"abcdefghijklmnopqrstuvwxyz"`.
 Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 `s = append(s, t)` on a local string, as arrays already update in place.
 
-### A pure function cannot fail on purpose
+### Stage one cannot compile assert
 
-Language. Odin's `repeat` panics on a negative count. Purity is inferred since
-#420, and `expect` has an effect, so calling it would make `Repeat` impure;
-`core:strings` returns an empty string instead and hides the caller's mistake.
-Only a checked conversion or an out-of-bounds read fails a pure call.
+Stage one. Since #534, stage zero has a pure
+`assert(condition, message)` in place of `expect`: it fails the call as a
+checked conversion does, keeps its caller pure, and fails compilation when it
+fails while the compiler evaluates a constant. Stage one does not compile it,
+so `core:strings`, which stage one compiles, still returns an empty string
+where Odin's `repeat` panics on a negative count, hiding the caller's mistake.
 
-- Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
-  and `unreachable`; C `assert`; C# and F# throw.
-
-Decision (2026-10-20): a pure `assert(condition, message)`, with an optional
-message, replaces `expect`. A false condition fails the call as a checked
-conversion does, and no optimization removes the call; failing while the
-compiler evaluates a constant is a compile error.
+Suggestion: stage one lowers `assert` to the same `ASSERT` instruction, then
+`Repeat` asserts its count.
 
 ### No runes
 
@@ -331,8 +323,16 @@ stage one compiles, has no iterators.
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
+A call does not mark a reference argument either: `Nudge(v)` may write `v`,
+and only the callee's declaration says so. The version 29 migration
+collects every authored callable with a `ref` parameter to learn whether a
+call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
+Odin and Zig (`&v`) all mark the call site, so readers and tools see the
+write.
+
 Suggestion: stage one compiles `ref` parameters of locals, then
-`core:strings` gains Odin's iterators.
+`core:strings` gains Odin's iterators. Consider marking reference
+arguments at the call site.
 
 ### Stage one has no default parameter values
 
@@ -394,7 +394,7 @@ callee package's declarations in scope, as Odin does.
 ## A pattern test fails as a call argument
 
 Language. `found := r is .Found` and `if Find(n) is .Found { ... }` compile,
-but `expect(r is .Found, "...")` reports "Unknown type '.Found'".
+but `assert(r is .Found, "...")` reports "Unknown type '.Found'".
 
 - Rust's `matches!(r, R::Found(_))`, C#'s `r is Found` and Odin's
   `_, ok := r.(Found)` are expressions usable anywhere a value is.
@@ -536,25 +536,15 @@ matches only `.Variant` arms, so the tokenizer's operator table is a chain of
 
 Suggestion: stage one compiles integer `switch`, then Odin's ranges.
 
-### A function can end without returning
+### Stage one does not check that functions return
 
-Language. `while (true) { ... return x; }` as a function's last statement is
-rejected with "Union result 'Result' requires a value on every return path",
-so the tokenizer's loop breaks out to a return after it. A function with a
-scalar result, meanwhile, may fall off its end and return zero:
-`F :: (n: int) -> int { if n > 0 { return 1; } }` gives `F(-1) == 0`.
+Stage one. Since #541, stage zero rejects a function with results that
+can fall off its end, with "Missing return", and counts a `while (true)`
+without a `break` as an end, as Go and Odin do; the tokenizer's loop no longer
+needs to break out to a return after it (#518). Stage one compiles only what
+stage zero has checked, but on its own it would accept such a function.
 
-- Odin's checker counts `for {}` without a `break` as terminating; Go's spec
-  does the same for a `for` with no condition and no `break`, and both reject
-  a function with results that can fall off its end. Rust's `loop` has type
-  `!`; Zig and C# also treat code after `while (true)` without a `break` as
-  unreachable.
-
-Decision (2026-10-20): a function with results ends in a terminating
-statement, as in Go and Odin: a `return`, an `if`/`else` or `switch` whose
-every arm terminates, or a `while (true)` with no `break` out of it. Otherwise
-the compiler reports "Missing return". A bare `return` still gives the named
-results' current values.
+Suggestion: stage one applies the same terminating-statement rule.
 
 ### Calls and record snapshots are costly
 
@@ -577,15 +567,16 @@ record type's layout once, and inline small pure functions.
 
 Language. Tools and `core:` are Odin-style packages (`package strings`,
 `import strings "core:strings"`), but game projects declare
-`MovementActions :: library { ... }` blocks that the project catalog resolves
-and whose functions still read `entry.direction`. Visibility, imports and
+`MovementActions :: library { ... }` blocks that the project catalog resolves.
+Until project version 28 their functions read `entry.direction`, and until
+version 29 they wrapped their bodies in `after entry`. Visibility, imports and
 templates therefore work differently in a game than in a package.
 
 - Odin, Go and Zig have one unit, the package or file, for libraries and
   programs alike; Rust has crates and modules for both.
 
-Suggestion: a game's libraries become packages, with `entry` gone as
-`docs/design-notes.md` decided, so `pub` and imports mean the same everywhere.
+Suggestion: a game's libraries become packages, now that functions no longer
+use `entry`, so `pub` and imports mean the same everywhere.
 
 ## A string literal cannot span lines
 

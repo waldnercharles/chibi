@@ -189,6 +189,8 @@ typedef struct
     script_operator op;
     script_reduction_op reduction;
     unsigned effects;
+    bool reverse;   /* `for <` counts down a range or an array. */
+    bool exclusive; /* A `..<` range stops before its last bound. */
 } script_statement;
 typedef enum
 {

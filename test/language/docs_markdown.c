@@ -367,9 +367,10 @@ TEST_CASE(docs_site_follows_color_scheme)
     return true;
 }
 
-/* The bar keeps one row of a fixed height, which the anchor offset clears,
- * and a narrow window moves the page list below the page instead of hiding
- * the only links to a section's later pages. */
+/* The bar keeps one row of a fixed height, which the anchor offset clears.
+ * A narrow window keeps the page list, which holds the only links to a
+ * section's later pages, and draws it where it is in the page, so focus
+ * order and visual order agree. */
 TEST_CASE(docs_site_keeps_navigation_in_reach)
 {
     REQUIRE(prepare());
@@ -384,8 +385,9 @@ TEST_CASE(docs_site_keeps_navigation_in_reach)
         bool reachable = end && strstr(style, "; height: 3.5rem;") &&
                          strstr(style, "scroll-margin-top: 4.5rem;") &&
                          !strstr(style, "flex-wrap: wrap") &&
-                         strstr(narrow, ".pages { order: 1;") &&
-                         !strstr(narrow, "display: none");
+                         strstr(narrow, ".pages li { display: inline-block;") &&
+                         !strstr(narrow, ".pages { display: none") &&
+                         !strstr(narrow, "order:");
         free(style);
         REQUIRE(reachable);
     }

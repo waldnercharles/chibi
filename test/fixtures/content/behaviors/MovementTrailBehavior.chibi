@@ -9,14 +9,12 @@ MovementTrailBehavior :: behavior {
     }
     Emit_Movement_Trail :: (Direction: struct<CF_V2> = null) {
 
-        after entry {
-            Particle_Carry = Particle_Carry + Emission_Budget(delta_time())
-            while Particle_Carry >= 1.0 {
-                await emit_directed_particles(convert<transform_to_cf>(self.Transform) + multiply(multiply(vec2_norm(Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
-                Particle_Carry = Particle_Carry - 1.0
-            }
-            return
+        Particle_Carry = Particle_Carry + Emission_Budget(delta_time())
+        while Particle_Carry >= 1.0 {
+            await emit_directed_particles(convert<transform_to_cf>(self.Transform) + multiply(multiply(vec2_norm(Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+            Particle_Carry = Particle_Carry - 1.0
         }
+        return
     }
     Emission_Budget :: (dt: float = 0.0) -> (Result: float = 0.0) {
         return clamp(dt, real(0.0), real(0.10000000149011612)) * real(64.0)

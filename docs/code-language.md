@@ -247,7 +247,7 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
@@ -255,13 +255,18 @@ DoublesPoints :: () {
 
 A test passes when it returns. A test fails in these conditions:
 
-- `expect(condition, message)` sees a false condition. This fails the call
-  with `Expectation failed: message` at the `expect` call's position.
+- `assert(condition, message)` sees a false condition. This fails the call
+  with `Assertion failed: message` at the `assert` call's position.
 - Any other runtime failure occurs, such as an out-of-bounds read or a checked
   conversion.
 
-`expect` is a core function with an effect. Thus a function that calls it is
-not pure, and no optimization removes the call.
+Without a message, `assert` reports the condition's source text instead, such
+as `Assertion failed: n >= 0`, as Odin's `assert` does. The message must be a
+string constant.
+
+`assert` is pure. Thus a function that calls it stays pure, and no
+optimization removes the call. When the compiler evaluates a constant, a false
+`assert` is a compile error.
 
 Tests are ordinary functions. They compile into the package like any other
 function. They run only when something calls them.
@@ -300,7 +305,7 @@ source audit of the snapshot is not fresh runtime or cross-backend validation.
 
 Chibi uses these document formats:
 
-- Project manifests are `project.kdl` files at version 28.
+- Project manifests are `project.kdl` files at version 29.
 - Scenes, KDL prototypes, event declarations, models, shapes, materials,
   fields, shader libraries, scenarios and editor configuration use KDL 2.
 - Behaviors, behavior libraries and systems use readable `.chibi` source.
@@ -309,7 +314,7 @@ Chibi uses these document formats:
 This example is a project manifest:
 
 ```kdl
-version 28
+version 29
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -680,7 +685,8 @@ as Odin's `rune` and Rust's `char` are.
 
 A `char` has integer arithmetic and comparisons. Thus `digit - '0'` is a
 `char`. A `char` converts implicitly to `int`, `uint`, `int64` and `uint64`.
-`c + n` with an `int` `n` is an `int`.
+`c + n` with an `int` `n` is an `int`, and with a `uint` or `uint64` `n` it has
+that type.
 
 `char(n)` converts an integer back. It fails the call with "Value does not fit
 in char" when `n` is not a Unicode scalar. `char` arithmetic whose result is
@@ -958,10 +964,19 @@ Ordinary blocks support these statements:
 - `switch`
 - `while`
 - `for i in first..last` with inclusive bounds
+- `for i in first..<last`, which stops before `last`
 - `for item in array`
+- `for <`, which counts a range or an array down: `for < i in 0..<n` visits
+  `n - 1` down to 0, and `for < item, i in items` visits the last item first,
+  with its own index
 - `break`
 - `continue`
 - calls
+
+Ranges never count down by themselves: a range whose first bound is above its
+last runs no iterations, and one whose constant bounds descend, such as
+`10..0`, is a compile error. Neither form wraps at the `int` bounds. `for <`
+does not reverse a `Map` or a string.
 
 ### Ordinary and awaited calls
 
@@ -1042,6 +1057,28 @@ parameter.
 
 To give the payload's parameters other names, list them, as in
 `after spawned(made) { ... }`.
+
+### Function bodies
+
+Project version 29 runs the statements of a function when it is called. A
+function cannot have an `after entry` handler. Macros keep their `after entry`
+handlers.
+
+The migration from version 28 moves the statements of each `after entry`
+handler in a function. They go after the function's own statements and before
+the handlers that follow them.
+
+The handler read the arguments as the caller passed them. Thus the migration
+refuses these cases:
+
+- The handler reads a parameter that the function's statements assign.
+- The handler reads a parameter that the function's statements pass to a
+  function or macro with a `ref` parameter.
+- The handler reads `event` or names its payload.
+- The handler declares a name that the function also uses.
+- The function is on one line and has other statements.
+
+Rewrite these cases by hand before you migrate.
 
 ### Keyword migrations
 
@@ -1437,6 +1474,19 @@ bound type.
 
 A function gives its results with `return x`, or with `return(a, b)` in
 signature order. A bare `return` gives the current value of each result.
+
+A function with results must end in a terminating statement, as in Go and
+Odin. Otherwise the compiler reports "Missing return" at the closing brace.
+These statements terminate:
+
+- a `return` or a `goto`;
+- an `if` with an `else`, when both branches terminate;
+- a `switch` with a default arm, or over every alternative of a union, when
+  every arm terminates;
+- a `while (true)` that no `break` leaves.
+
+A function with an `after` handler that returns is exempt: it may return the
+results after the body ends.
 
 ### Inferred results
 
@@ -2048,7 +2098,7 @@ graph operation.
 
 ### Metadata files
 
-Project manifests use version 28. Executable files contain no generated
+Project manifests use version 29. Executable files contain no generated
 identity annotations or embedded authoring footer.
 
 Optional `<asset>.chibi.meta` JSON stores:

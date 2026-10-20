@@ -4,7 +4,7 @@ A test is a Chibi function. To write a test:
 
 1. Declare a package-level function that has no parameters and no result.
 2. Put `@test` before the function.
-3. Use `expect` to check the values that the function calculates.
+3. Use `assert` to check the values that the function calculates.
 
 ```chibi
 package scoring
@@ -15,14 +15,15 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
-`expect(condition, message)` does nothing when the condition is true. When the
-condition is false, the test fails with `Expectation failed: message`. The
-failure shows the position of the `expect` call. This is also true when the
-`expect` call is in a function that the test calls.
+`assert(condition, message)` does nothing when the condition is true. When the
+condition is false, the test fails with `Assertion failed: message`. The
+failure shows the position of the `assert` call. This is also true when the
+`assert` call is in a function that the test calls. Without a message, the
+failure shows the condition's source text instead.
 
 ## Running tests
 
@@ -32,7 +33,7 @@ ROOT is the working directory by default.
 ```text
 PASS scoring.DoublesPoints
 FAIL scoring.HalvesPoints
-  /work/scoring/Scoring.chibi:14:5: Expectation failed: four halves to two
+  /work/scoring/Scoring.chibi:14:5: Assertion failed: four halves to two
 2 tests, 1 failed
 ```
 

@@ -90,10 +90,23 @@ int script_named_find_type(const script_named_facts *facts, int scope, int docum
     found = script_catalog_find_type(facts->native, name);
     return found >= 0 ? type_index(facts, facts->native->types[found].id) : found;
 }
-static void error(script_named_resolution *out, script_range range, const char *name, int index)
+static void error(
+    const script_named_facts *facts,
+    script_named_request request,
+    const char *name,
+    int index,
+    script_named_resolution *out
+)
 {
     out->has_diagnostic = true;
-    out->diagnostic.range = range;
+    out->diagnostic.range = request.range;
+    const char *member;
+    const script_package_import
+        *import = namespace(facts, request.scope, request.range.document, name, &member);
+    if (import && script_package_private(import->exports, member)) {
+        snprintf(out->diagnostic.message, sizeof out->diagnostic.message, SCRIPT_PRIVATE_MEMBER, name);
+        return;
+    }
     snprintf(
         out->diagnostic.message,
         sizeof out->diagnostic.message,
@@ -152,7 +165,7 @@ script_named_resolution script_named_parsed(
             out.type = facts->catalog->types[index].type;
             out.type.nominal = facts->catalog->types[index].id;
         } else {
-            error(&out, request.range, name, index);
+            error(facts, request, name, index, &out);
         }
     }
     if (!strcmp(name, "entity") && facts->catalog->entity_type) {
@@ -263,7 +276,7 @@ script_named_resolution script_named_text(
                 out.type = facts->catalog->types[index].type;
                 out.type.nominal = facts->catalog->types[index].id;
             } else {
-                error(&out, request.range, name, index);
+                error(facts, request, name, index, &out);
             }
         }
     }

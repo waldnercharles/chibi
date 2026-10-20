@@ -2,25 +2,25 @@ package unit_algebra
 
 import text "core:strings"
 
-Term :: struct {
+pub Term :: struct {
     name: string;
     power: int;
 }
-Unit :: union {
+pub Unit :: union {
     Value(kind: int, terms: Term[])
 }
-ProductResult :: union {
+pub ProductResult :: union {
     Product(value: Unit, overflow: bool)
 }
 
-Unknown: int : 0;
-Literal: int : 1;
-Known: int : 2;
-Invalid: int : 3;
+pub Unknown: int : 0;
+pub Literal: int : 1;
+pub Known: int : 2;
+pub Invalid: int : 3;
 MaxPower: int : 2147483647;
 MaxTerms: int : 8;
 
-Empty :: (kind: int) -> Unit {
+pub Empty :: (kind: int) -> Unit {
     terms: Term[] = [];
     return Unit.Value(kind, terms);
 }
@@ -71,7 +71,7 @@ MultiplyTerm :: (value: Unit, term: Term) -> ProductResult {
 }
 
 // Presence keeps a missing annotation distinct from an empty malformed one.
-Parse :: (present: bool, value: string) -> Unit {
+pub Parse :: (present: bool, value: string) -> Unit {
     if (!present) {
         return Empty(Unknown);
     }
@@ -158,7 +158,7 @@ Parse :: (present: bool, value: string) -> Unit {
     return result;
 }
 
-Same :: (left: Unit, right: Unit) -> bool {
+pub Same :: (left: Unit, right: Unit) -> bool {
     switch left {
         case .Value(leftKind, a):
             switch right {
@@ -176,7 +176,7 @@ Same :: (left: Unit, right: Unit) -> bool {
             }
     }
 }
-Product :: (left: Unit, right: Unit, sign: int) -> ProductResult {
+pub Product :: (left: Unit, right: Unit, sign: int) -> ProductResult {
     switch left {
         case .Value(leftKind, a):
             switch right {
@@ -225,7 +225,7 @@ AppendTerm :: (value: string, term: Term, size: int) -> string {
     }
     return result;
 }
-WholeCharacters :: (value: string) -> string {
+pub WholeCharacters :: (value: string) -> string {
     end := text.ByteLength(value);
     lead := end;
     while (lead > 0 && (text.ByteAt(value, lead - 1) & 192) == 128) {
@@ -249,7 +249,7 @@ WholeCharacters :: (value: string) -> string {
     return value;
 }
 // size is positive and includes the trailing NUL in the C representation.
-Format :: (value: Unit, size: int) -> string {
+pub Format :: (value: Unit, size: int) -> string {
     switch value {
         case .Value(kind, terms):
             if (kind != Known) {

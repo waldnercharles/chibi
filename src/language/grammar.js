@@ -61,6 +61,7 @@ const K = Object.fromEntries(
     "component",
     "prototype",
     "relationship",
+    "pub",
   ].map((word) => [word, word]),
 );
 
@@ -85,6 +86,25 @@ function comma(rule) {
   return seq(rule, repeat(seq(",", rule)), optional(","));
 }
 
+// Package declarations, after an optional `pub`.
+function functionDeclaration($, pub) {
+  return seq(repeat(field("attribute", $.attribute)), ...pub, field("name", $._name), "::",
+    $._callable_signature, optional(";"));
+}
+function constant($, pub) {
+  return seq(...pub, field("name", $._name), choice("::", seq(":", field("type", $.type), ":")),
+    field("value", $._expression), $._end);
+}
+function record($, pub) {
+  return seq(...pub, field("name", $._name), "::", K.struct,
+    optional(field("parameters", $.parameter_list)),
+    field("body", $.record_body), optional(";"));
+}
+function union($, pub) {
+  return seq(...pub, field("name", $._name), "::", K.union, "{",
+    $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";"));
+}
+
 module.exports = grammar({
   name: "chibi",
   extras: ($) => [/\s/, $.comment],
@@ -104,6 +124,7 @@ module.exports = grammar({
     [$.type_name],
     [$.query_parameter_list],
     [$.record_declaration, $._name],
+    [$._public_record, $._name],
     [$.argument_list, $.parenthesized_expression],
     [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
@@ -130,6 +151,10 @@ module.exports = grammar({
           $.function_declaration, $.constant_declaration,
           $.state_declaration, $.record_declaration, $.union_declaration,
           $.macro_declaration,
+          alias($._public_function, $.function_declaration),
+          alias($._public_constant, $.constant_declaration),
+          alias($._public_record, $.record_declaration),
+          alias($._public_union, $.union_declaration),
         ))),
       ),
     package_header: ($) => seq(K.package, field("name", $.identifier), $._end),
@@ -210,10 +235,9 @@ module.exports = grammar({
     without_clause: ($) => seq(K.without, comma($.type)),
     declaration_body: ($) => seq("{", repeat($._declaration), "}"),
     library_body: ($) => seq("{", repeat(choice($._declaration, $.record_declaration)), "}"),
-    record_declaration: ($) =>
-      seq(field("name", $._name), "::", K.struct,
-        optional(field("parameters", $.parameter_list)),
-        field("body", $.record_body), optional(";")),
+    record_declaration: ($) => record($, []),
+    // `pub` exports a package's declaration to the packages that import it.
+    _public_record: ($) => record($, [field("visibility", K.pub)]),
     record_body: ($) => seq("{", repeat($.record_field), "}"),
     record_field: ($) =>
       seq(field("name", $._member_name), ":", field("type", $.type),
@@ -316,15 +340,12 @@ module.exports = grammar({
       ),
     // `@test` before a declaration marks it; analysis decides which names exist.
     attribute: ($) => seq("@", field("name", $.identifier)),
-    function_declaration: ($) =>
-      seq(repeat(field("attribute", $.attribute)), field("name", $._name), "::",
-        $._callable_signature, optional(";")),
-    constant_declaration: ($) =>
-      seq(field("name", $._name), choice("::", seq(":", field("type", $.type), ":")),
-        field("value", $._expression), $._end),
-    union_declaration: ($) =>
-      seq(field("name", $._name), "::", K.union, "{",
-        $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";")),
+    function_declaration: ($) => functionDeclaration($, []),
+    _public_function: ($) => functionDeclaration($, [field("visibility", K.pub)]),
+    constant_declaration: ($) => constant($, []),
+    _public_constant: ($) => constant($, [field("visibility", K.pub)]),
+    union_declaration: ($) => union($, []),
+    _public_union: ($) => union($, [field("visibility", K.pub)]),
     union_variant: ($) => choice(
       field("literal", $.string),
       seq(field("name", $._name), optional(field("parameters", $.parameter_list))),

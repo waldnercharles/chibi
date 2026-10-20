@@ -6,7 +6,7 @@ import binding "project:lexical_binding"
 import constructors "project:type_constructors"
 import syntax "project:syntax_diagnostics"
 
-Symbol :: struct {
+pub Symbol :: struct {
     name: string;
     unit: string;
     has_unit: bool;
@@ -25,7 +25,7 @@ Symbol :: struct {
     column: int;
     document: int;
 }
-Function :: struct {
+pub Function :: struct {
     kind: int;
     symbol: int;
     scope: int;
@@ -49,11 +49,11 @@ Function :: struct {
     generic_start: int;
     generic_count: int;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(signature: reader.Environment, symbols: Symbol[], functions: Function[],
            parameters: int[], results: int[], generics: int[])
 }
-Context :: struct {
+pub Context :: struct {
     scope: int;
     function: int;
     document: int;
@@ -71,7 +71,7 @@ Reference :: struct {
     document: int;
     node: int;
 }
-Header :: union {
+pub Header :: union {
     Registered(symbol: int, function: int, environment: Environment, changes: Change[],
                function_changes: FunctionChange[], scope_start: int,
                initializers: Reference[], bodies: Reference[], diagnostics: syntax.Diagnostic[],
@@ -675,7 +675,7 @@ Finish :: (work: Work, symbol: int, function: int) -> Header {
                                      initializers, bodies, diagnostics, uses, publications);
     }
 }
-Register :: (environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
+pub Register :: (environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
     work := Start(environment);
     is_macro := reader.Kind(tree, node, "macro_declaration");
     token := reader.Field(tree, node, "name");

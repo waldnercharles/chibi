@@ -4,7 +4,7 @@ import strings "core:strings"
 
 // Flat raw resolved rows retain analyzer order and enum values. Negative ID
 // slots denote zero; all other indices and spans obey analyzer invariants.
-Expression :: struct {
+pub Expression :: struct {
     kind: int;
     op: int;
     effects: int;
@@ -22,7 +22,7 @@ Expression :: struct {
     task: bool;
     range: int;
 }
-Statement :: struct {
+pub Statement :: struct {
     kind: int;
     effects: int;
     expression: int;
@@ -36,7 +36,7 @@ Statement :: struct {
     range: int;
     symbol: int;
 }
-Function :: struct {
+pub Function :: struct {
     kind: int;
     parent: int;
     body: int;
@@ -44,7 +44,7 @@ Function :: struct {
     range: int;
     pure: bool;
 }
-Symbol :: struct {
+pub Symbol :: struct {
     kind: int;
     scope: int;
     initializer: int;
@@ -52,16 +52,16 @@ Symbol :: struct {
     range: int;
     flags: int;
 }
-Scope :: struct {
+pub Scope :: struct {
     function: int;
 }
-Query :: struct {
+pub Query :: struct {
     kind: int;
     value: int;
     component_slot: int;
     range: int;
 }
-Binding :: struct {
+pub Binding :: struct {
     target: int;
     value: int;
     read_start: int;
@@ -70,32 +70,32 @@ Binding :: struct {
     write_count: int;
     range: int;
 }
-Capability :: struct {
+pub Capability :: struct {
     id_slot: int;
     component_access: int;
     state_access: int;
     component_slot: int;
     effects: int;
 }
-CatalogType :: struct {
+pub CatalogType :: struct {
     id_slot: int;
     component_id_slot: int;
     name: string;
 }
-Range :: struct {
+pub Range :: struct {
     start: int;
     end: int;
     line: int;
     column: int;
     document: int;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(expressions: Expression[], arguments: int[], statements: Statement[], children: int[], functions: Function[], symbols: Symbol[], scopes: Scope[], queries: Query[], bindings: Binding[], reads: uint64[], writes: uint64[], capabilities: Capability[], catalog_types: CatalogType[], ids: uint64[], ranges: Range[])
 }
-Analysis :: union {
+pub Analysis :: union {
     Completed(expression_effects: int[], statement_effects: int[], function_effects: int[], diagnostics: syntax.Diagnostic[])
 }
-Ordering :: union {
+pub Ordering :: union {
     Ordered(permutation: int[], diagnostics: syntax.Diagnostic[])
 }
 Restrictions :: union {
@@ -541,7 +541,7 @@ ReductionDiagnostics :: (environment: Environment, functionEffects: int[], diagn
 // This is deliberately bounded by function_count + 1 passes. Expressions and
 // statements accumulate seed bits; functions replace seed bits with their body
 // and nested functions, in ascending order within each phase.
-Analyze :: (environment: Environment) -> Analysis {
+pub Analyze :: (environment: Environment) -> Analysis {
     expressionEffects: int[] = [];
     statementEffects: int[] = [];
     functionEffects: int[] = [];
@@ -669,7 +669,7 @@ Depends :: (environment: Environment, reader: Binding, writer: Binding) -> bool 
 }
 // First eligible original index wins. Self-dependencies are cycles. On a
 // partial failure discard the prefix and preserve every original binding.
-Order :: (environment: Environment) -> Ordering {
+pub Order :: (environment: Environment) -> Ordering {
     bindings := Bindings(environment);
     emitted: bool[] = [];
     permutation: int[] = [];

@@ -31,7 +31,9 @@ static bool identifier(const char *name)
 static bool valid_exports(const script_package_exports *exports)
 {
     if (!exports->identity || !exports->metadata || exports->member_count < 0 ||
-        exports->member_count > 4096 || (exports->member_count && !exports->members)) {
+        exports->member_count > 4096 ||
+        (exports->member_count && !exports->members) || exports->private_count < 0 ||
+        (exports->private_count && !exports->private_names)) {
         return false;
     }
     const script_catalog *metadata = exports->metadata;
@@ -271,6 +273,21 @@ static const script_package_export *export_member(
         }
     }
     return NULL;
+}
+bool script_package_private(const script_package_exports *exports, const char *member)
+{
+    for (int i = 0; exports && i < exports->private_count; i++) {
+        if (!strcmp(exports->private_names[i], member)) {
+            return true;
+        }
+    }
+    return false;
+}
+bool script_analyzer_private_member(const analyzer *a, TSNode node, const char *name)
+{
+    const char *member;
+    const script_package_import *import = namespace(a, node, name, &member);
+    return import && script_package_private(import->exports, member);
 }
 static int own_symbol(const analyzer *a, const char *name, script_symbol_kind kind)
 {

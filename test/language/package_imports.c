@@ -30,10 +30,8 @@ static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
 static const source_package_input chain[] = {
     { "app/main.chibi", "package app\nimport middle \"../middle\"\nMain :: (value: int) -> int { return middle.Value(value) + 1; }\n", 0 },
-    { "middle/main.chibi", "package middle\nimport math \"../math\"\nValue :: (value: int) -> int { return math.Value(value) * 2; }\n", 0 },
-    { "math/main.chibi",
-      "package numbers\nValue :: (value: int) -> int { return value + 2; }\n",
-      0 },
+    { "middle/main.chibi", "package middle\nimport math \"../math\"\npub Value :: (value: int) -> int { return math.Value(value) * 2; }\n", 0 },
+    { "math/main.chibi", "package numbers\npub Value :: (value: int) -> int { return value + 2; }\n", 0 },
     { "blank/main.chibi", "package blank\nimport _ \"../math\"\nUnused :: (value: int) -> int { return value + 7; }\n", 0 },
     { "other/main.chibi",
       "package other\nUnused :: (value: int) -> int { return value + 99; }\n",
@@ -220,12 +218,8 @@ TEST_CASE(package_imports_reused_alias_spelling_remains_file_local)
     const source_package_input files[] = {
         { "app/a.chibi", "package app\nimport lib \"../left\"\nA :: (value: int) -> int { return lib.Value(value); }\n", 0 },
         { "app/b.chibi", "package app\nimport lib \"../right\"\nB :: (value: int) -> int { return lib.Value(value); }\n", 0 },
-        { "left/a.chibi",
-          "package left\nValue :: (value: int) -> int { return value + 2; }\n",
-          0 },
-        { "right/a.chibi",
-          "package right\nValue :: (value: int) -> int { return value + 5; }\n",
-          0 },
+        { "left/a.chibi", "package left\npub Value :: (value: int) -> int { return value + 2; }\n", 0 },
+        { "right/a.chibi", "package right\npub Value :: (value: int) -> int { return value + 5; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 4, backends[b], -1, "/project"));
@@ -303,12 +297,13 @@ TEST_CASE(package_imports_own_record_union_and_aggregate_constant_values)
           ".Amount(amount): return amount + pair.value + extra; } }\n",
           0 },
         { "data/a.chibi",
-          "package data\nPair :: struct { value: int; tag: string; }\n"
-          "Choice :: union { None | Amount(value: int) };\nBase: "
+          "package data\npub Pair :: struct { value: int; tag: string; }\n"
+          "pub Choice :: union { None | Amount(value: int) };\nBase: "
           "int : 4;\n"
-          "Words :: [\"alpha\", \"beta\"];\nSeed :: Choice.Amount(Base);\n",
+          "pub Words :: [\"alpha\", \"beta\"];\npub Seed :: "
+          "Choice.Amount(Base);\n",
           0 },
-        { "data/b.chibi", "package data\nMake :: (value: int) -> Pair { return {value: value + Base, tag: Words[1]}; }\n", 0 },
+        { "data/b.chibi", "package data\npub Make :: (value: int) -> Pair { return {value: value + Base, tag: Words[1]}; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(0, files, 3, backends[b], -1, "/project"));
@@ -373,7 +368,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
             package(0, identities[0])->generation != package(1, identities[0])->generation
         );
         REQUIRE(run(0, identities[0], "Main", backends[b], 3, 15));
-        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
+        changed[2].text = "package numbers\npub Value :: (value: int) -> int { "
                           "return value + 4; }\n";
         REQUIRE(prepare(2, changed, 5, backends[b], 0, "/project"));
         REQUIRE(valid(2) && authoring_packages_reused(owners[2]) == 1);
@@ -391,7 +386,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
         authoring_packages_free(owners[1]);
         owners[1] = NULL;
         REQUIRE(run(2, identities[0], "Main", backends[b], 3, 19));
-        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
+        changed[2].text = "package numbers\npub Value :: (value: int) -> int { "
                           "return missing; }\n";
         REQUIRE(prepare(3, changed, 5, backends[b], 2, "/project"));
         REQUIRE(!authoring_packages_valid(owners[3]));
@@ -428,7 +423,7 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
         owners[2] = NULL;
         authoring_packages_free(owners[3]);
         owners[3] = NULL;
-        changed[2].text = "package numbers\nValue :: (value: int) -> int { "
+        changed[2].text = "package numbers\npub Value :: (value: int) -> int { "
                           "return value + 4; }\n";
         REQUIRE(prepare(1, changed, 5, backends[b], 0, "/project"));
         REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 1);
@@ -532,8 +527,9 @@ TEST_CASE(package_imports_keep_templates_package_local)
     const source_package_input files[] = {
         { "app/a.chibi", "package app\nimport math \"../math\"\nMain :: (value: int) -> int { return math.Twice(value); }\n", 0 },
         { "math/a.chibi",
-          "package numbers\nIdentity :: (value: $T) -> T { return value; "
-          "}\nTwice :: (value: int) -> int { return Identity(value) * 2; }\n",
+          "package numbers\npub Identity :: (value: $T) -> T { return value; "
+          "}\npub Twice :: (value: int) -> int { return Identity(value) * 2; "
+          "}\n",
           0 },
     };
     const source_package_input direct[] = {
@@ -555,6 +551,53 @@ TEST_CASE(package_imports_keep_templates_package_local)
         REQUIRE(!authoring_packages_valid(owners[1]));
         const authoring_package *app = package(1, "project:app");
         REQUIRE(app && !app->valid && app->diagnostic_count > 0);
+    }
+    return true;
+}
+/* Other packages see only pub declarations. A private record still reaches
+ * them as a value of a pub function, though they cannot name it. */
+TEST_CASE(package_imports_see_only_pub_declarations)
+{
+    static const char provider
+        [] = "package lib\n"
+             "pub Size: int : 3;\n"
+             "Hidden :: 4;\n"
+             "Secret :: struct {\n    x: int;\n}\n"
+             "pub Make :: (x: int) -> Secret {\n    return {x: x};\n}\n"
+             "Twice :: (value: int) -> int {\n    return value * 2;\n}\n"
+             "pub Value :: (value: int) -> int {\n"
+             "    return Twice(value) + Hidden;\n}\n";
+    static const struct
+    {
+        const char *body, *message;
+    } invalid[] = {
+        { "return lib.Twice(value);", "'lib.Twice' is private: declare it pub to use it from another package" },
+        { "return lib.Hidden;", "'lib.Hidden' is private: declare it pub to use it from another package" },
+        { "secret: lib.Secret = lib.Make(value);\n    return secret.x;", "'lib.Secret' is private: declare it pub to use it from another package" },
+    };
+    char text[512];
+    for (int b = 0; b < 2; b++) {
+        snprintf(text, sizeof text, "package app\nimport lib \"../lib\"\nMain :: (value: int) -> int {\n    return lib.Value(value) + lib.Size + lib.Make(value).x;\n}\n");
+        const source_package_input files[] = { { "app/a.chibi", text, 0 },
+                                               { "lib/a.chibi", provider, 0 } };
+        REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
+        REQUIRE(valid(0));
+        REQUIRE(run(0, "project:app", "Main", backends[b], 2, 13));
+        const authoring_package *lib = package(0, "project:lib");
+        REQUIRE(lib->exports->member_count == 3 && lib->exports->private_count == 3);
+        for (int sample = 0; sample < 3; sample++) {
+            snprintf(
+                text,
+                sizeof text,
+                "package app\nimport lib \"../lib\"\nMain :: (value: int) -> "
+                "int {\n    %s\n}\n",
+                invalid[sample].body
+            );
+            REQUIRE(prepare(1, files, 2, backends[b], -1, "/project"));
+            const authoring_package *app = package(1, "project:app");
+            REQUIRE(app && !app->valid && app->diagnostic_count > 0);
+            REQUIRE(!strcmp(app->diagnostics[0].message, invalid[sample].message));
+        }
     }
     return true;
 }
@@ -668,16 +711,18 @@ TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_exe
         { "defaults/a.chibi",
           "package defaults\nBase: int : 7;\nWords :: [\"alpha\", "
           "\"beta\"];\n"
-          "Binary :: (amount: int = 2 + 3) -> int { return amount; }\n"
-          "Named :: (amount: int = Base) -> int { return amount; }\n"
-          "Aggregate :: (words: string[] = Words) -> int { if (words[1] == "
+          "pub Binary :: (amount: int = 2 + 3) -> int { return amount; }\n"
+          "pub Named :: (amount: int = Base) -> int { return amount; }\n"
+          "pub Aggregate :: (words: string[] = Words) -> int { if (words[1] == "
           "\"beta\") { return 9; } return -99; }\n",
           0 },
     };
     static const char *negative[] = {
-        "package defaults\nNeeds :: (first: int, second: int = first) -> int "
+        "package defaults\npub Needs :: (first: int, second: int = first) -> "
+        "int "
         "{ return second; }\n",
-        "package defaults\nNeeds :: (amount: int = Probe()) -> int { return "
+        "package defaults\npub Needs :: (amount: int = Probe()) -> int { "
+        "return "
         "amount; }\n",
     };
     static const script_catalog_parameter output = { .name = "value",
@@ -770,8 +815,8 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
                                              .native = &native,
                                              .imports = &import,
                                              .import_count = 1 };
-    /* A valid control, then eight fixed malformed public metadata specimens. */
-    for (int sample = 0; sample < 9; sample++) {
+    /* A valid control, then nine fixed malformed public metadata specimens. */
+    for (int sample = 0; sample < 10; sample++) {
         members[0] = (script_package_export){ .name = "F",
                                               .id = 800,
                                               .kind = SCRIPT_PACKAGE_FUNCTION };
@@ -779,6 +824,7 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
                                               .id = 801,
                                               .kind = SCRIPT_PACKAGE_FUNCTION };
         exports.member_count = 1;
+        exports.private_count = 0;
         switch (sample) {
             case 1: members[0].name = NULL; break;
             case 2: members[0].name = ""; break;
@@ -788,6 +834,7 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
             case 6: members[0].id = 9999; break;
             case 7: exports.member_count = 2; break;
             case 8: exports.member_count = 4097; break;
+            case 9: exports.private_count = 1; break;
         }
         script_analysis_free(direct_analysis);
         direct_analysis = script_analyze_package(&options);
@@ -826,6 +873,7 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_valid_generation);
     RUN_TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths);
     RUN_TEST_CASE(package_imports_keep_templates_package_local);
+    RUN_TEST_CASE(package_imports_see_only_pub_declarations);
     RUN_TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution);
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
     RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);

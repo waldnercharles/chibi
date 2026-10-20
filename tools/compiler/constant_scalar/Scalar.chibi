@@ -2,7 +2,7 @@ package constant_scalar
 
 // Physical storage is explicit. Wide integers never pass through double or
 // text. Presence preserves NULL literal strings independently of empty text.
-Value :: union {
+pub Value :: union {
     Bool(value: bool)
     | I8(value: int8)
     | U8(value: byte)
@@ -17,7 +17,7 @@ Value :: union {
     | Name(value: string, has_value: bool)
     | Text(value: string, has_value: bool)
 }
-Result :: union {
+pub Result :: union {
     Folded(value: Value) | Failed(message: string)
 }
 Conversion :: union {
@@ -32,8 +32,8 @@ OpDiv: int : 4;
 OpMod: int : 5;
 OpNeg: int : 6;
 OpNot: int : 7;
-OpAnd: int : 8;
-OpOr: int : 9;
+pub OpAnd: int : 8;
+pub OpOr: int : 9;
 OpEq: int : 10;
 OpNe: int : 11;
 OpLt: int : 12;
@@ -47,7 +47,7 @@ OpShiftLeft: int : 19;
 OpShiftRight: int : 20;
 OpBitNot: int : 21;
 
-Storage :: (value: Value) -> int {
+pub Storage :: (value: Value) -> int {
     switch value {
         case .Bool(item):
             return 1;
@@ -162,7 +162,7 @@ Widens :: (from: int, to: int) -> bool {
 }
 // The operand storage holding both integers exactly: the wider one, or int or
 // int64 for a signed/unsigned pair. 0 for int64 with uint64.
-CommonInteger :: (x: int, y: int) -> int {
+pub CommonInteger :: (x: int, y: int) -> int {
     if (Widens(x, y)) {
         return y;
     }
@@ -233,7 +233,7 @@ FloatConvert :: (item: double, target: int) -> Conversion {
     }
     return Conversion.Rejected;
 }
-Convert :: (value: Value, target: int, mode: int) -> Conversion {
+pub Convert :: (value: Value, target: int, mode: int) -> Conversion {
     if (Storage(value) == target) {
         return Conversion.Accepted(value);
     }
@@ -816,7 +816,7 @@ BitOperation :: (op: int, left: Value, right: Value, storage: int) -> Result {
 // logical not publish Bool, float arithmetic publishes F32/F64, and integer
 // operations publish integer storage. Destination integer width may differ
 // from the operands; publication must not first wrap at the operand width.
-Operation :: (op: int, left: Value, right: Value, storage: int) -> Result {
+pub Operation :: (op: int, left: Value, right: Value, storage: int) -> Result {
     if (op == OpNone) {
         return Result.Folded(left);
     }

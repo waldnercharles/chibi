@@ -32,6 +32,24 @@ package sample
 Main :: (value: int) -> int { return Add(value); }
 ```
 
+### Visibility
+
+A declaration is private to its package, every file of it, until `pub`
+exports it, as in Rust and Zig. Other packages see only `pub` functions,
+constants, records and unions, as does a host that calls a package function
+by name, such as `chibi doc` calling its generator's `Render`. `chibi test`
+still runs private `@test` functions. Using a private declaration through an
+import alias reports that it is private.
+
+```code
+package geometry
+Twice :: (value: int) -> int { return value * 2; }
+pub Perimeter :: (side: int) -> int { return Twice(side) * 2; }
+```
+
+`pub` comes after attributes and before the name. Library, behavior and
+system blocks have no `pub`.
+
 ### Analysis inputs
 
 Each input supplies a display path, a stable document key and parsed syntax.
@@ -99,8 +117,8 @@ still apply.
 
 ### Import aliases
 
-- A file's named aliases expose only the imported package's functions, types
-  and constants.
+- A file's named aliases expose only the imported package's `pub` functions,
+  types and constants.
 - Sibling files do not inherit those aliases.
 - Blank imports retain dependencies without adding names.
 - A self import refers to the current package.
@@ -131,8 +149,9 @@ one.
 Direct semantic callers supply one immutable exports view for each imported
 identity. They reuse that view across aliases.
 
-Metadata is available by ID for type checking. Only explicit export members are
-visible through an alias.
+Metadata is available by ID for type checking. Only `pub` members are visible
+through an alias. The view names the package's private declarations only so a
+use can say why it fails.
 
 The shared `script_catalog_snapshot` helper in `Chibi::capabilities` owns
 metadata names and defaults, including union payload defaults.

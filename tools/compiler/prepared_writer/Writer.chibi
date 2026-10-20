@@ -20,7 +20,7 @@ Version: int : 18;
 // struct fields, union payloads and array items are values[first, first + count),
 // after the value itself. An absent authored struct still records its field
 // count; an absent native one, a type header, records none.
-Value :: struct {
+pub Value :: struct {
     tag: int;
     container: int;
     type_name: string;
@@ -40,7 +40,7 @@ UnionTag: int : 18;
 NameTag: int : 12;
 TextTag: int : 13;
 
-Field :: struct {
+pub Field :: struct {
     name: string;
     kind: int;
     type_name: string;
@@ -50,14 +50,14 @@ Field :: struct {
 }
 // An event the module handles; its payload fields are
 // event_fields[first, first + count).
-Event :: struct {
+pub Event :: struct {
     id: int;
     abi: int;
     name: string;
     first: int;
     count: int;
 }
-EventField :: struct {
+pub EventField :: struct {
     name: string;
     nominal: int;
     has_default: bool;
@@ -65,19 +65,19 @@ EventField :: struct {
     initial: int;
 }
 // A behavior's retained state and the value it starts with.
-State :: struct {
+pub State :: struct {
     id: int;
     initial: int;
     shared: bool;
     contains_tasks: bool;
 }
 // A component a function reads or writes, and whether a binding owns it.
-Component :: struct {
+pub Component :: struct {
     id: int;
     binding: bool;
 }
 // An authored record requirement lists its fields; others resolve by identity.
-Requirement :: struct {
+pub Requirement :: struct {
     id: int;
     layout: int;
     storage: int;
@@ -87,19 +87,19 @@ Requirement :: struct {
     first: int;
     count: int;
 }
-Import :: struct {
+pub Import :: struct {
     id: int;
     fingerprint: int;
 }
 // A function reference: own `index` in this module, or `function` (a wide id)
 // in import `imported`. Null references have neither.
-Reference :: struct {
+pub Reference :: struct {
     imported: int;
     own: int;
     function: int;
     role: int;
 }
-Source :: struct {
+pub Source :: struct {
     graph: int;
     call: int;
     parent: int;
@@ -110,19 +110,19 @@ Source :: struct {
     line: int;
     column: int;
 }
-Frame :: struct {
+pub Frame :: struct {
     source: int;
     depth: int;
     resume: int;
     source_index: int;
     stack: int;
 }
-Root :: struct {
+pub Root :: struct {
     bank: int;
     index: int;
     shape: int;
 }
-Instruction :: struct {
+pub Instruction :: struct {
     op: int;
     type: int;
     output: int;
@@ -142,7 +142,7 @@ Instruction :: struct {
     message: string;
     has_message: bool;
 }
-Local :: struct {
+pub Local :: struct {
     kind: int;
     initial: int;
     frame: int;
@@ -153,21 +153,21 @@ Local :: struct {
     array_default: bool;
     data_index: int;
 }
-Parameter :: struct {
+pub Parameter :: struct {
     initial: int;
     frame: int;
     pin: int;
 }
-ResultLayout :: struct {
+pub ResultLayout :: struct {
     index: int;
     name: string;
 }
-Data :: struct {
+pub Data :: struct {
     kind: int;
     initial: int;
     size: int;
 }
-Host :: struct {
+pub Host :: struct {
     capability: int;
     abi: int;
     first: int;
@@ -176,7 +176,7 @@ Host :: struct {
     outcome_first: int;
     outcome_count: int;
 }
-Call :: struct {
+pub Call :: struct {
     function: int;
     first: int;
     count: int;
@@ -184,7 +184,7 @@ Call :: struct {
     result_count: int;
     task: bool;
 }
-Point :: struct {
+pub Point :: struct {
     occurrence: int;
     meaning: int;
     start: int;
@@ -194,14 +194,14 @@ Point :: struct {
     kind: int;
     completion: bool;
 }
-Watch :: struct {
+pub Watch :: struct {
     origin: int;
     initial: int;
     ordinal: int;
     output: bool;
     reference: bool;
 }
-Span :: struct {
+pub Span :: struct {
     first: int;
     count: int;
 }
@@ -231,8 +231,8 @@ Components: int : 19;
 ComponentWrites: int : 20;
 SourcePoints: int : 21;
 SourceWatches: int : 22;
-Tables: int : 23;
-Function :: struct {
+pub Tables: int : 23;
+pub Function :: struct {
     argument_count: int;
     result_count: int;
     variable_count: int;
@@ -254,7 +254,7 @@ Function :: struct {
 // A module function entry: an exported function, or a handler of the event
 // `event_id` names in `wide` (0 for none). No observer, action or captures.
 // `body` and `subscription` index `references`.
-Entry :: struct {
+pub Entry :: struct {
     id: int;
     kind: int;
     entry_name: string;
@@ -268,7 +268,7 @@ Entry :: struct {
     body: int;
     subscription: int;
 }
-Module :: union {
+pub Module :: union {
     Tables(id: uint64, owner_type: uint64, abi: uint64, wide: uint64[], values: Value[], ints: int[],
            requirements: Requirement[], fields: Field[], event_declarations: Event[],
            event_fields: EventField[], imports: Import[], functions: Function[], spans: Span[], roots: Root[],
@@ -454,7 +454,7 @@ EventBytes :: (v: Event, fields: EventField[], wide: uint64[], pool: byte[], sta
 }
 
 // The complete inner module.
-Write :: (module: Module) -> byte[] {
+pub Write :: (module: Module) -> byte[] {
     switch module {
         case .Tables(id, owner_type, abi, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
@@ -643,7 +643,7 @@ Write :: (module: Module) -> byte[] {
 }
 
 // FNV-1a over the module bytes, as import fingerprints use; zero becomes one.
-Fingerprint :: (bytes: byte[]) -> uint64 {
+pub Fingerprint :: (bytes: byte[]) -> uint64 {
     hash: uint64 = 14695981039346656037;
     for (item in bytes) {
         hash = (hash ^ uint64(item)) * 1099511628211;
@@ -668,8 +668,8 @@ Word :: (value: uint64) -> byte[] {
 // CHIBICLO v1: header words "CHIBICLO", version, root id and row count, then
 // rows sorted bytewise by name: id, name length, module length, name, module.
 // Module bytes are data[starts[i], starts[i] + lengths[i]).
-Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
-            starts: int[], lengths: int[]) -> byte[] {
+pub Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
+                starts: int[], lengths: int[]) -> byte[] {
     order: int[] = [];
     index: int = 0;
     while (index < length(names)) {

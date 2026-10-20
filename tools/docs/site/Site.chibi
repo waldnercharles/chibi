@@ -51,7 +51,7 @@ Pages :: (sections: string[], titles: string[], outputs: string[], current: int)
 // A page up to its body, as HTML pieces to write in order. sections, titles
 // and outputs describe every page in navigation order, and current is this
 // page's index among them.
-Head :: (site: string, sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
+pub Head :: (site: string, sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
     html: string[] = [];
     html = array_add(html, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
     html = array_add(html, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
@@ -67,7 +67,7 @@ Head :: (site: string, sections: string[], titles: string[], outputs: string[], 
 }
 
 // A page after its body.
-Foot :: () -> string[] {
+pub Foot :: () -> string[] {
     return ["</main>\n</div>\n</body>\n</html>\n"];
 }
 
@@ -79,7 +79,7 @@ Foot :: () -> string[] {
 // markup so focus follows what the reader sees, and drop the bar's sections,
 // which it repeats. The bar keeps one row of a fixed height, scrolling its
 // sections sideways when they do not fit, so anchors scroll clear of it.
-Style :: () -> string[] {
+pub Style :: () -> string[] {
     return [
         ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --bar: #2f6db5; --bar-text: #ffffff; }\n",
         "@media (prefers-color-scheme: dark) {\n",

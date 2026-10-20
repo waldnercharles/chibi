@@ -244,10 +244,11 @@ cannot hold a NUL byte, so Odin's `trim_null` has no use.
 Suggestion: strings that carry their length and may hold any byte, with
 slices that share the bytes once ownership allows it.
 
-### Every top-level declaration is exported
+### Stage one does not check pub
 
-Language. Odin's private `_split` became the exported `SplitKeeping`, and the
-shared line splitter the exported `SplitLinesKeeping`.
+Stage one. Before #552 every top-level declaration was exported, so Odin's
+private `_split` became the exported `SplitKeeping`, and the shared line
+splitter the exported `SplitLinesKeeping`.
 
 - Odin has `@(private)` and `@(private="file")`; Jai `#scope_file` and
   `#scope_module`; Rust, Zig and F# export only `pub` or public items; Go
@@ -257,6 +258,14 @@ shared line splitter the exported `SplitLinesKeeping`.
 Decision (2026-10-20): a declaration is private to its package, every file of
 it, unless `pub` exports it, as in Rust and Zig: `pub Join :: (...)`. Game
 projects' `library` blocks follow once they become packages.
+
+Implemented for stage zero in #552: it exports only `pub` declarations and
+names a private one an import reaches, and `core:strings` keeps its two
+splitters to itself. Stage one parses `pub` but exports every package
+declaration, so on its own it would accept an import of a private one.
+
+Suggestion: stage one's exports keep only `pub` declarations, as stage zero's
+and Rust's and Zig's do.
 
 ### No way to build a string
 
@@ -390,7 +399,8 @@ callers.
   C++ templates all export from their package, module or header.
 
 Suggestion: export templates, instantiating each at the caller with the
-callee package's declarations in scope, as Odin does.
+callee package's declarations in scope, as Odin does. Until then `pub` does
+not export a template either (#552).
 
 ## A pattern test fails as a call argument
 

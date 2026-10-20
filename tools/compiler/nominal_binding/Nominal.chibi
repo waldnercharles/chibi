@@ -5,12 +5,12 @@ import syntax "project:syntax_diagnostics"
 
 // Exact header-pass facts. Full declaration coordinates are needed for record
 // placement errors; lexical admission and origin guards use the name token.
-Context :: struct {
+pub Context :: struct {
     program_name: string;
     program_kind: int;
     pointer_size: int;
 }
-Request :: struct {
+pub Request :: struct {
     name: string;
     kind: int;
     start: int;
@@ -26,13 +26,13 @@ Request :: struct {
 }
 // Parallel to binding.Symbol[]. Parameter IDs retain unsigned precision in a
 // separate value bank; nominal IDs are replaced by the admitted symbol's ID.
-SymbolType :: struct {
+pub SymbolType :: struct {
     storage: int;
     container: int;
     flags: int;
     parameter_slot: int;
 }
-Declaration :: union {
+pub Declaration :: union {
     Skipped(diagnostics: syntax.Diagnostic[])
     | Bound(existing: int, id: uint64, initial_storage: int, initial_flags: int,
             publish: bool, storage: int, container: int, flags: int, parameter: uint64,
@@ -47,8 +47,8 @@ StructStorage: int : 15;
 UnionStorage: int : 18;
 UnionFlag: int : 256;
 
-Declare :: (environment: binding.Environment, lexical: binding.Context, context: Context,
-            types: SymbolType[], type_ids: uint64[], request: Request) -> Declaration {
+pub Declare :: (environment: binding.Environment, lexical: binding.Context, context: Context,
+                types: SymbolType[], type_ids: uint64[], request: Request) -> Declaration {
     record := request.kind == RecordKind;
     diagnostics: syntax.Diagnostic[] = [];
     if (record && (context.program_kind != LibraryKind || lexical.function >= 0)) {

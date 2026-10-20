@@ -713,10 +713,10 @@ static bool root_matches(const language_reference *ref, pin_value root)
            (ref->root.type == PIN_STRUCT && ref->root.container == PIN_CONTAINER_SINGLE &&
             ref->root.type_name && !strcmp(ref->root.type_name, layout->name));
 }
+/* A second argument is what an absent map key reads, its value type's zero. */
 static const char *read_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count == 1);
-    (void)count;
+    assert(count == 1 || count == 2);
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     /* The result keeps the header it was declared with, which the verifier
@@ -743,6 +743,11 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     }
     if (!same_storage(declared, ref->type)) {
         return "Reference read differs from its declared result";
+    }
+    if (!data && count == 2 && ref->path && ref->path->map) {
+        return pin_value_snapshot_to_arena(storage, out, &args[1])
+                 ? "Cannot retain referenced value"
+                 : NULL;
     }
     const type_desc *layout = !ref->path ? reference_root_layout(ref) : NULL;
     size_t size = layout ? layout->size : execution_value_size(ref->type);
@@ -1121,21 +1126,6 @@ static const char *break_take_value(arena *storage, const pin_value *args, int c
 }
 const node_host_call EXECUTION_break_request_call = { .value = break_request_value };
 const node_host_call EXECUTION_break_take_call = { .value = break_take_value };
-static const char *event_read_value(arena *storage, const pin_value *args, int count, pin_value *out)
-{
-    assert(count == 3);
-    (void)count;
-    behavior_function_context *context = value_context(args[0]);
-    const pin_value
-        *value = context->event_argument
-                   ? context->event_argument(context, args[1].u64, args[2].i)
-                   : NULL;
-    if (!value || pin_value_snapshot_to_arena(storage, out, value)) {
-        return "Cannot read originating event argument";
-    }
-    return NULL;
-}
-const node_host_call EXECUTION_event_read_call = { .value = event_read_value };
 static const char *state_demand_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -1340,7 +1330,6 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_BREAK_REQUEST:
             return &EXECUTION_break_request_call;
         case EXECUTION_INTRINSIC_BREAK_TAKE: return &EXECUTION_break_take_call;
-        case EXECUTION_INTRINSIC_EVENT_READ: return &EXECUTION_event_read_call;
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return &EXECUTION_local_release_call;
         default: return NULL;
@@ -1435,9 +1424,6 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_break_take_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_BREAK_TAKE;
-    }
-    if (call == &EXECUTION_event_read_call) {
-        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_EVENT_READ;
     }
     if (call == &EXECUTION_local_release_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_RELEASE;

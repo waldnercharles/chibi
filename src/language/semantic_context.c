@@ -684,7 +684,7 @@ script_operator script_analyzer_operator_node(analyzer *a, TSNode node)
         { "|=", SCRIPT_OP_BIT_OR },     { "^=", SCRIPT_OP_BIT_XOR },
         { "+=", SCRIPT_OP_ADD },        { "-=", SCRIPT_OP_SUB },
         { "*=", SCRIPT_OP_MUL },        { "/=", SCRIPT_OP_DIV },
-        { "%=", SCRIPT_OP_MOD }
+        { "%=", SCRIPT_OP_MOD },        { "??", SCRIPT_OP_COALESCE }
     };
     for (size_t i = 0; i < sizeof entries / sizeof *entries; i++) {
         if (script_analyzer_text_is(a, node, entries[i].text)) {

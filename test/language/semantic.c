@@ -179,13 +179,12 @@ TEST_CASE(language_pub_marks_only_package_declarations)
     }
     return true;
 }
-TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity)
+/* `has` names a map method only on a value; an authored `has` stays a call. */
+TEST_CASE(language_authored_map_method_names_preserve_callable_identity)
 {
     parse(
-        "Names :: library { map_has :: (value: bool) -> bool { return value; } "
-        "map_remove :: (value: int) -> int { return value + 1; } "
-        "Use :: () -> int { if map_has(value: true) { return map_remove(value: "
-        "2); } return 0; } }"
+        "Names :: library { has :: (value: bool) -> bool { return value; } "
+        "Use :: () -> int { if has(value: true) { return 1; } return 0; } }"
     );
     REQUIRE(!syntax->diagnostic_count && analysis->valid);
     int calls = 0;
@@ -197,25 +196,7 @@ TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity)
             calls++;
         }
     }
-    REQUIRE(calls == 2);
-    return true;
-}
-
-TEST_CASE(language_inferred_map_requires_an_initializer)
-{
-    parse("Names :: behavior { scores: retain Map; }");
-    REQUIRE(!syntax->diagnostic_count && !analysis->valid);
-    REQUIRE(diagnostic("'scores' requires a default value"));
-    const char *invalid[] = {
-        "Names :: behavior { scores: retain Map = 1; }",
-        "Names :: library { Run :: () { scores: Map = [1, 2]; } }",
-        "Names :: library { Run :: () { scores: Map = null; } }",
-    };
-    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
-        parse(invalid[i]);
-        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
-        REQUIRE(diagnostic("Map inference requires an associative map value"));
-    }
+    REQUIRE(calls == 1);
     return true;
 }
 
@@ -276,7 +257,7 @@ TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks)
     const char *tasks[] = {
         "Bad :: system() { pending: retain task; }",
         "Bad :: system() { pending: retain task[]; }",
-        "Bad :: system() { pending: retain Map<string, task>; }",
+        "Bad :: system() { pending: retain [string: task]; }",
         "Bad :: system() { Work :: () { pending: retain task; } Work(); }",
     };
     for (size_t i = 0; i < sizeof tasks / sizeof *tasks; i++) {
@@ -336,6 +317,28 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("Optional component requires a presence guard before member access"));
+    return true;
+}
+/* `??` needs an optional on its left and a fallback of its value type; an
+ * optional fallback keeps the result optional. */
+TEST_CASE(language_coalesce_types_its_operands)
+{
+    parse("L :: library { F :: (a: int?, b: int?) -> int { c: int? = a ?? b; return a ?? b ?? 0; } }");
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    parse("L :: library { F :: (a: int?) -> bool { return a ?? 1 < 2; } }");
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    const char *invalid[] = {
+        "L :: library { F :: (a: int) -> int { return a ?? 1; } }",
+        "L :: library { F :: (a: int?) -> int { return a ?? \"x\"; } }",
+        "L :: library { F :: (a: int?, b: int?) -> int { return a ?? b; } }",
+        "Motion :: system(position: Position?) { x := position ?? position; }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+    }
+    parse(invalid[0]);
+    REQUIRE(diagnostic("?? requires an optional value on its left"));
     return true;
 }
 TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
@@ -1001,7 +1004,7 @@ TEST_CASE(language_loops_reverse_explicitly)
     REQUIRE(diagnostic("Range bounds descend; for < takes the low bound first, as in for < i in 0..10"));
     parse("L :: library { F :: () { for < c in \"ab\" {} } }");
     REQUIRE(diagnostic("for < reverses only ranges and arrays"));
-    parse("L :: library { F :: (m: Map<string, int>) { for < k, v in m {} } }");
+    parse("L :: library { F :: (m: [string: int]) { for < k, v in m {} } }");
     REQUIRE(diagnostic("for < reverses only ranges and arrays"));
     return true;
 }
@@ -2254,12 +2257,12 @@ void test_language_semantic()
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_literals_are_typed_by_spelling);
-    RUN_TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity);
-    RUN_TEST_CASE(language_inferred_map_requires_an_initializer);
+    RUN_TEST_CASE(language_authored_map_method_names_preserve_callable_identity);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);
     RUN_TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks);
     RUN_TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_coalesce_types_its_operands);
     RUN_TEST_CASE(language_reductions_resolve_stored_fields_and_membership);
     RUN_TEST_CASE(language_reductions_require_system_component_fields);
     RUN_TEST_CASE(language_reduction_producers_reject_conflicting_component_values);

@@ -44,6 +44,7 @@ void test_tool_chibi_cli(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary);
 #ifdef CHIBI_TEST_PUBLISHED_DOCS
 void test_tool_published_docs(const char *binary);
+void test_tool_chibi_docs(const char *binary);
 #endif
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_artifact(const char *producer, const char *host);
@@ -600,6 +601,7 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_published_docs(argv[2]);
+        test_tool_chibi_docs(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

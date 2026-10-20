@@ -673,6 +673,39 @@ static bool reduction_bounded(const analyzer *a, int index)
     }
     return false;
 }
+/* `delete m[k]` and `m.delete(k)` assign the map without the key, which
+ * lowering does in place for a local. */
+static int delete_key(analyzer *a, TSNode node, script_statement result, TSNode map, TSNode key)
+{
+    result.kind = SCRIPT_STMT_ASSIGN;
+    if (script_analyzer_is(map, "identifier")) {
+        int symbol = script_analyzer_lookup(a, map);
+        if (symbol >= 0) {
+            a->out->symbols[symbol].mutations++;
+            script_analyzer_invalidate_narrowing(a, symbol);
+        }
+    }
+    result.expression = script_analyzer_expression(a, map, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    script_expression address = a->out->expressions[result.expression];
+    if (!address.writable) {
+        script_analyzer_diagnostic(a, map, "Deleting a key requires a writable map");
+    }
+    result.second = script_analyzer_map_operation(
+        a,
+        node,
+        SCRIPT_EXPR_MAP_REMOVE,
+        result.expression,
+        key
+    );
+    result.effects = script_analyzer_expr_effects(a, result.second);
+    if (writes_external_storage(a->out, result.expression)) {
+        result.effects |= SCRIPT_EFFECT_WRITE;
+    }
+    if (address.symbol >= 0) {
+        script_analyzer_use(a, map, address.symbol, SCRIPT_WRITE, address.member);
+    }
+    return script_analyzer_statement_add(a, result);
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {
@@ -845,11 +878,36 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         return script_analyzer_statement_add(a, result);
     }
+    if (script_analyzer_is(node, "delete_statement")) {
+        TSNode target = script_analyzer_field(node, "target");
+        return delete_key(
+            a,
+            node,
+            result,
+            script_analyzer_field(target, "object"),
+            script_analyzer_field(target, "index")
+        );
+    }
     if (script_analyzer_is(node, "expression_statement")) {
         result.kind = SCRIPT_STMT_EXPRESSION;
         TSNode value = { 0 };
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
             value = ts_node_named_child(node, i);
+            TSNode function = script_analyzer_field(value, "function");
+            if (script_analyzer_is(value, "call_expression") &&
+                script_analyzer_map_method(a, function, "delete")) {
+                TSNode arguments = script_analyzer_field(value, "arguments");
+                if (script_analyzer_named_count(arguments) != 1) {
+                    script_analyzer_diagnostic(a, value, "Map method requires one key");
+                }
+                return delete_key(
+                    a,
+                    value,
+                    result,
+                    script_analyzer_field(function, "object"),
+                    ts_node_named_child(arguments, 0)
+                );
+            }
             if (!ts_node_is_extra(value)) {
                 result.expression = script_analyzer_expression(
                     a,

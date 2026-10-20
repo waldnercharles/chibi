@@ -199,9 +199,11 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
         "} "
         "Composed :: (value: ref Vector(float, 2)[]) -> Vector(float, 2)? { "
         "return nil; } "
-        "Use :: () { values: Map<string, int> = {\"Ada\": 1, [key]: 2, 3: 4}; "
+        "Use :: () { values: [string: int] = [\"Ada\": 1, key: 2, 3: 4]; "
         "for key, value in values { consume(key, value); } "
-        "for item: ref in items { item += 1; } } }"
+        "for item: ref in items { item += 1; } "
+        "delete values[key]; gone := key not in values; empty: [int: bool] = "
+        "[:]; } }"
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
@@ -228,9 +230,17 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     TSNode use = ts_node_named_child(body, 4);
     TSNode statements = field(use, "body");
     TSNode value = field(ts_node_named_child(statements, 0), "value");
-    REQUIRE(!strcmp(ts_node_type(value), "struct_expression"));
-    REQUIRE(node_text(field(ts_node_named_child(value, 0), "name"), "\"Ada\""));
+    TSNode map = field(field(ts_node_named_child(statements, 0), "type"), "map");
+    REQUIRE(node_text(field(map, "key"), "string") && node_text(field(map, "value"), "int"));
+    REQUIRE(!strcmp(ts_node_type(value), "map_expression"));
+    REQUIRE(node_text(field(ts_node_named_child(value, 0), "key"), "\"Ada\""));
     REQUIRE(node_text(field(ts_node_named_child(value, 1), "key"), "key"));
+    REQUIRE(node_text(field(ts_node_named_child(value, 2), "value"), "4"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(statements, 3)), "delete_statement"));
+    TSNode gone = field(ts_node_named_child(statements, 4), "value");
+    REQUIRE(!strcmp(ts_node_type(field(gone, "operator")), "not_in"));
+    TSNode empty = field(ts_node_named_child(statements, 5), "value");
+    REQUIRE(!strcmp(ts_node_type(empty), "map_expression") && !ts_node_named_child_count(empty));
     TSNode loop = ts_node_named_child(statements, 1);
     REQUIRE(!strcmp(ts_node_type(loop), "for_statement"));
     REQUIRE(node_text(field(loop, "key"), "key"));
@@ -575,6 +585,17 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode difference = field(ts_node_named_child(body, 1), "value");
     REQUIRE(node_text(field(difference, "right"), "1"));
     REQUIRE(node_text(field(field(difference, "left"), "operator"), "-"));
+    /* `??` groups to the right and binds above comparison. */
+    parse("Expressions :: behavior { chosen := a ?? b ?? c + 1 < d }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode comparison = field(ts_node_named_child(declaration_body(), 0), "value");
+    REQUIRE(node_text(field(comparison, "operator"), "<"));
+    TSNode coalesce = field(comparison, "left");
+    REQUIRE(
+        node_text(field(coalesce, "operator"), "??") &&
+        node_text(field(coalesce, "left"), "a")
+    );
+    REQUIRE(node_text(field(coalesce, "right"), "b ?? c + 1"));
     parse(syntax_corpus_cases[SYNTAX_CORPUS_CALLS].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode statements = field(ts_node_named_child(declaration_body(), 0), "body");

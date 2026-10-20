@@ -33,19 +33,20 @@ static const char *make_map(arena *storage, const pin_value *args, int count, pi
     out->ptr = map;
     return NULL;
 }
+/* An absent key reads the optional third argument, the value type's zero. */
 static const char *get_map(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count == 2);
-    (void)count;
+    assert(count == 2 || count == 3);
     const pin_map *map = args[0].ptr;
     int index = pin_map_find(map, &args[1]);
-    if (index < 0) {
+    if (index < 0 && count == 2) {
         return "Map key is absent or invalid";
     }
-    if (!result_type(*out, map->entries[index].value)) {
+    const pin_value *value = index < 0 ? &args[2] : &map->entries[index].value;
+    if (!result_type(*out, *value)) {
         return "Map value differs from its declared result type";
     }
-    return pin_value_snapshot_to_arena(storage, out, &map->entries[index].value)
+    return pin_value_snapshot_to_arena(storage, out, value)
              ? "Cannot retain map value"
              : NULL;
 }

@@ -7934,11 +7934,9 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
           "handle<ecs.entity>) { total += a } }",
           "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
           "total += Amount } }" },
-        /* A computed key reads its value; a function's own parameter and a
+        /* An array element reads its value; a function's own parameter and a
          * named argument do not read an alias. */
-        { "B :: behavior { on Damage(a, s) { values := { [a]: 1 } } }",
-          "B :: behavior { on Damage :: (Amount: int) { values := { [Amount]: "
-          "1 } } }" },
+        { "B :: behavior { on Damage(a, s) { values := [a, 1] } }", "B :: behavior { on Damage :: (Amount: int) { values := [Amount, 1] } }" },
         { "B :: behavior { Add :: (hit: int) { total += hit } on Damage as hit "
           "{ Add(hit: hit.Amount) } }",
           "B :: behavior { Add :: (hit: int) { total += hit } on Damage :: "

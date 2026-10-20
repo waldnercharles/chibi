@@ -343,7 +343,7 @@ AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
 Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -> Reading {
     if (name == "map") {
         errors: syntax.Diagnostic[] = [];
-        errors = array_add(errors, Diagnostic(tree, node, document, "Use Map<K, V> for associative maps"));
+        errors = array_add(errors, Diagnostic(tree, node, document, "Use [K: V] for associative maps"));
         reading = AppendDiagnostics(reading, errors);
     }
     switch reading {

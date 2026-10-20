@@ -631,6 +631,209 @@ static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
     }
     return false;
 }
+/* The value `null` makes of a nonoptional type: an empty container, a record
+ * of its field defaults, or zero. */
+static int zero_value(analyzer *a, TSNode node, script_type type)
+{
+    script_expression result = {
+        .kind = type.container == PIN_CONTAINER_MAP    ? SCRIPT_EXPR_MAP
+              : type.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
+              : type.storage == PIN_STRUCT             ? SCRIPT_EXPR_STRUCT
+                                                       : SCRIPT_EXPR_CONSTANT,
+        .type = type,
+        .range = script_analyzer_range(a, node),
+        .constant = { .type = type.storage, .container = type.container },
+        .symbol = -1,
+        .left = -1,
+        .right = -1
+    };
+    if (result.kind == SCRIPT_EXPR_STRUCT) {
+        record_defaults(a, node, &result);
+    }
+    return script_analyzer_expr_add(a, result);
+}
+/* What reading an absent key yields, as Odin does: the value type's zero, or
+ * nil for a boxed optional. A union, task or reference value has no zero, nor
+ * does a record with a required field; reading those keys stays checked. */
+static int absent_value(analyzer *a, TSNode node, script_type type)
+{
+    if ((type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) && !(type.flags & SCRIPT_TYPE_TASK)) {
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_NIL,
+                                 .type = type,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
+    }
+    if (type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
+                      SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED) ||
+        (type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE)) {
+        return -1;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
+    if (type.storage == PIN_STRUCT && type.container == PIN_CONTAINER_SINGLE) {
+        if (!record || !record->authored_record) {
+            return -1;
+        }
+        for (int i = 0; i < record->field_count; i++) {
+            if (!record->fields[i].has_default) {
+                return -1;
+            }
+        }
+    }
+    return zero_value(a, node, type);
+}
+static bool map_key_supported(script_type key)
+{
+    return key.container == PIN_CONTAINER_SINGLE &&
+           !(key.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK | SCRIPT_TYPE_UNION)) &&
+           (key.storage == PIN_BOOL ||
+            (key.storage >= PIN_I8 && key.storage <= PIN_F64) ||
+            key.storage == PIN_STR || key.storage == PIN_NAME ||
+            key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
+}
+/* `["Ada": 3]` takes its key and value types from context, or else from its
+ * first entry; `[:]` needs context. */
+static int map_literal(analyzer *a, TSNode node, script_type expected)
+{
+    script_expression result = { .kind = SCRIPT_EXPR_MAP,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 };
+    bool inferred = expected.container != PIN_CONTAINER_MAP || !expected.collection;
+    if (!inferred && (expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+        expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    }
+    script_type untyped = { .flags = SCRIPT_TYPE_UNTYPED };
+    script_type key = inferred ? untyped
+                               : script_catalog_key_type(a->catalog, expected);
+    script_type value_type = inferred
+                               ? untyped
+                               : script_catalog_element_type(a->catalog, expected);
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode entry = ts_node_named_child(node, i);
+        if (ts_node_is_extra(entry)) {
+            continue;
+        }
+        int key_value = script_analyzer_expression(a, script_analyzer_field(entry, "key"), key);
+        int value = script_analyzer_expression(a, script_analyzer_field(entry, "value"), value_type);
+        if (inferred && !acount(result.arguments)) {
+            key = script_analyzer_expr_type(a, key_value);
+            value_type = script_analyzer_expr_type(a, value);
+            key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+            value_type.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+        }
+        script_analyzer_require(a, entry, value_type, script_analyzer_expr_type(a, value));
+        script_type actual_key = script_analyzer_expr_type(a, key_value);
+        actual_key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+        if (!script_type_equal(key, actual_key)) {
+            script_analyzer_diagnostic(a, entry, "Map key type does not match");
+        }
+        script_range range = script_analyzer_range(a, entry);
+        apush(result.arguments, ((script_argument){ key_value, -1, 0, range }));
+        apush(result.arguments, ((script_argument){ value, -1, 0, range }));
+        result.effects |= script_analyzer_expr_effects(a, key_value) |
+                          script_analyzer_expr_effects(a, value);
+    }
+    if (!acount(result.arguments) && inferred) {
+        script_analyzer_diagnostic(a, node, "An empty map needs its key and value types from context");
+        result.type = script_analyzer_bad_type();
+        return script_analyzer_expr_add(a, result);
+    }
+    if (!map_key_supported(key)) {
+        script_analyzer_diagnostic(a, node, "Unsupported map key type");
+    }
+    result.type = script_analyzer_collection_type(a, PIN_CONTAINER_MAP, key, value_type);
+    return script_analyzer_expr_add(a, result);
+}
+/* `m.has(k)`, `k in m` and removal look key up in map, an analyzed value. */
+int script_analyzer_map_operation(analyzer *a, TSNode node, script_expression_kind kind, int map, TSNode key_node)
+{
+    script_type type = script_analyzer_expr_type(a, map);
+    script_type key = script_catalog_key_type(a->catalog, type);
+    script_expression result = { .kind = kind,
+                                 .type = kind == SCRIPT_EXPR_MAP_HAS
+                                           ? script_analyzer_boolean_type()
+                                           : type,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = map,
+                                 .right = -1 };
+    if ((type.container != PIN_CONTAINER_MAP || !type.collection) &&
+        !(type.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "Map operation requires a map");
+    }
+    result.right = script_analyzer_expression(a, key_node, key);
+    if (!script_type_equal(key, script_analyzer_expr_type(a, result.right))) {
+        script_analyzer_diagnostic(a, key_node, "Map key type does not match");
+    }
+    result.effects = script_analyzer_expr_effects(a, map) |
+                     script_analyzer_expr_effects(a, result.right);
+    return script_analyzer_expr_add(a, result);
+}
+/* Whether `function` calls method `name` on a value, such as `m.has`, rather
+ * than a package or type member. */
+bool script_analyzer_map_method(analyzer *a, TSNode function, const char *name)
+{
+    if (!script_analyzer_is(function, "member_expression") ||
+        !script_analyzer_text_is(a, script_analyzer_field(function, "member"), name)) {
+        return false;
+    }
+    TSNode root = script_analyzer_field(function, "object");
+    while (script_analyzer_is(root, "member_expression") ||
+           script_analyzer_is(root, "index_expression")) {
+        root = script_analyzer_field(root, "object");
+    }
+    return !script_analyzer_is(root, "identifier") ||
+           script_analyzer_lookup(a, root) >= 0;
+}
+/* `m.has(k)`; `m.delete(k)` is a statement. */
+static int map_method(analyzer *a, TSNode node)
+{
+    TSNode function = script_analyzer_field(node, "function"),
+           arguments = script_analyzer_field(node, "arguments");
+    int map = script_analyzer_expression(
+        a,
+        script_analyzer_field(function, "object"),
+        (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+    );
+    if (!script_analyzer_map_method(a, function, "has")) {
+        script_analyzer_diagnostic(a, node, "delete changes the map; write it as a statement");
+    }
+    if (script_analyzer_named_count(arguments) != 1) {
+        script_analyzer_diagnostic(a, node, "Map method requires one key");
+    }
+    return script_analyzer_map_operation(a, node, SCRIPT_EXPR_MAP_HAS, map, ts_node_named_child(arguments, 0));
+}
+/* `a ?? b` reads a's value, or b when a is nil, as Swift's `??` and Odin's
+ * `or_else` do. b runs only then; an optional b keeps the result optional. */
+static int coalesce(analyzer *a, TSNode node, script_expression result)
+{
+    TSNode left = script_analyzer_field(node, "left"),
+           right = script_analyzer_field(node, "right");
+    script_type optional = script_analyzer_expr_type(a, result.left), value = optional;
+    value.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    if ((!(optional.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
+         (optional.flags & SCRIPT_TYPE_TASK)) &&
+        !(optional.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, left, "?? requires an optional value on its left");
+        value = script_analyzer_bad_type();
+    }
+    result.right = script_analyzer_expression(a, right, value);
+    script_type actual = script_analyzer_expr_type(a, result.right);
+    result.type = (actual.flags & SCRIPT_TYPE_OPTIONAL) &&
+                          !(value.flags & SCRIPT_TYPE_ERROR)
+                    ? optional
+                    : value;
+    script_analyzer_require(a, right, result.type, actual);
+    result.effects = script_analyzer_expr_effects(a, result.left) |
+                     script_analyzer_expr_effects(a, result.right);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -735,23 +938,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
             script_analyzer_diagnostic(a, node, "A nonoptional union requires one of its alternatives");
         }
-        result.kind = SCRIPT_EXPR_NIL;
-        result.type = expected;
         if (script_analyzer_text_is(a, node, "null") &&
             !(expected.flags & SCRIPT_TYPE_OPTIONAL) &&
             !(expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            result.kind = expected.container == PIN_CONTAINER_MAP ? SCRIPT_EXPR_MAP
-                        : expected.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
-                        : expected.storage == PIN_STRUCT ? SCRIPT_EXPR_STRUCT
-                                                         : SCRIPT_EXPR_CONSTANT;
-            result.constant = (pin_value){ .type = expected.storage,
-                                           .container = expected.container };
-            if (result.kind == SCRIPT_EXPR_STRUCT) {
-                record_defaults(a, node, &result);
-            }
-        } else {
-            result.type.flags |= SCRIPT_TYPE_OPTIONAL;
+            return zero_value(a, node, expected);
         }
+        result.kind = SCRIPT_EXPR_NIL;
+        result.type = expected;
+        result.type.flags |= SCRIPT_TYPE_OPTIONAL;
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "identifier") ||
@@ -868,37 +1062,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     }
     if (script_analyzer_is(node, "call_expression")) {
         TSNode function = script_analyzer_field(node, "function");
-        bool has = script_analyzer_text_is(a, function, "map_has");
-        bool remove = script_analyzer_text_is(a, function, "map_remove");
-        if ((has || remove) &&
-            script_analyzer_callable_symbol(a, has ? "map_has" : "map_remove") >= 0) {
-            return script_analyzer_call_expression(a, node, expected);
-        }
-        if (has || remove) {
-            TSNode arguments = script_analyzer_field(node, "arguments");
-            result.kind = has ? SCRIPT_EXPR_MAP_HAS : SCRIPT_EXPR_MAP_REMOVE;
-            if (script_analyzer_named_count(arguments) != 2) {
-                script_analyzer_diagnostic(a, node, "Map operation requires a map and a key");
-            }
-            result.left = script_analyzer_expression(
-                a,
-                ts_node_named_child(arguments, 0),
-                (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-            );
-            script_type map = script_analyzer_expr_type(a, result.left);
-            script_type key = script_catalog_key_type(a->catalog, map);
-            if (map.container != PIN_CONTAINER_MAP || !map.collection) {
-                script_analyzer_diagnostic(a, node, "Map operation requires an associative Map");
-            }
-            TSNode key_node = ts_node_named_child(arguments, 1);
-            result.right = script_analyzer_expression(a, key_node, key);
-            if (!script_type_equal(key, script_analyzer_expr_type(a, result.right))) {
-                script_analyzer_diagnostic(a, key_node, "Map key type does not match");
-            }
-            result.type = has ? script_analyzer_boolean_type() : map;
-            result.effects = script_analyzer_expr_effects(a, result.left) |
-                             script_analyzer_expr_effects(a, result.right);
-            return script_analyzer_expr_add(a, result);
+        if (script_analyzer_map_method(a, function, "has") ||
+            script_analyzer_map_method(a, function, "delete")) {
+            return map_method(a, node);
         }
         int variant = script_analyzer_union_constructor(a, node);
         if (variant >= 0) {
@@ -957,8 +1123,25 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         TSNode left = script_analyzer_field(node, "left"),
                right = script_analyzer_field(node, "right"),
                op = script_analyzer_field(node, "operator");
+        bool not_in = script_analyzer_is(op, "not_in");
+        if (not_in || script_analyzer_text_is(a, op, "in")) {
+            int map = script_analyzer_expression(a, right, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+            int has = script_analyzer_map_operation(a, node, SCRIPT_EXPR_MAP_HAS, map, left);
+            if (!not_in) {
+                return has;
+            }
+            result.kind = SCRIPT_EXPR_UNARY;
+            result.op = SCRIPT_OP_NOT;
+            result.left = has;
+            result.type = script_analyzer_boolean_type();
+            result.effects = script_analyzer_expr_effects(a, has);
+            return script_analyzer_expr_add(a, result);
+        }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, left, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+        if (result.op == SCRIPT_OP_COALESCE) {
+            return coalesce(a, node, result);
+        }
         if (result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR) {
             narrowing *saved = NULL;
             for (int i = 0; i < acount(a->narrowed); i++) {
@@ -1080,6 +1263,15 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             !script_type_equal(key_type, script_analyzer_expr_type(a, result.right))) {
             script_analyzer_diagnostic(a, node, "Map key type does not match");
         }
+        int absent = collection_type.container == PIN_CONTAINER_MAP
+                       ? absent_value(a, node, result.type)
+                       : -1;
+        if (absent >= 0) {
+            apush(
+                result.arguments,
+                ((script_argument){ absent, -1, 0, script_analyzer_range(a, node) })
+            );
+        }
         result.effects = script_analyzer_expr_effects(a, result.left) |
                          script_analyzer_expr_effects(a, result.right);
         result.writable = a->out->expressions[result.left].writable;
@@ -1131,89 +1323,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                   : expected.container;
         return script_analyzer_expr_add(a, result);
     }
+    if (script_analyzer_is(node, "map_expression")) {
+        return map_literal(a, node, expected);
+    }
     if (script_analyzer_is(node, "struct_expression")) {
-        if (expected.container == PIN_CONTAINER_MAP ||
-            (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            result.kind = SCRIPT_EXPR_MAP;
-            bool inferred = !expected.collection;
-            script_type key = inferred
-                                ? (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-                                : script_catalog_key_type(a->catalog, expected);
-            script_type value_type = inferred
-                                       ? (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-                                       : script_catalog_element_type(a->catalog, expected);
-            for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-                TSNode entry = ts_node_named_child(node, i);
-                if (ts_node_is_extra(entry)) {
-                    continue;
-                }
-                TSNode key_node = script_analyzer_field(entry, "key");
-                TSNode name_node = script_analyzer_field(entry, "name");
-                int key_value;
-                if (!ts_node_is_null(key_node)) {
-                    key_value = script_analyzer_expression(a, key_node, key);
-                } else if (script_analyzer_is(name_node, "string")) {
-                    key_value = script_analyzer_expression(a, name_node, key);
-                } else {
-                    char *name = script_analyzer_name_copy(a, name_node);
-                    size_t bytes = strlen(name) + 1;
-                    char *owned = arena_alloc(&a->out->constants, bytes);
-                    memcpy(owned, name, bytes);
-                    free(name);
-                    key_value = script_analyzer_expr_add(
-                        a,
-                        (script_expression){
-                            .kind = SCRIPT_EXPR_CONSTANT,
-                            .type = { .storage = PIN_STR },
-                            .constant = { .type = PIN_STR, .str = owned },
-                            .constant_snapshot = true,
-                            .symbol = -1,
-                            .left = -1,
-                            .right = -1,
-                            .entry = -1,
-                            .range = script_analyzer_range(a, name_node) }
-                    );
-                }
-                int value = script_analyzer_expression(a, script_analyzer_field(entry, "value"), value_type);
-                if (inferred && !acount(result.arguments)) {
-                    key = script_analyzer_expr_type(a, key_value);
-                    value_type = script_analyzer_expr_type(a, value);
-                    key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
-                    value_type.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
-                }
-                script_analyzer_require(a, entry, value_type, script_analyzer_expr_type(a, value));
-                script_type actual_key = script_analyzer_expr_type(a, key_value);
-                actual_key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
-                if (!script_type_equal(key, actual_key)) {
-                    script_analyzer_diagnostic(a, entry, "Map key type does not match");
-                }
-                apush(
-                    result.arguments,
-                    ((script_argument){ key_value, -1, 0, script_analyzer_range(a, entry) })
-                );
-                apush(
-                    result.arguments,
-                    ((script_argument){ value, -1, 0, script_analyzer_range(a, entry) })
-                );
-                result.effects |= script_analyzer_expr_effects(a, key_value) |
-                                  script_analyzer_expr_effects(a, value);
-            }
-            if (!acount(result.arguments) && inferred) {
-                script_analyzer_diagnostic(a, node, "Empty maps need explicit key and value types");
-            }
-            bool supported = key.container == PIN_CONTAINER_SINGLE &&
-                             !(key.flags & (SCRIPT_TYPE_OPTIONAL |
-                                            SCRIPT_TYPE_TASK | SCRIPT_TYPE_UNION)) &&
-                             (key.storage == PIN_BOOL ||
-                              (key.storage >= PIN_I8 && key.storage <= PIN_F64) ||
-                              key.storage == PIN_STR || key.storage == PIN_NAME ||
-                              key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
-            if (!supported) {
-                script_analyzer_diagnostic(a, node, "Unsupported Map key type");
-            }
-            result.type = script_analyzer_collection_type(a, PIN_CONTAINER_MAP, key, value_type);
-            return script_analyzer_expr_add(a, result);
-        }
         result.kind = SCRIPT_EXPR_STRUCT;
         result.type = expected;
         const script_catalog_type
@@ -1283,12 +1396,6 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);
     const script_expression *resolved = &a->out->expressions[result];
-    if (expected.container == PIN_CONTAINER_MAP &&
-        (expected.flags & SCRIPT_TYPE_UNTYPED) &&
-        !(resolved->type.flags & SCRIPT_TYPE_ERROR) &&
-        (resolved->type.container != PIN_CONTAINER_MAP || !resolved->type.collection)) {
-        script_analyzer_diagnostic(a, node, "Map inference requires an associative map value");
-    }
     bool unknown_effects = resolved->kind == SCRIPT_EXPR_CALL &&
                            resolved->right >= 0 &&
                            !script_analyzer_readonly_callable(a, resolved->right);

@@ -208,10 +208,25 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
+## Stage one has no optionals
+
+Stage one. Stage zero has `T?`, `nil`, presence tests that narrow, `as T`
+and, since the nil-coalescing PR, `a ?? b`, but stage one's `ReadType`
+rejects any type with `?`. The compiler marks absence with sentinels instead:
+`-1` for a missing node, field or record, and `{storage: 0}` for no type.
+
+- Odin has `Maybe(T)` with `or_else`; Zig `?T` with `orelse` and `if (x) |v|`;
+  Swift `T?` with `??` and `if let`; Rust `Option<T>` with `unwrap_or`;
+  C# and TypeScript `T?` with `??`.
+
+Suggestion: stage one compiles `T?`, `nil`, presence narrowing and `??`, then
+the compiler replaces its `-1` sentinels where a value may be absent.
+
 ## Stage one has no maps
 
-Stage one. Stage zero has `Map<K, V>` with literals, `m[k]`, `map_has`,
-`map_remove` and insertion-ordered iteration, but stage one compiles none of
+Stage one. Stage zero has `[K: V]` maps with `["k": v]` and `[:]` literals,
+`m[k]` reading a missing key's zero value, `k in m`, `m.has(k)`, `delete m[k]`,
+`m.delete(k)` and insertion-ordered iteration, but stage one compiles none of
 it. The tokenizer therefore builds Odin's keyword hash table by hand from an
 `int[]` with linear probing (#518), and lookups by name elsewhere in the
 compiler scan parallel arrays.
@@ -232,7 +247,9 @@ after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
-hangs (#503).
+hangs (#503). The stage-one tokenizer has no `..<` token, so a build program
+that the tokenizer corpus reads can't use half-open ranges either; the map
+syntax PR counted positions by hand in `Build.chibi`'s `PrivateSources`.
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
@@ -540,6 +557,27 @@ states could not be named `events`, `event` or `state`, nor a loop variable
 
 Suggestion: make declaration-only words contextual, and give build-host
 syntax errors the parser's position and token.
+
+## A build host reads `Build.chibi` with the syntax it was built with
+
+Toolchain. `make build` runs an existing `build/sdk/chibi-build-host`, which
+parses `tools/toolchain/Build.chibi` with the compiler it was built from. When
+the map syntax changed (`[string: string] = [:]` for `Map<string, string> = {}`),
+a host built before the change failed the whole build with only "Unexpected
+syntax". So `Build.chibi` keeps its overrides in parallel arrays, and a build
+program can use new syntax only after every host that will run it has been
+rebuilt. Nothing rebuilds the host when its compiler sources change.
+
+- Go builds its toolchain with an older release (Go 1.22 needs 1.20), and
+  `cmd/dist` keeps to what that release accepts.
+- Rust's bootstrap compiles the standard library with the previous beta and
+  marks code for either compiler with `cfg(bootstrap)`.
+- Zig's `build.zig.zon` names a `minimum_zig_version`, and an older `zig`
+  reports it rather than a parse error.
+
+Suggestion: rebuild the host through stage zero when its compiler sources are
+newer than it, and let a build program declare the language version it needs,
+as Zig does, so an old host names the problem.
 
 ## From the tokenizer port
 

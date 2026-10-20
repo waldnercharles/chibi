@@ -1650,14 +1650,18 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
         "Size:int){items:Element[];}"
         "Identity::(value:$ T)->T=>{return value;}"
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
-        "Use::(){scores:Map<string,int>={\"Ada\":1,[key]:2};"
+        "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
+        "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
         "for item:ref in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
     REQUIRE(strstr(text, "Identity :: (value: $T) -> T => {"));
     REQUIRE(strstr(text, "ProductType(L, R)"));
-    REQUIRE(strstr(text, "scores: Map<string, int>"));
-    REQUIRE(strstr(text, "\"Ada\": 1, [key]: 2"));
+    REQUIRE(strstr(text, "scores: [string: int] = [\"Ada\": 1, key: 2]"));
+    REQUIRE(strstr(text, "empty: [int: int] = [:]"));
+    REQUIRE(strstr(text, "delete scores[key]"));
+    REQUIRE(strstr(text, "gone := key not in scores"));
+    REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
     REQUIRE(strstr(text, "for item: ref in items {"));
     return true;
 }

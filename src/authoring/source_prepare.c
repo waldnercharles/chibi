@@ -111,7 +111,8 @@ void authoring_source_lower(
         script_diagnostic copy = { .range = { diagnostic->range.start,
                                               diagnostic->range.end,
                                               diagnostic->range.line,
-                                              diagnostic->range.column } };
+                                              diagnostic->range.column,
+                                              diagnostic->range.document } };
         memcpy(copy.message, diagnostic->message, sizeof copy.message);
         apush(source->diagnostics, copy);
     }

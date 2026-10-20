@@ -1,3 +1,4 @@
+#include "backend.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
@@ -884,7 +885,7 @@ TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes)
         REQUIRE(finish());
         REQUIRE(acount(function->data_values) == 0);
         REQUIRE(acount(function->suspensions) == 1);
-        REQUIRE(acount(function->suspensions[0].roots) == 2);
+        REQUIRE(function->suspensions[0].root_count == 2);
         REQUIRE(behavior_function_compile(function));
         for (int i = 0; i < 2; i++) {
             arguments[i].ptr = pin_array_allocate(&managed, shape.type, NULL, 1);
@@ -1558,6 +1559,235 @@ TEST_CASE(execution_prepared_identity_includes_instruction_schema)
     return true;
 }
 
+TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
+{
+    /* A wide chain followed by many pauses keeps one value live. Reserving a
+     * full live-value vector per pause needed about 4.2 MiB here. */
+    enum
+    {
+        WIDE_SLOTS = 1024,
+        WIDE_PAUSES = 512
+    };
+    const size_t budget = 2 * 1024 * 1024;
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
+    int input = slot(PIN_I32), sum = input;
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_I32, .output = input, .value = number });
+    for (int i = 1; i < WIDE_SLOTS; i++) {
+        int next = slot(PIN_I32);
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_ADD, .type = PIN_I32, .output = next, .left = sum, .right = input });
+        sum = next;
+    }
+    for (int i = 0; i < WIDE_PAUSES; i++) {
+        emit((behavior_function_instruction){ .op = BF_SUSPEND });
+    }
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(acount(function->slots) == WIDE_SLOTS && acount(function->suspensions) == WIDE_PAUSES);
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    apush(
+        prepared_plan->functions,
+        ((execution_module_function){ .id = 1,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = function })
+    );
+    function = NULL;
+    prepared_plan->function_count = 1;
+    char error[192] = { 0 };
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module);
+    size_t length = 0;
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, &length, error, sizeof error)
+    );
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    for (int backend = 0; backend < 2; backend++) {
+        size_t remaining = budget;
+        prepared_module = execution_prepared_read_budget(
+            prepared_bytes,
+            length,
+            NULL,
+            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (!prepared_module) {
+            fprintf(stderr, "decoded wide suspensions: %s\n", error);
+        }
+        REQUIRE(prepared_module);
+        REQUIRE(budget - remaining == execution_module_storage_bytes(prepared_module));
+        const behavior_function
+            *decoded = execution_module_function_at(prepared_module, 0).body;
+        REQUIRE(acount(decoded->suspensions) == WIDE_PAUSES);
+        for (int i = 0; i < WIDE_PAUSES; i++) {
+            const behavior_function_suspension *s = &decoded->suspensions[i];
+            REQUIRE(s->value_count == 1 && s->values[0] == sum && !s->root_count);
+            REQUIRE(arena_contains(&decoded->owned, s->values));
+        }
+        /* run() borrows the module's definition; cleanup must never free it. */
+        function = (behavior_function *)decoded;
+        pin_value argument = { .type = PIN_I32, .i = 3 }, result = number;
+        int pauses = 0,
+            flow = run(&argument, 1, NULL, &result, backend == 1, 1u << 20);
+        while (flow == FLOW_SUSPENDED_RESULT) {
+            pauses++;
+            flow = behavior_function_run(function, &context, backend == 1);
+        }
+        release_invocation();
+        function = NULL;
+        REQUIRE(flow == FLOW_OK && pauses == WIDE_PAUSES && result.i == 3 * WIDE_SLOTS);
+        execution_module_free(prepared_module);
+        prepared_module = NULL;
+    }
+    return true;
+}
+
+typedef struct
+{
+    pin_value input;
+    pin_type to;
+    behavior_cast_mode mode;
+    bool fits;
+    uint64_t bits; /* Integer result bits, or the double's representation. */
+} cast_vector;
+static pin_value cast_input(pin_type type, uint64_t bits)
+{
+    return behavior_scalar_from_bits(type, bits);
+}
+static pin_value cast_real(pin_type type, double x)
+{
+    return type == PIN_F32 ? (pin_value){ .type = PIN_F32, .f = (float)x }
+                           : (pin_value){ .type = PIN_F64, .d = x };
+}
+static uint64_t cast_double_bits(double x)
+{
+    uint64_t bits;
+    memcpy(&bits, &x, sizeof bits);
+    return bits;
+}
+static uint64_t cast_result_bits(pin_value value)
+{
+    return value.type == PIN_F64 ? cast_double_bits(value.d)
+                                 : behavior_scalar_bits(value);
+}
+TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp)
+{
+    enum
+    {
+        E = BEHAVIOR_CAST_EXACT,
+        W = BEHAVIOR_CAST_WRAP,
+        C = BEHAVIOR_CAST_CLAMP
+    };
+    const uint64_t big = UINT64_C(1) << 40, top = UINT64_C(1) << 63;
+    const cast_vector vectors[] = {
+        { cast_input(PIN_I64, 300), PIN_I32, E, true, 300 },
+        { cast_input(PIN_I64, big), PIN_I32, E, false, 0 },
+        { cast_input(PIN_I64, big + 7), PIN_I32, W, true, 7 },
+        { cast_input(PIN_I64, big), PIN_I32, C, true, INT32_MAX },
+        { cast_input(PIN_I64, (uint64_t)-(int64_t)big), PIN_I32, C, true, (uint64_t)(int64_t)INT32_MIN },
+        { cast_input(PIN_U64, 255), PIN_U8, E, true, 255 },
+        { cast_input(PIN_U64, 300), PIN_U8, E, false, 0 },
+        { cast_input(PIN_U64, 300), PIN_U8, W, true, 44 },
+        { cast_input(PIN_U64, 300), PIN_U8, C, true, 255 },
+        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, E, false, 0 },
+        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, W, true, UINT64_MAX },
+        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, C, true, 0 },
+        { cast_input(PIN_I32, 5), PIN_U64, E, true, 5 },
+        { cast_input(PIN_U64, top), PIN_I64, E, false, 0 },
+        { cast_input(PIN_U64, top), PIN_I64, C, true, INT64_MAX },
+        { cast_input(PIN_U64, top), PIN_I64, W, true, top },
+        { cast_input(PIN_I8, (uint64_t)-1), PIN_U16, E, false, 0 },
+        { cast_input(PIN_I8, (uint64_t)-1), PIN_I32, E, true, UINT64_MAX },
+        { cast_input(PIN_U8, 200), PIN_I32, E, true, 200 },
+        { cast_input(PIN_I16, 200), PIN_I8, W, true, (uint64_t)-56 },
+        { cast_input(PIN_U32, 0x80000000u), PIN_I32, E, false, 0 },
+        { cast_input(PIN_U32, 0x80000000u), PIN_I32, C, true, INT32_MAX },
+        { cast_real(PIN_F64, 0x1p63 + 4096), PIN_U64, E, true, top + 4096 },
+        { cast_real(PIN_F64, 1e30), PIN_U64, E, true, UINT64_MAX },
+        { cast_real(PIN_F64, -5), PIN_U64, E, true, 0 },
+        { cast_real(PIN_F64, NAN), PIN_I32, E, true, 0 },
+        { cast_real(PIN_F64, -40000.5), PIN_I16, E, true, (uint64_t)(int64_t)INT16_MIN },
+        { cast_real(PIN_F64, 123.9), PIN_I16, E, true, 123 },
+        { cast_real(PIN_F32, 2.75), PIN_I32, E, true, 2 },
+        { cast_real(PIN_F64, 0x1p63), PIN_I64, E, true, INT64_MAX },
+        { cast_real(PIN_F64, -1e30), PIN_I64, E, true, (uint64_t)INT64_MIN },
+        { cast_real(PIN_F32, 0x1p63), PIN_U64, E, true, top },
+        { cast_real(PIN_F64, -0.0), PIN_U8, E, true, 0 },
+        { cast_input(PIN_U64, UINT64_MAX), PIN_F64, E, true, cast_double_bits(0x1p64) },
+        { cast_input(PIN_I64, (uint64_t)-3), PIN_F64, E, true, cast_double_bits(-3) },
+    };
+    for (size_t v = 0; v < sizeof vectors / sizeof *vectors; v++) {
+        const cast_vector *c = &vectors[v];
+        /* A failing cast keeps its check even when nothing reads its value. */
+        for (int unused = 0; unused <= !c->fits; unused++) {
+            pin_value from = { .type = c->input.type }, to = { .type = c->to };
+            pin_value returned = unused ? from : to;
+            builder = behavior_function_builder_new();
+            behavior_function_builder_signature(builder, &from, 1, &returned, 1, NULL, 0);
+            int input = slot(from.type), output = slot(c->to);
+            emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                                  .type = from.type,
+                                                  .output = input,
+                                                  .value = from });
+            emit((behavior_function_instruction){ .op = BF_CAST,
+                                                  .type = c->to,
+                                                  .output = output,
+                                                  .left = input,
+                                                  .target = c->mode,
+                                                  .pin = 3 });
+            emit((behavior_function_instruction){ .op = BF_RESULT,
+                                                  .type = returned.type,
+                                                  .left = unused ? input : output });
+            emit((behavior_function_instruction){ .op = BF_RETURN });
+            emit((behavior_function_instruction){ .op = BF_END });
+            REQUIRE(finish());
+            REQUIRE(behavior_function_compile(function));
+            for (int backend = 0; backend < 2; backend++) {
+                pin_value result = returned;
+                int flow = run(&c->input, 1, NULL, &result, backend == 1, 16);
+                if (!c->fits) {
+                    REQUIRE(flow == FLOW_ERR_INVALID_GRAPH);
+                    REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA && context.error_pin == 3);
+                    continue;
+                }
+                if (flow != FLOW_OK || cast_result_bits(result) != c->bits) {
+                    fprintf(
+                        stderr,
+                        "cast vector %zu backend %d: flow %d bits %llx\n",
+                        v,
+                        backend,
+                        flow,
+                        (unsigned long long)cast_result_bits(result)
+                    );
+                }
+                REQUIRE(
+                    flow == FLOW_OK && result.type == c->to &&
+                    cast_result_bits(result) == c->bits
+                );
+            }
+            release_invocation();
+            behavior_function_free(function);
+            function = NULL;
+            behavior_function_builder_free(builder);
+            builder = NULL;
+        }
+    }
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
@@ -1583,5 +1813,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage);
     RUN_TEST_CASE(execution_unary_numeric_operands_ignore_unrelated_address_slot);
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
+    RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
+    RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
     pu_clear_setup();
 }

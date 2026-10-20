@@ -469,61 +469,6 @@ TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
     return true;
 }
 
-TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints)
-{
-    char serial[1024], threads[1024], script[1024], filename[1024], entry[1024],
-        residue[1024];
-    path(serial, directory, "web serial");
-    path(threads, directory, "web threads");
-    assert(!mkdir(serial, 0700));
-    assert(!mkdir(threads, 0700));
-    const char *files[] = { "chibi.html", "chibi.js", "chibi.wasm", "chibi.data", "chibi-isolation.js" };
-    for (int i = 0; i < (int)(sizeof files / sizeof *files); i++) {
-        path(filename, serial, files[i]);
-        tool_write(filename, "serial app");
-        path(filename, threads, files[i]);
-        tool_write(filename, "threaded app");
-    }
-    path(script, tool_root(), "tools/package_web.py");
-    const char *serial_args[] = { "python3",  script, "--serial", serial,
-                                  "--output", serial, NULL };
-    const char *paired_args[] = { "python3",  script,      "--serial",
-                                  serial,     "--threads", threads,
-                                  "--output", serial,      NULL };
-    REQUIRE(tool_run(serial_args, directory, log_path) == 0);
-    REQUIRE(tool_run(paired_args, directory, log_path) == 0);
-    path(entry, serial, "threads/index.html");
-    REQUIRE(file_equals(entry, "threaded app"));
-    path(filename, serial, "threads/chibi.html");
-    REQUIRE(file_equals(filename, "threaded app"));
-    path(residue, serial, "threads/authored.txt");
-    tool_write(residue, "keep unrelated residue");
-    REQUIRE(tool_run(serial_args, directory, log_path) == 0);
-    REQUIRE(access(entry, F_OK) != 0 && access(filename, F_OK) != 0);
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    path(filename, serial, "threads/chibi.wasm");
-    REQUIRE(file_equals(filename, "threaded app"));
-    REQUIRE(tool_run(paired_args, directory, log_path) == 0);
-    REQUIRE(file_equals(entry, "threaded app"));
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    assert(!unlink(entry));
-    assert(!symlink(residue, entry));
-    REQUIRE(tool_run(serial_args, directory, log_path) != 0);
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    struct stat info;
-    REQUIRE(!lstat(entry, &info) && S_ISLNK(info.st_mode));
-    assert(!unlink(entry));
-    char worker_directory[1024], preserved[1024];
-    path(worker_directory, serial, "threads");
-    path(preserved, serial, "preserved threads");
-    assert(!rename(worker_directory, preserved));
-    assert(!symlink(preserved, worker_directory));
-    REQUIRE(tool_run(serial_args, directory, log_path) != 0);
-    path(residue, preserved, "authored.txt");
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    return true;
-}
-
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -558,6 +503,5 @@ void test_tool_package()
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
-    RUN_TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints);
     tool_remove_tree(directory);
 }

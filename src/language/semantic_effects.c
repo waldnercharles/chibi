@@ -671,7 +671,7 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     }
     script_statement block = { .kind = SCRIPT_STMT_BLOCK,
                                .scope = a->scope,
-                               .range = script_analyzer_range(body),
+                               .range = script_analyzer_range(a, body),
                                .symbol = -1,
                                .expression = -1,
                                .second = -1,
@@ -700,7 +700,10 @@ static bool calls(analyzer *a, TSNode node, int symbol)
     if (script_analyzer_is(node, "call_expression")) {
         /* Spelled as call analysis resolves it, so `Lib.F` is not `F`. */
         char *target = script_analyzer_qualified_name(a, script_analyzer_field(node, "function"));
-        bool match = script_analyzer_callable_symbol(a, target) == symbol;
+        int resolved = script_analyzer_import_namespace(a, node, target)
+                         ? script_analyzer_package_function(a, node, target)
+                         : script_analyzer_callable_symbol(a, target);
+        bool match = resolved == symbol;
         free(target);
         if (match) {
             return true;
@@ -765,8 +768,9 @@ void script_analyzer_callable_definitions(analyzer *a, bool inferred_only)
 }
 void script_analyzer_host_declarations(analyzer *a, TSNode root)
 {
-    for (int i = 0; i < a->catalog->global_count; i++) {
-        const script_catalog_global *global = &a->catalog->globals[i];
+    const script_catalog *visible = a->native ? a->native : a->catalog;
+    for (int i = 0; i < visible->global_count; i++) {
+        const script_catalog_global *global = &visible->globals[i];
         apush(
             a->out->symbols,
             ((script_symbol){ .id = global->id,
@@ -780,8 +784,8 @@ void script_analyzer_host_declarations(analyzer *a, TSNode root)
                               .declaration = { .start = -1, .end = -1 } })
         );
     }
-    for (int i = 0; i < a->catalog->capability_count; i++) {
-        const script_catalog_capability *capability = &a->catalog->capabilities[i];
+    for (int i = 0; i < visible->capability_count; i++) {
+        const script_catalog_capability *capability = &visible->capabilities[i];
         if (capability->kind == SCRIPT_CAPABILITY_PROTOTYPE) {
             continue;
         }

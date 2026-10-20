@@ -1,9 +1,9 @@
 MeshSurfaceSweep01 :: behavior {
     elapsed: retain float = 0.0
     on Tick {
-        elapsed += cast<double>(delta)
-        self.Orientation.Radians = cast<double>(elapsed) * 0.5235987756
-        self.VisualTransform.Pitch = 0.5235987756 * sin(cast<double>(elapsed) * 0.7853981634)
-        self.VisualTransform.Roll = 0.5235987756 * sin(cast<double>(elapsed) * 1.0471975512)
+        elapsed += double(delta)
+        self.Orientation.Radians = double(elapsed) * 0.5235987756
+        self.VisualTransform.Pitch = 0.5235987756 * sin(double(elapsed) * 0.7853981634)
+        self.VisualTransform.Roll = 0.5235987756 * sin(double(elapsed) * 1.0471975512)
     }
 }

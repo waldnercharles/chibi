@@ -38,15 +38,24 @@ void test_tool_execution_policy();
 #ifdef CHIBI_TEST_C_EXPORT
 void test_tool_c_export();
 void test_tool_record_c_export();
-void test_tool_row_builder_c();
 #endif
 void test_tool_package();
+void test_tool_chibi_cli(const char *binary);
+void test_tool_chibi_cli_installed(const char *binary);
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+void test_tool_compiler_artifact(const char *producer, const char *host);
+void test_tool_compiler_bootstrap(const char *producer, const char *host);
+void test_tool_bootstrap_recovery(const char *host, const char *artifact);
+#endif
+#ifdef CHIBI_TEST_BUILD_PROCESS
+void test_tool_build_process(const char *worker, const char *host);
+void test_build_toolchain(const char *worker, const char *host);
+#endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
-void test_tool_publish();
 void test_tool_web_storage();
 void test_tool_player_url();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
@@ -496,6 +505,80 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 4 && !strcmp(argv[1], "--build-toolchain")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_build_toolchain(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--compiler-artifact")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_compiler_artifact(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--compiler-bootstrap")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_compiler_bootstrap(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--bootstrap-recovery")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_bootstrap_recovery(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--build-process")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_tool_build_process(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-installed")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli_installed(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();
@@ -636,14 +719,11 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
     if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
-                      !strcmp(argv[1], "--record-c-export") ||
-                      !strcmp(argv[1], "--row-builder-c"))) {
+                      !strcmp(argv[1], "--record-c-export"))) {
 #ifdef CHIBI_TEST_C_EXPORT
         tool_init();
         pu_display_time(true);
-        if (!strcmp(argv[1], "--row-builder-c")) {
-            test_tool_row_builder_c();
-        } else if (!strcmp(argv[1], "--record-c-export")) {
+        if (!strcmp(argv[1], "--record-c-export")) {
             test_tool_record_c_export();
         } else {
             test_tool_c_export();
@@ -980,7 +1060,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --package-ownership | --unit | "
-            "--reflect-ranges | --c-export-alias | --row-builder-c | "
+            "--reflect-ranges | --c-export-alias | "
             "--ecs-query | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
@@ -1386,10 +1466,8 @@ int main(int argc, char **argv)
         test_tool_collab();
         test_tool_test_policy();
         test_tool_validation_plan();
-        test_tool_publish();
 #ifdef CHIBI_TEST_C_EXPORT
         test_tool_c_export();
-        test_tool_row_builder_c();
 #endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();

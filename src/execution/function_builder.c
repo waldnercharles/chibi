@@ -945,6 +945,13 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             break;
         case BF_CAST:
             CHECK(behavior_scalar_cast_supported(f->slots[i->left], i->type), "invalid numeric cast");
+            CHECK(
+                i->target == BEHAVIOR_CAST_EXACT ||
+                    ((i->target == BEHAVIOR_CAST_WRAP || i->target == BEHAVIOR_CAST_CLAMP) &&
+                     behavior_scalar_integer(f->slots[i->left]) &&
+                     behavior_scalar_integer(i->type)),
+                "invalid numeric cast mode"
+            );
             break;
         case BF_CONVERT:
             CHECK(
@@ -1236,6 +1243,18 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_PUSH:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   values[1].initial.container == PIN_CONTAINER_SINGLE &&
+                   OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   values[1].initial.container == PIN_CONTAINER_ARRAY &&
+                   OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
+                   values[2].initial.container == PIN_CONTAINER_SINGLE &&
+                   OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
         case EXECUTION_INTRINSIC_EVENT_READ:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
@@ -1402,6 +1421,10 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                 );
             } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
                 CHECK_KIND(KIND(i->left) == BEHAVIOR_ADDRESS);
+            } else if (bank >= 0) {
+                /* Snapshots and constructors copy by the runtime type and
+                 * container, which must stay the declared ones. */
+                return "data cell header field is not writable";
             }
             break;
         }
@@ -1636,6 +1659,9 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_STATE_TRANSITION:
                 case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
                 case EXECUTION_INTRINSIC_EVENT_READ:
+                case EXECUTION_INTRINSIC_ARRAY_PUSH:
+                case EXECUTION_INTRINSIC_ARRAY_STORE:
+                case EXECUTION_INTRINSIC_ARRAY_EXTEND:
                     expected = BEHAVIOR_ADDRESS;
                     break;
             }
@@ -2265,7 +2291,10 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
     if (!b->decoded) {
         behavior_function_optimize(f);
     }
-    behavior_function_finalize(f);
+    if (!behavior_function_finalize(f, b->decoded ? b->arena_budget : SIZE_MAX)) {
+        snprintf(error, size, "suspension live sets exceed preparation budget");
+        return NULL;
+    }
     behavior_function_parallel_proof(f);
     if (b->decoded) {
         if (!behavior_function_own_decoded(f, b->arena_budget)) {

@@ -1,6 +1,7 @@
 #include "language/syntax.h"
 
 #include "authoring/source_format.h"
+#include "syntax_corpus.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -88,7 +89,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
-        "on Tick as frame(dt: float) { count += cast<int>(dt); }\n"
+        "on Tick as frame(dt: float) { count += int(dt); }\n"
         "after pending.Completed { destroy(self); }\n"
         "events Other { on Begin { pending.start(); } }\n"
         "}"
@@ -376,6 +377,56 @@ TEST_CASE(language_system_queries_and_control_flow)
     return true;
 }
 
+TEST_CASE(language_nested_typed_records_and_explicit_labels)
+{
+    parse(
+        "Parser :: library { Package :: struct { directory: string; name: "
+        "string; "
+        "member_start: int; member_count: int; }\n"
+        "Main :: (enabled: bool) -> int {\n"
+        " result: int = 0;\n"
+        " if enabled {\n"
+        "  item: Package = {directory: \"app\", name: \"sample\",\n"
+        "                   member_start: 3, member_count: 4};\n"
+        "  result = item.member_start + item.member_count;\n"
+        " }\n"
+        " if true {\n"
+        " ordinary:\n"
+        " result = result + 1;\n"
+        " compound: result += 1;\n"
+        " }\n"
+        " return result;\n"
+        "} }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode library = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    TSNode body = field(library, "body");
+    TSNode function = ts_node_named_child(body, 1);
+    body = field(function, "body");
+    REQUIRE(ts_node_named_child_count(body) == 4);
+    TSNode branch = ts_node_named_child(body, 1);
+    TSNode nested = field(branch, "consequence");
+    REQUIRE(ts_node_named_child_count(nested) == 2);
+    TSNode item = ts_node_named_child(nested, 0);
+    REQUIRE(!strcmp(ts_node_type(item), "local_declaration"));
+    REQUIRE(node_text(field(item, "name"), "item"));
+    REQUIRE(node_text(field(item, "type"), "Package"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(nested, 1)), "assignment"));
+    TSNode labels = field(ts_node_named_child(body, 2), "consequence");
+    REQUIRE(ts_node_named_child_count(labels) == 4);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 0)), "label_statement"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 1)), "assignment"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 2)), "label_statement"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 3)), "assignment"));
+    parse("State :: system() { inferred: retain = 1; typed: retain int = 2; }");
+    REQUIRE(original->diagnostic_count == 0);
+    body = declaration_body();
+    REQUIRE(ts_node_named_child_count(body) == 2);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "state_declaration"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 1)), "state_declaration"));
+    return true;
+}
+
 TEST_CASE(language_definitions_unions_and_type_patterns)
 {
     parse(
@@ -457,20 +508,7 @@ TEST_CASE(language_obsolete_declaration_tokens_rejected)
 
 TEST_CASE(language_expressions_precedence_and_continuation)
 {
-    parse(
-        "Expressions :: behavior {\n"
-        "product := 1 + 2 * 3\n"
-        "difference := 9 - 3 - 1\n"
-        "vector := {x: 1, y: 2}\n"
-        "items := [1,\n2, 3,]\n"
-        "selected := items[1]\n"
-        "fallback_value := fallback(default: 0)\n"
-        "on Begin {\n"
-        "computed := 1 // newline continuation\n+ 2\n"
-        "other := 3 + /* operator continuation */\n4\n"
-        "consume(\nvector.x,\nselected\n)\n"
-        "}\n}"
-    );
+    parse(syntax_corpus_cases[SYNTAX_CORPUS_PRECEDENCE].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
     TSNode product = field(ts_node_named_child(body, 0), "value");
@@ -479,13 +517,7 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode difference = field(ts_node_named_child(body, 1), "value");
     REQUIRE(node_text(field(difference, "right"), "1"));
     REQUIRE(node_text(field(field(difference, "left"), "operator"), "-"));
-    parse(
-        "Calls :: behavior { on Begin {\n"
-        "await set_variable<flash>(Value: bool = true);\n"
-        "consume(Owner: other, Position: target.Position, Label: \"text\");\n"
-        "consume(Value: cast<to_vec>(component(Transform)));\n"
-        "} }"
-    );
+    parse(syntax_corpus_cases[SYNTAX_CORPUS_CALLS].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode statements = field(ts_node_named_child(declaration_body(), 0), "body");
     TSNode waiting = ts_node_named_child(ts_node_named_child(statements, 0), 0);
@@ -507,9 +539,10 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     }
     call = ts_node_named_child(ts_node_named_child(statements, 2), 0);
     TSNode converted = field(ts_node_named_child(field(call, "arguments"), 0), "value");
-    REQUIRE(!strcmp(ts_node_type(converted), "cast_expression"));
-    REQUIRE(node_text(field(converted, "type"), "to_vec"));
-    TSNode operand = field(converted, "value");
+    REQUIRE(!strcmp(ts_node_type(converted), "call_expression"));
+    REQUIRE(node_text(field(converted, "function"), "convert"));
+    REQUIRE(!ts_node_is_null(field(converted, "type_arguments")));
+    TSNode operand = ts_node_named_child(field(converted, "arguments"), 0);
     REQUIRE(!strcmp(ts_node_type(operand), "call_expression"));
     REQUIRE(node_text(field(operand, "function"), "component"));
     REQUIRE(node_text(ts_node_named_child(field(operand, "arguments"), 0), "Transform"));
@@ -518,29 +551,25 @@ TEST_CASE(language_expressions_precedence_and_continuation)
 
 TEST_CASE(language_invalid_source_has_positioned_diagnostics)
 {
-    const char *cases[] = {
-        "Broken :: behavior { first := 1 second := 2 }",
-        "Broken :: behavior { true := 1 }",
-        "Broken :: behavior { on Begin { value := ; } }",
-        "Broken :: behavior { on Begin { if true { }",
-        "Broken :: library { MissingBody :: () -> () }",
-        "Broken :: behavior { on Begin { nudge(&speed) } }",
-    };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < SYNTAX_CORPUS_INVALID_COUNT; i++) {
         cleanup();
-        original = script_parse(cases[i]);
+        original = script_parse(syntax_corpus_cases[i].text);
         if (!original->diagnostic_count) {
-            fprintf(stderr, "Unexpected valid syntax: %s\n", cases[i]);
+            fprintf(
+                stderr,
+                "Unexpected valid syntax: %s\n",
+                syntax_corpus_cases[i].text
+            );
         }
         REQUIRE(original->diagnostic_count > 0);
         REQUIRE(ts_node_has_error(ts_tree_root_node(original->tree)));
         script_range range = original->diagnostics[0].range;
         REQUIRE(range.start >= 0 && range.end >= range.start);
-        REQUIRE(range.end <= (int)strlen(cases[i]));
+        REQUIRE(range.end <= (int)strlen(syntax_corpus_cases[i].text));
         REQUIRE(range.line >= 1 && range.column >= 1);
     }
     cleanup();
-    original = script_parse("Broken :: behavior { broken := ; later := 7 }");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_RECOVERY].text);
     REQUIRE(original->diagnostic_count > 0);
     TSNode body = declaration_body();
     bool found = false;
@@ -558,19 +587,19 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
 
 TEST_CASE(language_incremental_snapshot_matches_fresh)
 {
-    original = script_parse("Edit :: behavior {\n// café\ncount := 1\n}\n");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_UTF8].text);
     REQUIRE(original->diagnostic_count == 0);
     original_tree = ts_node_string(ts_tree_root_node(original->tree));
-    int offset = (int)(strstr(original->text, "é") - original->text);
-    edited = script_edit(original, offset, offset + (int)strlen("é"), "π\n// extra");
+    const syntax_corpus_edit *edit = &syntax_corpus_edits[0];
+    edited = script_edit(original, edit->start, edit->end, edit->replacement);
     REQUIRE(edited->diagnostic_count == 0);
-    REQUIRE(!strcmp(edited->text, "Edit :: behavior {\n// cafπ\n// extra\ncount := 1\n}\n"));
+    REQUIRE(!strcmp(edited->text, edit->after));
     fresh = script_parse(edited->text);
     edited_tree = ts_node_string(ts_tree_root_node(edited->tree));
     fresh_tree = ts_node_string(ts_tree_root_node(fresh->tree));
     REQUIRE(!strcmp(edited_tree, fresh_tree));
     REQUIRE(fresh->diagnostic_count == edited->diagnostic_count);
-    REQUIRE(!strcmp(original->text, "Edit :: behavior {\n// café\ncount := 1\n}\n"));
+    REQUIRE(!strcmp(original->text, syntax_corpus_cases[SYNTAX_CORPUS_UTF8].text));
     free(fresh_tree);
     fresh_tree = ts_node_string(ts_tree_root_node(original->tree));
     REQUIRE(!strcmp(original_tree, fresh_tree));
@@ -585,10 +614,10 @@ TEST_CASE(language_incremental_snapshot_matches_fresh)
 
 TEST_CASE(language_incremental_errors_match_fresh)
 {
-    original = script_parse("Edit :: behavior { first := 1; later := 2 }");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_DELETE].text);
     REQUIRE(original->diagnostic_count == 0);
-    int start = (int)(strstr(original->text, "1") - original->text);
-    edited = script_edit(original, start, start + 1, "");
+    const syntax_corpus_edit *edit = &syntax_corpus_edits[1];
+    edited = script_edit(original, edit->start, edit->end, edit->replacement);
     fresh = script_parse(edited->text);
     REQUIRE(edited->diagnostic_count > 0);
     REQUIRE(edited->diagnostic_count == fresh->diagnostic_count);
@@ -754,6 +783,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_not_callable_and_unary_spellings_disambiguate);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
+    RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);

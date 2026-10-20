@@ -59,6 +59,15 @@ int pin_array_snapshot_copy(arena *, pin_array *out, int to, const pin_array *it
  * per range, and each original source layout before copying. Items already
  * copied on failure must be abandoned with the unpublished destination array. */
 int pin_array_snapshot_items(arena *, const pin_record *, pin_value *out, const pin_value *items, int count);
+/* As above for an array the arena already owns, whose layout ownership was
+ * established when the array was made, so no ownership walk repeats. */
+int pin_array_snapshot_owned_items(
+    arena *,
+    const pin_record *,
+    pin_value *out,
+    const pin_value *items,
+    int count
+);
 /* Fixed-size typed zero values, owned by the arena. */
 pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
 /* Deep snapshot, including registered struct fields and all nominal names. */
@@ -69,6 +78,10 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
+/* Grows an exclusively owned arena array to hold count items, doubling its
+ * capacity like Odin's dynamic arrays so appends cost amortized O(1). Items
+ * move without copying their payloads; the old buffer becomes unreachable. */
+int pin_array_reserve_owned(arena *a, pin_array *array, int count);
 int pin_array_push(pin_array *array, const pin_value *value);
 int pin_array_equal(const pin_array *a, const pin_array *b);
 

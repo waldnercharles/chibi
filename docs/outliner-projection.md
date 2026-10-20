@@ -122,7 +122,7 @@ Each command retained its own shared 60-second deadline including children.
 The total is 809 case executions and 321,730 assertions. All 10,347 pre/post
 identities remained unchanged. Both language groups include the new selector
 exactly once, and the existing same-child tooling assertion now guards that
-membership alongside row-array and row-builder coverage. The tooling duration
+membership alongside row-array coverage. The tooling duration
 above is the final outer supervisor, not an internal fixture's nested timing.
 Only this scope/evidence documentation follows the tested code checkpoint;
 published-tree correspondence and ordinary server/review gates remain required.

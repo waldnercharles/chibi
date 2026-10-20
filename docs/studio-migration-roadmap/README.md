@@ -33,11 +33,9 @@ new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
 The [owned add/append CALL result reduction](../row-array-construction.md)
 records exact baseline/candidate evidence for removing one redundant deep copy.
-The subsequent [counted record construction](../counted-record-construction.md)
-removes both prefix-copy terms for one proven private counted-add loop under a
-64 KiB item-buffer bound, with canonical inspection/generated-C fallback and
-complete admitted regression groups. Other shapes, general collection scaling
-and the remaining L04/P01 criteria stay open. This supplementary note does not
+[Local array construction](../counted-record-construction.md) now appends to
+and writes a local's own array in place, so building one is linear for every
+loop shape. The remaining L04/P01 criteria stay open. This supplementary note does not
 change the frozen generated ledger or complete the Outliner cutover.
 
 ## Supplementary Outliner policy specimen, 16 October 2026

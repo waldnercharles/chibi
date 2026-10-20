@@ -112,7 +112,13 @@ TEST_CASE(s2n_fetch_omits_unused_verification_submodules)
 
 TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
 {
+#ifdef __linux__
     REQUIRE(relocated("opengl"));
+#else
+    /* Only Linux recreates FindOpenGL's absolute library roles; other hosts
+     * link frameworks or import libraries, so the same paths stay unowned. */
+    REQUIRE(rejected("opengl", "unowned absolute link"));
+#endif
     REQUIRE(rejected("unowned", "unowned absolute link"));
     return true;
 }
@@ -173,6 +179,23 @@ TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition)
     return true;
 }
 
+TEST_CASE(tooling_languages_follow_native_packages)
+{
+    char producer[1024];
+    path(producer, fixture, "languages");
+    const char *modes[] = { "runtime", "scheduler", "render", "installed" };
+    for (int i = 0; i < 4; i++) {
+        char build[1024], mode[100];
+        path(build, directory, modes[i]);
+        int n = snprintf(mode, sizeof mode, "-DCASE=%s", modes[i]);
+        assert(n > 0 && (size_t)n < sizeof mode);
+        const char *args[] = { "cmake", "-S",    producer, "-B", build,
+                               "-G",    "Ninja", root,     mode, NULL };
+        REQUIRE(tool_run(args, directory, log_path) == 0);
+    }
+    return true;
+}
+
 void test_tool_desktop_dependencies()
 {
     strcpy(directory, "/tmp/chibi-desktop-dependencies-XXXXXX");
@@ -188,5 +211,6 @@ void test_tool_desktop_dependencies()
     RUN_TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail);
     RUN_TEST_CASE(cached_crypto_imports_preserve_provider_on_reconfigure);
     RUN_TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition);
+    RUN_TEST_CASE(tooling_languages_follow_native_packages);
     tool_remove_tree(directory);
 }

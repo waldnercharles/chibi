@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_LEXICAL_BINDING_CHIBI_H
+#define CHIBI_TEST_LEXICAL_BINDING_CHIBI_H
+void test_language_lexical_binding_chibi();
+#endif

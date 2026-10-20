@@ -1,7 +1,7 @@
 HudDisplay :: behavior {
 
     on Tick as tick(DeltaSeconds: float = 0.0) {
-        player := cast<handle<ecs.entity>>(get_global_variable(Name: "Player"))
+        player := entity(get_global_variable(Name: "Player"))
         alive := has_component(Component: Health, Entity: player)
         if (alive) {
             current := get_component(Component: Health, Entity: player).Value.current
@@ -21,7 +21,7 @@ HudDisplay :: behavior {
         }
     }
     on Repair as repair() {
-        player := cast<handle<ecs.entity>>(get_global_variable(Name: "Player"))
+        player := entity(get_global_variable(Name: "Player"))
         alive := has_component(Component: Health, Entity: player)
         if (alive) {
             maximum := get_component(Component: Health, Entity: player).Value.maximum

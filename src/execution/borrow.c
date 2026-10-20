@@ -2,6 +2,7 @@
 
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/program_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -521,6 +522,7 @@ void behavior_function_prepare_borrows(behavior_function *f)
     if (!f || !f->frozen) {
         return;
     }
+    execution_prepare_argument_sharing(f);
     borrow_proof proof = { 0 };
     f->readonly_collections = readonly(f, NULL, &proof);
     if (!f->readonly_collections) {

@@ -1,6 +1,7 @@
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
+#include "execution/function.h"
 #include "execution/function_builder.h"
 #include "execution/inspection.h"
 #include "execution/module.h"
@@ -251,7 +252,7 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
                   "string=\"\"; Echo :: (value:string)->string { return value; "
                   "} on Text(value:string) { kept=Echo(value); } on "
                   "Run(amount:double) { if amount<0 { values:=[10,20]; "
-                  "total=values[cast<int>(-amount)]; } else { total+=amount; } "
+                  "total=values[int(-amount)]; } else { total+=amount; } "
                   "} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -339,6 +340,77 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
         REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
         cleanup();
     }
+    return true;
+}
+/* A helper called many times in one run reuses its spare frame each time:
+ * retention is counted once per retired frame, never drifting toward the
+ * budget, so later runs allocate nothing and keep the same cache size. */
+TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls)
+{
+    const char *source = "Cache :: behavior { total: retain double=0; "
+                         "Leaf :: (value:double)->double { return value + 1; } "
+                         "on Run(amount:double) { i:int=0; "
+                         "while i < 300 { total += Leaf(amount); i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 600) && cached());
+        size_t bytes = execution_program_memory_usage(program).activation_cache_bytes;
+        for (int pass = 1; pass <= 3; pass++) {
+            xalloc_stats before, after;
+            xalloc_stats_get(&before);
+            int status = run(0, 1, pass);
+            xalloc_stats_get(&after);
+            REQUIRE(status == FLOW_OK && total(0, 600.0 * (pass + 1)) && cached());
+            REQUIRE(
+                after.calls == before.calls && after.requested_bytes == before.requested_bytes
+            );
+            REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == bytes);
+        }
+        cleanup();
+    }
+    return true;
+}
+/* A callee whose frame alone exceeds the idle budget is reused while its run
+ * lasts, so a run sets up the same frames however often it calls it; the
+ * settled activation keeps no more than the idle budget. */
+TEST_CASE(activation_cache_reuses_large_frames_within_a_run)
+{
+    enum
+    {
+        ITEMS = 3000
+    };
+    static const char
+        head[] = "Cache :: behavior { total: retain double=0; "
+                 "Big :: (value:double)->double { values:=[value",
+        item[] = ",value",
+        tail[] = "]; return values[0]; } "
+                 "on Run(amount:double) { i:int=0; "
+                 "while i < int(amount) { total += Big(1); i += 1; } } }";
+    char *source = xmalloc(sizeof head + (ITEMS - 1) * (sizeof item - 1) + sizeof tail);
+    char *at = source;
+    memcpy(at, head, sizeof head - 1);
+    at += sizeof head - 1;
+    for (int i = 1; i < ITEMS; i++) {
+        memcpy(at, item, sizeof item - 1);
+        at += sizeof item - 1;
+    }
+    memcpy(at, tail, sizeof tail);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 2, 0) == FLOW_OK && total(0, 2));
+        uint64_t frames[2];
+        for (int pass = 0; pass < 2; pass++) {
+            uint64_t before = behavior_function_data_allocations();
+            REQUIRE(run(0, pass ? 12 : 2, pass + 1) == FLOW_OK);
+            REQUIRE(execution_program_memory_usage(program).activation_cache_bytes <= CACHE_LIMIT);
+            frames[pass] = behavior_function_data_allocations() - before;
+        }
+        REQUIRE(total(0, 16) && frames[1] == frames[0]);
+        cleanup();
+    }
+    free(source);
     return true;
 }
 TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
@@ -442,6 +514,8 @@ void test_language_activation_cache()
     RUN_TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work);
     RUN_TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs);
     RUN_TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention);
+    RUN_TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls);
+    RUN_TEST_CASE(activation_cache_reuses_large_frames_within_a_run);
     RUN_TEST_CASE(activation_cache_keeps_waits_and_inspection_independent);
     RUN_TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks);
     pu_clear_setup();

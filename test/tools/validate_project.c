@@ -372,21 +372,24 @@ TEST_CASE(catalog_errors_are_reported_once)
         REQUIRE(yyjson_obj_get(diagnostic, "line"));
     }
 
-    /* The catalog lists the declaration's unknown type, not the cast's. */
+    /* The declaration reports its unknown type, and `Foo(a)`, which names no
+     * type, its unknown callable. */
     write_file(
         "game/content/behaviors/Broken.chibi",
         "Broken :: behavior {\n"
         "    a: retain Foo = 0\n"
         "    on Tick {\n"
-        "        a = cast<Foo>(a)\n"
+        "        a = Foo(a)\n"
         "    }\n"
         "}\n"
     );
-    REQUIRE(validate() != 0 && errors() == 1);
+    REQUIRE(validate() != 0 && errors() == 2);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
-    REQUIRE(yyjson_arr_size(diagnostics) == 1);
-    REQUIRE(!strcmp(first_message(diagnostics), "Unknown type 'Foo'"));
-    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get_first(diagnostics), "line")) == 2);
+    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Unknown callable 'Foo'"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "line")) == 4);
+    REQUIRE(!strcmp(message_at(diagnostics, 1), "Unknown type 'Foo'"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 1), "line")) == 2);
     return true;
 }
 

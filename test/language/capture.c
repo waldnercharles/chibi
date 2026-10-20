@@ -4,6 +4,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -254,11 +255,108 @@ TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root)
     REQUIRE(!strcmp(original->label, "sibling"));
     return true;
 }
+/* Reads through reference with result declared as the read's result header:
+ * fails with error, or with no error succeeds into *out. */
+static bool read_value(pin_value reference, pin_value declared, const char *error, pin_value *out)
+{
+    *out = declared;
+    const char *failure = EXECUTION_reference_read_call.value(&references, &reference, 1, out);
+    if (error && (!failure || strcmp(failure, error))) {
+        fprintf(stderr, "reference read: %s\n", failure ? failure : "succeeded");
+    }
+    REQUIRE(error ? failure && !strcmp(failure, error) : !failure);
+    return true;
+}
+/* A reference copies by the type it was made with, and a read's result goes to
+ * code checked against its declared header, so a reference whose type is not
+ * its root's, a read declared as another type, a field path naming no such
+ * field and a write of another type all fail and leave the root as it was. */
+TEST_CASE(capture_references_refuse_another_type)
+{
+    type_catalog_set_project(&record_pack);
+    project_types = true;
+    capture_record value = { .inner = { .number = 2, .text = "inner" },
+                             .label = "label" };
+    pin_value record = { .type = PIN_STRUCT, .type_name = "CaptureRecord" };
+    REQUIRE(begin(
+        (pin_value){ .type = PIN_STRUCT, .type_name = "CaptureRecord", .ptr = &value }
+    ));
+    pin_value read;
+    REQUIRE(read_value(root_reference, record, NULL, &read));
+    REQUIRE(((const capture_record *)read.ptr)->inner.number == 2);
+    REQUIRE(read_value(
+        root_reference,
+        (pin_value){ .type = PIN_F64 },
+        "Reference read differs from its declared result",
+        &read
+    ));
+    pin_value inner = { .type = PIN_STRUCT, .type_name = "CaptureInner" };
+    pin_value claimed = execution_reference_value(&references, &origin, &box.kept, inner);
+    REQUIRE(read_value(claimed, inner, "Reference type differs from its storage", &read));
+    pin_value label;
+    REQUIRE(
+        path(root_reference, (pin_value){ .type = PIN_F64 }, offsetof(capture_record, label), false, &label)
+    );
+    REQUIRE(
+        read_value(label, (pin_value){ .type = PIN_F64 }, "Referenced storage is unavailable", &read)
+    );
+    REQUIRE(
+        path(root_reference, (pin_value){ .type = PIN_STR }, offsetof(capture_record, label), false, &label)
+    );
+    REQUIRE(read_value(label, (pin_value){ .type = PIN_STR }, NULL, &read));
+    REQUIRE(!strcmp(read.str, "label"));
+    REQUIRE(write_value(root_reference, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(
+        box.kept.type == PIN_STRUCT &&
+        !strcmp(((const capture_record *)box.kept.ptr)->label, "label")
+    );
+    return true;
+}
+/* Lowered union headers carry no declaration name: an unnamed union reference
+ * reads and writes unnamed unions, and a named one still refuses another. */
+TEST_CASE(capture_unnamed_union_references_read_and_write)
+{
+    pin_value payload = { .type = PIN_I32, .i = 4 }, first, second;
+    REQUIRE(!pin_union_value(&escaped, 11, &payload, 1, &first));
+    REQUIRE(!pin_union_value(&escaped, 12, NULL, 0, &second));
+    REQUIRE(begin(first));
+    pin_value read;
+    REQUIRE(read_value(root_reference, (pin_value){ .type = PIN_UNION }, NULL, &read));
+    REQUIRE(((const pin_union *)read.ptr)->tag == 11);
+    REQUIRE(write_value(root_reference, second, true));
+    REQUIRE(((const pin_union *)box.kept.ptr)->tag == 12);
+    pin_value named = first;
+    named.type_name = "Shape";
+    REQUIRE(write_value(root_reference, named, false));
+    return true;
+}
+/* An element write must match both the element type its reference claims and
+ * the array's own item: a string array's element stays a string. */
+TEST_CASE(capture_element_writes_keep_the_item_type)
+{
+    pin_value items[] = { { .type = PIN_STR, .str = "first" } };
+    pin_array values = { .element_type = PIN_STR, .count = 1, .capacity = 1, .items = items };
+    REQUIRE(begin((pin_value){ .type = PIN_STR,
+                               .container = PIN_CONTAINER_ARRAY,
+                               .ptr = &values }));
+    pin_value text, number;
+    REQUIRE(path(root_reference, (pin_value){ .type = PIN_STR }, 0, true, &text));
+    REQUIRE(write_value(text, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(path(root_reference, (pin_value){ .type = PIN_F64 }, 0, true, &number));
+    REQUIRE(write_value(number, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(((const pin_array *)box.kept.ptr)->items[0].type == PIN_STR);
+    REQUIRE(write_value(text, (pin_value){ .type = PIN_STR, .str = "second" }, true));
+    REQUIRE(!strcmp(((const pin_array *)box.kept.ptr)->items[0].str, "second"));
+    return true;
+}
 void test_language_capture()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(capture_whole_value_shrink_preserves_escaped_and_self_values);
     RUN_TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically);
     RUN_TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root);
+    RUN_TEST_CASE(capture_references_refuse_another_type);
+    RUN_TEST_CASE(capture_element_writes_keep_the_item_type);
+    RUN_TEST_CASE(capture_unnamed_union_references_read_and_write);
     pu_clear_setup();
 }

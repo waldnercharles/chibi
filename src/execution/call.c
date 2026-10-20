@@ -10,7 +10,10 @@
 
 #include <stdlib.h>
 
+/* Spare frames a settled stack keeps for its next run, and the larger set a
+ * running stack keeps so its hot callees reuse their frames. */
 #define CALL_CACHE_BYTES (64 * 1024)
+#define CALL_RUN_CACHE_BYTES (8 * 1024 * 1024)
 
 typedef struct invocation_frame
 {
@@ -21,6 +24,8 @@ typedef struct invocation_frame
     behavior_data_storage *data;
     arena storage;
     bool entered;
+    /* What a spare frame retains, measured when it retired. */
+    size_t bytes;
     struct invocation_frame *next;
 } invocation_frame;
 
@@ -29,9 +34,11 @@ struct behavior_function_calls
     /* Frames have stable addresses. A growing pointer array never invalidates
      * context.parent or arguments retained by a pending host operation. */
     invocation_frame **frames;
-    /* Completed frames, matched by immutable function generation. Their whole
-     * retained allocation set is bounded and never forms a live value root. */
+    /* Completed frames, matched by immutable function generation, from most to
+     * least recently retired. Their whole retained allocation set,
+     * `spare_bytes`, is bounded and never forms a live value root. */
     invocation_frame *spare;
+    size_t spare_bytes;
     int result;
 };
 
@@ -71,10 +78,7 @@ size_t behavior_function_calls_storage_bytes(const struct behavior_function_call
     for (int i = 0; i < acount(calls->frames); i++) {
         bytes += frame_bytes(calls->frames[i]);
     }
-    for (const invocation_frame *frame = calls->spare; frame; frame = frame->next) {
-        bytes += frame_bytes(frame);
-    }
-    return bytes;
+    return bytes + calls->spare_bytes;
 }
 void behavior_function_calls_reset(struct behavior_function_calls *calls)
 {
@@ -91,6 +95,30 @@ void behavior_function_calls_reset(struct behavior_function_calls *calls)
     }
 }
 
+/* The stack's own allocation: its header and frame vector. */
+static size_t calls_fixed_bytes(const struct behavior_function_calls *calls)
+{
+    return sizeof *calls + sizeof(dyna_hdr) +
+           (size_t)acap(calls->frames) * sizeof *calls->frames;
+}
+/* Keeps the most recently retired spares that fit `budget` with the stack
+ * and frees the rest, in one pass over the list. */
+static void trim_spares(struct behavior_function_calls *calls, size_t budget)
+{
+    size_t used = calls_fixed_bytes(calls);
+    invocation_frame **kept = &calls->spare;
+    while (*kept && used + (*kept)->bytes <= budget) {
+        used += (*kept)->bytes;
+        kept = &(*kept)->next;
+    }
+    while (*kept) {
+        invocation_frame *frame = *kept;
+        *kept = frame->next;
+        calls->spare_bytes -= frame->bytes;
+        frame_free(frame, FLOW_OK);
+    }
+}
+
 static void frame_retire(struct behavior_function_calls *calls, invocation_frame *frame)
 {
     frame_leave(frame, FLOW_OK);
@@ -99,19 +127,19 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     arena_reset(&frame->storage);
     frame->invocation = (behavior_function_invocation){ 0 };
     /* Live frames are an execution requirement, not an idle-retention budget.
-     * Count the reusable list and its vector capacity before adding this one. */
-    size_t bytes = sizeof *calls + sizeof(dyna_hdr) +
-                   (size_t)acap(calls->frames) * sizeof *calls->frames +
-                   frame_bytes(frame);
-    for (invocation_frame *spare = calls->spare; spare; spare = spare->next) {
-        bytes += frame_bytes(spare);
-    }
-    if (bytes > CALL_CACHE_BYTES) {
+     * A frame that cannot fit beside the stack's vector is freed at once. A
+     * full list drops to half the budget, so trims stay rare. */
+    frame->bytes = frame_bytes(frame);
+    if (calls_fixed_bytes(calls) + frame->bytes > CALL_RUN_CACHE_BYTES) {
         frame_free(frame, FLOW_OK);
         return;
     }
     frame->next = calls->spare;
     calls->spare = frame;
+    calls->spare_bytes += frame->bytes;
+    if (calls_fixed_bytes(calls) + calls->spare_bytes > CALL_RUN_CACHE_BYTES) {
+        trim_spares(calls, CALL_RUN_CACHE_BYTES / 2);
+    }
 }
 
 void behavior_function_calls_free(struct behavior_function_calls *calls)
@@ -142,6 +170,7 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
 static int settle_calls(struct behavior_function_calls *calls, int result)
 {
     calls->result = result;
+    trim_spares(calls, CALL_CACHE_BYTES);
     if (result == FLOW_OK) {
         behavior_function_calls_reset(calls);
     }
@@ -246,10 +275,11 @@ static invocation_frame *frame_new(
     if (frame) {
         *available = frame->next;
         frame->next = NULL;
+        calls->spare_bytes -= frame->bytes;
     }
     if (!frame) {
         frame = xcalloc(1, sizeof *frame);
-        arena_init(&frame->storage, 4096);
+        arena_init(&frame->storage, 512);
     }
     frame->function = call.function;
     frame->invocation = call;
@@ -290,11 +320,18 @@ static invocation_frame *frame_new(
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
-    bool views = call.function->readonly_collections &&
-                 !behavior_function_inspection_required(function, parent) &&
-                 program_call_views_allowed(parent);
+    bool direct = !behavior_function_inspection_required(function, parent) &&
+                  program_call_views_allowed(parent);
+    bool shared = direct && call.function->argument_sharing == BEHAVIOR_SHARING_SAFE;
+    bool views = direct && call.function->readonly_collections;
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
+        /* The callee and its callees leave the caller's storage untouched, and
+         * the caller waits for the call, so the arguments need no copies. */
+        if (shared) {
+            arguments[p] = parent->data->values[call.first + p];
+            continue;
+        }
         if (views && behavior_function_borrow_argument(
                          call.function,
                          &frame->context,
@@ -379,6 +416,10 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     }
 }
 
+static bool same_header(const pin_value *value, const pin_value *declared)
+{
+    return value->type == declared->type && value->container == declared->container;
+}
 static int return_values(invocation_frame *frame, const behavior_function *parent_function)
 {
     behavior_function_context *context = &frame->context, *parent = context->parent;
@@ -392,6 +433,12 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     }
     parent->returned_outcome = context->returned_outcome;
     for (int p = 0; p < call.result_count; p++) {
+        /* The copy follows the result's header, so a header that left the
+         * declared type could return a pointer's bits instead of a copy. */
+        if (p < frame->function->result_count &&
+            !same_header(&context->results[p], &frame->function->result_defaults[p])) {
+            return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result differs from its declared type");
+        }
         if (pin_value_snapshot_to_arena(
                 parent->value_storage,
                 &parent->data->values[call.result_first + p],
@@ -508,7 +555,7 @@ static void trace_context(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[a->pc - 1].target];
         int slots = acount(f->slots);
-        for (int i = 0; i < acount(s->values); i++) {
+        for (int i = 0; i < s->value_count; i++) {
             int value = s->values[i];
             pin_type type = value < slots ? f->slots[value]
                                           : f->locals[value - slots].initial.type;
@@ -575,12 +622,12 @@ static void visit_context(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[a->pc - 1].target];
         int slots = acount(f->slots);
-        for (int i = 0; i < acount(s->roots); i++) {
+        for (int i = 0; i < s->root_count; i++) {
             pin_value value = s->roots[i].shape;
             value.ptr = (void *)(uintptr_t)a->values[s->roots[i].index];
             visit(user, &value);
         }
-        for (int i = 0; i < acount(s->values); i++) {
+        for (int i = 0; i < s->value_count; i++) {
             int index = s->values[i];
             pin_type type = index < slots ? f->slots[index]
                                           : f->locals[index - slots].initial.type;

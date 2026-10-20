@@ -164,6 +164,35 @@ TEST_CASE(packed_record_updates_box_compatible_null_elements)
     }
     return true;
 }
+/* A slice's copied elements alone decide its representation, read from the
+ * right offset of a packed or boxed source. */
+TEST_CASE(packed_slices_take_their_representation_from_their_range)
+{
+    pin_value items[8];
+    for (int i = 0; i < 8; i++) {
+        items[i] = scalar(PIN_I32, i + 1);
+    }
+    items[0] = scalar(PIN_I64, 1); /* Outside the sliced range. */
+    pin_array boxed = { .element_type = PIN_I32, .count = 8, .capacity = 8, .items = items };
+    pin_value header = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = &boxed };
+    arena_init_collectable(&storage);
+    pin_value inside[] = { header, scalar(PIN_I32, 2), scalar(PIN_I32, 3) };
+    pin_value slice = native_array_slice(inside, 3, &storage);
+    const pin_array *copy = slice.ptr;
+    REQUIRE(copy && copy->stride == sizeof(int32_t) && copy->count == 3);
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(pin_array_get(copy, i).i == i + 3);
+    }
+    pin_value packed_slice[] = { slice, scalar(PIN_I32, 1), scalar(PIN_I32, 5) };
+    const pin_array *tail = native_array_slice(packed_slice, 3, &storage).ptr;
+    REQUIRE(tail && tail->stride && tail->count == 2);
+    REQUIRE(pin_array_get(tail, 0).i == 4 && pin_array_get(tail, 1).i == 5);
+    pin_value across[] = { header, scalar(PIN_I32, 0), scalar(PIN_I32, 2) };
+    copy = native_array_slice(across, 3, &storage).ptr;
+    REQUIRE(copy && !copy->stride && copy->count == 2);
+    REQUIRE(copy->items[0].type == PIN_I64 && copy->items[1].i == 2);
+    return true;
+}
 TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks)
 {
     const type_field fields[] = {
@@ -444,7 +473,7 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
                     source,
                     sizeof source,
                     "Packed :: library { Wrap :: () -> %s { return "
-                    "cast<%s>(5.5) %% cast<%s>(2); } Value :: Wrap(); "
+                    "%s(5.5) %% %s(2); } Value :: Wrap(); "
                     "Fold :: () -> %s { return Value; } }",
                     name,
                     name,
@@ -456,7 +485,7 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
                     source,
                     sizeof source,
                     "Packed :: library { Wrap :: () -> %s { return "
-                    "cast<%s>(%s) + cast<%s>(1); } Value :: Wrap(); "
+                    "%s(%s) + %s(1); } Value :: Wrap(); "
                     "Fold :: () -> %s { return Value; } }",
                     name,
                     name,
@@ -657,6 +686,7 @@ void test_language_packed()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(packed_record_updates_box_compatible_null_elements);
     RUN_TEST_CASE(packed_scalars_preserve_values_widths_and_snapshot_ownership);
+    RUN_TEST_CASE(packed_slices_take_their_representation_from_their_range);
     RUN_TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks);
     RUN_TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths);
     RUN_TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends);

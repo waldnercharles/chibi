@@ -1,3 +1,4 @@
+#include "language/scalar_constant.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -70,14 +71,15 @@ static bool scalar_cast(compile_value *value, pin_type type)
         return true;
     }
     if (type == PIN_F32 && behavior_scalar_cast_supported(value->value.type, PIN_F64)) {
-        pin_value wide = behavior_scalar_cast(value->value, PIN_F64);
+        pin_value wide;
+        behavior_scalar_cast(value->value, PIN_F64, BEHAVIOR_CAST_WRAP, &wide);
         value->value = (pin_value){ .type = PIN_F32, .f = (float)wide.d };
         return true;
     }
     if (!behavior_scalar_cast_supported(value->value.type, type)) {
         return false;
     }
-    value->value = behavior_scalar_cast(value->value, type);
+    behavior_scalar_cast(value->value, type, BEHAVIOR_CAST_WRAP, &value->value);
     return true;
 }
 static bool lookup(analyzer *a, TSNode node, compile_binding *bindings, const char *name, compile_value *out)
@@ -284,6 +286,74 @@ static bool compile_string(
     *out = (compile_value){ .value = { .type = PIN_STR, .str = owned } };
     return true;
 }
+/* The numeric type `T` in a call `T(value)`, as in a runtime conversion: a
+ * bound comptime type or a builtin name no authored callable shadows. */
+static bool conversion_type(analyzer *a, TSNode call, compile_binding *bindings, script_type *out)
+{
+    TSNode function = script_analyzer_field(call, "function");
+    if (!script_analyzer_is(function, "identifier")) {
+        return false;
+    }
+    char *name = script_analyzer_name_copy(a, function);
+    int index = find(bindings, name);
+    bool callable = index < 0 && script_analyzer_callable_symbol(a, name) >= 0;
+    *out = index < 0                     ? script_builtin_type(name)
+         : bindings[index].value.is_type ? bindings[index].value.type
+                                         : script_analyzer_bad_type();
+    free(name);
+    return !callable && script_type_numeric(*out);
+}
+/* Integer narrowing is EXACT unless the argument is named wrap or clamp. */
+static bool compile_conversion(
+    analyzer *a,
+    TSNode call,
+    compile_binding *bindings,
+    pin_type type,
+    compile_value *out,
+    int *budget
+)
+{
+    TSNode arguments = script_analyzer_field(call, "arguments"), value = { 0 };
+    int count = 0;
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (!ts_node_is_extra(child)) {
+            value = child;
+            count++;
+        }
+    }
+    if (count != 1) {
+        return fail(a, call, "conversion takes one value");
+    }
+    behavior_cast_mode mode = BEHAVIOR_CAST_EXACT;
+    pin_type operand = type;
+    if (script_analyzer_is(value, "named_argument")) {
+        TSNode label = script_analyzer_field(value, "name");
+        mode = script_analyzer_text_is(a, label, "wrap")  ? BEHAVIOR_CAST_WRAP
+             : script_analyzer_text_is(a, label, "clamp") ? BEHAVIOR_CAST_CLAMP
+                                                          : BEHAVIOR_CAST_EXACT;
+        if (mode == BEHAVIOR_CAST_EXACT) {
+            return fail(a, label, "a conversion argument may only be named wrap or clamp");
+        }
+        value = script_analyzer_field(value, "value");
+        operand = script_analyzer_conversion_operand(a, value).storage;
+    }
+    if (!script_analyzer_compile_as(a, value, bindings, operand, out, budget)) {
+        return false;
+    }
+    pin_type from = out->value.type;
+    bool integers = !out->is_type && from >= PIN_I8 && from <= PIN_U64 &&
+                    type >= PIN_I8 && type <= PIN_U64;
+    if (!integers && mode != BEHAVIOR_CAST_EXACT) {
+        return fail(a, call, "wrap and clamp convert between integer types");
+    }
+    if (!integers) {
+        return scalar_cast(out, type) ||
+               fail(a, call, "unsupported scalar conversion");
+    }
+    return behavior_scalar_cast(out->value, type, mode, &out->value) ||
+           fail(a, call, "constant does not fit the conversion type");
+}
 static bool compile_call_expression(
     analyzer *a,
     TSNode node,
@@ -293,36 +363,10 @@ static bool compile_call_expression(
     compile_expression_frame *frame
 )
 {
-    (void)frame;
-
-    return script_analyzer_compile_call(a, node, bindings, out, budget);
-}
-static bool compile_cast(
-    analyzer *a,
-    TSNode node,
-    compile_binding *bindings,
-    compile_value *out,
-    int *budget,
-    compile_expression_frame *frame
-)
-{
-
-    TSNode type_node = script_analyzer_field(node, "type");
-    compile_value *type = &frame->first;
-    if (!script_analyzer_compile_expression(a, script_analyzer_field(type_node, "name"), bindings, type, budget) ||
-        !type->is_type ||
-        !script_analyzer_compile_as(
-            a,
-            script_analyzer_field(node, "value"),
-            bindings,
-            type->type.storage,
-            out,
-            budget
-        )) {
-        return false;
+    if (conversion_type(a, node, bindings, &frame->common)) {
+        return compile_conversion(a, node, bindings, frame->common.storage, out, budget);
     }
-    return scalar_cast(out, type->type.storage) ||
-           fail(a, node, "unsupported scalar cast");
+    return script_analyzer_compile_call(a, node, bindings, out, budget);
 }
 static bool compile_operation(
     analyzer *a,
@@ -408,8 +452,7 @@ static bool compile_operation(
             result = PIN_BOOL;
         }
         pin_value *value = &frame->scalar;
-        const char *
-            error = script_analyzer_constant_operation(op, left->value, right->value, result, value);
+        const char *error = script_scalar_operation(op, left->value, right->value, result, value);
         if (error) {
             return fail(a, node, error);
         }
@@ -447,9 +490,8 @@ static bool expression(
               : !strcmp(kind, "string")                                     ? 5
               : (!strcmp(kind, "call_expression") || !strcmp(kind, "type_application"))
                   ? 6
-              : !strcmp(kind, "cast_expression") ? 7
               : (!strcmp(kind, "unary_expression") || !strcmp(kind, "binary_expression"))
-                  ? 8
+                  ? 7
                   : -1;
     if (index < 0) {
         return fail(a, node, "unsupported expression in a constant context");
@@ -457,9 +499,9 @@ static bool expression(
     /* Volatile dispatch preserves branch stack isolation through Wasm's
      * whole-program inliner, which does not retain C noinline attributes. */
     static compile_expression_handler const volatile handlers[] = {
-        compile_parenthesized,   compile_named,   compile_member,
-        compile_number,          compile_boolean, compile_string,
-        compile_call_expression, compile_cast,    compile_operation
+        compile_parenthesized,   compile_named,    compile_member,
+        compile_number,          compile_boolean,  compile_string,
+        compile_call_expression, compile_operation
     };
     return handlers[index](a, node, bindings, out, budget, frame);
 }
@@ -558,7 +600,7 @@ static COMPILE_NOINLINE compile_control compile_assignment(
         compile_value old = (*bindings)[index].value;
         const char *error = old.is_type || value.is_type
                               ? "cannot compound-assign a type"
-                              : script_analyzer_constant_operation(
+                              : script_scalar_operation(
                                     op,
                                     old.value,
                                     value.value,

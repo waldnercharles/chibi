@@ -20,6 +20,8 @@ typedef struct execution_wire
     arena *storage;
     const char *error;
     size_t owned_bytes, records;
+    /* Decoded storage bound; 0 is EXECUTION_WIRE_MAX_BYTES. */
+    size_t owned_limit;
     /* Optional shared remaining allocation budget. Arena charges include new
      * block capacity/headers; caller-owned allocations use reserve(). */
     size_t *storage_budget;

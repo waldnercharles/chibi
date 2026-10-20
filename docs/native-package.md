@@ -148,11 +148,11 @@ name "Main"
 (array)entities
 ```
 
-Open the project or run it with the installed application:
+Check the project, or build and run it, with the installed launcher:
 
 ```sh
-/path/to/chibi/bin/chibi --project-root /path/to/my-game
-/path/to/chibi/bin/chibi --play --project-root /path/to/my-game
+/path/to/chibi/bin/chibi check /path/to/my-game
+/path/to/chibi/bin/chibi run /path/to/my-game
 ```
 
 Edit `.chibi` executable source and KDL declarative assets directly or through
@@ -195,8 +195,8 @@ project directly. The browser workspace owns its imported project files. Use
 `chibi_ctl --project-root` for native inspection and validation, or prepare an
 artifact with `chibi-compile` and run it with the installed `chibi-player`.
 
-Engine-owned web deployment is retired. `make publish-web` reports that no
-publication was performed; deployment belongs to the extracted Studio product.
+Engine-owned web deployment is retired and its publisher removed; deployment
+belongs to the extracted Studio product.
 Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
 Historical browser publication fixtures do not establish current deployment.
 
@@ -237,9 +237,13 @@ make test-tools
 invalid build profiles. The former script-based relocation tests
 are retired; the minimal suite does not establish their former coverage.
 
-`share/chibi/engine.json` records SHA-256 hashes of the payload, a build ID
-derived from those hashes, the project version, host platform, and source
-revision. The ID includes resources as well as binaries.
+`share/chibi/engine.json` is the build identity document `chibi version` reads:
+the SDK version, the platform and execution backends it was built for, the
+project format and each prepared artifact format with its owning sources'
+hashes, as configuring generates them, plus the build ID SDK packaging derives
+from the compiled inputs and archives. `chibi doctor` compares the platform with
+the host and reports the backends. The package manifest
+records the payload's file hashes, platform and source revision.
 Distribution builds have no resource fallback to the engine checkout.
 `CHIBI_RESOURCE_DIR` can explicitly override the resource directory;
 `CHIBI_RENDER_SHADER_DIR` can override only the shaders. Development and web

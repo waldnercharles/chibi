@@ -1,16 +1,19 @@
 #include "authoring/source_packages.h"
+#include "package_graph_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
 #include <string.h>
 
-/* Private descriptor tests only. These are the future parser/resolver's output,
- * not evidence that package text parses or runs. No filesystem or authored code
- * is read/executed. The existing test_language dispatcher owns this fixture.
- * At most two graph owners coexist; the largest has 256 files/packages and
+/* Resolved descriptor corpus. The ordinary route tests the C graph alone;
+ * the differential route also executes the authored implementation through its
+ * public value facade. Neither route reads runtime filesystem input.
+ * The existing test_language dispatcher owns this fixture.
+ * At most two C graph owners coexist; the largest has 256 files/packages and
  * 255 imports. All loops are bounded by those counts. */
 static source_packages *packages, *retained;
 static source_package_error error;
+static bool differential;
 static void cleanup()
 {
     source_packages_free(packages);
@@ -25,6 +28,11 @@ static bool create(
 )
 {
     packages = source_packages_new(files, file_count, imports, import_count, &error);
+    if (differential) {
+        REQUIRE(
+            package_graph_chibi_compare(files, file_count, imports, import_count, packages, &error)
+        );
+    }
     REQUIRE(packages);
     REQUIRE(error.code == SOURCE_PACKAGE_OK);
     REQUIRE(error.file == -1 && error.import == -1 && !error.cycle_count);
@@ -39,15 +47,20 @@ static bool rejected(
 )
 {
     packages = source_packages_new(files, file_count, imports, import_count, &error);
+    if (differential) {
+        REQUIRE(
+            package_graph_chibi_compare(files, file_count, imports, import_count, packages, &error)
+        );
+    }
     REQUIRE(!packages);
     REQUIRE(error.code == code);
     return true;
 }
 static const source_package_file files[] = {
-    { "/project/app/z.chibi", "/project/app", "app", { 8, 11, 1, 9 } },
-    { "/project/app/a.chibi", "/project/app", "app", { 8, 11, 1, 9 } },
-    { "/project/app/nested/n.chibi", "/project/app/nested", "nested", { 8, 14, 1, 9 } },
-    { "/project/math/m.chibi", "/project/math", "numbers", { 8, 15, 1, 9 } },
+    { "/project/app/z.chibi", "/project/app", "app", { 8, 11, 1, 9, 0 } },
+    { "/project/app/a.chibi", "/project/app", "app", { 8, 11, 1, 9, 0 } },
+    { "/project/app/nested/n.chibi", "/project/app/nested", "nested", { 8, 14, 1, 9, 0 } },
+    { "/project/math/m.chibi", "/project/math", "numbers", { 8, 15, 1, 9, 0 } },
 };
 TEST_CASE(package_empty_snapshot)
 {
@@ -191,8 +204,8 @@ TEST_CASE(package_blank_imports_keep_edges_without_bindings)
 TEST_CASE(package_duplicate_alias_reports_both_imports)
 {
     source_package_import imports[] = {
-        { 0, "/project/math", "lib", { 12, 24, 2, 1 } },
-        { 0, "/project/app/nested", "lib", { 25, 38, 3, 1 } },
+        { 0, "/project/math", "lib", { 12, 24, 2, 1, 0 } },
+        { 0, "/project/app/nested", "lib", { 25, 38, 3, 1, 0 } },
     };
     REQUIRE(rejected(files, 4, imports, 2, SOURCE_PACKAGE_DUPLICATE_IMPORT));
     REQUIRE(error.file == 0 && error.related_file == 0);
@@ -419,4 +432,14 @@ void test_language_package_graph()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_SUITE(package_graph_suite);
+    pu_clear_setup();
+}
+void test_language_package_graph_chibi()
+{
+    differential = true;
+    pu_setup(NULL, cleanup);
+    RUN_TEST_SUITE(package_graph_suite);
+    pu_clear_setup();
+    package_graph_chibi_finish();
+    differential = false;
 }

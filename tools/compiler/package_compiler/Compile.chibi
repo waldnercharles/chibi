@@ -1,0 +1,1093 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import graph "project:package_graph"
+import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
+import writer "project:prepared_writer"
+import strings "core:strings"
+
+// Compiles packages of functions, records and unions, and the packages they
+// import, to a prepared closure. Stage zero builds this compiler; everything
+// after the raw parser is authored.
+
+// Facts of the runtime this compiler targets, which Chibi cannot see: pointer
+// width, the byte offsets of a value header's and an array's members, and the
+// failure kinds a host call and a failed assertion report.
+Target :: struct {
+    pointer_storage: int;
+    pointer_size: int;
+    value_size: int;
+    payload_offset: int;
+    results_offset: int;
+    type_offset: int;
+    container_offset: int;
+    name_offset: int;
+    record_offset: int;
+    count_offset: int;
+    items_offset: int;
+    data_offset: int;
+    stride_offset: int;
+    data_failure: int;
+    argument_failure: int;
+}
+// Prepared instructions this compiler emits, as ordinals on the target.
+Ops :: struct {
+    constant: int;
+    argument: int;
+    local: int;
+    save: int;
+    context: int;
+    array: int;
+    host_slot: int;
+    string_equal: int;
+    index: int;
+    load: int;
+    write: int;
+    result: int;
+    host_call: int;
+    invoke: int;
+    guard: int;
+    check: int;
+    branch_if: int;
+    jump: int;
+    finish: int;
+    end: int;
+    add: int;
+    sub: int;
+    mul: int;
+    div: int;
+    mod: int;
+    neg: int;
+    bit_and: int;
+    bit_or: int;
+    bit_xor: int;
+    bit_not: int;
+    shl: int;
+    shr: int;
+    lt: int;
+    le: int;
+    gt: int;
+    ge: int;
+    eq: int;
+    ne: int;
+    cast: int;
+    select: int;
+}
+// A type: a storage code, whether it is an array, and for records, unions and
+// arrays of them the index of their declaration in `types`.
+ValueType :: struct {
+    storage: int;
+    container: int;
+    record: int;
+}
+// A function of package `package`; its parameters are params[first, first + count).
+Callable :: struct {
+    name: string;
+    package: int;
+    document: int;
+    node: int;
+    first: int;
+    count: int;
+    result: int;
+    result_container: int;
+    result_record: int;
+}
+Param :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    record: int;
+}
+// A native function the target links, as its catalog describes it. Its
+// parameters and then its results are ports[first, first + parameters +
+// results); its ID and ABI are identities[2 * index] and [2 * index + 1]. A
+// variadic native's last parameter takes any number of arguments, none
+// included.
+Native :: struct {
+    name: string;
+    first: int;
+    parameters: int;
+    results: int;
+    variadic: bool;
+}
+// A native port. Storage 0 is a type the call infers, one type for every such
+// port of the native; AnyPort takes each argument's own type, and
+// UnsupportedPort is a type this compiler cannot pass.
+Port :: struct {
+    name: string;
+    storage: int;
+    container: int;
+}
+AnyPort: int : -2;
+UnsupportedPort: int : -1;
+// A declared type. A record's fields and a variant's payload are
+// members[first, first + count); a union's variants are types[first, first +
+// count), and each variant names its union as `parent`.
+TypeDecl :: struct {
+    name: string;
+    type_name: string;
+    package: int;
+    kind: int;
+    first: int;
+    count: int;
+    size: int;
+    parent: int;
+}
+// A record field, with its byte offset, or a variant's payload field.
+TypeMember :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    record: int;
+    offset: int;
+}
+Result :: union {
+    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
+}
+// A package constant: an integer literal of an integer type, its 64 bits,
+// sign-extended for signed types, as `high` and `low` halves.
+ConstDecl :: struct {
+    name: string;
+    package: int;
+    storage: int;
+    high: int;
+    low: int;
+}
+Declarations :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Collected(callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+                constants: ConstDecl[])
+}
+
+BoolStorage: int : 1;
+IntStorage: int : 6;
+WordStorage: int : 9;
+TextStorage: int : 13;
+HandleStorage: int : 14;
+StructStorage: int : 15;
+UnionStorage: int : 18;
+RecordDecl: int : 0;
+UnionDecl: int : 1;
+VariantDecl: int : 2;
+// Symbol kinds in package-symbol IDs.
+FunctionKind: int : 1;
+TypeKind: int : 13;
+// Runtime intrinsics are host capabilities with this prefix and ABI one.
+IntrinsicBase: uint64 : 0x4348494900000000;
+
+Ordinal :: (names: string[], name: string) -> int {
+    index: int = 0;
+    while (index < length(names)) {
+        if (names[index] == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The index of `value` in `items`, -1 when absent.
+Position :: (items: int[], value: int) -> int {
+    index: int = 0;
+    while (index < length(items)) {
+        if (items[index] == value) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+ResolveOps :: (names: string[]) -> Ops {
+    return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
+            local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
+            array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
+            string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
+            load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
+            host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+            check: Ordinal(names, "CHECK"),
+            branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
+            end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
+            mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
+            neg: Ordinal(names, "NEG"), bit_and: Ordinal(names, "BIT_AND"), bit_or: Ordinal(names, "BIT_OR"),
+            bit_xor: Ordinal(names, "BIT_XOR"), bit_not: Ordinal(names, "BIT_NOT"), shl: Ordinal(names, "SHL"),
+            shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
+            gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
+            cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT")};
+}
+// Whether the target names every instruction this compiler emits.
+Complete :: (ops: Ops) -> bool {
+    used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
+                   ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
+                   ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
+                   ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
+                   ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
+                   ops.select];
+    for (op in used) {
+        if (op < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+// The storage of a scalar type: one a record field may hold, or byte, int64
+// or uint64; 0 for any other.
+ScalarStorage :: (text: string) -> int {
+    if (text == "byte") {
+        return ByteStorage;
+    }
+    if (text == "int64") {
+        return Int64Storage;
+    }
+    if (text == "uint64") {
+        return WordStorage;
+    }
+    return FieldStorage(text);
+}
+// The storage of a type a record field may hold, 0 for any other.
+FieldStorage :: (text: string) -> int {
+    if (text == "int") {
+        return IntStorage;
+    }
+    if (text == "bool") {
+        return BoolStorage;
+    }
+    if (text == "string") {
+        return TextStorage;
+    }
+    return 0;
+}
+// The record or union of `package` named `name`, -1 when none.
+FindType :: (types: TypeDecl[], package: int, name: string) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The constant of `package` named `name`, -1 when none.
+FindConstant :: (constants: ConstDecl[], package: int, name: string) -> int {
+    index: int = 0;
+    while (index < length(constants)) {
+        if (constants[index].package == package && constants[index].name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The import aliases of file `file`, each a name for the package it imports,
+// from the graph's bindings. They are the outermost names of its functions.
+Aliases :: (links: graph.Binding[], file: int) -> Name[] {
+    aliases: Name[] = [];
+    for (link in links) {
+        if (link.file == file) {
+            alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
+                           record: -1, writable: false};
+            aliases = array_add(aliases, alias);
+        }
+    }
+    return aliases;
+}
+// The variant `name` of union types[of], -1 when none.
+FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
+    at := types[of].first;
+    while (at < types[of].first + types[of].count) {
+        if (types[at].name == name) {
+            return at;
+        }
+        at += 1;
+    }
+    return -1;
+}
+// The type a `type` node names: a field type, a record or union of package
+// `package` or, qualified by an alias in `names`, of an imported one, or an
+// array of one; storage 0 for any other.
+ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+             node: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
+        HasToken(forest, node, "?")) {
+        return none;
+    }
+    container: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && forest[child].kind == "[") {
+            container += 1;
+        }
+        child = forest[child].next_sibling;
+    }
+    if (container > 1) {
+        return none;
+    }
+    first := FirstMember(forest, Field(forest, node, "name"));
+    name := Text(forest, text, first);
+    home := package;
+    part := NextMember(forest, first);
+    if (part >= 0) {
+        home = QualifierOf(forest, text, names, package, first);
+        name = Text(forest, text, part);
+        if (home < 0 || NextMember(forest, part) >= 0) {
+            return none;
+        }
+    } else if (ScalarStorage(name) != 0) {
+        return {storage: ScalarStorage(name), container: container, record: -1};
+    }
+    declared := FindType(types, home, name);
+    if (declared < 0) {
+        return none;
+    }
+    if (types[declared].kind == UnionDecl) {
+        return {storage: UnionStorage, container: container, record: declared};
+    }
+    return {storage: StructStorage, container: container, record: declared};
+}
+// Field width, which is also its alignment, as the runtime lays records out.
+FieldSize :: (storage: int, target: Target) -> int {
+    if (storage == TextStorage) {
+        return target.pointer_size;
+    }
+    if (storage == IntStorage) {
+        return 4;
+    }
+    return 1;
+}
+AlignTo :: (size: int, alignment: int) -> int {
+    rest := size % alignment;
+    if (rest == 0) {
+        return size;
+    }
+    return size + alignment - rest;
+}
+InputFailure :: (document: int, message: string) -> Result {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
+    return Result.Rejected(diagnostic);
+}
+
+// Every record, union and function of each package, dependencies first, so
+// a package's declarations follow those of every package it imports.
+Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+            files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
+            target: Target) -> Declarations {
+    callables: Callable[] = [];
+    params: Param[] = [];
+    types: TypeDecl[] = [];
+    members: TypeMember[] = [];
+    constants: ConstDecl[] = [];
+    for (package in order) {
+        files := slice(files_of, packages[package].member_start, packages[package].member_count);
+        switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
+                              params, types, members, constants) {
+            case .Failed(diagnostic):
+                return Declarations.Failed(diagnostic);
+            case .Collected(more_callables, more_params, more_types, more_members, more_constants):
+                callables = more_callables;
+                params = more_params;
+                types = more_types;
+                members = more_members;
+                constants = more_constants;
+        }
+        // An import alias may not name a declaration of its package.
+        for (link in links) {
+            if (Position(files, link.file) >= 0 &&
+                (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0 ||
+                 FindConstant(constants, package, link.name) >= 0)) {
+                return Declarations.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
+                                                               "Package import alias conflicts with a package declaration"));
+            }
+        }
+    }
+    return Declarations.Collected(callables, params, types, members, constants);
+}
+// Adds package `package`'s records, unions, functions and constants, in file
+// and source order. Types come first, so any signature or payload may name any
+// type.
+DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
+                   package: int, package_name: string, links: graph.Binding[], target: Target,
+                   callables: Callable[], params: Param[], types: TypeDecl[],
+                   members: TypeMember[], constants: ConstDecl[]) -> Declarations {
+    for (file in files) {
+        text := documents[file].text;
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            record := Is(forest, member, "record_declaration");
+            if (record || Is(forest, member, "union_declaration")) {
+                name := Text(forest, text, Field(forest, member, "name"));
+                if (name == "") {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
+                }
+                if (FindType(types, package, name) >= 0) {
+                    return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
+                }
+                declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
+                                      kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1};
+                if (!record) {
+                    // Variants follow their union; their payloads resolve below.
+                    declared.kind = UnionDecl;
+                    declared.first = length(types) + 1;
+                    holder := length(types);
+                    types = array_add(types, declared);
+                    variant := FirstMember(forest, member);
+                    while (variant >= 0) {
+                        if (Is(forest, variant, "union_variant")) {
+                            if (Field(forest, variant, "literal") >= 0) {
+                                return Declarations.Failed(Diagnose(forest, variant, file,
+                                                                    "literal union alternatives are not supported yet"));
+                            }
+                            variant_name := Text(forest, text, Field(forest, variant, "name"));
+                            if (FindVariant(types, holder, variant_name) >= 0) {
+                                return Declarations.Failed(Diagnose(forest, variant, file,
+                                                                    format_text("Duplicate union alternative '{}'", variant_name)));
+                            }
+                            alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
+                                                     kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder};
+                            types = array_add(types, alternative);
+                            grown := types[holder];
+                            grown.count += 1;
+                            types[holder] = grown;
+                        }
+                        variant = NextMember(forest, variant);
+                    }
+                } else {
+                    size: int = 0;
+                    alignment: int = 1;
+                    item := FirstMember(forest, Field(forest, member, "body"));
+                    while (item >= 0) {
+                        field_name := Text(forest, text, Field(forest, item, "name"));
+                        if (field_name == "") {
+                            return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
+                        }
+                        storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
+                        if (storage == 0 || Field(forest, item, "value") >= 0) {
+                            return Declarations.Failed(Diagnose(forest, item, file,
+                                                                "record field needs an int, bool or string type and no default"));
+                        }
+                        at := declared.first;
+                        while (at < length(members)) {
+                            if (members[at].name == field_name) {
+                                return Declarations.Failed(Diagnose(forest, item, file,
+                                                                    format_text("Duplicate field '{}'", field_name)));
+                            }
+                            at += 1;
+                        }
+                        width := FieldSize(storage, target);
+                        size = AlignTo(size, width);
+                        field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size};
+                        members = array_add(members, field);
+                        size += width;
+                        if (width > alignment) {
+                            alignment = width;
+                        }
+                        item = NextMember(forest, item);
+                    }
+                    if (length(members) == declared.first) {
+                        return Declarations.Failed(Diagnose(forest, member, file, "record needs a field"));
+                    }
+                    declared.count = length(members) - declared.first;
+                    declared.size = AlignTo(size, alignment);
+                    types = array_add(types, declared);
+                }
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    // Payloads may name any type, so they resolve once every type is known.
+    for (file in files) {
+        text := documents[file].text;
+        aliases := Aliases(links, file);
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "union_declaration")) {
+                holder := FindType(types, package, Text(forest, text, Field(forest, member, "name")));
+                variant := FirstMember(forest, member);
+                while (variant >= 0) {
+                    if (Is(forest, variant, "union_variant")) {
+                        at := FindVariant(types, holder, Text(forest, text, Field(forest, variant, "name")));
+                        alternative := types[at];
+                        alternative.first = length(members);
+                        parameter := FirstMember(forest, Field(forest, variant, "parameters"));
+                        while (parameter >= 0) {
+                            payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+                            if (payload.storage == 0) {
+                                return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
+                            }
+                            field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
+                                                 storage: payload.storage, container: payload.container, record: payload.record, offset: 0};
+                            members = array_add(members, field);
+                            parameter = NextMember(forest, parameter);
+                        }
+                        alternative.count = length(members) - alternative.first;
+                        types[at] = alternative;
+                    }
+                    variant = NextMember(forest, variant);
+                }
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    for (file in files) {
+        text := documents[file].text;
+        aliases := Aliases(links, file);
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "function_declaration")) {
+                name := Text(forest, text, Field(forest, member, "name"));
+                if (name == "") {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
+                }
+                // Types, functions and constants share the package scope.
+                if (FindCallable(callables, package, name) >= 0 || FindType(types, package, name) >= 0 ||
+                    FindConstant(constants, package, name) >= 0) {
+                    return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
+                }
+                first := length(params);
+                parameter := FirstMember(forest, Field(forest, member, "parameters"));
+                while (parameter >= 0) {
+                    declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+                    if (declared.storage == 0) {
+                        return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
+                    }
+                    param_name := Text(forest, text, Field(forest, parameter, "name"));
+                    if (param_name == "") {
+                        return Declarations.Failed(Diagnose(forest, Field(forest, parameter, "name"), file, "Invalid string or embedded NUL"));
+                    }
+                    param: Param = {name: param_name, storage: declared.storage, container: declared.container,
+                                    record: declared.record};
+                    params = array_add(params, param);
+                    parameter = NextMember(forest, parameter);
+                }
+                result: ValueType = {storage: 0, container: 0, record: -1};
+                results := Field(forest, member, "results");
+                if (results >= 0) {
+                    result = ReadType(forest, text, types, aliases, package, results);
+                    if (result.storage == 0) {
+                        return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
+                    }
+                }
+                callable: Callable = {name: name, package: package, document: file, node: member, first: first,
+                                      count: length(params) - first, result: result.storage, result_container: result.container,
+                                      result_record: result.record};
+                callables = array_add(callables, callable);
+            } else if (Is(forest, member, "constant_declaration")) {
+                name := Text(forest, text, Field(forest, member, "name"));
+                if (name == "") {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
+                }
+                if (FindCallable(callables, package, name) >= 0 || FindType(types, package, name) >= 0 ||
+                    FindConstant(constants, package, name) >= 0) {
+                    return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
+                }
+                // Stage zero makes an untyped constant a double.
+                storage := IntStorage;
+                declared := Field(forest, member, "type");
+                if (declared < 0) {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                                                        "an untyped number is a double; give the constant an integer type"));
+                }
+                if (declared >= 0) {
+                    constant_type := ReadType(forest, text, types, aliases, package, declared);
+                    storage = constant_type.storage;
+                    if (!Integer(storage) || constant_type.container != 0) {
+                        return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
+                    }
+                }
+                switch ParseNumber(forest, text, Field(forest, member, "value")) {
+                    case .Invalid:
+                        return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                                                            "constant value must be an integer literal"));
+                    case .Number(negative, magnitude):
+                        if (!Fits(negative, magnitude, storage)) {
+                            return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                                                                format_text("Numeric literal is outside the range of {}", TypeName(storage))));
+                        }
+                        bits := Bits(negative, magnitude);
+                        constant: ConstDecl = {name: name, package: package, storage: storage, high: High(bits),
+                                               low: Low(bits)};
+                        constants = array_add(constants, constant);
+                }
+            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
+                       !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
+                return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    return Declarations.Collected(callables, params, types, members, constants);
+}
+
+ScalarValue :: (storage: int, wide: int) -> writer.Value {
+    return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
+            wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
+}
+// The header of an absent value of a type. A record names its layout; an
+// array of records, like a record, names its type.
+Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
+    if (container != 0) {
+        value := ScalarValue(storage, 0);
+        value.container = container;
+        if (storage == StructStorage) {
+            value.type_name = types[record].type_name;
+            value.has_type_name = true;
+            value.authored = true;
+        }
+        return value;
+    }
+    if (storage != StructStorage) {
+        return ScalarValue(storage, 0);
+    }
+    return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
+            authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
+            count: types[record].count};
+}
+NoSource :: () -> writer.Source {
+    return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
+}
+Range :: (first: int, count: int) -> writer.Span {
+    return {first: first, count: count};
+}
+Own :: (index: int) -> writer.Reference {
+    return {imported: -1, own: index, function: 0, role: 0};
+}
+// FNV-1a over `count` little-endian bytes of `value`, as the runtime hashes
+// layouts.
+HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
+    out := hash;
+    rest := value;
+    index: int = 0;
+    while (index < count) {
+        out = (out ^ (rest & 255)) * 1099511628211;
+        rest = rest >> 8;
+        index += 1;
+    }
+    return out;
+}
+HashText :: (hash: uint64, text: string) -> uint64 {
+    out := hash;
+    index: int = 0;
+    while (index < strings.ByteLength(text)) {
+        out = HashBytes(out, uint64(strings.ByteAt(text, index)), 1);
+        index += 1;
+    }
+    return HashBytes(out, 0, 1);
+}
+// The runtime's layout hash of a record: its size and field count, then each
+// field's name, offset, size, storage and (absent) type name.
+LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
+    hash: uint64 = 1469598103934665603;
+    hash = HashBytes(hash, uint64(record.size), target.pointer_size);
+    hash = HashBytes(hash, uint64(record.count), 4);
+    at := record.first;
+    while (at < record.first + record.count) {
+        field := fields[at];
+        hash = HashText(hash, field.name);
+        hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
+        hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
+        hash = HashBytes(hash, uint64(field.storage), 4);
+        hash = HashText(hash, "");
+        at += 1;
+    }
+    return hash;
+}
+
+// Whether each of `count` packages is `package` or one it imports, directly
+// or through others.
+Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
+    seen := resize([false], count);
+    seen[package] = true;
+    pending: int[] = [package];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        for (edge in edges) {
+            if (edge.from == at && !seen[edge.to]) {
+                seen[edge.to] = true;
+                pending = array_add(pending, edge.to);
+            }
+        }
+    }
+    return seen;
+}
+// The closure of every package, each a prepared module, rooted at package
+// `root`. Dependencies come first, so an importer has every module it imports.
+Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+         files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
+         callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], ops: Ops,
+         target: Target, abi: uint64) -> Result {
+    // Each package's identity and module ID, and the fingerprint of its module.
+    package_names: string[] = [];
+    package_ids: uint64[] = [];
+    for (listed in packages) {
+        package_names = array_add(package_names, documents[files_of[listed.member_start]].identity);
+        package_ids = array_add(package_ids, binding.ID("module", package_names[length(package_names) - 1]));
+    }
+    fingerprints := resize([uint64(0)], length(packages));
+    data: byte[] = [];
+    starts := resize([int(0)], length(packages));
+    lengths := resize([int(0)], length(packages));
+    for (package in order) {
+        switch Assemble(forest, documents, package, package_names, package_ids, fingerprints,
+                        Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
+                        natives, ports, identities, ops, target, abi) {
+            case .Rejected(diagnostic):
+                return Result.Rejected(diagnostic);
+            case .Compiled(module, bytes):
+                fingerprints[package] = writer.Fingerprint(bytes);
+                starts[package] = length(data);
+                lengths[package] = length(bytes);
+                data = append(data, bytes);
+        }
+    }
+    return Result.Compiled(package_ids[root],
+                           writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
+}
+// The prepared module of package `package`; its bytes are the Compiled
+// result's. Each body is a canonical definition the runtime verifies and
+// finalizes when it loads it.
+Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int,
+             package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+             links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
+             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
+             identities: uint64[], ops: Ops, target: Target, abi: uint64) -> Result {
+    identity := package_names[package];
+    module := package_ids[package];
+    wide: uint64[] = [0];
+    values: writer.Value[] = [];
+    ints: int[] = [];
+    spans: writer.Span[] = [];
+    functions: writer.Function[] = [];
+    instructions: writer.Instruction[] = [];
+    locals: writer.Local[] = [];
+    parameters: writer.Parameter[] = [];
+    frames: writer.Frame[] = [];
+    sources: writer.Source[] = [];
+    data: writer.Data[] = [];
+    hosts: writer.Host[] = [];
+    roots: writer.Root[] = [];
+    calls: writer.Call[] = [];
+    references: writer.Reference[] = [];
+    entries: writer.Entry[] = [];
+    requirements: writer.Requirement[] = [];
+    fields: writer.Field[] = [];
+    // Each record's layout and each variant's tag, as indices into `wide`, for
+    // the types of this package and those it reaches; no others can occur.
+    layouts: int[] = [];
+    tags: int[] = [];
+    for (declared in types) {
+        layouts = array_add(layouts, int(0));
+        tags = array_add(tags, int(0));
+        if (!reachable[declared.package]) {
+            continue;
+        }
+        if (declared.kind == VariantDecl) {
+            // Stage zero's tag: the union's ID in decimal, then the variant.
+            union_id := binding.ID("package-symbol",
+                                   format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
+            wide = array_add(wide, binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
+            tags[length(tags) - 1] = length(wide) - 1;
+        } else if (declared.kind == RecordDecl) {
+            wide = array_add(wide, binding.ID("package-symbol",
+                                              format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
+            wide = array_add(wide, LayoutHash(declared, members, target));
+            layouts[length(layouts) - 1] = length(wide) - 1;
+            requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
+                                               name: declared.type_name, size: declared.size, authored: true, first: length(fields),
+                                               count: declared.count};
+            requirements = array_add(requirements, requirement);
+            at := declared.first;
+            while (at < declared.first + declared.count) {
+                // Record fields are int, bool or string, so none names a type or unit.
+                field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
+                                       has_type_name: false, unit: "", has_unit: false};
+                fields = array_add(fields, field);
+                at += 1;
+            }
+        }
+    }
+    abi_one := length(wide);
+    wide = array_add(wide, uint64(1));
+    // A package's functions are contiguous; the module numbers them from 0.
+    first_own: int = 0;
+    while (first_own < length(callables) && callables[first_own].package != package) {
+        first_own += 1;
+    }
+    // The packages this module calls into, each an import row.
+    imported: int[] = [];
+    imports: writer.Import[] = [];
+    index := first_own;
+    while (index < length(callables) && callables[index].package == package) {
+        callable := callables[index];
+        tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
+                           types, members, constants, natives, ports, identities, Aliases(links, callable.document), index, ops, target);
+        switch tables {
+            case .Failed(diagnostic):
+                return Result.Rejected(diagnostic);
+            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
+                base := length(spans);
+                // Argument defaults and kinds.
+                spans = array_add(spans, Range(length(values), callable.count));
+                at: int = 0;
+                while (at < callable.count) {
+                    param := params[callable.first + at];
+                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    at += 1;
+                }
+                spans = array_add(spans, Range(length(ints), callable.count));
+                at = 0;
+                while (at < callable.count) {
+                    ints = array_add(ints, int(0));
+                    at += 1;
+                }
+                // Result defaults and kinds.
+                result_count: int = 0;
+                if (callable.result != 0) {
+                    result_count = 1;
+                }
+                spans = array_add(spans, Range(length(values), result_count));
+                if (result_count != 0) {
+                    values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
+                                                      types, layouts));
+                }
+                spans = array_add(spans, Range(length(ints), result_count));
+                if (result_count != 0) {
+                    ints = array_add(ints, int(0));
+                }
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                for (slot in body_slots) {
+                    ints = array_add(ints, slot.storage);
+                }
+                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                for (slot in body_slots) {
+                    ints = array_add(ints, slot.kind);
+                }
+                // Record and array pointers each slot may hold while the function waits.
+                spans = array_add(spans, Range(length(roots), length(body_roots)));
+                for (root in body_roots) {
+                    values = array_add(values, Header(root.storage, root.container, root.record, types, layouts));
+                    row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
+                    roots = array_add(roots, row);
+                }
+                // Instructions, each with its own value row and source at pc + 1.
+                spans = array_add(spans, Range(length(instructions), length(body_code)));
+                pc: int = 0;
+                for (code in body_code) {
+                    value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
+                    if (code.has_text) {
+                        value.text = code.text;
+                        value.has_text = true;
+                    }
+                    bits := Join(code.payload_high, code.payload);
+                    if (bits != 0) {
+                        value.wide = length(wide);
+                        wide = array_add(wide, bits);
+                    }
+                    values = array_add(values, value);
+                    row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
+                                               left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
+                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
+                                               value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
+                    instructions = array_add(instructions, row);
+                    pc += 1;
+                }
+                spans = array_add(spans, Range(length(locals), length(body_locals)));
+                for (body_local in body_locals) {
+                    values = array_add(values, ScalarValue(body_local.storage, 0));
+                    local: writer.Local = {kind: body_local.kind, initial: length(values) - 1, frame: 0, node: 0, pin: 0,
+                                           offset: 0, parameter: false, array_default: false, data_index: 0};
+                    locals = array_add(locals, local);
+                }
+                spans = array_add(spans, Range(length(parameters), callable.count));
+                at = 0;
+                while (at < callable.count) {
+                    param := params[callable.first + at];
+                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
+                    parameters = array_add(parameters, parameter);
+                    at += 1;
+                }
+                // One frame with an empty origin, then the instruction origins.
+                sources = array_add(sources, NoSource());
+                frame: writer.Frame = {source: length(sources) - 1, depth: 0, resume: 0, source_index: 0, stack: -1};
+                spans = array_add(spans, Range(length(frames), 1));
+                frames = array_add(frames, frame);
+                spans = array_add(spans, Range(length(sources), length(body_code) + 1));
+                sources = array_add(sources, NoSource());
+                asset := documents[callable.document].key;
+                for (code in body_code) {
+                    source := NoSource();
+                    source.asset = asset;
+                    source.has_asset = true;
+                    source.start = code.start;
+                    source.end = code.end;
+                    source.line = code.line;
+                    source.column = code.column;
+                    sources = array_add(sources, source);
+                }
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(0, 0));
+                // Data cells: record cells own a buffer of the record's size;
+                // others may hold a constant or a variant's tag.
+                spans = array_add(spans, Range(length(data), length(body_cells)));
+                for (cell in body_cells) {
+                    value := Header(cell.storage, cell.container, cell.record, types, layouts);
+                    size: int = 0;
+                    if (cell.storage == StructStorage && cell.container == 0) {
+                        size = types[cell.record].size;
+                    }
+                    if (cell.variant >= 0) {
+                        value.wide = tags[cell.variant];
+                    } else if (cell.constant != 0) {
+                        value.wide = length(wide);
+                        wide = array_add(wide, uint64(wrap: int64(cell.constant)));
+                    }
+                    values = array_add(values, value);
+                    datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
+                    data = array_add(data, datum);
+                }
+                spans = array_add(spans, Range(length(hosts), length(body_hosts)));
+                for (host in body_hosts) {
+                    capability := length(wide);
+                    host_abi := abi_one;
+                    if (host.linked >= 0) {
+                        wide = array_add(wide, identities[2 * host.linked]);
+                        wide = array_add(wide, identities[2 * host.linked + 1]);
+                        host_abi = capability + 1;
+                    } else {
+                        wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
+                    }
+                    row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
+                                        result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
+                                        outcome_count: 0};
+                    hosts = array_add(hosts, row);
+                }
+                spans = array_add(spans, Range(length(calls), length(body_calls)));
+                for (invocation in body_calls) {
+                    callee := callables[invocation.callee];
+                    if (callee.package == package) {
+                        references = array_add(references, Own(invocation.callee - first_own));
+                    } else {
+                        row := Position(imported, callee.package);
+                        if (row < 0) {
+                            imported = array_add(imported, callee.package);
+                            wide = array_add(wide, package_ids[callee.package]);
+                            wide = array_add(wide, fingerprints[callee.package]);
+                            dependency: writer.Import = {id: length(wide) - 2, fingerprint: length(wide) - 1};
+                            imports = array_add(imports, dependency);
+                            row = length(imports) - 1;
+                        }
+                        wide = array_add(wide, binding.ID("package-symbol",
+                                                          format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
+                        foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
+                        references = array_add(references, foreign);
+                    }
+                    call: writer.Call = {function: length(references) - 1, first: invocation.first,
+                                         count: invocation.count, result_first: invocation.result_first,
+                                         result_count: invocation.result_count, task: false};
+                    calls = array_add(calls, call);
+                }
+                while (length(spans) < base + writer.Tables) {
+                    spans = array_add(spans, Range(0, 0));
+                }
+                head: writer.Function = {argument_count: callable.count, result_count: result_count,
+                                         variable_count: 0, root_steps: 0, child_budget: 0, depth_bound: 0, pure_depth_limit: 0,
+                                         breakpoints: false, batchable: false, managed: false, custom_lowering: false,
+                                         checkpoints: false, pin_watches: false, watch_size: 0, component_bindings: false,
+                                         component_access: false, spans: base};
+                functions = array_add(functions, head);
+                wide = array_add(wide, binding.ID("package-symbol",
+                                                  format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
+                references = array_add(references, Own(index - first_own));
+                references = array_add(references, Own(-1));
+                exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
+                                          continuation_wait: false, effects: 0, body: length(references) - 2,
+                                          subscription: length(references) - 1};
+                entries = array_add(entries, exported);
+        }
+        index += 1;
+    }
+    layouts_table: writer.ResultLayout[] = [];
+    points: writer.Point[] = [];
+    watches: writer.Watch[] = [];
+    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
+                                                                     fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
+                                                                     layouts_table, data, hosts, calls, references, points, watches, entries)));
+}
+
+// `paths` and `sources` are the files of every package, `paths[0]` one of the
+// root package's; `project` and each named collection are roots that paths
+// and imports resolve against. `abi` is the target's prepared header ABI,
+// `names` its instruction names in ordinal order, and `natives` the native
+// functions it links.
+Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+            sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
+            identities: uint64[]) -> Result {
+    ops := ResolveOps(names);
+    complete := length(identities) == 2 * length(natives);
+    for (native_row in natives) {
+        if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
+            native_row.first + native_row.parameters + native_row.results > length(ports)) {
+            complete = false;
+        }
+    }
+    if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
+        length(collection_names) != length(collection_paths)) {
+        return InputFailure(-1, "unsupported compiler input or target");
+    }
+    collections: routes.Collection[] = [];
+    index: int = 0;
+    while (index < length(collection_names)) {
+        collection: routes.Collection = {name: collection_names[index], path: collection_paths[index], has_name: true,
+                                         has_path: true};
+        collections = array_add(collections, collection);
+        index += 1;
+    }
+    inputs: snapshot.Input[] = [];
+    sizes: uint64[] = [];
+    index = 0;
+    while (index < length(paths)) {
+        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        inputs = array_add(inputs, input);
+        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
+        index += 1;
+    }
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),
+                                 collection_count: length(collections)};
+    switch snapshot.Build(options, collections, inputs, sizes) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return Result.Rejected(diagnostic);
+        case .Accepted(roots, documents, nodes, imports, built):
+            switch built {
+                case .Rejected(error, cycle):
+                    return InputFailure(-1, "package graph is invalid");
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
+                        case .Failed(diagnostic):
+                            return Result.Rejected(diagnostic);
+                        case .Collected(callables, params, types, members, constants):
+                            return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
+                                        callables, params, types, members, constants, natives, ports, identities, ops, target,
+                                        abi);
+                    }
+            }
+    }
+}
+// Compile's closure, for a host that takes one byte[] result; empty when
+// Compile rejects the input, whose diagnostic Compile returns.
+CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                   sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
+                   ports: Port[], identities: uint64[]) -> byte[] {
+    switch Compile(project, collection_names, collection_paths, paths, sources, target, abi, names, natives, ports,
+                   identities) {
+        case .Rejected(diagnostic):
+            return [];
+        case .Compiled(module, bytes):
+            return bytes;
+    }
+}

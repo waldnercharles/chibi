@@ -1,6 +1,6 @@
-#include "authoring/source_catalog_snapshot.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "execution/prepared_internal.h"
 #include "runtime/behaviors/source.h"
 #include "support/array.h"
@@ -108,7 +108,7 @@ static bool parse_record()
     analysis = script_analyze_document(syntax, &empty, "libraries/CatalogRows.chibi");
     REQUIRE(analysis->valid && analysis->type_count == 1);
     const script_catalog input = { .types = analysis->types, .type_count = 1 };
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &input, &copied));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
     return true;
 }
 static const authoring_source *find_source(const char *name)
@@ -321,7 +321,7 @@ TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values)
     REQUIRE(analysis->valid && analysis->type_count == 1);
     REQUIRE(analysis->types[0].field_count == 13);
     const script_catalog input = { .types = analysis->types, .type_count = 1 };
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &input, &copied));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);
     execution_module_plan_free(plan);

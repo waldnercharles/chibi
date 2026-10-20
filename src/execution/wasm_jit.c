@@ -289,8 +289,7 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
         return FLOW_ERR_COMPILE;
     }
     bool inspected = behavior_function_inspection_required(f, ctx);
-    bool canonical = inspected || !behavior_function_rows_allowed(f, ctx);
-    execution_wasm_jit *jit = canonical ? inspection_for(f) : f->artifact->wasm_jit;
+    execution_wasm_jit *jit = inspected ? inspection_for(f) : f->artifact->wasm_jit;
     wasm_entry entry = jit ? entry_for(jit) : NULL;
     if (!entry) {
         ctx->error_message = last_error;
@@ -300,7 +299,7 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
     execution_machine_begin(&machine, f, ctx, false);
     /* Both emitted entries keep canonical PCs, including continuation leaders.
      * Helpers read exactly the immutable stream used to emit this entry. */
-    if (!canonical && f->runtime_body) {
+    if (!inspected && f->runtime_body) {
         machine.instructions = f->runtime_body;
     }
     atomic_fetch_add_explicit(&executions, 1, memory_order_relaxed);

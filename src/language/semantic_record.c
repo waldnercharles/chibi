@@ -1,3 +1,4 @@
+#include "language/nominal_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "types/record.h"
@@ -38,34 +39,62 @@ void script_analyzer_record_types(analyzer *a, TSNode body)
         if (!ts_node_is_null(script_analyzer_field(node, "parameters"))) {
             continue;
         }
-        if (a->out->kind != SCRIPT_PROGRAM_LIBRARY || a->function >= 0) {
-            script_analyzer_diagnostic(a, node, "Records must be declared in a library");
-            continue;
-        }
-        int symbol = script_analyzer_symbol_new(
-            a,
-            script_analyzer_field(node, "name"),
-            SCRIPT_TYPE,
-            (script_type){ .storage = PIN_STRUCT },
-            false
+        TSNode token = script_analyzer_field(node, "name");
+        script_nominal_context context = { .lexical = { a->scope,
+                                                        a->function,
+                                                        a->package_scope,
+                                                        a->document_count,
+                                                        a->specialization },
+                                           .program_kind = a->out->kind,
+                                           .program_name = a->out->name,
+                                           .pointer_size = sizeof(void *) };
+        char *name = script_nominal_allowed(context, SCRIPT_NOMINAL_RECORD)
+                       ? script_analyzer_name_copy(a, token)
+                       : NULL;
+        script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+        script_range range = script_analyzer_range(a, token);
+        script_nominal_declaration declaration = script_nominal_declare(
+            &a->out->constants,
+            &facts,
+            context,
+            (script_nominal_request){ .kind = SCRIPT_NOMINAL_RECORD,
+                                      .name = name,
+                                      .range = script_analyzer_range(a, node),
+                                      .name_range = range }
         );
-        script_symbol *s = &a->out->symbols[symbol];
-        if (s->kind != SCRIPT_TYPE ||
-            s->declaration.start !=
-                script_analyzer_range(script_analyzer_field(node, "name")).start) {
+        for (int j = 0; j < declaration.diagnostic_count; j++) {
+            apush(a->out->diagnostics, declaration.diagnostics[j]);
+        }
+        int symbol = declaration.existing;
+        if (declaration.declare && symbol < 0) {
+            apush(
+                a->out->symbols,
+                ((script_symbol){ .id = declaration.id,
+                                  .name = name,
+                                  .kind = SCRIPT_TYPE,
+                                  .type = declaration.declaration_type,
+                                  .declaration = range,
+                                  .scope = a->scope,
+                                  .initializer = -1,
+                                  .function = -1,
+                                  .writable = false })
+            );
+            symbol = acount(a->out->symbols) - 1;
+            name = NULL; /* The analysis now owns this heap symbol name. */
+        }
+        free(name);
+        if (!declaration.publish) {
             continue;
         }
-        s->type.nominal = s->id;
-        size_t bytes = strlen(a->out->name) + strlen(s->name) + 2;
-        char *name = arena_alloc(&a->out->constants, bytes);
-        snprintf(name, bytes, "%s.%s", a->out->name, s->name);
+        a->out->symbols[symbol].type = declaration.type;
         script_analyzer_publish_type(
             a,
-            (script_catalog_type){ .id = s->id,
-                                   .name = name,
-                                   .source_name = own(a, s->name),
-                                   .type = s->type,
-                                   .authored_record = true }
+            (script_catalog_type){ .id = declaration.id,
+                                   .name = declaration.name,
+                                   .source_name = declaration.source_name,
+                                   .type = declaration.type,
+                                   .authored_record = declaration.authored_record,
+                                   .size = declaration.size }
         );
     }
 }
@@ -86,9 +115,10 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                                                    a->catalog,
                                                    a->out->symbols[symbol].type.nominal
                                                );
+        script_range name_range = script_analyzer_range(a, script_analyzer_field(node, "name"));
         if (!found || !found->authored_record ||
-            a->out->symbols[symbol].declaration.start !=
-                script_analyzer_range(script_analyzer_field(node, "name")).start) {
+            a->out->symbols[symbol].declaration.document != name_range.document ||
+            a->out->symbols[symbol].declaration.start != name_range.start) {
             continue;
         }
         script_catalog_type definition = *found;

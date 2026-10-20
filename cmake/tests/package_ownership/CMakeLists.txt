@@ -13,6 +13,15 @@ target_precompile_headers(owner PRIVATE src/owned.h)
 set_target_properties(owner PROPERTIES OUTPUT_NAME renamed ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/relocated")
 add_library(debug_archive STATIC src/debug.c)
 add_executable(auxiliary src/auxiliary.c)
+if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+    add_executable(chibi-build-host src/auxiliary.c)
+    add_library(chibi_compiler_host OBJECT src/debug.c)
+    add_executable(chibi-compiler-host src/auxiliary.c)
+    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host)
+    # A wrong executable owner must not satisfy the private-tool contract.
+    target_link_libraries(auxiliary PRIVATE chibi_compiler_host)
+    install(TARGETS chibi-build-host chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
+endif()
 # Keep a .res-shaped compiler output with real host compilation and Ninja
 # dependencies. This checks ownership, not native Windows resource compilation.
 configure_file(src/resource.manifest resource.manifest COPYONLY)
@@ -33,6 +42,6 @@ endif()
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/src/owned.c" source_hash)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/src/owned.h" header_hash)
 file(WRITE "${CMAKE_BINARY_DIR}/chibi_engine_metadata.json"
-    "{\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1,\"source\":\"src/owned.c\",\"header\":\"src/owned.h\",\"sha256\":\"${source_hash}\",\"header_sha256\":\"${header_hash}\"}}}\n")
+    "{\"sdk_version\":\"0.1.0\",\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1,\"source\":\"src/owned.c\",\"header\":\"src/owned.h\",\"sha256\":\"${source_hash}\",\"header_sha256\":\"${header_hash}\"}}}\n")
 include("${CHIBI_ROOT}/sdk/package_targets.cmake")
 chibi_package_targets()

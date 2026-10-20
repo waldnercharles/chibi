@@ -395,8 +395,19 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
                                             : inputs[1].i;
     int size = inputs[2].i < 0 ? 0 : inputs[2].i;
     size = size > source->count - start ? source->count - start : size;
-    pin_array *array = pin_array_snapshot_like(a, source, size);
-    if (!array || pin_array_snapshot_copy(a, array, 0, source, start, size)) {
+    /* The copied elements alone decide the copy's representation, so a small
+     * slice of a large array costs its own size. */
+    pin_array range = *source;
+    range.count = range.capacity = size;
+    range.buckets = NULL;
+    range.bucket_mask = 0;
+    if (range.stride) {
+        range.data = size ? (char *)range.data + (size_t)start * range.stride : NULL;
+    } else {
+        range.items = size ? range.items + start : NULL;
+    }
+    pin_array *array = pin_array_snapshot_like(a, &range, size);
+    if (!array || pin_array_snapshot_copy(a, array, 0, &range, 0, size)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     return owned_array(source, array);

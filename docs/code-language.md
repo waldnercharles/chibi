@@ -6,6 +6,149 @@ The shared C frontend retains syntax snapshots and resolves typed semantic
 records. The compiler lowers those records directly into verified execution
 modules; visual editors consume their authoring projections.
 
+## Package analysis
+
+The SDK's `script_analyze_package` and `script_declarations_package` accept a
+`script_package_options` describing sibling snapshots, native declarations and
+resolved imports. Siblings have one matching `package` header.
+Functions, constants, records and unions share a package scope. Declarations are
+collected before function bodies, so siblings can refer to one another and
+functions with declared results can recurse across files.
+
+```code
+// arithmetic.chibi
+package sample
+Add :: (value: int) -> int { return value + 2; }
+```
+
+```code
+// main.chibi
+package sample
+Main :: (value: int) -> int { return Add(value); }
+```
+
+Each input supplies a display path, a stable document key and parsed syntax; the
+caller supplies a stable package identity. The returned analysis owns its source
+texts, paths and keys. `script_range.document` selects the input document, while
+byte offsets and line/column values stay local to that document. Lowered execution
+origins retain its display path after the analysis is freed. Exported identities
+depend on package identity and declaration, not input order or unrelated sibling
+files. Debug record ordinals and byte offsets are not durable identities.
+
+`source_package_snapshot_new` in `Chibi::source_catalog` separately resolves a
+complete set of source buffers against explicit project and collection roots.
+It owns parsed documents, groups sibling files, resolves relative and
+`collection:path` imports, and retains file-local aliases and blank import edges.
+Its graph reports missing packages, duplicate bindings and cycles with source
+locations. Package and document keys use collection-relative paths so relocating
+an installation preserves their identities. Graph ordering is deterministic for
+the supplied canonical paths.
+
+Resolution is lexical and does not read the filesystem or follow symlinks. A disk
+adapter must provide physically canonical roots and paths when containment is
+required. Relative imports cannot leave the declaring file's longest matching
+collection root. Inputs are bounded to 256 files, 512 KiB each and 8 MiB total;
+the public header records path, nesting and import limits.
+
+`authoring_packages_prepare` consumes an owned snapshot and prepares dependencies
+before their importers. A file's named aliases expose only the imported package's
+functions, types and constants; sibling files do not inherit those aliases.
+Blank imports retain dependencies without adding names. A self import refers to
+the current package. Exported signatures, layouts and constant values are owned,
+and lowered calls link to dependency modules by stable ID. Parameter defaults
+must be bounded compile-time values; preparation does not execute host calls to
+evaluate defaults. Existing generic execution limits still apply.
+
+Preparation returns a separate valid or invalid candidate, with source-local
+diagnostics. Passing a previous candidate permits exact reuse when source
+membership/text, native declarations/defaults, backend, nonzero binding
+generation and direct dependency generations match. Any changed dependency
+invalidates its transitive importers, including blank import edges. Reused
+generations and executable modules retain their dependencies independently of
+previous owners; a failed candidate never changes the previous one.
+
+Direct semantic callers supply one immutable exports view per imported identity,
+reusing that view across aliases. Metadata is available by ID for type checking,
+while only explicit export members are visible through an alias. The shared
+`script_catalog_snapshot` helper in `Chibi::capabilities` owns metadata names and
+defaults, including union payload defaults.
+
+`source_package_snapshot_load` supplies a complete explicit package-source
+forest from disk on Linux and macOS. It canonicalizes root directories, reads
+bounded regular `.chibi` files through directory descriptors, and rejects
+non-hidden descendant symlinks. Hidden descendants are skipped, while explicitly
+supplied roots are still scanned. Overlapping roots share no collected files;
+longest-root ownership remains the resolver's rule. Loader failures return a
+value-owned path/message; source and graph errors retain an invalid snapshot.
+The loader does not consult the environment or change cwd. Windows filesystem
+loading remains unsupported; callers can still supply owned buffer snapshots.
+
+The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
+as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
+pure functions use the text and array capability packs. `ByteLength`, `ByteAt`,
+`Bytes`, `Slice`, `Compare`, `IsIdentifier` and `BaseName` are the primitives:
+byte access returns unsigned 0..255 or -1 outside the string; each `ByteAt`
+call measures the string, so a loop over a long one is quadratic, and `Bytes`
+returns every byte as an `int[]` in one pass instead; Slice clamps its start/count and owns
+its result, byte ranges can split UTF-8 sequences, Compare orders unsigned
+bytes, IsIdentifier checks ASCII identifiers, and BaseName uses slash
+separators. The rest port Odin's `core:strings` over bytes: `Contains`,
+`ContainsAny`, `HasPrefix`, `HasSuffix`, `Index`, `LastIndex`, `IndexByte`,
+`LastIndexByte`, `IndexAny`, `LastIndexAny`, `Count`, `TruncateToByte`,
+`EqualFold`, `ToLower`, `ToUpper`, `IsAsciiSpace`, `Trim`, `TrimLeft`,
+`TrimRight`, `TrimSpace`, `TrimLeftSpace`, `TrimRightSpace`, `TrimPrefix`,
+`TrimSuffix`, `Cut`, `Split`, `SplitN`, `SplitAfter`, `SplitAfterN`,
+`SplitKeeping` (Odin's `_split`), `SplitLines`, `SplitLinesN`,
+`SplitLinesAfter`, `SplitLinesAfterN`, `SplitLinesKeeping`, `Fields`, `Join`,
+`Concatenate`, `Repeat`, `Replace`, `ReplaceAll`, `Remove`, `RemoveAll` and
+`Partition`, which returns a `Parts` record. Where Odin decodes runes, these
+compare, count and offset bytes: an empty separator splits into bytes, `Cut`
+takes byte offsets, cutsets are byte sets, and case and spaces are ASCII.
+`Repeat` returns an empty string for a count below 1 where Odin panics, and
+`Replace` returns only the string. Compiler packages
+also use the existing pure generic array capability pack. General authored
+generic specialization remains a separate language gap; core does not provide
+an imported generic array-wrapper API.
+
+Package globals and embedded game roots remain unsupported. Project loading, formatting and editor
+navigation use their existing single-source entry points. The package APIs do
+not change the public build command.
+
+### Tests and attributes
+
+An attribute is `@name` before a function declaration, on its own line or the
+same one. `@test` is the only attribute; any other name, or `@test` twice, is a
+diagnostic. It marks a package-level function that takes no parameters and
+returns nothing:
+
+```chibi
+package scoring
+
+Double :: (points: int) -> int {
+    return points * 2;
+}
+
+@test
+DoublesPoints :: () {
+    expect(Double(3) == 6, "three doubles to six");
+}
+```
+
+A test passes when it returns. It fails when `expect(condition, message)` sees
+a false condition, which fails the call with `Expectation failed: message` at
+the `expect` call's position, or on any other runtime failure, such as an
+out-of-bounds read or a checked conversion. `expect` is a core function with an
+effect, so a function that calls it is not pure and no optimization removes the
+call. Tests are ordinary functions: they compile into the package like any other and run
+only when something calls them.
+
+`chibi test [ROOT]` calls them: it prepares every package below ROOT, runs the
+tests of those packages in file and line order, and reports each failure at the
+call where it stopped, with its file, line and column. A test runs alone,
+without a game: it may call the natives that need none, such as text, array
+and math functions, and fails when it waits or starts a task, or after 100
+million instructions.
+
 The [versioned contract snapshot](language-contracts/v1.md) pins source evidence,
 existing C conformance cases and unresolved migration semantics separately at its
 recorded revision, before the version-25 retained-binding migration. Its source
@@ -218,11 +361,36 @@ reflected structs. Arrays use `number[]`; collection types include `set<int>` an
 `Map<string, int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Collection natives such as `array_add` return a new value: write
 `hair = array_add(hair, h)`. A pure native called as a statement is an error.
-Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
-`cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
-boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
-value's own type, such as `cast<entity>(get_global_variable("Player"))`, only
-supplies the type a polymorphic call needs.
+Arrays are values, so every store copies; a local or result array therefore
+owns its items. Appending to it with `xs = array_add(xs, x)` or
+`xs = append(xs, ys)`, or writing `xs[i] = x`, updates it in place, and building an array that way is linear, as
+with Odin's dynamic arrays. A write outside the array fails with "Array index out
+of range". Other values holding the array keep their copy.
+Runtime strings cannot contain embedded NUL bytes.
+
+Explicit scalar conversions call the type: `double(value)`, `float(value)` or
+`byte(value)`. Most code needs none. A literal takes its expected type, an
+integer converts implicitly to an integer type that holds every value (`byte` to
+`int`, `uint16` to `uint`), and conversions involving `number`, `double` or
+`float` stay implicit. Only narrowing between integer types needs a conversion:
+
+```code
+low := byte(value)          // checked: fails when value does not fit
+bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
+level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
+```
+
+A checked conversion of an integer constant that does not fit is a compile
+error; a runtime value that does not fit fails the invocation. `wrap` and
+`clamp` apply only between integer types. Floating values convert to integers
+by truncating toward zero, clamping at the destination bounds and mapping NaN
+to zero. Mixed integer operands, in arithmetic and comparisons, use the wider
+type, or `int` or `int64` for a signed and unsigned pair: `byte + int8` is `int`
+and `int + uint` is `int64`. `int64` with `uint64` needs an explicit conversion.
+Arithmetic narrower than 32 bits, and unsigned ordering and subtraction, are not
+yet supported. A constant can declare its type, as in `Mask: uint : 0xFF`. A
+conversion to a value's own type, such as `entity(get_global_variable("Player"))`,
+only supplies the type a polymorphic call needs.
 
 ### Array storage
 
@@ -297,7 +465,7 @@ A declared numeric result or argument type supplies context for an otherwise
 untyped arithmetic expression, so ordinary arithmetic does not require casts.
 Typed operands keep their precision: a double
 operand also gives otherwise untyped literals double precision before any
-conversion to a float destination. Use `cast<double>` to request that precision
+conversion to a float destination. Use `double(value)` to request that precision
 explicitly. A decimal point alone does not require double precision.
 
 Host events infer their registered payload. `on Tick(dt) { ... }` binds the
@@ -350,6 +518,20 @@ one conventional completion produce a diagnostic when awaited. Native sequence
 branches use `sequence { branch { ... } branch { ... } }` and run in their native
 order. Labels and `goto` express shared or irreducible control flow when structured
 blocks cannot describe it.
+
+A typed local's type must begin on the same line as its declaration colon:
+`item: Package = {value: 7};`. A complete `name: Type = value` takes precedence
+over a label followed by an assignment. Put a label's plain assignment on the
+following line to distinguish the two:
+
+```code
+ordinary:
+result = result + 1;
+```
+
+Same-line labels before other statement forms, such as `finish: goto finish;`
+or `compound: result += 1;`, remain valid. Inferred `:=` locals and persistent
+system-root declarations retain their existing meaning.
 
 A `switch` evaluates its value once and executes the matching case. Cases never
 fall through, so they do not need `break`. `case:` is the default. The switch
@@ -601,10 +783,7 @@ operator. Other parameters are copies and can change without changing the caller
 All authored functions use the shared call-depth budget of 64. Source metadata
 cannot override that limit or declare a custom owner type. Descriptions belong
 in comments rather than executable metadata declarations.
-The bounded [qualified-module composition specimen](module-composition.md) checks
-existing discovery, lexical/qualified binding, cycle rejection, state visibility
-and independent catalogs. It does not introduce import aliases or new visibility
-syntax.
+Qualification has no import aliases or visibility syntax of its own.
 
 Argument-bound type parameters preserve generic relationships, for example
 `Identity :: (item: $T) -> T { return item }`. Later uses of `T` must match the
@@ -742,9 +921,7 @@ has the same meaning. `team: Team from ancestor(ChildOf)` selects the nearest
 matching ancestor. Sources also accept `from self` and `from Targets`. Header
 filters can test `self.Frozen`, `Targets.Frozen` or
 `ancestor(ChildOf).Frozen`; `has(Targets)` tests relationship existence without
-repeating the root's body. Access is inferred from the body. See
-[query headers and relationship sources](runtime-authoring.md) for source
-selection, explicit relationship loops, and their lifetime restrictions.
+repeating the root's body. Access is inferred from the body.
 
 ### Shared-target reductions
 
@@ -755,6 +932,9 @@ and writing the destination immediately:
 Damage :: system(projectile: Projectile) {
     reduce projectile.Target.Health.Damage += projectile.Damage
 }
+```
+
+```chibi
 Closest :: system(candidate: Candidate) {
     reduce min(candidate.Target.Threat.Distance, candidate.Distance)
 }
@@ -1059,6 +1239,20 @@ snapshots. Generated C conservatively retains caller snapshots around helper
 calls, while its shared call driver can still borrow verified helper arguments.
 These restrictions govern when the optimization applies; ordinary array helpers
 retain their existing value semantics when it cannot apply.
+
+A call passes all of its arguments without copying them, records, strings and
+unions included, when the callee and every function it can reach leave storage
+they did not allocate untouched. Each loaded definition is checked once:
+nothing may write through a value derived from an argument, state or context,
+update such a value in place, or write through a reference to it, and the
+definition may not store state, send commands, start tasks or suspend. Natives
+must declare pure or world-read access. Copying a parameter into a local and
+changing the local is allowed, and so is assigning fields of the helper's own
+records, text from its arguments included: strings are immutable, so storing
+the caller's text leaves the storage the helper's own. Only reading such bytes
+back as an address, which no lowering emits, makes the helper copy. A helper
+that reads a table therefore costs the same however large the table is.
+Debugging keeps the copies.
 
 Preview source preparation reuses unchanged analysis and executable generations
 through `authoring_sources_prepare_incremental`. Exact source identity/text,

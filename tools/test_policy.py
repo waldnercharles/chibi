@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
+    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -106,7 +106,7 @@ NATIVE = {
     ('--model-graphs',): 'Model graphs compiled to distance programs, bounds, hit resolvers and sampled SDFs; 39 cases, in-memory, CPU only; docs/testing.md',
     ('--model-catalog',): 'Model parameters, material scope, validation, materials and surfaces in the shader catalog; 29 cases including live model registration, diagnostics and rename, CPU only; docs/testing.md',
     ('--render-geometry',): 'Appearance and mesh surface geometry, including finite scaled relief; 8 cases, CPU only; docs/testing.md',
-    ('--arena',): 'The support arena allocator; 2 cases, CPU only; docs/testing.md',
+    ('--arena',): 'The support arena allocator; 3 cases, CPU only; docs/testing.md',
     ('--shader-graphs',): 'Shader graphs evaluated on the CPU and compiled to GLSL; 16 cases, CPU only; docs/testing.md',
     ('--shader-bake',): 'Bounded material channel baking; eight CPU cases, no files or GPU.',
     ('--material-bake',): 'Independently reviewed bounded CPU controller baking: tiny grids, three children under shared60s, no GPU.',
@@ -199,7 +199,8 @@ TOOLS = {
     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
-    # Two reviewed arena cases: aligned growth, block reuse after reset and a zero-initialized arena.
+    # Three reviewed arena cases: aligned growth, block reuse after reset, a zero-initialized arena
+    # and collectable values found by address.
     'arena': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--arena'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--system-schedule'],
@@ -223,9 +224,62 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
+    # Eighteen finite CLI cases: launcher calls over fake sibling compiler,
+    # player, node and browser player; the built launcher's version and doctor;
+    # its real chibi-compile's --check, --test, --format and --docs on tiny
+    # projects, package trees and sites; loopback serving for web and doc,
+    # started and stopped in-process. No network. Well within one shared 60s.
+    'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                  '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
+    # The packaged SDK's launcher in place (make package-sdk first): three cases,
+    # one tiny project, package tree and site, one native export; no player frames.
+    'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
+    # Fixed POSIX process/VM/SLJIT cases over one controlled worker and disposable
+    # root. Bounded capture, short cancellation/timeout cases; no engine builds.
+    'build-process': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                      '--build-process',
+                      str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                      str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Six tooling cases plus one producer case, four supervised children <=10s
+    # each under shared60s: producer, two five-request batches, bad-magic CLI.
+    # Actual eight-package closure:16preparation parses,4C+12raw parser calls,
+    # 15Build calls@3m. Three malformed reads stop before decode; one tiny
+    # reference-entry artifact rejects beforeexecution. Artifacts<=16MiB,
+    # inputs<=8KiB,output<=256KiB. No renderer/GPU/network; separate build.
+    'compiler-artifact': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                         '--compiler-artifact',
+                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                         str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
+    # Eight cases: the compiler host's bootstrap mode refuses bad options, a
+    # missing or invalid bootstrap.kdl, other formats, versions older than the
+    # minimum, a closure its manifest does not record (four SHA-256 vectors),
+    # a missing source, a package that gained a file, another target, a
+    # manifest other than the published one bootstrap.kdl pins and a seed
+    # whose sources are not on disk, all before any compile runs. About
+    # twenty-five host children on tiny folders, and one compiler-artifact
+    # producer.
+    'compiler-bootstrap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                           '--compiler-bootstrap',
+                           str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                           str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
+    # One case: git-archives HEAD's tools/compiler and packages/core and has an
+    # unsanitized Release compiler host recover the compiler from the artifact
+    # make bootstrap-artifact wrote: one compile, or two when the sources
+    # changed since it, about 7 s or 14 s on macOS arm64 (make test-recovery).
+    'bootstrap-recovery': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                           '--bootstrap-recovery',
+                           str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host')),
+                           str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'build-release/bootstrap'))],
+    # Six fixed orchestration cases: 38 API invocations on both backends, one CLI,
+    # ten tiny Git roots, controlled CMake workers and Make routing; no engine builds.
+    'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                        '--build-toolchain',
+                        str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                        str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Eight offline desktop dependency/configuration cases; twenty direct children, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # One configured-ownership case: 15 children, 11 rejects, six tiny C units and one PCH.
+    # Two configured-ownership cases:22children,14rejects,13tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],
@@ -534,6 +588,284 @@ TOOLS = {
     # Existing owning dispatcher, separate build timing, shared60s; no aggregate.
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                 '--package-syntax'],
+    # Seven fixed package cases: 32 parses, 15 analyses, twelve lowers, eight
+    # backend finalizations and sixteen direct calls with instruction budget2000.
+    # At most three documents per snapshot; twelve fixed source texts each<1KiB.
+    # No files, children, worlds, network or GPU; separate build and shared60s.
+    # First measurement requires independent exact-source/workload review.
+    'language-package-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                   '--package-execution'],
+    # Existing23 graph cases compare28 constructions on both backends:
+    # 56 Builds+348 bounded queries, 684 packed File/590 Import rows total.
+    # Two reused owners (four source parses), max256 files/255 imports.
+    # Two max Builds permit50m instructions; other402 calls permit100k each.
+    # Sparse edges, scalar arrays<=256; no filesystem/process/services/GPU.
+    # Independent exact-source/resource review before first run, separate build,
+    # one shared60s ceiling; standalone route outside the language aggregate.
+    'language-package-graph-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--package-graph-chibi'],
+    # Fourteen shared sources plus two before/edited/fresh triples:20 raw trees,
+    # 20 C oracle snapshots and40 authored calls capped at1m instructions each.
+    # Two retained owners (four source parses), source<=2KiB, nodes<=1024,
+    # depth<=128. No files, processes, services or GPU; separate build/shared60s.
+    # Independently review the exact workload before first run; no aggregate.
+    'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                              '--syntax-chibi'],
+    # Existing11 extraction cases/32 attempts,32 independent raw parses and
+    # 64 Extract invocations across2backends (including nested Diagnose work),
+    # each capped at1m instructions. Two reused owners prepare3actualsources
+    # each; fixture text<256bytes, rawtree<=1024nodes/depth128. No runtimefiles,
+    # children/services/GPU; independent review, separate build, shared60s.
+    'language-package-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--package-syntax-chibi'],
+    # Three cases,26 fixed lexical requests,26 C oracle calls,52 authored calls
+    # capped at1m instructions each. Two owners prepare Paths+core:4parses.
+    # Four fixed buffers<=4097bytes; no runtime IO, children, services or GPU.
+    # Independent review before first run; separate build/shared60s, no aggregate.
+    'language-package-paths-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--package-paths-chibi'],
+    # Forty fixed requests (13roots,11files,16imports) plus27root setups:
+    # 67 C oracle calls,134 authored calls capped at1m instructions each.
+    # Two retained owners prepare4sources each; inputs<=128bytes/3roots/17dirs.
+    # No runtime files/children/services/GPU; private external JSON decoding only.
+    # Independent first-run review, separate build/shared60s, outside aggregate.
+    'language-package-routes-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--package-routes-chibi'],
+    # Fifteen cases:45 snapshots,90 authored calls capped at3m instructions.
+    # Two retained owners prepare8sources each; <=5files/4imports per request.
+    # <=71 C parses and142 raw authored parses; sources<1KiB, trees<=1024nodes.
+    # No runtime files/children/services/GPU; first-run independent admission,
+    # separate build/shared60s, outside the language aggregate.
+    'language-package-snapshot-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                        '--package-snapshot-chibi'],
+    # Three cases:38 queries,76 authored calls capped at2m instructions each.
+    # Two owners prepare IR+Proof:4parses;2short source parse/analyzes.
+    # <=257expressions/32symbols/4arguments/256visits perquery; no runtime IO,
+    # children/services/GPU. Independent first-run review, separate build/shared60s.
+    'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--constant-proof-chibi'],
+    # Three cases:70 fixed requests,140 authored calls capped at2m instructions.
+    # Two owners prepare4sources each (<64KiB/source):8preparation parses.
+    # <=7expressions/1symbol/0aggregate arguments perrequest; no full65536visit
+    # exhaustion, runtime IO, children/services/GPU. Independent first-run review,
+    # separate build/shared60s, outside the language aggregate.
+    'language-constant-scalar-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--constant-scalar-chibi'],
+    # One C/pico case: eight fixed raw typed-IR requests on BYTECODE/SLJIT.
+    # Two Lower.chibi preparations (<32 KiB each), including 62 bootstrap
+    # initializer VM entries at budget 100k; 16 Lower calls at budget 500k.
+    # Context budgets reset in child activations, not aggregate work ceilings.
+    # 24 canonical plans/prepared round trips, 48 target runs at budget128,
+    # eight decoder-only rejections. Maxima: 24 expressions/types/literals,
+    # two symbols/variables/results, 256 visits/instructions, 257 frame rows.
+    # No workload IO, children, services, GPU or Wasm fallback. Independent
+    # exact-source/workload admission before first run; separate build, one
+    # unchanged shared60s deadline including preparation/cleanup; no aggregate.
+    'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--scalar-lowering-chibi'],
+    # One pico_unit case over the separate 19-source/17-package compiler fixture:
+    # 43 fixed source requests x2 compiler backends=86 calls; 14 accepted x2=28
+    # authored prepared modules, 14x4=56 bytecode/SLJIT target entries.
+    # Sources<=1KiB (one over-limit specimen=1025), <=4 offered files, <=24
+    # lowered rows. Compiler closure<256KiB, each<32KiB. No source reaches native
+    # semantic preparation or finalization after bootstrap. One shared60s
+    # including bootstrap and cleanup; no aggregate.
+    'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--bounded-compiler-chibi'],
+    # One pico_unit case: the authored prepared writer over five fixed modules
+    # (its own, core:strings, syntax_diagnostics, package_paths and a sample),
+    # eight Write calls compared byte for byte with execution_prepared_write:
+    # modules above 512 KiB on the compiled backend only, the rest on both.
+    # One shared60s including bootstrap; no aggregate.
+    'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--prepared-writer-chibi'],
+    # One pico_unit case: the authored package compiler over fixed sample
+    # packages on both compiler backends; each accepted closure loads in a fresh
+    # runtime host and runs on bytecode and SLJIT, and stage zero's build of the
+    # same package agrees. Rejections check message and position. shared60s.
+    'language-package-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--package-compiler-chibi'],
+    # The same case over the samples of unions, constants, patterns and
+    # integer types, split off so each selector keeps its own shared60s.
+    'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                             '--package-compiler-chibi-types'],
+    # The same case over the imports sample, which compiles all of
+    # core:strings, split off so it keeps its own shared60s.
+    'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                               '--package-compiler-chibi-imports'],
+    # Stage one compiles the compiler's complete sources to a closure, stage
+    # two, which the compiler host loads and runs to compile them to the same
+    # bytes. Sanitizers make one compile take about two minutes, so this runs
+    # an unsanitized Release test_language (make test-bootstrap). shared60s.
+    'language-package-compiler-chibi-bootstrap': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
+                                                 '--package-compiler-chibi-bootstrap'],
+    # Three cases:40 requests,80 authored calls capped at2m instructions each.
+    # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
+    # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,
+    # three diagnostics. No runtime IO, children/services/GPU; separate build,
+    # independent first-run review/shared60s, outside the language aggregate.
+    'language-lexical-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--lexical-binding-chibi'],
+    # Three cases:12raw +4analyzed header requests,32authored calls at100k each.
+    # Two owners prepare4sources each (<16KiB);4actual inputs<256bytes:
+    # 12parses total. <=1symbol/1function/2scopes/2documents,strings<128bytes.
+    # No runtime IO/children/services/GPU; separate build, independent first-run
+    # review/shared60s, outside the language aggregate.
+    'language-nominal-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--nominal-binding-chibi'],
+    # Three cases:36requests,72authored calls at2m each; two owners prepare4
+    # sources each (<32KiB) plus4fact parse/analyzes:12parses,6JSONcodec calls.
+    # Caps32symbols/8scopes/4functions/2docs/8entries/3imports/exports/4uses,
+    # 8tokens/64types/128IDs,220name/256text bytes,128fact nodes/depth16.
+    # No runtime IO/children/services/GPU; separate build, independent first-run
+    # review/shared60s, outside the language aggregate.
+    'language-named-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--named-binding-chibi'],
+    # Three cases: 16 raw + 4 analyzed requests, 40 authored calls at 200k each.
+    # Five sources per backend (<32 KiB) + 4 fact sources (<256 bytes): 14 parses.
+    # Caps: 64 types/128 IDs, 8 definitions/variants, 2 capabilities/4 functions,
+    # 32 symbols/8 results/4 members. At most 4 variants/2 fields/1 diagnostic
+    # per output; 20 C plans, 21 materialization attempts, 19 snapshots.
+    # No runtime IO/JSON calls/children/services/GPU. Independent first-run
+    # review, separate build, shared 60s; outside the language aggregate.
+    'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--type-constructors-chibi'],
+    # Four cases: 111 fixed requests, 222 calls with budget argument 50k.
+    # Child activations inherit/reset it; not a global instruction ceiling.
+    # Five compiler sources/backend (<32 KiB each): ten preparation parses.
+    # Caps: 5 definitions, 8 variants/types, 4 uint64 IDs, 3 alias links.
+    # C parity plus fixed answers; cycle results survive all producer owners.
+    # No runtime IO/JSON policy calls/children/services/GPU. Exact-source review
+    # before first run; separate build, one shared 60s; outside aggregates.
+    'language-type-relations-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--type-relations-chibi'],
+    # Four cases: 24 Parse/5 Same/10 Product/9 Format requests; 96 authored calls
+    # at 2m instructions each. Units/CoreStrings per backend: 4 preparation
+    # parses. At most 8 terms, 240 input/name bytes, format capacity 1..192.
+    # Fixed expected results supplement C parity; detached outputs and retained
+    # unit/UTF8 text survive both owners. No runtime IO/children/services/GPU.
+    # Independent first-run review, separate build, shared 60s; outside aggregate.
+    'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                  '--unit-algebra-chibi'],
+    # Four cases: 25 raw annotation reads/50 authored calls at 500k each.
+    # Seven sources per backend (<32 KiB each) + 25 raw TS trees: 39 parses,
+    # 4 private JSON callbacks. Original24 sources <256 bytes,256nodes/depth32;
+    # one fixed65-array regression <512bytes/512nodes/depth256.
+    # Inputs 2 scopes/2 symbols/1 function/2 documents/3 definitions/2 variants,
+    # 1 import/export; a chained return adds 1 definition. Pools 64 types/128 IDs.
+    # At most 4 new types/publications/uses/diagnostics; 8 retained-result
+    # projections <128 KiB each. No runtime IO/children/services/GPU. Independent
+    # first-run review, separate build, shared 60s; outside language aggregate.
+    'language-signature-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--signature-reader-chibi'],
+    # Proposed source-only composition: three snapshot requests (3/3/2 files),
+    # 64 top-level calls: 6 Build at3m,14maps/20views/24reads at500k supplied.
+    # Child activations inherit/reset budgets; no aggregate instruction claim.
+    # 14 sources/backend,28 preparation+7 C oracle+14 private raw parses=49.
+    # Existing reader<32KiB and snapshot/shared<16KiB source caps unchanged;
+    # State<8KiB, combined<128KiB. Inputs<256B,128nodes/depth32,file forest384.
+    # Maps3/2 rows,2packages/1import,256rejected cycle cells;4JSON decodes.
+    # Reader64types/128IDs and4outputs.
+    # Eight retained-result projections<128KiB each. No runtime IO, services,
+    # children, GPU or semantic callbacks. Unmeasured: exact-source/workload
+    # review before first execution; separate build, shared60s, no aggregate.
+    'language-snapshot-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--snapshot-reader-chibi'],
+    # Two cases: 15 raw declarations/30 Register calls at 2m instructions each.
+    # Eight sources/backend (Headers<64KiB, others<32KiB) + 15 raw trees:
+    # 31 parses, 4 private JSON callbacks. Sources<512 bytes,256 nodes/depth32.
+    # Input 1 scope/<=1 symbol/0 functions/catalogs; output <=10 symbols,
+    # 2 scopes/3 functions/2 defaults/1 body/4 uses and diagnostics/0 publications.
+    # Membership banks16, type pool64, ID pool128. Retained complete measured
+    # header survives input/owner retirement. No runtimeIO/children/services/GPU.
+    # Independent first-run review, separate build, shared60s; outside aggregate.
+    'language-callable-headers-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--callable-headers-chibi'],
+    # Three C cases: 25 raw + 4 analyzed requests, 58 authored calls at 500k.
+    # Five sources/backend <48 KiB plus four sources <256 B: 14 parses.
+    # Fixed maxima: 81 expressions, 32 symbols, 4 functions, 64 statements,
+    # 8 bindings, 3 capabilities, 128 IDs, 256 ranges; output 512 terms/32 diagnostics.
+    # No workload IO, children, services or GPU. Independent exact-source review
+    # before first run; separate build, one shared 60s ceiling; outside aggregate.
+    'language-unit-analysis-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--unit-analysis-chibi'],
+    # Two cases per focused regression: one existing raw request independently
+    # on bytecode and SLJIT, two calls at 500k and ten preparation parses.
+    # The same success assertions must fail before the authored repair. These
+    # subsets are baseline witnesses, not replacements for the complete corpus.
+    'language-unit-analysis-zero-id': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--unit-analysis-zero-id'],
+    'language-unit-analysis-deep': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--unit-analysis-deep'],
+    # Three fixed C/pico cases: 16 source + 8 raw requests, 48 authored calls
+    # and 32 parses. Supplied budgets: source 2m, raw validation 16m; inherited/
+    # reset per activation, not a whole-call or corpus instruction ceiling.
+    # Eight compiler sources/backend <32 KiB; fact source <=512 bytes,
+    # <=256 syntax nodes/depth 32. Raw maxima: 257 definitions/fields,
+    # 2 variants, 4 roots, 520 types, 1024 IDs; 66049 nominal comparisons,
+    # 258 traversals, 514 persistent state writes. No runtime IO/children/
+    # services/GPU. Independent exact-source admission before first run;
+    # separate build, one shared production 60s deadline, outside aggregates.
+    'language-union-members-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                   '--union-members-chibi'],
+    # Four fixed C/pico cases: 34 requests, 68 authored calls, ten parses.
+    # Supplied budget 500000 is inherited/reset per activation, not a whole-call
+    # or corpus instruction ceiling. Fixed raw graph <=85 expressions;
+    # propagation retains function_count+one passes. No runtime IO/children/
+    # services/GPU. Independent exact-source admission before first run;
+    # separate build, one shared production 60s deadline, outside aggregates.
+    'language-effect-analysis-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--effect-analysis-chibi'],
+    # Five fixed C/pico cases: 26 requests, 52 authored calls, 32 parses,
+    # four runtime JSON decodes. Supplied budget 500000 is inherited/reset per
+    # activation, not an aggregate instruction ceiling. Eight sources/backend
+    # <32 KiB; fact source <256 bytes, <=128 nodes/depth 32. Raw facts: one scope,
+    # <=1 symbol/3 definitions/2 variants/3 prior names; pools 64 types/128 IDs;
+    # output <=4 diagnostics/1 use/1 publication. Fixed annotation shapes only.
+    # No default analysis, runtime IO/children/services/frames/GPU. Independent
+    # exact-source admission required before first run; separate build, one
+    # shared production 60s deadline; outside all aggregates. See docs/testing.md.
+    'language-record-members-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--record-members-chibi'],
+    # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
+    # and 34 imports, five files/four imports per snapshot, three owners live.
+    # Each source<1KiB; no filesystem, authored execution, children or GPU.
+    # First measurement requires independent review; separate build, shared60s.
+    'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--package-resolution'],
+    # Twelve fixed import/preparation cases: 59 preparations, 210 parses,
+    # 113 imports, <=189 package visits before reuse, 48 calls with budget2000,
+    # one pure catalog snapshot and one extra parse/nine semantic-only analyses.
+    # At most five files<1KiB and four live owners.
+    # No filesystem/process/GPU; separate build and one shared60s production
+    # execution deadline.
+    'language-package-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                 '--package-imports'],
+    # Eight fixed POSIX filesystem package cases: 22 loader calls, 12 package
+    # preparations, <=63 parses/30 imports, <=36 package visits before reuse,
+    # and ten VM/SLJIT calls with budget2000. Four files/20 entries per forest;
+    # eight disposable roots, <=19 recorded cleanup paths per case, five links,
+    # one 512KiB+1 sparse oversized file and one non-opened FIFO. No children,
+    # network, engine frames or GPU. Native Linux/macOS only; focused route,
+    # separate build and independent exact-source review before first execution.
+    'language-package-files': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-files'],
+    # Seven fixed pure core package cases, both backends: 18 preparations,
+    # 36 files/18 imports, <=36 package visits, 378 calls with budget10000.
+    # Actual core source<16KiB, app<4KiB, arrays<=3 elements, three owners.
+    # No filesystem/process/services/GPU; independent first-run review,
+    # separate build and one shared60s execution deadline.
+    'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                              '--package-core'],
+    # Six C cases rendering fixed Markdown, navigation, a package reference and a
+    # grammar with the shipped site generator on two backends; 2,000,000-instruction
+    # budget per call; no files/processes.
+    'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--docs-markdown'],
+    # Two C cases, eight tests in two project packages per backend; one test
+    # spends its 100000-instruction budget. No filesystem/process/services/GPU.
+    'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-tests'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
@@ -568,18 +900,17 @@ TOOLS = {
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
     'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
-    # Eight fixed counted-row proof/fallback/lifetime cases, including packed seed,
-    # canonical nullable add and one GC; also in language/Wasm groups.
-    'language-row-builder': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-builder'],
-    # Fixed row-array construction/alias/collection cases plus packed scalar/record snapshots,
-    # 10 numeric widths x 64 elements x 16 trials x 2 representations x 2 backends,
-    # fixed integer edges/constexpr/F32 overload cases; no files/processes/frames/GPU.
-    # Also in language/Wasm groups.
+    # Six fixed row-array construction/alias/collection/in-place cases plus packed
+    # scalar/record snapshots, 10 numeric widths x 64 elements x 16 trials x 2
+    # representations x 2 backends, fixed integer edges/constexpr/F32 overload
+    # cases; no files/processes/frames/GPU. Also in language/Wasm groups.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
-    # Four fixed record execution/format cases; independent admission, no aggregate expansion.
+    # Five fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
     # Bounded union scalar replacement and checked component-read differential/control-flow cases.
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
+    # Union-array regression adds2preparations/4dispatches@10k,arrays<=2items;
+    # local writes preserve snapshots and retainedstate; no IO/services/GPU.
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
     # Reviewed finite public builder/VM/native contracts and verifier rejection cases.
@@ -608,8 +939,6 @@ TOOLS = {
                                   str(ROOT / os.environ.get('CHIBI_RECORD_RUNTIME_BUILD_DIR', 'build/test/record-runtime') / 'test_tools')],
     # One fixed record C-export case; ten calls and one compiler child; standalone.
     'record-c-export': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--record-c-export'],
-    # One fixed canonical generated-C row-builder case; also in compiler-enabled native-tools.
-    'row-builder-c': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--row-builder-c'],
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
@@ -625,13 +954,13 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
 # wasm-format shares the 47 fixed C cases without a corpus, including the
 # package separator case; remains standalone.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-row-builder', 'wasm-outliner-projection'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -666,7 +995,7 @@ GROUPS = {
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-row-builder', 'language-outliner-projection'],
+                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')

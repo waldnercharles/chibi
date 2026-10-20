@@ -1247,7 +1247,8 @@ TEST_CASE(source_capability_creation_uses_properties_operators_and_positional_ar
             REQUIRE(!strstr(result.text, "Identity(Value:"));
         } else if (id == 34) {
             REQUIRE(strstr(result.text, ") + ("));
-            REQUIRE(!strstr(result.text, "Add("));
+            REQUIRE(strstr(result.text, "(double("));
+            REQUIRE(!strstr(result.text, "Add(") && !strstr(result.text, "cast<"));
         } else if (id == 35) {
             REQUIRE(strstr(result.text, " := self;"));
             REQUIRE(!strstr(result.text, "Self("));

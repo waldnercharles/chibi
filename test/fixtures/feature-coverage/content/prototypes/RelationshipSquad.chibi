@@ -4,6 +4,6 @@ RelationshipSquad :: prototype {
         maximum: 10
     }
     behaviors: [RelationshipProbe]
-    children: [{ name: "enemy", prototype: RelationshipTarget }]
-    links: { Targets: child.enemy }
+    children: [{name: "enemy", prototype: RelationshipTarget}]
+    links: {Targets: child.enemy}
 }

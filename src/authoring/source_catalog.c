@@ -759,7 +759,7 @@ static void declared_types(source_catalog *c)
             script_catalog input = { .types = analysis->types,
                                      .type_count = analysis->type_count },
                            owned;
-            if (!source_catalog_snapshot(&c->storage, &input, &owned)) {
+            if (!script_catalog_snapshot(&c->storage, &input, &owned)) {
                 error(c, source->path, (script_range){ 0 }, "Cannot retain declared type payload");
                 script_analysis_free(analysis);
                 continue;
@@ -1394,7 +1394,7 @@ static bool export_specialization_types(
     script_catalog input = { .types = analysis->types,
                              .type_count = analysis->type_count },
                    owned;
-    bool valid = source_catalog_snapshot(&c->storage, &input, &owned);
+    bool valid = script_catalog_snapshot(&c->storage, &input, &owned);
     if (!valid) {
         error(c, source->path, (script_range){ 0 }, "Cannot retain specialized record layout");
         return false;
@@ -1962,7 +1962,7 @@ static source_catalog *build(
     memcpy(normalized, root, root_length);
     normalized[root_length] = 0;
     root = c->root = normalized;
-    if (!source_catalog_snapshot(&c->storage, native, &c->view)) {
+    if (!script_catalog_snapshot(&c->storage, native, &c->view)) {
         error(c, root, (script_range){ 0 }, "Cannot retain native declaration defaults");
         return c;
     }

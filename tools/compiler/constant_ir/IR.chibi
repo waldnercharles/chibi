@@ -1,0 +1,52 @@
+package constant_ir
+
+// These are resolved analyzer facts. References are pool indices; a negative
+// child/initializer denotes absence. Nonnegative references and argument spans
+// obey the same invariants as the analyzer's owned expression graph.
+// Scalar folding also requires type-correct operator result families and
+// literal storage. Admissibility does not validate arbitrary hand-built IR.
+Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    has_nominal: bool;
+}
+Expression :: struct {
+    kind: int;
+    op: int;
+    type: int;
+    literal: int;
+    symbol: int;
+    left: int;
+    right: int;
+    arg_start: int;
+    arg_count: int;
+    effects: int;
+    conversion: int; // Cast range policy: 0 exact, 1 wrap, 2 clamp.
+}
+Symbol :: struct {
+    kind: int;
+    initializer: int;
+}
+Argument :: struct {
+    value: int;
+}
+
+// Enum and bit-mask values retain the existing semantic and value ABI.
+Constant: int : 1;
+SymbolReference: int : 2;
+Unary: int : 3;
+Binary: int : 4;
+Cast: int : 5;
+Member: int : 7;
+Index: int : 9;
+Array: int : 10;
+Record: int : 14;
+Nil: int : 15;
+Union: int : 22;
+ConstantSymbol: int : 14;
+Single: int : 0;
+Boolean: int : 1;
+String: int : 13;
+Untyped: int : 16;
+Literal: int : 1024;

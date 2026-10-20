@@ -116,9 +116,9 @@ TEST_CASE(generic_argument_types_specialize_once_and_execute)
     const char *source = "Generic :: behavior { result: retain int = 0; real: "
                          "retain double = 0; "
                          "Identity :: (value: $T) -> T { return value } "
-                         "on Run { result = Identity(cast<int>(7)) + "
-                         "Identity(cast<int>(8)); "
-                         "real = Identity(cast<double>(2.5)); } }";
+                         "on Run { result = Identity(int(7)) + "
+                         "Identity(int(8)); "
+                         "real = Identity(double(2.5)); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -166,7 +166,7 @@ TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
         "Size :: Factorial(5); "
         "Scale :: (value: $T, $N: int) -> T { return value * N } "
         "Gain :: (value:$T,$Amount:double)->T{return value*Amount} "
-        "on Run { result = Scale(cast<int>(2), Size); real=Gain(3.0,0.5); } }";
+        "on Run { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -179,10 +179,36 @@ TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
     }
     return true;
 }
+TEST_CASE(compile_time_conversions_follow_runtime_modes)
+{
+    const char
+        *source = "Conversions :: behavior { wrapped: retain int = 0; clamped: "
+                  "retain int = 0; "
+                  "exact: retain int = 0; "
+                  "Wrapped :: (n: int) -> int8 { return int8(wrap: n) } "
+                  "Clamped :: (n: int) -> int8 { return int8(clamp: n) } "
+                  "Exact :: (n: int) -> int8 { return int8(n) } "
+                  "W :: Wrapped(300); C :: Clamped(300); E :: Exact(100); "
+                  "on Run { wrapped = int(W); clamped = int(C); exact = "
+                  "int(E); } }";
+    const char *expected[] = { "wrapped", "clamped", "exact" };
+    const int values[] = { 44, 127, 100 };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(compile(source, backends[i]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        for (int j = 0; j < 3; j++) {
+            const pin_value *value = execution_instance_state(instance, state_id(expected[j]));
+            REQUIRE(value && value->type == PIN_I32 && value->i == values[j]);
+        }
+    }
+    return true;
+}
 TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type)
 {
     REQUIRE(
-        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run { direct:int=cast<int>(7); casted:=Identity(cast<int>(7)); typed:=Identity(direct); decimal:=Identity(cast<double>(2.5)); } }")
+        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run { direct:int=int(7); casted:=Identity(int(7)); typed:=Identity(direct); decimal:=Identity(double(2.5)); } }")
     );
     int identities = 0;
     bool casted = false, typed = false, decimal = false;
@@ -355,7 +381,7 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
 {
     const char *invalid[] = {
         "Bad :: behavior { Same :: (a: $T, b: T) -> T { return a } on Run { x "
-        ":= Same(cast<int>(1), true) } }",
+        ":= Same(int(1), true) } }",
         "Bad :: behavior { n: retain int = 3; Add :: (x: int) -> int { return "
         "x + n } Value :: Add(1) }",
         "Bad :: behavior { Forever :: (n: int) -> int { while true { n += 1 } "
@@ -366,14 +392,23 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         "Value :: Forever(1) }",
         "Bad :: behavior { Identity :: (value:$T)->T{return value} "
         "on Run { x:=Identity(missing:true) } }",
+        "Bad :: behavior { Narrow :: (n: int) -> int8 { return int8(n) } "
+        "Value :: Narrow(300) }",
+        "Bad :: library { Pick :: (A: Type) -> Type { x := int8(round: 300); "
+        "return A } Box :: () -> Pick(int) { return 1 } }",
+        "Bad :: library { Pick :: (A: Type) -> Type { x := int8(wrap: 1.5); "
+        "return A } Box :: () -> Pick(int) { return 1 } }",
     };
     const char *messages[] = { "Conflicting polymorphic argument",
                                "only constant values and types are available",
                                "bounded execution budget exceeded",
                                "each constant parameter exactly once",
                                "call depth exceeded",
-                               "Unknown polymorphic argument" };
-    for (int i = 0; i < 6; i++) {
+                               "Unknown polymorphic argument",
+                               "constant does not fit the conversion type",
+                               "may only be named wrap or clamp",
+                               "wrap and clamp convert between integer types" };
+    for (int i = 0; i < 9; i++) {
         REQUIRE(!analyze(invalid[i]));
         REQUIRE(!syntax->diagnostic_count);
         bool expected = false;
@@ -696,6 +731,7 @@ TEST_SUITE(language_generic_suite)
 {
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
     RUN_TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls);
+    RUN_TEST_CASE(compile_time_conversions_follow_runtime_modes);
     RUN_TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type);
     RUN_TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors);
     RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);

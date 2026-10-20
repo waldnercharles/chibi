@@ -2,7 +2,7 @@ HullDamage :: behavior {
     on Damage {
         self.Health.Current -= event.Amount
         await WeaponActions.Spawn_Prototype_At(HitEmitter, self.Transform)
-        if cast<double>(self.Health.Current) <= 0 {
+        if double(self.Health.Current) <= 0 {
             await WeaponActions.Spawn_Prototype_At(DeathEmitter, self.Transform)
             release_material(self)
         }

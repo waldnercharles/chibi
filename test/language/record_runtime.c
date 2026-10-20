@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Four fixed cases; three authored sources, two backends, 14 total calls,
+/* Five fixed cases; eight authored sources, two backends, 28 total calls,
  * four rejected module requirements, one rejected builder and four equality
  * rejection calls. At most 12 fields and three rows; no files/workers/frames. */
 static script_syntax *syntax;
@@ -95,7 +95,7 @@ static bool compile(const char *source, behavior_backend backend, bool reject_ty
         fprintf(stderr, "record semantic: %s\n", analysis->diagnostics[i].message);
     }
     REQUIRE(analysis->valid);
-    REQUIRE(analysis->function_count == 1 && analysis->functions[0].symbol >= 0);
+    REQUIRE(analysis->function_count >= 1 && analysis->functions[0].symbol >= 0);
     function_id = analysis->symbols[analysis->functions[0].symbol].id;
     plan = script_lower(analysis, &catalog, &bindings);
     for (int i = 0; plan && i < plan->diagnostic_count; i++) {
@@ -174,6 +174,9 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
     }
     result = function->result_defaults[0];
     behavior_function_prepare_results(function, &result, &storage);
+    if (behavior_function_resumable(function)) {
+        behavior_function_activation_init(function, &activation);
+    }
     context = (behavior_function_context){ .activation = &activation,
                                            .arguments = args,
                                            .argument_count = count,
@@ -360,6 +363,122 @@ TEST_CASE(record_runtime_fieldwise_equality)
     }
     return true;
 }
+TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
+{
+    static const char producer[] = "Rows :: library { " ROW
+                                   "Make :: () -> Row[] { return "
+                                   "[{key: \"a\", label: \"A\"}, "
+                                   "{key: \"b\", label: \"B\"}]; } }";
+    static const char
+        consumer[] = "Rows :: library { " ROW
+                     "Change :: (row: Row, rows: Row[]) -> Row { "
+                     "local := row; local.label = \"local\"; "
+                     "row.label = \"parameter\"; rows[0].label = \"array\"; "
+                     "rows[0].depth += 4; local.key = row.label; "
+                     "local.depth = row.depth + rows[0].depth; "
+                     "if rows[0].label != \"array\" { local.depth = -100; } "
+                     "return local; } }";
+    static const char reference_consumer
+        [] = "Rows :: library { " ROW
+             "Change :: (row: ref Row, rows: ref Row[]) -> Row { "
+             "row.label = \"reference\"; rows[0].label = \"reference-array\"; "
+             "rows[0].depth += 7; return rows[0]; } }";
+    static const char exposed_consumer
+        [] = "Rows :: library { " ROW
+             "Change :: (row: Row, rows: Row[], count: int) -> Row { "
+             "Mutate(row, rows, count); row.depth += count; "
+             "if rows[0].label != \"exposed-array\" { row.depth = -100; } "
+             "return row; } "
+             "Mutate :: (row: ref Row, rows: ref Row[], count: ref int) { "
+             "row.label = \"exposed\"; rows[0].label = \"exposed-array\"; "
+             "count += 5; } }";
+    static const char
+        inline_consumer[] = "Rows :: library { " ROW
+                            "Change :: (row: Row, rows: Row[], count: "
+                            "int) -> Row { "
+                            "row.label = \"inline\"; rows[0].label = "
+                            "\"inline-array\"; count += 3; row.depth = count; "
+                            "if rows[0].label != \"inline-array\" { row.depth "
+                            "= -100; } return row; } }";
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(producer, backends[b], false));
+        REQUIRE(run(backends[b], NULL, 0));
+        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        finish_call();
+        execution_module_free(module);
+        module = NULL;
+        pin_array *original = saved.ptr;
+        REQUIRE(original && original->count == 2);
+        REQUIRE(compile(consumer, backends[b], false));
+        pin_value args[] = { original->items[0], saved };
+        pin_value returned = { 0 };
+        for (int call = 0; call < 2; call++) {
+            REQUIRE(run(backends[b], args, 2));
+            REQUIRE(result.record && pin_record_valid(result.record));
+            REQUIRE(!strcmp(member(&result, 0).str, "parameter"));
+            REQUIRE(!strcmp(member(&result, 1).str, "local"));
+            REQUIRE(member(&result, 5).i == 6);
+            REQUIRE(!strcmp(member(&args[0], 0).str, "a"));
+            REQUIRE(!strcmp(member(&args[0], 1).str, "A"));
+            REQUIRE(member(&args[0], 5).i == 1);
+            REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+            REQUIRE(member(&original->items[0], 5).i == 1);
+            REQUIRE(!strcmp(member(&original->items[1], 1).str, "B"));
+            REQUIRE(member(&original->items[1], 5).i == 1);
+            REQUIRE(!pin_value_snapshot_to_arena(&escaped, &returned, &result));
+        }
+        finish_call();
+        execution_module_free(module);
+        module = NULL;
+        REQUIRE(pin_record_valid(returned.record));
+        REQUIRE(!strcmp(member(&returned, 0).str, "parameter"));
+        REQUIRE(!strcmp(member(&returned, 1).str, "local"));
+        REQUIRE(member(&returned, 5).i == 6);
+        REQUIRE(pin_record_valid(original->record));
+        REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+        const char *value_consumers[] = { exposed_consumer, inline_consumer };
+        const char *labels[] = { "exposed", "inline" };
+        const int depths[] = { 8, 5 };
+        for (int c = 0; c < 2; c++) {
+            REQUIRE(compile(value_consumers[c], backends[b], false));
+            pin_value inputs[] = { original->items[0],
+                                   saved,
+                                   { .type = PIN_I32, .i = 2 } };
+            REQUIRE(run(backends[b], inputs, 3));
+            REQUIRE(!strcmp(member(&result, 1).str, labels[c]));
+            REQUIRE(member(&result, 5).i == depths[c]);
+            REQUIRE(!strcmp(member(&inputs[0], 1).str, "A"));
+            REQUIRE(member(&inputs[0], 5).i == 1);
+            REQUIRE(inputs[1].ptr == original);
+            REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+            REQUIRE(member(&original->items[0], 5).i == 1);
+            REQUIRE(inputs[2].i == 2);
+            finish_call();
+            execution_module_free(module);
+            module = NULL;
+        }
+        REQUIRE(compile(reference_consumer, backends[b], false));
+        behavior_function_context owner = { .value_storage = &escaped };
+        pin_value references[] = {
+            execution_reference_value(&escaped, &owner, &args[0], args[0]),
+            execution_reference_value(&escaped, &owner, &saved, saved),
+        };
+        REQUIRE(run(backends[b], references, 2));
+        REQUIRE(!strcmp(member(&args[0], 1).str, "reference"));
+        pin_array *changed = saved.ptr;
+        REQUIRE(changed && changed->count == 2);
+        REQUIRE(!strcmp(member(&changed->items[0], 1).str, "reference-array"));
+        REQUIRE(member(&changed->items[0], 5).i == 8);
+        REQUIRE(!strcmp(member(&result, 1).str, "reference-array"));
+        REQUIRE(member(&result, 5).i == 8);
+        REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+        finish_call();
+        execution_module_free(module);
+        module = NULL;
+    }
+    return true;
+}
 TEST_CASE(record_runtime_formatter_layout)
 {
     static const char
@@ -390,6 +509,7 @@ void test_language_record_runtime()
     RUN_TEST_CASE(record_runtime_owned_return_and_value_copy);
     RUN_TEST_CASE(record_runtime_array_results);
     RUN_TEST_CASE(record_runtime_fieldwise_equality);
+    RUN_TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller);
     RUN_TEST_CASE(record_runtime_formatter_layout);
     pu_clear_setup();
 }

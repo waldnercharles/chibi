@@ -224,11 +224,44 @@ TEST_CASE(record_raw_trace_lifetime)
     REQUIRE(bytes == 0);
     return true;
 }
+/* A copied descriptor owns every name it holds, field types and units too. */
+TEST_CASE(record_copy_owns_field_type_names_and_units)
+{
+    const type_field typed[] = {
+        { .name = "owner", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+        { .name = "speed", .type = PIN_F32, .unit = "m/s" }
+    };
+    const pin_record *record = pin_record_create(&source, "Rows.Typed", 93, typed, 2);
+    const pin_record *clone = pin_record_snapshot(&other, record);
+    REQUIRE(clone && clone != record && pin_record_valid(clone));
+    const type_field *owner = &clone->type.fields[0],
+                     *speed = &clone->type.fields[1];
+    REQUIRE(arena_contains(&other, owner->type_name) && !strcmp(owner->type_name, "ecs.entity"));
+    REQUIRE(arena_contains(&other, speed->unit) && !strcmp(speed->unit, "m/s"));
+    REQUIRE(!owner->unit && !speed->type_name);
+    return true;
+}
 TEST_CASE(record_identity_and_borrow)
 {
     const pin_record *record = row_layout(&source, 91);
     const pin_record *clone = pin_record_snapshot(&other, record);
     REQUIRE(pin_record_same(record, clone));
+    /* The copy owns its names: it stays valid without the original. */
+    REQUIRE(clone != record && pin_record_valid(clone) && clone->bytes == record->bytes);
+    REQUIRE(
+        arena_contains(&other, clone->type.name) &&
+        !strcmp(clone->type.name, record->type.name)
+    );
+    for (int i = 0; i < clone->type.field_count; i++) {
+        const type_field *copied = &clone->type.fields[i],
+                         *original = &record->type.fields[i];
+        REQUIRE(
+            arena_contains(&other, copied->name) &&
+            !strcmp(copied->name, original->name)
+        );
+        REQUIRE(copied->type == original->type && copied->offset == original->offset);
+    }
+    REQUIRE(pin_record_snapshot(&other, clone) == clone);
     pin_value input = row(&source, record, 1), equal = row(&other, clone, 1);
     REQUIRE(pin_value_equal(&input, &equal));
     REQUIRE(!pin_value_copy(&borrowed, &input));
@@ -298,6 +331,12 @@ TEST_CASE(record_identity_and_borrow)
     REQUIRE(!pin_record_valid(split));
     forged.record = split;
     REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &forged));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    /* Rows check each distinct record: a valid row does not vouch for the next. */
+    pin_value mixed[2] = { input, forged };
+    bad_array.items = mixed;
+    bad_array.count = bad_array.capacity = 2;
+    REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &bad_input));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     const type_field native_field = { .name = "number",
                                       .type = PIN_I32,
@@ -417,6 +456,7 @@ void test_language_record_values()
     RUN_TEST_CASE(record_layout_validation);
     RUN_TEST_CASE(record_array_ownership);
     RUN_TEST_CASE(record_raw_trace_lifetime);
+    RUN_TEST_CASE(record_copy_owns_field_type_names_and_units);
     RUN_TEST_CASE(record_identity_and_borrow);
     RUN_TEST_CASE(record_array_checked_changes);
     RUN_TEST_CASE(record_projection_and_codec_guard);

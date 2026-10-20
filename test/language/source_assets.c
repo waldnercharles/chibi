@@ -716,7 +716,7 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
     REQUIRE(strstr(bytes, "version 25"));
     REQUIRE(!chibi_project_inspect(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
-    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == 2);
     REQUIRE(!chibi_project_read(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
     unlink(manifest);

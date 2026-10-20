@@ -270,7 +270,7 @@ static void install(analyzer *a, TSNode node, compile_binding *bindings)
             value.is_type ? value.type : (script_type){ .storage = value.value.type }
         );
         a->out->symbols[symbol].kind = value.is_type ? SCRIPT_TYPE : SCRIPT_CONSTANT;
-        a->out->symbols[symbol].declaration = script_analyzer_range(origin);
+        a->out->symbols[symbol].declaration = script_analyzer_range(a, origin);
         a->out->symbols[symbol].writable = false;
         if (!value.is_type) {
             a->out->symbols[symbol].initializer = script_analyzer_expr_add(
@@ -282,7 +282,7 @@ static void install(analyzer *a, TSNode node, compile_binding *bindings)
                                      .symbol = -1,
                                      .left = -1,
                                      .right = -1,
-                                     .range = script_analyzer_range(origin) }
+                                     .range = script_analyzer_range(a, origin) }
             );
         }
     }
@@ -418,7 +418,12 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             if (ok && !result.is_type && result.value.type != expected.storage) {
                 ok = behavior_scalar_cast_supported(result.value.type, expected.storage);
                 if (ok) {
-                    result.value = behavior_scalar_cast(result.value, expected.storage);
+                    behavior_scalar_cast(
+                        result.value,
+                        expected.storage,
+                        BEHAVIOR_CAST_WRAP,
+                        &result.value
+                    );
                 }
             }
             char *parameter_name = script_analyzer_name_copy(a, script_analyzer_field(parameter, "name"));
@@ -653,7 +658,12 @@ bool script_analyzer_generic_apply(
                      (result.value.type == expected.storage ||
                       behavior_scalar_cast_supported(result.value.type, expected.storage));
                 if (ok && result.value.type != expected.storage) {
-                    result.value = behavior_scalar_cast(result.value, expected.storage);
+                    behavior_scalar_cast(
+                        result.value,
+                        expected.storage,
+                        BEHAVIOR_CAST_WRAP,
+                        &result.value
+                    );
                 }
             }
         }
@@ -759,7 +769,12 @@ static bool construct_record(
             if (ok && value.value.type != type.storage) {
                 ok = behavior_scalar_cast_supported(value.value.type, type.storage);
                 if (ok) {
-                    value.value = behavior_scalar_cast(value.value, type.storage);
+                    behavior_scalar_cast(
+                        value.value,
+                        type.storage,
+                        BEHAVIOR_CAST_WRAP,
+                        &value.value
+                    );
                 }
             }
             if (!ok) {
@@ -878,7 +893,7 @@ bool script_analyzer_generic_alias(analyzer *a, TSNode node)
                                  .type = { .storage = value.value.type },
                                  .constant = value.value,
                                  .constant_snapshot = true,
-                                 .range = script_analyzer_range(expression),
+                                 .range = script_analyzer_range(a, expression),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 }
@@ -957,7 +972,7 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
         memcpy(owned, parameters, (size_t)count * sizeof *owned);
     }
     char *text = script_analyzer_text_copy(a, node);
-    script_range range = script_analyzer_range(node);
+    script_range range = script_analyzer_range(a, node);
     apush(
         a->out->templates,
         ((script_catalog_template){
@@ -1112,9 +1127,11 @@ static const script_catalog_specialization *import_request(
                     )) {
                     ok = false;
                 } else {
-                    constant.value = behavior_scalar_cast(
+                    behavior_scalar_cast(
                         constant.value,
-                        parameter->type.storage
+                        parameter->type.storage,
+                        BEHAVIOR_CAST_WRAP,
+                        &constant.value
                     );
                 }
             }
@@ -1205,7 +1222,7 @@ static const script_catalog_specialization *import_request(
                                               .owner = own(a, t->owner),
                                               .bindings = own_bindings(a, bindings),
                                               .binding_count = acount(bindings),
-                                              .origin = script_analyzer_range(call),
+                                              .origin = script_analyzer_range(a, call),
                                               .evaluate = evaluate })
         );
         a->out->request_count = acount(a->out->requests);
@@ -1255,7 +1272,7 @@ bool script_analyzer_generic_import_call(
             a,
             (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
                                  .type = script_analyzer_bad_type(),
-                                 .range = script_analyzer_range(call),
+                                 .range = script_analyzer_range(a, call),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 }

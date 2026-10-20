@@ -12,7 +12,7 @@
    project (in this repository or chibi-studio) would load wrong or fail to
    load and a step in project_migrate.c would rewrite it; see the first rule
    in AGENTS.md for what needs no bump. */
-#define CHIBI_PROJECT_VERSION 26
+#define CHIBI_PROJECT_VERSION 27
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10
 
@@ -81,6 +81,9 @@ int chibi_project_inspect(chibi_project *, const char *, char *, size_t);
 /* The owned path of the nearest directory at or above `start` that holds
  * project.kdl, or NULL when none does. */
 char *chibi_project_find(const char *start);
+/* Whether path is a directory without a project.kdl: a tree of packages
+ * rather than a project. */
+bool chibi_project_package_folder(const char *path);
 /* Creates an empty project with content/scenes/Start.kdl as its start scene.
  * `root` must not already exist; its parent directory must exist. On failure
  * errno is EINVAL for a missing name, path or parent, EEXIST when `root`

@@ -780,7 +780,14 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     execution_wire_u64(&inspect, &value);
     REQUIRE(value == EXECUTION_PREPARED_VERSION);
     size_t pointer = inspect.offset;
-    for (int mode = 0; mode < 3; mode++) {
+    /* Modes 3 and 4 bound one module's decoded storage and its record-layout
+     * work below what this module needs. */
+    static const char *const failures[] = { "rebuild prepared code",
+                                            "target ABI",
+                                            "aggregate storage budget",
+                                            "decoded storage limit",
+                                            "layout work limit" };
+    for (int mode = 0; mode < 5; mode++) {
         input = malloc(image_size);
         REQUIRE(input);
         memcpy(input, image, image_size);
@@ -794,25 +801,38 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
                                            sizeof(execution_module) + 128
                                      : EXECUTION_WIRE_MAX_BYTES;
         size_t before = remaining;
+        execution_prepared_linker bounded = { .decoded_bytes = mode == 3 ? 1024 : 0,
+                                              .layout_work = mode == 4 ? 1 : 0 };
         module = execution_prepared_read_budget(
             input,
             image_size,
-            NULL,
+            mode >= 3 ? &bounded : NULL,
             BEHAVIOR_BYTECODE,
             &remaining,
             error,
             sizeof error
         );
         REQUIRE(!module && remaining == before && *error);
-        REQUIRE(strstr(
-            error,
-            mode == 0   ? "rebuild prepared code"
-            : mode == 1 ? "target ABI"
-                        : "aggregate storage budget"
-        ));
+        REQUIRE(strstr(error, failures[mode]));
         free(input);
         input = NULL;
     }
+    /* Bounds above the defaults admit the same module. */
+    size_t remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
+    execution_prepared_linker generous = {
+        .decoded_bytes = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES,
+        .layout_work = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES
+    };
+    module = execution_prepared_read_budget(
+        image,
+        image_size,
+        &generous,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(module);
     return true;
 }
 void test_language_record_prepared_runtime()

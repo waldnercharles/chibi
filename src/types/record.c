@@ -142,14 +142,19 @@ static const pin_record *initialize(
         size_t step = field_align(&fields[i]);
         size_t remainder = offset % step;
         offset += remainder ? step - remainder : 0;
-        owned[i] = (type_field){
-            .name = copy_name(&text, fields[i].name),
-            .type = fields[i].type,
-            .offset = offset,
-            .size = field_size(&fields[i]),
-            .type_name = fields[i].type_name ? copy_name(&text, fields[i].type_name) : NULL,
-            .unit = fields[i].unit ? copy_name(&text, fields[i].unit) : NULL
-        };
+        /* Validation requires the name, type name and unit in this order, so
+         * each is copied in its own statement, not within one initializer. */
+        const char *name = copy_name(&text, fields[i].name);
+        const char *type_name = fields[i].type_name
+                                  ? copy_name(&text, fields[i].type_name)
+                                  : NULL;
+        const char *unit = fields[i].unit ? copy_name(&text, fields[i].unit) : NULL;
+        owned[i] = (type_field){ .name = name,
+                                 .type = fields[i].type,
+                                 .offset = offset,
+                                 .size = field_size(&fields[i]),
+                                 .type_name = type_name,
+                                 .unit = unit };
         offset += owned[i].size;
     }
     record->layout = type_layout_hash(&record->type);
@@ -185,6 +190,29 @@ const pin_record *pin_record_create(
     }
     return initialize(arena_alloc(storage, bytes), bytes, size, name, id, fields, count);
 }
+/* A valid descriptor is exactly what initialize writes, so its copy is the
+ * same bytes with every text pointer moved into the copy. */
+static const char *moved(const char *text, const char *from, char *to)
+{
+    return text ? to + (text - from) : NULL;
+}
+static const pin_record *copy_record(arena *storage, const pin_record *record)
+{
+    pin_record *copy = arena_alloc(storage, record->bytes);
+    memcpy(copy, record, record->bytes);
+    const char *from = (const char *)record;
+    char *to = (char *)copy;
+    type_field *fields = (type_field *)(copy + 1);
+    copy->type.fields = fields;
+    copy->type.name = moved(record->type.name, from, to);
+    for (int i = 0; i < record->type.field_count; i++) {
+        const type_field *field = &record->type.fields[i];
+        fields[i].name = moved(field->name, from, to);
+        fields[i].type_name = moved(field->type_name, from, to);
+        fields[i].unit = moved(field->unit, from, to);
+    }
+    return copy;
+}
 const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
 {
     if (!record) {
@@ -196,13 +224,7 @@ const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
     if (arena_contains(storage, record)) {
         return record;
     }
-    return pin_record_create(
-        storage,
-        record->type.name,
-        record->id,
-        record->type.fields,
-        record->type.field_count
-    );
+    return copy_record(storage, record);
 }
 bool pin_record_valid(const pin_record *record)
 {

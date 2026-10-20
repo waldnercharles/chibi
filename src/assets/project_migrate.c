@@ -27,6 +27,7 @@
 const TSLanguage *tree_sitter_chibi_project23();
 const TSLanguage *tree_sitter_chibi_project24();
 const TSLanguage *tree_sitter_chibi_project25();
+const TSLanguage *tree_sitter_chibi_project26();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -55,7 +56,7 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
     tree_sitter_chibi_external_scanner_deserialize(scanner, buffer, length);
 }
 
-static script_syntax *parse_historical(const char *text, int version)
+script_syntax *chibi_migrate_parse(const char *text, int version)
 {
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
     syntax->text = xstrdup(text);
@@ -64,7 +65,8 @@ static script_syntax *parse_historical(const char *text, int version)
         parser,
         version == 23   ? tree_sitter_chibi_project23()
         : version == 24 ? tree_sitter_chibi_project24()
-                        : tree_sitter_chibi_project25()
+        : version == 25 ? tree_sitter_chibi_project25()
+                        : tree_sitter_chibi_project26()
     );
     assert(compatible);
     (void)compatible;
@@ -99,17 +101,22 @@ static script_syntax *parse_historical(const char *text, int version)
 
 static script_syntax *parse23(const char *text)
 {
-    return parse_historical(text, 23);
+    return chibi_migrate_parse(text, 23);
 }
 
 static script_syntax *parse24(const char *text)
 {
-    return parse_historical(text, 24);
+    return chibi_migrate_parse(text, 24);
 }
 
 static script_syntax *parse25(const char *text)
 {
-    return parse_historical(text, 25);
+    return chibi_migrate_parse(text, 25);
+}
+
+static script_syntax *parse26(const char *text)
+{
+    return chibi_migrate_parse(text, 26);
 }
 
 typedef struct
@@ -3714,6 +3721,7 @@ static char *migrate_source_metadata(
                               : version == 23 ? parse23(before)
                               : version == 24 ? parse24(before)
                               : version == 25 ? parse25(before)
+                              : version == 26 ? parse26(before)
                                               : script_parse(before);
         yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
         size_t i, count;
@@ -4008,6 +4016,12 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
     if (done) {
         return 0;
     }
+    current = parse26(source);
+    done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
     script_syntax *syntax = parse23(source);
     if (syntax->diagnostic_count) {
         snprintf(error, size, "Cannot migrate invalid version 23 source");
@@ -4111,6 +4125,11 @@ int chibi_migrate_retention(const char *source, char **migrated, char *error, si
         syntax = parse25(source);
         bool valid = !syntax->diagnostic_count;
         script_syntax_free(syntax);
+        if (!valid) {
+            syntax = parse26(source);
+            valid = !syntax->diagnostic_count;
+            script_syntax_free(syntax);
+        }
         if (!valid) {
             syntax = script_parse(source);
             valid = !syntax->diagnostic_count;
@@ -4856,7 +4875,7 @@ static int migrate_syntax_spelling(const char *source, char **migrated, char *er
     script_syntax *syntax = parse25(source);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
-        syntax = script_parse(source);
+        syntax = parse26(source);
         bool valid = !syntax->diagnostic_count;
         script_syntax_free(syntax);
         if (valid) {
@@ -4917,7 +4936,7 @@ static int migrate_syntax_spelling(const char *source, char **migrated, char *er
     if (!valid) {
         return -1;
     }
-    syntax = script_parse(result ? result : source);
+    syntax = parse26(result ? result : source);
     valid = !syntax->diagnostic_count;
     if (!valid) {
         script_diagnostic diagnostic = syntax->diagnostics[0];
@@ -4975,7 +4994,7 @@ static bool cleanup_asset_names(const char *text, cleanup_asset_name **names, ch
     script_syntax *syntax = parse25(text);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
-        syntax = script_parse(text);
+        syntax = parse26(text);
     }
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
@@ -5289,6 +5308,199 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
     return migrated;
 }
 
+/* Publishes a step's result, or NULL for unchanged source, only when the
+ * current grammar parses it. */
+static int accept_migrated(
+    const char *source,
+    char *result,
+    const char *step,
+    char **migrated,
+    char *error,
+    size_t size
+)
+{
+    script_syntax *check = script_parse(result ? result : source);
+    if (check->diagnostic_count) {
+        const script_diagnostic *diagnostic = &check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "%s migration produced invalid source at %d:%d: %s",
+            step,
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->message
+        );
+        script_syntax_free(check);
+        free(result);
+        return -1;
+    }
+    script_syntax_free(check);
+    *migrated = result;
+    return 0;
+}
+/* The T(value) callee for a version 26 cast type, or NULL when the type has
+ * no name spelling, such as an array. */
+static char *conversion_callee(const char *text, TSNode type)
+{
+    int from = (int)ts_node_start_byte(type), to = (int)ts_node_end_byte(type);
+    if (to - from == (int)strlen("handle<ecs.entity>") &&
+        !strncmp(text + from, "handle<ecs.entity>", (size_t)(to - from))) {
+        return xstrdup("entity");
+    }
+    for (int i = from; i < to; i++) {
+        if (!isalnum((unsigned char)text[i]) && text[i] != '_' && text[i] != '.') {
+            return NULL;
+        }
+    }
+    char *callee = xmalloc((size_t)(to - from) + 1);
+    memcpy(callee, text + from, (size_t)(to - from));
+    callee[to - from] = '\0';
+    return callee;
+}
+/* The first anonymous child token spelled `token`. */
+static TSNode child_token(TSNode node, const char *token)
+{
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        if (!ts_node_is_named(child) && is(child, token)) {
+            return child;
+        }
+    }
+    return (TSNode){ 0 };
+}
+static void push_edit(replacement **edits, int start, int end, char *text)
+{
+    apush(*edits, ((replacement){ .start = start, .end = end, .text = text }));
+}
+/* `cast<T>(v)` becomes `T(v)`; a constant `N :: cast<T>(v)` becomes `N: T : v`.
+ * Edits replace only the tokens around each value, so comments survive and
+ * nested casts compose. */
+static void conversion_edits(const char *text, TSNode node, replacement **edits, TSNode *unsupported)
+{
+    TSNode value = ts_node_child_by_field_name(node, "value", 5);
+    if (is(node, "constant_declaration") && is(value, "cast_expression")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        TSNode declare = child_token(node, "::");
+        TSNode type = ts_node_child_by_field_name(value, "type", 4);
+        TSNode open = child_token(value, "(");
+        int from = (int)ts_node_start_byte(type), to = (int)ts_node_end_byte(type);
+        int gap = (int)ts_node_end_byte(name);
+        while (gap < (int)ts_node_start_byte(declare) &&
+               isspace((unsigned char)text[gap])) {
+            gap++;
+        }
+        size_t size = (size_t)(to - from) + sizeof ":  :";
+        char *declared = xmalloc(size);
+        snprintf(declared, size, ": %.*s :", to - from, text + from);
+        /* Whitespace before `::` goes; a comment there stays. */
+        int start = gap == (int)ts_node_start_byte(declare)
+                      ? (int)ts_node_end_byte(name)
+                      : (int)ts_node_start_byte(declare);
+        push_edit(edits, start, (int)ts_node_end_byte(declare), declared);
+        push_edit(edits, (int)ts_node_start_byte(value), (int)ts_node_end_byte(open), xstrdup(""));
+        int close = (int)ts_node_end_byte(value);
+        push_edit(edits, close - 1, close, xstrdup(""));
+        conversion_edits(text, ts_node_child_by_field_name(value, "value", 5), edits, unsupported);
+        return;
+    }
+    if (is(node, "cast_expression")) {
+        char *callee = conversion_callee(text, ts_node_child_by_field_name(node, "type", 4));
+        if (!callee && ts_node_is_null(*unsupported)) {
+            *unsupported = node;
+        }
+        if (callee) {
+            size_t size = strlen(callee) + 2;
+            char *call = xmalloc(size);
+            snprintf(call, size, "%s(", callee);
+            free(callee);
+            push_edit(
+                edits,
+                (int)ts_node_start_byte(node),
+                (int)ts_node_end_byte(child_token(node, "(")),
+                call
+            );
+        }
+        conversion_edits(text, value, edits, unsupported);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        conversion_edits(text, ts_node_child(node, i), edits, unsupported);
+    }
+}
+int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse26(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already converted. */
+        syntax = script_parse(source);
+        bool valid = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (valid) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 26 source");
+        return -1;
+    }
+    replacement *edits = NULL;
+    TSNode unsupported = { 0 };
+    conversion_edits(source, ts_tree_root_node(syntax->tree), &edits, &unsupported);
+    bool spelled = ts_node_is_null(unsupported);
+    script_range range = spelled ? (script_range){ 0 }
+                                 : script_node_range(unsupported);
+    script_syntax_free(syntax);
+    if (!spelled) {
+        snprintf(
+            error,
+            size,
+            "cast at %d:%d converts to a type with no T(value) spelling; "
+            "declare a typed local or constant",
+            range.line,
+            range.column
+        );
+        prefix_edits_free(edits);
+        return -1;
+    }
+    char *result = prefix_apply(source, edits);
+    prefix_edits_free(edits);
+    return accept_migrated(source, result, "Conversion", migrated, error, size);
+}
+static char **migrate_conversions(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_conversions(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+            continue;
+        }
+        if (!migrated[i]) {
+            continue;
+        }
+        script_syntax *syntax = parse26(sources[i]);
+        replacement *edits = NULL;
+        TSNode unsupported = { 0 };
+        conversion_edits(sources[i], ts_tree_root_node(syntax->tree), &edits, &unsupported);
+        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
+        size_t length = strlen(paths[i]);
+        for (int j = 0; j < count; j++) {
+            if (!strncmp(paths[j], paths[i], length) &&
+                !strcmp(paths[j] + length, ".meta")) {
+                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, 26);
+            }
+        }
+        prefix_edits_free(edits);
+        script_syntax_free(syntax);
+    }
+    return migrated;
+}
+
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -5308,7 +5520,7 @@ int chibi_project_migrate_content(
                        from == 20 || from == 21 || from == 22 || from == 25;
     int status = collect_sources(
         content,
-        (from == 22 || from == 23 || from == 24 || from == 25) ? ".chibi.meta"
+        (from == 22 || from == 23 || from == 24 || from == 25 || from == 26) ? ".chibi.meta"
         : declarative ? DECLARATIVE_ASSET_EXTENSION
                       : ".chibi",
         &paths,
@@ -5322,7 +5534,7 @@ int chibi_project_migrate_content(
     }
     /* Versions 16 and 18 also check scripts for names they remove. */
     if (!status && (from == 15 || from == 17 || from == 22 || from == 23 ||
-                    from == 24 || from == 25)) {
+                    from == 24 || from == 25 || from == 26)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -5445,6 +5657,11 @@ int chibi_project_migrate_content(
             case 25:
                 error[0] = '\0';
                 migrated = migrate_syntax(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 26:
+                error[0] = '\0';
+                migrated = migrate_conversions(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

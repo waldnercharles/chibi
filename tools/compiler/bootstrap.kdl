@@ -1,0 +1,12 @@
+// The bootstrap contract of the compiler sources in this folder.
+// version: the bootstrap version a compiler built from these sources has.
+//   Raise it when the compiler gains a language feature.
+// minimum: the oldest bootstrap version that can compile these sources.
+//   Raise it, to at most version, only once the sources use such a feature.
+// published: the artifact recovery downloads, the release of repository with
+//   this tag, and the SHA-256 of its bootstrap.json, which records the
+//   closure's own. Publish a new one when minimum rises or this host's target
+//   changes; see docs/self-hosting-build.md.
+version 1
+minimum 1
+published repository="waldnercharles/chibi" tag="compiler-bootstrap-1-fd1b5aaf8c6c" manifest="96ef94698369ba11487cf05970e1a2309bc093218537aa6ef5fce273f930134c"

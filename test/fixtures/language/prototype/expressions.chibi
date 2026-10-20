@@ -7,8 +7,8 @@ Expressions :: behavior {
         grouped := (2 + 3) * 4
         offset := -2
         combined := weighted +
-        grouped / 2 +
-        offset * dt
+                    grouped / 2 +
+                    offset * dt
 
         total = clamp(
             combined,

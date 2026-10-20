@@ -110,7 +110,7 @@ Charge :: component {
 A range such as `0..1` or `-1.5..2` is an inclusive stored-value contract. Scripts,
 asset loads, aggregate constructors, prepared players and native engine writes
 clamp values outside it to the nearest endpoint. Bounded `number` fields keep
-fractions: assigning `2.75` into `0..10` stores `2.75`. Explicit `cast<int>(2.75)`
+fractions: assigning `2.75` into `0..10` stores `2.75`. The conversion `int(2.75)`
 truncates toward zero. Each assignment clamps independently; two saturating
 updates cannot be reassociated. Floating arithmetic may overflow to infinity
 before the store; positive/negative infinity clamp to the high/low endpoint.

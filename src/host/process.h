@@ -2,6 +2,7 @@
 #define CHIBI_HOST_PROCESS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -17,6 +18,58 @@
 int chibi_process_run(char *const *argv);
 
 #ifndef _WIN32
+#include <signal.h>
+
+typedef enum
+{
+    CHIBI_PROCESS_OK,
+    CHIBI_PROCESS_INVALID_INPUT,
+    CHIBI_PROCESS_SPAWN_FAILED,
+    CHIBI_PROCESS_TIMEOUT,
+    CHIBI_PROCESS_CANCELLED,
+    CHIBI_PROCESS_HOST_FAILED,
+} chibi_process_error;
+
+typedef struct
+{
+    char *data;
+    size_t capacity; /* Includes the trailing NUL; zero discards all output. */
+    size_t size;
+    bool truncated;
+} chibi_process_output;
+
+typedef struct
+{
+    chibi_process_error error;
+    int status; /* Valid on success: exit code, or negative signal number. */
+    int system_error; /* errno value for spawn/host failure. */
+} chibi_process_capture_result;
+
+/* Same monotonic epoch as the production Python supervisor on each host. */
+double chibi_process_now();
+
+/* Synchronously run an absolute executable, with explicit cwd and NULL-terminated
+ * envp. argv[0] is nonempty and passed unchanged, independently of executable.
+ * Each vector has at most 1023 strings; combined string bytes are at most
+ * 1 MiB. No shell or PATH lookup. deadline is finite, positive, absolute
+ * chibi_process_now() seconds. All borrowed inputs/buffers must remain alive until
+ * return. cancelled may be NULL. Output buffers are caller-owned and always
+ * NUL-terminated when capacity is nonzero; size excludes the terminator.
+ * The child owns a new process group, killed on completion or failure, including
+ * when the leader exits before its descendants. The direct child is reaped.
+ * This is process-group supervision, not containment of programs that escape
+ * the group or change credentials to prevent the caller from signalling them. */
+chibi_process_capture_result chibi_process_capture(
+    const char *executable,
+    const char *const *argv,
+    const char *cwd,
+    const char *const *envp,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    chibi_process_output *out,
+    chibi_process_output *err
+);
+
 typedef struct
 {
     pid_t pid;

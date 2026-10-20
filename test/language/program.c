@@ -19,9 +19,11 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
+#include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -283,9 +285,17 @@ static execution_program *other_program;
 static bool program_prepared_type(void *, uint64_t, execution_prepared_type *);
 static native_capabilities *state_native;
 static execution_inspector *debugger;
+static behavior_function_context parser_context;
+static behavior_function_activation parser_activation;
+static arena parser_storage;
 
 static void cleanup()
 {
+    behavior_function_release_host(&parser_context);
+    behavior_function_activation_free(&parser_activation);
+    parser_activation = (behavior_function_activation){ 0 };
+    parser_context = (behavior_function_context){ 0 };
+    arena_free(&parser_storage);
     execution_program_free(other_program);
     execution_program_free(program);
     execution_inspector_free(debugger);
@@ -542,66 +552,47 @@ static bool compile(const char *source, behavior_backend backend)
     return program != NULL;
 }
 /* Historical migration cases assert their intermediate spelling, then run
- * it through the current declaration migration before exercising execution. */
+ * it through every later source step: version 23 declarations, 24
+ * retention, 25 syntax and 26 conversions. */
+static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
+{
+    switch (step) {
+        case 0:
+            return chibi_migrate_declarations(source, migrated, error, size);
+        case 1: return chibi_migrate_retention(source, migrated, error, size);
+        case 2: return chibi_migrate_syntax(source, migrated, error, size);
+        default:
+            return chibi_migrate_conversions(source, migrated, error, size);
+    }
+}
+static char *current_source(const char *source)
+{
+    char error[192], *current = xstrdup(source);
+    for (int step = 0; step < 4; step++) {
+        char *migrated = NULL;
+        if (migrate_step(step, current, &migrated, error, sizeof error)) {
+            fprintf(stderr, "migration: %s\n", error);
+            free(current);
+            return NULL;
+        }
+        if (migrated) {
+            free(current);
+            current = migrated;
+        }
+    }
+    return current;
+}
 static bool compile_migrated(const char *source, behavior_backend backend)
 {
-    char error[192], *current = NULL, *retained = NULL, *cleaned = NULL;
-    if (chibi_migrate_declarations(source, &current, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        return false;
-    }
-    if (chibi_migrate_retention(current ? current : source, &retained, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        free(current);
-        return false;
-    }
-    const char *input = retained ? retained : current ? current : source;
-    if (chibi_migrate_syntax(input, &cleaned, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        free(retained);
-        free(current);
-        return false;
-    }
-    bool valid = compile(
-        cleaned    ? cleaned
-        : retained ? retained
-        : current  ? current
-                   : source,
-        backend
-    );
-    free(cleaned);
-    free(retained);
+    char *current = current_source(source);
+    bool valid = current && compile(current, backend);
     free(current);
     return valid;
 }
 static bool declarations_equal(const char *actual, const char *historical)
 {
-    char error[192], *current = NULL, *retained = NULL, *cleaned = NULL;
-    if (chibi_migrate_declarations(historical, &current, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        return false;
-    }
-    if (chibi_migrate_retention(current ? current : historical, &retained, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        free(current);
-        return false;
-    }
-    const char *input = retained ? retained : current ? current : historical;
-    if (chibi_migrate_syntax(input, &cleaned, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        free(retained);
-        free(current);
-        return false;
-    }
-    bool equal = !strcmp(
-        actual,
-        cleaned    ? cleaned
-        : retained ? retained
-        : current  ? current
-                   : historical
-    );
-    free(cleaned);
-    free(retained);
+    char *current = current_source(historical);
+    bool equal = current && !strcmp(actual, current);
     free(current);
     return equal;
 }
@@ -632,6 +623,69 @@ static ecs_entity positioned(double x, bool moving)
     }
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
+}
+
+TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
+{
+    const char
+        *source = "Parser :: library { Package :: struct { directory: string; "
+                  "name: string; "
+                  "member_start: int; member_count: int; }\n"
+                  "Main :: (enabled: bool) -> int {\n"
+                  " result: int = 0;\n"
+                  " if enabled {\n"
+                  "  item: Package = {directory: \"app\", name: \"sample\",\n"
+                  "                   member_start: 3, member_count: 4};\n"
+                  "  result = item.member_start + item.member_count;\n"
+                  " }\n"
+                  " if true {\n"
+                  " ordinary:\n"
+                  " result = result + 1;\n"
+                  " compound: result += 1;\n"
+                  " }\n"
+                  " return result;\n"
+                  "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_module(source, backends[b]));
+        REQUIRE(execution_module_function_count(module) == 1);
+        const behavior_function *function = execution_module_function_at(module, 0)
+                                                .body;
+        REQUIRE(function);
+        for (int enabled = 0; enabled < 2; enabled++) {
+            behavior_function_release_host(&parser_context);
+            behavior_function_activation_free(&parser_activation);
+            parser_activation = (behavior_function_activation){ 0 };
+            arena_free(&parser_storage);
+            if (behavior_function_resumable(function)) {
+                behavior_function_activation_init(function, &parser_activation);
+            }
+            pin_value argument = { .type = PIN_BOOL, .b = enabled },
+                      result = { .type = PIN_I32 };
+            parser_context = (behavior_function_context){
+                .activation = behavior_function_resumable(function) ? &parser_activation
+                                                                    : NULL,
+                .arguments = &argument,
+                .argument_count = 1,
+                .results = &result,
+                .budget = 1000
+            };
+            behavior_function_bind_storage(&parser_context, &parser_storage);
+            REQUIRE(behavior_function_bind(function, &parser_context, NULL, 0));
+            behavior_run_scope runs = { 0 };
+            behavior_run_scope_begin(&runs);
+            int status = behavior_function_run(function, &parser_context, b != 0);
+            behavior_run_scope_end(&runs);
+            REQUIRE(status == FLOW_OK && parser_context.returned);
+            REQUIRE(result.type == PIN_I32 && result.i == (enabled ? 9 : 2));
+            REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+            REQUIRE(b ? !runs.counts.bytecode_entries : runs.counts.bytecode_entries > 0);
+            REQUIRE(backends[b] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
+            REQUIRE(backends[b] != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
+        }
+    }
+    return true;
 }
 
 TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
@@ -1413,11 +1467,11 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
 TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
 {
     const char *sources[] = {
-        "Ordered :: system() where Risky(cast<int>(self.Position.x)) and "
+        "Ordered :: system() where Risky(int(self.Position.x)) and "
         "has(Velocity) { Risky :: (index:int)->bool { values:=[10,20]; return "
         "values[index]>0; } }",
         "Guarded :: system() where has(Velocity) and "
-        "Risky(cast<int>(self.Position.x)) { Risky :: (index:int)->bool { "
+        "Risky(int(self.Position.x)) { Risky :: (index:int)->bool { "
         "values:=[10,20]; return values[index]>0; } }",
     };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -2433,6 +2487,38 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
     }
     return true;
 }
+/* expect passes a true condition and fails the call with its message at its
+ * own position otherwise, on each backend. */
+TEST_CASE(program_expect_fails_with_its_message_and_position)
+{
+    const char *source = "Checks :: behavior {\n"
+                         "  on Impulse(amount, enabled) {\n"
+                         "    expect(enabled, \"enabled is set\");\n"
+                         "    expect(amount > 2.0, \"amount is large\");\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 3 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(execution_program_error(program) == NULL);
+        args[0].d = 1;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(!strcmp(failure->message, "Expectation failed: amount is large"));
+        REQUIRE(failure->line == 4 && failure->column == 5);
+        execution_program_free(program);
+        program = NULL;
+    }
+    return true;
+}
 /* A failed call stack unwinds at once, so neither payload collection nor a
  * service rebind reaches the host banks its frames released. */
 TEST_CASE(program_failed_call_stacks_unwind_at_once)
@@ -2489,6 +2575,139 @@ TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
     REQUIRE(instance);
     const pin_value *value = execution_instance_state(instance, 456);
     REQUIRE(value && value->type == PIN_STR && !strcmp(value->str, "producer text"));
+    return true;
+}
+static bool int_state(execution_instance *instance, const char *name, pin_type type, int64_t expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    return value && value->type == type &&
+           (int64_t)behavior_scalar_bits(*value) == expected;
+}
+/* T(value) fails when an integer does not fit; wrap and clamp choose the bits. */
+TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
+{
+    const char
+        *source = "Convert :: behavior {\n"
+                  "  wide: int = -300; wrapped: int = 0; clamped: int = 0;\n"
+                  "  mixed: int64 = 0; narrow: byte = 0;\n"
+                  "  same: bool = true; below: bool = false; small: int = 0;\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
+                  "-wide);\n"
+                  "    mixed = wide + uint(7);\n"
+                  "    same = wide == uint(0); below = wide < uint(7);\n"
+                  "    small = byte(200) + int8(-100);\n"
+                  "    if (enabled) { narrow = byte(wide); }\n"
+                  "  }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        /* The engine catalog's Byte literal must not shadow byte(value). */
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = false } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "wrapped", PIN_I32, 212));
+        REQUIRE(int_state(instance, "clamped", PIN_I32, 255));
+        REQUIRE(int_state(instance, "mixed", PIN_I64, -293));
+        REQUIRE(
+            int_state(instance, "same", PIN_BOOL, 0) &&
+            int_state(instance, "below", PIN_BOOL, 1)
+        );
+        REQUIRE(int_state(instance, "small", PIN_I32, 100));
+        args[1].b = true;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        int start = (int)(strstr(source, "byte(wide)") - source);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
+        REQUIRE(!strcmp(failure->message, "Value does not fit in byte"));
+        REQUIRE(failure->start == start && failure->end == start + (int)strlen("byte(wide)"));
+        REQUIRE(int_state(instance, "narrow", PIN_U8, 0));
+        execution_program_free(program);
+        program = NULL;
+    }
+    return true;
+}
+/* A write outside a local's array fails at the assignment, as other writes do. */
+/* Suspending mid-build collects the payload while the local keeps its grown
+ * items: the collection keeps the current buffer and reclaims the outgrown
+ * ones, and the appends after the resume continue in place. */
+TEST_CASE(program_local_array_survives_collection_mid_build)
+{
+    const char
+        *source = "Grow :: behavior {\n"
+                  "  total: double = 0;\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    xs: double[] = [];\n"
+                  "    i: double = 0;\n"
+                  "    while (i < 200) { xs = array_add(xs, i); i += 1; }\n"
+                  "    await Delay(1);\n"
+                  "    while (i < 400) { xs = array_add(xs, i); i += 1; }\n"
+                  "    xs[0] = 1000;\n"
+                  "    total = xs[0] + xs[199] + xs[399] + length(xs);\n"
+                  "  }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t marks = arena_collect_marks();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        execution_memory_usage suspended = execution_program_memory_usage(program);
+        /* 200 items fill a 256-item buffer; the outgrown 8- to 128-item
+         * buffers would hold 248 more. */
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(suspended.payload_bytes >= 256 * sizeof(pin_value));
+        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(pin_value));
+        REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_local_array_store_checks_its_range)
+{
+    const char *source = "Store :: behavior {\n"
+                         "  first: int = 0;\n"
+                         "  on Impulse(amount, enabled) {\n"
+                         "    xs: int[] = [];\n"
+                         "    xs = array_add(xs, int(1));\n"
+                         "    i: int = 0;\n"
+                         "    if (enabled) { i = 3; }\n"
+                         "    xs[i] = 5;\n"
+                         "    first = xs[0];\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = false } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "first", PIN_I32, 5));
+        args[1].b = true;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        int start = (int)(strstr(source, "xs[i] = 5") - source);
+        REQUIRE(failure && !strcmp(failure->message, "Array index out of range"));
+        REQUIRE(failure->start == start && failure->end == start + (int)strlen("xs[i] = 5;"));
+        execution_program_free(program);
+        program = NULL;
+    }
     return true;
 }
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
@@ -2695,8 +2914,8 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
 {
     const char
         *source = "Widths :: behavior { widened:double=0; narrowed:float=0; on "
-                  "Tick { widened=cast<double>(NativeFloat()); "
-                  "narrowed=cast<float>(widened+0.25); } }";
+                  "Tick { widened=double(NativeFloat()); "
+                  "narrowed=float(widened+0.25); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     static const script_catalog_parameter result = { .name = "amount",
                                                      .type = { .storage = PIN_F32 } };
@@ -2763,7 +2982,7 @@ TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit)
 {
     const char *source = "Mixed :: behavior { count:int=3; level:float=2.5; "
                          "below:bool=false; scaled:float=0; on Tick { below = "
-                         "level < count; scaled = cast<float>(count); } }";
+                         "level < count; scaled = float(count); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -6479,7 +6698,7 @@ TEST_CASE(program_constant_definitions_execute)
 {
     const char *source =
         "Constants :: behavior {\n"
-        "Values :: [2, 3]; Base :: cast<int>(Values[0]); Multiplier :: Base + "
+        "Values :: [2, 3]; Base: int : Values[0]; Multiplier :: Base + "
         "1;\n"
         "Bonus :: union { None | Amount(value: int) }; Extra :: "
         "Bonus.Amount(Base);\n"
@@ -7134,6 +7353,82 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
     return true;
 }
 
+TEST_CASE(program_version_26_casts_migrate_to_conversions)
+{
+    const char
+        *source = "Bits :: library {\n"
+                  "Mask /* m */ :: cast<uint>(/* keep */ 255)\n"
+                  "Shift :: cast<uint>(4)\n"
+                  "// cast<int>(x) stays in comments.\n"
+                  "Low :: (x: int, e: entity) -> byte {\n"
+                  "    other := cast<handle<ecs.entity>>(e)\n"
+                  "    return cast<byte>(/* low */ cast<uint>(x) & Mask)\n"
+                  "}\n"
+                  "}";
+    const char *expected = "Bits :: library {\n"
+                           "Mask /* m */ : uint : /* keep */ 255\n"
+                           "Shift: uint : 4\n"
+                           "// cast<int>(x) stays in comments.\n"
+                           "Low :: (x: int, e: entity) -> byte {\n"
+                           "    other := entity(e)\n"
+                           "    return byte(/* low */ uint(x) & Mask)\n"
+                           "}\n"
+                           "}";
+    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_conversions(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    /* A rerun after an interrupted step leaves converted typed constants. */
+    REQUIRE(!chibi_migrate_conversions(expected, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    REQUIRE(!chibi_migrate_conversions("L :: library { N :: 1 }", &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    REQUIRE(
+        chibi_migrate_conversions(
+            "L :: library { F :: (x: int) { y := cast<int[]>(x) } }",
+            &unchanged,
+            error,
+            sizeof error
+        ) < 0
+    );
+    REQUIRE(!unchanged && strstr(error, "no T(value) spelling"));
+    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256], json[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(
+        json,
+        sizeof json,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "Low ::") - source)
+    );
+    char *metadata = authoring_source_metadata_bind(json, source);
+    REQUIRE(metadata);
+    const char *files[] = { "Bits.chibi", "Bits.chibi.meta" };
+    const char *contents[] = { source, metadata };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        REQUIRE(fputs(contents[i], file) >= 0);
+        REQUIRE(!fclose(file));
+    }
+    free(metadata);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 26, error, sizeof error));
+    snprintf(path, sizeof path, "%s/%s", root, files[0]);
+    const char *text = read_whole(path);
+    REQUIRE(text && !strcmp(text, expected));
+    snprintf(path, sizeof path, "%s/%s", root, files[1]);
+    text = read_whole(path);
+    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Low ::") - expected));
+    REQUIRE(text && authoring_source_metadata_matches(text, expected));
+    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    free(migrated);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char
@@ -7968,6 +8263,46 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     return true;
 }
 
+TEST_CASE(program_union_arrays_keep_owned_writable_values)
+{
+    /* Two preparation parses and four dispatches, each capped at 10000
+     * instructions. All arrays contain at most two tagged scalar values. */
+    const char
+        *source = "UnionArrays :: behavior { "
+                  "Value :: union { Item(value: int) }; "
+                  "total: double = 0; saved_result: Value[] = []; "
+                  "Read :: (value: Value) -> int { "
+                  "switch value { case .Item(number): return number; } } "
+                  "Edit :: (values: Value[]) -> Value[] { "
+                  "local: Value[] = values; "
+                  "local = array_add(local, Value.Item(2)); "
+                  "local[0] = Value.Item(3); return local; } "
+                  "on Impulse(amount, enabled) { "
+                  "if enabled { "
+                  "original: Value[] = [Value.Item(1)]; copy := original; "
+                  "changed := Edit(original); saved_result = changed; "
+                  "total = Read(original[0])*1000 + Read(copy[0])*100 + "
+                  "Read(changed[0])*10 + Read(changed[1]); "
+                  "} else { total = Read(saved_result[0])*10 + "
+                  "Read(saved_result[1]); } "
+                  "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1132));
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 32));
+    }
+    return true;
+}
+
 TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
 {
     enum
@@ -8142,9 +8477,11 @@ void test_language_program()
     RUN_TEST_CASE(program_pattern_bindings_share_and_spellings);
     RUN_TEST_CASE(program_switches_use_narrowed_union_tags);
     RUN_TEST_CASE(program_general_unions_construct_match_and_extract);
+    RUN_TEST_CASE(program_union_arrays_keep_owned_writable_values);
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
@@ -8170,6 +8507,10 @@ void test_language_program()
     RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
+    RUN_TEST_CASE(program_expect_fails_with_its_message_and_position);
+    RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
+    RUN_TEST_CASE(program_local_array_store_checks_its_range);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
@@ -8226,6 +8567,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_25_syntax_preserves_header_metadata);
     RUN_TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate);
     RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
+    RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

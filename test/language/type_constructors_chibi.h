@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_TYPE_CONSTRUCTORS_CHIBI_H
+#define CHIBI_TEST_TYPE_CONSTRUCTORS_CHIBI_H
+void test_language_type_constructors_chibi();
+#endif

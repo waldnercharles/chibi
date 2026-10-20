@@ -111,6 +111,90 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
                                                 : FLOW_ERR_STEP_BUDGET
     );
 }
+/* INT64_MIN has no literal spelling; its negation overflows. */
+static void lower_bound(char *text, size_t size, long long low)
+{
+    if (low == INT64_MIN) {
+        snprintf(text, size, "INT64_MIN");
+        return;
+    }
+    snprintf(text, size, "%lldLL", low);
+}
+/* Mirrors behavior_scalar_cast: modes apply to integer values outside the
+ * destination range; floating sources round toward zero and saturate. */
+static void cast(FILE *out, const behavior_function *f, const behavior_function_instruction *i)
+{
+    pin_type from = f->slots[i->left];
+    const char *type = behavior_scalar_c_type(i->type);
+    long long low = (long long)behavior_scalar_integer_low(i->type);
+    unsigned long long high = behavior_scalar_integer_high(i->type);
+    char minimum[32];
+    lower_bound(minimum, sizeof minimum, low);
+    if (from == i->type || i->type == PIN_F64) {
+        fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
+        return;
+    }
+    if (from == PIN_F32 || from == PIN_F64) {
+        fprintf(
+            out,
+            "v%d=isnan(v%d)?0:(double)v%d<=(double)%s?(%s)%s:(double)v%d>=("
+            "double)%lluULL?"
+            "(%s)%lluULL:(%s)v%d;\n",
+            i->output,
+            i->left,
+            i->left,
+            minimum,
+            type,
+            minimum,
+            i->left,
+            high,
+            type,
+            high,
+            type,
+            i->left
+        );
+        return;
+    }
+    bool sign = behavior_scalar_signed(from);
+    bool below = sign && low > (long long)behavior_scalar_integer_low(from);
+    bool above = high < behavior_scalar_integer_high(from);
+    if (i->target == BEHAVIOR_CAST_WRAP || (!below && !above)) {
+        fprintf(out, "v%d=(%s)(uint64_t)v%d;\n", i->output, type, i->left);
+        return;
+    }
+    char low_test[64] = "0", high_test[64] = "0";
+    if (below) {
+        snprintf(low_test, sizeof low_test, "(int64_t)v%d<%lldLL", i->left, low);
+    }
+    if (above) {
+        snprintf(
+            high_test,
+            sizeof high_test,
+            sign ? "(int64_t)v%d>%lluLL" : "(uint64_t)v%d>%lluULL",
+            i->left,
+            high
+        );
+    }
+    if (i->target == BEHAVIOR_CAST_EXACT) {
+        fprintf(out, "if(%s||%s){", low_test, high_test);
+        failure(out, i, BEHAVIOR_FUNCTION_DATA);
+        fprintf(out, "}\nv%d=(%s)v%d;\n", i->output, type, i->left);
+        return;
+    }
+    fprintf(
+        out,
+        "v%d=%s?(%s)%s:%s?(%s)%lluULL:(%s)v%d;\n",
+        i->output,
+        low_test,
+        type,
+        minimum,
+        high_test,
+        type,
+        high,
+        type,
+        i->left
+    );
+}
 static void memory(FILE *out, const behavior_function_instruction *i)
 {
     if (i->op == BF_STORE) {
@@ -175,7 +259,7 @@ static void activation_values(
 )
 {
     int slots = acount(f->slots), base = slots + acount(f->locals);
-    for (int k = 0; k < acount(s->values); k++) {
+    for (int k = 0; k < s->value_count; k++) {
         int v = s->values[k], index = v < slots ? v : v - slots;
         char name = v < slots ? 'v' : 'l';
         if (restore) {
@@ -929,36 +1013,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 }
                 fprintf(out, "}\n");
                 break;
-            case BF_CAST: {
-                pin_type from = f->slots[i->left];
-                const char *type = behavior_scalar_c_type(i->type);
-                if (from == i->type || i->type == PIN_F64 || from == PIN_I32) {
-                    fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
-                    break;
-                }
-                const char *low = i->type == PIN_U8  ? "0"
-                                : i->type == PIN_I32 ? "INT32_MIN"
-                                                     : "INT64_MIN";
-                const char *high = i->type == PIN_U8  ? "UINT8_MAX"
-                                 : i->type == PIN_I32 ? "INT32_MAX"
-                                                      : "INT64_MAX";
-                fprintf(
-                    out,
-                    "v%d=isnan(v%d)?0:(double)v%d<=(double)%s?%s:(double)v%d>=("
-                    "double)%s?%s:(%s)v%d;\n",
-                    i->output,
-                    i->left,
-                    i->left,
-                    low,
-                    low,
-                    i->left,
-                    high,
-                    high,
-                    type,
-                    i->left
-                );
-                break;
-            }
+            case BF_CAST: cast(out, f, i); break;
             case BF_FLAGS:
                 fprintf(out, "v%d=(v%d & v%d)!=0;\n", i->output, i->left, i->right);
                 break;
@@ -1148,7 +1203,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "_callee_%d", index);
     }
     fputs("(behavior_function_context *c) {\n", out);
-    if (f->fast && !f->rows) {
+    if (f->fast) {
         fprintf(
             out,
             "if(c->steps<=c->budget && c->budget-c->steps>=%du && "
@@ -1165,9 +1220,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         body(f->fast, out, 'F', false);
         fprintf(out, "}\n");
     }
-    /* First counted-row slice deliberately exports canonical C, including
-     * every emitted callee. No process-pointer proof is part of this ABI. */
-    if (f->runtime_map && !f->rows) {
+    if (f->runtime_map) {
         fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture");
         /* Keep detached debug continuations canonical, as the runtime's
          * behavior_function_inspection_required selection does. */

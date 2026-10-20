@@ -9,6 +9,7 @@
 #include "types/map.h"
 #include "types/union.h"
 
+#include <assert.h>
 #include <float.h>
 #include <limits.h>
 #include <stdio.h>
@@ -86,7 +87,8 @@ static bool write_depth(
     size_t *,
     uint64_t *,
     execution_wire *,
-    size_t *
+    size_t *,
+    size_t
 );
 static bool scratch_growth(execution_wire *budget, const void *values, size_t item, size_t *charged)
 {
@@ -147,7 +149,8 @@ static bool dependency_fingerprint(
             c->dependency_bytes,
             &hash,
             c->fingerprint_budget,
-            c->shared_record_work
+            c->shared_record_work,
+            c->record_work_limit
         )) {
         c->wire.error = error;
         return false;
@@ -372,16 +375,29 @@ uint64_t prepared_abi(const char *const *names, int count)
     }
     return hash;
 }
-static void header(execution_wire *w)
-{
-    static const char *const names[] = {
+static const char *const instruction_names[] = {
 #define FUNCTION_NAME(op) [BF_##op] = #op,
 #define MATH_NAME(op, name, fn) FUNCTION_NAME(op)
-        BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
+    BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
 #undef MATH_NAME
 #undef FUNCTION_NAME
-    };
-    uint64_t expected_abi = prepared_abi(names, BF_END + 1);
+};
+uint64_t execution_prepared_abi()
+{
+    return prepared_abi(instruction_names, BF_END + 1);
+}
+int execution_prepared_instruction_count()
+{
+    return BF_END + 1;
+}
+const char *execution_prepared_instruction_name(int ordinal)
+{
+    assert(ordinal >= 0 && ordinal <= BF_END);
+    return instruction_names[ordinal];
+}
+static void header(execution_wire *w)
+{
+    uint64_t expected_abi = execution_prepared_abi();
     uint64_t magic = PREPARED_MAGIC, version = EXECUTION_PREPARED_VERSION,
              pointer_size = sizeof(void *), abi = expected_abi;
     U64(magic);
@@ -710,7 +726,8 @@ static bool write_depth(
     size_t *dependency_bytes,
     uint64_t *hash,
     execution_wire *budget,
-    size_t *record_work
+    size_t *record_work,
+    size_t record_work_limit
 )
 {
     if (depth > EXECUTION_WIRE_MAX_DEPTH) {
@@ -721,7 +738,8 @@ static bool write_depth(
                            .dependencies = cache,
                            .dependency_bytes = dependency_bytes,
                            .fingerprint_budget = budget,
-                           .shared_record_work = record_work };
+                           .shared_record_work = record_work,
+                           .record_work_limit = record_work_limit };
     c.wire.storage = &c.plan->storage;
     c.wire.hash = hash;
     for (int i = 0; i < c.plan->function_count && !c.wire.error; i++) {
@@ -786,8 +804,31 @@ bool execution_prepared_write(
     size_t bytes = 0;
     size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
     execution_wire budget = { .storage_budget = &remaining };
-    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work);
+    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work, 0);
     afree(cache);
+    if (size) {
+        snprintf(error, size, "%s", reason ? reason : "");
+    }
+    return success;
+}
+bool execution_prepared_measure(
+    const execution_module *m,
+    size_t *length,
+    uint64_t *fingerprint,
+    char *error,
+    size_t size
+)
+{
+    *length = 0;
+    const char *reason = NULL;
+    prepared_dependency *cache = NULL;
+    size_t bytes = 0;
+    size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
+    execution_wire budget = { .storage_budget = &remaining };
+    uint64_t hash = UINT64_C(14695981039346656037);
+    bool success = write_depth(m, NULL, length, &reason, 0, &cache, &bytes, &hash, &budget, &record_work, 0);
+    afree(cache);
+    *fingerprint = success ? hash : 0;
     if (size) {
         snprintf(error, size, "%s", reason ? reason : "");
     }
@@ -868,12 +909,14 @@ execution_module *execution_prepared_read_budget(
     prepared_context c = { .linker = linker,
                            .plan = execution_module_plan_new(),
                            .dependencies = &cache,
-                           .dependency_bytes = &dependency_bytes };
+                           .dependency_bytes = &dependency_bytes,
+                           .record_work_limit = linker ? linker->layout_work : 0 };
     c.wire = (execution_wire){ .data = (unsigned char *)data,
                                .size = length,
                                .reading = true,
                                .storage = &c.plan->storage,
-                               .storage_budget = remaining };
+                               .storage_budget = remaining,
+                               .owned_limit = linker ? linker->decoded_bytes : 0 };
     execution_wire *w = &c.wire;
     c.fingerprint_budget = w;
     c.shared_record_work = &c.record_work;
@@ -916,12 +959,14 @@ execution_module *execution_prepared_read_budget(
     if (!w->error && prepared_records_finalize(&c)) {
         preparation_budget(&c);
     }
+    /* The verifier's own diagnostic, kept for the reader's message. */
+    char verification[256] = "";
     if (!w->error) {
         for (int i = count - 1; i >= 0; i--) {
             size_t before = arena_storage_bytes(&c.functions[i]->owned);
             size_t limit = *remaining > SIZE_MAX - before ? SIZE_MAX
                                                           : before + *remaining;
-            if (!behavior_function_prepare_definition(c.functions[i], limit, error, size)) {
+            if (!behavior_function_prepare_definition(c.functions[i], limit, verification, sizeof verification)) {
                 w->error = "prepared definition verification failed";
                 break;
             }
@@ -950,7 +995,7 @@ execution_module *execution_prepared_read_budget(
     if (!m) {
         *remaining = initial;
         if (w->error && size) {
-            snprintf(error, size, "%s", w->error);
+            snprintf(error, size, *verification ? "%s: %s" : "%s", w->error, verification);
         }
         if (c.plan) {
             discard_functions(&c);

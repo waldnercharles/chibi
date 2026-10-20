@@ -164,9 +164,7 @@ enum
  * flag; verification and the borrowing proof run before it can be introduced. */
 enum
 {
-    BF_HOST_BORROW_ARRAY = 1,
-    BF_HOST_BUILD_ROW = 2,
-    BF_HOST_RETAIN_ROWS = 3
+    BF_HOST_BORROW_ARRAY = 1
 };
 static inline bool behavior_function_math(behavior_function_op op)
 {

@@ -181,7 +181,7 @@ bool behavior_function_own(behavior_function *f)
         }
     }
     for (int i = 0; i < acount(f->suspensions); i++) {
-        for (int j = 0; j < acount(f->suspensions[i].roots); j++) {
+        for (int j = 0; j < f->suspensions[i].root_count; j++) {
             if (!own_value(&owner, &f->suspensions[i].roots[j].shape)) {
                 goto invalid;
             }
@@ -421,17 +421,12 @@ void behavior_function_free(behavior_function *f)
     afree(f->source_watches);
     afree(f->edges);
     behavior_function_free(f->fast);
-    for (int i = 0; i < acount(f->suspensions); i++) {
-        afree(f->suspensions[i].values);
-        afree(f->suspensions[i].roots);
-    }
     afree(f->suspensions);
     afree(f->value_roots);
     afree(f->instructions);
     afree(f->runtime_instructions);
     afree(f->runtime_body);
     free(f->runtime_map);
-    free(f->rows);
     afree(f->slots);
     afree(f->slot_kinds);
     afree(f->argument_kinds);
@@ -492,16 +487,7 @@ static bool compile_artifact(behavior_function *f)
             sizeof *f->artifact->resume_addresses
         );
     }
-    /* The direct public entry also needs whole-body row selection. Its
-     * canonical target is ready before publishing the guarded entry. */
-    if (f->rows && !behavior_function_compile_inspection(f)) {
-        return false;
-    }
     f->artifact->code = behavior_function_jit(f, false);
-    if (f->artifact->code && f->rows) {
-        f->artifact->dispatch = behavior_function_row_guard(f);
-        return f->artifact->dispatch != NULL;
-    }
     if (!f->artifact->code || !f->fast) {
         return f->artifact->code != NULL;
     }

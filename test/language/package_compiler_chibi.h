@@ -1,0 +1,9 @@
+#ifndef CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
+#define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
+
+void test_language_package_compiler_chibi();
+void test_language_package_compiler_chibi_types();
+void test_language_package_compiler_chibi_imports();
+void test_language_package_compiler_chibi_bootstrap();
+
+#endif

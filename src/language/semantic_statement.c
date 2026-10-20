@@ -265,7 +265,7 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
     a->scope = script_analyzer_scope_new(a, node);
     script_statement result = { .kind = SCRIPT_STMT_BLOCK,
                                 .scope = a->scope,
-                                .range = script_analyzer_range(node),
+                                .range = script_analyzer_range(a, node),
                                 .symbol = -1,
                                 .expression = -1,
                                 .second = -1,
@@ -314,8 +314,10 @@ void script_analyzer_infer_task(analyzer *a, int symbol, script_type value)
 static uint64_t task_function(analyzer *a, TSNode call)
 {
     char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    int symbol = script_analyzer_callable_symbol(a, name);
-    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    int symbol = script_analyzer_import_namespace(a, call, name)
+                   ? script_analyzer_package_function(a, call, name)
+                   : script_analyzer_callable_symbol(a, name);
+    int index = script_analyzer_find_capability(a, call, name, SCRIPT_CAPABILITY_FUNCTION);
     free(name);
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_FUNCTION) {
         return a->out->symbols[symbol].id;
@@ -404,7 +406,7 @@ static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
 static int state_write(analyzer *a, TSNode call, TSNode *value)
 {
     char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    int index = script_analyzer_find_capability(a, call, name, SCRIPT_CAPABILITY_FUNCTION);
     free(name);
     TSNode types = script_analyzer_field(call, "type_arguments");
     TSNode arguments = script_analyzer_field(call, "arguments");
@@ -524,6 +526,32 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
     }
     return 0;
 }
+/* Member/index stores replace owned local values. A path through a reference,
+ * component or reflected setter writes storage outside that value instead. */
+static bool writes_external_storage(const script_analysis *out, int index)
+{
+    while (index >= 0) {
+        const script_expression *e = &out->expressions[index];
+        if ((e->type.flags & SCRIPT_TYPE_REFERENCE) || e->write ||
+            e->kind == SCRIPT_EXPR_COMPONENT) {
+            return true;
+        }
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+            index = e->left;
+            continue;
+        }
+        if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+            return true;
+        }
+        const script_symbol *symbol = &out->symbols[e->symbol];
+        if (symbol->type.flags & SCRIPT_TYPE_REFERENCE) {
+            return true;
+        }
+        return symbol->kind != SCRIPT_LOCAL &&
+               symbol->kind != SCRIPT_PARAMETER && symbol->kind != SCRIPT_RESULT;
+    }
+    return true;
+}
 static bool reduction_bounded(const analyzer *a, int index)
 {
     while (index >= 0 && a->out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
@@ -549,7 +577,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         return script_analyzer_statement_block(a, node);
     }
     script_statement result = { .scope = a->scope,
-                                .range = script_analyzer_range(node),
+                                .range = script_analyzer_range(a, node),
                                 .symbol = -1,
                                 .expression = -1,
                                 .second = -1,
@@ -584,10 +612,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             );
         }
         int existing = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
+        script_range name_range = script_analyzer_range(a, script_analyzer_field(node, "name"));
         if (existing >= 0 && a->out->symbols[existing].kind == SCRIPT_LOCAL &&
             a->out->symbols[existing].scope == a->scope &&
-            a->out->symbols[existing].declaration.start ==
-                script_analyzer_range(script_analyzer_field(node, "name")).start) {
+            a->out->symbols[existing].declaration.document == name_range.document &&
+            a->out->symbols[existing].declaration.start == name_range.start) {
             result.symbol = existing;
             if (a->out->symbols[existing].type.flags & SCRIPT_TYPE_UNTYPED) {
                 a->out->symbols[existing].type = type;
@@ -687,7 +716,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 .left = result.expression,
                 .right = result.second,
                 .symbol = -1,
-                .range = script_analyzer_range(node),
+                .range = script_analyzer_range(a, node),
                 .type = script_analyzer_bad_type(),
                 .effects = address.effects |
                            script_analyzer_expr_effects(a, result.second)
@@ -701,17 +730,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.effects = address.effects |
                          script_analyzer_expr_effects(a, result.second);
-        int root = result.expression;
-        while (root >= 0 && (a->out->expressions[root].kind == SCRIPT_EXPR_INDEX ||
-                             a->out->expressions[root].kind == SCRIPT_EXPR_MEMBER)) {
-            root = a->out->expressions[root].left;
-        }
-        int symbol = root >= 0 ? a->out->expressions[root].symbol : -1;
-        if (address.kind == SCRIPT_EXPR_MEMBER || address.kind == SCRIPT_EXPR_COMPONENT ||
-            (symbol >= 0 &&
-             (a->out->symbols[symbol].kind == SCRIPT_STATE ||
-              a->out->symbols[symbol].kind == SCRIPT_SHARED_STATE ||
-              (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_REFERENCE)))) {
+        if (writes_external_storage(a->out, result.expression)) {
             result.effects |= SCRIPT_EFFECT_WRITE;
         }
         if (address.symbol >= 0) {
@@ -941,7 +960,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         bool yield = script_analyzer_is(node, "yield_statement");
         script_expression task = { .kind = yield ? SCRIPT_EXPR_YIELD : SCRIPT_EXPR_CANCEL,
                                    .type = { .storage = PIN_FLOW },
-                                   .range = script_analyzer_range(node),
+                                   .range = script_analyzer_range(a, node),
                                    .symbol = -1,
                                    .left = -1,
                                    .right = -1,
@@ -1085,7 +1104,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                     .third = -1,
                     .body = -1,
                     .alternative = -1,
-                    .range = script_analyzer_range(child),
+                    .range = script_analyzer_range(a, child),
                     .effects = script_analyzer_expr_effects(a, expr)
                 };
                 apush(result.children, script_analyzer_statement_add(a, assign));
@@ -1153,7 +1172,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 apush(a->narrowed, old[j]);
             }
             script_statement arm = { .kind = SCRIPT_STMT_CASE,
-                                     .range = script_analyzer_range(arm_node),
+                                     .range = script_analyzer_range(a, arm_node),
                                      .scope = a->scope,
                                      .symbol = -1,
                                      .expression = -1,
@@ -1284,7 +1303,7 @@ int script_analyzer_statement(analyzer *a, TSNode node)
         return script_analyzer_statement_add(
             a,
             (script_statement){ .kind = SCRIPT_STMT_BLOCK,
-                                .range = script_analyzer_range(node),
+                                .range = script_analyzer_range(a, node),
                                 .scope = a->scope,
                                 .symbol = -1,
                                 .expression = -1,

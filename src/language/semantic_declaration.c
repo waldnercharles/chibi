@@ -1,7 +1,11 @@
+#include "language/callable_headers.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,11 +23,13 @@ void script_analyzer_declare_constant(analyzer *a, TSNode node)
     if (script_analyzer_generic_alias(a, node)) {
         return;
     }
+    TSNode type = script_analyzer_field(node, "type");
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
         SCRIPT_CONSTANT,
-        (script_type){ .flags = SCRIPT_TYPE_UNTYPED },
+        ts_node_is_null(type) ? (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+                              : script_analyzer_type_node(a, type),
         false
     );
     apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));
@@ -47,165 +53,206 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
     a->out->symbols[symbol].disabled = script_analyzer_token_present(a, node, "disabled");
     apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));
 }
+static script_callable_facts callable_facts(const analyzer *a, const script_signature_generic *generics)
+{
+    return (script_callable_facts){
+        .signature = { .named = script_analyzer_named_facts(a),
+                       .functions = a->out->functions,
+                       .function_count = acount(a->out->functions),
+                       .pointer_size = sizeof(void *),
+                       .generics = generics,
+                       .generic_count = acount(generics) },
+        .scope_count = acount(a->out->scopes)
+    };
+}
+static int *callable_members(const int *members, int count)
+{
+    int *owned = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(owned, members[i]);
+    }
+    return owned;
+}
+static void callable_symbol(analyzer *a, const script_callable_symbol_change *change)
+{
+    script_symbol row = change->symbol;
+    unsigned fields = change->fields;
+    if (fields & SCRIPT_CALLABLE_APPEND) {
+        assert(change->index == acount(a->out->symbols));
+        row.name = xstrdup(row.name);
+        row.unit = row.unit ? xstrdup(row.unit) : NULL;
+        apush(a->out->symbols, row);
+        return;
+    }
+    script_symbol *symbol = &a->out->symbols[change->index];
+    if (fields & SCRIPT_CALLABLE_TYPE) {
+        symbol->type = row.type;
+    }
+    if (fields & SCRIPT_CALLABLE_UNIT) {
+        free(symbol->unit);
+        symbol->unit = row.unit ? xstrdup(row.unit) : NULL;
+    }
+    if (fields & SCRIPT_CALLABLE_RANGE) {
+        symbol->declaration = row.declaration;
+    }
+    if (fields & SCRIPT_CALLABLE_FUNCTION) {
+        symbol->function = row.function;
+    }
+    if (fields & SCRIPT_CALLABLE_CAPABILITY) {
+        symbol->capability = row.capability;
+    }
+    if (fields & SCRIPT_CALLABLE_OUTCOME) {
+        symbol->outcome = row.outcome;
+    }
+}
+static void callable_function(analyzer *a, const script_callable_function_change *change)
+{
+    script_function row = change->function;
+    row.parameters = callable_members(row.parameters, row.parameter_count);
+    row.results = callable_members(row.results, row.result_count);
+    row.entry = row.entry ? xstrdup(row.entry) : NULL;
+    /* Counts in helper output describe its flat transport spans. The analyzer
+     * continues to derive its finalized counts in finish_analysis. */
+    row.parameter_count = row.result_count = 0;
+    if (change->append) {
+        assert(change->index == acount(a->out->functions));
+        apush(a->out->functions, row);
+        return;
+    }
+    script_function *function = &a->out->functions[change->index];
+    row.parameter_count = function->parameter_count;
+    row.result_count = function->result_count;
+    afree(function->parameters);
+    afree(function->results);
+    free(function->entry);
+    *function = row;
+}
+static void callable_apply(analyzer *a, script_callable_header header)
+{
+    for (int i = 0; i < header.symbol_count; i++) {
+        callable_symbol(a, &header.symbols[i]);
+    }
+    for (int i = 0; i < header.scope_count; i++) {
+        apush(a->out->scopes, header.scopes[i]);
+    }
+    for (int i = 0; i < header.function_count; i++) {
+        callable_function(a, &header.functions[i]);
+    }
+    for (int i = 0; i < header.type_count; i++) {
+        script_analyzer_publish_type(a, header.types[i]);
+    }
+    for (int i = 0; i < header.diagnostic_count; i++) {
+        apush(a->out->diagnostics, header.diagnostics[i]);
+    }
+    for (int i = 0; i < header.use_count; i++) {
+        apush(a->out->uses, header.uses[i]);
+    }
+    for (int i = 0; i < header.initializer_count; i++) {
+        const script_callable_initializer *pending = &header.initializers[i];
+        apush(a->initializers, ((initializer){ pending->symbol, pending->node }));
+    }
+    for (int i = 0; i < header.body_count; i++) {
+        const script_callable_body *pending = &header.bodies[i];
+        apush(a->bodies, ((function_body){ pending->function, pending->node, BODY_PENDING }));
+    }
+}
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol)
 {
-    script_function function = { .kind = kind,
-                                 .symbol = symbol,
-                                 .scope = -1,
-                                 .body = -1,
-                                 .receiver = -1,
-                                 .parent = a->function,
-                                 .range = script_analyzer_range(node),
-                                 .depth_limit = SCRIPT_CALL_DEPTH_LIMIT };
+    script_function function = script_callable_function(
+        a->function,
+        node,
+        script_analyzer_range(a, node).document,
+        kind,
+        symbol
+    );
     apush(a->out->functions, function);
     return acount(a->out->functions) - 1;
 }
-void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bool results)
-{
-    if (results && !ts_node_is_null(node) &&
-        !script_analyzer_is(node, "parameter_list")) {
-        char *unit;
-        script_type type = script_analyzer_signature_type(a, node, &unit);
-        int symbol = script_analyzer_result_new(a, node, "Result", type);
-        free(a->out->symbols[symbol].unit);
-        a->out->symbols[symbol].unit = unit;
-        apush(a->out->functions[function_index].results, symbol);
-        return;
-    }
-    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        TSNode parameter = ts_node_named_child(node, i);
-        if (ts_node_is_extra(parameter)) {
-            continue;
-        }
-        if (a->instantiating &&
-            !ts_node_is_null(script_analyzer_field(parameter, "comptime"))) {
-            continue;
-        }
-        char *unit;
-        script_type type = script_analyzer_signature_type(
-            a,
-            script_analyzer_field(parameter, "type"),
-            &unit
-        );
-        if (type.flags & SCRIPT_TYPE_UNTYPED) {
-            script_analyzer_diagnostic(a, parameter, "Callable parameters and results require a type");
-            type = script_analyzer_bad_type();
-        }
-        int symbol = script_analyzer_symbol_new(
-            a,
-            script_analyzer_field(parameter, "name"),
-            results ? SCRIPT_RESULT : SCRIPT_PARAMETER,
-            type,
-            true
-        );
-        free(a->out->symbols[symbol].unit);
-        a->out->symbols[symbol].unit = unit;
-        script_function *function = &a->out->functions[function_index];
-        if (results) {
-            apush(function->results, symbol);
-        } else {
-            apush(function->parameters, symbol);
-        }
-        TSNode value = script_analyzer_field(parameter, "value");
-        if (!ts_node_is_null(value)) {
-            apush(a->initializers, ((initializer){ symbol, value }));
-        }
-    }
-}
-static bool returns_value(TSNode node)
-{
-    if (script_analyzer_is(node, "return_statement")) {
-        return !ts_node_is_null(script_analyzer_field(node, "value"));
-    }
-    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        TSNode child = ts_node_named_child(node, i);
-        if (!script_analyzer_is(child, "function_declaration") &&
-            !script_analyzer_is(child, "macro_declaration") && returns_value(child)) {
-            return true;
-        }
-    }
-    return false;
-}
-/* A callable's value is its single result, a struct of several, or flow. */
 void script_analyzer_function_type(analyzer *a, int function)
 {
-    int symbol = a->out->functions[function].symbol;
-    int count = acount(a->out->functions[function].results);
-    a->out->symbols[symbol]
-        .type = count == 1
-                  ? a->out->symbols[a->out->functions[function].results[0]].type
-                  : (script_type){ .storage = count ? PIN_STRUCT : PIN_FLOW,
-                                   .nominal = count ? a->out->symbols[symbol].id : 0,
-                                   .flags = count ? SCRIPT_TYPE_RESULTS : 0 };
+    const script_function *callable = &a->out->functions[function];
+    script_type *results = NULL;
+    for (int i = 0; i < acount(callable->results); i++) {
+        apush(results, a->out->symbols[callable->results[i]].type);
+    }
+    a->out->symbols[callable->symbol].type = script_callable_result_type(
+        a->out->symbols[callable->symbol].id,
+        results,
+        acount(results)
+    );
+    afree(results);
+}
+/* Whether `@test` marks a function declaration. It is the only attribute. */
+static bool test_attribute(analyzer *a, TSNode node)
+{
+    bool test = false;
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode attribute = ts_node_named_child(node, i);
+        if (!script_analyzer_is(attribute, "attribute")) {
+            continue;
+        }
+        TSNode name = script_analyzer_field(attribute, "name");
+        if (!script_analyzer_text_is(a, name, "test")) {
+            char *text = script_analyzer_text_copy(a, name);
+            script_analyzer_diagnostic(a, attribute, "Unknown attribute '@%s'", text);
+            free(text);
+        } else if (test) {
+            script_analyzer_diagnostic(a, attribute, "Duplicate attribute '@test'");
+        }
+        test |= script_analyzer_text_is(a, name, "test");
+    }
+    return test;
+}
+/* A test is a package function with no parameters or results, so the
+ * runner can call it alone. Its declared header says so,
+ * including a result its returns imply. */
+static void mark_test(analyzer *a, TSNode node, int function)
+{
+    if (a->function >= 0 || !script_analyzer_is(ts_node_parent(node), "source_file")) {
+        script_analyzer_diagnostic(a, node, "@test needs a package-level function");
+        return;
+    }
+    script_function *declared = &a->out->functions[function];
+    if (acount(declared->parameters) || acount(declared->results) || declared->inferred) {
+        script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
+        return;
+    }
+    declared->test = true;
 }
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
+    bool test = !a->instantiating && test_attribute(a, node);
     if (!a->instantiating && script_analyzer_generic_declare(a, node)) {
+        if (test) {
+            script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
+        }
         return;
     }
-    bool macro = script_analyzer_is(node, "macro_declaration");
-    int symbol = script_analyzer_symbol_new(
-        a,
-        script_analyzer_field(node, "name"),
-        macro ? SCRIPT_MACRO : SCRIPT_FUNCTION,
-        (script_type){ .storage = PIN_FLOW },
-        false
+    script_signature_generic *generics = NULL;
+    script_analyzer_generic_types(a, script_analyzer_field(node, "parameters"), &generics);
+    script_analyzer_generic_types(a, script_analyzer_field(node, "results"), &generics);
+    script_callable_facts facts = callable_facts(a, generics);
+    script_callable_header header = script_callable_register(
+        &a->out->constants,
+        &facts,
+        node,
+        script_analyzer_syntax(a, node)->text,
+        (script_callable_context){ .scope = a->scope,
+                                   .function = a->function,
+                                   .document = script_analyzer_range(a, node).document,
+                                   .specialization = a->specialization,
+                                   .instantiating = a->instantiating }
     );
-    int function = script_analyzer_function_new(a, node, SCRIPT_FUNCTION_AUTHORED, symbol);
-    a->out->symbols[symbol].function = function;
-    a->out->symbols[symbol].capability = a->out->symbols[symbol].id;
-    if (!a->instantiating) {
-        script_analyzer_generic_export(a, node, symbol);
+    afree(generics);
+    callable_apply(a, header);
+    if (!a->instantiating && header.function >= 0) {
+        script_analyzer_generic_export(a, node, header.symbol);
     }
-    int old_scope = a->scope, old_function = a->function;
-    a->function = function;
-    a->scope = script_analyzer_scope_new(a, script_analyzer_field(node, "body"));
-    a->out->functions[function].scope = a->scope;
-    script_analyzer_parameters(a, script_analyzer_field(node, "parameters"), function, false);
-    script_analyzer_parameters(a, script_analyzer_field(node, "results"), function, true);
-    apush(
-        a->out->symbols,
-        ((script_symbol){
-            .name = xstrdup("entry"),
-            .id = script_catalog_id("entry", a->out->symbols[symbol].name),
-            .kind = SCRIPT_PARAMETER,
-            .type = { .storage = PIN_STRUCT,
-                      .nominal = a->out->symbols[symbol].id,
-                      .flags = SCRIPT_TYPE_RESULTS },
-            .scope = a->scope,
-            .initializer = -1,
-            .function = function,
-            .declaration = { .start = -1, .end = -1 } })
-    );
-    a->out->functions[function]
-        .inferred = !macro &&
-                    ts_node_is_null(script_analyzer_field(node, "results")) &&
-                    returns_value(script_analyzer_field(node, "body"));
-    script_analyzer_function_type(a, function);
-    apush(a->bodies, ((function_body){ function, script_analyzer_field(node, "body"), BODY_PENDING }));
-    TSNode body = script_analyzer_field(node, "body");
-    for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
-        TSNode declaration = ts_node_named_child(body, i);
-        if (script_analyzer_is(declaration, "entry_declaration")) {
-            int entry = script_analyzer_function_new(a, declaration, SCRIPT_FUNCTION_MACRO_ENTRY, -1);
-            a->out->functions[entry].scope = a->scope;
-            a->out->functions[entry].entry = script_analyzer_name_copy(
-                a,
-                script_analyzer_field(declaration, "name")
-            );
-        } else if (script_analyzer_is(declaration, "exit_declaration")) {
-            int outcome = script_analyzer_symbol_new(
-                a,
-                script_analyzer_field(declaration, "name"),
-                SCRIPT_LABEL,
-                (script_type){ .storage = PIN_FLOW },
-                false
-            );
-            a->out->symbols[outcome].outcome = true;
-        }
+    /* A name the package already declares has no function of its own; the
+     * duplicate is diagnosed where it is registered. */
+    if (test && header.function >= 0) {
+        mark_test(a, node, header.function);
     }
-    a->scope = old_scope;
-    a->function = old_function;
 }
 static uint64_t query_relationship_id(const analyzer *a, const char *name)
 {
@@ -312,7 +359,7 @@ static uint64_t query_source(analyzer *a, TSNode source, int *traversal, int *va
 static script_query query_membership(analyzer *a, TSNode node, bool relationship_allowed)
 {
     script_query result = { .kind = SCRIPT_QUERY_HAS,
-                            .range = script_analyzer_range(node) };
+                            .range = script_analyzer_range(a, node) };
     TSNode name = node;
     if (script_analyzer_is(node, "member_expression")) {
         result.source_relationship = query_source(
@@ -325,7 +372,7 @@ static script_query query_membership(analyzer *a, TSNode node, bool relationship
         relationship_allowed &= !result.source_relationship;
     }
     char *text = script_analyzer_name_copy(a, name);
-    int index = script_catalog_find_type(a->catalog, text);
+    int index = script_analyzer_find_type(a, node, text);
     uint64_t relationship = relationship_allowed ? query_relationship_id(a, text) : 0;
     if (index >= 0 && a->catalog->types[index].component) {
         result.component = a->catalog->types[index].component_id;
@@ -358,7 +405,7 @@ static bool query_membership_node(analyzer *a, TSNode node)
         return false;
     }
     char *text = script_analyzer_name_copy(a, name);
-    int index = script_catalog_find_type(a->catalog, text);
+    int index = script_analyzer_find_type(a, node, text);
     free(text);
     return index >= 0 && a->catalog->types[index].component;
 }
@@ -391,7 +438,7 @@ static void query_narrow_restore(analyzer *a, narrowing *saved)
 static script_query query_changed(analyzer *a, TSNode node, TSNode arguments)
 {
     script_query result = { .kind = SCRIPT_QUERY_CHANGED,
-                            .range = script_analyzer_range(node) };
+                            .range = script_analyzer_range(a, node) };
     TSNode argument = query_argument(arguments);
     if (ts_node_is_null(argument)) {
         script_analyzer_diagnostic(a, node, "changed requires one component or component binding");
@@ -413,12 +460,12 @@ static script_query query_changed(analyzer *a, TSNode node, TSNode arguments)
     }
     result = query_membership(a, argument, false);
     result.kind = SCRIPT_QUERY_CHANGED;
-    result.range = script_analyzer_range(node);
+    result.range = script_analyzer_range(a, node);
     return result;
 }
 int script_analyzer_query_expression(analyzer *a, TSNode node)
 {
-    script_query result = { .range = script_analyzer_range(node) };
+    script_query result = { .range = script_analyzer_range(a, node) };
     if (script_analyzer_is(node, "parenthesized_expression")) {
         return script_analyzer_query_expression(a, script_analyzer_field(node, "expression"));
     }
@@ -525,14 +572,14 @@ int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component
         a->out->queries,
         ((script_query){ .kind = SCRIPT_QUERY_HAS,
                          .component = component,
-                         .range = script_analyzer_range(node) })
+                         .range = script_analyzer_range(a, node) })
     );
     int index = acount(a->out->queries) - 1;
     if (!excluded) {
         return index;
     }
     script_query not = { .kind = SCRIPT_QUERY_NOT,
-                         .range = script_analyzer_range(node) };
+                         .range = script_analyzer_range(a, node) };
     apush(not.children, index);
     not.child_count = 1;
     apush(a->out->queries, not);
@@ -566,10 +613,10 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
         int traversal = SCRIPT_SOURCE_SELF;
         int variable = 0;
         script_type type;
-        if (dot && script_catalog_find_type(a->catalog, type_name) < 0) {
+        if (dot && script_analyzer_find_type(a, name_node, type_name) < 0) {
             *dot = 0;
             relationship = query_relationship(a, name_node, type_name, false);
-            int index = script_catalog_find_type(a->catalog, dot + 1);
+            int index = script_analyzer_find_type(a, name_node, dot + 1);
             type = index >= 0 ? a->catalog->types[index].type
                               : script_analyzer_bad_type();
             if (index >= 0) {
@@ -658,7 +705,7 @@ static void query_generator(analyzer *a, TSNode node)
                          .component = relationship,
                          .source_variable = source_variable,
                          .target_variable = variable,
-                         .range = script_analyzer_range(node) })
+                         .range = script_analyzer_range(a, node) })
     );
     script_analyzer_query_intersect(a, acount(a->out->queries) - 1);
 }
@@ -709,10 +756,8 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
         );
     }
 }
-void script_analyzer_declaration_pass(analyzer *a, TSNode body)
+void script_analyzer_value_declarations(analyzer *a, TSNode body)
 {
-    script_analyzer_record_types(a, body);
-    script_analyzer_union_declarations(a, body);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (script_analyzer_is(node, "state_declaration") ||
@@ -738,7 +783,7 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
                 continue;
             }
             char *name = script_analyzer_qualified_name(a, script_analyzer_field(node, "name"));
-            int event = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_EVENT);
+            int event = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_EVENT);
             free(name);
             if (event < 0) {
                 continue;
@@ -753,11 +798,12 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             );
             a->out->symbols[symbol].capability = id;
         } else if (script_analyzer_is(node, "exit_declaration")) {
-            script_range range = script_analyzer_range(script_analyzer_field(node, "name"));
+            script_range range = script_analyzer_range(a, script_analyzer_field(node, "name"));
             bool declared = false;
             for (int j = 0; j < acount(a->out->symbols); j++) {
                 if (a->out->symbols[j].kind == SCRIPT_LABEL &&
                     a->out->symbols[j].scope == a->scope &&
+                    a->out->symbols[j].declaration.document == range.document &&
                     a->out->symbols[j].declaration.start == range.start) {
                     declared = true;
                     break;
@@ -781,13 +827,20 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             a->scope = old;
         }
     }
+}
+void script_analyzer_declaration_pass(analyzer *a, TSNode body)
+{
+    script_analyzer_record_types(a, body);
+    script_analyzer_union_declarations(a, body);
+    script_analyzer_value_declarations(a, body);
     script_analyzer_record_fields(a, body);
 }
 int script_analyzer_scope_at(const analyzer *a, TSNode body)
 {
-    script_range range = script_analyzer_range(body);
+    script_range range = script_analyzer_range(a, body);
     for (int i = 0; i < acount(a->out->scopes); i++) {
-        if (a->out->scopes[i].range.start == range.start &&
+        if (a->out->scopes[i].range.document == range.document &&
+            a->out->scopes[i].range.start == range.start &&
             a->out->scopes[i].range.end == range.end) {
             return i;
         }
@@ -815,7 +868,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     char *name = script_analyzer_qualified_name(a, name_node);
     bool after = script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "after");
     const script_catalog_capability *signature = NULL;
-    int event_index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_EVENT);
+    int event_index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_EVENT);
     int event_alias = script_analyzer_lookup(a, name_node);
     bool declared_event = event_alias >= 0 &&
                           a->out->symbols[event_alias].kind == SCRIPT_EVENT &&
@@ -938,7 +991,8 @@ void script_analyzer_handler(analyzer *a, TSNode node)
         uint64_t type = script_analyzer_expr_type(a, receiver).nominal;
         for (int i = 0; i < a->catalog->capability_count; i++) {
             const script_catalog_capability *candidate = &a->catalog->capabilities[i];
-            if (candidate->kind == SCRIPT_CAPABILITY_EVENT &&
+            if (script_analyzer_native_capability(a, candidate->id) &&
+                candidate->kind == SCRIPT_CAPABILITY_EVENT &&
                 candidate->receiver == type &&
                 script_name_matches(candidate->name, event)) {
                 if (signature) {
@@ -1133,7 +1187,7 @@ void script_analyzer_binding(analyzer *a, TSNode node)
     if (a->out->kind == SCRIPT_PROGRAM_LIBRARY || a->function >= 0) {
         script_analyzer_diagnostic(a, node, "Bindings belong to behavior or system roots");
     }
-    script_binding result = { .range = script_analyzer_range(node) };
+    script_binding result = { .range = script_analyzer_range(a, node) };
     result.target = script_analyzer_expression(
         a,
         script_analyzer_field(node, "target"),
@@ -1231,11 +1285,12 @@ void script_analyzer_definition_pass(analyzer *a, TSNode body)
             script_analyzer_definition_pass(a, script_analyzer_field(node, "body"));
             a->scope = old;
         } else if (script_analyzer_is(node, "entry_declaration")) {
-            script_range range = script_analyzer_range(node);
+            script_range range = script_analyzer_range(a, node);
             int function = -1;
             for (int j = 0; j < acount(a->out->functions); j++) {
                 if (a->out->functions[j].kind == SCRIPT_FUNCTION_MACRO_ENTRY &&
                     a->out->functions[j].parent == a->function &&
+                    a->out->functions[j].range.document == range.document &&
                     a->out->functions[j].range.start == range.start) {
                     function = j;
                     break;

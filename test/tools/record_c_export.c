@@ -1,8 +1,12 @@
+#include "authoring/native_bindings.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "export_compiler.h"
 #include "language/lower.h"
+#include "runtime/arrays_definition.h"
+#include "runtime/native_capabilities.h"
 #include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -17,7 +21,8 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Two functions, five samples per backend, one compiler child. No frames. */
+/* Three functions, eight samples per backend, one compiler child. No frames.
+ * The third builds its rows with in-place local array updates. */
 #define ROW                                                                    \
     "Row :: struct { key: string; label: string; icon: string = \"node\"; "    \
     "prototype: string = \"\"; drop: string = \"\"; depth: int = 1; "          \
@@ -29,10 +34,22 @@ static const char *const sources[] = {
     "Rows :: library { " ROW
     "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return empty; } "
     "if n == 0 { return []; } a: Row = {key: \"a\", label: \"A\"}; "
-    "if n == 1 { return [a]; } return [a, a, a]; } }"
+    "if n == 1 { return [a]; } return [a, a, a]; } }",
+    "Rows :: library { " ROW
+    "Grow :: (n: int) -> Row[] { rows: Row[] = []; i: int = 0; while i < n { "
+    "row: Row = {key: \"a\", label: \"A\"}; rows = array_add(rows, row); i = i "
+    "+ 1; } "
+    "grown: Row[] = []; grown = append(grown, rows); "
+    "if n > 1 { grown[n - 1] = {key: \"z\", label: \"Z\"}; } return grown; } }"
 };
-static execution_module *modules[2];
-static const behavior_function *functions[2];
+enum
+{
+    FUNCTIONS = 3,
+    SAMPLES = 8
+};
+static execution_module *modules[FUNCTIONS];
+static const behavior_function *functions[FUNCTIONS];
+static native_capabilities *native;
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -40,7 +57,7 @@ static behavior_function_context context;
 static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
-static pin_value result, retained[2][5];
+static pin_value result, retained[2][SAMPLES];
 static char directory[128];
 static FILE *output;
 static void *library;
@@ -64,11 +81,13 @@ static void cleanup()
     analysis = NULL;
     syntax = NULL;
     plan = NULL;
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < FUNCTIONS; i++) {
         execution_module_free(modules[i]);
         modules[i] = NULL;
         functions[i] = NULL;
     }
+    native_capabilities_free(native);
+    native = NULL;
     if (output) {
         fclose(output);
     }
@@ -84,16 +103,29 @@ static void cleanup()
     }
     directory[0] = 0;
 }
+static bool in_place(const behavior_function *f, const node_host_call *call)
+{
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        if (f->host_calls[i].capability_id == execution_intrinsic_id(call)) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool prepare(int index)
 {
-    const script_catalog catalog = { 0 };
-    const script_lower_bindings bindings = { 0 };
+    const script_catalog empty = { 0 };
+    const script_catalog *catalog = index == 2 ? native_capabilities_catalog(native)
+                                               : &empty;
+    const script_lower_bindings bindings = index == 2
+                                             ? authoring_native_bindings(native)
+                                             : (script_lower_bindings){ 0 };
     syntax = script_parse(sources[index]);
     REQUIRE(syntax && !syntax->diagnostic_count);
-    analysis = script_analyze(syntax, &catalog);
+    analysis = script_analyze(syntax, catalog);
     REQUIRE(analysis && analysis->valid && analysis->function_count == 1);
     uint64_t id = analysis->symbols[analysis->functions[0].symbol].id;
-    plan = script_lower(analysis, &catalog, &bindings);
+    plan = script_lower(analysis, catalog, &bindings);
     REQUIRE(plan && plan->valid);
     char error[256];
     modules[index] = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
@@ -108,6 +140,11 @@ static bool prepare(int index)
         }
     }
     REQUIRE(functions[index] && functions[index]->result_count == 1);
+    if (index == 2) {
+        REQUIRE(in_place(functions[index], &EXECUTION_array_push_call));
+        REQUIRE(in_place(functions[index], &EXECUTION_array_extend_call));
+        REQUIRE(in_place(functions[index], &EXECUTION_array_store_call));
+    }
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     analysis = NULL;
@@ -151,20 +188,21 @@ static bool owned_row(const pin_value *value)
 static bool sample(int backend, int index)
 {
     finish_call();
-    int function = index != 0;
+    int function = index == 0 ? 0 : index < 5 ? 1 : 2;
     const behavior_function *f = functions[function];
-    const int counts[] = { -1, 0, 1, 3 };
+    const int counts[] = { -1, 0, 1, 3, 0, 1, 20 };
     char text[] = "export-owner";
     pin_value args[2] = { { .type = PIN_STR, .str = text }, f->result_defaults[0] };
     if (function) {
         args[0] = (pin_value){ .type = PIN_I32, .i = counts[index - 1] };
         args[1].ptr = NULL;
     }
+    int argument_count = function == 1 ? 2 : 1;
     result = f->result_defaults[0];
     behavior_function_prepare_results(f, &result, &storage);
     context = (behavior_function_context){ .activation = &activation,
                                            .arguments = args,
-                                           .argument_count = function ? 2 : 1,
+                                           .argument_count = argument_count,
                                            .results = &result,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
@@ -209,13 +247,15 @@ static bool sample(int backend, int index)
         if (index == 1) {
             REQUIRE(!array);
         } else {
-            REQUIRE(array && array->count == counts[index - 1]);
+            int count = counts[index - 1];
+            REQUIRE(array && array->count == count);
             REQUIRE(array->record == result.record);
             REQUIRE(arena_contains(&storage, array->record));
             for (int i = 0; i < array->count; i++) {
+                bool last = function == 2 && count > 1 && i == count - 1;
                 pin_value item = pin_array_get(array, i);
-                REQUIRE(pin_array_get(array, i).record == array->record);
-                REQUIRE(row(&item, "a", "A"));
+                REQUIRE(item.record == array->record);
+                REQUIRE(row(&item, last ? "z" : "a", last ? "Z" : "A"));
                 REQUIRE(owned_row(&item));
             }
         }
@@ -226,6 +266,16 @@ static bool sample(int backend, int index)
 TEST_CASE(authored_record_headers_survive_exported_c)
 {
     REQUIRE(!type_catalog_find("Rows.Row"));
+    char error[256];
+    native = native_capabilities_from_definition_packs(
+        NULL,
+        0,
+        &NATIVE_ARRAY_DEFINITION_PACK,
+        1,
+        error,
+        sizeof error
+    );
+    REQUIRE(native);
     snprintf(directory, sizeof directory, "/tmp/chibi-record-c-XXXXXX");
     char *created = mkdtemp(directory);
     if (!created) {
@@ -240,9 +290,10 @@ TEST_CASE(authored_record_headers_survive_exported_c)
     snprintf(debug, sizeof debug, "%s/src/execution/source_debug.c", tool_root());
     output = fopen(source, "w");
     REQUIRE(output);
-    REQUIRE(prepare(0) && prepare(1));
+    REQUIRE(prepare(0) && prepare(1) && prepare(2));
     long bytes = ftell(output);
-    REQUIRE(bytes > 0 && bytes < 128 * 1024);
+    /* The row loop is about 190 KiB of the roughly 220 KiB of source. */
+    REQUIRE(bytes > 0 && bytes < 512 * 1024);
     int closed = fclose(output);
     output = NULL;
     REQUIRE(!closed && !syntax && !analysis && !type_catalog_find("Rows.Row"));
@@ -265,17 +316,17 @@ TEST_CASE(authored_record_headers_survive_exported_c)
     }
     REQUIRE(library);
     for (int backend = 0; backend < 2; backend++) {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < SAMPLES; i++) {
             REQUIRE(sample(backend, i));
         }
     }
     finish_call();
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < FUNCTIONS; i++) {
         execution_module_free(modules[i]);
         modules[i] = NULL;
         functions[i] = NULL;
     }
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < SAMPLES; i++) {
         REQUIRE(pin_record_valid(retained[0][i].record));
         REQUIRE(pin_record_valid(retained[1][i].record));
         const pin_value *left = &retained[0][i], *right = &retained[1][i];
@@ -292,6 +343,7 @@ TEST_CASE(authored_record_headers_survive_exported_c)
     REQUIRE(row(&retained[1][0], "export-owner", "export-owner"));
     REQUIRE(!retained[1][1].ptr && retained[1][1].record);
     REQUIRE(((pin_array *)retained[1][4].ptr)->count == 3);
+    REQUIRE(((pin_array *)retained[1][7].ptr)->count == 20);
     return true;
 }
 void test_tool_record_c_export()

@@ -39,4 +39,25 @@ execution_module_plan *script_lower(
     const script_catalog *,
     const script_lower_bindings *
 );
+
+typedef struct
+{
+    uint64_t id;
+    pin_value value;
+} script_lower_constant;
+typedef struct
+{
+    execution_module_plan *plan;
+    const script_lower_constant *constants;
+    int constant_count;
+} script_lower_package_result;
+/* Same lowering pass as script_lower. A valid plan exposes its evaluated
+ * constants and proven exported parameter defaults by symbol ID, borrowed from
+ * plan storage. Snapshot them before finishing/freeing the plan. Invalid plans
+ * expose no values. Defaults use the existing bounded initializer evaluator. */
+script_lower_package_result script_lower_package(
+    const script_analysis *,
+    const script_catalog *,
+    const script_lower_bindings *
+);
 #endif

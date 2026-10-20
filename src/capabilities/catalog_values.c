@@ -216,9 +216,15 @@ bool script_catalog_values_key(const script_catalog *catalog, unsigned char **ou
             }
         }
         for (int j = 0; j < type->variant_count; j++) {
-            if (type->variants[j].is_literal &&
-                !key_value(out, &type->variants[j].literal, 0)) {
+            const script_catalog_variant *variant = &type->variants[j];
+            if (variant->is_literal && !key_value(out, &variant->literal, 0)) {
                 goto unavailable;
+            }
+            for (int k = 0; k < variant->field_count; k++) {
+                if (variant->fields[k].has_default &&
+                    !key_value(out, &variant->fields[k].default_value, 0)) {
+                    goto unavailable;
+                }
             }
         }
     }

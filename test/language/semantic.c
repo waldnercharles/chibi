@@ -758,6 +758,73 @@ static const script_expression *constant_of(pin_type storage)
     }
     return NULL;
 }
+static const script_expression *expression_of(script_expression_kind kind, pin_type storage)
+{
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        if (expression->kind == kind && expression->type.storage == storage) {
+            return expression;
+        }
+    }
+    return NULL;
+}
+static bool converts(const char *body, behavior_cast_mode mode)
+{
+    char source[256];
+    snprintf(source, sizeof source, "L :: library { F :: (x: int) -> byte { return %s; } }", body);
+    parse(source);
+    const script_expression *conversion = expression_of(SCRIPT_EXPR_CAST, PIN_U8);
+    return analysis->valid && conversion && conversion->conversion == mode;
+}
+TEST_CASE(language_numeric_conversions_check_modes_and_constants)
+{
+    REQUIRE(converts("byte(x)", BEHAVIOR_CAST_EXACT));
+    REQUIRE(converts("byte(wrap: x)", BEHAVIOR_CAST_WRAP));
+    REQUIRE(converts("byte(clamp: x)", BEHAVIOR_CAST_CLAMP));
+    REQUIRE(converts("byte(wrap: 300)", BEHAVIOR_CAST_WRAP));
+    parse("L :: library { X: int : 300; F :: () -> byte { return byte(X + 1); } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)"));
+    parse("L :: library { X: int : 200; F :: () -> byte { return byte(X); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (x: int) -> byte { return byte(round: x); } }");
+    REQUIRE(diagnostic("A conversion argument may only be named wrap or clamp"));
+    parse("L :: library { F :: (x: float) -> int { return int(wrap: x); } }");
+    REQUIRE(diagnostic("wrap and clamp convert between integer types"));
+    parse("L :: library { F :: () -> int { return int(wrap: 3.5); } }");
+    REQUIRE(
+        analysis->diagnostic_count == 1 &&
+        diagnostic("wrap and clamp convert between integer types")
+    );
+    parse("L :: library { F :: () -> uint64 { return uint64(clamp: 18446744073709551615); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (x: int) -> byte { return byte(x, x); } }");
+    REQUIRE(diagnostic("Conversion takes one value"));
+    parse("L :: library { F :: (x: int) -> int { return cast<int>(x); } }");
+    REQUIRE(diagnostic("cast<T>(value) was removed; write T(value)"));
+    return true;
+}
+TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
+{
+    parse("L :: library { F :: (x: uint16) -> uint { return x; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (x: byte) -> float { return x; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (x: int) -> byte { return x; } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Incompatible types: expected byte, got int; convert with byte(value)"));
+    parse("L :: library { F :: (x: int, y: uint) -> int64 { return x + y; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
+    parse("L :: library { F :: (x: byte, y: int8) -> int { return x + y; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32));
+    parse("L :: library { F :: (x: int64, y: uint64) -> int64 { return x + y; } }");
+    REQUIRE(diagnostic("int64 and uint64 operands need an explicit conversion, such as int64(value)"));
+    parse("L :: library { Mask: uint : 0xFF; F :: () -> uint { return Mask; } }");
+    REQUIRE(analysis->valid && constant_of(PIN_U32));
+    parse("L :: library { Small: byte : 300; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of byte"));
+    return true;
+}
 TEST_CASE(language_hex_literal_fills_integer_storage)
 {
     parse("Colors :: behavior { color: uint = 0xf7d308ff; }");
@@ -831,6 +898,53 @@ TEST_CASE(language_call_chains_infer_effects_and_purity)
     REQUIRE(analysis->functions[0].pure);
     return true;
 }
+TEST_CASE(language_owned_record_and_index_writes_stay_pure)
+{
+    parse(
+        "Effects :: library { Row :: struct { value: int; }; "
+        "Run :: () -> int { row: Row = {value: 1}; "
+        "row.value = 2; row.value += 3; rows: Row[] = [row]; "
+        "rows[0].value += 4; values: int[] = [1]; values[0] = 2; "
+        "return rows[0].value + values[0]; } }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    REQUIRE(analysis->function_count == 1);
+    REQUIRE(!(analysis->functions[0].effects & SCRIPT_EFFECT_WRITE));
+    REQUIRE(analysis->functions[0].pure);
+    return true;
+}
+TEST_CASE(language_external_record_and_index_writes_are_effects)
+{
+    const char *sources[] = {
+        "Effects :: library { Run :: (value: ref int) { value = 2; } }",
+        "Effects :: library { Row :: struct { value: int; }; "
+        "Run :: (row: ref Row) { row.value = 2; } }",
+        "Effects :: library { Row :: struct { value: int; }; "
+        "Run :: (rows: ref Row[]) { rows[0].value += 2; } }",
+        "Effects :: library { Run :: (values: ref int[]) { values[0] = 2; } }",
+        "Effects :: behavior { value: int = 1; Run :: () { value = 2; } }",
+        "Effects :: behavior { values: int[] = [1]; Run :: () { values[0] = 2; "
+        "} }",
+        "Effects :: behavior { Run :: () { self.Position.x = 2; } }",
+    };
+    for (size_t i = 0; i < sizeof sources / sizeof *sources; i++) {
+        parse(sources[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(analysis->valid);
+        bool found = false;
+        for (int j = 0; j < analysis->function_count; j++) {
+            const script_function *f = &analysis->functions[j];
+            if (f->symbol >= 0 && !strcmp(analysis->symbols[f->symbol].name, "Run")) {
+                REQUIRE(f->effects & SCRIPT_EFFECT_WRITE);
+                REQUIRE(!f->pure);
+                found = true;
+            }
+        }
+        REQUIRE(found);
+    }
+    return true;
+}
 TEST_CASE(language_discarded_pure_result_rejected)
 {
     parse("Motion :: system(position: Position) { VectorAdd(position, position); mutate(); }");
@@ -846,6 +960,91 @@ TEST_CASE(language_discarded_pure_result_rejected)
     REQUIRE(analysis->valid);
     parse("Motion :: system(position: Position) { position = VectorAdd(position, position); mutate(); }");
     REQUIRE(analysis->valid);
+    return true;
+}
+/* Analyzes `source` as the one file of package project:facts. */
+static void parse_package(const char *source)
+{
+    cleanup();
+    syntax = script_parse(source);
+    script_package_document document = { "/facts/main.chibi", "facts/main.chibi", syntax };
+    const script_package_options options = { .documents = &document,
+                                             .document_count = 1,
+                                             .identity = "project:facts",
+                                             .native = &catalog };
+    analysis = script_analyze_package(&options);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "package %d:%d: %s\n",
+            analysis->diagnostics[i].range.line,
+            analysis->diagnostics[i].range.column,
+            analysis->diagnostics[i].message
+        );
+    }
+}
+/* The names of the functions `@test` marks, joined by spaces. */
+static void tests_of(char *out, size_t size)
+{
+    out[0] = 0;
+    for (int i = 0; i < analysis->function_count; i++) {
+        if (analysis->functions[i].test) {
+            const char *name = analysis->symbols[analysis->functions[i].symbol].name;
+            snprintf(out + strlen(out), size - strlen(out), "%s%s", out[0] ? " " : "", name);
+        }
+    }
+}
+/* `@test` marks a package function that takes and returns nothing; another
+ * attribute, a repeated one, a misplaced test, one with a signature and one
+ * whose name the package already declares are rejected. */
+TEST_CASE(language_test_attribute_marks_package_functions)
+{
+    char tests[128];
+    parse_package(
+        "package facts\n@test\nAdds :: () { x := 1 + 1; }\nHelper :: () -> "
+        "int { return 1; }\n"
+        "@test Second :: (/* none */) { }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    tests_of(tests, sizeof tests);
+    REQUIRE(!strcmp(tests, "Adds Second"));
+    const struct
+    {
+        const char *source, *message;
+    } rejected[] = {
+        { "package facts\n@bench\nRuns :: () { }", "Unknown attribute '@bench'" },
+        { "package facts\n@test @test\nTwice :: () { }", "Duplicate attribute '@test'" },
+        { "package facts\n@test\nTakes :: (n: int) { }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nGives :: () -> int { return 1; }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nInfers :: () { return 1; }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nGeneric :: ($T: Type) { }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\nOuter :: () { @test Inner :: () { } Inner(); }",
+          "@test needs a package-level function" },
+        { "Values :: library { @test Inside :: () { } }",
+          "@test needs a package-level function" },
+        { "package facts\nSame :: () { }\n@test\nSame :: () { }",
+          "Duplicate declaration 'Same'" },
+        { "package facts\nSame :: 1;\n@test\nSame :: () { }",
+          "Duplicate declaration 'Same'" },
+    };
+    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
+        if (!strncmp(rejected[i].source, "package", 7)) {
+            parse_package(rejected[i].source);
+        } else {
+            parse(rejected[i].source);
+        }
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid && diagnostic(rejected[i].message));
+        /* A misplaced or misshapen test is not marked; the analysis is
+         * invalid either way. */
+        tests_of(tests, sizeof tests);
+        REQUIRE(i < 2 || !tests[0]);
+    }
     return true;
 }
 TEST_CASE(language_binding_cycle_rejected)
@@ -1291,7 +1490,7 @@ TEST_CASE(language_units_follow_constant_and_state_initializers)
     values.types = &measured_value;
     cleanup();
     syntax = script_parse(
-        "Measured :: library { Run :: () { Origin :: cast<Body>({x: 1}); "
+        "Measured :: library { Run :: () { Origin: Body : {x: 1}; "
         "Step :: Origin.x; body: Body = {}; body.speed = Step; } }"
     );
     analysis = script_analyze(syntax, &values);
@@ -1773,7 +1972,7 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     REQUIRE(!analysis->valid);
     parse("Unions :: library { Run :: () -> int? { return 0; } }");
     REQUIRE(analysis->valid);
-    parse("Unions :: library { Run :: (value: int?) -> number? { if value { return cast<number>(value); } return nil; } }");
+    parse("Unions :: library { Run :: (value: int?) -> number? { if value { return number(value); } return nil; } }");
     REQUIRE(analysis->valid);
     parse(
         "Unions :: library { Run :: (pending: task<number>) -> number { "
@@ -1838,8 +2037,12 @@ void test_language_semantic()
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
+    RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
+    RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_call_chains_infer_effects_and_purity);
+    RUN_TEST_CASE(language_owned_record_and_index_writes_stay_pure);
+    RUN_TEST_CASE(language_external_record_and_index_writes_are_effects);
     RUN_TEST_CASE(language_discarded_pure_result_rejected);
     RUN_TEST_CASE(language_binding_cycle_rejected);
     RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);
@@ -1858,5 +2061,6 @@ void test_language_semantic()
     RUN_TEST_CASE(language_units_reject_callable_mismatches);
     RUN_TEST_CASE(language_units_follow_native_signatures_and_task_results);
     RUN_TEST_CASE(language_units_reject_malformed_metadata_and_overflow);
+    RUN_TEST_CASE(language_test_attribute_marks_package_functions);
     pu_clear_setup();
 }

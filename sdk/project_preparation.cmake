@@ -45,7 +45,7 @@ list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-compile "${CHIBI_SDK_ROOT}/src/host/compile_main.c")
-    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation)
+    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation Chibi::project_document)
 endif()
 if(CHIBI_WEB_PLAYER)
     # Prepared artifacts carry their target's ABI, so `chibi export --web` runs

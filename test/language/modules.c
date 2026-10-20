@@ -678,7 +678,7 @@ TEST_CASE(modules_failed_imported_requests_publish_no_concrete_generation)
     static const input inputs[] = {
         { "libraries/Bad.chibi",
           "Bad :: library { Broken :: (value: $T) -> int { return true } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Bad.Broken(cast<int>(1)) } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Bad.Broken(int(1)) } }" },
     };
     for (int backend = 0; backend < 2; backend++) {
         prepare(0, inputs, 2, false, backends[backend]);

@@ -81,8 +81,7 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool canonical = behavior_function_inspection_required(f, ctx) ||
-                     !behavior_function_rows_allowed(f, ctx);
+    bool canonical = behavior_function_inspection_required(f, ctx);
     if (compact && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
@@ -113,7 +112,7 @@ void execution_machine_begin(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[begin - 1].target];
         assert(s->pc + 1 == begin);
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             int v = s->values[k];
             pin_value *to = v < slot_count ? &slots[v] : &locals[v - slot_count];
             to->type = v < slot_count ? f->slots[v]
@@ -250,7 +249,7 @@ int execution_machine_step(execution_machine *m, int pc)
             assert(activation && activation->values);
             int slot_count = acount(f->slots), base = slot_count + acount(f->locals);
             const behavior_function_suspension *s = &f->suspensions[i->target];
-            for (int k = 0; k < acount(s->values); k++) {
+            for (int k = 0; k < s->value_count; k++) {
                 int v = s->values[k];
                 const pin_value *from = v < slot_count ? &slots[v]
                                                        : &locals[v - slot_count];
@@ -415,10 +414,6 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             ctx->error_message = i->right == BF_HOST_BORROW_ARRAY
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
-                               : i->right == BF_HOST_BUILD_ROW
-                                   ? behavior_function_build_row(ctx, i->target)
-                               : i->right == BF_HOST_RETAIN_ROWS
-                                   ? behavior_function_retain_rows(ctx, i->target)
                                : call->value
                                    ? call->value(
                                          ctx->value_storage,
@@ -721,7 +716,12 @@ int execution_machine_step(execution_machine *m, int pc)
                 }
             }
             break;
-        case BF_CAST: *out = behavior_scalar_cast(a, i->type); break;
+        case BF_CAST:
+            if (!behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out)) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                goto done;
+            }
+            break;
         case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
         case BF_CONVERT:
             if (i->type == PIN_F32) {

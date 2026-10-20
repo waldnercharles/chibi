@@ -33,6 +33,10 @@ CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
+BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+BUILD_PROGRAM ?= tools/toolchain/Build.chibi
+BUILD_TIMEOUT_MS ?= 1800000
+BUILD_HOST_TARGET = $(if $(filter Linux Darwin,$(shell uname -s)),chibi-build-host,)
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
@@ -58,7 +62,7 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -96,13 +100,20 @@ help:
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
 		'make package-web-player  Build the browser player for chibi export --web' \
-		'make publish-web    Disabled: extracted browser publishing is not integrated' \
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
 
 build:
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 2 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+
+.PHONY: toolchain-build stage-zero-build
+toolchain-build:
+	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+
+# Recovery also creates the private host used by subsequent builds.
+stage-zero-build:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
+	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
 
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
@@ -256,10 +267,6 @@ web-threads-serve:
 web-profile:
 	@$(MAKE) web-serve WEB_CMAKE_FLAGS="-DCHIBI_STUDIO_WEB_TRACE=ON $(WEB_CMAKE_FLAGS)"
 
-publish-web:
-	@printf '%s\n' 'Unavailable: extracted browser deployment has not been integrated. No publication was performed.' >&2
-	@exit 2
-
 format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh
 
@@ -267,7 +274,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-short test-policy-inventory tools-build
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build
 agent-list:
 	@python3 tools/agent.py list
 
@@ -294,6 +301,36 @@ test-materials: test-build
 test-projects: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group projects
+
+# Stage one compiling itself, and stage two compiling the same sources to the
+# same bytes, take about two minutes each under sanitizers, so the bootstrap
+# check runs against an unsanitized Release test_language.
+test-bootstrap:
+	@$(MAKE) build-release BUILD_TARGET=test_language
+	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+
+# The bootstrap artifact: the bootstrap check leaves stage two and its
+# arguments in a seed folder, and the Release compiler host writes the artifact
+# once stage two compiles the sources to itself. test-recovery recovers the
+# compiler from it with sources exported from HEAD. See docs/self-hosting-build.md.
+BOOTSTRAP_ARTIFACT ?= $(RELEASE_BUILD_DIR)/bootstrap
+bootstrap-artifact:
+	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
+	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed" && mkdir -p "$(BOOTSTRAP_ARTIFACT).seed"
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_ARTIFACT).seed)" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_ARTIFACT).seed" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed"
+
+# Recovers the compiler from the published artifact tools/compiler/bootstrap.kdl
+# pins: tools/toolchain/Bootstrap.chibi downloads the release with gh and has
+# the Release compiler host check its manifest against the pin and recover.
+bootstrap-recover:
+	@$(MAKE) build-release BUILD_TARGET='chibi-compiler-host chibi-build-host'
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --root "$(CURDIR)" --source tools/toolchain/Bootstrap.chibi --entry Recover --timeout-ms 300000 -- "$(abspath $(RELEASE_BUILD_DIR))/sdk/chibi-compiler-host" "$(abspath $(RELEASE_BUILD_DIR))/bootstrap-published"
+
+test-recovery: test-build
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" CHIBI_BOOTSTRAP_ARTIFACT="$(BOOTSTRAP_ARTIFACT)" python3 tools/test_policy.py tool bootstrap-recovery
 
 test: test-short
 

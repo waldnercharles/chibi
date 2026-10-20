@@ -362,13 +362,13 @@ static bool same_call(const node_host_call *a, const node_host_call *b)
  * these are static instruction counts, not a general host-event counter. */
 static bool check_bindings()
 {
-    const node_host_call *expected[] = { &NATIVE_ARRAY_add_CALL,
-                                         &NATIVE_ARRAY_length_CALL,
+    /* Both appends grow a local's own array, so they lower to in-place pushes. */
+    const node_host_call *expected[] = { &NATIVE_ARRAY_length_CALL,
                                          &NATIVE_FORMAT_TEXT_CALL,
                                          &DECIMAL_CALL,
                                          &MATCH_CALL };
-    const int sites[] = { 2, 2, 5, 1, 2 };
-    int counts[5] = { 0 };
+    const int sites[] = { 2, 5, 1, 2 };
+    int counts[4] = { 0 }, pushes = 0;
     for (int n = 0; n < execution_module_function_count(module); n++) {
         const behavior_function *f = execution_module_function_at(module, n).body;
         for (int pc = 0; pc < acount(f->instructions); pc++) {
@@ -383,10 +383,11 @@ static bool check_bindings()
                 REQUIRE(execution_intrinsic_id(intrinsic) == h->capability_id);
                 REQUIRE(h->capability_abi == execution_intrinsic_abi(h->capability_id));
                 REQUIRE(same_call(h->call, intrinsic));
+                pushes += intrinsic == &EXECUTION_array_push_call;
                 continue;
             }
             int kind = -1;
-            for (int k = 0; k < 5; k++) {
+            for (int k = 0; k < 4; k++) {
                 if (same_call(h->call, expected[k])) {
                     kind = k;
                     break;
@@ -400,9 +401,10 @@ static bool check_bindings()
             counts[kind]++;
         }
     }
-    for (int k = 0; k < 5; k++) {
+    for (int k = 0; k < 4; k++) {
         REQUIRE(counts[k] == sites[k]);
     }
+    REQUIRE(pushes == 2);
     return true;
 }
 static bool prepare(behavior_backend backend)
@@ -456,9 +458,6 @@ static bool prepare(behavior_backend backend)
     REQUIRE(module && execution_module_backend(module) == backend);
     REQUIRE(execution_module_function_count(module) == 4);
     REQUIRE(check_bindings());
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(!execution_module_function_at(module, i).body->rows);
-    }
     REQUIRE(body() && body()->argument_count == ARGUMENTS && body()->result_count == 2);
     REQUIRE(body()->result_defaults[0].record);
     record_id = body()->result_defaults[0].record->id;

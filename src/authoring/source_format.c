@@ -20,7 +20,21 @@ typedef struct
     int group, pair, flat_width, hard_count;
     bool wraps;
     bool open, close, end_line, nest_open, nest_close, case_open, case_close;
+    int chain_open, chain_close; /* Operator chains starting or ending here. */
 } token;
+
+/* Leading whitespace: indentation levels, then alignment spaces. */
+typedef struct
+{
+    int levels, spaces;
+} margin;
+
+/* An open block, case arm, bracket or operator chain: the margin of the lines
+ * inside it, and of a line that starts with its closing token. */
+typedef struct
+{
+    margin inside, close;
+} frame;
 
 static bool kind(TSNode node, const char *name)
 {
@@ -45,9 +59,17 @@ static bool nest(TSNode node)
 {
     return !block(node) &&
            (kind(node, "argument_list") || kind(node, "parameter_list") ||
-            kind(node, "array_expression") || kind(node, "struct_expression") ||
-            kind(node, "prototype_bases") || kind(node, "struct_field") ||
-            kind(node, "parenthesized_expression"));
+            kind(node, "pattern_bindings") || kind(node, "array_expression") ||
+            kind(node, "struct_expression") || kind(node, "prototype_bases") ||
+            kind(node, "struct_field") || kind(node, "parenthesized_expression"));
+}
+
+/* The outermost operator of an expression, whose operands may continue on
+ * later lines. */
+static bool chain(TSNode node)
+{
+    return kind(node, "binary_expression") &&
+           !kind(ts_node_parent(node), "binary_expression");
 }
 
 static bool end_line(TSNode node)
@@ -78,9 +100,15 @@ static token leaf(TSNode node)
     t.nest_close = (kind(node, ")") || kind(node, "]") || kind(node, "}")) &&
                    nest(parent);
     for (TSNode p = parent;
+         !ts_node_is_null(p) && ts_node_start_byte(p) == (uint32_t)t.start;
+         p = ts_node_parent(p)) {
+        t.chain_open += chain(p);
+    }
+    for (TSNode p = parent;
          !ts_node_is_null(p) && ts_node_end_byte(p) == (uint32_t)t.end;
          p = ts_node_parent(p)) {
         t.end_line |= end_line(p);
+        t.chain_close += chain(p);
         if (kind(p, "block") && kind(ts_node_parent(p), "switch_arm") &&
             !kind(ts_node_child(p, 0), "{")) {
             t.case_close = true;
@@ -130,26 +158,65 @@ static bool append(char **out, const char *text, int n)
     return true;
 }
 
+static bool append_margin(char **out, margin m, authoring_format_options config)
+{
+    for (int d = 0; d < m.levels; d++) {
+        if (!append(
+                out,
+                config.use_tabs ? "\t" : "                ",
+                config.use_tabs ? 1 : config.indent_width
+            )) {
+            return false;
+        }
+    }
+    for (int d = 0; d < m.spaces; d++) {
+        if (!append(out, " ", 1)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Aligns later lines at column, indenting with as many of line's levels as fit. */
+static margin align(margin line, int column, int width)
+{
+    int levels = line.levels < column / width ? line.levels : column / width;
+    return (margin){ levels, column - levels * width };
+}
+
+/* The margin of a line inside the innermost open frame. */
+static margin inner(frame *frames)
+{
+    return acount(frames) ? frames[acount(frames) - 1].inside : (margin){ 0 };
+}
+
 /* u/s^2 */
 static bool unit_operator(TSNode node)
 {
     return (kind(node, "/") || kind(node, "^")) && kind(ts_node_parent(node), "unit");
 }
 
+/* `Name: T : value` spaces the colon that follows a constant's type. */
+static bool constant_colon(TSNode n)
+{
+    return kind(n, ":") && kind(ts_node_parent(n), "constant_declaration") &&
+           kind(ts_node_prev_sibling(n), "type");
+}
+
 static bool tight_before(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
-    return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
-           kind(n, "..") || kind(n, ")") || kind(n, "]") ||
+    return kind(n, ",") || kind(n, ";") || (kind(n, ":") && !constant_colon(n)) ||
+           (kind(n, ".") && !kind(p, "variant_pattern")) || kind(n, "..") ||
+           kind(n, ")") || kind(n, "]") ||
+           (kind(n, "}") && kind(p, "struct_expression")) ||
            (kind(n, "(") &&
             (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
-             kind(p, "cast_expression") || kind(p, "reduce_statement") ||
-             kind(p, "prototype_bases") ||
+             kind(p, "reduce_statement") || kind(p, "prototype_bases") ||
              (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression"))) ||
            ((kind(n, "<") || kind(n, ">")) &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
-             kind(p, "cast_expression"))) ||
+            (kind(p, "type_argument_list") || kind(p, "type_parameter_list"))) ||
            (kind(n, "?") && kind(p, "type")) || unit_operator(n);
 }
 
@@ -157,13 +224,13 @@ static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
+           kind(n, "@") || unit_operator(n) ||
            (kind(n, "$") && (kind(p, "type_binder") || kind(p, "parameter"))) ||
-           unit_operator(n) ||
+           (kind(n, "{") && kind(p, "struct_expression")) ||
            (kind(p, "unary_expression") && !kind(n, "not") &&
             ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
-             kind(p, "cast_expression")));
+            (kind(p, "type_argument_list") || kind(p, "type_parameter_list")));
 }
 
 static bool space_between(token previous, token current)
@@ -361,7 +428,7 @@ char *authoring_source_format_with_options(
     }
     token *list = NULL;
     char *out = NULL;
-    bool *nested = NULL; /* Whether each open bracket indented its lines. */
+    frame *frames = NULL;
     authoring_format_edit *edits = NULL;
     size_t source_size = strlen(source->text);
     if (source_size > FORMAT_MAX_BYTES || !tokens(source->tree, &list)) {
@@ -374,16 +441,15 @@ char *authoring_source_format_with_options(
     bool package = !ts_node_is_null(
         ts_node_child_by_field_name(ts_tree_root_node(source->tree), "package", 7)
     );
-    int indent = 0, column = 0;
+    margin line = { 0 }; /* The current output line's margin. */
+    int column = 0;
     for (int i = 0; i < acount(list); i++) {
         token current = list[i];
         int gap_start = acount(out);
-        if (current.close) {
-            indent--;
-        }
-        if (current.nest_close && acount(nested)) {
-            indent -= nested[acount(nested) - 1];
-            asetlen(nested, acount(nested) - 1);
+        margin at = inner(frames);
+        if (current.close || current.nest_close) {
+            assert(acount(frames));
+            at = apop(frames).close;
         }
         if (i) {
             token previous = list[i - 1];
@@ -413,19 +479,12 @@ char *authoring_source_format_with_options(
                             (previous.open || previous.close || previous.end_line ||
                              previous.case_open || current.close));
             if (newline) {
-                if (!append(&out, lines > 1 ? "\n\n" : "\n", lines > 1 ? 2 : 1)) {
+                if (!append(&out, lines > 1 ? "\n\n" : "\n", lines > 1 ? 2 : 1) ||
+                    !append_margin(&out, at, config)) {
                     goto limit;
                 }
-                for (int d = 0; d < indent; d++) {
-                    if (!append(
-                            &out,
-                            config.use_tabs ? "\t" : "                ",
-                            config.use_tabs ? 1 : config.indent_width
-                        )) {
-                        goto limit;
-                    }
-                }
-                column = indent * config.indent_width;
+                line = at;
+                column = at.levels * config.indent_width + at.spaces;
             } else if (space_between(previous, current)) {
                 if (!append(&out, " ", 1)) {
                     goto limit;
@@ -453,12 +512,17 @@ char *authoring_source_format_with_options(
                        ? 0
                        : column + 1;
         }
+        /* Operands continued on later lines align with the first one. */
+        for (int c = 0; c < current.chain_open; c++) {
+            apush(frames, ((frame){ align(line, start_column, config.indent_width), line }));
+        }
         if (current.open || current.case_open) {
-            indent++;
+            margin outer = inner(frames);
+            apush(frames, ((frame){ { outer.levels + 1, outer.spaces }, outer }));
         }
-        if (current.case_close) {
-            indent--;
-        }
+        int ended = current.chain_close + current.case_close;
+        assert(acount(frames) >= ended);
+        asetlen(frames, acount(frames) - ended);
         if (current.nest_open) {
             bool wraps = false;
             if (config.preferred_width) {
@@ -473,11 +537,14 @@ char *authoring_source_format_with_options(
                              (package && source->text[p] == '\r');
                 }
             }
-            apush(nested, wraps);
-            indent += wraps;
+            /* A bracket that ends its line indents the next lines one level
+             * past that line; otherwise they align with its first item. */
+            margin within = wraps ? (margin){ line.levels + 1, line.spaces }
+                                  : align(line, column, config.indent_width);
+            apush(frames, ((frame){ within, line }));
         }
     }
-    afree(nested);
+    afree(frames);
     int last = acount(out);
     if (!append(&out, "\n", 1)) {
         goto limit;
@@ -524,7 +591,7 @@ char *authoring_source_format_with_options(
     return result;
 
 limit:
-    afree(nested);
+    afree(frames);
     afree(list);
     afree(edits);
     afree(out);

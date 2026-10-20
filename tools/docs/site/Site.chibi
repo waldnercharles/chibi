@@ -1,0 +1,65 @@
+package site
+
+import markdown "project:markdown"
+
+// Lays out the pages of the documentation site: each page's navigation,
+// grouped by section with the current page marked, around its body, and the
+// one stylesheet every page links. A site has at least one page.
+
+// A page up to its body, as HTML pieces to write in order. sections, titles
+// and outputs describe every page in navigation order, and current is this
+// page's index among them.
+Head :: (site: string, sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
+    html: string[] = [];
+    html = array_add(html, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    html = array_add(html, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    html = array_add(html, format_text("<title>{} · {}</title>\n", markdown.Escape(titles[current]),
+                                       markdown.Escape(site)));
+    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<nav>\n");
+    html = array_add(html, format_text("<p class=\"site\"><a href=\"{}\">{}</a></p>\n",
+                                       markdown.Escape(outputs[0]), markdown.Escape(site)));
+    section: string = "";
+    index: int = 0;
+    while (index < length(titles)) {
+        if (index == 0 || sections[index] != section) {
+            if (index > 0) {
+                html = array_add(html, "</ul>\n");
+            }
+            section = sections[index];
+            html = array_add(html, format_text("<h2>{}</h2>\n<ul>\n", markdown.Escape(section)));
+        }
+        mark: string = "";
+        if (index == current) {
+            mark = " aria-current=\"page\"";
+        }
+        html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n", markdown.Escape(outputs[index]),
+                                           mark, markdown.Escape(titles[index])));
+        index += 1;
+    }
+    html = array_add(html, "</ul>\n</nav>\n<main>\n");
+    return html;
+}
+
+// A page after its body.
+Foot :: () -> string[] {
+    return ["</main>\n</body>\n</html>\n"];
+}
+
+// The stylesheet, as lines to write in order.
+Style :: () -> string[] {
+    return [
+        "body { margin: 0; display: flex; font: 16px/1.6 system-ui, sans-serif; color: #1d1d1f; }\n",
+        "nav { width: 15rem; flex: none; padding: 1.5rem; background: #f5f5f7; min-height: 100vh; box-sizing: border-box; }\n",
+        "nav h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6e6e73; margin: 1.2rem 0 0.3rem; }\n",
+        "nav ul { list-style: none; margin: 0; padding: 0; }\n",
+        "nav a { color: inherit; text-decoration: none; }\n",
+        "nav a[aria-current] { font-weight: 600; color: #0066cc; }\n",
+        ".site { font-weight: 700; font-size: 1.2rem; margin: 0; }\n",
+        "main { max-width: 50rem; padding: 1.5rem 3rem; overflow-wrap: anywhere; }\n",
+        "pre { background: #f5f5f7; padding: 0.8rem 1rem; overflow-x: auto; border-radius: 6px; }\n",
+        "code { font: 0.9em ui-monospace, monospace; }\n",
+        "table { border-collapse: collapse; }\n",
+        "th, td { border: 1px solid #d2d2d7; padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }\n",
+        "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid #d2d2d7; color: #6e6e73; }\n"
+    ];
+}

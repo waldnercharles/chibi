@@ -635,9 +635,9 @@ bool chibi_migrate26_references(
         if (!sources[i]) {
             continue;
         }
-        f.syntax[i] = script_parse(sources[i]);
+        f.syntax[i] = chibi_migrate_parse(sources[i], 26);
         if (f.syntax[i]->diagnostic_count) {
-            fail(&f, "Cannot migrate references in invalid current source");
+            fail(&f, "Cannot migrate references in invalid version 26 source");
             break;
         }
         collect(&f, i, ts_tree_root_node(f.syntax[i]->tree), (TSNode){ 0 }, -1);

@@ -8,6 +8,7 @@
 #include "execution/state.h"
 #include "execution/task.h"
 #include "language/identity.h"
+#include "scalar_lowering_reference.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -50,10 +51,16 @@ typedef struct
     bool pattern_cached;
     int pattern_expression, pattern_value;
 } lower;
+static uint64_t document_id(const script_analysis *analysis, script_range range)
+{
+    const script_source_document
+        *document = script_analysis_document(analysis, range.document);
+    return document ? script_catalog_id("source-document", document->key) : 0;
+}
 static void error(lower *l, script_range range, const char *message)
 {
     execution_module_diagnostic d = {
-        .range = { range.start, range.end, range.line, range.column }
+        .range = { range.start, range.end, range.line, range.column, range.document }
     };
     snprintf(d.message, sizeof d.message, "%s", message);
     apush(l->module->diagnostics, d);
@@ -69,7 +76,14 @@ static void builder_error(lower *l, behavior_function_builder *builder, script_r
             range = (script_range){ origin->start,
                                     origin->end,
                                     origin->line,
-                                    origin->column };
+                                    origin->column,
+                                    0 };
+            for (int i = 0; i < l->a->document_count; i++) {
+                if (!strcmp(origin->asset_name, l->a->documents[i].path)) {
+                    range.document = i;
+                    break;
+                }
+            }
         }
     }
     error(l, range, message);
@@ -163,9 +177,11 @@ static void value_root(lower *l, behavior_value_bank bank, int index, script_typ
 }
 static int emit(lower *l, behavior_function_instruction i, script_range range)
 {
+    const script_source_document
+        *document = script_analysis_document(l->a, range.document);
     i.source = behavior_function_builder_origin(
         l->builder,
-        (behavior_function_source){ .asset_name = l->a->name,
+        (behavior_function_source){ .asset_name = document ? document->path : l->a->name,
                                     .start = range.start,
                                     .end = range.end,
                                     .line = range.line,
@@ -288,7 +304,34 @@ static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
 static void store_symbol(lower *, int, int, script_range);
 static int union_wrap(lower *, int, script_type, script_type, uint64_t, script_range);
+static const char *fit_message(pin_type type)
+{
+    static const char *const messages[] = {
+        [PIN_I8] = "Value does not fit in int8",
+        [PIN_U8] = "Value does not fit in byte",
+        [PIN_I16] = "Value does not fit in int16",
+        [PIN_U16] = "Value does not fit in uint16",
+        [PIN_I32] = "Value does not fit in int",
+        [PIN_U32] = "Value does not fit in uint",
+        [PIN_I64] = "Value does not fit in int64",
+        [PIN_U64] = "Value does not fit in uint64",
+    };
+    return type >= PIN_I8 && type <= PIN_U64 ? messages[type] : NULL;
+}
+static int convert_mode(
+    lower *l,
+    int slot,
+    script_type from,
+    script_type to,
+    behavior_cast_mode mode,
+    script_range range
+);
 static int convert(lower *l, int slot, script_type from, script_type to, script_range range)
+{
+    return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
+}
+/* Implicit conversions are lossless; explicit T(value) carries its mode. */
+static int convert_mode(lower *l, int slot, script_type from, script_type to, behavior_cast_mode mode, script_range range)
 {
     if (((to.flags & SCRIPT_TYPE_UNION) && to.container == PIN_CONTAINER_SINGLE &&
          !(to.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
@@ -366,7 +409,8 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         script_type wide = { .storage = PIN_F64 };
         return convert(l, convert(l, slot, from, wide, range), wide, to, range);
     }
-    if (!behavior_scalar_cast_supported(slot_type(from), slot_type(to))) {
+    pin_type source = slot_type(from), target = slot_type(to);
+    if (!behavior_scalar_cast_supported(source, target)) {
         char message[128];
         snprintf(
             message,
@@ -380,7 +424,11 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = BF_CAST, .type = slot_type(to), .left = slot },
+        (behavior_function_instruction){ .op = BF_CAST,
+                                         .type = target,
+                                         .left = slot,
+                                         .target = mode,
+                                         .message = fit_message(target) },
         range
     );
 }
@@ -651,6 +699,9 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_STATE_TRANSITION:
                     case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
                     case EXECUTION_INTRINSIC_EVENT_READ:
+                    case EXECUTION_INTRINSIC_ARRAY_PUSH:
+                    case EXECUTION_INTRINSIC_ARRAY_STORE:
+                    case EXECUTION_INTRINSIC_ARRAY_EXTEND:
                         kind = BEHAVIOR_ADDRESS;
                         break;
                     default: break;
@@ -1348,6 +1399,12 @@ static int string_cursor(lower *l, const node_host_call *call, int text, int ind
     int slots[] = { text, index };
     return primitive(l, call, &EXECUTION_value_access, headers, slots, index < 0 ? 1 : 2, result, range);
 }
+static const script_function *input_signature(const script_analysis *a, const script_function *f)
+{
+    return f->kind == SCRIPT_FUNCTION_MACRO_ENTRY && f->parent >= 0 && !f->parameter_count
+             ? &a->functions[f->parent]
+             : f;
+}
 static int authored_call(lower *l, const script_expression *e)
 {
     int index = e->entry >= 0 ? e->entry : e->right;
@@ -1360,13 +1417,14 @@ static int authored_call(lower *l, const script_expression *e)
         return -1;
     }
     const script_function *f = &l->a->functions[index];
+    const script_function *inputs = input_signature(l->a, f);
     const script_function *output = f->kind == SCRIPT_FUNCTION_MACRO_ENTRY &&
                                             f->parent >= 0
                                       ? &l->a->functions[f->parent]
                                       : f;
     pin_value *args = NULL, *results = NULL;
-    for (int i = 0; i < f->parameter_count; i++) {
-        apush(args, signature_initial(l, l->a->symbols[f->parameters[i]].type));
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        apush(args, signature_initial(l, l->a->symbols[inputs->parameters[i]].type));
     }
     for (int i = 0; !e->task && i < output->result_count; i++) {
         apush(results, initial(l, l->a->symbols[output->results[i]].type));
@@ -1387,8 +1445,8 @@ static int authored_call(lower *l, const script_expression *e)
                              acount(results)
                          );
     int argument_first = behavior_function_builder_call_first(l->builder, invocation);
-    for (int i = 0; i < f->parameter_count; i++) {
-        if (l->a->symbols[f->parameters[i]].type.flags & SCRIPT_TYPE_REFERENCE) {
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        if (l->a->symbols[inputs->parameters[i]].type.flags & SCRIPT_TYPE_REFERENCE) {
             set_kind(l, BEHAVIOR_BANK_DATA, argument_first + i, BEHAVIOR_REFERENCE);
         }
     }
@@ -1397,11 +1455,11 @@ static int authored_call(lower *l, const script_expression *e)
     int first = behavior_function_builder_call_first(l->builder, invocation);
     for (int i = 0; i < e->argument_count; i++) {
         const script_argument *a = &e->arguments[i];
-        if (a->parameter < 0 || a->parameter >= f->parameter_count) {
+        if (a->parameter < 0 || a->parameter >= inputs->parameter_count) {
             error(l, a->range, "Authored call argument does not match its signature");
             continue;
         }
-        script_type expected = l->a->symbols[f->parameters[a->parameter]].type;
+        script_type expected = l->a->symbols[inputs->parameters[a->parameter]].type;
         int value;
         if (expected.flags & SCRIPT_TYPE_REFERENCE) {
             value = reference(l, a->value);
@@ -1415,8 +1473,8 @@ static int authored_call(lower *l, const script_expression *e)
         }
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
-    for (int i = 0; i < f->parameter_count; i++) {
-        clear_value(l, first + i, l->a->symbols[f->parameters[i]].type, e->range);
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        clear_value(l, first + i, l->a->symbols[inputs->parameters[i]].type, e->range);
     }
     int result_first = behavior_function_builder_call_results(l->builder, invocation);
     if (e->task) {
@@ -1731,7 +1789,7 @@ static int task_command(lower *l, const node_command *command, int handle, const
     if (result.storage != PIN_FLOW) {
         apush(results, initial(l, result));
     }
-    uint64_t action = id ^ (uint64_t)range.start;
+    uint64_t action = id ^ (uint64_t)range.start ^ document_id(l->a, range);
     int index = behavior_function_builder_command(
         l->builder,
         command,
@@ -1829,7 +1887,8 @@ static int command(lower *l, const script_expression *e, const script_catalog_ca
                               l->a->symbols[e->symbol].kind == SCRIPT_ACTION &&
                               l->a->symbols[e->symbol].initializer >= 0
                         ? l->a->symbols[e->symbol].id
-                        : e->capability ^ (uint64_t)e->range.start;
+                        : e->capability ^ (uint64_t)e->range.start ^
+                              document_id(l->a, e->range);
     int index = behavior_function_builder_command(
         l->builder,
         host.command,
@@ -2664,7 +2723,7 @@ static uint64_t state_action_id(lower *l, const script_expression *e)
     snprintf(name, size, "%s:%d:%d", l->a->identity, e->range.start, e->range.end);
     uint64_t id = script_catalog_id("state-action", name);
     free(name);
-    return id;
+    return id ^ document_id(l->a, e->range);
 }
 static int state_call(lower *l, const script_expression *source, const script_catalog_capability *cap)
 {
@@ -3016,7 +3075,8 @@ static int call(lower *l, const script_expression *e)
                 .op = BF_DELAY,
                 .left = value,
                 .node_id = e->symbol >= 0 ? l->a->symbols[e->symbol].id
-                                          : e->capability ^ (uint64_t)e->range.start },
+                                          : e->capability ^ (uint64_t)e->range.start ^
+                                                document_id(l->a, e->range) },
             e->range
         );
         return -1;
@@ -4189,7 +4249,7 @@ static int expression_value(lower *l, int index)
             return reference_read(l, reference_expression(l, e, false), e->type, e->range);
         case SCRIPT_EXPR_CAST: {
             int left = expression(l, e->left);
-            return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
+            return convert_mode(l, left, l->a->expressions[e->left].type, e->type, e->conversion, e->range);
         }
         case SCRIPT_EXPR_UNARY: {
             int left = e->op == SCRIPT_OP_NOT ? condition_value(l, e->left)
@@ -4268,9 +4328,17 @@ static int expression_value(lower *l, int index)
                                     ? e->type
                                     : l->a->expressions[e->left].type;
             if (e->type.storage == PIN_BOOL && script_type_numeric(operand)) {
+                /* Integers compare in the type holding both, as arithmetic does. */
                 script_type other = l->a->expressions[e->right].type;
-                if (other.storage > operand.storage) {
+                pin_type common = behavior_scalar_common_integer(
+                    operand.storage,
+                    other.storage
+                );
+                if (common == other.storage ||
+                    (common == PIN_FLOW && other.storage > operand.storage)) {
                     operand = other;
+                } else if (common != PIN_FLOW && common != operand.storage) {
+                    operand = (script_type){ .storage = common };
                 }
             }
             left = convert(l, left, l->a->expressions[e->left].type, operand, e->range);
@@ -4855,6 +4923,115 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
+/* A writable local or result array kept in its own bank. Every store into it
+ * snapshots, so the local exclusively owns its items and may grow in place. */
+static bool owned_local_array(lower *l, int expression)
+{
+    const script_expression *e = &l->a->expressions[expression];
+    if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+        return false;
+    }
+    const script_symbol *s = &l->a->symbols[e->symbol];
+    return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
+           s->type.container == PIN_CONTAINER_ARRAY && !s->boxed &&
+           !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
+                              SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
+           l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
+           !(l->captured && l->captured[e->symbol] >= 0);
+}
+static int argument_for(const script_expression *e, int parameter)
+{
+    for (int i = 0; i < e->argument_count; i++) {
+        if (e->arguments[i].parameter == parameter) {
+            return e->arguments[i].value;
+        }
+    }
+    return -1;
+}
+/* `xs = capability(xs, value)` for an array pack capability, named by its
+ * stable identity. The value must not write: the old path read `xs` first. */
+static bool self_call(lower *l, const script_expression *e, int symbol, const char *capability)
+{
+    if (e->kind != SCRIPT_EXPR_CALL || e->argument_count != 2 || e->right >= 0 ||
+        e->capability != script_catalog_id("capability", capability)) {
+        return false;
+    }
+    int array = argument_for(e, 0), value = argument_for(e, 1);
+    return array >= 0 && value >= 0 &&
+           l->a->expressions[array].kind == SCRIPT_EXPR_SYMBOL &&
+           l->a->expressions[array].symbol == symbol &&
+           !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
+}
+/* `xs = array_add(xs, x)`, `xs = append(xs, ys)` and `xs[i] = x` on an owned
+ * local update its array in place, so building an array is linear rather
+ * than quadratic. */
+static bool in_place_array(lower *l, const script_statement *s)
+{
+    if (s->op != SCRIPT_OP_NONE) {
+        return false;
+    }
+    const script_expression *target = &l->a->expressions[s->expression],
+                            *rhs = &l->a->expressions[s->second];
+    bool owned = owned_local_array(l, s->expression);
+    bool push = owned && self_call(l, rhs, target->symbol, "Array Add");
+    bool extend = owned && self_call(l, rhs, target->symbol, "Append");
+    bool store = target->kind == SCRIPT_EXPR_INDEX &&
+                 owned_local_array(l, target->left);
+    if (!push && !extend && !store) {
+        return false;
+    }
+    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
+    script_type item = l->a->symbols[symbol].type;
+    if (!extend) {
+        item.container = PIN_CONTAINER_SINGLE;
+    }
+    pin_value headers[3] = { { .type = BF_POINTER_TYPE }, { .type = PIN_I32 } };
+    int slots[3], array = store ? -1 : argument_for(rhs, 0),
+                  value = store ? s->second : argument_for(rhs, 1),
+                  at = store ? 2 : 1;
+    /* The statement keeps the call's debugger points and watches, and the
+     * target's assignment point follows the value as store_symbol's does. */
+    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
+    if (store) {
+        slots[1] = int_slot(l, target->right, s->range);
+    } else {
+        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
+        debug_input(l, rhs, 0, expression(l, array), l->a->symbols[symbol].type);
+    }
+    slots[at] = convert(l, expression(l, value), l->a->expressions[value].type, item, s->range);
+    headers[at] = initial(l, item);
+    if (!store) {
+        debug_input(l, rhs, 1, slots[at], item);
+    }
+    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
+    /* The address follows every branch the index and value take, so effect
+     * analysis traces it straight to the local. */
+    slots[0] = value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = local_address(l, symbol) },
+        s->range
+    );
+    primitive(
+        l,
+        push     ? &EXECUTION_array_push_call
+        : extend ? &EXECUTION_array_extend_call
+                 : &EXECUTION_array_store_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        at + 1,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
+    if (!store) {
+        int result = expression_value(l, array);
+        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
+        debug_watch(l, s->second, result, rhs->type, true, 0);
+    }
+    return true;
+}
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
@@ -4897,6 +5074,9 @@ static void assign(lower *l, const script_statement *s)
     if (l->a->expressions[index].kind == SCRIPT_EXPR_SYMBOL &&
         (l->a->expressions[index].type.flags & SCRIPT_TYPE_RESULTS)) {
         store_tuple(l, l->a->expressions[index].symbol, expression(l, s->second), s->second, s->range);
+        return;
+    }
+    if (in_place_array(l, s)) {
         return;
     }
     int saved_expression = l->target_expression,
@@ -5760,7 +5940,7 @@ static uint64_t function_id(const script_analysis *analysis, int index)
     );
     uint64_t id = script_catalog_id("function", identity);
     free(identity);
-    return id;
+    return id ^ document_id(analysis, function->range);
 }
 static void dependency_expressions(lower *l, int index, bool *visited, int **out)
 {
@@ -5984,7 +6164,7 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
         binding_fields(l, binding, e->arguments[i].value, visited);
     }
 }
-static behavior_function *value_evaluator(
+static void emit_value_evaluator(
     lower *l,
     const int *expressions,
     const script_type *types,
@@ -6051,6 +6231,22 @@ static behavior_function *value_evaluator(
     }
     emit(l, (behavior_function_instruction){ .op = BF_RETURN }, range);
     emit(l, (behavior_function_instruction){ .op = BF_END }, range);
+    free(l->captured);
+    l->captured = NULL;
+    free(l->locals);
+    free(l->addresses);
+    free(l->parameters);
+    free(l->results);
+}
+static behavior_function *value_evaluator(
+    lower *l,
+    const int *expressions,
+    const script_type *types,
+    int count,
+    script_range range
+)
+{
+    emit_value_evaluator(l, expressions, types, count, range);
     behavior_function *function = NULL;
     char message[192];
     if (!l->failed) {
@@ -6060,13 +6256,122 @@ static behavior_function *value_evaluator(
         }
     }
     behavior_function_builder_free(l->builder);
-    free(l->captured);
-    l->captured = NULL;
-    free(l->locals);
-    free(l->addresses);
-    free(l->parameters);
-    free(l->results);
     return function;
+}
+behavior_function_builder *script_lower_evaluator_reference(
+    const script_analysis *a,
+    const script_catalog *catalog,
+    const execution_module_state *states,
+    int state_count,
+    const int *expressions,
+    const script_type *types,
+    int count,
+    script_range range,
+    char *message,
+    size_t size
+)
+{
+    execution_module_plan module = { .states = (execution_module_state *)states,
+                                     .state_count = state_count };
+    lower l = { .a = a,
+                .catalog = catalog,
+                .module = &module,
+                .variables = indices(a->symbol_count) };
+    for (int i = 0; i < a->symbol_count; i++) {
+        for (int j = 0; j < state_count; j++) {
+            if (a->symbols[i].id == states[j].id) {
+                l.variables[i] = j;
+                break;
+            }
+        }
+    }
+    emit_value_evaluator(&l, expressions, types, count, range);
+    free(l.variables);
+    if (l.failed) {
+        snprintf(
+            message,
+            size,
+            "%s",
+            acount(module.diagnostics) ? module.diagnostics[0].message : "reference scalar lowering failed"
+        );
+        behavior_function_builder_free(l.builder);
+        l.builder = NULL;
+    }
+    afree(module.diagnostics);
+    return l.builder;
+}
+static int storage_root(const script_analysis *a, int index)
+{
+    while (index >= 0) {
+        const script_expression *e = &a->expressions[index];
+        if (e->kind != SCRIPT_EXPR_MEMBER && e->kind != SCRIPT_EXPR_INDEX) {
+            return e->kind == SCRIPT_EXPR_SYMBOL ? e->symbol : -1;
+        }
+        index = e->left;
+    }
+    return -1;
+}
+static bool parameter_needs_storage(const lower *l, int symbol)
+{
+    for (int i = 0; i < l->a->statement_count; i++) {
+        const script_statement *s = &l->a->statements[i];
+        if (s->kind == SCRIPT_STMT_ASSIGN && storage_root(l->a, s->expression) == symbol) {
+            return true;
+        }
+    }
+    for (int i = 0; i < l->a->expression_count; i++) {
+        const script_expression *e = &l->a->expressions[i];
+        if (e->kind != SCRIPT_EXPR_CALL) {
+            continue;
+        }
+        int function_index = e->right >= 0 ? (e->entry >= 0 ? e->entry : e->right)
+                                           : -1;
+        const script_function *function = function_index >= 0
+                                            ? input_signature(l->a, &l->a->functions[function_index])
+                                            : NULL;
+        const script_catalog_capability
+            *cap = function
+                     ? NULL
+                     : script_catalog_capability_by_id(l->catalog, e->capability);
+        for (int j = 0; j < e->argument_count; j++) {
+            const script_argument *arg = &e->arguments[j];
+            int parameter = arg->parameter;
+            if (parameter < 0 || storage_root(l->a, arg->value) != symbol) {
+                continue;
+            }
+            script_type type = function && parameter < function->parameter_count
+                                 ? l->a->symbols[function->parameters[parameter]]
+                                       .type
+                             : cap && parameter < cap->parameter_count
+                                 ? cap->parameters[parameter].type
+                                 : (script_type){ 0 };
+            if (type.flags & SCRIPT_TYPE_REFERENCE) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+/* Argument headers belong to the caller. Only writable/exposed parameters need
+ * private headers; read-only arguments retain their lowering proof shape.
+ * References and captured descriptors intentionally keep their owner. */
+static void isolate_parameters(lower *l, script_range range)
+{
+    for (int i = 0; i < l->a->symbol_count; i++) {
+        const script_symbol *symbol = &l->a->symbols[i];
+        if (symbol->kind != SCRIPT_PARAMETER || l->parameters[i] < 0 ||
+            l->captured[i] >= 0 || (symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
+            !parameter_needs_storage(l, i)) {
+            continue;
+        }
+        script_expression input = { .kind = SCRIPT_EXPR_SYMBOL,
+                                    .symbol = i,
+                                    .type = symbol->type,
+                                    .range = range };
+        int value = symbol_value(l, &input);
+        host_argument(l, local_address(l, i), value, symbol->type, range);
+        l->parameters[i] = -1;
+    }
 }
 static void lower_function(lower *l, int index)
 {
@@ -6092,7 +6397,7 @@ static void lower_function(lower *l, int index)
                           : NULL;
     bool continuation = f->kind == SCRIPT_FUNCTION_CONTINUATION;
     l->captured = indices(l->a->symbol_count);
-    if (closure && f->parent >= 0) {
+    if (child_callable && (closure || !f->parameter_count)) {
         for (int i = 0; i < owner->parameter_count; i++) {
             int symbol = owner->parameters[i];
             l->parameters[symbol] = acount(args);
@@ -6231,6 +6536,7 @@ static void lower_function(lower *l, int index)
     afree(args);
     afree(results);
     afree(variables);
+    isolate_parameters(l, f->range);
     for (int i = 0; i < output->result_count; i++) {
         int symbol = output->results[i];
         const script_symbol *result_symbol = &l->a->symbols[symbol];
@@ -6281,6 +6587,7 @@ static void lower_function(lower *l, int index)
             for (int j = 0; j < entry->parameter_count; j++) {
                 l->parameters[entry->parameters[j]] = j;
             }
+            isolate_parameters(l, entry->range);
             statement(l, entry->body);
         }
     }
@@ -6565,10 +6872,11 @@ conflict:
     error(l, range, message);
     return false;
 }
-execution_module_plan *script_lower(
+static execution_module_plan *lower_analysis(
     const script_analysis *a,
     const script_catalog *catalog,
-    const script_lower_bindings *bindings
+    const script_lower_bindings *bindings,
+    script_lower_package_result *package
 )
 {
     assert(a && catalog);
@@ -6576,11 +6884,13 @@ execution_module_plan *script_lower(
     if (!a->valid) {
         for (int i = 0; i < a->diagnostic_count; i++) {
             const script_diagnostic *source = &a->diagnostics[i];
-            execution_module_diagnostic diagnostic = { .range = {
-                                                           source->range.start,
-                                                           source->range.end,
-                                                           source->range.line,
-                                                           source->range.column } };
+            execution_module_diagnostic diagnostic = {
+                .range = { source->range.start,
+                           source->range.end,
+                           source->range.line,
+                           source->range.column,
+                           source->range.document }
+            };
             memcpy(diagnostic.message, source->message, sizeof diagnostic.message);
             apush(m->diagnostics, diagnostic);
         }
@@ -6681,6 +6991,30 @@ execution_module_plan *script_lower(
             l.constant_values[i] = evaluate_default(&l, symbol);
         }
     }
+    for (int i = 0; package && i < a->function_count && !l.failed; i++) {
+        const script_function *function = &a->functions[i];
+        if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->parent >= 0 ||
+            function->symbol < 0 || a->symbols[function->symbol].disabled ||
+            a->symbols[function->symbol].scope != a->package_scope) {
+            continue;
+        }
+        for (int j = 0;
+             j < function->parameter_count + function->result_count && !l.failed;
+             j++) {
+            int index = j < function->parameter_count
+                          ? function->parameters[j]
+                          : function->results[j - function->parameter_count];
+            const script_symbol *symbol = &a->symbols[index];
+            if (symbol->initializer < 0) {
+                continue;
+            }
+            if (!script_analysis_constant(a, symbol->initializer)) {
+                error(&l, symbol->declaration, "Exported parameter default requires a bounded compile-time value");
+                break;
+            }
+            l.constant_values[index] = evaluate_default(&l, symbol);
+        }
+    }
     for (int i = 0; i < a->symbol_count; i++) {
         const script_symbol *s = &a->symbols[i];
         if (s->kind != SCRIPT_STATE && s->kind != SCRIPT_SHARED_STATE) {
@@ -6702,8 +7036,9 @@ execution_module_plan *script_lower(
             if (e->kind == SCRIPT_EXPR_CONSTANT &&
                 !(s->type.flags & (SCRIPT_TYPE_UNION | SCRIPT_TYPE_BOXED_OPTIONAL))) {
                 value = e->constant;
-                if (value.type != s->type.storage && script_type_numeric(s->type)) {
-                    value = behavior_scalar_cast(value, s->type.storage);
+                if (value.type != s->type.storage && script_type_numeric(s->type) &&
+                    !behavior_scalar_cast(value, s->type.storage, BEHAVIOR_CAST_EXACT, &value)) {
+                    error(&l, s->declaration, "State constant does not fit its declared storage");
                 }
                 pin_value declared = initial(&l, s->type);
                 if (value.type != declared.type || value.container != declared.container) {
@@ -7147,6 +7482,22 @@ execution_module_plan *script_lower(
     free(l.function_addresses);
     free(l.builders);
     free(l.variables);
+    if (package && !l.failed) {
+        script_lower_constant *constants = arena_alloc(
+            &m->storage,
+            (size_t)a->symbol_count * sizeof *constants
+        );
+        for (int i = 0; i < a->symbol_count; i++) {
+            const script_symbol *symbol = &a->symbols[i];
+            if (!symbol->disabled && l.constant_values[i].type != PIN_FLOW) {
+                constants[package->constant_count++] = (script_lower_constant){
+                    symbol->id,
+                    l.constant_values[i]
+                };
+            }
+        }
+        package->constants = constants;
+    }
     free(l.constant_values);
     afree(l.loops);
     m->diagnostic_count = acount(m->diagnostics);
@@ -7156,4 +7507,23 @@ execution_module_plan *script_lower(
     }
     afree(types);
     return m;
+}
+
+execution_module_plan *script_lower(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    return lower_analysis(analysis, catalog, bindings, NULL);
+}
+script_lower_package_result script_lower_package(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    script_lower_package_result result = { 0 };
+    result.plan = lower_analysis(analysis, catalog, bindings, &result);
+    return result;
 }

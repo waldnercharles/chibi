@@ -1,4 +1,5 @@
 #include "authoring/source_package_syntax.h"
+#include "package_syntax_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <string.h>
@@ -21,6 +22,7 @@ static int file_count, import_count;
 static source_packages *graph;
 static source_package_error graph_error;
 static script_diagnostic syntax_error;
+static bool differential;
 
 typedef struct
 {
@@ -63,6 +65,11 @@ static bool add_file(const char *path, const char *directory, const char *text)
     syntax[at] = script_parse(text);
     REQUIRE(syntax[at]->diagnostic_count == 0);
     source[at] = source_package_syntax_new(syntax[at], path, directory, at, &syntax_error);
+    if (differential) {
+        REQUIRE(
+            package_syntax_chibi_compare(syntax[at], source[at], &syntax_error, path, directory, at)
+        );
+    }
     REQUIRE(source[at]);
     REQUIRE(!syntax_error.message[0]);
     files[at] = source[at]->file;
@@ -114,6 +121,11 @@ TEST_CASE(package_syntax_legacy_roots_keep_shape_and_names)
         REQUIRE(ts_node_named_child_count(root) == 1);
         REQUIRE(!strcmp(ts_node_type(ts_node_named_child(root, 0)), types[i]));
         source[0] = source_package_syntax_new(syntax[0], "/p/a.chibi", "/p", 0, &syntax_error);
+        if (differential) {
+            REQUIRE(
+                package_syntax_chibi_compare(syntax[0], source[0], &syntax_error, "/p/a.chibi", "/p", 0)
+            );
+        }
         REQUIRE(!source[0]);
         REQUIRE(!strcmp(syntax_error.message, "Expected package header"));
         cleanup();
@@ -137,6 +149,11 @@ TEST_CASE(package_syntax_rejects_malformed_or_mixed_headers)
         syntax[0] = script_parse(texts[i]);
         REQUIRE(syntax[0]->diagnostic_count > 0);
         source[0] = source_package_syntax_new(syntax[0], "/p/a.chibi", "/p", 0, &syntax_error);
+        if (differential) {
+            REQUIRE(
+                package_syntax_chibi_compare(syntax[0], source[0], &syntax_error, "/p/a.chibi", "/p", 0)
+            );
+        }
         REQUIRE(!source[0]);
         REQUIRE(syntax_error.range.start == syntax[0]->diagnostics[0].range.start);
         REQUIRE(syntax_error.range.end == syntax[0]->diagnostics[0].range.end);
@@ -150,6 +167,11 @@ TEST_CASE(package_syntax_rejects_blank_package_name)
     syntax[0] = script_parse("/* π */\r\npackage _; // header\r\nimport _ \".\"\r\n");
     REQUIRE(syntax[0]->diagnostic_count == 0);
     source[0] = source_package_syntax_new(syntax[0], "/p/a.chibi", "/p", 0, &syntax_error);
+    if (differential) {
+        REQUIRE(
+            package_syntax_chibi_compare(syntax[0], source[0], &syntax_error, "/p/a.chibi", "/p", 0)
+        );
+    }
     REQUIRE(!source[0]);
     REQUIRE(range_is(syntax_error.range, 18, 19, 2, 9));
     REQUIRE(text_is(0, syntax_error.range, "_"));
@@ -312,6 +334,11 @@ TEST_CASE(package_syntax_incremental_header_keeps_retained_graph)
     edited = script_edit(syntax[1], 8, 11, "other");
     REQUIRE(edited->diagnostic_count == 0);
     revision = source_package_syntax_new(edited, "/p/b.chibi", "/p", 1, &syntax_error);
+    if (differential) {
+        REQUIRE(
+            package_syntax_chibi_compare(edited, revision, &syntax_error, "/p/b.chibi", "/p", 1)
+        );
+    }
     REQUIRE(revision);
     source_package_file changed[] = { files[0], revision->file };
     source_package_error rejected;
@@ -324,6 +351,9 @@ TEST_CASE(package_syntax_incremental_header_keeps_retained_graph)
     REQUIRE(!strcmp(source_packages_at(graph, 0)->name, "app"));
     REQUIRE(!strcmp(source[1]->file.name, "app"));
     REQUIRE(!strcmp(revision->file.name, "other"));
+    if (differential) {
+        REQUIRE(package_syntax_chibi_complete());
+    }
     return true;
 }
 TEST_SUITE(package_syntax_suite)
@@ -344,4 +374,14 @@ void test_language_package_syntax()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_SUITE(package_syntax_suite);
+    pu_clear_setup();
+}
+void test_language_package_syntax_chibi()
+{
+    differential = true;
+    pu_setup(NULL, cleanup);
+    RUN_TEST_SUITE(package_syntax_suite);
+    pu_clear_setup();
+    package_syntax_chibi_finish();
+    differential = false;
 }

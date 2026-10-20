@@ -39,8 +39,10 @@ static int inspect()
                          "c=p.cache_values(b);r=p.build_identity(b,c)\n"
                          "f=p.package_files(s);i=p.installed_archive_owners(r,"
                          "f,'',False)\n"
+                         "t=p.installed_private_tools(r,f,s)\n"
+                         "e=p.engine_manifest(b/'engine-stage',r)\n"
                          "print(json.dumps({'compiled':r,'installation':i,'"
-                         "files':f},sort_keys=True))\n";
+                         "files':f,'engine':e},sort_keys=True))\n";
     const char *args[] = { "python3", "-B",  "-c",  script, tool_root(),
                            source,    build, stage, NULL };
     return tool_run(args, directory, log_path);
@@ -155,7 +157,19 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     yyjson_val *compiled = yyjson_obj_get(result, "compiled");
     yyjson_val *objects = yyjson_obj_get(compiled, "objects");
     yyjson_val *archives = yyjson_obj_get(compiled, "archives");
+    /* The installed build identity is the configured document with a build ID. */
+    yyjson_val *engine = yyjson_obj_get(result, "engine");
+    REQUIRE(text_is(engine, "sdk_version", "0.1.0"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(engine, "project_version")) == 1);
+    REQUIRE(yyjson_get_str(yyjson_obj_get(engine, "build_id")));
+    yyjson_val *execution = yyjson_obj_get(yyjson_obj_get(engine, "artifact_formats"), "execution");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(execution, "version")) == 1);
+    REQUIRE(text_is(execution, "source", "src/owned.c"));
+#if defined(__linux__) || defined(__APPLE__)
+    REQUIRE(yyjson_obj_size(objects) == 10);
+#else
     REQUIRE(yyjson_obj_size(objects) == 7);
+#endif
     REQUIRE(yyjson_obj_size(archives) == 3);
     REQUIRE(yyjson_obj_get(archives, "relocated/librenamed.a"));
     yyjson_val *object = yyjson_obj_get(objects, "CMakeFiles/folded_object.dir/src/object.c.o");
@@ -197,6 +211,22 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     REQUIRE(product_hash && text_is(installed_product, "sha256", product_hash));
     REQUIRE(yyjson_obj_size(auxiliary) == 1);
     REQUIRE(text_is(yyjson_obj_get(auxiliary, "auxiliary"), "path", "auxiliary"));
+    yyjson_val *private_tools = yyjson_obj_get(compiled, "private_executables");
+#if defined(__linux__) || defined(__APPLE__)
+    REQUIRE(yyjson_obj_size(private_tools) == 2);
+    REQUIRE(
+        text_is(yyjson_obj_get(private_tools, "chibi-build-host"), "install_path", "libexec/chibi/chibi-build-host")
+    );
+    REQUIRE(
+        text_is(yyjson_obj_get(private_tools, "chibi-compiler-host"), "install_path", "libexec/chibi/chibi-compiler-host")
+    );
+    object = yyjson_obj_get(objects, "CMakeFiles/chibi_compiler_host.dir/src/debug.c.o");
+    REQUIRE(object);
+    REQUIRE(contains(yyjson_obj_get(object, "artifacts"), "chibi-compiler-host"));
+    REQUIRE(yyjson_obj_get(archives, "libchibi_compiler_host.a") == NULL);
+#else
+    REQUIRE(yyjson_obj_size(private_tools) == 0);
+#endif
     yyjson_val *installation = yyjson_obj_get(result, "installation");
     REQUIRE(
         text_is(yyjson_obj_get(installation, "relocated/librenamed.a"), "path", "lib/librenamed.a")
@@ -209,7 +239,7 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     );
     yyjson_doc_free(doc);
 
-    /* Nine fixed compiled-evidence rejects, restoring each fixture mutation. */
+    /* Fixed compiled-evidence rejects, restoring each fixture mutation. */
     char filename[1024], saved[1024];
     path(filename, build, "CMakeFiles/folded_object.dir/src/object.c.o");
     path(saved, directory, "saved-object");
@@ -226,11 +256,30 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     status = inspect();
     REQUIRE(utimensat(AT_FDCWD, filename, times, 0) == 0);
     REQUIRE(diagnostic(status, "predates a link dependency"));
+    char metadata[1024];
+    path(metadata, build, "chibi_engine_metadata.json");
+    char *configured = tool_read(metadata);
+    REQUIRE(configured);
+    tool_write(metadata, "{\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1}}}\n");
+    status = inspect();
+    tool_write(metadata, configured);
+    free(configured);
+    REQUIRE(diagnostic(status, "Configured SDK version is missing"));
 
     char graph_path[1024];
     path(graph_path, build, "build.ninja");
     char *graph = tool_read(graph_path);
     REQUIRE(graph);
+#if defined(__linux__) || defined(__APPLE__)
+    /* Keeping this object in auxiliary must not substitute for its installed
+     * compiler-host owner. The ordinary artifact membership stays complete. */
+    REQUIRE(
+        schedule_input(graph_path, "chibi-compiler-host", "CMakeFiles/chibi_compiler_host.dir/src/debug.c.o", true)
+    );
+    status = inspect();
+    tool_write(graph_path, graph);
+    REQUIRE(diagnostic(status, "Private host object has no installed executable owner:"));
+#endif
     REQUIRE(
         schedule_input(graph_path, "relocated/librenamed.a", "CMakeFiles/folded_object.dir/src/object.c.o", true)
     );
@@ -308,17 +357,133 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     REQUIRE(unlink(filename) == 0);
     REQUIRE(rename(saved, filename) == 0);
     REQUIRE(diagnostic(status, "Installed archive differs from compiled evidence:"));
+
+#if defined(__linux__) || defined(__APPLE__)
+    /* Private installed tools retain their own compiled identity. */
+    path(filename, stage, "libexec/chibi/chibi-compiler-host");
+    path(saved, directory, "saved-private-tool");
+    REQUIRE(rename(filename, saved) == 0);
+    status = inspect();
+    REQUIRE(rename(saved, filename) == 0);
+    REQUIRE(diagnostic(status, "Installed private executable differs from compiled evidence:"));
+    REQUIRE(rename(filename, saved) == 0);
+    tool_write(filename, "corrupt private tool\n");
+    REQUIRE(chmod(filename, 0700) == 0);
+    status = inspect();
+    REQUIRE(unlink(filename) == 0);
+    REQUIRE(rename(saved, filename) == 0);
+    REQUIRE(diagnostic(status, "Installed private executable differs from compiled evidence:"));
+#endif
     return true;
 }
 
+#if defined(__linux__) || defined(__APPLE__)
+TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
+{
+    path(source, directory, "make-source");
+    path(build, directory, "make-build");
+    path(stage, directory, "make-installed");
+    REQUIRE(mkdir(source, 0700) == 0);
+    char filename[1024];
+    path(filename, source, "src");
+    REQUIRE(mkdir(filename, 0700) == 0);
+    path(filename, source, "src/host.h");
+    tool_write(filename, "int host_value(void);\n");
+    path(filename, source, "src/host.c");
+    tool_write(filename, "#include \"host.h\"\nint host_value(void) { return 0; }\n");
+    path(filename, source, "src/main.c");
+    tool_write(filename, "#include \"host.h\"\nint main(void) { return host_value(); }\n");
+    path(filename, source, "CMakeLists.txt");
+    tool_write(
+        filename,
+        "cmake_minimum_required(VERSION 3.25)\nproject(private_tool C)\n"
+        "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n"
+        "set(CHIBI_SDK_BUILD_COMPILER ON CACHE BOOL \"\")\n"
+        "set(CHIBI_SDK_BUILD_NATIVE OFF CACHE BOOL \"\")\n"
+        "add_library(chibi_build_host OBJECT src/host.c)\n"
+        "add_executable(chibi-build-host src/main.c)\n"
+        "target_link_libraries(chibi-build-host PRIVATE chibi_build_host)\n"
+        "add_library(chibi_compiler_host OBJECT src/host.c)\n"
+        "add_executable(chibi-compiler-host src/main.c)\n"
+        "target_link_libraries(chibi-compiler-host PRIVATE "
+        "chibi_compiler_host)\n"
+        "install(TARGETS chibi-build-host chibi-compiler-host RUNTIME "
+        "DESTINATION libexec/chibi)\n"
+        "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.c\" source_hash)\n"
+        "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.h\" header_hash)\n"
+        "file(WRITE \"${CMAKE_BINARY_DIR}/chibi_engine_metadata.json\" "
+        "\"{\\\"sdk_version\\\":\\\"0.1.0\\\",\\\"project_version\\\":1,"
+        "\\\"artifact_formats\\\":{"
+        "\\\"execution\\\":{"
+        "\\\"version\\\":1,\\\"source\\\":\\\"src/host.c\\\","
+        "\\\"header\\\":\\\"src/"
+        "host.h\\\",\\\"sha256\\\":\\\"${source_hash}\\\","
+        "\\\"header_sha256\\\":\\\"${header_hash}\\\"}}}\\n\")\n"
+    );
+    char prefix[1200];
+    snprintf(prefix, sizeof prefix, "-DCMAKE_INSTALL_PREFIX=%s", stage);
+    const char *configure[] = {
+        "cmake", "-S", source,           "-B",
+        build,   "-G", "Unix Makefiles", "-DCMAKE_BUILD_TYPE=Release",
+        prefix,  NULL
+    };
+    REQUIRE(tool_run(configure, directory, log_path) == 0);
+    const char *compile[] = { "cmake", "--build", build, "--parallel", "1", NULL };
+    REQUIRE(tool_run(compile, directory, log_path) == 0);
+    const char *install[] = { "cmake", "--install", build, NULL };
+    REQUIRE(tool_run(install, directory, log_path) == 0);
+    REQUIRE(inspect() == 0);
+    yyjson_doc *doc = yyjson_read_file(log_path, 0, NULL, NULL);
+    REQUIRE(doc);
+    yyjson_val *compiled = yyjson_obj_get(yyjson_doc_get_root(doc), "compiled");
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "objects")) == 4);
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "archives")) == 0);
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "executables")) == 0);
+    REQUIRE(text_is(
+        yyjson_obj_get(yyjson_obj_get(compiled, "private_executables"), "chibi-build-host"),
+        "install_path",
+        "libexec/chibi/chibi-build-host"
+    ));
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "private_executables")) == 2);
+    yyjson_val *compiler = yyjson_obj_get(yyjson_obj_get(compiled, "private_executables"), "chibi-compiler-host");
+    REQUIRE(text_is(compiler, "install_path", "libexec/chibi/chibi-compiler-host"));
+    yyjson_val *objects = yyjson_obj_get(compiled, "objects");
+    const char *owned = "CMakeFiles/chibi_compiler_host.dir/src/host.c.o";
+    const char *checksum = yyjson_get_str(
+        yyjson_obj_get(yyjson_obj_get(objects, owned), "sha256")
+    );
+    REQUIRE(checksum && text_is(yyjson_obj_get(compiler, "link_inputs"), owned, checksum));
+    yyjson_doc_free(doc);
+    return true;
+}
+#endif
+
 void test_tool_package_ownership()
 {
+    /* Apple install-time ranlib refreshes archive member dates unless build
+     * and install use the same deterministic archive environment. */
+    const char *archive_date = getenv("ZERO_AR_DATE");
+    char *saved_archive_date = archive_date ? strdup(archive_date) : NULL;
+    assert(!setenv("ZERO_AR_DATE", "1", 1));
     strcpy(directory, "/tmp/chibi-package-ownership-XXXXXX");
     assert(mkdtemp(directory));
+    char *resolved = realpath(directory, NULL);
+    assert(resolved && strlen(resolved) < sizeof directory);
+    strcpy(directory, resolved);
+    free(resolved);
     path(build, directory, "build");
     path(stage, directory, "installed");
     path(source, tool_root(), "cmake/tests/package_ownership");
     path(log_path, directory, "child.log");
     RUN_TEST_CASE(configured_artifacts_preserve_complete_object_ownership);
+#if defined(__linux__) || defined(__APPLE__)
+    RUN_TEST_CASE(makefiles_private_tool_owns_direct_host_objects);
+#endif
     tool_remove_tree(directory);
+    if (saved_archive_date) {
+        assert(!setenv("ZERO_AR_DATE", saved_archive_date, 1));
+    } else {
+        assert(!unsetenv("ZERO_AR_DATE"));
+    }
+    free(saved_archive_date);
 }

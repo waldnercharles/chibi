@@ -1,0 +1,587 @@
+package markdown
+
+import strings "core:strings"
+
+// Renders the Markdown of one documentation page as HTML. It covers what the
+// public pages use: headings, paragraphs, lists, block quotes, fenced code,
+// pipe tables, and inline code, emphasis and links. Links between pages
+// follow the site's own map from source files to pages; a link to a file the
+// site does not publish keeps only its text, and Unpublished names each such
+// link at its line.
+
+Space :: 32;
+Quote :: 34;
+Hash :: 35;
+Ampersand :: 38;
+CloseParen :: 41;
+Star :: 42;
+Dash :: 45;
+Dot :: 46;
+Slash :: 47;
+Less :: 60;
+Greater :: 62;
+OpenBracket :: 91;
+Backslash :: 92;
+CloseBracket :: 93;
+Underscore :: 95;
+Backtick :: 96;
+Pipe :: 124;
+Question :: 63;
+
+Size :: (text: string) -> int {
+    return strings.ByteLength(text);
+}
+
+At :: (text: string, index: int) -> int {
+    return strings.ByteAt(text, index);
+}
+
+From :: (text: string, start: int) -> string {
+    return strings.Slice(text, start, Size(text) - start);
+}
+
+StartsWith :: (text: string, prefix: string) -> bool {
+    return strings.Slice(text, 0, Size(prefix)) == prefix;
+}
+
+EndsWith :: (text: string, suffix: string) -> bool {
+    size := Size(text);
+    count := Size(suffix);
+    return size >= count && From(text, size - count) == suffix;
+}
+
+IsBlank :: (byte: int) -> bool {
+    return byte == Space || byte == 9 || byte == 13;
+}
+
+Trim :: (text: string) -> string {
+    start: int = 0;
+    end := Size(text);
+    while (start < end && IsBlank(At(text, start))) {
+        start += 1;
+    }
+    while (end > start && IsBlank(At(text, end - 1))) {
+        end -= 1;
+    }
+    return strings.Slice(text, start, end - start);
+}
+
+// The index of the first byte at or after start, or -1.
+Find :: (text: string, byte: int, start: int) -> int {
+    size := Size(text);
+    index := start;
+    while (index < size) {
+        if (At(text, index) == byte) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+
+// The index of the first occurrence of pattern at or after start, or -1.
+FindText :: (text: string, pattern: string, start: int) -> int {
+    size := Size(text);
+    count := Size(pattern);
+    index := start;
+    while (index + count <= size) {
+        if (strings.Slice(text, index, count) == pattern) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+
+Split :: (text: string, byte: int) -> string[] {
+    parts: string[] = [];
+    start: int = 0;
+    index := Find(text, byte, 0);
+    while (index >= 0) {
+        parts = array_add(parts, strings.Slice(text, start, index - start));
+        start = index + 1;
+        index = Find(text, byte, start);
+    }
+    parts = array_add(parts, From(text, start));
+    return parts;
+}
+
+// Text as HTML element content or attribute value.
+Escape :: (text: string) -> string {
+    out: string = "";
+    size := Size(text);
+    start: int = 0;
+    index: int = 0;
+    while (index < size) {
+        byte := At(text, index);
+        entity: string = "";
+        if (byte == Ampersand) {
+            entity = "&amp;";
+        }
+        if (byte == Less) {
+            entity = "&lt;";
+        }
+        if (byte == Greater) {
+            entity = "&gt;";
+        }
+        if (byte == Quote) {
+            entity = "&quot;";
+        }
+        if (entity != "") {
+            out = format_text("{}{}{}", out, strings.Slice(text, start, index - start), entity);
+            start = index + 1;
+        }
+        index += 1;
+    }
+    return format_text("{}{}", out, From(text, start));
+}
+
+// A heading's anchor as GitHub writes it: lowercase letters, digits, hyphens
+// and underscores, with spaces as hyphens.
+Slug :: (text: string) -> string {
+    letters := "abcdefghijklmnopqrstuvwxyz";
+    out: string = "";
+    size := Size(text);
+    index: int = 0;
+    while (index < size) {
+        byte := At(text, index);
+        if (byte >= 65 && byte <= 90) {
+            out = format_text("{}{}", out, strings.Slice(letters, byte - 65, 1));
+        } else if ((byte >= 97 && byte <= 122) || (byte >= 48 && byte <= 57) || byte == Dash ||
+                   byte == Underscore) {
+            out = format_text("{}{}", out, strings.Slice(text, index, 1));
+        } else if (byte == Space) {
+            out = format_text("{}-", out);
+        }
+        index += 1;
+    }
+    return out;
+}
+
+// The folder of a site path, without its trailing slash.
+Folder :: (path: string) -> string {
+    end := Size(path);
+    while (end > 0 && At(path, end - 1) != Slash) {
+        end -= 1;
+    }
+    if (end == 0) {
+        return "";
+    }
+    return strings.Slice(path, 0, end - 1);
+}
+
+// A link path relative to folder, with . and .. segments resolved; "" when it
+// leaves the site.
+Resolve :: (folder: string, path: string) -> string {
+    segments: string[] = [];
+    if (folder != "" && !StartsWith(path, "/")) {
+        segments = Split(folder, Slash);
+    }
+    outside := false;
+    for (segment in Split(path, Slash)) {
+        if (segment == "..") {
+            if (length(segments) == 0) {
+                outside = true;
+            } else {
+                segments = slice(segments, 0, length(segments) - 1);
+            }
+        } else if (segment != "." && segment != "") {
+            segments = array_add(segments, segment);
+        }
+    }
+    if (outside) {
+        return "";
+    }
+    out: string = "";
+    for (segment in segments) {
+        if (out == "") {
+            out = segment;
+        } else {
+            out = format_text("{}/{}", out, segment);
+        }
+    }
+    return out;
+}
+
+// Where a link goes on the site: unchanged when it leaves the site or stays
+// on the page, the published page for a source the site maps, and "" for a
+// local file the site does not publish.
+Target :: (url: string, page: string, sources: string[], outputs: string[]) -> string {
+    if (StartsWith(url, "http://") || StartsWith(url, "https://") || StartsWith(url, "mailto:") ||
+        StartsWith(url, "#")) {
+        return url;
+    }
+    // The query or anchor after the file stays on the link.
+    anchor: string = "";
+    path := url;
+    end := Find(url, Question, 0);
+    hash := Find(url, Hash, 0);
+    if (end < 0 || (hash >= 0 && hash < end)) {
+        end = hash;
+    }
+    if (end >= 0) {
+        anchor = From(url, end);
+        path = strings.Slice(url, 0, end);
+    }
+    resolved := Resolve(Folder(page), path);
+    index: int = 0;
+    while (index < length(sources)) {
+        if (resolved != "" && sources[index] == resolved) {
+            return format_text("{}{}", outputs[index], anchor);
+        }
+        index += 1;
+    }
+    return "";
+}
+
+Punctuation :: (byte: int) -> bool {
+    return byte == Backslash || byte == Backtick || byte == Star || byte == Underscore ||
+           byte == OpenBracket || byte == CloseBracket || byte == Hash || byte == Pipe ||
+           byte == Less || byte == Greater || byte == Dash || byte == Dot;
+}
+
+// The inline content of a block as HTML, and the target of each link written
+// as text, in order.
+Inline :: (text: string, page: string, sources: string[],
+           outputs: string[]) -> (html: string, dropped: string[]) {
+    out: string = "";
+    size := Size(text);
+    start: int = 0;
+    index: int = 0;
+    while (index < size) {
+        byte := At(text, index);
+        if (byte == Backslash && index + 1 < size && Punctuation(At(text, index + 1))) {
+            pending := Escape(strings.Slice(text, start, index - start));
+            out = format_text("{}{}{}", out, pending, Escape(strings.Slice(text, index + 1, 1)));
+            index += 2;
+            start = index;
+            continue;
+        }
+        if (byte == Backtick) {
+            close := Find(text, Backtick, index + 1);
+            if (close > index) {
+                pending := Escape(strings.Slice(text, start, index - start));
+                code := Escape(strings.Slice(text, index + 1, close - index - 1));
+                out = format_text("{}{}<code>{}</code>", out, pending, code);
+                index = close + 1;
+                start = index;
+                continue;
+            }
+        }
+        if (byte == Star && index + 1 < size && At(text, index + 1) == Star) {
+            close := FindText(text, "**", index + 2);
+            if (close > index + 2) {
+                pending := Escape(strings.Slice(text, start, index - start));
+                inner := Inline(strings.Slice(text, index + 2, close - index - 2), page, sources, outputs);
+                out = format_text("{}{}<strong>{}</strong>", out, pending, inner.html);
+                dropped = append(dropped, inner.dropped);
+                index = close + 2;
+                start = index;
+                continue;
+            }
+        }
+        if (byte == Star && index + 1 < size && !IsBlank(At(text, index + 1))) {
+            close := Find(text, Star, index + 1);
+            if (close > index + 1) {
+                pending := Escape(strings.Slice(text, start, index - start));
+                inner := Inline(strings.Slice(text, index + 1, close - index - 1), page, sources, outputs);
+                out = format_text("{}{}<em>{}</em>", out, pending, inner.html);
+                dropped = append(dropped, inner.dropped);
+                index = close + 1;
+                start = index;
+                continue;
+            }
+        }
+        if (byte == OpenBracket) {
+            // A label holds no bracket of its own, so a stray [ starts none.
+            middle := FindText(text, "](", index + 1);
+            nested := Find(text, OpenBracket, index + 1);
+            if (nested >= 0 && nested < middle) {
+                middle = -1;
+            }
+            close := -1;
+            if (middle > index) {
+                close = Find(text, CloseParen, middle + 2);
+            }
+            if (close > middle && middle > index) {
+                pending := Escape(strings.Slice(text, start, index - start));
+                // Without brackets, a label holds no link to drop.
+                label := Inline(strings.Slice(text, index + 1, middle - index - 1), page, sources, outputs);
+                url := strings.Slice(text, middle + 2, close - middle - 2);
+                target := Target(url, page, sources, outputs);
+                if (target == "") {
+                    out = format_text("{}{}{}", out, pending, label.html);
+                    dropped = array_add(dropped, url);
+                } else {
+                    out = format_text("{}{}<a href=\"{}\">{}</a>", out, pending, Escape(target), label.html);
+                }
+                index = close + 1;
+                start = index;
+                continue;
+            }
+        }
+        index += 1;
+    }
+    return (html: format_text("{}{}", out, Escape(From(text, start))), dropped: dropped);
+}
+
+// 1 to 6 for an ATX heading line, otherwise 0.
+HeadingLevel :: (line: string) -> int {
+    level: int = 0;
+    while (level < Size(line) && At(line, level) == Hash) {
+        level += 1;
+    }
+    if (level == 0 || level > 6 || level >= Size(line) || At(line, level) != Space) {
+        return 0;
+    }
+    return level;
+}
+
+// The text after a list marker, "- ", "* " or "1. ", or "" for no item.
+ItemText :: (line: string) -> string {
+    if (StartsWith(line, "- ") || StartsWith(line, "* ")) {
+        return Trim(From(line, 2));
+    }
+    digits: int = 0;
+    while (digits < Size(line) && At(line, digits) >= 48 && At(line, digits) <= 57) {
+        digits += 1;
+    }
+    if (digits > 0 && digits + 1 < Size(line) && At(line, digits) == Dot && At(line, digits + 1) == Space) {
+        return Trim(From(line, digits + 2));
+    }
+    return "";
+}
+
+Ordered :: (line: string) -> bool {
+    return !StartsWith(line, "- ") && !StartsWith(line, "* ");
+}
+
+IsTableRule :: (line: string) -> bool {
+    if (!StartsWith(line, "|")) {
+        return false;
+    }
+    index: int = 0;
+    while (index < Size(line)) {
+        byte := At(line, index);
+        if (byte != Pipe && byte != Dash && byte != 58 && !IsBlank(byte)) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+// The cells of a pipe-table row, split at pipes outside code spans.
+Cells :: (line: string) -> string[] {
+    row := Trim(line);
+    if (StartsWith(row, "|")) {
+        row = From(row, 1);
+    }
+    if (EndsWith(row, "|") && !EndsWith(row, "\\|")) {
+        row = strings.Slice(row, 0, Size(row) - 1);
+    }
+    cells: string[] = [];
+    code := false;
+    start: int = 0;
+    index: int = 0;
+    while (index < Size(row)) {
+        byte := At(row, index);
+        if (byte == Backslash) {
+            index += 2;
+            continue;
+        }
+        if (byte == Backtick) {
+            code = !code;
+        }
+        if (byte == Pipe && !code) {
+            cells = array_add(cells, Trim(strings.Slice(row, start, index - start)));
+            start = index + 1;
+        }
+        index += 1;
+    }
+    cells = array_add(cells, Trim(From(row, start)));
+    return cells;
+}
+
+TableRow :: (line: string, tag: string, page: string, sources: string[],
+             outputs: string[]) -> (html: string, dropped: string[]) {
+    out := "<tr>";
+    for (cell in Cells(line)) {
+        inline := Inline(cell, page, sources, outputs);
+        out = format_text("{}<{}>{}</{}>", out, tag, inline.html, tag);
+        dropped = append(dropped, inline.dropped);
+    }
+    return (html: format_text("{}</tr>\n", out), dropped: dropped);
+}
+
+// Whether a line begins a block other than a paragraph.
+BlockStart :: (line: string) -> bool {
+    return StartsWith(line, "```") || HeadingLevel(line) > 0 || ItemText(line) != "" ||
+           StartsWith(line, ">") || StartsWith(line, "|");
+}
+
+// The block that starts at the line first, which is not blank: its HTML
+// pieces, the line after it, and the target of each link it writes as text.
+Block :: (lines: string[], first: int, page: string, sources: string[],
+          outputs: string[]) -> (html: string[], end: int, dropped: string[]) {
+    count := length(lines);
+    index := first;
+    line := Trim(lines[index]);
+    if (StartsWith(line, "```")) {
+        language := Trim(From(line, 3));
+        if (language == "") {
+            html = array_add(html, "<pre><code>");
+        } else {
+            html = array_add(html, format_text("<pre><code class=\"language-{}\">", Escape(language)));
+        }
+        index += 1;
+        while (index < count && !StartsWith(Trim(lines[index]), "```")) {
+            html = array_add(html, format_text("{}\n", Escape(lines[index])));
+            index += 1;
+        }
+        html = array_add(html, "</code></pre>\n");
+        return (html: html, end: index + 1, dropped: dropped);
+    }
+    level := HeadingLevel(line);
+    if (level > 0) {
+        title := Trim(From(line, level + 1));
+        inline := Inline(title, page, sources, outputs);
+        html = array_add(html, format_text("<h{} id=\"{}\">{}</h{}>\n", level, Slug(title), inline.html, level));
+        return (html: html, end: index + 1, dropped: inline.dropped);
+    }
+    if (StartsWith(line, "|") && index + 1 < count && IsTableRule(Trim(lines[index + 1]))) {
+        head := TableRow(line, "th", page, sources, outputs);
+        html = ["<table>\n<thead>\n", head.html, "</thead>\n<tbody>\n"];
+        dropped = head.dropped;
+        index += 2;
+        while (index < count && StartsWith(Trim(lines[index]), "|")) {
+            row := TableRow(lines[index], "td", page, sources, outputs);
+            html = array_add(html, row.html);
+            dropped = append(dropped, row.dropped);
+            index += 1;
+        }
+        html = array_add(html, "</tbody>\n</table>\n");
+        return (html: html, end: index, dropped: dropped);
+    }
+    if (ItemText(line) != "") {
+        tag := "ul";
+        if (Ordered(line)) {
+            tag = "ol";
+        }
+        html = array_add(html, format_text("<{}>\n", tag));
+        while (index < count && ItemText(Trim(lines[index])) != "") {
+            item := ItemText(Trim(lines[index]));
+            index += 1;
+            while (index < count && Trim(lines[index]) != "" &&
+                   ItemText(Trim(lines[index])) == "" && !StartsWith(Trim(lines[index]), "```") &&
+                   IsBlank(At(lines[index], 0))) {
+                item = format_text("{} {}", item, Trim(lines[index]));
+                index += 1;
+            }
+            inline := Inline(item, page, sources, outputs);
+            html = array_add(html, format_text("<li>{}</li>\n", inline.html));
+            dropped = append(dropped, inline.dropped);
+        }
+        html = array_add(html, format_text("</{}>\n", tag));
+        return (html: html, end: index, dropped: dropped);
+    }
+    if (StartsWith(line, ">")) {
+        quote := "";
+        while (index < count && StartsWith(Trim(lines[index]), ">")) {
+            quote = Trim(format_text("{} {}", quote, Trim(From(Trim(lines[index]), 1))));
+            index += 1;
+        }
+        inline := Inline(quote, page, sources, outputs);
+        html = array_add(html, format_text("<blockquote><p>{}</p></blockquote>\n", inline.html));
+        return (html: html, end: index, dropped: inline.dropped);
+    }
+    paragraph := line;
+    index += 1;
+    while (index < count && Trim(lines[index]) != "" && !BlockStart(Trim(lines[index]))) {
+        paragraph = format_text("{} {}", paragraph, Trim(lines[index]));
+        index += 1;
+    }
+    inline := Inline(paragraph, page, sources, outputs);
+    html = array_add(html, format_text("<p>{}</p>\n", inline.html));
+    return (html: html, end: index, dropped: inline.dropped);
+}
+
+// The line of each of a block's dropped targets, in order, among its lines
+// first to end: the first line, from where the previous target was found on,
+// that holds "](target)", or the previous target's line for a link that a line
+// break splits.
+Locate :: (lines: string[], first: int, end: int, targets: string[]) -> int[] {
+    found: int[] = [];
+    line := first;
+    column: int = 0;
+    for (target in targets) {
+        link := format_text("]({})", target);
+        at := line;
+        index := FindText(lines[at], link, column);
+        while (index < 0 && at + 1 < end) {
+            at += 1;
+            index = FindText(lines[at], link, 0);
+        }
+        if (index >= 0) {
+            line = at;
+            column = index + 1;
+        }
+        found = array_add(found, line);
+    }
+    return found;
+}
+
+// The page's Markdown, given as its lines, as HTML pieces to write in order,
+// and the line index and target of each link written as text. page is the
+// page's source path, and sources and outputs map published sources to their
+// pages for links. Lines arrive split because reading a byte of a string costs
+// the length of the string.
+Page :: (lines: string[], page: string, sources: string[],
+         outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
+    index: int = 0;
+    while (index < length(lines)) {
+        if (Trim(lines[index]) == "") {
+            index += 1;
+            continue;
+        }
+        block := Block(lines, index, page, sources, outputs);
+        html = append(html, block.html);
+        at = append(at, Locate(lines, index, block.end, block.dropped));
+        targets = append(targets, block.dropped);
+        index = block.end;
+    }
+    return (html: html, at: at, targets: targets);
+}
+
+// The page's HTML pieces, as Page renders them.
+Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    rendered := Page(lines, page, sources, outputs);
+    return rendered.html;
+}
+
+// items followed by item until there are count of them; generated pages use
+// it to keep the source line of each Markdown line they write.
+Pad :: (items: int[], count: int, item: int) -> int[] {
+    padded := items;
+    while (length(padded) < count) {
+        padded = array_add(padded, item);
+    }
+    return padded;
+}
+
+// What chibi doc reports for a link written as text at line of source.
+Dropped :: (source: string, line: int, target: string) -> string {
+    return format_text("{}:{}: link to {} is not published; written as text\n", source, line, target);
+}
+
+// A report, as Dropped writes it, of each link Render writes as text.
+Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    rendered := Page(lines, page, sources, outputs);
+    reports: string[] = [];
+    index: int = 0;
+    while (index < length(rendered.at)) {
+        reports = array_add(reports, Dropped(page, rendered.at[index] + 1, rendered.targets[index]));
+        index += 1;
+    }
+    return reports;
+}

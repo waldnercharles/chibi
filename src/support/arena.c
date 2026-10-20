@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct arena_block
 {
@@ -23,9 +24,16 @@ struct arena_allocation
     bool live, marked;
     _Alignas(max_align_t) unsigned char data[];
 };
+struct arena_page
+{
+    uintptr_t page;
+    arena_allocation *value;
+};
 static _Thread_local uint64_t block_allocations, collect_marks;
 /* Keep bounded reuse across safepoints even when payload sizes keep changing. */
 #define ARENA_VALUE_CACHE_BYTES ((size_t)4 * 1024)
+#define ARENA_PAGE_SHIFT 12
+#define ARENA_MIN_PAGES 8
 
 uint64_t arena_block_allocations()
 {
@@ -54,6 +62,126 @@ void arena_init(arena *a, size_t cap)
     a->current = a->first;
 }
 
+static size_t page_slot(const arena *a, uintptr_t page)
+{
+    uint64_t hash = (uint64_t)page * UINT64_C(0x9E3779B97F4A7C15);
+    return (size_t)(hash >> 32) & (a->page_capacity - 1);
+}
+static uintptr_t first_page(const arena_allocation *value)
+{
+    return (uintptr_t)value->data >> ARENA_PAGE_SHIFT;
+}
+static uintptr_t last_page(const arena_allocation *value, size_t size)
+{
+    uintptr_t begin = (uintptr_t)value->data;
+    return (size ? begin + size - 1 : begin) >> ARENA_PAGE_SHIFT;
+}
+static void insert_page(arena *a, uintptr_t page, arena_allocation *value)
+{
+    size_t slot = page_slot(a, page);
+    while (a->pages[slot].value) {
+        slot = (slot + 1) & (a->page_capacity - 1);
+    }
+    a->pages[slot] = (arena_page){ page, value };
+    a->page_count++;
+}
+static void resize_pages(arena *a, size_t capacity)
+{
+    arena_page *old = a->pages;
+    size_t old_capacity = a->page_capacity;
+    assert(capacity >= 2 * a->page_count);
+    a->pages = xcalloc(capacity, sizeof *a->pages);
+    a->page_capacity = capacity;
+    a->page_count = 0;
+    for (size_t i = 0; i < old_capacity; i++) {
+        if (old[i].value) {
+            insert_page(a, old[i].page, old[i].value);
+        }
+    }
+    free(old);
+}
+static void clear_pages(arena *a)
+{
+    if (a->pages) {
+        memset(a->pages, 0, a->page_capacity * sizeof *a->pages);
+    }
+    a->page_count = 0;
+}
+/* Indexes a live value under every page its bytes touch, so finding the value
+ * that holds an address never walks the live values. */
+static void index_value(arena *a, arena_allocation *value)
+{
+    for (uintptr_t page = first_page(value); page <= last_page(value, value->size);
+         page++) {
+        if (2 * (a->page_count + 1) > a->page_capacity) {
+            resize_pages(a, a->page_capacity ? 2 * a->page_capacity : ARENA_MIN_PAGES);
+        }
+        insert_page(a, page, value);
+    }
+}
+static void remove_page(arena *a, uintptr_t page, const arena_allocation *value)
+{
+    size_t mask = a->page_capacity - 1, slot = page_slot(a, page);
+    while (a->pages[slot].page != page || a->pages[slot].value != value) {
+        assert(a->pages[slot].value);
+        slot = (slot + 1) & mask;
+    }
+    /* Backward-shift deletion: move each later entry whose home slot does not
+     * lie after the hole, so every probe sequence stays unbroken. */
+    for (size_t next = (slot + 1) & mask; a->pages[next].value;
+         next = (next + 1) & mask) {
+        size_t home = page_slot(a, a->pages[next].page);
+        if (((next - home) & mask) >= ((next - slot) & mask)) {
+            a->pages[slot] = a->pages[next];
+            slot = next;
+        }
+    }
+    a->pages[slot] = (arena_page){ 0 };
+    a->page_count--;
+}
+static void unindex_value(arena *a, const arena_allocation *value)
+{
+    for (uintptr_t page = first_page(value); page <= last_page(value, value->size);
+         page++) {
+        remove_page(a, page, value);
+    }
+}
+/* After a sweep, keeps room for the live values and the cached ones a later
+ * allocation may reuse, so steady reuse never reallocates the index, and
+ * releases the rest of a collected peak. */
+static void fit_pages(arena *a)
+{
+    size_t needed = a->page_count;
+    for (const arena_allocation *value = a->unused; value; value = value->next) {
+        needed += last_page(value, value->capacity) - first_page(value) + 1;
+    }
+    size_t capacity = ARENA_MIN_PAGES;
+    while (capacity < 4 * needed) {
+        capacity *= 2;
+    }
+    if (capacity < a->page_capacity) {
+        resize_pages(a, capacity);
+    }
+}
+/* The live value whose bytes hold address, or that starts at it. */
+static arena_allocation *indexed(const arena *a, uintptr_t address, bool start)
+{
+    if (!a->page_count) {
+        return NULL;
+    }
+    size_t mask = a->page_capacity - 1;
+    uintptr_t page = address >> ARENA_PAGE_SHIFT;
+    for (size_t slot = page_slot(a, page); a->pages[slot].value;
+         slot = (slot + 1) & mask) {
+        arena_allocation *value = a->pages[slot].value;
+        uintptr_t begin = (uintptr_t)value->data;
+        if (a->pages[slot].page == page &&
+            (start ? address == begin : address - begin < value->size)) {
+            return value;
+        }
+    }
+    return NULL;
+}
 static void retire(arena *a, arena_allocation *value)
 {
     value->live = false;
@@ -65,6 +193,7 @@ static void retire(arena *a, arena_allocation *value)
 }
 void arena_reset(arena *a)
 {
+    clear_pages(a);
     while (a->allocations) {
         arena_allocation *value = a->allocations;
         a->allocations = value->next;
@@ -111,6 +240,7 @@ static void *allocate_value(arena *a, size_t size)
     value->marked = false;
     value->trace = NULL;
     value->shape = NULL;
+    index_value(a, value);
     return value->data;
 }
 void *arena_alloc(arena *a, size_t size)
@@ -151,6 +281,7 @@ void arena_free(arena *a)
 {
     free_values(a->allocations);
     free_values(a->unused);
+    free(a->pages);
     arena_block *block = a->first;
     while (block) {
         arena_block *next = block->next;
@@ -163,12 +294,8 @@ void arena_free(arena *a)
 bool arena_contains(const arena *a, const void *address)
 {
     uintptr_t value = (uintptr_t)address;
-    for (const arena_allocation *allocation = a->allocations; allocation;
-         allocation = allocation->next) {
-        uintptr_t begin = (uintptr_t)allocation->data;
-        if (allocation->live && value >= begin && value - begin < allocation->size) {
-            return true;
-        }
+    if (indexed(a, value, false)) {
+        return true;
     }
     for (const arena_block *block = a->first; block; block = block->next) {
         uintptr_t begin = (uintptr_t)block->data;
@@ -183,14 +310,10 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void 
     if (!a->collectable) {
         return;
     }
-    for (arena_allocation *value = a->allocations; value; value = value->next) {
-        if (value->data == data && value->live) {
-            value->trace = trace;
-            value->shape = shape;
-            return;
-        }
-    }
-    assert(false);
+    arena_allocation *value = indexed(a, (uintptr_t)data, true);
+    assert(value);
+    value->trace = trace;
+    value->shape = shape;
 }
 static int by_address(const void *a, const void *b)
 {
@@ -252,6 +375,7 @@ static void sweep(arena *a)
             continue;
         }
         *link = value->next;
+        unindex_value(a, value);
         retire(a, value);
     }
     size_t cached = 0;
@@ -264,6 +388,7 @@ static void sweep(arena *a)
         a->unused = value->next;
         free(value);
     }
+    fit_pages(a);
 }
 void arena_collect_end(arena_collection *c)
 {
@@ -307,7 +432,7 @@ size_t arena_storage_bytes(const arena *a)
     for (const arena_block *block = a->first; block; block = block->next) {
         bytes += sizeof *block + block->cap;
     }
-    return bytes;
+    return bytes + a->page_capacity * sizeof *a->pages;
 }
 void *arena_alloc_bounded(arena *a, size_t size, size_t budget)
 {

@@ -82,6 +82,8 @@ typedef struct
     behavior_data_binding *calls;
     pin_value *values;
     void **buffers;
+    /* The struct buffers' total size, fixed when the storage is made. */
+    size_t buffer_bytes;
 } behavior_data_storage;
 typedef struct
 {

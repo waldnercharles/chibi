@@ -1309,9 +1309,9 @@ static bool row_benchmark(int rows, int iterations, bool parallel, bool unordere
         "Work :: system(c:ReductionContribution){"
         "Mix :: (seed:int)->int { value:=seed; i:int=0;"
         "while i < %d {value=value*1664525+1013904223; i+=1;} return value;}"
-        "if true {value:=Mix(cast<int>(c.amount));"
+        "if true {value:=Mix(int(c.amount));"
         "reduce %sc.target.ReductionTotals.count += value;"
-        "reduce %sc.target.ReductionTotals.total += cast<number>(value);}}",
+        "reduce %sc.target.ReductionTotals.total += number(value);}}",
         iterations,
         unordered ? "unordered " : "",
         unordered ? "unordered " : ""

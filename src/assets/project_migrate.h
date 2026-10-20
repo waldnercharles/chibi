@@ -84,4 +84,12 @@ int chibi_migrate_retention(const char *source, char **migrated, char *error, si
  * limits at the new runtime limit of 64. Custom owner contracts fail. */
 int chibi_migrate_syntax(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 27 spells conversions T(value): `cast<T>(v)` becomes `T(v)`, a
+ * constant `N :: cast<T>(v)` becomes `N: T : v`, and a cast to
+ * handle<ecs.entity> becomes entity(v). Sets `migrated` to an owned copy,
+ * or NULL when the source has no casts. Returns -1 with `error` set for a
+ * cast to a type with no name spelling outside a constant declaration, or a
+ * result the current grammar rejects. */
+int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

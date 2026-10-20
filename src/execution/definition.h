@@ -3,7 +3,6 @@
 #include "execution/artifact.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
-#include "execution/row_builder.h"
 #include "execution/scalar.h"
 #include "execution/value_kind.h"
 #include "support/arena.h"
@@ -94,9 +93,11 @@ typedef struct
     int index;
     pin_value shape;
 } behavior_value_root;
+/* Live sets are exact and belong to the definition's owned arena. */
 typedef struct
 {
     int pc;
+    int value_count, root_count;
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
     behavior_value_root *roots; /* Aggregate shapes for the live saved values. */
 } behavior_function_suspension;
@@ -113,6 +114,15 @@ typedef struct
     uint64_t *components;
     bool result;
 } behavior_component_proof;
+/* Whether a call may pass arguments without copying them; zero is unknown. */
+typedef enum
+{
+    BEHAVIOR_SHARING_UNKNOWN,
+    BEHAVIOR_SHARING_SAFE,
+    BEHAVIOR_SHARING_COPY,
+    BEHAVIOR_SHARING_PENDING_SAFE,
+    BEHAVIOR_SHARING_PENDING_COPY
+} behavior_argument_sharing;
 struct behavior_function
 {
     arena owned;
@@ -132,7 +142,7 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
-    behavior_row_plan *rows;
+    behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -230,14 +240,15 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
 /* Prepared readers reconstruct this canonical definition, then use the same
  * producer verifier and finalizer. Ownership remains with the caller on failure. */
 bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
-void behavior_function_finalize(behavior_function *function);
+/* arena_budget caps the owned arena's total storage before each allocation;
+ * SIZE_MAX leaves it unbounded. */
+bool behavior_function_finalize(behavior_function *function, size_t arena_budget);
 bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 bool behavior_function_compile_inspection(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
-void *behavior_function_row_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
 void behavior_function_constant_locals(behavior_function *function);

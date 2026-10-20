@@ -4,7 +4,7 @@ set(CHIBI_EXECUTION_SOURCES
     jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     preparation_budget.c prepared.c prepared_function.c prepared_record.c program.c program_inspection.c program_activation.c
     program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
-    program_tasks.c range_opt.c reads.c request.c row_builder.c runner.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
+    program_tasks.c range_opt.c reads.c request.c runner.c scalar_lowering_plan.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
     update_jit.c wasm_emit.c wasm_jit.c)
 list(TRANSFORM CHIBI_EXECUTION_SOURCES PREPEND "${CHIBI_SDK_ROOT}/src/execution/")
 
@@ -34,6 +34,12 @@ chibi_sdk_headers(chibi_execution PUBLIC execution/function_builder.h execution/
 target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types")
 target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs chibi_tasks)
+
+# The prepared reader and writer share a translation unit. Let the compiler
+# host's section-GC link discard the unused public writer entry point.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(chibi_execution PRIVATE -ffunction-sections -fdata-sections)
+endif()
 
 option(CHIBI_ENABLE_SJLIT "Build the native execution backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

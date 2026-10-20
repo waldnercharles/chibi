@@ -32,9 +32,35 @@ enum
     READ_FIXTURES = 3,
     WRITE_FIXTURE = READ_FIXTURE + READ_FIXTURES,
     WRITE_FIXTURES = 3,
-    INTEGER_FIXTURE = WRITE_FIXTURE + WRITE_FIXTURES,
+    CAST_FIXTURE = WRITE_FIXTURE + WRITE_FIXTURES,
+    CAST_FIXTURES = 17,
+    INTEGER_FIXTURE = CAST_FIXTURE + CAST_FIXTURES,
     INTEGER_FIXTURES = 8,
     FIXTURES = INTEGER_FIXTURE + INTEGER_FIXTURES
+};
+/* Representative BF_CAST pairs; generated C must match the VM per sample. */
+static const struct
+{
+    pin_type from, to;
+    behavior_cast_mode mode;
+} casts[CAST_FIXTURES] = {
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_EXACT },
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_WRAP },
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_CLAMP },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_WRAP },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_CLAMP },
+    { PIN_I32, PIN_U64, BEHAVIOR_CAST_EXACT },
+    { PIN_I32, PIN_U64, BEHAVIOR_CAST_CLAMP },
+    { PIN_U64, PIN_I64, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_I64, BEHAVIOR_CAST_CLAMP },
+    { PIN_I8, PIN_U16, BEHAVIOR_CAST_EXACT },
+    { PIN_U8, PIN_I32, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_U64, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_I16, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_I64, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_F64, BEHAVIOR_CAST_EXACT },
+    { PIN_I64, PIN_F64, BEHAVIOR_CAST_EXACT },
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
 static behavior_function *functions[FIXTURES];
@@ -100,6 +126,97 @@ static pin_value integer(pin_type type, int64_t number)
 static int64_t number(pin_value value)
 {
     return value.type == PIN_I32 ? value.i : value.i64;
+}
+static bool cast_fixture(int index)
+{
+    pin_value from = { .type = casts[index].from }, to = { .type = casts[index].to };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &from, 1, &to, 1, NULL, 0);
+    int input = behavior_function_builder_slot(builder, from.type);
+    int output = behavior_function_builder_slot(builder, to.type);
+    behavior_function_instruction code[] = {
+        { .op = BF_ARGUMENT, .type = from.type, .output = input, .value = from },
+        { .op = BF_CAST,
+          .type = to.type,
+          .output = output,
+          .left = input,
+          .target = casts[index].mode,
+          .pin = 5 },
+        { .op = BF_RESULT, .type = to.type, .left = output },
+        { .op = BF_RETURN },
+        { .op = BF_END },
+    };
+    for (size_t i = 0; i < sizeof code / sizeof *code; i++) {
+        behavior_function_builder_emit(builder, code[i]);
+    }
+    char error[256];
+    functions[CAST_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[CAST_FIXTURE + index]) {
+        fprintf(stderr, "C export cast fixture: %s\n", error);
+    }
+    REQUIRE(functions[CAST_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    char name[40];
+    snprintf(name, sizeof name, "export_cast_%d", index);
+    behavior_function_write_c(functions[CAST_FIXTURE + index], source, name);
+    return true;
+}
+static uint64_t cast_bits(pin_value value)
+{
+    if (value.type != PIN_F64) {
+        return behavior_scalar_bits(value);
+    }
+    uint64_t bits;
+    memcpy(&bits, &value.d, sizeof bits);
+    return bits;
+}
+static bool exported_casts_match_the_vm()
+{
+    const uint64_t integers[] = { 0,
+                                  1,
+                                  200,
+                                  300,
+                                  UINT64_MAX,
+                                  UINT64_C(1) << 40,
+                                  UINT64_C(1) << 63,
+                                  UINT64_C(0x80000000) };
+    const double reals[] = { -5.5, 300.7,         1e30,    -1e30,
+                             NAN,  0x1p63 + 4096, -40000.5 };
+    for (int i = 0; i < CAST_FIXTURES; i++) {
+        char name[40];
+        snprintf(name, sizeof name, "export_cast_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        bool real = casts[i].from == PIN_F64;
+        int samples = real ? (int)(sizeof reals / sizeof *reals)
+                           : (int)(sizeof integers / sizeof *integers);
+        for (int sample = 0; sample < samples; sample++) {
+            pin_value input = real
+                                ? (pin_value){ .type = PIN_F64, .d = reals[sample] }
+                                : behavior_scalar_from_bits(casts[i].from, integers[sample]);
+            pin_value expected = { .type = casts[i].to }, actual = expected;
+            behavior_function_context vm = { .arguments = &input,
+                                             .argument_count = 1,
+                                             .results = &expected,
+                                             .budget = 16 };
+            behavior_function_context compiled = { .arguments = &input,
+                                                   .argument_count = 1,
+                                                   .results = &actual,
+                                                   .budget = 16 };
+            REQUIRE(behavior_function_bind(functions[CAST_FIXTURE + i], &vm, NULL, 0));
+            int reference = behavior_function_run(functions[CAST_FIXTURE + i], &vm, false);
+            int status = generated(&compiled);
+            REQUIRE(status == reference && compiled.failure == vm.failure);
+            REQUIRE(status != FLOW_OK || cast_bits(actual) == cast_bits(expected));
+            REQUIRE(
+                status == FLOW_OK ||
+                (vm.failure == BEHAVIOR_FUNCTION_DATA && compiled.error_pin == 5)
+            );
+        }
+    }
+    return true;
 }
 static bool fixture(int index)
 {
@@ -1356,6 +1473,9 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     for (int field = 0; field < WRITE_FIXTURES; field++) {
         REQUIRE(write_fixture(field));
     }
+    for (int i = 0; i < CAST_FIXTURES; i++) {
+        REQUIRE(cast_fixture(i));
+    }
     for (int i = 0; i < INTEGER_FIXTURES; i++) {
         REQUIRE(integer_fixture(i));
     }
@@ -1368,9 +1488,9 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     for (int i = 0; export_compiler[i]; i++) {
         apush(argv, export_compiler[i]);
     }
-    const char *arguments[] = { "-std=c11", "-shared", "-fPIC", "-I",
-                                includes,   input,     debug,   "-o",
-                                output,     NULL };
+    const char *arguments[] = { "-std=c11", "-Werror", "-shared", "-fPIC",
+                                "-I",       includes,  input,     debug,
+                                "-o",       output,    NULL };
     for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
         apush(argv, arguments[i]);
     }
@@ -1443,6 +1563,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_query_variables_preserve_tuple_and_failure_contract());
     REQUIRE(reads_exported_current_world_scalars());
     REQUIRE(writes_exported_current_world_scalars());
+    REQUIRE(exported_casts_match_the_vm());
     REQUIRE(exported_integer_width_edges());
     return true;
 }

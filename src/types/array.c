@@ -203,6 +203,25 @@ pin_array *pin_array_new(pin_type element_type, const char *type_name, int capac
     return array;
 }
 
+int pin_array_reserve_owned(arena *a, pin_array *array, int count)
+{
+    if (count <= array->capacity) {
+        return 0;
+    }
+    if (array->capacity > INT_MAX / 2) {
+        return -1;
+    }
+    int capacity = array->capacity ? array->capacity * 2 : 8;
+    capacity = capacity < count ? count : capacity;
+    pin_value *items = arena_alloc(a, (size_t)capacity * sizeof *items);
+    if (array->count) {
+        memcpy(items, array->items, (size_t)array->count * sizeof *items);
+    }
+    memset(items + array->count, 0, (size_t)(capacity - array->count) * sizeof *items);
+    array->items = items;
+    array->capacity = capacity;
+    return 0;
+}
 int pin_array_reserve(pin_array *array, int capacity)
 {
     if (!array || capacity < 0) {
@@ -507,6 +526,25 @@ pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int cou
     }
     return dst;
 }
+/* Whether a copy of `array` may hold its elements inline: a packed array's
+ * elements are, and a boxed one's must each be a present value of exactly a
+ * packable element type. */
+static bool packable(const pin_array *array)
+{
+    if (array->stride) {
+        return true;
+    }
+    if (!pin_array_element_stride(array->element_type, array->type_name, array->record)) {
+        return false;
+    }
+    for (int i = 0; i < array->count; i++) {
+        if (!compatible(array, &array->items[i]) ||
+            (array->items[i].type == PIN_STRUCT && !array->items[i].ptr)) {
+            return false;
+        }
+    }
+    return true;
+}
 static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool packed)
 {
     if (!src || count < 0 ||
@@ -552,17 +590,7 @@ static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool 
 }
 pin_array *pin_array_snapshot_like(arena *a, const pin_array *src, int count)
 {
-    bool packed = true;
-    if (src && src->count > 0 && (src->stride ? src->data : (void *)src->items)) {
-        for (int i = 0; i < src->count; i++) {
-            pin_value value = pin_array_get(src, i);
-            if (!compatible(src, &value) || (value.type == PIN_STRUCT && !value.ptr)) {
-                packed = false;
-                break;
-            }
-        }
-    }
-    return snapshot_like(a, src, count, packed);
+    return snapshot_like(a, src, count, src && packable(src));
 }
 int pin_array_snapshot_set(arena *a, pin_array *array, int index, const pin_value *value)
 {
@@ -619,6 +647,10 @@ int pin_array_snapshot_copy(arena *a, pin_array *out, int to, const pin_array *i
             return 0;
         }
     }
+    /* Boxed records copy as one run, which validates each distinct record once. */
+    if (count && out->record && !out->stride && !items->stride) {
+        return pin_array_snapshot_items(a, out->record, out->items + to, items->items + from, count);
+    }
     for (int i = 0; i < count; i++) {
         pin_value item = pin_array_get(items, from + i);
         if (pin_array_snapshot_set(a, out, to + i, &item)) {
@@ -628,15 +660,19 @@ int pin_array_snapshot_copy(arena *a, pin_array *out, int to, const pin_array *i
     return 0;
 }
 /* Destination metadata is already validated/owned by the enclosing snapshot
- * or private construction proof. Still validate every original foreign row. */
+ * or private construction proof. Still validate every original foreign row's
+ * record, once per distinct record. */
 static int snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
 {
+    const pin_record *checked = record;
     for (int i = 0; i < count; i++) {
         const pin_value *value = &items[i];
-        if ((value->record != record && value->record &&
-             !pin_record_valid(value->record)) ||
-            !pin_record_same(record, value->record)) {
-            return -1;
+        if (value->record != checked) {
+            if ((value->record && !pin_record_valid(value->record)) ||
+                !pin_record_same(record, value->record)) {
+                return -1;
+            }
+            checked = value->record;
         }
         if (!record) {
             if (pin_value_snapshot_to_arena(a, &out[i], value)) {
@@ -666,6 +702,18 @@ int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out,
         (record && (!pin_record_valid(record) || !arena_contains(a, record)))) {
         return -1;
     }
+    return snapshot_items(a, record, out, items, count);
+}
+
+int pin_array_snapshot_owned_items(
+    arena *a,
+    const pin_record *record,
+    pin_value *out,
+    const pin_value *items,
+    int count
+)
+{
+    assert(count >= 0 && (!count || (out && items)));
     return snapshot_items(a, record, out, items, count);
 }
 
@@ -701,71 +749,13 @@ const char *pin_array_add_call(arena *a, const pin_value *inputs, int count, pin
     *out = value;
     return NULL;
 }
-int pin_array_build_row(arena *a, const pin_value *prefix, const pin_value *row, int capacity, pin_value *out)
-{
-    const pin_array *source = prefix->ptr;
-    if (capacity <= 0 || (size_t)capacity > 65536 / sizeof(pin_value) ||
-        prefix->type != PIN_STRUCT || prefix->container != PIN_CONTAINER_ARRAY ||
-        !source || source->element_type != PIN_STRUCT || !source->record ||
-        source->count < 0 || source->count >= capacity) {
-        return -1;
-    }
-    if (!source->count &&
-        (!pin_record_valid(prefix->record) || !pin_record_valid(source->record))) {
-        return -1;
-    }
-    if (!pin_record_same(prefix->record, source->record) || !prefix->type_name ||
-        !source->type_name || strcmp(prefix->type_name, source->record->type.name) ||
-        strcmp(source->type_name, source->record->type.name)) {
-        return -1;
-    }
-    const pin_record *record = source->record;
-    pin_value *items = source->items;
-    if (!source->count) {
-        record = pin_record_snapshot(a, record);
-        if (!record) {
-            return -1;
-        }
-        items = arena_alloc(a, (size_t)capacity * sizeof *items);
-    } else if (source->capacity != capacity || !items) {
-        return -1;
-    }
-    pin_value item;
-    if (snapshot_items(a, record, &item, row, 1)) {
-        return -1;
-    }
-    pin_array *array = arena_alloc(a, sizeof *array);
-    *array = (pin_array){ .element_type = PIN_STRUCT,
-                          .type_name = record->type.name,
-                          .record = record,
-                          .count = source->count + 1,
-                          .capacity = capacity,
-                          .items = items };
-    items[source->count] = item;
-    pin_arena_trace_array(a, array);
-    *out = (pin_value){ .type = PIN_STRUCT,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .type_name = record->type.name,
-                        .record = record,
-                        .ptr = array };
-    return 0;
-}
-
 pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src)
 {
     if (!pin_array_valid(src) ||
         (size_t)src->count > (SIZE_MAX - sizeof(pin_array)) / sizeof(pin_value)) {
         return NULL;
     }
-    bool packed = true;
-    for (int i = 0; !src->stride && i < src->count; i++) {
-        pin_value value = pin_array_get(src, i);
-        if (!compatible(src, &value) || (value.type == PIN_STRUCT && !value.ptr)) {
-            packed = false;
-            break;
-        }
-    }
-    pin_array *dst = snapshot_like(a, src, src->count, packed);
+    pin_array *dst = snapshot_like(a, src, src->count, packable(src));
     if (!dst) {
         return NULL;
     }

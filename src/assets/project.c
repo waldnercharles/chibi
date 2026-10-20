@@ -598,6 +598,14 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
+bool chibi_project_package_folder(const char *path)
+{
+    char *manifest = join_path(path, CHIBI_PROJECT_MANIFEST);
+    bool folder = is_directory(path) && !is_file(manifest);
+    free(manifest);
+    return folder;
+}
+
 typedef enum
 {
     PROJECT_READ_CURRENT,

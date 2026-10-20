@@ -123,6 +123,149 @@ static bool map_reproduces_source()
     return true;
 }
 
+TEST_CASE(source_format_spaces_typed_constant_colons)
+{
+    REQUIRE(format("L :: library {\n    Limit:int:5\n    Mask :: 255\n}\n"));
+    REQUIRE(strstr(text, "Limit: int : 5") && strstr(text, "Mask :: 255"));
+    return true;
+}
+TEST_CASE(source_format_keeps_attributes_on_their_line)
+{
+    REQUIRE(format("package facts\n@test\nAdds :: () { }\n@ test Second :: () { }\n"));
+    REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: () {}\n@test Second :: () {}\n"));
+    return true;
+}
+TEST_CASE(source_format_spaces_variant_patterns)
+{
+    const char
+        *input = "package facts\n"
+                 "Shape :: union {\n"
+                 "    Circle(radius: int)\n"
+                 "    | Empty\n"
+                 "}\n"
+                 "Area :: (shape: Shape) -> int {\n"
+                 "    switch shape {\n"
+                 "        case .Circle(radius):\n"
+                 "            return radius;\n"
+                 "        case .Empty:\n"
+                 "            return 0;\n"
+                 "    }\n"
+                 "}\n"
+                 "Round :: (shape: Shape) -> bool {\n"
+                 "    return shape is .Circle(radius) && shape is not .Empty;\n"
+                 "}\n";
+    REQUIRE(format(input));
+    REQUIRE(!strcmp(text, input));
+    return true;
+}
+TEST_CASE(source_format_aligns_bracket_continuations)
+{
+    REQUIRE(format(
+        "package facts\n"
+        "Pair :: union {\n"
+        "    Both(first: int,\n"
+        "second: int)\n"
+        "    | Neither\n"
+        "}\n"
+        "Sum :: (first: int,\n"
+        "  second: int) -> int {\n"
+        "    if (first > 0 ||\n"
+        "second > 0) {\n"
+        "        return Add(first,\n"
+        "second);\n"
+        "    }\n"
+        "    switch Both(first, second) {\n"
+        "        case .Both(left,\n"
+        "right):\n"
+        "            return left;\n"
+        "    }\n"
+        "    point := {x: first,\n"
+        "y: second};\n"
+        "    return Add(first, Add(\n"
+        "second,\n"
+        "first\n"
+        "    ));\n"
+        "}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n"
+        "Pair :: union {\n"
+        "    Both(first: int,\n"
+        "         second: int)\n"
+        "    | Neither\n"
+        "}\n"
+        "Sum :: (first: int,\n"
+        "        second: int) -> int {\n"
+        "    if (first > 0 ||\n"
+        "        second > 0) {\n"
+        "        return Add(first,\n"
+        "                   second);\n"
+        "    }\n"
+        "    switch Both(first, second) {\n"
+        "        case .Both(left,\n"
+        "                   right):\n"
+        "            return left;\n"
+        "    }\n"
+        "    point := {x: first,\n"
+        "              y: second};\n"
+        "    return Add(first, Add(\n"
+        "        second,\n"
+        "        first\n"
+        "    ));\n"
+        "}\n"
+    ));
+    cleanup();
+    REQUIRE(configured(
+        "package facts\nSum :: (first: int, second: int) -> int {\n"
+        "return Add(first,\nsecond);\n}\n",
+        (authoring_format_options){ .indent_width = 4, .use_tabs = true }
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\nSum :: (first: int, second: int) -> int {\n"
+        "\treturn Add(first,\n\t           second);\n}\n"
+    ));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+TEST_CASE(source_format_aligns_operator_continuations)
+{
+    REQUIRE(format(
+        "package facts\n"
+        "Valid :: (first: int, second: int) -> bool {\n"
+        "    ready := first > 0 &&\n"
+        "second > 0;\n"
+        "    return ready ||\n"
+        "  first + second is int &&\n"
+        "            Check(first,\n"
+        "second);\n"
+        "}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n"
+        "Valid :: (first: int, second: int) -> bool {\n"
+        "    ready := first > 0 &&\n"
+        "             second > 0;\n"
+        "    return ready ||\n"
+        "           first + second is int &&\n"
+        "           Check(first,\n"
+        "                 second);\n"
+        "}\n"
+    ));
+    return true;
+}
+TEST_CASE(source_format_hugs_struct_braces)
+{
+    REQUIRE(format("package facts\nOrigin :: () -> Point {\n    return { x: 0,y: 0 };\n}\n"));
+    REQUIRE(strstr(text, "    return {x: 0, y: 0};\n"));
+    cleanup();
+    REQUIRE(format("Demo :: behavior{value:={ left:1 };empty:={ };}"));
+    REQUIRE(strstr(text, "    value := {left: 1};\n"));
+    REQUIRE(strstr(text, "    empty := {};\n"));
+    return true;
+}
 TEST_CASE(source_format_options_preserve_defaults)
 {
     const char
@@ -487,14 +630,14 @@ TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
         "Move :: system(p:Position) without Disabled{query p;\n"
-        "on Tick(dt:float){for(i in 0..3){p.x+=cast<float>(i);}\n"
+        "on Tick(dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
         "F :: (x:array<int>)->(r:int){return(g<int>(x[0]));}}"
     ));
     REQUIRE(strstr(text, "array<int>"));
     REQUIRE(strstr(text, "g<int>(x[0])"));
-    REQUIRE(strstr(text, "cast<float>(i)"));
+    REQUIRE(strstr(text, "float(i)"));
     return true;
 }
 
@@ -840,10 +983,10 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { total: retain /* declared */ float = 0.0\n"
-        "F :: () -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "F :: () -> (r: float) { r = float(/* cast */ state./* member "
         "*/total); } }",
         "Demo :: library { total: /* declared */ float = 0.0\n"
-        "F :: () -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "F :: () -> (r: float) { r = float(/* cast */ state./* member "
         "*/total) } }"
     ));
     return true;
@@ -1536,6 +1679,12 @@ void test_language_root_state()
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
+    RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
+    RUN_TEST_CASE(source_format_spaces_variant_patterns);
+    RUN_TEST_CASE(source_format_aligns_bracket_continuations);
+    RUN_TEST_CASE(source_format_aligns_operator_continuations);
+    RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_generic_types_maps_and_reference_iteration);
     RUN_TEST_CASE(source_format_authored_prototypes_and_relationships);

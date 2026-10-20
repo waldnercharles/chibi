@@ -183,7 +183,7 @@ static char *operator_expression(
         script_type expected = cap->parameters[i].type;
         bool convert = script_type_numeric(expected);
         if (convert) {
-            append(&text, "cast<%s>(", script_scalar_name(expected.storage));
+            append(&text, "%s(", script_scalar_name(expected.storage));
         }
         if (producer == i) {
             *producer_offset = acount(text);

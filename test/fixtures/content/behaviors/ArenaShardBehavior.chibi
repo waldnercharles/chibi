@@ -52,7 +52,7 @@ ArenaShardBehavior :: behavior {
             self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, Pitch_Rate, entry.Seconds)
             self.VisualTransform.roll = Roll(self.VisualTransform.roll, Roll_Rate, entry.Seconds)
             self.VisualTransform.scale = Birth_Scale * Fade(Age_Phase(entry.Age, entry.Seconds))
-            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(Lift * entry.Seconds)
+            self.Geometry3D.elevation = self.Geometry3D.elevation + double(Lift * entry.Seconds)
             Lift = Lift - multiply(entry.Seconds, B: plain double = 90.0)
             return
         }

@@ -1,27 +1,34 @@
 #include "authoring/native_bindings.h"
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "execution/definition.h"
 #include "execution/module.h"
+#include "execution/module_effects.h"
 #include "execution/status.h"
 #include "execution/wasm_jit.h"
+#include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arrays.h"
 #include "runtime/native_capabilities.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/copy.h"
 #include "types/record.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
 /* Proposed authored construction path, not the current one-pass Studio C
- * producer. Five fixed cases: 84 direct callbacks, four reference snapshots,
+ * producer. Six fixed cases: 84 direct callbacks, four reference snapshots,
  * eight rejects, four collectable callbacks/two collections, six module
- * preparations and twenty authored invocations.
- * Maximum sixteen rows, twelve fields, no I/O/workers/frames or timing loop. */
+ * preparations and twenty authored invocations, plus one two-backend package
+ * preparation with 48 in-place local array calls in plain and collectable storage.
+ * Maximum sixteen rows in the measured cases and 200,000 appended items in the
+ * in-place case; no I/O/workers/frames or timing loop. */
 static arena producer, storage;
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -565,12 +572,13 @@ static bool run(behavior_backend backend, int count, const char *source_text, co
 }
 TEST_CASE(row_array_authored_construction)
 {
-    /* Exact selected-copy predictions for derived counted add versus canonical
-     * append. Constructor, argument and return work remains in these totals. */
-    static const uint64_t row_copies[][4] = { { 0, 5, 17, 65 }, { 0, 7, 37, 337 } };
+    /* Exact selected-copy predictions for an in-place local add and an
+     * in-place append of one-row arrays: both are linear in the row count.
+     * Constructor, argument and return work remains in these totals. */
+    static const uint64_t row_copies[][4] = { { 0, 5, 17, 65 }, { 0, 6, 21, 81 } };
     static const uint64_t text_bytes[][4] = { { 0, 225, 900, 3600 },
-                                              { 0, 315, 1800, 15840 } };
-    static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 24, 93, 549 } };
+                                              { 0, 270, 1080, 4320 } };
+    static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 22, 73, 277 } };
     static const char *sources[] = {
         "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
@@ -585,7 +593,6 @@ TEST_CASE(row_array_authored_construction)
         for (int b = 0; b < 2; b++) {
             cleanup();
             REQUIRE(compile(sources[operation], backends[b]));
-            REQUIRE((bool)body()->rows == (operation == 0));
             for (int n = 0; n < 4; n++) {
                 char input[] = "producer";
                 REQUIRE(
@@ -633,6 +640,219 @@ TEST_CASE(row_array_authored_retained_prefix)
     }
     return true;
 }
+/* A local's own array grows and changes in place; every other value keeps its
+ * snapshot. 200,000 appends finish only because each one is amortized O(1). */
+/* The pc of the first watch at a source offset, or -1. */
+static int watch_pc(const behavior_function *f, int start, bool output, int ordinal)
+{
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        const behavior_source_watch *w = i->op == BF_SOURCE_WATCH
+                                           ? &f->source_watches[i->target]
+                                           : NULL;
+        if (w && w->origin.start == start && w->output == output &&
+            w->ordinal == ordinal) {
+            return pc;
+        }
+    }
+    return -1;
+}
+/* The pc of the first assignment point at a source offset, or -1. */
+static int symbol_point_pc(const behavior_function *f, int start)
+{
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_SOURCE_POINT &&
+            f->source_points[i->left].kind == SCRIPT_RECORD_SYMBOL &&
+            f->source_points[i->left].start == start) {
+            return pc;
+        }
+    }
+    return -1;
+}
+TEST_CASE(row_array_local_arrays_update_in_place)
+{
+    static const char source
+        [] = "package arrays\n"
+             "Row :: struct { a: int; b: string; }\n"
+             "Holder :: union { Some(items: int[]) }\n"
+             "Build :: (n: int) -> int {\n"
+             "    items: int[] = [];\n"
+             "    i: int = 0;\n"
+             "    while (i < n) { items = array_add(items, i); i += 1; }\n"
+             "    items[n - 1] = 7;\n"
+             "    return length(items) + items[n - 1] + items[n - 2];\n"
+             "}\n"
+             "Alias :: () -> int {\n"
+             "    a: int[] = [1, 2];\n"
+             "    b := a;\n"
+             "    a = array_add(a, int(3));\n"
+             "    a[0] = 9;\n"
+             "    return b[0] * 1000 + length(b) * 100 + a[0] * 10 + "
+             "length(a);\n"
+             "}\n"
+             "Count :: (xs: int[]) -> int { return length(xs); }\n"
+             "Borrow :: () -> int {\n"
+             "    xs: int[] = [];\n"
+             "    xs = array_add(xs, int(1));\n"
+             "    n := Count(xs);\n"
+             "    xs = array_add(xs, int(2));\n"
+             "    return n * 10 + Count(xs);\n"
+             "}\n"
+             "Iterate :: () -> int {\n"
+             "    xs: int[] = [1, 2, 3];\n"
+             "    total: int = 0;\n"
+             "    for (x in xs) { xs = array_add(xs, x); total += x; }\n"
+             "    return total * 10 + length(xs);\n"
+             "}\n"
+             "Records :: () -> int {\n"
+             "    rows: Row[] = [];\n"
+             "    row: Row = {a: 1, b: \"x\"};\n"
+             "    rows = array_add(rows, row);\n"
+             "    row.a = 5;\n"
+             "    rows[0] = {a: rows[0].a + 1, b: \"y\"};\n"
+             "    return rows[0].a * 10 + row.a;\n"
+             "}\n"
+             "Extend :: () -> int {\n"
+             "    xs: int[] = [1];\n"
+             "    ys: int[] = [2, 3];\n"
+             "    xs = append(xs, ys);\n"
+             "    ys[0] = 9;\n"
+             "    xs = append(xs, xs);\n"
+             "    rows: Row[] = [];\n"
+             "    row: Row = {a: 4, b: \"z\"};\n"
+             "    rows = array_add(rows, row);\n"
+             "    rows = array_add(rows, rows[0]);\n"
+             "    return rows[1].a * 1000 + length(xs) * 100 + xs[1] * 10 + "
+             "xs[5];\n"
+             "}\n"
+             "Named :: () -> int {\n"
+             "    xs: int[] = [1];\n"
+             "    ys: int[] = [2];\n"
+             "    xs = append(other_array: xs, array: ys);\n"
+             "    return xs[0] * 10 + xs[1];\n"
+             "}\n"
+             "Bump :: (values: ref int[]) -> int { values = "
+             "array_add(values, int(9)); return 5; }\n"
+             "Order :: () -> int {\n"
+             "    xs: int[] = [1];\n"
+             "    xs = array_add(xs, Bump(xs));\n"
+             "    return length(xs) * 10 + xs[length(xs) - 1];\n"
+             "}\n"
+             "Rows :: (n: int) -> int {\n"
+             "    rows: Row[] = [];\n"
+             "    i: int = 0;\n"
+             "    while (i < n) {\n"
+             "        row: Row = {a: i, b: \"r\"};\n"
+             "        rows = array_add(rows, row);\n"
+             "        i += 1;\n"
+             "    }\n"
+             "    return rows[n - 1].a + length(rows);\n"
+             "}\n"
+             "Branch :: () -> bool {\n"
+             "    xs: bool[] = [];\n"
+             "    a := length(xs) == 0;\n"
+             "    xs = array_add(xs, a && !a);\n"
+             "    xs[0] = a || !a;\n"
+             "    return length(xs) == 1;\n"
+             "}\n"
+             "Ready :: () -> bool {\n"
+             "    xs: int[] = [];\n"
+             "    xs = array_add(xs, int(1));\n"
+             "    xs = append(xs, xs);\n"
+             "    xs[0] = 2;\n"
+             "    return length(xs) == 2;\n"
+             "}\n"
+             "Payload :: () -> int {\n"
+             "    xs: int[] = [1];\n"
+             "    h := Holder.Some(xs);\n"
+             "    xs = array_add(xs, int(2));\n"
+             "    xs[0] = 7;\n"
+             "    switch h { case .Some(items): return items[0] * 10 + "
+             "length(items); }\n"
+             "}\n";
+    static const struct
+    {
+        const char *name;
+        int argument, expected;
+    } calls[] = { { "Build", 200000, 400005 }, { "Alias", 0, 1293 },
+                  { "Borrow", 0, 12 },         { "Iterate", 0, 66 },
+                  { "Records", 0, 25 },        { "Extend", 0, 4623 },
+                  { "Named", 0, 21 },          { "Order", 0, 25 },
+                  { "Rows", 100000, 199999 },  { "Payload", 0, 11 } };
+    source_package_input inputs[] = { { "arrays/Arrays.chibi", source, sizeof source - 1 } };
+    compiler_fixture fixture = { 0 };
+    REQUIRE(compiler_fixture_prepare(&fixture, inputs, 1));
+    for (int b = 0; b < 2; b++) {
+        /* The append keeps the call's debugger point and watches and stays a
+         * valid query predicate, even with branches in its value: it writes
+         * only the function's own local array. */
+        const execution_module
+            *module = compiler_fixture_package(&fixture, b, "project:arrays")->module;
+        const behavior_function *build = NULL, *ready = NULL, *branch = NULL;
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id ==
+                compiler_fixture_export(&fixture, b, "project:arrays", "Build")) {
+                build = info.body;
+            }
+            if (info.id ==
+                compiler_fixture_export(&fixture, b, "project:arrays", "Ready")) {
+                ready = info.body;
+            }
+            if (info.id ==
+                compiler_fixture_export(&fixture, b, "project:arrays", "Branch")) {
+                branch = info.body;
+            }
+        }
+        REQUIRE(build && ready && branch);
+        REQUIRE(execution_query_predicate_valid(ready, UINT_MAX));
+        REQUIRE(execution_query_predicate_valid(branch, UINT_MAX));
+        int call = (int)(strstr(source, "array_add(items, i)") - source);
+        bool pointed = false;
+        for (int p = 0; p < acount(build->source_points); p++) {
+            pointed |= build->source_points[p].start == call;
+        }
+        REQUIRE(pointed);
+        /* The array argument, both inputs and the result keep their watches,
+         * and the assignment point follows the value. */
+        int statement = (int)(strstr(source, "items = array_add(items, i)") - source);
+        int argument = watch_pc(build, call + (int)strlen("array_add("), true, 0),
+            array = watch_pc(build, call, false, 0),
+            item = watch_pc(build, call, false, 1),
+            assigned = symbol_point_pc(build, statement),
+            result = watch_pc(build, call, true, 0);
+        REQUIRE(argument >= 0 && array > argument && item > array);
+        REQUIRE(assigned > item && result > assigned);
+    }
+    /* Program activations collect their storage; record items must not walk it. */
+    for (int run = 0; run < 4; run++) {
+        int b = run % 2;
+        fixture.collectable = run >= 2;
+        for (size_t i = 0; i < sizeof calls / sizeof *calls; i++) {
+            arena detached = { 0 };
+            pin_value argument = { .type = PIN_I32, .i = calls[i].argument },
+                      out = { 0 };
+            bool takes = !strcmp(calls[i].name, "Build") ||
+                         !strcmp(calls[i].name, "Rows");
+            bool ok = compiler_fixture_call(
+                &fixture,
+                b,
+                "project:arrays",
+                calls[i].name,
+                takes ? &argument : NULL,
+                takes ? 1 : 0,
+                100000000,
+                &detached,
+                &out
+            );
+            REQUIRE(ok && out.type == PIN_I32 && out.i == calls[i].expected);
+            arena_free(&detached);
+        }
+    }
+    compiler_fixture_free(&fixture);
+    return true;
+}
 void test_language_row_array()
 {
     pu_setup(NULL, cleanup);
@@ -641,4 +861,5 @@ void test_language_row_array()
     RUN_TEST_CASE(row_array_call_collectable_results);
     RUN_TEST_CASE(row_array_authored_construction);
     RUN_TEST_CASE(row_array_authored_retained_prefix);
+    RUN_TEST_CASE(row_array_local_arrays_update_in_place);
 }

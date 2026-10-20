@@ -60,6 +60,13 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SYNTAX_DIAGNOSTICS_BYTES "${CHIBI_SYN
 configure_file(syntax_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/syntax_chibi_source.h" @ONLY)
 
+set(source_tokenizer_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/source_tokenizer/Tokenizer.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source_tokenizer_source}")
+file(READ "${source_tokenizer_source}" CHIBI_SOURCE_TOKENIZER_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SOURCE_TOKENIZER_BYTES "${CHIBI_SOURCE_TOKENIZER_HEX}")
+configure_file(source_tokenizer_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/source_tokenizer_chibi_source.h" @ONLY)
+
 set(package_syntax_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_syntax/Extract.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${package_syntax_source}")
 file(READ "${package_syntax_source}" CHIBI_PACKAGE_SYNTAX_HEX HEX)
@@ -232,6 +239,11 @@ add_executable(test_language main.c inferred_string_arrays.c build_workflow.c re
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
 target_sources(test_language PRIVATE syntax_corpus.c syntax_chibi.c compiler_fixture.c package_syntax_chibi.c package_paths_chibi.c)
+target_sources(test_language PRIVATE source_tokenizer_chibi.c)
+# The tokenizer differential reads the checked-in sources at run time.
+set_source_files_properties(source_tokenizer_chibi.c
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c")

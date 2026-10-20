@@ -614,6 +614,14 @@ TOOLS = {
     # Independently review the exact workload before first run; no aggregate.
     'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--syntax-chibi'],
+    # Three cases: every .chibi file below packages/, test/ and tools/ (about
+    # 140, under 1MiB, each <=128KiB) read at run time and tokenized once on
+    # SLJIT against Tree-sitter's leaves and terminators; seventeen fixed sources and
+    # ten hand-written token/error cases on bytecode and SLJIT. Calls capped at
+    # 64 steps per byte. One owner per backend prepares Tokenizer.chibi. No
+    # children, services or GPU; separate build/shared60s, outside the aggregate.
+    'language-source-tokenizer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                        '--source-tokenizer-chibi'],
     # Existing11 extraction cases/32 attempts,32 independent raw parses and
     # 64 Extract invocations across2backends (including nested Diagnose work),
     # each capped at1m instructions. Two reused owners prepare3actualsources

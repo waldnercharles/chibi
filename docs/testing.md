@@ -1301,6 +1301,24 @@ process, service or GPU work. Build separately and independently review the
 exact workload before first execution under one shared 60-second ceiling.
 It remains outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
+the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
+every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about
+145 files under 1 MiB in all, and tokenizes each once on SLJIT; every token's
+kind, span, row and column must match the leaves of the cursor walk
+`compiler_syntax_parse` makes. The scanner's automatic terminators are hidden
+from that walk, so each is read from a node that ends after its last child, or
+after a prototype's field that no `,` or `;` follows. Files Tree-sitter
+rejects, two legacy fixtures today, compare leaves only, and a `>` leaf
+directly followed by `>` or `=` matches one `>>` or `>=`. Seventeen fixed
+sources cover forms the corpus lacks, such as attributes, keywords as names,
+bodies opened on the next line and prototype fields, and ten hand-written
+cases cover terminators directly after a token and Odin's errors with their
+offsets; both run on bytecode and SLJIT. One owner per backend prepares the
+package, and calls are capped at 64 steps per byte. There is no process,
+service or GPU work. The route took about 5 seconds in a local sanitizer build
+and is outside the language aggregate.
+
 The fixed syntax corpus exercises visible missing tokens, ERROR subtrees and
 UTF-8 byte columns after CRLF. It reports hidden-recovery diagnostic counts but
 does not require a witness: the current parser selects visible missing tokens

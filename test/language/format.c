@@ -858,6 +858,7 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b;\n"
+        "        return;\n"
         "    }\n"
         "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return(a * 2.0);\n"
@@ -876,6 +877,7 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b\n"
+        "        return\n"
         "    }\n"
         "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return a * 2.0\n"
@@ -956,24 +958,24 @@ static bool minimize_valid(const script_catalog *in, const char *input, const ch
 TEST_CASE(source_minimize_preserves_wrapper_comments)
 {
     const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
-                        "r = (/* before hé */ a /* after */) } }";
+                        "r = (/* before hé */ a /* after */); return } }";
     REQUIRE(minimize_valid(&catalog, input, input));
     cleanup();
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = (// before\r\n a // after\r\n); } }",
+        "r = (// before\r\n a // after\r\n); return; } }",
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = (// before\r\n a // after\r\n) } }"
+        "r = (// before\r\n a // after\r\n); return } }"
     ));
     cleanup();
     /* Copied operand comments do not prevent removing outer parentheses. */
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = ((a /* same */ + a /* same */ + a)); } }",
+        "r = ((a /* same */ + a /* same */ + a)); return; } }",
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = a /* same */ + a /* same */ + a } }"
+        "r = a /* same */ + a /* same */ + a; return } }"
     ));
     return true;
 }
@@ -983,11 +985,11 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0); } }",
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0) } }"
     ));
@@ -995,10 +997,10 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x := F(a: 1.0, /* separator */ b: 2.0); } }",
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x := F(1.0, /* separator */ 2.0) } }"
     ));
     return true;
@@ -1016,10 +1018,10 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
         &catalog,
         "Demo :: library { total: retain /* declared */ float = 0.0\n"
         "F :: () -> (r: float) { r = float(/* cast */ state./* member "
-        "*/total); } }",
+        "*/total); return; } }",
         "Demo :: library { total: /* declared */ float = 0.0\n"
         "F :: () -> (r: float) { r = float(/* cast */ state./* member "
-        "*/total) } }"
+        "*/total); return } }"
     ));
     return true;
 }
@@ -1027,7 +1029,7 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
 TEST_CASE(source_minimize_distinguishes_comments_from_strings)
 {
     REQUIRE(
-        minimize_valid(&catalog, "Demo :: library { F :: () -> (r: string) { r = (\"/* text */ // text\"); } }", "Demo :: library { F :: () -> (r: string) { r = \"/* text */ // text\" } }")
+        minimize_valid(&catalog, "Demo :: library { F :: () -> (r: string) { r = (\"/* text */ // text\"); return; } }", "Demo :: library { F :: () -> (r: string) { r = \"/* text */ // text\"; return } }")
     );
     return true;
 }
@@ -1035,7 +1037,7 @@ TEST_CASE(source_minimize_distinguishes_comments_from_strings)
 TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer)
 {
     const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
-                        "r = (/* before hé */ a /* after */) } }";
+                        "r = (/* before hé */ a /* after */); return } }";
     char *minimized = authoring_source_minimize(input, &catalog, "Demo");
     REQUIRE(minimized && !strcmp(input, minimized));
     bool valid = configured(
@@ -1058,7 +1060,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
 {
     const char *input = "Demo :: library { count: retain int = 0\n"
                         "F :: () -> (r: int) { local: retain int = 1\n"
-                        "r = (/* keep */ state.count + local); } }";
+                        "r = (/* keep */ state.count + local); return; } }";
     REQUIRE(format(input));
     REQUIRE(strstr(text, "count: retain int = 0"));
     REQUIRE(strstr(text, "local: retain int = 1"));
@@ -1069,7 +1071,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
         input,
         "Demo :: library { count: int = 0\n"
         "F :: () -> (r: int) { local: retain int = 1\n"
-        "r = (/* keep */ count + local) } }"
+        "r = (/* keep */ count + local); return } }"
     ));
     free(again);
     char error[192];

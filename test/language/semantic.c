@@ -932,6 +932,8 @@ TEST_CASE(language_loops_reverse_explicitly)
     REQUIRE(diagnostic("for < reverses only ranges and arrays"));
     parse("L :: library { F :: (m: Map<string, int>) { for < k, v in m {} } }");
     REQUIRE(diagnostic("for < reverses only ranges and arrays"));
+    return true;
+}
 /* A function with results ends in a terminating statement, as Go and Odin
  * require: a return, an if/else or exhaustive switch whose every branch
  * terminates, or a while (true) that nothing breaks out of. */

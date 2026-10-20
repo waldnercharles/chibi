@@ -8,7 +8,7 @@
 
 /* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
  * needs a capability or syntax that an older host lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 3
+#define CHIBI_BUILD_HOST_PROTOCOL 4
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 typedef struct

@@ -885,6 +885,30 @@ TEST_CASE(source_minimize_drops_redundant_text)
     return true;
 }
 
+TEST_CASE(source_minimize_treats_character_literals_as_literals)
+{
+    REQUIRE(minimize(
+        "Demo :: library {\n"
+        "    Next :: (c: char = 'a') -> char {\n"
+        "        d: char = ('b');\n"
+        "        return d;\n"
+        "    }\n"
+        "    Use :: () -> char {\n"
+        "        return Next('a');\n"
+        "    }\n"
+        "}\n",
+        "Demo :: library {\n"
+        "    Next :: (c: char = 'a') -> char {\n"
+        "        d := 'b'\n"
+        "        return d\n"
+        "    }\n"
+        "    Use :: () -> char {\n"
+        "        return Next()\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_minimize_reaches_a_fixed_point)
 {
     /* Each round drops only the outermost of nested redundant parentheses. */
@@ -1712,6 +1736,7 @@ void test_language_format()
     RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_treats_character_literals_as_literals);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_preserves_wrapper_comments);
     RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);

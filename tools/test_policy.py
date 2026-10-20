@@ -232,6 +232,11 @@ TOOLS = {
     # started and stopped in-process. No network. Well within one shared 60s.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
+    # One case: the Release chibi-compile's --docs builds the repository's published
+    # site from copies of the pages docs/site.kdl lists, in a temporary root. One
+    # compiler child (about a second) and a few copies; no network or GPU.
+    'published-docs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                       '--published-docs', str(ROOT / os.environ.get('CHIBI_COMPILE', 'build-release/sdk/chibi-compile'))],
     # The packaged SDK's launcher in place (make package-sdk first): three cases,
     # one tiny project, package tree and site, one native export; no player frames.
     'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
@@ -993,13 +998,13 @@ GROUPS = {
                'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
                'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs', 'shader-bake', 'terrain-seams', 'terrain-storage',
                'material-surface-mesh', 'scene3d-camera', 'scene3d-volume', 'scene3d-terrain'],
-    # Whole projects, imported assets and the Release chibi_ctl: feature coverage,
-    # project validation and prototype expansion, mesh and model import, the
-    # controller and render fixture command-response cases, and Terrain Lab's
-    # authored save/load restart.
+    # Whole projects, imported assets and the Release chibi_ctl and chibi-compile:
+    # feature coverage, project validation and prototype expansion, mesh and model
+    # import, the controller and render fixture command-response cases, Terrain
+    # Lab's authored save/load restart, and the published documentation site.
     'projects': ['mesh-files', 'model-import', 'validate-project', 'prototype-expansion',
                  'controller', 'feature-coverage', 'render-fixture', 'material-bake', 'environment-authoring', 'terrain-checkpoint', 'terrain-storage-commands',
-                 'terrain-playable'],
+                 'terrain-playable', 'published-docs'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     # First measurement of the combined candidate remains under one shared60s.

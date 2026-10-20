@@ -2635,6 +2635,86 @@ TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
     }
     return true;
 }
+/* char holds one Unicode scalar: char(n) and char arithmetic fail outside one. */
+TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars)
+{
+    const char *source = "Letters :: behavior {\n"
+                         "  code: int = 0; next: int = 0; digit: int = 0;\n"
+                         "  step: int = 0; letter: char = 'a';\n"
+                         "  on Impulse(amount, enabled) {\n"
+                         "    letter = char(0x1F408); code = letter;\n"
+                         "    next = letter + 1; digit = '7' - '0';\n"
+                         "    if (enabled) { letter = char(step + 0xD800); }\n"
+                         "    if (!enabled) { letter = char(0x10FFFF) + 1; }\n"
+                         "  }\n"
+                         "}";
+    const char *const failing[] = { "char(step + 0xD800)", "char(0x10FFFF) + 1" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int c = 0; c < 2; c++) {
+            prepare();
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance != NULL);
+            pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                 { .type = PIN_BOOL, .b = c == 0 } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) < 0);
+            const execution_program_failure *failure = execution_program_error(program);
+            int start = (int)(strstr(source, failing[c]) - source);
+            REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
+            REQUIRE(!strcmp(failure->message, "Value does not fit in char"));
+            REQUIRE(failure->start == start);
+            REQUIRE(int_state(instance, "code", PIN_I32, 0x1F408));
+            REQUIRE(int_state(instance, "next", PIN_I32, 0x1F409));
+            REQUIRE(int_state(instance, "digit", PIN_I32, 7));
+            REQUIRE(int_state(instance, "letter", PIN_I32, 0x1F408));
+            execution_program_free(program);
+            program = NULL;
+        }
+    }
+    return true;
+}
+/* A char beside an int compares as an int, and ASCII steps pass the scalar
+ * check, whose surrogate test wraps below 0xD800; -c is no scalar. */
+TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
+{
+    const char
+        *source = "Steps :: behavior {\n"
+                  "  below: bool = false; same: bool = true; code: int = 0;\n"
+                  "  minus: int = -1; letter: char = 'a';\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    below = minus < letter; same = minus == letter;\n"
+                  "    letter += 1; letter = letter + 1; code = letter;\n"
+                  "    if (enabled) { letter = -letter; }\n"
+                  "  }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int failing = 0; failing < 2; failing++) {
+            prepare();
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance != NULL);
+            pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                 { .type = PIN_BOOL, .b = failing } };
+            int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+            REQUIRE(failing ? status < 0 : status >= 0);
+            REQUIRE(int_state(instance, "below", PIN_BOOL, 1));
+            REQUIRE(int_state(instance, "same", PIN_BOOL, 0));
+            REQUIRE(int_state(instance, "code", PIN_I32, 'c'));
+            if (failing) {
+                const execution_program_failure *failure = execution_program_error(program);
+                REQUIRE(failure && !strcmp(failure->message, "Value does not fit in char"));
+                REQUIRE(failure->start == (int)(strstr(source, "-letter") - source));
+            }
+            execution_program_free(program);
+            program = NULL;
+        }
+    }
+    return true;
+}
 /* A write outside a local's array fails at the assignment, as other writes do. */
 /* Suspending mid-build collects the payload while the local keeps its grown
  * items: the collection keeps the current buffer and reclaims the outgrown
@@ -8819,6 +8899,8 @@ void test_language_program()
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_expect_fails_with_its_message_and_position);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
+    RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);

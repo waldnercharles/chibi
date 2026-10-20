@@ -613,9 +613,9 @@ static void delete_line(collector *c, TSNode node)
 }
 static bool literal(TSNode value)
 {
-    return is(value, "number") || is(value, "string") || is(value, "boolean") ||
-           is(value, "nil") || is(value, "struct_expression") ||
-           is(value, "array_expression") ||
+    return is(value, "number") || is(value, "string") ||
+           is(value, "character") || is(value, "boolean") || is(value, "nil") ||
+           is(value, "struct_expression") || is(value, "array_expression") ||
            (is(value, "unary_expression") && is(field(value, "operand"), "number"));
 }
 static TSNode argument_value(TSNode argument)
@@ -891,6 +891,7 @@ static bool primary_at(const collector *c, script_range range)
                                              "parenthesized_expression",
                                              "builtin_reference",
                                              "number",
+                                             "character",
                                              "string",
                                              "boolean" };
     for (size_t i = 0; i < sizeof primaries / sizeof *primaries; i++) {

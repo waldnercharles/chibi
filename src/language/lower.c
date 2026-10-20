@@ -330,9 +330,81 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
 {
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
+/* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
+ * the surrogates. As a uint64 a negative value lies above the range, and
+ * value - 0xD800 falls below 0x800 only for a surrogate. */
+static void char_check(lower *l, int slot, pin_type storage, script_range range)
+{
+    static const char message[] = "Value does not fit in char";
+    int wide = storage == PIN_U64
+                 ? slot
+                 : value_op(
+                       l,
+                       (behavior_function_instruction){ .op = BF_CAST,
+                                                        .type = PIN_U64,
+                                                        .left = slot,
+                                                        .target = BEHAVIOR_CAST_WRAP },
+                       range
+                   );
+    int high = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x10FFFF }, range);
+    int in_range = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_LE, .type = PIN_U64, .left = wide, .right = high },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = in_range,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
+    int offset = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        range
+    );
+    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int scalar = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = scalar,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+}
 /* Implicit conversions are lossless; explicit T(value) carries its mode. */
 static int convert_mode(lower *l, int slot, script_type from, script_type to, behavior_cast_mode mode, script_range range)
 {
+    if (script_type_char(to) && !script_type_char(from) && from.storage >= PIN_I8 &&
+        from.storage <= PIN_U64 && !(from.flags & SCRIPT_TYPE_UNTYPED)) {
+        char_check(l, slot, from.storage, range);
+        if (slot_type(from) == PIN_I32) {
+            return slot;
+        }
+        return value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_CAST,
+                                             .type = PIN_I32,
+                                             .left = slot,
+                                             .target = BEHAVIOR_CAST_WRAP },
+            range
+        );
+    }
     if (((to.flags & SCRIPT_TYPE_UNION) && to.container == PIN_CONTAINER_SINGLE &&
          !(to.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
          ((from.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
@@ -537,17 +609,21 @@ static int binary(lower *l, script_operator op, int left, int right, script_type
             range
         );
     }
-    return value_op(
+    bool comparison = code >= BF_LT && code <= BF_NE;
+    int result = value_op(
         l,
         (behavior_function_instruction){ .op = code,
-                                         .type = code >= BF_LT && code <= BF_NE
-                                                   ? slot_type(operand)
-                                                   : slot_type(type),
+                                         .type = comparison ? slot_type(operand)
+                                                            : slot_type(type),
                                          .left = left,
                                          .right = right,
                                          .target = -1 },
         range
     );
+    if (script_type_char(type) && !comparison) {
+        char_check(l, result, PIN_I32, range);
+    }
+    return result;
 }
 static int short_circuit(lower *l, const script_expression *e)
 {
@@ -4257,23 +4333,19 @@ static int expression_value(lower *l, int index)
             if (e->op == SCRIPT_OP_NONE) {
                 return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
             }
-            if (e->op == SCRIPT_OP_NEG) {
-                return value_op(
+            if (e->op == SCRIPT_OP_NEG || e->op == SCRIPT_OP_BIT_NOT) {
+                int result = value_op(
                     l,
-                    (behavior_function_instruction){ .op = BF_NEG,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
+                    (behavior_function_instruction){
+                        .op = e->op == SCRIPT_OP_NEG ? BF_NEG : BF_BIT_NOT,
+                        .type = slot_type(e->type),
+                        .left = left },
                     e->range
                 );
-            }
-            if (e->op == SCRIPT_OP_BIT_NOT) {
-                return value_op(
-                    l,
-                    (behavior_function_instruction){ .op = BF_BIT_NOT,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
-                    e->range
-                );
+                if (script_type_char(e->type)) {
+                    char_check(l, result, PIN_I32, e->range);
+                }
+                return result;
             }
             if (e->op == SCRIPT_OP_NOT) {
                 pin_type operand = l->a->expressions[e->left].type.flags &
@@ -4328,8 +4400,13 @@ static int expression_value(lower *l, int index)
                                     ? e->type
                                     : l->a->expressions[e->left].type;
             if (e->type.storage == PIN_BOOL && script_type_numeric(operand)) {
-                /* Integers compare in the type holding both, as arithmetic does. */
+                /* Integers compare in the type holding both, as arithmetic does;
+                 * a char beside another integer compares as that integer. */
                 script_type other = l->a->expressions[e->right].type;
+                if (script_type_char(operand) != script_type_char(other)) {
+                    operand.nominal = script_type_char(operand) ? 0 : operand.nominal;
+                    other.nominal = script_type_char(other) ? 0 : other.nominal;
+                }
                 pin_type common = behavior_scalar_common_integer(
                     operand.storage,
                     other.storage

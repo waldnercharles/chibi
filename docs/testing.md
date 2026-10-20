@@ -37,20 +37,29 @@ make test-tools          # tooling and process integrations, separate build-tool
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-projects` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
-`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
+`make test-projects` also builds an unsanitized Release `chibi_ctl` and
+`chibi-compile` in `build-release/`: `chibi_ctl` for `validate-project`,
+`prototype-expansion`, `controller` and `render-fixture`, and `chibi-compile` for
+`published-docs`. `validate-project` starts `chibi_ctl` dozens of times; each
 start builds the authoring catalog, and under ASan those starts alone take
 longer than the deadline. The project selectors left the native group when it
 reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
 coverage, mesh files, project validation and model import alone took 33 s.
 
+`published-docs` copies `docs/site.kdl` and every page, package folder and
+grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
+which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
+must parse, and each whole package must analyze, so a language change that
+breaks one fails `make test-projects` instead of the next site build. The site
+it writes stays out of the source tree. The Release `--docs` took 0.2–1.0 s on
+an M-series Mac under load; the sanitized one took 5–9 s.
+
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced and that Release `chibi_ctl`, except
+the drivers `make test-build` produced and those Release tools, except
 `language-package-compiler-chibi-bootstrap`, which runs the Release
 `test_language` that `make test-bootstrap` builds; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
-build.
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL` or
+`CHIBI_COMPILE` to use another build.
 
 `python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
 checked-in fixture projects with Release `chibi_ctl --format --check`, under
@@ -2101,7 +2110,7 @@ their precedence over the cache, failure/retry and exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
-missing host, one that fails the protocol query and one that reports protocol 2,
+missing host, one that fails the protocol query and one that reports protocol 3,
 and authored orchestration for a compatible host, including paths with spaces;
 four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are

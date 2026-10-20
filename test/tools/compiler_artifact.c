@@ -553,7 +553,8 @@ TEST_CASE(binary_budget_failure_has_no_output)
     }
     return true;
 }
-static bool binary_product(
+static bool binary_output(
+    const char *option,
     const char *input,
     const char *destination,
     int backend,
@@ -574,12 +575,22 @@ static bool binary_product(
                            "10000",
                            "--timeout-ms",
                            "10000",
-                           "--output-artifact",
+                           option,
                            destination,
                            NULL };
     REQUIRE(capture(argv, status, environment));
     REQUIRE(!out.size);
     return true;
+}
+static bool binary_product(
+    const char *input,
+    const char *destination,
+    int backend,
+    int status,
+    const char *const *environment
+)
+{
+    return binary_output("--output-artifact", input, destination, backend, status, environment);
 }
 static bool binary_counters(int backend)
 {
@@ -735,6 +746,20 @@ TEST_CASE(binary_invalid_artifact_preserves_destination)
     }
     return true;
 }
+/* --output-bytes writes whatever bytes the entry returns, without loading them
+ * as a compiler, and refuses an empty result, keeping the destination. */
+TEST_CASE(binary_raw_output_writes_bytes_that_are_no_compiler)
+{
+    const char *name = "raw bytes";
+    REQUIRE(write_bytes(name, sentinel, sizeof sentinel));
+    REQUIRE(binary_output("--output-bytes", "empty.json", name, 0, 1, NULL));
+    REQUIRE(strstr(errors, "the compiler entry returned no bytes"));
+    REQUIRE(file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
+    REQUIRE(binary_output("--output-bytes", "octets.json", name, 0, 0, NULL));
+    REQUIRE(!file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
+    REQUIRE(binary_product("octets.json", name, 0, 1, NULL));
+    return true;
+}
 TEST_CASE(binary_rename_failure_preserves_directory)
 {
     const char *name = "output directory";
@@ -840,6 +865,7 @@ void test_tool_compiler_artifact(const char *producer, const char *host)
     RUN_TEST_CASE(binary_budget_failure_has_no_output);
     RUN_TEST_CASE(binary_publication_reloads_both_backends);
     RUN_TEST_CASE(binary_invalid_artifact_preserves_destination);
+    RUN_TEST_CASE(binary_raw_output_writes_bytes_that_are_no_compiler);
     RUN_TEST_CASE(binary_rename_failure_preserves_directory);
     RUN_TEST_CASE(binary_deadline_and_usage_preserve_destination);
     pu_clear_setup();

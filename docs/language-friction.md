@@ -439,7 +439,10 @@ other package. It has only the build host's natives (`build.before`,
 with no length, index, contains or split. Moving `configure_inputs.py
 package-enabled` into it meant writing `Contains` as
 `build.before(text, part) != text` and parsing `NAME[:TYPE]=VALUE` with nested
-before/after calls.
+before/after calls. `tools/toolchain/StageOne.chibi` first escaped sources as
+JSON strings with a before/after loop per special character, but build values
+are never freed, so each replacement copied the whole text and an 800-line
+source exceeded the 32 MB value limit; `chibi-compile` now writes the JSON.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
   (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.

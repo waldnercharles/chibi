@@ -1884,9 +1884,10 @@ takes about 6 s.
   the order stage one reaches them. Each compiles alone, so stage one can
   pass one story before it compiles another.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
-  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
-  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
-  `build/sdk/chibi-compile` until stage one compiles stories.
+  --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
+  entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
+  select them. Both default to `build/sdk/chibi-compile`, since stage one
+  compiles only Counter so far.
 - **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
   `chibi-build-host`. Its `Rebuild` entry compiles each story with each
   compiler and plays them, and `Diff` compares two traces.
@@ -1906,11 +1907,15 @@ takes about 6 s.
     `authoring_project_assemble`, writes that artifact again byte for byte.
     A source without its module, or a module of no source, is refused. This
     is the assembly a stage-one route uses for modules stage one compiled.
-  - `chibi-compile --project-root ROOT --stage-one-target FILE` exports what a
-    story's behavior links against, for stage one. The test compares its
-    types with the requirements of the module stage zero writes for Counter
-    (all 112, in order: ID, layout, storage, size and name). It also compares
-    the module's events (ID, ABI and payload fields) and the entity type.
+    `chibi-compile --modules` refuses a file that is no closure and writes no
+    artifact.
+  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports stage
+    one's `CompileBehaviors` input for a story: its executable sources' identities
+    and texts, then what they link against. For Counter, the test checks the
+    behavior's identity and source. It compares the types with the
+    requirements of the module stage zero writes (all 112, in order: ID,
+    layout, storage, size and name), and the module's events (ID, ABI and
+    payload fields) and entity type.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.
@@ -1918,10 +1923,27 @@ takes about 6 s.
     frames, is refused rather than matched; the observer removes the trace
     unless every story played.
 
+`make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
+Counter with `chibi-compile` and with stage one's route,
+`tools/toolchain/StageOne.chibi`, and compares them as above. The route:
+1. recovers stage one from the bootstrap artifact and the compiler sources
+   with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and
+   keeps it under `.chibi/stage-one` for the digest of those sources, the
+   artifact and the host, replacing the closure kept for an older digest;
+2. exports stage one's input with `chibi-compile --stage-one-input`;
+3. runs stage one's `CompileBehaviors` on it with `chibi-compiler-host
+   --output-bytes`. When stage one rejects a behavior, the route reports
+   `BehaviorRejection`'s identity, line, column and message;
+4. assembles the artifact with `chibi-compile --modules`.
+
+`CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
+takes about 19 s when it recovers stage one and 2 s once it is kept.
+
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects fifteen tooling
-cases and two cases in one child producer. Build `test_language`, `test_tools`
+`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
+cases and two cases in one child producer. One checks that `--output-bytes`
+writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
 preparations), serializes its executable modules and checks that reversed record

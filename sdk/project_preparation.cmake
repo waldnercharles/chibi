@@ -45,9 +45,11 @@ list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-compile "${CHIBI_SDK_ROOT}/src/host/compile_main.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c")
-    configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target/toolchain/compiler_target.h" COPYONLY)
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c" "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c")
+    foreach(header compiler_target compiler_artifact)
+        configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target/toolchain/${header}.h" COPYONLY)
+    endforeach()
     target_include_directories(chibi-compile PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target")
     target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation Chibi::project_document
         chibi_behavior_runtime chibi_asset_json)

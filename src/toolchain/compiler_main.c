@@ -167,14 +167,15 @@ static int usage()
         stderr,
         "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
         "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
-        "--output-artifact FILE]\n"
+        "--output-artifact FILE | --output-bytes FILE]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
-        "[--seed DIR [--revision TEXT]]\n"
+        "[--seed DIR [--revision TEXT] | --recover FILE]\n"
     );
     return 1;
 }
 /* --bootstrap DIR checks the bootstrap artifact in DIR against the compiler
- * sources; with --seed it writes one from a seed instead. */
+ * sources, and with --recover writes the compiler it recovers; with --seed it
+ * writes an artifact from a seed instead. */
 static int bootstrap(const compiler_bootstrap *b)
 {
     char report[512] = { 0 };
@@ -194,6 +195,9 @@ static int bootstrap(const compiler_bootstrap *b)
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *input = NULL, *output_artifact = NULL;
+    /* --output-bytes writes a byte[] result that is not a compiler, such as
+     * a game's modules, without loading it as one. */
+    bool raw = false;
     uint64_t entry = 0, budget = 0, timeout = 0;
     behavior_backend backend = BEHAVIOR_UNAVAILABLE;
     bool batch = false;
@@ -212,7 +216,8 @@ int main(int argc, char **argv)
                                      : !strcmp(key, "--core") ? &boot.core
                                      : !strcmp(key, "--seed") ? &boot.seed
                                      : !strcmp(key, "--revision") ? &boot.revision
-                                                                  : NULL;
+                                     : !strcmp(key, "--recover") ? &boot.output
+                                                                 : NULL;
         if (bootstrap_value && !*bootstrap_value && *value) {
             *bootstrap_value = value;
         } else if (bootstrap_value) {
@@ -221,8 +226,9 @@ int main(int argc, char **argv)
             artifact = value;
         } else if (!strcmp(key, "--input") && !input) {
             input = value;
-        } else if (!strcmp(key, "--output-artifact") && !output_artifact && *value) {
+        } else if ((!strcmp(key, "--output-artifact") || !strcmp(key, "--output-bytes")) && !output_artifact && *value) {
             output_artifact = value;
+            raw = !strcmp(key, "--output-bytes");
         } else if (!strcmp(key, "--entry") && !entry) {
             if (!number(value, 16, &entry)) {
                 return usage();
@@ -247,11 +253,12 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (boot.folder || boot.compiler || boot.core || boot.seed || boot.revision) {
+    if (boot.folder || boot.compiler || boot.core || boot.seed ||
+        boot.revision || boot.output) {
         bool alone = !artifact && !input && !output_artifact && !entry && !budget &&
                      !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
         bool complete = boot.folder && boot.compiler && boot.core &&
-                        (boot.seed || !boot.revision);
+                        (boot.seed || !boot.revision) && !(boot.seed && boot.output);
         return alone && complete ? bootstrap(&boot) : usage();
     }
     if (!artifact || !input || !entry || !budget ||
@@ -323,7 +330,11 @@ int main(int argc, char **argv)
             ok = false;
             snprintf(error, sizeof error, "compiler invocation cancelled or timed out");
         }
-        if (ok) {
+        if (ok && raw && !result.length) {
+            ok = false;
+            snprintf(error, sizeof error, "the compiler entry returned no bytes");
+        }
+        if (ok && !raw) {
             /* Runtime-only validation, never source compilation or serialization.
              * Bytecode avoids preparing a second selected-backend JIT. */
             compiler_host *validation = compiler_host_load(

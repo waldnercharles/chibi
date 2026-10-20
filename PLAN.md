@@ -1035,18 +1035,21 @@ modules into a game artifact. Project preparation is now split for it:
 `authoring_project_assemble` writes the artifact from the project's
 declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
-its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
-behavior links against: Compile's six target arguments, then the catalog's
-events, the type requirements stage zero lists, and the entity type. Stage
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-input FILE` exports stage one's input for a
+project: its executable sources, Compile's six target arguments, then the
+catalog's events, the type requirements stage zero lists, and the entity
+type. Stage
 one's `CompileBehavior` compiles Counter's behavior asset: retained state, an
 event handler, `self` and a component field write through the reference
 intrinsics, with the writer's state, event and component tables. Its module
 has stage zero's identities and plays as stage zero's does
-(`docs/package-compiler.md#behaviors`). Next, in order:
-1. The route: a Chibi program that runs stage one on a story with that
-   target, flattened to `CompileBehavior`'s game tables, then this assembly
-   through a narrow binding, as game-equivalence's candidate.
-2. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
+(`docs/package-compiler.md#behaviors`). Stage one's route,
+`tools/toolchain/StageOne.chibi`, rebuilds Counter as stage zero does: it
+recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
+the exported input, and assembles the artifact with `chibi-compile
+--modules` (`make test-stage-one`). Next: Motion,
+Controls, Results and Follow, in the stories' order, each added to that
+selector as stage one compiles it. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

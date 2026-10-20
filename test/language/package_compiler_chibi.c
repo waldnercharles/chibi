@@ -2098,7 +2098,7 @@ enum
     TICK = 11,
     OWNER = 30,
     ENTITY = 700,
-    BEHAVIOR_ARGUMENTS = 10,
+    BEHAVIOR_ARGUMENTS = 13,
     TICKS = 5
 };
 typedef struct
@@ -2280,10 +2280,8 @@ static bool compile_behavior(int b, const char *identity, const char *source, pi
     REQUIRE(arguments(b, NULL, 0, compile));
     args[0] = text(identity);
     args[1] = text(source);
-    args[2] = compile[5];
-    args[3] = compile[6];
-    args[4] = compile[7];
-    REQUIRE(game_arguments(b, &args[5]));
+    memcpy(&args[2], &compile[5], 6 * sizeof *args);
+    REQUIRE(game_arguments(b, &args[8]));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
     );
@@ -2553,10 +2551,9 @@ static bool takes_project_identities(int b)
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",
-                                 "CompileClosure",
-                                 "CompileBehavior",
-                                 "Declare",
+    const char *const once[] = { "Compile",           "CompileClosure",
+                                 "CompileBehavior",   "CompileBehaviors",
+                                 "BehaviorRejection", "Declare",
                                  "DeclarePackage" };
     const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
                                           ->module->plan;

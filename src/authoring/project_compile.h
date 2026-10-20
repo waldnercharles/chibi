@@ -1,4 +1,5 @@
 #pragma once
+#include "runtime/behaviors/package.h"
 #include "runtime/native_capabilities.h"
 
 typedef struct authoring_graph_catalog authoring_graph_catalog;
@@ -15,6 +16,15 @@ void authoring_application_end(authoring_application *);
  * capability composition and writes the artifact plus resource manifest. A
  * NULL output checks the project as it is: nothing is migrated or written. */
 int authoring_project_compile(const char *project, const char *scene, const char *output);
+/* The same artifact assembled from `modules`, one for each of the project's
+ * executable sources, as another compiler prepared them, instead of compiling
+ * the sources. Borrows `modules`. */
+int authoring_project_compile_modules(
+    const char *project,
+    const package_module *modules,
+    int count,
+    const char *output
+);
 /* chibi test: loads every package below root, the project: collection, with
  * the core collection at core; both are absolute directories. Prepares them
  * for the natives that need no running game and runs each `@test` function on

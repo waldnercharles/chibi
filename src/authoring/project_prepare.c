@@ -851,6 +851,7 @@ struct authoring_project_catalog
     chibi_project project;
     declared_components *declared;
     authoring_language_catalog *native;
+    source_catalog *sources;
 };
 authoring_project_catalog *authoring_project_catalog_open(
     const authoring_project_options *options,
@@ -876,6 +877,13 @@ authoring_project_catalog *authoring_project_catalog_open(
         );
         valid = catalog->native != NULL;
     }
+    if (valid) {
+        catalog->sources = source_catalog_new(
+            catalog->project.content,
+            authoring_language_catalog_view(catalog->native)
+        );
+        valid = catalog_valid(catalog->sources, error, size);
+    }
     if (!valid) {
         authoring_project_catalog_free(catalog);
         return NULL;
@@ -886,11 +894,16 @@ const script_catalog *authoring_project_catalog_view(const authoring_project_cat
 {
     return authoring_language_catalog_view(catalog->native);
 }
+const source_catalog *authoring_project_catalog_sources(const authoring_project_catalog *catalog)
+{
+    return catalog->sources;
+}
 void authoring_project_catalog_free(authoring_project_catalog *catalog)
 {
     if (!catalog) {
         return;
     }
+    source_catalog_free(catalog->sources);
     authoring_language_catalog_free(catalog->native);
     declared_components_free(catalog->declared);
     chibi_project_free(&catalog->project);

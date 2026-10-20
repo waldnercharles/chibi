@@ -186,7 +186,15 @@ void authoring_application_end(authoring_application *application)
     authoring_graph_catalog_free(application->graphs);
     native_capabilities_free(application->native);
 }
-int authoring_project_compile(const char *project, const char *scene, const char *output)
+/* Prepares the project, or assembles it from `modules` when there are any,
+ * and writes the artifact to `output` when there is one. */
+static int compile(
+    const char *project,
+    const char *scene,
+    const package_module *modules,
+    int count,
+    const char *output
+)
 {
     char error[512] = { 0 };
     authoring_application application;
@@ -202,7 +210,9 @@ int authoring_project_compile(const char *project, const char *scene, const char
                                                           REGISTRY_COMPONENT_COUNT },
                                           .modules = WORLD_MODULES_ALL,
                                           .read_only = !output };
-    bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
+    bool valid = modules
+                   ? authoring_project_assemble(&options, modules, count, &artifact, error, sizeof error)
+                   : authoring_project_prepare(&options, &artifact, error, sizeof error);
     authoring_application_end(&application);
     if (valid && output) {
         valid = write_artifact(output, &artifact, error, sizeof error);
@@ -216,6 +226,20 @@ int authoring_project_compile(const char *project, const char *scene, const char
     }
     authoring_project_artifact_free(&artifact);
     return valid ? 0 : 1;
+}
+int authoring_project_compile(const char *project, const char *scene, const char *output)
+{
+    return compile(project, scene, NULL, 0, output);
+}
+int authoring_project_compile_modules(
+    const char *project,
+    const package_module *modules,
+    int count,
+    const char *output
+)
+{
+    assert(modules && count > 0 && output);
+    return compile(project, NULL, modules, count, output);
 }
 
 static void print_diagnostic(const char *path, const script_diagnostic *diagnostic)

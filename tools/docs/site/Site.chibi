@@ -123,9 +123,9 @@ pub Foot :: () -> string[] {
 // same contents in a disclosure above the article. Colours follow the system.
 pub Style :: () -> string[] {
     return [
-        ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --syntax-keyword: #8250df; --syntax-string: #0a6533; --syntax-number: #0550ae; --syntax-comment: #62666d; }\n",
+        ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --syntax-keyword: #8250df; --syntax-string: #0a6533; --syntax-number: #0550ae; --syntax-comment: #62666d; --syntax-type: #00645d; --syntax-function: #9a3b00; --syntax-attribute: #9c245b; }\n",
         "@media (prefers-color-scheme: dark) {\n",
-        "  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; --syntax-keyword: #d2a8ff; --syntax-string: #a5d6a7; --syntax-number: #79c0ff; --syntax-comment: #a1a1a6; }\n",
+        "  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; --syntax-keyword: #d2a8ff; --syntax-string: #a5d6a7; --syntax-number: #79c0ff; --syntax-comment: #a1a1a6; --syntax-type: #7ee0d5; --syntax-function: #ffc078; --syntax-attribute: #ff8fba; }\n",
         "}\n",
         "body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--text); background: var(--page); }\n",
         "a { color: var(--link); }\n",
@@ -178,6 +178,9 @@ pub Style :: () -> string[] {
         "pre .chibi-string { color: var(--syntax-string); }\n",
         "pre .chibi-number { color: var(--syntax-number); }\n",
         "pre .chibi-comment { color: var(--syntax-comment); }\n",
+        "pre .chibi-type { color: var(--syntax-type); }\n",
+        "pre .chibi-function { color: var(--syntax-function); }\n",
+        "pre .chibi-attribute { color: var(--syntax-attribute); }\n",
         "table { display: block; overflow-x: auto; border-collapse: collapse; }\n",
         "th, td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }\n",
         "th { background: var(--panel); }\n",

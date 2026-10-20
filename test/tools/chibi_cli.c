@@ -1163,7 +1163,9 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         "🧭&quot;</span>\n"
         "Ratio :: <span class=\"chibi-number\">1.5</span>\n"
         " \t\n"
-        "Double :: (n: int) -&gt; int {\n"
+        "<span class=\"chibi-function\">Double</span> :: (n: <span "
+        "class=\"chibi-type\">int</span>) -&gt; <span "
+        "class=\"chibi-type\">int</span> {\n"
         "\t<span class=\"chibi-keyword\">return</span> n * <span "
         "class=\"chibi-number\">2</span>  <span class=\"chibi-comment\">// "
         "kept &lt;&amp;&gt;</span>\n"
@@ -1268,7 +1270,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
     REQUIRE(
-        file_has("generated/build/docs/packages.html", "<span class=\"chibi-keyword\">pub</span> Sides: int : <span class=\"chibi-number\">4</span>;\n</code></pre>\n<p>Four sides.</p>")
+        file_has("generated/build/docs/packages.html", "<span class=\"chibi-keyword\">pub</span> Sides: <span class=\"chibi-type\">int</span> : <span class=\"chibi-number\">4</span>;\n</code></pre>\n<p>Four sides.</p>")
     );
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")

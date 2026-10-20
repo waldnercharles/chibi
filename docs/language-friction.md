@@ -20,7 +20,7 @@ the entry says so.
 
 ## Stage one rejects untyped locals
 
-Stage one. Before #INTPR an untyped number literal was a `number`, so
+Stage one. Before #558 an untyped number literal was a `number`, so
 `xs = array_add(xs, 0)` appended a double and `index := 0` declared one.
 Integer code wrote `int(0)` and `index: int = 0` instead, and stage one
 rejects untyped locals for this reason. `core:strings` declares two dozen counters as `i: int = 0;`
@@ -46,7 +46,7 @@ becomes `elapsed := 0.0`. Inferring the type from later uses, as Haskell does,
 was rejected: an edit far from the declaration would silently switch `/`
 between integer and floating division.
 
-Implemented for stage zero in #INTPR, with "Numeric literal has a fraction,
+Implemented for stage zero in #558, with "Numeric literal has a fraction,
 which int cannot hold" for `count * 0.5` and "convert with int(value)" for
 a floating value stored in an integer. Stage one still rejects an untyped
 local such as `i := 0`, though its type is now settled.

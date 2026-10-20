@@ -231,7 +231,6 @@ typedef struct behavior_function_context
     uint64_t returned_outcome;
     int pending_commands;
     const pin_value *(*action_result)(struct behavior_function_context *, uint64_t action, int ordinal);
-    const pin_value *(*event_argument)(struct behavior_function_context *, uint64_t function, int ordinal);
     int (*complete_action)(struct behavior_function_context *, uint64_t action, const pin_value *, int count);
     int (*state_inputs)(struct behavior_function_context *, uint64_t action, int entry, int *demand);
     int (*state_transition)(

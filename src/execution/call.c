@@ -306,7 +306,6 @@ static invocation_frame *frame_new(
         .start_task = parent->start_task,
         .release_local = parent->release_local,
         .action_result = parent->action_result,
-        .event_argument = parent->event_argument,
         .complete_action = parent->complete_action,
         .state_inputs = parent->state_inputs,
         .state_transition = parent->state_transition,

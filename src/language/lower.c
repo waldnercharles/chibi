@@ -818,7 +818,6 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_STATE_DEMAND:
                     case EXECUTION_INTRINSIC_STATE_TRANSITION:
                     case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
-                    case EXECUTION_INTRINSIC_EVENT_READ:
                     case EXECUTION_INTRINSIC_ARRAY_PUSH:
                     case EXECUTION_INTRINSIC_ARRAY_STORE:
                     case EXECUTION_INTRINSIC_ARRAY_EXTEND:
@@ -4559,33 +4558,11 @@ static int expression_value(lower *l, int index)
                 l->a->symbols[receiver->symbol].kind == SCRIPT_PARAMETER) {
                 int ordinal = (int)e->offset;
                 int source = l->a->symbols[receiver->symbol].function;
-                if (source >= 0 && source != l->payload_function &&
-                    l->a->functions[source].kind == SCRIPT_FUNCTION_HANDLER) {
-                    pin_value headers[] = { { .type = BF_POINTER_TYPE },
-                                            { .type = PIN_U64,
-                                              .u64 = function_id(l->a, source) },
-                                            { .type = PIN_I32, .i = ordinal } };
-                    int slots[] = { value_op(
-                                        l,
-                                        (behavior_function_instruction){
-                                            .op = BF_CONTEXT,
-                                            .type = BF_POINTER_TYPE,
-                                            .target = 1 },
-                                        e->range
-                                    ),
-                                    -1,
-                                    -1 };
-                    return primitive(
-                        l,
-                        &EXECUTION_event_read_call,
-                        &EXECUTION_assignment_access,
-                        headers,
-                        slots,
-                        3,
-                        e->type,
-                        e->range
-                    );
-                }
+                /* Only the handler that receives a payload reads it. */
+                assert(
+                    source < 0 || source == l->payload_function ||
+                    l->a->functions[source].kind != SCRIPT_FUNCTION_HANDLER
+                );
                 if (source == l->payload_function) {
                     ordinal += l->payload_first;
                 }

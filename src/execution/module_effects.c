@@ -1443,7 +1443,6 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_ACTION_READ:
-        case EXECUTION_INTRINSIC_EVENT_READ:
             for (int j = 0; j < call->result_count; j++) {
                 if (snapshot_storage(f->data_values[call->result_first + j].initial)) {
                     cost_add(c, f, pc, id, 0, allocate_copy, "Value snapshot can allocate and copy managed payload or type metadata");

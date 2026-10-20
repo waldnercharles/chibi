@@ -64,8 +64,8 @@ compiler and `core:strings` drop their `i: int = 0` declarations.
 
 Language and runtime. Stage zero's records hold `int`, `bool`, `string`,
 `byte`, `int64`, `uint64`, `float`, `double` and `number` fields, but no
-arrays, unions or other records. Stage one accepts the integer, `bool` and
-`string` fields but no floating ones. The compiler uses one-variant unions as
+arrays, unions or other records; since #567 stage one accepts the same
+scalar fields. The compiler uses one-variant unions as
 records with arrays (`Step`, `Decimal`) and keeps parallel arrays. The
 prepared writer also pools 64-bit IDs in a `wide` array its records index,
 from when stage one's records held only `int`, `bool` and `string` fields.

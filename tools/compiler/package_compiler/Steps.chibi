@@ -1680,6 +1680,17 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
         slots = append(slots, NumberSlots(right.storage, left.storage));
         right = Typed(at.slot + length(slots) - 1, left.storage, 0, -1);
     }
+    // A float with a double becomes a double.
+    if (Single(left, FloatStorage) && Single(right, DoubleStorage)) {
+        slots = array_add(slots, ValueLocal(DoubleStorage));
+        code = array_add(code, Instruction(ops.convert, DoubleStorage, at.slot + length(slots) - 1, left.slot, 0, 0, node));
+        left = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+    }
+    if (Single(left, DoubleStorage) && Single(right, FloatStorage)) {
+        slots = array_add(slots, ValueLocal(DoubleStorage));
+        code = array_add(code, Instruction(ops.convert, DoubleStorage, at.slot + length(slots) - 1, right.slot, 0, 0, node));
+        right = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+    }
     numeric := Single(left, left.storage) && Single(right, left.storage) && Numeric(left.storage);
     equality := op == ops.eq || op == ops.ne;
     same := Single(right, left.storage) && (Single(left, BoolStorage) || Single(left, TextStorage));
@@ -1864,17 +1875,17 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     stored := value;
-    if (value.container == 0 && Widens(value.storage, field.storage)) {
-        widened: Slot = {storage: field.storage, kind: ValueKind};
-        slots = array_add(slots, widened);
-        code = array_add(code, CastCode(ops, field.storage, at.slot, value.slot, 0, node));
-        stored = Typed(at.slot, field.storage, 0, -1);
+    if (value.container == 0 && value.storage != field.storage && Converts(value.storage, field.storage)) {
+        slots = append(slots, NumberSlots(value.storage, field.storage));
+        code = append(code, NumberCode(ops, value.storage, field.storage, value.slot, at.slot, node));
+        stored = Typed(at.slot + length(slots) - 1, field.storage, 0, -1);
     }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
         op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
-        if (op < 0 || Comparison(ops, op) || !Integer(field.storage) || !Single(stored, field.storage)) {
-            return Fail(forest, item.node, document, "compound assignment needs integer operands of its type");
+        if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
+            !Single(stored, field.storage)) {
+            return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
         }
         if (!Computes(ops, op, field.storage)) {
             return Fail(forest, item.node, document, "unsupported arithmetic type");
@@ -2350,14 +2361,19 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                         NoValue(), marks);
 }
 // Whether a number of type `from` converts to `to` implicitly: an integer
-// widens, or becomes a floating value.
+// widens or becomes a floating value, and the floating types convert to one
+// another.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || (Integer(from) && Floating(to));
+    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a
-// floating value exactly as a double first; anything else casts.
+// floating value exactly as a double first, the floating types convert to
+// one another, and anything else casts.
 NumberCode :: (ops: Ops, from: int, to: int, input: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (Floating(from) && Floating(to)) {
+        return [Instruction(ops.convert, to, slot, input, 0, 0, node)];
+    }
     if (!Integer(from) || !Floating(to)) {
         return [CastCode(ops, to, slot, input, 0, node)];
     }

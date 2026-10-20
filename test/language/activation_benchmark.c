@@ -164,10 +164,12 @@ TEST_CASE(synchronous_activation_benchmark)
     const char *names[] = { "system", "event", "helper-event" };
     const char *sources[] = {
         "Bench :: system() { total:retain double=0; total+=1; }",
-        "Bench :: behavior { total:retain double=0; on Run(amount:double) { "
+        "Bench :: behavior { total:retain double=0; on Run :: (amount: double) "
+        "{ "
         "total+=amount; } }",
         "Bench :: behavior { total:retain double=0; Add :: (value:double, "
-        "amount:double)->double { return value+amount; } on Run(amount:double) "
+        "amount:double)->double { return value+amount; } on Run :: (amount: "
+        "double) "
         "{ total=Add(total,amount); } }",
     };
     for (int backend = 0; backend < 2; backend++) {

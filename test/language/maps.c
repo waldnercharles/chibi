@@ -97,7 +97,8 @@ TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order)
     const char *source =
         "Maps :: behavior { result: int = 0; order: int = 0; "
         "scores: Map<string, int> = {\"Ada\": 1, \"Bea\": 2, \"Ada\": 3}; "
-        "on Run { copy := scores; scores[\"Ada\"] = 10; scores[\"Cid\"] = 4; "
+        "on Run :: () { copy := scores; scores[\"Ada\"] = 10; scores[\"Cid\"] "
+        "= 4; "
         "for key, value in scores { order = order * 10 + value; result += "
         "value; "
         "scores[\"Later\"] = 100; } "
@@ -133,7 +134,8 @@ TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays)
                  "{\"count\": 2}}; "
                  "rows: Map<string, int[]> = {\"values\": [3, 4]}; "
                  "empty: Map<int, string> = {}; "
-                 "on Run { inferred: Map = {\"one\": 1}; all := {\"two\": 2}; "
+                 "on Run :: () { inferred: Map = {\"one\": 1}; all := "
+                 "{\"two\": 2}; "
                  "outer[\"inside\"][\"count\"] += 5; rows[\"values\"][1] = 9; "
                  "result = outer[\"inside\"][\"count\"] + rows[\"values\"][1]; "
                  "if map_has(inferred, \"one\") && map_has(all, \"two\") { "
@@ -161,7 +163,7 @@ TEST_CASE(maps_checked_lookup_reports_missing_keys)
 {
     const char *source = "Missing :: behavior { result: int = 0; values: "
                          "Map<int,int> = {1: 2}; "
-                         "on Run { result = values[99]; } }";
+                         "on Run :: () { result = values[99]; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));
@@ -187,10 +189,11 @@ TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types)
         "Bad :: behavior { m: Map<int,int> = {\"wrong\": 1}; }",
         "Bad :: behavior { m: Map<string,int> = {\"wrong\": true}; }",
         "Bad :: behavior { m: Map<int[],int> = {}; }",
-        "Bad :: behavior { m: Map<int,int> = {}; on Run { key: float = 1; "
+        "Bad :: behavior { m: Map<int,int> = {}; on Run :: () { key: float = "
+        "1; "
         "m[key] = 2; } }",
         "Bad :: behavior { m: Map<string,int> = {}; n: Map<string,bool> = {}; "
-        "on Run { m = n; } }",
+        "on Run :: () { m = n; } }",
     };
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
         syntax = script_parse(invalid[i]);
@@ -320,7 +323,7 @@ TEST_CASE(maps_retain_nested_task_results_until_the_last_handle_is_removed)
         *source = "Maps :: behavior { seen: double = 0; "
                   "jobs: Map<string, Map<string, task<double>>> = {}; "
                   "Work :: () -> double { yield; return 7; } "
-                  "on Run { jobs = {\"outer\": {\"inner\": Work()}}; "
+                  "on Run :: () { jobs = {\"outer\": {\"inner\": Work()}}; "
                   "yield; yield; answer := await jobs[\"outer\"][\"inner\"]; "
                   "if answer is double value { seen = value; } jobs = {}; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -369,7 +372,7 @@ TEST_CASE(maps_inspection_owns_nested_snapshots_after_mutation_and_program_relea
     const char *
         source = "Inspect :: behavior { seen:int=0; "
                  "values:Map<string,Map<string,int[]>>={group:{values:[1,2]}}; "
-                 "on Run { saved:=values; "
+                 "on Run :: () { saved:=values; "
                  "seen=saved[\"group\"][\"values\"][0]; "
                  "values[\"group\"][\"values\"][0]=9; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };

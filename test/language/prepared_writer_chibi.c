@@ -78,11 +78,11 @@ enum
  * payload, and a write to a field of the owner's component. */
 static const char BEHAVIOR[] = "Counter :: behavior {\n"
                                "    steps: int = 0\n"
-                               "    on Tick {\n"
+                               "    on Tick :: () {\n"
                                "        steps += 1\n"
                                "        self.Tally.value = steps\n"
                                "    }\n"
-                               "    on Add(amount: int) {\n"
+                               "    on Add :: (amount: int) {\n"
                                "        steps += amount\n"
                                "    }\n"
                                "}\n";

@@ -89,9 +89,9 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
-        "on Tick as frame(dt: float) { count += int(dt); }\n"
+        "on Tick :: (dt: float) { count += int(dt); }\n"
         "after pending.Completed { destroy(self); }\n"
-        "events Other { on Begin { pending.start(); } }\n"
+        "events Other { on Begin :: () { pending.start(); } }\n"
         "}"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -100,7 +100,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
     TSNode handler = ts_node_named_child(body, 6);
     REQUIRE(!strcmp(ts_node_type(handler), "handler"));
     REQUIRE(node_text(field(handler, "kind"), "on"));
-    REQUIRE(node_text(field(handler, "alias"), "frame"));
+    REQUIRE(node_text(field(handler, "binding"), "::"));
     return true;
 }
 
@@ -261,15 +261,15 @@ TEST_CASE(language_obsolete_symbol_spellings_rejected)
         "Old :: behavior { int value = 0; }",
         "Old :: library { \"Run\" :: () {} }",
         "Old :: behavior { \"count\" := 0; }",
-        "Old :: behavior { on Tick { foreach value in [] {} } }",
-        "Old :: behavior { on Tick { \"done\": goto \"done\"; } }",
+        "Old :: behavior { on Tick :: () { foreach value in [] {} } }",
+        "Old :: behavior { on Tick :: () { \"done\": goto \"done\"; } }",
         "Old :: library { Run :: () { return.\"Done\"; } }",
         "Old :: library { Run :: (value: struct<\"Position\">) {} }",
         "Old :: library { Run :: () { \"Call\"(); } }",
-        "Old :: behavior { on Tick { self.\"Health\" = 0; } }",
-        "Old :: behavior { on Tick { call(\"Value\": 0); } }",
+        "Old :: behavior { on Tick :: () { self.\"Health\" = 0; } }",
+        "Old :: behavior { on Tick :: () { call(\"Value\": 0); } }",
         "Old :: library { return :: () {} }",
-        "Old :: behavior { on Tick { for ref item in items {} } }",
+        "Old :: behavior { on Tick :: () { for ref item in items {} } }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         parse(invalid[i]);
@@ -510,7 +510,7 @@ TEST_CASE(language_query_header_and_cancel_deadline)
         "Home :: system(position: Transform, aim: Targets.Transform, "
         "parent: Velocity? from ancestor(ChildOf) "
         ") where position and (aim or not parent) {\n"
-        "on Tick { charge := Charge(); cancel charge after 1.5 }\n"
+        "on Tick :: () { charge := Charge(); cancel charge after 1.5 }\n"
         "}"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -545,7 +545,7 @@ TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
     parse("Old :: library { function Compute() { return 1 } }");
     REQUIRE(original->diagnostic_count > 0);
-    parse("Old :: behavior { on Tick { match (1) { case 1 { return } } } }");
+    parse("Old :: behavior { on Tick :: () { match (1) { case 1 { return } } } }");
     REQUIRE(original->diagnostic_count > 0);
     return true;
 }

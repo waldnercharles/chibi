@@ -141,7 +141,7 @@ static int dispatch(uint64_t event, unsigned budget)
 TEST_CASE(source_controller_connected_reads_live_slots)
 {
     const char *text = "Controllers :: behavior { slot:retain int=3; "
-                       "connected:retain bool=true; on Tick { "
+                       "connected:retain bool=true; on Tick :: () { "
                        "connected=controller_connected(Controller:slot); } }";
     for (int backend = 0; backend < 2; backend++) {
         world = ecs_world_new();
@@ -183,9 +183,10 @@ TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
     const char *
         text = "Numbers :: behavior { input:retain double=0; number:retain "
                "double=0; found:retain bool=false; fallback:retain double=0; "
-               "missing:retain bool=true; on Begin { "
+               "missing:retain bool=true; on Begin :: () { "
                "absent:=read_saved_number(Key:\"absent\",Default:19.5); "
-               "missing=absent.Found; fallback=absent.Number; } on Tick { "
+               "missing=absent.Found; fallback=absent.Number; } on Tick :: () "
+               "{ "
                "await set_saved_number(Key:\"score\",Number:input); "
                "result:=read_saved_number(Key:\"score\",Default:-1.0); "
                "found=result.Found; number=result.Number; await commit_save(); "

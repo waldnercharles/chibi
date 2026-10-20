@@ -246,7 +246,7 @@ static bool fragment_syntax(const char *fragment, const char *region)
                            ? "__Edit :: behavior {\n"
                        : !strcmp(region, "callable_body")
                            ? "__Edit :: behavior { __Scope :: () {\n"
-                           : "__Edit :: behavior { on Tick {\n";
+                           : "__Edit :: behavior { on Tick :: () {\n";
     const char *suffix = (!strcmp(region, "system_body") ||
                           !strcmp(region, "declaration_body"))
                            ? "\n}"

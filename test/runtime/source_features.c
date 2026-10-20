@@ -292,7 +292,7 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
                 "()->(Phase:double,Pulse:double,Period:double,Duration:double){"
                 " await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
-                "Duration); } on Tick { r:=await Apply(); phase=r.Phase; "
+                "Duration); } on Tick :: () { r:=await Apply(); phase=r.Phase; "
                 "pulse=r.Pulse; period=r.Period; duration=r.Duration; } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
@@ -328,7 +328,8 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
                "emit_particles(Position:{x:1.0,y:-2.0},Color:4040002047,Count:"
                "3,Speed:80.0,Lifetime:0.3); await delay(Duration:0.125); await "
                "emit_particles(Position:{x:1.0,y:-2.0},Color:4040002047,Count:"
-               "3,Speed:80.0,Lifetime:0.3); } on Tick { Emit(); done=true; } }";
+               "3,Speed:80.0,Lifetime:0.3); } on Tick :: () { Emit(); "
+               "done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
         test_particles = particles_new();
         expected_particles = particles_new();
@@ -383,7 +384,8 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
         "return(Angle:quantize_angle(Angle:Value,Step:1.5707963267948966),"
         "Smooth:smooth_step(Value:Value),Root:sqrt(Value:Value),Low:floor("
         "Value:Value),High:ceil(Value:Value),Nearest:round(Value:Value)); } on "
-        "Tick { r:=Calculate(Value:input); angle=r.Angle; smooth=r.Smooth; "
+        "Tick :: () { r:=Calculate(Value:input); angle=r.Angle; "
+        "smooth=r.Smooth; "
         "root=r.Root; low=r.Low; high=r.High; nearest=r.Nearest; "
         "spring:=advance_damped_spring(Position:0.0,Velocity:0.0,Target:1.0,"
         "Frequency:1.0,Damping:1.0,Delta:0.125); position=spring.Position; "
@@ -468,13 +470,13 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
 }
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
-    const char
-        *text = "Query :: behavior { visits:retain int=0; last:retain "
-                "handle<ecs.entity>=0; Count :: ()->(){ for (outer in "
-                "find_entities_with_component(Component:Health)) { for (inner "
-                "in find_entities_with_component(Component:Health)) { "
-                "visits+=1; last=inner; } } } on Tick { visits=0; last=0; "
-                "Count(); } }";
+    const char *
+        text = "Query :: behavior { visits:retain int=0; last:retain "
+               "handle<ecs.entity>=0; Count :: ()->(){ for (outer in "
+               "find_entities_with_component(Component:Health)) { for (inner "
+               "in find_entities_with_component(Component:Health)) { "
+               "visits+=1; last=inner; } } } on Tick :: () { visits=0; last=0; "
+               "Count(); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Health, NULL) == 0);
@@ -536,7 +538,7 @@ TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers)
 {
     const char *text =
         "Links :: behavior { count:retain int=0; phase:retain int=0; "
-        "targets:retain handle<ecs.entity>[]=[]; on Tick { if phase==0 { "
+        "targets:retain handle<ecs.entity>[]=[]; on Tick :: () { if phase==0 { "
         "for target in self.ChildOf { "
         "targets=array_add(targets,target); } for target in targets { "
         "if has_pair(self,ChildOf,target) { remove_pair(self,ChildOf,target); "
@@ -582,8 +584,8 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
         "Query :: behavior { members:retain entity[]; boxes:retain int=0; "
         "left:retain number=0; top:retain number=0; right:retain number=8; "
         "bottom:retain number=8; x:retain number=8; y:retain number=4; "
-        "points:retain int=0; on Begin { "
-        "members=find_entities_with_component(SolidTile); } on Tick { "
+        "points:retain int=0; on Begin :: () { "
+        "members=find_entities_with_component(SolidTile); } on Tick :: () { "
         "boxes=count_matching_entities(members,[{component:\"SolidTile\",field:"
         "\"enabled\",test:\"==\",value:1},{component:\"Transform\",field:\"x\","
         "test:\">\",value:left-4},{component:\"Transform\",field:\"x\",test:\"<"
@@ -698,7 +700,7 @@ TEST_CASE(source_native_physics3d_queries_read_colliders)
         "target:retain handle<ecs.entity>=0; distance:retain float=0.0; "
         "normal:retain struct<CF_V3>={x:0.0,y:0.0,z:0.0}; blocked:retain "
         "handle<ecs.entity>=0; travel:retain float=0.0; touching:retain int=0; "
-        "on Tick { found=raycast_3d(start,finish,1,0,false).Found; "
+        "on Tick :: () { found=raycast_3d(start,finish,1,0,false).Found; "
         "target=raycast_3d(start,finish,1,0,false).Entity; "
         "distance=raycast_3d(start,finish,1,0,false).Distance; "
         "normal=raycast_3d(start,finish,1,0,false).Normal; "
@@ -821,7 +823,8 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Second\",Value:"
                 "Value); } "
-                "on Tick { await Apply(Value:payload,Target:self); done=true; "
+                "on Tick :: () { await Apply(Value:payload,Target:self); "
+                "done=true; "
                 "} }",
                 payloads[kind],
                 kind == 0   ? "float"
@@ -867,7 +870,7 @@ TEST_CASE(source_tilemap_queries_use_live_authored_cells)
         *text = "Grid :: behavior { frame:retain int=-1; count:retain int=0; "
                 "point:retain struct<CF_V2>={x:11,y:-4}; minimum:retain "
                 "struct<CF_V2>={x:10,y:-5}; maximum:retain "
-                "struct<CF_V2>={x:13,y:0}; on Tick { "
+                "struct<CF_V2>={x:13,y:0}; on Tick :: () { "
                 "frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
@@ -971,7 +974,7 @@ TEST_CASE(url_requests_validate_copy_replace_and_cancel)
 TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
 {
     const char *text = "Links :: behavior { done:retain bool=true; mode:retain "
-                       "int=0; on Tick { if mode==0 { result := await "
+                       "int=0; on Tick :: () { if mode==0 { result := await "
                        "open_url(Url:\"https://example.org/help\"); "
                        "done=result.Accepted; } if mode==1 { "
                        "open_url(\"http://localhost/help\"); } if mode==2 { "
@@ -1014,6 +1017,7 @@ TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
     const char
         *text = "Pointer :: behavior { active:retain bool=true; origin:retain "
                 "struct<CF_V3>={}; direction:retain struct<CF_V3>={}; on Tick "
+                ":: () "
                 "{ ray:=get_pointer_ray(); active=ray.Active; "
                 "origin=ray.Origin; direction=ray.Direction; } }";
     for (int backend = 0; backend < 2; backend++) {
@@ -1067,11 +1071,12 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         "Ranges :: behavior { input:retain number=0; observed:retain number=0; "
         "steps:retain number=0; converted:retain int=0; constructed:retain "
         "number=0; fresh:retain Bounded={}; defaulted:retain number=0; on Tick "
+        ":: () "
         "{ self.Bounded.value=input; observed=self.Bounded.value; "
         "self.Bounded.value+=100; self.Bounded.value-=1; "
         "steps=self.Bounded.value; self.Bounded.count=int(observed); "
         "converted=self.Bounded.count; local:Bounded={value:input}; "
-        "constructed=local.value; defaulted=fresh.positive; } on Begin { "
+        "constructed=local.value; defaulted=fresh.positive; } on Begin :: () { "
         "copy:=self.Bounded; self.Bounded=copy; observed=self.Bounded.value; } "
         "}";
     static const struct
@@ -1155,7 +1160,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         authoring_source *replacement = authoring_source_prepare_document(
             "features.chibi",
             "test/native-features",
-            "Ranges :: behavior { input:retain number=0; on Tick { "
+            "Ranges :: behavior { input:retain number=0; on Tick :: () { "
             "self.Bounded.value=input*input; } }",
             authoring_language_catalog_view(catalog),
             &bindings,

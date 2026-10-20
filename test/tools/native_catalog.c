@@ -219,7 +219,7 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
             .result_count = 1,
         };
         bindings[i] = (native_capability_binding){ .id = declarations[i].id,
-                                                   .intrinsic = BF_DELTA };
+                                                   .intrinsic = BF_OWNER };
     }
     const script_catalog_type type = { .id = 711,
                                        .name = "Alias",
@@ -264,7 +264,7 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
             capability->id,
             script_catalog_capability_abi(owned, capability)
         );
-        REQUIRE(binding && binding->intrinsic == BF_DELTA);
+        REQUIRE(binding && binding->intrinsic == BF_OWNER);
     }
     native_capabilities_free(native);
     native = NULL;

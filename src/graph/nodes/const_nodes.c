@@ -179,20 +179,6 @@ GENERIC_UNARY_DESC(
         .description = DESCRIPTION,                                            \
     };
 
-static pin_spec NODE_DeltaTime_outputs[] = { CORE_DELTA_OUTPUTS(GRAPH_NATIVE_PORT) };
-node_desc NODE_DeltaTime = {
-    .name = CORE_DELTA_NAME,
-    .source_name = CORE_DELTA_SOURCE,
-    .output_count = 1,
-    .outputs = NODE_DeltaTime_outputs,
-    .access = &NATIVE_ARITHMETIC_ACCESS,
-    .pure_kind = NODE_PURE_DELTA,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Time",
-    .keywords = "delta time seconds timestep",
-    .description = "Returns the current update's time step in seconds.",
-};
-
 LITERAL_DESC(Bool, NATIVE_ARITHMETIC_Bool_NAME, "Returns Value as a constant true or false.")
 LITERAL_DESC(Byte, NATIVE_ARITHMETIC_Byte_NAME, "Returns Value as a constant whole number from 0 to 255.")
 LITERAL_DESC(Integer, NATIVE_ARITHMETIC_Integer_NAME, "Returns Value as a constant 32-bit signed whole number.")
@@ -224,7 +210,6 @@ static node_desc *const EXTRA_NODES[] = {
     &NODE_And,
     &NODE_Or,
     &NODE_Not,
-    &NODE_DeltaTime,
     &NODE_Bool,
     &NODE_Byte,
     &NODE_Integer,

@@ -439,7 +439,7 @@ static bool synchronous_batch_path(behavior_backend backend)
     REQUIRE(!Input_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(
-        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
+        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) on Tick :: (dt: float s) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
     );
     Input_get(f.world, owner)->move.x = 2;
     Movement_get(f.world, owner)->speed = 3;

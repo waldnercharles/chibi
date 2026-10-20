@@ -416,7 +416,6 @@ static void add_binding(const site *s, const pin_spec *pin)
                 pin->id
             );
             return;
-        case PIN_BINDING_DELTA_TIME:
         case PIN_BINDING_EVENT_OUTPUT: return;
     }
 }

@@ -1,7 +1,7 @@
 // Age and expire projectiles; face velocity while moving.
 ProjectileLifecycle :: behavior {
-    on Tick :: () {
-        self.Projectile.Age += double(delta)
+    on Tick :: (dt: float s) {
+        self.Projectile.Age += double(dt)
         if double(self.Projectile.Age) >= double(self.Projectile.Lifetime) {
             destroy_entity(self)
         } else {

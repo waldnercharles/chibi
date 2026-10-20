@@ -420,7 +420,7 @@ TEST_CASE(language_system_queries_and_control_flow)
     parse(
         "Motion :: system(position: Transform, velocity: Velocity, damping: "
         "Igniter?) "
-        "without Collider, Body {\n"
+        "without Collider, Body on Tick :: (dt: float s) {\n"
         "query components();\n"
         "position += velocity * dt;\n"
         "if damping { damping.heat = 0; } else if dt > 0 { position = "

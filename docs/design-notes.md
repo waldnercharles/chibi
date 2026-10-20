@@ -151,10 +151,10 @@ than the entries above.
 
 Resolved for handlers (2026-10-20, #565 and the PR that removed the old
 forms): a Tick handler lists the step's field, `on Tick :: (dt: float s)`. The
-positional list, the `as` alias and `event.dt` no longer parse or analyze. A
-bare `dt` outside that list still reads the native global, as `QuarryCamera`
-does; whether to remove the globals `dt`, `delta` and `delta_time()` is
-undecided.
+positional list, the `as` alias and `event.dt` no longer parse or analyze.
+Project version 31 removed the globals `dt`, `delta` and `delta_time()`
+(owner decision, 2026-10-20): a handler or system lists `dt`, and a function
+that needs the step takes it as a parameter.
 
 - Godot passes `delta` to `_process`.
 - Unity reads a global, `Time.deltaTime`.

@@ -173,10 +173,6 @@ static int direct_binding(
                                   .source_asset = g->owner->name };
         return -1;
     }
-    if (source->desc == &NODE_DeltaTime) {
-        *binding = (pin_binding){ .kind = PIN_BINDING_DELTA_TIME };
-        return -1;
-    }
     if (source->desc == &NODE_Self && (input->flags & PIN_FLAG_DEFAULT_SELF) &&
         !input->default_value.u64 && !input->binding) {
         return -1;
@@ -434,9 +430,6 @@ void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t
     if (!strcmp(n->desc->name, "Spawn Prototype")) {
         source = "SpawnedEntity";
     }
-    if (n->desc == &NODE_DeltaTime) {
-        source = "DeltaSeconds";
-    }
     if (!strncmp(source, "Get_", 4)) {
         source += 4;
     }
@@ -572,8 +565,8 @@ int graph_optimize(graph *g, const graph_optimize_options *requested, graph_opti
     for (int i = 0; i < acount(ids); i++) {
         node *source = graph_node_by_id(g, ids[i]);
         if (!graph_optimize_component_getter(g, source) &&
-            source->desc != &NODE_GetVariable && source->desc != &NODE_DeltaTime &&
-            source->desc != &NODE_Self && source->desc != &NODE_SetVariable) {
+            source->desc != &NODE_GetVariable && source->desc != &NODE_Self &&
+            source->desc != &NODE_SetVariable) {
             continue;
         }
         fold *folds = NULL;

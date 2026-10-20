@@ -481,10 +481,15 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
         if(TARGET chibi_ctl)
-            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c material_bake.c terrain_storage_commands.c terrain_playable.c)
+            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c material_bake.c terrain_storage_commands.c terrain_playable.c
+                game_equivalence.c)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
                 CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
             add_dependencies(test_tools chibi_ctl)
+            # game-equivalence rebuilds Terrain Lab with chibi-compile by default.
+            if(TARGET chibi-compile)
+                add_dependencies(test_tools chibi-compile)
+            endif()
         endif()
         if(TARGET chibi_automation)
             target_sources(test_tools PRIVATE preview_components.c preview.c)

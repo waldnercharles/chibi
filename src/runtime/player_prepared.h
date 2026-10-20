@@ -52,6 +52,21 @@ player *player_prepared_read(
     char *error,
     size_t size
 );
+/* Locates an artifact's executable module records without opening the game,
+ * so a tool can compare what two compilers declare apart from their code. The
+ * records borrow their bytes from the artifact and their names from names;
+ * every other byte lies before *first or from *end on. Free the records with
+ * afree. False with why when the artifact is malformed up to its last module. */
+bool player_prepared_modules(
+    const void *,
+    size_t length,
+    arena *names,
+    package_module **modules,
+    size_t *first,
+    size_t *end,
+    char *error,
+    size_t size
+);
 /* Reads only the application settings at the front of an artifact file, so a
  * host can create its window before opening the game. The strings are owned;
  * release them with player_application_free. */

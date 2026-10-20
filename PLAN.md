@@ -942,8 +942,22 @@ mostly stage zero's build writing the package compiler's module; stage two
 alone compiles the compiler in 7.9 s with a 3.6 GB peak. Still open in this
 milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
 Lab's behaviors need behaviors, events, state, doubles, vectors, named
-arguments and results, and effectful natives) and the checksummed bootstrap
-artifact with its version checks (step 5).
+arguments and results, and effectful natives).
+
+Step 4's gate exists since 2026-10-19; stage one does not yet pass it. The
+`game-equivalence` selector rebuilds Terrain Lab with a reference and a
+candidate compiler, each a program that takes `--project-root ROOT --output
+FILE`. It then compares the two artifacts:
+- what they declare apart from their code: every byte outside the module
+  records, and each module's name and ID;
+- one observation per fixed step while both play `content/scenarios/Dig.kdl`
+  on the CPU.
+
+`test/tools/GameEquivalence.chibi` orchestrates and compares in the build
+host. C reads and plays the artifact. Both compilers are stage zero until
+stage one compiles behaviors. Stage one then needs a route that puts its
+modules into a game artifact, because project preparation still assembles
+the scenes, events and resources. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

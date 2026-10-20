@@ -156,7 +156,8 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
     write := Instruction(ops.write, target.pointer_storage, 0, kept.slot, at.slot, 0, item);
     write.offset = target.payload_offset;
     code = array_add(code, write);
-    host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1};
+    host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1,
+                  written: false};
     hosts = array_add(hosts, host);
     code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, item));
     slots = array_add(slots, address);
@@ -214,9 +215,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         } else if (kind == "assignment") {
             destination := Field(forest, item.node, "target");
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+            whole := SelfComponent(forest, text, types, names, destination);
             owned: int = -1;
             if (Is(forest, destination, "member_expression")) {
-                owned = OwnedComponent(forest, text, types, names, destination);
+                owned = SelfComponent(forest, text, types, names, Field(forest, destination, "object"));
             }
             if (Is(forest, destination, "identifier")) {
                 found := Lookup(names, Text(forest, text, destination));
@@ -242,6 +244,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                             NoValue(), retained, marks);
                     }
                 }
+            } else if (whole >= 0) {
+                // `self.C op= v` combines the owner's component with the value
+                // and writes the result through the reference it read.
+                if (operator == "") {
+                    return Fail(forest, item.node, document, "assigning a whole component is not supported yet");
+                }
+                write := Resume(item.node, ComponentAssignPhase, at.slot + ComponentReferenceSlot, whole);
+                combine := Resume(item.node, AggregatePhase, 0, 0);
+                return ComponentReadStep(code, types, whole, true, [Visit(value), combine, write], ops, target, at,
+                                         node);
             } else if (owned >= 0) {
                 // `self.C.f = v` on a component of the owner.
                 member := Text(forest, text, Field(forest, destination, "member"));
@@ -449,6 +461,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     } else if (item.phase == ComponentPhase) {
         return ComponentWriteStep(forest, text, document, members[item.b], values[top - 1], item, ops, target, at,
                                   node);
+    } else if (item.phase == ComponentAssignPhase) {
+        return ComponentAssignStep(values[top - 1], item, ops, target, at, node);
     } else if (item.phase == RetainedPhase) {
         // A retained copy, in the last cell: bind it, store it in a local's
         // cell, or publish its header.
@@ -593,7 +607,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             argument += 1;
         }
         host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
-                      result_count: 1};
+                      result_count: 1, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     }
@@ -726,7 +740,8 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         cells = array_add(cells, tag);
         made: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
         cells = array_add(cells, made);
-        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1};
+        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+                      result_count: 1, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         slots = array_add(slots, address);
@@ -737,6 +752,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         load.offset = target.payload_offset;
         code = array_add(code, load);
         produced = Typed(at.slot + 1, UnionStorage, 0, sum_type);
+    } else if (item.phase == 0 && kind == "member_expression" &&
+               SelfComponent(forest, text, types, names, item.node) >= 0) {
+        return ComponentReadStep([], types, SelfComponent(forest, text, types, names, item.node), false, [], ops,
+                                 target, at, node);
     } else if (item.phase == 0) {
         next = array_add(next, Visit(Field(forest, item.node, "object")));
         if (kind == "index_expression") {
@@ -948,7 +967,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
     }
     cells = array_add(cells, header);
     host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
-                  result_count: 1};
+                  result_count: 1, written: false};
     hosts = array_add(hosts, host);
     code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     slots = array_add(slots, address);
@@ -1205,7 +1224,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                       kind: ValueKind};
         cells = array_add(cells, made);
         host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + count,
-                      result_count: 1};
+                      result_count: 1, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         slots = array_add(slots, address);
@@ -1307,7 +1326,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     if (linked) {
         host: Host = {intrinsic: 0, linked: item.a, first: at.cell, result_first: at.cell + count,
-                      result_count: result_count};
+                      result_count: result_count, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     } else {
@@ -1438,6 +1457,12 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
     op := BinaryOp(ops, operator);
     left := values[top - 2];
     right := values[top - 1];
+    if (Single(left, StructStorage) || Single(right, StructStorage)) {
+        // Records combine through a native, field by field.
+        next = array_add(next, Resume(item.node, AggregatePhase, 0, 0));
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(),
+                            marks);
+    }
     // Untyped literals take the other operand's type, or the expected one
     // when both are untyped; differing integers widen to their common type.
     wanted := item.storage;
@@ -1694,7 +1719,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     code = append(code, CellWrite(target.pointer_storage, local, first + 4, ops, target, at.slot + length(slots), node));
     slots = array_add(slots, address);
     hosts = append(hosts, FieldReferenceHosts(first));
-    code = append(code, FieldReferenceCode(ops, target, first, at.host, at.slot + length(slots), node));
+    code = append(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + length(slots), node));
     slots = append(slots, FieldReferenceSlots(target));
     hosts = array_add(hosts, WriteHost(first));
     code = append(code, ReferenceWriteCode(ops, target, first, at.slot + length(slots) - 1, stored.slot, field.storage,
@@ -1721,15 +1746,14 @@ CellWrite :: (storage: int, value: int, cell: int, ops: Ops, target: Target, slo
     write.offset = target.payload_offset;
     return array_add(code, write);
 }
-// The component `self.C` names in `self.C.f`, as an index into `types`; -1
-// when the object is not a component of the owner.
-OwnedComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[],
-                   node: int) -> int {
-    object := Field(forest, node, "object");
-    if (!Is(forest, object, "member_expression")) {
+// The component of the owner `self.C` names, as an index into `types`; -1
+// for any other node.
+SelfComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[],
+                  node: int) -> int {
+    if (!Is(forest, node, "member_expression")) {
         return -1;
     }
-    owner := Field(forest, object, "object");
+    owner := Field(forest, node, "object");
     if (!Is(forest, owner, "identifier")) {
         return -1;
     }
@@ -1737,7 +1761,7 @@ OwnedComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     if (found < 0 || names[found].place != SelfPlace) {
         return -1;
     }
-    component := FindNativeType(types, Text(forest, text, Field(forest, object, "member")));
+    component := FindNativeType(types, Text(forest, text, Field(forest, node, "member")));
     if (component < 0 || types[component].component == 0) {
         return -1;
     }
@@ -1767,13 +1791,10 @@ FindNativeType :: (types: TypeDecl[], name: string) -> int {
     }
     return found;
 }
-// The cells of a field write through references: the reference make's nine
-// arguments, the context, the type of types[record] and then `facts`: the
-// reference's kind and element, an address, the owner, and a component's ID,
-// layout and size; then its result. Then the field reference's reference,
-// type, offset and element flag and its result, and the write's reference,
-// value and bool result.
-ReferenceCells :: (target: Target, record: int, facts: uint64[], field: TypeMember) -> Cell[] {
+// The cells of a reference make: its nine arguments, the context, the type
+// of types[record] and then `facts`: the reference's kind and element, an
+// address, the owner, and a component's ID, layout and size; then its result.
+MakeCells :: (target: Target, record: int, facts: uint64[]) -> Cell[] {
     kinds: int[] = [AddressKind, ValueKind, ValueKind, ValueKind, AddressKind, ValueKind, ValueKind, ValueKind,
                     ValueKind];
     storages: int[] = [target.pointer_storage, StructStorage, IntStorage, IntStorage, target.pointer_storage,
@@ -1790,37 +1811,53 @@ ReferenceCells :: (target: Target, record: int, facts: uint64[], field: TypeMemb
         cells = array_add(cells, cell);
         index += 1;
     }
-    made: Cell = {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1,
-                  kind: ReferenceKind};
+    return array_add(cells, ReferenceCell(target));
+}
+ReferenceCell :: (target: Target) -> Cell {
+    return {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: ReferenceKind};
+}
+// The make facts of a reference to the owner's component `declared`.
+ComponentFacts :: (declared: TypeDecl) -> uint64[] {
+    return [0, 0, uint64(ComponentReference), 0xFFFFFFFFFFFFFFFF, 0, 0, declared.component, declared.layout,
+            uint64(declared.size)];
+}
+// The cells of a field write through references: MakeCells, then the field
+// reference's reference, type, offset and element flag and its result, and the
+// write's reference, value and bool result.
+ReferenceCells :: (target: Target, record: int, facts: uint64[], field: TypeMember) -> Cell[] {
+    made := ReferenceCell(target);
     typed: Cell = {storage: field.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
                     kind: ValueKind};
     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
-    return append(cells, [made, made, typed, offset, element, made, made, typed, element]);
+    return append(MakeCells(target, record, facts), [made, typed, offset, element, made, made, typed, element]);
 }
-// The reference make and the field reference over the cells from `first`.
+// The reference make and the field reference, written through, over the
+// cells from `first`.
 FieldReferenceHosts :: (first: int) -> Host[] {
-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1};
+    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                  written: true};
     field: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
-                   result_count: 1};
+                   result_count: 1, written: false};
     return [make, field];
 }
 WriteHost :: (first: int) -> Host {
     return {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
-            result_count: 1};
+            result_count: 1, written: false};
 }
-// The make, its reference into the field reference's first cell, then the
-// field reference, whose own reference it leaves at slot + 4. `host` is the
+// The make, its reference into the first cell of the host after it, a field
+// reference or a read, then that host, whose result in cell `result` it
+// leaves at slot + 4; the make's reference stays at slot + 1. `host` is the
 // make's host.
-FieldReferenceCode :: (ops: Ops, target: Target, first: int, host: int, slot: int,
-                       node: snapshot.SnapshotNode) -> Code[] {
+ReferenceCode :: (ops: Ops, target: Target, first: int, result: int, host: int, slot: int,
+                  node: snapshot.SnapshotNode) -> Code[] {
     code: Code[] = [Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node)];
     code = append(code, CellRead(target.pointer_storage, first + 9, ops, target, slot, node));
     code = append(code, CellWrite(target.pointer_storage, slot + 1, first + 10, ops, target, slot + 2, node));
     code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, host + 1, node));
-    return append(code, CellRead(target.pointer_storage, first + 14, ops, target, slot + 3, node));
+    return append(code, CellRead(target.pointer_storage, result, ops, target, slot + 3, node));
 }
-// The slots FieldReferenceCode uses.
+// The slots ReferenceCode uses for a field reference.
 FieldReferenceSlots :: (target: Target) -> Slot[] {
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
@@ -1834,6 +1871,19 @@ ReferenceWriteCode :: (ops: Ops, target: Target, first: int, reference: int, val
     code = append(code, CellWrite(storage, value, first + 16, ops, target, slot + 1, node));
     return array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
 }
+// The context and the owner into the cells of a make from `first`, through
+// the four OwnerSlots from `slot`.
+OwnerCode :: (ops: Ops, target: Target, first: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [Instruction(ops.context, target.pointer_storage, slot, 0, 0, 1, node),
+                    Instruction(ops.owner, HandleStorage, slot + 1, 0, 0, 0, node)];
+    code = append(code, CellWrite(target.pointer_storage, slot, first, ops, target, slot + 2, node));
+    return append(code, CellWrite(HandleStorage, slot + 1, first + 5, ops, target, slot + 3, node));
+}
+OwnerSlots :: (target: Target) -> Slot[] {
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    owner: Slot = {storage: HandleStorage, kind: ValueKind};
+    return [address, owner, address, address];
+}
 // `self.C.f = v` as stage zero orders it: the references to the owner's
 // component types[component] and to its field members[field] first, after
 // `before`; then the value, and the write in ComponentPhase. Pushing onto
@@ -1841,40 +1891,72 @@ ReferenceWriteCode :: (ops: Ops, target: Target, first: int, reference: int, val
 ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMember[], component: int, field: int,
                            value: int, item: Work, ops: Ops, target: Target, at: Bases,
                            node: snapshot.SnapshotNode) -> Step {
-    code: Code[] = [];
-    slots: Slot[] = [];
     locals: Slot[] = [];
-    hosts: Host[] = [];
     roots: Root[] = [];
     calls: Invocation[] = [];
     bound: Name[] = [];
     marks: int[] = [];
-    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    declared := types[component];
     first := at.cell;
-    facts: uint64[] = [0, 0, uint64(ComponentReference), 0xFFFFFFFFFFFFFFFF, 0, 0, declared.component,
-                       declared.layout, uint64(declared.size)];
-    cells := ReferenceCells(target, component, facts, members[field]);
-    // The context and the owner go into the make's cells.
-    slots = array_add(slots, address);
-    holder := at.slot + length(slots) - 1;
-    code = array_add(code, Instruction(ops.context, target.pointer_storage, holder, 0, 0, 1, node));
-    owner: Slot = {storage: HandleStorage, kind: ValueKind};
-    slots = array_add(slots, owner);
-    entity := at.slot + length(slots) - 1;
-    code = array_add(code, Instruction(ops.owner, HandleStorage, entity, 0, 0, 0, node));
-    code = append(code, CellWrite(target.pointer_storage, holder, first, ops, target, at.slot + length(slots), node));
-    slots = array_add(slots, address);
-    code = append(code, CellWrite(HandleStorage, entity, first + 5, ops, target, at.slot + length(slots), node));
-    slots = array_add(slots, address);
-    hosts = append(hosts, FieldReferenceHosts(first));
-    code = append(code, FieldReferenceCode(ops, target, first, at.host, at.slot + length(slots), node));
-    slots = append(slots, FieldReferenceSlots(target));
+    cells := ReferenceCells(target, component, ComponentFacts(types[component]), members[field]);
+    code := OwnerCode(ops, target, first, at.slot, node);
+    code = append(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
+    slots := append(OwnerSlots(target), FieldReferenceSlots(target));
     write := Resume(item.node, ComponentPhase, first, field);
     write.c = at.slot + length(slots) - 1;
     next: Work[] = [Expect(value, members[field].storage, 0, -1), write];
-    return Step.Emitted(append(before, code), slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
-                        NoValue(), marks);
+    return Step.Emitted(append(before, code), slots, locals, cells, FieldReferenceHosts(first), roots, calls, bound,
+                        next, 0, NoValue(), NoValue(), marks);
+}
+// Where ComponentReadStep leaves the make's reference, from its first slot.
+ComponentReferenceSlot: int : 5;
+// `self.C`: the owner's component types[component], read through a reference
+// into a record of its own, as stage zero reads it, after `before`. A
+// compound assignment writes through the reference, so its make is `written`,
+// and schedules `next`.
+ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written: bool, next: Work[], ops: Ops,
+                      target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    marks: int[] = [];
+    first := at.cell;
+    read: Cell = {storage: StructStorage, container: 0, record: component, constant: 0, variant: -1,
+                  kind: ValueKind};
+    cells := append(MakeCells(target, component, ComponentFacts(types[component])), [ReferenceCell(target), read]);
+    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                  written: written};
+    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
+                  result_count: 1, written: false};
+    code := OwnerCode(ops, target, first, at.slot, node);
+    code = append(code, ReferenceCode(ops, target, first, first + 11, at.host, at.slot + 4, node));
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
+    slots := append(OwnerSlots(target), [address, reference, address, address, address]);
+    value := at.slot + length(slots) - 1;
+    roots: Root[] = [{slot: value, storage: StructStorage, container: 0, record: component}];
+    return Step.Emitted(append(before, code), slots, locals, cells, [make, copy], roots, calls, bound, next, 0,
+                        Typed(value, StructStorage, 0, component), NoValue(), marks);
+}
+// The write of `self.C op= v`: the combined record, of the component's type,
+// through the reference at slot item.a.
+ComponentAssignStep :: (value: Value, item: Work, ops: Ops, target: Target, at: Bases,
+                        node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    record: Cell = {storage: StructStorage, container: 0, record: item.b, constant: 0, variant: -1, kind: ValueKind};
+    done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    code := CellWrite(target.pointer_storage, item.a, at.cell, ops, target, at.slot, node);
+    code = append(code, CellWrite(target.pointer_storage, value.slot, at.cell + 1, ops, target, at.slot + 1, node));
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    write: Host = {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                   result_count: 1, written: false};
+    return Step.Emitted(code, [address, address], locals, [ReferenceCell(target), record, done], [write], roots, calls,
+                        bound, next, 1, NoValue(), NoValue(), marks);
 }
 // The write of `self.C.f = v`: the value, in the field's storage, through the
 // field reference at slot item.c over the cells from item.a. An integer
@@ -1894,7 +1976,7 @@ ComponentWriteStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     floating := field.storage == FloatStorage || field.storage == DoubleStorage;
     stored := value;
     if (Single(value, NumberStorage) && floating) {
-        switch LiteralBits(Text(forest, text, value.record), false) {
+        switch NumberBits(forest, text, value.record) {
             case .OutOfRange:
                 return Fail(forest, value.record, document, "Numeric literal is outside the range of its type");
             case .Finite(double_bits, float_fits, float_bits):
@@ -1937,6 +2019,141 @@ ComponentWriteStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     slots = array_add(slots, address);
     hosts: Host[] = [WriteHost(item.a)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, NoValue(), NoValue(), marks);
+}
+// The bit patterns of the untyped literal at `node`: a number, or `-` on one.
+NumberBits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> FloatBits {
+    if (Is(forest, node, "unary_expression")) {
+        return LiteralBits(Text(forest, text, Field(forest, node, "operand")), true);
+    }
+    return LiteralBits(Text(forest, text, node), false);
+}
+// The number types this compiler emits.
+Numeric :: (storage: int) -> bool {
+    return Integer(storage) || storage == FloatStorage || storage == DoubleStorage;
+}
+// Whether a value combines through a numeric aggregate native: a number, or a
+// record of numbers. Stage zero also takes records of such records, whose
+// field types this compiler does not see.
+NumericAggregate :: (types: TypeDecl[], members: TypeMember[], value: Value) -> bool {
+    if (value.container != 0) {
+        return false;
+    }
+    if (value.storage == NumberStorage || Numeric(value.storage)) {
+        return true;
+    }
+    if (value.storage != StructStorage || types[value.record].count == 0) {
+        return false;
+    }
+    at := types[value.record].first;
+    while (at < types[value.record].first + types[value.record].count) {
+        if (!Numeric(members[at].storage)) {
+            return false;
+        }
+        at += 1;
+    }
+    return true;
+}
+// Whether the records types[left] and types[right] have as many fields, each
+// of one named as a field of the other.
+SameFields :: (types: TypeDecl[], members: TypeMember[], left: int, right: int) -> bool {
+    if (types[left].count != types[right].count) {
+        return false;
+    }
+    at := types[left].first;
+    while (at < types[left].first + types[left].count) {
+        if (FindField(types, members, right, members[at].name) < 0) {
+            return false;
+        }
+        at += 1;
+    }
+    return true;
+}
+// The native that combines records for the binary `operator`: -1 for none,
+// -2 for several.
+FindAggregate :: (operators: NumericOperator[], operator: string) -> int {
+    found: int = -1;
+    for (candidate in operators) {
+        if (candidate.operator == operator && found >= 0) {
+            return -2;
+        }
+        if (candidate.operator == operator) {
+            found = candidate.native;
+        }
+    }
+    return found;
+}
+// `a op b` and `self.C op= b` when an operand is a record, as stage zero
+// resolves it: the operator's numeric aggregate native combines records of
+// numbers, and a record with a number, field by field. The result has the
+// type of the first record operand; an untyped literal is a double.
+AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                  members: TypeMember[], operators: NumericOperator[], values: Value[], top: int, item: Work,
+                  ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    locals: Slot[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    operator := Text(forest, text, Field(forest, item.node, "operator"));
+    if (node.kind == "assignment") {
+        operator = CompoundOperator(operator);
+    }
+    native := FindAggregate(operators, operator);
+    if (native == -2) {
+        return Fail(forest, item.node, document, "Ambiguous operator overload");
+    }
+    left := values[top - 2];
+    right := values[top - 1];
+    records := Single(left, StructStorage) && Single(right, StructStorage);
+    if (native < 0 || !NumericAggregate(types, members, left) || !NumericAggregate(types, members, right) ||
+        (records && !SameFields(types, members, left.record, right.record))) {
+        return Fail(forest, item.node, document, "operator does not apply to these operands");
+    }
+    result := right;
+    if (Single(left, StructStorage)) {
+        result = left;
+    }
+    // Each operand into its cell, an untyped one as a double constant first.
+    code: Code[] = [];
+    slots: Slot[] = [];
+    cells: Cell[] = [];
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    operands: Value[] = [left, right];
+    for (operand in operands) {
+        value := operand;
+        if (value.storage == NumberStorage) {
+            switch NumberBits(forest, text, value.record) {
+                case .OutOfRange:
+                    return Fail(forest, value.record, document, "Numeric literal is outside the range of its type");
+                case .Finite(double_bits, float_fits, float_bits):
+                    slots = array_add(slots, ValueLocal(DoubleStorage));
+                    code = array_add(code, ConstantCode(ops, DoubleStorage, double_bits, at.slot + length(slots) - 1,
+                                                        node));
+                    value = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+            }
+        }
+        cell: Cell = {storage: value.storage, container: 0, record: value.record, constant: 0, variant: -1,
+                      kind: ValueKind};
+        cells = array_add(cells, cell);
+        slots = array_add(slots, address);
+        code = append(code, CellWrite(SlotStorage(value.storage, 0, target), value.slot, at.cell + length(cells) - 1,
+                                      ops, target, at.slot + length(slots) - 1, node));
+    }
+    combined: Cell = {storage: StructStorage, container: 0, record: result.record, constant: 0, variant: -1,
+                      kind: ValueKind};
+    cells = array_add(cells, combined);
+    host: Host = {intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                  written: false};
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code = append(code, CellRead(target.pointer_storage, at.cell + 2, ops, target, at.slot + length(slots), node));
+    slots = append(slots, [address, address]);
+    made := at.slot + length(slots) - 1;
+    root: Root = {slot: made, storage: StructStorage, container: 0, record: result.record};
+    roots = array_add(roots, root);
+    return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, 2,
+                        Typed(made, StructStorage, 0, result.record), NoValue(), marks);
 }
 // A record or array parameter the body writes, item.a: phase 0 reads it and
 // copies it into a fresh cell; phase 1 binds its name to that cell.
@@ -2017,7 +2234,8 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     write := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + 1, 0, node);
     write.offset = target.payload_offset;
     code = array_add(code, write);
-    test: Host = {intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1};
+    test: Host = {intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                  written: false};
     hosts = array_add(hosts, test);
     code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     slots = array_add(slots, address);
@@ -2065,7 +2283,8 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         put := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + length(slots) - 1, 0, node);
         put.offset = target.payload_offset;
         code = array_add(code, put);
-        get: Host = {intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1};
+        get: Host = {intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1,
+                     written: false};
         hosts = array_add(hosts, get);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + length(hosts) - 1,
                                            node));

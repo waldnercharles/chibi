@@ -581,6 +581,38 @@ templates therefore work differently in a game than in a package.
 Suggestion: a game's libraries become packages, now that functions no longer
 use `entry`, so `pub` and imports mean the same everywhere.
 
+## Stage one has no record field defaults
+
+Stage one. A struct literal names every field, so a new field is spelled in
+every literal of its record. Adding `written` to `Host`, which only a
+component reference's make sets, added `written: false` to eleven literals in
+`Steps.chibi`. Stage zero already fills an omitted field from its declared
+default and reports `Missing required record field` for one without.
+
+- Zig gives fields default values (`written: bool = false`) that literals may
+  omit; Odin, Go and C zero every field a literal omits; Swift's memberwise
+  initializers take declared defaults; Rust names every field or spreads
+  `..Default::default()`.
+
+Suggestion: stage one compiles stage zero's constant field defaults, as Zig
+declares them, so `Host` declares `written: bool = false` and only the make
+names it.
+
+## The bootstrap artifact pins every column of the host's natives
+
+Toolchain. The bootstrap artifact records the six target values it was
+compiled for, and recovery compares them, as JSON, with the host's. A
+descriptive field added to each native row, such as the operator a native
+implements, so differs from every artifact and forces a rewrite of the 7 MB
+closure, though the closure links natives only by identity and ABI. Motion's
+operators went into the behavior input instead.
+
+- Zig's `zig1.wasm` targets WASI and is rewritten only when the language
+  changes; Go's bootstrap needs only an older Go release.
+
+Suggestion: recovery compares what the closure links: the value layout,
+prepared ABI, instruction names, and each native's identity, ABI and ports.
+
 ## A string literal cannot span lines
 
 Language. A string literal ends at its line, and nothing marks one as raw, so

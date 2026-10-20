@@ -124,8 +124,10 @@ a cyclic dependency there, while stage one reads the parameter.
 ## Behaviors
 
 `CompileBehavior(identity: string, source: string, target: Target, abi: uint64,
-names: string[], game_events: GameEvent[], event_fields: GameEventField[],
-types: GameType[], type_fields: GameField[], entity: uint64) -> Result`
+names: string[], natives: Native[], ports: Port[], native_ids: uint64[],
+game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
+type_fields: GameField[], entity: uint64, operators: NumericOperator[]) ->
+Result`
 compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
 whose bytes are one prepared module of the game the arguments describe, or to
 `Rejected(diagnostic)`. `identity` names the source as the project does, such
@@ -141,7 +143,9 @@ The game arguments are flat tables, since records hold no arrays:
 - each type the game links, with its ID, layout, storage and size, its
   component ID when it is a component, and a range of fields with their
   storage, offsets and whether they are writable;
-- the entity type that owns behaviors.
+- the entity type that owns behaviors;
+- each native that combines numbers, and records of them field by field, for
+  a binary operator, as an index into the natives.
 
 As in stage zero, the module lists every type as a requirement, and lists the
 events its handlers take. `CompileBehaviors` takes the identities and sources
@@ -161,16 +165,24 @@ is a function body, as above. In it, states are names that read and store as
 writable field `f` of the owner's component `C`. As in stage zero, the write
 makes the component and field references, then evaluates `v`, then writes
 through them. An integer converts to a `float` or `double` field exactly to a
-double first; an integer literal is a constant of the field's type. `after`
-handlers, compound assignment to a component field, reading components,
-member procedures and natives are not supported yet.
+double first; an integer literal is a constant of the field's type.
 
-A handler's function lists the components it writes and one write for each
-field write, where stage zero lists two, and has the behavior's states as its
-variables. Its effects are stage zero's: reading a state reads the
-invocation's retained values; storing one also reads them and writes; writing
-a component's field reads and writes. The function has no debugger points or
-watches.
+`self.C` reads the owner's component through a reference into a record of its
+own, so `self.C.f` reads a field. When an operand of a binary operator is a
+record, the operator's native from `operators` combines it field by field,
+with a record whose fields have the same names or with a number, as stage
+zero resolves operators. The result has the type of the first record operand;
+an untyped literal operand is a double. `self.C op= v` reads the component,
+combines it with `v` and writes the result back through the same reference.
+`after` handlers, `self.C = v`, compound assignment to a component field and
+member procedures are not supported yet.
+
+A handler's function lists the components it reads or writes, and one write
+for each component it writes through a reference, where stage zero lists two,
+and has the behavior's states as its variables. Its effects are stage zero's:
+reading a state reads the invocation's retained values; storing one also
+reads them and writes; reading a component reads, and writing one reads and
+writes. The function has no debugger points or watches.
 
 ## Output
 

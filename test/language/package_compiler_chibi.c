@@ -2066,6 +2066,8 @@ static const behavior_sample behavior_samples[] = {
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick {\n        steps = 7\n    }\n}\n" },
     { "Glide", "Glide :: behavior {\n    on Tick(dt) {\n        self.Spot.y = dt\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick {\n        self.Spot.x = 3\n    }\n}\n" },
+    { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
+    { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
     { "Pair",
       "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick {\n     "
       "   a *= 2\n"
@@ -2090,6 +2092,11 @@ static const behavior_rejection behavior_rejections[] = {
       "state needs an integer type" },
     { "Extra :: behavior {\n    on Tick(dt, more) {\n    }\n}\n",
       "the event has no such parameter" },
+    { "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    "
+      "}\n}\n",
+      "assigning a whole component is not supported yet" },
+    { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
+      "operator does not apply to these operands" },
 };
 enum
 {
@@ -2098,7 +2105,7 @@ enum
     TICK = 11,
     OWNER = 30,
     ENTITY = 700,
-    BEHAVIOR_ARGUMENTS = 13,
+    BEHAVIOR_ARGUMENTS = 14,
     TICKS = 5
 };
 typedef struct
@@ -2216,8 +2223,8 @@ static pin_value flag(bool value)
     return (pin_value){ .type = PIN_BOOL, .b = value };
 }
 /* CompileBehavior's game arguments, as the game target exports them: each
- * event and its payload fields, each type and its fields, and the entity
- * type. */
+ * event and its payload fields, each type and its fields, the entity type,
+ * and no operators that combine records. */
 static bool game_arguments(int b, pin_value *out)
 {
     script_catalog catalog = game_catalog();
@@ -2267,6 +2274,12 @@ static bool game_arguments(int b, pin_value *out)
     out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
     out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
     out[4] = u64(catalog.entity_type);
+    out[5] = rows(
+        NULL,
+        0,
+        PIN_STRUCT,
+        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
+    );
     afree(declared);
     afree(payloads);
     afree(types);

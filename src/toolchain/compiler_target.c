@@ -6,6 +6,7 @@
 #include "types/array.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <yyjson.h>
 
@@ -24,6 +25,14 @@ static int port_storage(script_type type)
     return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
                                                                   : (int)type.storage;
 }
+/* Whether a capability is a native the compiler calls: a data function with
+ * no flow, outcomes or suspension. */
+static bool callable(const script_catalog_capability *c)
+{
+    return c->kind == SCRIPT_CAPABILITY_FUNCTION &&
+           c->flow.kind == SCRIPT_FLOW_ACCESS_NONE && !c->outcome_count &&
+           !(c->effects & SCRIPT_EFFECT_SUSPEND);
+}
 /* The callable natives of catalog, with their ports and identities. */
 static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog)
 {
@@ -33,9 +42,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
     int first = 0;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
-            c->flow.kind != SCRIPT_FLOW_ACCESS_NONE || c->outcome_count ||
-            (c->effects & SCRIPT_EFFECT_SUSPEND)) {
+        if (!callable(c)) {
             continue;
         }
         yyjson_mut_val *native = yyjson_mut_arr_add_obj(doc, natives);
@@ -170,6 +177,26 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
         }
     }
 }
+/* Each callable native that combines numbers, and records of them field by
+ * field, for a binary operator: its index among the natives and the operator. */
+static void add_operators(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
+{
+    yyjson_mut_val *operators = yyjson_mut_arr_add_arr(doc, root);
+    int native = 0;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (!callable(c)) {
+            continue;
+        }
+        if (c->numeric_aggregate && c->operator_name &&
+            c->parameter_count == 2 && c->result_count == 1) {
+            yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, operators);
+            yyjson_mut_obj_add_int(doc, row, "native", native);
+            yyjson_mut_obj_add_str(doc, row, "operator", c->operator_name);
+        }
+        native++;
+    }
+}
 char *compiler_behavior_input_json(
     const script_catalog *catalog,
     const char *const *identities,
@@ -191,5 +218,6 @@ char *compiler_behavior_input_json(
     add_events(doc, root, catalog);
     add_types(doc, root, catalog);
     yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
+    add_operators(doc, root, catalog);
     return written(doc, length);
 }

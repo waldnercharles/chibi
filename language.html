@@ -58,11 +58,11 @@
 </summary>
 <p>Use <code>:=</code> for a mutable value, <code>:</code> for an explicit type, and <code>::</code> for a constant.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        score: int = <span class="chibi-number">0</span>
+    <span class="chibi-function">Run</span> :: () {
+        score: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
         speed := <span class="chibi-number">120.0</span>
         GameTitle :: <span class="chibi-string">&quot;My Game&quot;</span>
-        MaxLives: int : <span class="chibi-number">3</span>
+        MaxLives: <span class="chibi-type">int</span> : <span class="chibi-number">3</span>
 
         score += <span class="chibi-number">10</span>
     }
@@ -70,7 +70,7 @@
 </code></pre>
 <p>A numeric literal takes its type from context. Otherwise, its spelling supplies the type. Integer spelling gives <code>int</code>, then <code>int64</code> or <code>uint64</code> when needed. A decimal point or exponent gives a double-precision <code>number</code>.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
+    <span class="chibi-function">Run</span> :: () {
         lives := <span class="chibi-number">3</span>        <span class="chibi-comment">// int</span>
         elapsed := <span class="chibi-number">0.0</span>    <span class="chibi-comment">// number</span>
         half := <span class="chibi-number">1</span> / <span class="chibi-number">2</span>     <span class="chibi-comment">// 0: integer division</span>
@@ -84,8 +84,8 @@
 <p>Use <code>elapsed := 0.0</code> for a timer. <code>elapsed := 0</code> creates an integer, so adding a floating time step fails. Initialize the timer with <code>0.0</code>. Beside a typed operand, a literal takes that operand's type. <code>count * 0.5</code> fails when <code>count</code> is an integer. Use <code>number(count) * 0.5</code> for a floating result.</p>
 <p><code>//</code> starts a comment. A newline can end a statement. Semicolons separate multiple statements on one line.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        score: int = <span class="chibi-number">0</span>
+    <span class="chibi-function">Run</span> :: () {
+        score: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
         <span class="chibi-comment">// Increase the score once.</span>
         score += <span class="chibi-number">10</span>
     }
@@ -97,9 +97,9 @@
 </summary>
 <p>Common value types include <code>bool</code>, <code>int</code>, <code>number</code>, <code>string</code>, <code>entity</code> and arrays. <code>number</code> uses double precision. <code>float</code>, <code>double</code>, <code>byte</code>, and fixed-width signed and unsigned integer types are also available.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        health: int = <span class="chibi-number">100</span>
-        damage: int = <span class="chibi-number">25</span>
+    <span class="chibi-function">Run</span> :: () {
+        health: <span class="chibi-type">int</span> = <span class="chibi-number">100</span>
+        damage: <span class="chibi-type">int</span> = <span class="chibi-number">25</span>
         paused := <span class="chibi-keyword">false</span>
         remaining := health - damage
         alive := remaining &gt; <span class="chibi-number">0</span>
@@ -110,11 +110,11 @@
 <p>Arithmetic uses <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> and <code>%</code>. Comparisons use <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code>. Boolean expressions use <code>&amp;&amp;</code>, <code>||</code> and <code>!</code>.</p>
 <p>An explicit conversion calls the destination type. Floating-to-integer conversion requires a call such as <code>int(value)</code>. Integer narrowing checks that the value fits. <code>wrap</code> keeps the low bits. <code>clamp</code> limits the value to the integer type's bounds.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        value: int = <span class="chibi-number">300</span>
-        checked := byte(value)        <span class="chibi-comment">// Fails: 300 does not fit in a byte.</span>
-        wrapped := byte(wrap: value)   <span class="chibi-comment">// 44</span>
-        limited := byte(clamp: value)  <span class="chibi-comment">// 255</span>
+    <span class="chibi-function">Run</span> :: () {
+        value: <span class="chibi-type">int</span> = <span class="chibi-number">300</span>
+        checked := <span class="chibi-type">byte</span>(value)        <span class="chibi-comment">// Fails: 300 does not fit in a byte.</span>
+        wrapped := <span class="chibi-type">byte</span>(wrap: value)   <span class="chibi-comment">// 44</span>
+        limited := <span class="chibi-type">byte</span>(clamp: value)  <span class="chibi-comment">// 255</span>
     }
 }
 </code></pre>
@@ -134,11 +134,11 @@
 </summary>
 <p>A function names its parameters and result type. Calls pass arguments in parameter order.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    DamageFor :: (level: int) -&gt; int {
+    <span class="chibi-function">DamageFor</span> :: (level: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
         <span class="chibi-keyword">return</span> level * <span class="chibi-number">2</span>
     }
 
-    DamageAfterArmor :: (damage: int, armor: int) -&gt; int {
+    <span class="chibi-function">DamageAfterArmor</span> :: (damage: <span class="chibi-type">int</span>, armor: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
         <span class="chibi-keyword">if</span> damage &lt;= armor { <span class="chibi-keyword">return</span> <span class="chibi-number">0</span> }
         <span class="chibi-keyword">return</span> damage - armor
     }
@@ -146,30 +146,30 @@
 </code></pre>
 <p>Arguments can also name a parameter. Parameters can declare defaults.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Bonus :: (points: int, multiplier: int = <span class="chibi-number">2</span>) -&gt; int {
+    <span class="chibi-function">Bonus</span> :: (points: <span class="chibi-type">int</span>, multiplier: <span class="chibi-type">int</span> = <span class="chibi-number">2</span>) -&gt; <span class="chibi-type">int</span> {
         <span class="chibi-keyword">return</span> points * multiplier
     }
 
-    Reward :: () -&gt; int {
-        <span class="chibi-keyword">return</span> Bonus(<span class="chibi-number">10</span>, multiplier: <span class="chibi-number">3</span>)
+    <span class="chibi-function">Reward</span> :: () -&gt; <span class="chibi-type">int</span> {
+        <span class="chibi-keyword">return</span> <span class="chibi-function">Bonus</span>(<span class="chibi-number">10</span>, multiplier: <span class="chibi-number">3</span>)
     }
 }
 </code></pre>
 <p>A function without a result annotation infers its result from the first <code>return</code>. Recursive functions must declare their result types.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Double :: (points: int) { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
+    <span class="chibi-function">Double</span> :: (points: <span class="chibi-type">int</span>) { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
 }
 </code></pre>
 <p>A function with results must return on every path. Multiple results use names and return in signature order.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    SplitDamage :: (damage: int) -&gt; (shield: int, health: int) {
+    <span class="chibi-function">SplitDamage</span> :: (damage: <span class="chibi-type">int</span>) -&gt; (shield: <span class="chibi-type">int</span>, health: <span class="chibi-type">int</span>) {
         <span class="chibi-keyword">return</span>(damage / <span class="chibi-number">2</span>, damage - damage / <span class="chibi-number">2</span>)
     }
 }
 </code></pre>
 <p>Parameters normally receive value copies. A <code>ref</code> parameter writes to the caller's mutable value. A call needs no address-of operator.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    AddScore :: (score: <span class="chibi-keyword">ref</span> int, points: int) {
+    <span class="chibi-function">AddScore</span> :: (score: <span class="chibi-keyword">ref</span> <span class="chibi-type">int</span>, points: <span class="chibi-type">int</span>) {
         score += points
     }
 }
@@ -181,7 +181,7 @@
 </summary>
 <p><code>if</code> selects a branch. Conditions do not require parentheses.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Message :: (health: int) -&gt; string {
+    <span class="chibi-function">Message</span> :: (health: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span> {
         message := <span class="chibi-string">&quot;&quot;</span>
         <span class="chibi-keyword">if</span> health &lt;= <span class="chibi-number">0</span> {
             message = <span class="chibi-string">&quot;Game over&quot;</span>
@@ -194,8 +194,8 @@
 </code></pre>
 <p><code>switch</code> evaluates its value once. Cases do not fall through. An empty <code>case:</code> is the default.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    DamageFor :: (level: int) -&gt; int {
-        damage: int = <span class="chibi-number">0</span>
+    <span class="chibi-function">DamageFor</span> :: (level: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
+        damage: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
         <span class="chibi-keyword">switch</span> level {
             <span class="chibi-keyword">case</span> <span class="chibi-number">1</span>:
                 damage = <span class="chibi-number">10</span>
@@ -210,8 +210,8 @@
 </code></pre>
 <p><code>while</code> repeats while its condition is true. <code>break</code> leaves a loop. <code>continue</code> starts the next iteration.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        remaining: int = <span class="chibi-number">5</span>
+    <span class="chibi-function">Run</span> :: () {
+        remaining: <span class="chibi-type">int</span> = <span class="chibi-number">5</span>
         <span class="chibi-keyword">while</span> remaining &gt; <span class="chibi-number">0</span> {
             remaining -= <span class="chibi-number">1</span>
             <span class="chibi-keyword">if</span> remaining == <span class="chibi-number">2</span> { <span class="chibi-keyword">continue</span> }
@@ -222,8 +222,8 @@
 </code></pre>
 <p>A range with <code>..&lt;</code> excludes its upper bound. A range with <code>..</code> includes it. <code>for &lt;</code> visits a range in reverse order.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        score: int = <span class="chibi-number">0</span>
+    <span class="chibi-function">Run</span> :: () {
+        score: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
         <span class="chibi-keyword">for</span> i <span class="chibi-keyword">in</span> <span class="chibi-number">0</span>..&lt;<span class="chibi-number">4</span> { score += i }    <span class="chibi-comment">// 0, 1, 2, 3</span>
         <span class="chibi-keyword">for</span> i <span class="chibi-keyword">in</span> <span class="chibi-number">1</span>..<span class="chibi-number">3</span> { score += i }     <span class="chibi-comment">// 1, 2, 3</span>
         <span class="chibi-keyword">for</span> &lt; i <span class="chibi-keyword">in</span> <span class="chibi-number">0</span>..&lt;<span class="chibi-number">4</span> { score += i }  <span class="chibi-comment">// 3, 2, 1, 0</span>
@@ -237,20 +237,20 @@
 </summary>
 <p>An array type ends in <code>[]</code>. Array literals use square brackets. An empty array needs an explicit element type.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        scores: int[] = [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">30</span>]
-        empty: int[] = []
+    <span class="chibi-function">Run</span> :: () {
+        scores: <span class="chibi-type">int</span>[] = [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">30</span>]
+        empty: <span class="chibi-type">int</span>[] = []
         first := scores[<span class="chibi-number">0</span>]
         scores[<span class="chibi-number">1</span>] = <span class="chibi-number">25</span>
-        scores = array_add(scores, <span class="chibi-number">40</span>)
+        scores = <span class="chibi-function">array_add</span>(scores, <span class="chibi-number">40</span>)
     }
 }
 </code></pre>
 <p>Array indices start at zero. An index outside the array fails the invocation. Collection functions such as <code>array_add</code> return a value. Assign that value to keep the change.</p>
 <p>Arrays have value semantics. Changing a copy leaves the original unchanged. Appending to an owned local array and writing its elements update that local storage in place.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        original: int[] = [<span class="chibi-number">1</span>, <span class="chibi-number">2</span>]
+    <span class="chibi-function">Run</span> :: () {
+        original: <span class="chibi-type">int</span>[] = [<span class="chibi-number">1</span>, <span class="chibi-number">2</span>]
         copy := original
         copy[<span class="chibi-number">0</span>] = <span class="chibi-number">9</span> <span class="chibi-comment">// original[0] remains 1.</span>
     }
@@ -258,8 +258,8 @@
 </code></pre>
 <p>Array iteration binds the item first and an optional index second. Ordinary iteration takes a snapshot before the loop.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    WeightedTotal :: (scores: int[]) -&gt; int {
-        total: int = <span class="chibi-number">0</span>
+    <span class="chibi-function">WeightedTotal</span> :: (scores: <span class="chibi-type">int</span>[]) -&gt; <span class="chibi-type">int</span> {
+        total: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
         <span class="chibi-keyword">for</span> value, index <span class="chibi-keyword">in</span> scores {
             total += value * index
         }
@@ -269,8 +269,8 @@
 </code></pre>
 <p>Reference iteration changes the items of a mutable owned array. The loop cannot access the source array directly or suspend.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        scores: int[] = [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">30</span>]
+    <span class="chibi-function">Run</span> :: () {
+        scores: <span class="chibi-type">int</span>[] = [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">30</span>]
         <span class="chibi-keyword">for</span> value: <span class="chibi-keyword">ref</span> <span class="chibi-keyword">in</span> scores {
             value += <span class="chibi-number">10</span>
         }
@@ -280,23 +280,23 @@
 <p>A map <code>[K: V]</code> associates keys of one type with values of another, as Swift writes it. <code>[&quot;Player&quot;: 10]</code> is a map literal and <code>[:]</code> an empty one; an empty literal takes its types from the declaration. Reading a missing key yields the value type's zero, as in Odin: <code>0</code>, <code>&quot;&quot;</code>, an empty array or map, a record's field defaults, or <code>nil</code> for an optional value. Reading adds no key, so <code>counts[name] += 1</code> counts from zero. A record with a field that has no default has no zero value, so reading a missing key of a map of them fails; check the key first. Writing through a missing key, as <code>m[a][b] = v</code> when <code>m</code> lacks <code>a</code>, also fails; store <code>m[a]</code> first.</p>
 <p><code>k in m</code>, <code>k not in m</code> and <code>m.has(k)</code> test for a key. <code>delete m[k]</code> and <code>m.delete(k)</code> remove one, and removing a missing key does nothing.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        scores: [string: int] = [<span class="chibi-string">&quot;Player&quot;</span>: <span class="chibi-number">10</span>, <span class="chibi-string">&quot;Rival&quot;</span>: <span class="chibi-number">20</span>]
+    <span class="chibi-function">Run</span> :: () {
+        scores: [<span class="chibi-type">string</span>: <span class="chibi-type">int</span>] = [<span class="chibi-string">&quot;Player&quot;</span>: <span class="chibi-number">10</span>, <span class="chibi-string">&quot;Rival&quot;</span>: <span class="chibi-number">20</span>]
         scores[<span class="chibi-string">&quot;Player&quot;</span>] = <span class="chibi-number">30</span>
         scores[<span class="chibi-string">&quot;Guest&quot;</span>] += <span class="chibi-number">5</span>
         <span class="chibi-keyword">if</span> <span class="chibi-string">&quot;Rival&quot;</span> <span class="chibi-keyword">in</span> scores {
             <span class="chibi-keyword">delete</span> scores[<span class="chibi-string">&quot;Rival&quot;</span>]
         }
-        empty: [string: int] = [:]
+        empty: [<span class="chibi-type">string</span>: <span class="chibi-type">int</span>] = [:]
     }
 }
 </code></pre>
 <p>Map iteration visits a snapshot in insertion order. Replacing a value keeps the key's position. Map equality compares associations independently of order.</p>
 <p>A lookup takes constant time: a map of more than a few entries keeps Odin's Robin Hood hash index over its entries. Storing a key and removing one update a local map in place, as appending updates a local array, so building a map of n keys takes O(n). A removal shifts the later entries down to keep their order, so it takes time in proportion to the map.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Total :: (scores: [string: int]) -&gt; int {
-        total: int = <span class="chibi-number">0</span>
-        <span class="chibi-keyword">for</span> name, points <span class="chibi-keyword">in</span> scores {
+    <span class="chibi-function">Total</span> :: (scores: [<span class="chibi-type">string</span>: <span class="chibi-type">int</span>]) -&gt; <span class="chibi-type">int</span> {
+        total: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
+        <span class="chibi-keyword">for</span> <span class="chibi-type">name</span>, points <span class="chibi-keyword">in</span> scores {
             total += points
         }
         <span class="chibi-keyword">return</span> total
@@ -309,7 +309,7 @@
 </summary>
 <p>String iteration yields one string per Unicode scalar. It does not yield bytes or complete displayed characters that contain several scalars.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
+    <span class="chibi-function">Run</span> :: () {
         <span class="chibi-keyword">for</span> character <span class="chibi-keyword">in</span> <span class="chibi-string">&quot;Aé🐈&quot;</span> {
             <span class="chibi-comment">// character is &quot;A&quot;, then &quot;é&quot;, then &quot;🐈&quot;.</span>
         }
@@ -320,8 +320,8 @@
 <pre><code class="language-chibi"><span class="chibi-keyword">package</span> names
 <span class="chibi-keyword">import</span> strings <span class="chibi-string">&quot;core:strings&quot;</span>
 
-<span class="chibi-keyword">pub</span> IsImage :: (path: string) -&gt; bool {
-    <span class="chibi-keyword">return</span> strings.HasSuffix(path, <span class="chibi-string">&quot;.png&quot;</span>)
+<span class="chibi-keyword">pub</span> <span class="chibi-function">IsImage</span> :: (path: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span> {
+    <span class="chibi-keyword">return</span> strings.<span class="chibi-function">HasSuffix</span>(path, <span class="chibi-string">&quot;.png&quot;</span>)
 }
 </code></pre>
 <p><code>ByteLength</code>, <code>Bytes</code>, <code>Slice</code>, <code>Index</code>, <code>Split</code>, <code>Join</code>, <code>TrimSpace</code> and related functions use byte offsets. Slices can split UTF-8 sequences. Case conversion and whitespace checks use ASCII rules.</p>
@@ -332,12 +332,12 @@
 </summary>
 <p>A record gives names and types to its fields. A field without a default must appear in the initializer.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    ScoreEntry :: <span class="chibi-keyword">struct</span> {
-        name: string
-        points: int = <span class="chibi-number">0</span>
+    <span class="chibi-type">ScoreEntry</span> :: <span class="chibi-keyword">struct</span> {
+        name: <span class="chibi-type">string</span>
+        points: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
     }
 
-    Run :: () {
+    <span class="chibi-function">Run</span> :: () {
         scoreEntry: ScoreEntry = {name: <span class="chibi-string">&quot;Player&quot;</span>}
         scoreEntry.points = <span class="chibi-number">10</span>
     }
@@ -346,21 +346,21 @@
 <p>Authored record fields currently support scalar values. Arrays, unions and nested records are not available as authored record fields.</p>
 <p>A tagged union stores one alternative at a time. An alternative can have a payload.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    AttackState :: <span class="chibi-keyword">union</span> {
-        Idle | Windup(remaining: number) | Active(damage: int)
+    <span class="chibi-type">AttackState</span> :: <span class="chibi-keyword">union</span> {
+        Idle | <span class="chibi-function">Windup</span>(remaining: <span class="chibi-type">number</span>) | <span class="chibi-function">Active</span>(damage: <span class="chibi-type">int</span>)
     }
 
-    Run :: () {
+    <span class="chibi-function">Run</span> :: () {
         ready := <span class="chibi-keyword">false</span>
-        countdown: number = <span class="chibi-number">0.0</span>
-        health: int = <span class="chibi-number">100</span>
-        phase := AttackState.Windup(<span class="chibi-number">0.3</span>)
+        countdown: <span class="chibi-type">number</span> = <span class="chibi-number">0.0</span>
+        health: <span class="chibi-type">int</span> = <span class="chibi-number">100</span>
+        phase := AttackState.<span class="chibi-function">Windup</span>(<span class="chibi-number">0.3</span>)
         <span class="chibi-keyword">switch</span> phase {
             <span class="chibi-keyword">case</span> .Idle:
                 ready = <span class="chibi-keyword">true</span>
-            <span class="chibi-keyword">case</span> .Windup(remaining):
+            <span class="chibi-keyword">case</span> .<span class="chibi-function">Windup</span>(remaining):
                 countdown = remaining
-            <span class="chibi-keyword">case</span> .Active(damage):
+            <span class="chibi-keyword">case</span> .<span class="chibi-function">Active</span>(damage):
                 health -= damage
         }
     }
@@ -369,14 +369,14 @@
 <p>A switch over a finite union must cover every alternative or include <code>case:</code>. Union values need an initializer. ECS component fields cannot contain unions.</p>
 <p><code>is</code> tests and narrows a union value. <code>as T</code> extracts an optional <code>T</code>. A failed extraction gives <code>nil</code>. A successful extraction preserves zero, false and empty text as present values.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Run :: () {
-        total: number = <span class="chibi-number">0.0</span>
-        result: number | Cancelled = <span class="chibi-number">0</span>
-        <span class="chibi-keyword">if</span> result <span class="chibi-keyword">is</span> number amount {
+    <span class="chibi-function">Run</span> :: () {
+        total: <span class="chibi-type">number</span> = <span class="chibi-number">0.0</span>
+        result: <span class="chibi-type">number</span> | <span class="chibi-type">Cancelled</span> = <span class="chibi-number">0</span>
+        <span class="chibi-keyword">if</span> result <span class="chibi-keyword">is</span> <span class="chibi-type">number</span> amount {
             total += amount
         }
 
-        amount := result <span class="chibi-keyword">as</span> number
+        amount := result <span class="chibi-keyword">as</span> <span class="chibi-type">number</span>
         <span class="chibi-keyword">if</span> amount {
             total += amount
         }
@@ -385,7 +385,7 @@
 </code></pre>
 <p><code>a ?? b</code> reads an optional's value, or <code>b</code> when it is <code>nil</code>, as Swift's <code>??</code> and Odin's <code>or_else</code> do. <code>b</code> runs only when <code>a</code> is <code>nil</code>. It has <code>a</code>'s value type, or is optional itself, which keeps the result optional. <code>??</code> groups to the right and binds below arithmetic and above comparison, so <code>a ?? b ?? 0 + 1 &lt; limit</code> reads <code>(a ?? (b ?? (0 + 1))) &lt; limit</code>.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Total :: (bonus: int?, scores: [string: int?]) -&gt; int {
+    <span class="chibi-function">Total</span> :: (bonus: <span class="chibi-type">int</span>?, scores: [<span class="chibi-type">string</span>: <span class="chibi-type">int</span>?]) -&gt; <span class="chibi-type">int</span> {
         <span class="chibi-keyword">return</span> (bonus ?? <span class="chibi-number">0</span>) + (scores[<span class="chibi-string">&quot;Ada&quot;</span>] ?? scores[<span class="chibi-string">&quot;Bea&quot;</span>] ?? <span class="chibi-number">0</span>)
     }
 }
@@ -398,22 +398,22 @@
 <pre><code class="language-chibi"><span class="chibi-keyword">package</span> score
 <span class="chibi-comment">// score/Bonus.chibi</span>
 
-Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
-<span class="chibi-keyword">pub</span> Reward :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> Twice(points) + <span class="chibi-number">5</span> }
+<span class="chibi-function">Twice</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
+<span class="chibi-keyword">pub</span> <span class="chibi-function">Reward</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> { <span class="chibi-keyword">return</span> <span class="chibi-function">Twice</span>(points) + <span class="chibi-number">5</span> }
 </code></pre>
 <p>Declarations are private to the package unless <code>pub</code> exports them. Other packages can call <code>Reward</code> but cannot call <code>Twice</code>. Create <code>rewards/Main.chibi</code> beside the <code>score</code> folder:</p>
 <pre><code class="language-chibi"><span class="chibi-keyword">package</span> rewards
 <span class="chibi-comment">// rewards/Main.chibi</span>
 <span class="chibi-keyword">import</span> score <span class="chibi-string">&quot;project:score&quot;</span>
 
-<span class="chibi-keyword">pub</span> StartingReward :: () -&gt; int {
-    <span class="chibi-keyword">return</span> score.Reward(<span class="chibi-number">10</span>)
+<span class="chibi-keyword">pub</span> <span class="chibi-function">StartingReward</span> :: () -&gt; <span class="chibi-type">int</span> {
+    <span class="chibi-keyword">return</span> score.<span class="chibi-function">Reward</span>(<span class="chibi-number">10</span>)
 }
 </code></pre>
 <p>Import aliases belong to their file. Sibling files do not inherit them. <code>pub</code> can export functions, constants, records and unions. It follows any attributes and precedes the declaration name.</p>
 <p>Game projects currently use named library blocks for reusable functions. Their names resolve through the project catalog.</p>
 <pre><code class="language-chibi">Scoring :: <span class="chibi-keyword">library</span> {
-    Reward :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
+    <span class="chibi-function">Reward</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
 }
 </code></pre>
 <p>A game calls this function as <code>Scoring.Reward(10)</code>. Library, behavior and system blocks do not take <code>pub</code>.</p>
@@ -423,18 +423,18 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 </summary>
 <p><code>$T</code> binds a type from an argument. Later uses of <code>T</code> refer to that type. <code>$N: int</code> binds an integer that must be known at compilation.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Identity :: (value: $T) -&gt; T { <span class="chibi-keyword">return</span> value }
-    Scale :: (value: $T, $N: int) -&gt; T { <span class="chibi-keyword">return</span> value * N }
+    <span class="chibi-function">Identity</span> :: (value: $T) -&gt; T { <span class="chibi-keyword">return</span> value }
+    <span class="chibi-function">Scale</span> :: (value: $T, $N: <span class="chibi-type">int</span>) -&gt; T { <span class="chibi-keyword">return</span> value * N }
 }
 </code></pre>
 <p>Ordinary functions can calculate constants when their inputs and operations are available at compilation.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Factorial :: (n: int) -&gt; int {
+    <span class="chibi-function">Factorial</span> :: (n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
         <span class="chibi-keyword">if</span> n &lt;= <span class="chibi-number">1</span> { <span class="chibi-keyword">return</span> <span class="chibi-number">1</span> }
-        <span class="chibi-keyword">return</span> n * Factorial(n - <span class="chibi-number">1</span>)
+        <span class="chibi-keyword">return</span> n * <span class="chibi-function">Factorial</span>(n - <span class="chibi-number">1</span>)
     }
 
-    Size :: Factorial(<span class="chibi-number">5</span>)
+    Size :: <span class="chibi-function">Factorial</span>(<span class="chibi-number">5</span>)
 }
 </code></pre>
 <p>Compile-time execution supports scalar and type values, authored calls, locals, assignment, <code>if</code> and <code>while</code>. It does not support arrays, <code>for</code>, closures or native calls. Each evaluation has a 65,536-step budget and a 128-call limit.</p>
@@ -445,26 +445,26 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 </summary>
 <p>A behavior reacts to events on an entity. <code>self</code> names that entity. Declarations at the behavior root persist between events.</p>
 <pre><code class="language-chibi">Lifetime :: <span class="chibi-keyword">behavior</span> {
-    elapsed: number = <span class="chibi-number">0.0</span>
-    lifetime: number = <span class="chibi-number">3.0</span>
+    elapsed: <span class="chibi-type">number</span> = <span class="chibi-number">0.0</span>
+    lifetime: <span class="chibi-type">number</span> = <span class="chibi-number">3.0</span>
 
-    <span class="chibi-keyword">on</span> Tick :: (dt: s) {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
         elapsed += dt
         <span class="chibi-keyword">if</span> elapsed &gt;= lifetime {
-            destroy_entity(self)
+            <span class="chibi-function">destroy_entity</span>(self)
         }
     }
 }
 </code></pre>
 <p>A handler lists the payload fields that it reads, with their types. Fields match by name, so a handler can list a subset in any order. A handler that reads no payload fields writes <code>()</code>.</p>
 <pre><code class="language-chibi">Timer :: <span class="chibi-keyword">behavior</span> {
-    elapsed: number = <span class="chibi-number">0.0</span>
+    elapsed: <span class="chibi-type">number</span> = <span class="chibi-number">0.0</span>
 
-    <span class="chibi-keyword">on</span> Begin :: () {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
         elapsed = <span class="chibi-number">0.0</span>
     }
 
-    <span class="chibi-keyword">on</span> Tick :: (dt: s) {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
         elapsed += dt
     }
 }
@@ -472,7 +472,7 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 <p>A handler cannot read unlisted payload fields or <code>event</code>. The handler can change a payload parameter only when the event declares a reference. A written unit must match the payload field's unit.</p>
 <p>An explicit <code>retain</code> binding keeps private state in the enclosing behavior attachment or system registration. A helper call does not create a new owner.</p>
 <pre><code class="language-chibi">Counter :: <span class="chibi-keyword">behavior</span> {
-    visits: <span class="chibi-keyword">retain</span> int = <span class="chibi-number">0</span>
+    visits: <span class="chibi-keyword">retain</span> <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
 }
 </code></pre>
 <p>Use components for entity-visible state. Use invocation locals for temporary work. All matches of one system share its retained state.</p>
@@ -482,14 +482,14 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 <summary><h2 id="components-and-systems">Components and systems</h2>
 </summary>
 <p>A component declares data attached to an entity.</p>
-<pre><code class="language-chibi">Health :: <span class="chibi-keyword">component</span> {
-    current: int
-    maximum: int
+<pre><code class="language-chibi"><span class="chibi-type">Health</span> :: <span class="chibi-keyword">component</span> {
+    current: <span class="chibi-type">int</span>
+    maximum: <span class="chibi-type">int</span>
 }
 </code></pre>
 <p>Paths read and write reflected component fields. A component path used as a condition tests whether the component exists.</p>
 <pre><code class="language-chibi">Damage :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> Begin :: () {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
         <span class="chibi-keyword">if</span> self.Health &amp;&amp; self.Health.current &gt; <span class="chibi-number">0</span> {
             self.Health.current -= <span class="chibi-number">1</span>
         }
@@ -500,7 +500,7 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 <pre><code class="language-chibi">EmitterControl :: <span class="chibi-keyword">system</span>(
     emitter: ParticleEmitter,
     trigger: Aim?
-) <span class="chibi-keyword">without</span> Collider <span class="chibi-keyword">on</span> Tick :: (dt: s) {
+) <span class="chibi-keyword">without</span> Collider <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
     <span class="chibi-keyword">if</span> trigger {
         emitter.Active = trigger.Firing
     }
@@ -522,14 +522,14 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 </summary>
 <p>Input actions come from the project's input map. <code>.held</code> stays true while a source is down. <code>.pressed</code> is true for the fixed step after a press.</p>
 <pre><code class="language-chibi">BoostEmitter :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> Tick :: () {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: () {
         self.ParticleEmitter.Active = input.Boost.held
     }
 }
 </code></pre>
 <p><code>globals</code> exposes scene entities with authored global names. An unknown name is a source error. A declared name absent from the current scene is a runtime error.</p>
 <pre><code class="language-chibi">CameraFollow :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> Tick :: () {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: () {
         self.Transform = globals.Player.Transform
     }
 }
@@ -546,26 +546,26 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 </summary>
 <p><code>await</code> suspends the current continuation until an operation completes. Other engine work continues. An awaited call can declare its result.</p>
 <pre><code class="language-chibi">Spawner :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> Begin :: () {
-        <span class="chibi-keyword">await</span> delay(<span class="chibi-number">1</span>)
-        created := <span class="chibi-keyword">await</span> spawn_prototype(Emitter)
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
+        <span class="chibi-keyword">await</span> <span class="chibi-function">delay</span>(<span class="chibi-number">1</span>)
+        created := <span class="chibi-keyword">await</span> <span class="chibi-function">spawn_prototype</span>(Emitter)
         created.ParticleEmitter.Parent = self
     }
 }
 </code></pre>
 <p>Calling a waiting function without <code>await</code> starts a task. The task runs until its first suspension, then continues alongside its caller.</p>
 <pre><code class="language-chibi">Charger :: <span class="chibi-keyword">behavior</span> {
-    Charge :: (seconds: number) -&gt; number {
-        <span class="chibi-keyword">await</span> delay(seconds)
+    <span class="chibi-function">Charge</span> :: (seconds: <span class="chibi-type">number</span>) -&gt; <span class="chibi-type">number</span> {
+        <span class="chibi-keyword">await</span> <span class="chibi-function">delay</span>(seconds)
         <span class="chibi-keyword">return</span> seconds * <span class="chibi-number">2</span>
     }
 
-    <span class="chibi-keyword">on</span> Begin :: () {
-        charging := Charge(<span class="chibi-number">1</span>)
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
+        charging := <span class="chibi-function">Charge</span>(<span class="chibi-number">1</span>)
         <span class="chibi-keyword">cancel</span> charging <span class="chibi-keyword">after</span> <span class="chibi-number">2</span>
         result := <span class="chibi-keyword">await</span> charging
-        <span class="chibi-keyword">if</span> result <span class="chibi-keyword">is</span> <span class="chibi-keyword">not</span> Cancelled {
-            self.Health.current += int(result)
+        <span class="chibi-keyword">if</span> result <span class="chibi-keyword">is</span> <span class="chibi-keyword">not</span> <span class="chibi-type">Cancelled</span> {
+            self.Health.current += <span class="chibi-type">int</span>(result)
         }
     }
 }
@@ -579,11 +579,11 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 </summary>
 <p>Numeric parameters and results can declare dimensions. The compiler checks known dimensions at calls, assignments and returns.</p>
 <pre><code class="language-chibi">Example :: <span class="chibi-keyword">library</span> {
-    Distance :: (speed: u/s, elapsed: s) -&gt; u {
+    <span class="chibi-function">Distance</span> :: (speed: u/s, elapsed: s) -&gt; u {
         <span class="chibi-keyword">return</span> speed * elapsed
     }
 
-    ChargeRate :: (charge: number charge, elapsed: s) -&gt; number charge/s {
+    <span class="chibi-function">ChargeRate</span> :: (charge: <span class="chibi-type">number</span> charge, elapsed: s) -&gt; <span class="chibi-type">number</span> charge/s {
         <span class="chibi-keyword">return</span> charge / elapsed
     }
 }
@@ -596,11 +596,11 @@ Twice :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> poi
 <p><code>@test</code> marks a package-level function with no parameters and no results. <code>assert</code> fails the test when its condition is false.</p>
 <pre><code class="language-chibi"><span class="chibi-keyword">package</span> scoring
 
-Double :: (points: int) -&gt; int { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
+<span class="chibi-function">Double</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> { <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span> }
 
-@test
-DoublesPoints :: () {
-    assert(Double(<span class="chibi-number">3</span>) == <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>)
+@<span class="chibi-attribute">test</span>
+<span class="chibi-function">DoublesPoints</span> :: () {
+    <span class="chibi-function">assert</span>(<span class="chibi-function">Double</span>(<span class="chibi-number">3</span>) == <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>)
 }
 </code></pre>
 <p>Run tests and format source with the command line tools.</p>

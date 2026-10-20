@@ -42,13 +42,13 @@
 <p>Save this file as <code>packages/scoring/Scoring.chibi</code>:</p>
 <pre><code class="language-chibi"><span class="chibi-keyword">package</span> scoring
 
-Double :: (points: int) -&gt; int {
+<span class="chibi-function">Double</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
     <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span>;
 }
 
-@test
-DoublesPoints :: () {
-    assert(Double(<span class="chibi-number">3</span>) == <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>);
+@<span class="chibi-attribute">test</span>
+<span class="chibi-function">DoublesPoints</span> :: () {
+    <span class="chibi-function">assert</span>(<span class="chibi-function">Double</span>(<span class="chibi-number">3</span>) == <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>);
 }
 </code></pre>
 <p>Run the package tests:</p>

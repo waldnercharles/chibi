@@ -1405,7 +1405,6 @@ void program_bind_world_callbacks(behavior_function_context *ctx)
     ctx->store_component = store_component;
     ctx->reduce_component = reduce_component;
     ctx->failure_observer = record_failure;
-    ctx->event_argument = program_event_argument;
 }
 static int subscription_matches(
     execution_instance *instance,

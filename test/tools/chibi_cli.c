@@ -1115,6 +1115,37 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
     );
     REQUIRE(tool_run(docs, root, output) == 0);
+    /* Package fences share this page's virtual workspace and real core imports. */
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\n// score/Bonus.chibi\npackage score\n"
+        "Twice :: (n: int) -> int { return n * 2 }\n"
+        "pub Reward :: () -> int { return Twice(5) }\n```\n"
+        "```chibi\npackage score\npub More :: () -> int { return Twice(6) "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "import strings \"core:strings\"\n"
+        "pub Ready :: () -> bool { return strings.HasPrefix(\"reward\", "
+        "\"re\") && score.Reward() > 0 }\n```\n"
+        "```chibi\npackage relative\nimport score \"../score\"\n"
+        "pub Points :: () -> int { return score.More() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(file_has("site/build/docs/guide.html", "core:strings"));
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\npackage score\nSecret :: () -> int { return 10 "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "pub Points :: () -> int { return score.Secret() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:10:"));
+    REQUIRE(file_has("docs.log", "'score.Secret' is private"));
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage rewards\nimport missing \"project:missing\"\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:5:"));
+    REQUIRE(file_has("docs.log", "Imported package is missing"));
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: () {\n    Missing();\n}\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1);
     REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));

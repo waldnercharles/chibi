@@ -174,7 +174,8 @@ Target :: (url: string, page: string, sources: string[], outputs: string[]) -> s
     resolved := Resolve(Folder(page), path);
     index: int = 0;
     while (index < length(sources)) {
-        if (resolved != "" && sources[index] == resolved) {
+        if ((resolved != "" && sources[index] == resolved) || path == outputs[index] ||
+            resolved == outputs[index]) {
             return format_text("{}{}", outputs[index], anchor);
         }
         index += 1;
@@ -476,26 +477,45 @@ Locate :: (lines: string[], first: int, end: int, targets: string[]) -> int[] {
     return found;
 }
 
-// The entry in a page's contents that links to the heading at line, of level 2
-// or 3, with the heading's inline content.
+// An open list item for a heading. Page nests and closes the items.
 Entry :: (line: string, level: int, page: string, sources: string[], outputs: string[]) -> string {
     title := Trim(From(line, level + 1));
     inline := Inline(title, page, sources, outputs);
-    kind: string = "";
-    if (level == 3) {
+    kind: string = " class=\"section\"";
+    if (level > 2) {
         kind = " class=\"sub\"";
     }
-    return format_text("<li{}><a href=\"#{}\">{}</a></li>\n", kind, Slug(title), inline.html);
+    return format_text("<li{}><a href=\"#{}\">{}</a>", kind, Slug(title), inline.html);
+}
+
+// Long pages keep their sections open initially and let readers close them.
+// Fenced examples must not count as headings.
+Collapsible :: (lines: string[]) -> bool {
+    sections: int = 0;
+    fenced := false;
+    for (source in lines) {
+        line := Trim(source);
+        if (strings.HasPrefix(line, "```")) {
+            fenced = !fenced;
+        } else if (!fenced && HeadingLevel(line) == 2) {
+            sections += 1;
+        }
+    }
+    return sections >= 6 || (sections >= 2 && length(lines) >= 160);
 }
 
 // The page's Markdown, given as its lines, as HTML pieces to write in order,
 // the line index and target of each link written as text, and an entry for
-// each heading of level 2 or 3. page is the page's source path, and sources
+// each heading of level 2 through 4. page is the page's source path, and sources
 // and outputs map published sources to their pages for links. Lines arrive
 // split because reading a byte of a string costs the length of the string.
 pub Page :: (lines: string[], page: string, sources: string[],
              outputs: string[]) -> (html: string[], at: int[], targets: string[], contents: string[]) {
     index: int = 0;
+    collapsible := Collapsible(lines);
+    section := false;
+    controls := false;
+    levels: int[] = [];
     while (index < length(lines)) {
         line := Trim(lines[index]);
         if (line == "") {
@@ -503,28 +523,64 @@ pub Page :: (lines: string[], page: string, sources: string[],
             continue;
         }
         level := HeadingLevel(line);
-        if (level == 2 || level == 3) {
+        if (level >= 2 && level <= 4) {
+            if (length(levels) > 0 && level > levels[length(levels) - 1]) {
+                contents = array_add(contents, "\n<ul>\n");
+            } else if (length(levels) > 0) {
+                while (length(levels) > 1 && level < levels[length(levels) - 1]) {
+                    contents = array_add(contents, "</li>\n</ul>\n");
+                    levels = slice(levels, 0, length(levels) - 1);
+                }
+                contents = array_add(contents, "</li>\n");
+                levels = slice(levels, 0, length(levels) - 1);
+            }
             contents = array_add(contents, Entry(line, level, page, sources, outputs));
+            levels = array_add(levels, level);
+        }
+        if (collapsible && (level == 1 || level == 2) && section) {
+            html = array_add(html, "</details>\n");
+            section = false;
+        }
+        if (collapsible && level == 2) {
+            if (!controls) {
+                html = array_add(html, "<div class=\"section-controls\" hidden><button type=\"button\" data-sections=\"open\">Expand all</button><button type=\"button\" data-sections=\"close\">Collapse all</button></div>\n");
+                controls = true;
+            }
+            html = array_add(html, "<details class=\"doc-section\" open>\n<summary>");
+            section = true;
         }
         block := Block(lines, index, page, sources, outputs);
         html = append(html, block.html);
+        if (collapsible && level == 2) {
+            html = array_add(html, "</summary>\n");
+        }
         at = append(at, Locate(lines, index, block.end, block.dropped));
         targets = append(targets, block.dropped);
         index = block.end;
     }
+    if (section) {
+        html = array_add(html, "</details>\n");
+    }
+    while (length(levels) > 0) {
+        contents = array_add(contents, "</li>\n");
+        levels = slice(levels, 0, length(levels) - 1);
+        if (length(levels) > 0) {
+            contents = array_add(contents, "</ul>\n");
+        }
+    }
     return (html: html, at: at, targets: targets, contents: contents);
 }
 
-// The page's HTML pieces, as Page renders them, followed by its contents when
-// it has headings of level 2 or 3.
+// The contents precede the body so narrow windows can show them above it.
 pub Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
     if (length(rendered.contents) == 0) {
         return rendered.html;
     }
-    html := array_add(rendered.html, "<nav class=\"contents\" aria-label=\"On this page\">\n<p>On this page</p>\n<ul>\n");
+    html := ["<nav class=\"contents\" aria-label=\"On this page\">\n<details open>\n<summary>On this page</summary>\n<ul>\n"];
     html = append(html, rendered.contents);
-    return array_add(html, "</ul>\n</nav>\n");
+    html = array_add(html, "</ul>\n</details>\n</nav>\n");
+    return append(html, rendered.html);
 }
 
 // items followed by item until there are count of them; generated pages use

@@ -2,48 +2,36 @@ package site
 
 import markdown "project:markdown"
 
-// Lays out the pages of the documentation site: a bar with the site's name and
-// its sections, each page's navigation grouped by section with the current
-// page marked, its body, and the one stylesheet every page links. A site has
-// at least one page.
+// Page navigation and shared HTML for the documentation site.
 
-// The bar's link to each section's first page, with the current page's
-// section marked.
-Sections :: (sections: string[], outputs: string[], current: int) -> string[] {
-    html: string[] = [];
-    index: int = 0;
-    while (index < length(sections)) {
-        if (index == 0 || sections[index] != sections[index - 1]) {
-            mark: string = "";
-            if (sections[index] == sections[current]) {
-                mark = " aria-current=\"true\"";
-            }
-            html = array_add(html, format_text("<a href=\"{}\"{}>{}</a>\n", markdown.Escape(outputs[index]),
-                                               mark, markdown.Escape(sections[index])));
-        }
-        index += 1;
-    }
-    return html;
-}
-
-// Every page under its section, with the current page marked.
+// Single-page sections need no repeated label. Keep labels for groups that
+// contain several pages, with the current page marked in either form.
 Pages :: (sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
-    html: string[] = [];
+    html := ["<ul>\n"];
     index: int = 0;
     while (index < length(titles)) {
-        if (index == 0 || sections[index] != sections[index - 1]) {
-            if (index > 0) {
-                html = array_add(html, "</ul>\n");
+        end := index + 1;
+        while (end < length(titles) && sections[end] == sections[index]) {
+            end += 1;
+        }
+        grouped := end - index > 1;
+        if (grouped) {
+            html = array_add(html, format_text("<li class=\"page-group\"><h2>{}</h2>\n<ul>\n",
+                                               markdown.Escape(sections[index])));
+        }
+        while (index < end) {
+            mark: string = "";
+            if (index == current) {
+                mark = " aria-current=\"page\"";
             }
-            html = array_add(html, format_text("<h2>{}</h2>\n<ul>\n", markdown.Escape(sections[index])));
+            html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n",
+                                               markdown.Escape(outputs[index]), mark,
+                                               markdown.Escape(titles[index])));
+            index += 1;
         }
-        mark: string = "";
-        if (index == current) {
-            mark = " aria-current=\"page\"";
+        if (grouped) {
+            html = array_add(html, "</ul>\n</li>\n");
         }
-        html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n", markdown.Escape(outputs[index]),
-                                           mark, markdown.Escape(titles[index])));
-        index += 1;
     }
     return array_add(html, "</ul>\n");
 }
@@ -57,64 +45,140 @@ pub Head :: (site: string, sections: string[], titles: string[], outputs: string
     html = array_add(html, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     html = array_add(html, format_text("<title>{} · {}</title>\n", markdown.Escape(titles[current]),
                                        markdown.Escape(site)));
-    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<header class=\"bar\">\n");
-    html = array_add(html, format_text("<a class=\"site\" href=\"{}\">{}</a>\n<nav aria-label=\"Sections\">\n",
+    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<a class=\"skip\" href=\"#main\">Skip to content</a>\n<header class=\"bar\">\n");
+    html = array_add(html, format_text("<a class=\"site\" href=\"{}\">{}</a>\n<span class=\"context\">Documentation</span>\n",
                                        markdown.Escape(outputs[0]), markdown.Escape(site)));
-    html = append(html, Sections(sections, outputs, current));
-    html = array_add(html, "</nav>\n</header>\n<div class=\"page\">\n<nav class=\"pages\" aria-label=\"Pages\">\n");
+    html = array_add(html, "</header>\n<div class=\"page\">\n<nav class=\"pages\" aria-label=\"Pages\">\n");
     html = append(html, Pages(sections, titles, outputs, current));
-    return array_add(html, "</nav>\n<main>\n");
+    return array_add(html, "</nav>\n<main id=\"main\" tabindex=\"-1\">\n");
 }
 
-// A page after its body.
+// Native disclosures work without script. Script adds bulk controls, opens
+// linked sections and marks the current heading in the contents.
 pub Foot :: () -> string[] {
-    return ["</main>\n</div>\n</body>\n</html>\n"];
+    return [
+        "</main>\n",
+        "</div>\n",
+        "<script>\n",
+        "(() => {\n",
+        "  const sections = [...document.querySelectorAll('.doc-section')];\n",
+        "  const controls = document.querySelector('.section-controls');\n",
+        "  if (controls) {\n",
+        "    controls.hidden = false;\n",
+        "    controls.addEventListener('click', event => {\n",
+        "      const button = event.target.closest('button[data-sections]');\n",
+        "      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });\n",
+        "    });\n",
+        "  }\n",
+        "  const contents = document.querySelector('.contents');\n",
+        "  const disclosure = contents?.querySelector('details');\n",
+        "  const narrow = matchMedia('(max-width: 64rem)');\n",
+        "  if (disclosure) {\n",
+        "    disclosure.open = !narrow.matches;\n",
+        "    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });\n",
+        "  }\n",
+        "  const links = contents ? [...contents.querySelectorAll('a[href^=\"#\"]')] : [];\n",
+        "  const reveal = hash => {\n",
+        "    let id;\n",
+        "    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }\n",
+        "    const target = document.getElementById(id);\n",
+        "    if (!target) return null;\n",
+        "    for (let parent = target.parentElement; parent; parent = parent.parentElement) {\n",
+        "      if (parent.tagName === 'DETAILS') parent.open = true;\n",
+        "    }\n",
+        "    links.forEach(link => {\n",
+        "      if (link.hash === hash) link.setAttribute('aria-current', 'location');\n",
+        "      else link.removeAttribute('aria-current');\n",
+        "    });\n",
+        "    return target;\n",
+        "  };\n",
+        "  contents?.addEventListener('click', event => {\n",
+        "    const link = event.target.closest('a[href^=\"#\"]');\n",
+        "    if (link) reveal(link.hash);\n",
+        "  });\n",
+        "  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };\n",
+        "  addEventListener('hashchange', visit);\n",
+        "  visit();\n",
+        "  if ('IntersectionObserver' in window) {\n",
+        "    const observer = new IntersectionObserver(entries => {\n",
+        "      const visible = entries.filter(entry => entry.isIntersecting);\n",
+        "      if (visible.length) {\n",
+        "        const id = visible[visible.length - 1].target.id;\n",
+        "        links.forEach(link => {\n",
+        "          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');\n",
+        "          else link.removeAttribute('aria-current');\n",
+        "        });\n",
+        "      }\n",
+        "    }, { rootMargin: '-10% 0px -65% 0px' });\n",
+        "    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));\n",
+        "  }\n",
+        "})();\n",
+        "</script>\n",
+        "</body>\n",
+        "</html>\n"
+    ];
 }
 
-// The stylesheet, as lines to write in order. Its colours are custom
-// properties that the dark palette redefines when the reader's system asks for
-// a dark scheme, so no script is needed. Wide windows show the page's contents
-// in a column on the right; narrow ones drop that column, then show the page
-// list as one compact block of links above the page, in its place in the
-// markup so focus follows what the reader sees, and drop the bar's sections,
-// which it repeats. The bar keeps one row of a fixed height, scrolling its
-// sections sideways when they do not fit, so anchors scroll clear of it.
+// The contents stay on the right of wide pages. Narrow windows show the
+// same contents in a disclosure above the article. Colours follow the system.
 pub Style :: () -> string[] {
     return [
-        ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --bar: #2f6db5; --bar-text: #ffffff; }\n",
+        ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; }\n",
         "@media (prefers-color-scheme: dark) {\n",
-        "  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; --bar: #1f3a5f; }\n",
+        "  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; }\n",
         "}\n",
-        "body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--text); background: var(--page); }\n",
+        "body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--text); background: var(--page); }\n",
         "a { color: var(--link); }\n",
-        ".bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2rem; height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }\n",
-        ".bar a { color: var(--bar-text); text-decoration: none; }\n",
-        ".bar .site { flex: none; font-weight: 700; font-size: 1.3rem; }\n",
-        ".bar nav { display: flex; gap: 1.2rem; min-width: 0; padding: 0.3rem 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }\n",
-        ".bar a[aria-current] { text-decoration: underline; text-underline-offset: 0.3em; }\n",
-        ".page { display: flex; max-width: 84rem; margin: 0 auto; padding-right: 15rem; box-sizing: border-box; }\n",
-        ".pages { width: 14rem; flex: none; position: sticky; top: 3.5rem; align-self: flex-start; max-height: calc(100vh - 3.5rem); overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; }\n",
-        ".pages h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 1rem 0 0.2rem 0.5rem; }\n",
+        ".bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 0.9rem; height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--page); border-bottom: 1px solid var(--line); }\n",
+        ".bar a { color: var(--text); text-decoration: none; }\n",
+        ".bar .site { flex: none; font-weight: 700; font-size: 1.1rem; }\n",
+        ".bar .context { padding-left: 0.9rem; border-left: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }\n",
+        ".skip { position: fixed; top: 0.4rem; left: 1rem; z-index: 2; padding: 0.4rem 0.7rem; transform: translateY(-200%); background: var(--page); border: 1px solid var(--line); }\n",
+        ".skip:focus { transform: none; }\n",
+        ".page { display: flex; max-width: 84rem; margin: 0 auto; padding-right: 17rem; box-sizing: border-box; }\n",
+        ".pages { width: 12rem; flex: none; position: sticky; top: 3.5rem; align-self: flex-start; max-height: calc(100vh - 3.5rem); overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; }\n",
+        ".pages h2 { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin: 1rem 0 0.3rem 0.5rem; }\n",
         ".pages ul, .contents ul { list-style: none; margin: 0; padding: 0; }\n",
-        ".pages a { display: block; padding: 0.1rem 0.5rem; border-radius: 4px; color: inherit; text-decoration: none; }\n",
-        ".pages a[aria-current] { background: var(--panel); color: var(--link); font-weight: 600; }\n",
-        "main { flex: 1; min-width: 0; max-width: 50rem; padding: 1.5rem 2.5rem 4rem; overflow-wrap: break-word; }\n",
+        ".pages a { display: block; padding: 0.4rem 0.5rem; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }\n",
+        ".pages a[aria-current] { background: var(--panel); color: var(--link); border-left-color: var(--link); }\n",
+        "main { flex: 1; min-width: 0; max-width: 50rem; padding: 1.5rem 2rem 4rem; overflow-wrap: break-word; }\n",
         "main h2 { margin-top: 2.2rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--line); }\n",
+        "main p, main blockquote, main > ul, main > ol, .doc-section > ul, .doc-section > ol { max-width: 70ch; }\n",
+        ".doc-section > summary + p { margin-top: 0.5rem; }\n",
+        "main p { margin-bottom: 1rem; }\n",
         "main [id] { scroll-margin-top: 4.5rem; }\n",
-        ".contents { position: fixed; top: 3.5rem; bottom: 0; right: max(0px, calc((100vw - 84rem) / 2)); width: 15rem; overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; font-size: 0.85rem; }\n",
-        ".contents p { margin: 0 0 0.4rem; font-weight: 600; }\n",
-        ".contents li { margin: 0.25rem 0; }\n",
-        ".contents a { color: var(--muted); text-decoration: none; }\n",
-        ".contents .sub { padding-left: 0.8rem; }\n",
+        ".contents { position: fixed; top: 3.5rem; bottom: 0; right: max(0px, calc((100vw - 84rem) / 2)); width: 17rem; overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; font-size: 0.875rem; }\n",
+        ".contents summary { cursor: pointer; color: var(--text); font-weight: 600; padding-bottom: 0.8rem; }\n",
+        ".contents li { margin: 0; }\n",
+        ".contents a { display: block; padding: 0.2rem 0.6rem; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }\n",
+        ".contents ul ul { margin-left: 0.65rem; border-left: 1px solid var(--line); }\n",
         ".pages a:hover, .contents a:hover { color: var(--link); }\n",
-        "pre { background: var(--panel); border: 1px solid var(--line); padding: 0.8rem 1rem; overflow-x: auto; border-radius: 6px; }\n",
+        ".contents > details > ul > li { margin-bottom: 0.4rem; }\n",
+        ".contents .section > a { color: var(--text); font-weight: 600; }\n",
+        ".contents a[aria-current] { color: var(--link); border-left-color: var(--link); background: var(--panel); }\n",
+        ".doc-section { margin-top: 1.75rem; border-top: 1px solid var(--line); }\n",
+        ".doc-section:not([open]) + .doc-section { margin-top: 0; }\n",
+        ".doc-section:not([open]):last-of-type { border-bottom: 1px solid var(--line); }\n",
+        ".doc-section > summary { display: flex; align-items: center; gap: 1rem; cursor: pointer; padding: 0.65rem 0; list-style: none; }\n",
+        ".doc-section > summary::-webkit-details-marker { display: none; }\n",
+        ".doc-section > summary::after { content: \"\"; flex: none; width: 0.4rem; height: 0.4rem; margin-right: 0.25rem; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); }\n",
+        ".doc-section[open] > summary::after { transform: rotate(45deg); }\n",
+        ".doc-section > summary h2 { flex: 1; min-width: 0; display: block; margin: 0; padding: 0; border: 0; font-size: 1.45rem; line-height: 1.35; }\n",
+        ".section-controls { display: flex; gap: 0.5rem; margin: 1.5rem 0 0; }\n",
+        ".section-controls[hidden] { display: none; }\n",
+        ".section-controls button { font: inherit; font-size: 0.85rem; cursor: pointer; border: 1px solid var(--line); border-radius: 0; padding: 0.3rem 0.7rem; color: var(--text); background: var(--page); }\n",
+        ":focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }\n",
+        "h1, h2, h3, h4 { text-wrap: balance; }\n",
+        "@media print { .bar, .pages, .contents, .section-controls { display: none; } .page { display: block; padding: 0; } main { max-width: none; } .doc-section::details-content { display: block; } }\n",
+        "pre { font: 0.875rem/1.5 ui-monospace, monospace; background: var(--panel); border: 1px solid var(--line); padding: 0.8rem 1rem; overflow-x: auto; border-radius: 0; }\n",
         "code { font: 0.9em ui-monospace, monospace; color: var(--code); }\n",
+        "pre code { font-size: 0.875rem; line-height: 1.5; }\n",
         "pre code, a code { color: inherit; }\n",
         "table { display: block; overflow-x: auto; border-collapse: collapse; }\n",
         "th, td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }\n",
         "th { background: var(--panel); }\n",
         "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }\n",
-        "@media (max-width: 64rem) { .page { padding-right: 0; } .contents { display: none; } }\n",
-        "@media (max-width: 48rem) { .bar { padding: 0 1rem; } .bar nav { display: none; } .page { display: block; } .pages { width: auto; position: static; max-height: none; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); } .pages h2 { display: none; } .pages ul { display: inline; } .pages li { display: inline-block; margin: 0.1rem 0; } main { padding: 1rem; } }\n"
+        "@media (max-width: 64rem) { .page { padding-right: 0; } .contents { position: static; width: auto; max-height: 45vh; margin-bottom: 1.5rem; padding: 0.6rem 1rem; border: 1px solid var(--line); border-radius: 0; } .contents summary { padding-bottom: 0; } }\n",
+        "@media (max-width: 48rem) { .bar { padding: 0 1rem; } .page { display: block; } .pages { width: auto; position: static; max-height: none; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); } .pages h2 { display: none; } .pages ul { display: inline; } .pages li { display: inline-block; margin: 0.1rem 0; } .pages .page-group { display: block; } main { padding: 1rem; } }\n"
     ];
 }

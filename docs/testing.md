@@ -465,9 +465,10 @@ hover sentences. It passes 128 assertions in 0.51 seconds with ASan/UBSan.
 purity, defaults, moves and variable promotion reaching every call, Collapse to
 Macro and Expand Node, and catalog problems of two linked shader libraries. It
 passes 170 assertions in 0.50 seconds with ASan/UBSan.
-`--vector-nodes` runs one case on the vector kernels: normalize at extremes,
-zero scale and the palette's Direction To through a saved graph. It passes 42
-assertions in 0.20 seconds with ASan/UBSan.
+`--vector-nodes` runs two cases on the vector kernels: normalize at extremes,
+zero scale and the palette's Direction To through a saved graph, and a vector
+of floats scaled by integers of each width on either side. It passes 54
+assertions in under a second with ASan/UBSan.
 
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.

@@ -347,10 +347,13 @@ Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;
 - when the host's target changes;
 - when a compiler package gains or loses a source file, because recovery
-  compiles the files the manifest records.
+  compiles the files the manifest records;
+- when the compiler emits other code for its own sources, because the first
+  compile is the artifact's code generation: the compiler it builds compiles
+  the sources to other bytes than its own, and recovery fails.
 
-A change to the contents of recorded sources needs no new artifact, because
-recovery reaches the fixpoint in a second compile. To rewrite it:
+Any other change to the contents of recorded sources needs no new artifact,
+because recovery reaches the fixpoint in a second compile. To rewrite it:
 1. Run `make bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.

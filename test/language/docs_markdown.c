@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Ten cases on bytecode and the compiled backend. One preparation of the
+/* Eleven cases on bytecode and the compiled backend. One preparation of the
  * shipped site generator packages with core:strings per case; each call
  * renders, lays out, styles or reports on one page of at most a few hundred
  * bytes with a 2,000,000-instruction budget. No filesystem, processes or
@@ -367,6 +367,31 @@ TEST_CASE(docs_site_follows_color_scheme)
     return true;
 }
 
+/* The bar keeps one row of a fixed height, which the anchor offset clears,
+ * and a narrow window moves the page list below the page instead of hiding
+ * the only links to a section's later pages. */
+TEST_CASE(docs_site_keeps_navigation_in_reach)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        char *style = call(b, "project:site", "Style", NULL, 0);
+        REQUIRE(style);
+        char *narrow = strstr(style, "@media (max-width: 48rem) {");
+        char *end = narrow ? strchr(narrow, '\n') : NULL;
+        if (end) {
+            *end = '\0';
+        }
+        bool reachable = end && strstr(style, "; height: 3.5rem;") &&
+                         strstr(style, "scroll-margin-top: 4.5rem;") &&
+                         !strstr(style, "flex-wrap: wrap") &&
+                         strstr(narrow, ".pages { order: 1;") &&
+                         !strstr(narrow, "display: none");
+        free(style);
+        REQUIRE(reachable);
+    }
+    return true;
+}
+
 /* The package reference lists each package once, with its import path, and
  * each top-level declaration's signature, up to its body, with the comment
  * written right above it. */
@@ -537,6 +562,7 @@ void test_language_docs_markdown()
     RUN_TEST_CASE(docs_markdown_reports_unpublished_links);
     RUN_TEST_CASE(docs_site_lays_out_navigation);
     RUN_TEST_CASE(docs_site_follows_color_scheme);
+    RUN_TEST_CASE(docs_site_keeps_navigation_in_reach);
     RUN_TEST_CASE(docs_reference_lists_declarations);
     RUN_TEST_CASE(docs_grammar_lists_rules);
     RUN_TEST_CASE(docs_generated_pages_report_unpublished_links);

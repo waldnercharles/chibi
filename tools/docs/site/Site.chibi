@@ -74,8 +74,9 @@ Foot :: () -> string[] {
 // The stylesheet, as lines to write in order. Its colours are custom
 // properties that the dark palette redefines when the reader's system asks for
 // a dark scheme, so no script is needed. Wide windows show the page's contents
-// in a column on the right; narrow ones drop that column, then the page list,
-// which the bar's sections replace.
+// in a column on the right; narrow ones drop that column, then move the page
+// list below the page. The bar keeps one row of a fixed height, scrolling its
+// sections sideways when they do not fit, so anchors scroll clear of it.
 Style :: () -> string[] {
     return [
         ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --bar: #2f6db5; --bar-text: #ffffff; }\n",
@@ -84,10 +85,10 @@ Style :: () -> string[] {
         "}\n",
         "body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--text); background: var(--page); }\n",
         "a { color: var(--link); }\n",
-        ".bar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 2rem; min-height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }\n",
+        ".bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2rem; height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }\n",
         ".bar a { color: var(--bar-text); text-decoration: none; }\n",
-        ".bar .site { font-weight: 700; font-size: 1.3rem; }\n",
-        ".bar nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; }\n",
+        ".bar .site { flex: none; font-weight: 700; font-size: 1.3rem; }\n",
+        ".bar nav { display: flex; gap: 1.2rem; min-width: 0; padding: 0.3rem 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }\n",
         ".bar a[aria-current] { text-decoration: underline; text-underline-offset: 0.3em; }\n",
         ".page { display: flex; max-width: 84rem; margin: 0 auto; padding-right: 15rem; box-sizing: border-box; }\n",
         ".pages { width: 14rem; flex: none; position: sticky; top: 3.5rem; align-self: flex-start; max-height: calc(100vh - 3.5rem); overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; }\n",
@@ -112,6 +113,6 @@ Style :: () -> string[] {
         "th { background: var(--panel); }\n",
         "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }\n",
         "@media (max-width: 64rem) { .page { padding-right: 0; } .contents { display: none; } }\n",
-        "@media (max-width: 48rem) { .page { display: block; } .pages { display: none; } .bar { padding: 0.6rem 1rem; } main { padding: 1rem; } }\n"
+        "@media (max-width: 48rem) { .bar { gap: 1rem; padding: 0 1rem; } .page { flex-direction: column; } .pages { order: 1; width: auto; position: static; align-self: stretch; max-height: none; border-top: 1px solid var(--line); } main { padding: 1rem; } }\n"
     ];
 }

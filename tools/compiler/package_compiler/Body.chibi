@@ -26,9 +26,8 @@ ValueLocal :: (storage: int) -> Slot {
     return {storage: storage, kind: ValueKind};
 }
 // An instruction with the value a constant or header read carries, the
-// message a failing check reports and the source range it lowers. A scalar's
-// 64 bits, sign-extended for signed types, are `payload_high` and `payload`,
-// since records hold only int, bool and string fields.
+// message a failing check reports and the source range it lowers. `payload`
+// is a scalar's 64 bits, sign-extended for signed types.
 Code :: struct {
     op: int;
     type: int;
@@ -40,8 +39,7 @@ Code :: struct {
     value_storage: int;
     value_container: int;
     value_record: int;
-    payload: int;
-    payload_high: int;
+    payload: uint64;
     text: string;
     has_text: bool;
     message: string;
@@ -203,7 +201,7 @@ FieldPhase: int : 5;
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
-            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
+            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, text: "",
             has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
             column: item.column + 1};
 }
@@ -361,16 +359,6 @@ Bits :: (negative: bool, magnitude: uint64) -> uint64 {
     }
     return magnitude;
 }
-// The low and high 32 bits of a 64-bit pattern, and the pattern again.
-Low :: (bits: uint64) -> int {
-    return int(wrap: bits & 0xFFFFFFFF);
-}
-High :: (bits: uint64) -> int {
-    return int(wrap: bits >> 32);
-}
-Join :: (high: int, low: int) -> uint64 {
-    return (uint64(wrap: int64(high)) << 32) | (uint64(wrap: int64(low)) & 0xFFFFFFFF);
-}
 // The type both integer operands convert to without loss: the wider one, or
 // int for a byte and an int; -1 when there is none, as for a signed type with
 // uint64.
@@ -407,13 +395,14 @@ Computes :: (ops: Ops, op: int, storage: int) -> bool {
     }
     return storage == WordStorage && (op == ops.add || op == ops.mul);
 }
-// A constant of an integer or bool type.
+// A constant of an integer or bool type. One literal holds `bits`: stage
+// zero takes any uint64 for a pointer, and storing one into a local record's
+// field would make this function, and every caller, copy its arguments.
 ConstantCode :: (ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
-    constant := Instruction(ops.constant, storage, output, 0, 0, 0, node);
-    constant.value_storage = storage;
-    constant.payload = Low(bits);
-    constant.payload_high = High(bits);
-    return constant;
+    return {op: ops.constant, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: bits, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
+            column: node.column + 1};
 }
 // A conversion to an integer type: `mode` 0 fails when the value does not
 // fit, 1 keeps its low bits and 2 saturates.

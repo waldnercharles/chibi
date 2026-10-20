@@ -26,17 +26,36 @@ do. The trade-off: behavior state such as `elapsed := 0` infers `number` today
 so later assignments can hold fractions; with spelling defaults it needs
 `elapsed := 0.0` or `elapsed: number = 0`.
 
-## Records hold only int, bool and string fields
+## Records hold only scalar fields
 
-Authored records cannot hold arrays, records, unions, floating values or
-64-bit integers. The compiler uses one-variant unions as records with arrays
-(`Step`, `Decimal`), splits 64-bit payloads into `int` halves (`Low`, `High`,
-`Join`) and keeps parallel arrays.
+Authored records cannot hold arrays, records, unions or floating values. The
+compiler uses one-variant unions as records with arrays (`Step`, `Decimal`)
+and keeps parallel arrays. The prepared writer also pools 64-bit IDs in a
+`wide` array its records index, from when stage one's records held only
+`int`, `bool` and `string` fields.
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
 
 Suggestion: record fields of every value type, as Odin's structs.
+
+## Storing a `uint64` in a record field makes calls copy
+
+Stage zero passes a function's arguments without copying them only when its
+analysis proves the function leaves the caller's storage alone. Raw pointers
+have the `uint64` slot type, so the analysis takes any `uint64` value for a
+pointer: once a function stores a `uint64` parameter into a field of a local
+record, the next write to that record looks like a write through the caller's
+pointer. That function, and every function that calls it, then copies every
+argument on each call. One such store in the package compiler's
+`ConstantCode` took stage one compiling itself from 25 to over 60 seconds;
+building the record in one literal keeps its calls free.
+
+- Odin, C, Zig and Rust type pointers apart from integers, so neither their
+  aliasing rules nor their optimizers take a `u64` for an address.
+
+Suggestion: an implementation change: give raw pointers their own slot type,
+so the analysis tells them from `uint64` values.
 
 ## Authored functions return one value
 

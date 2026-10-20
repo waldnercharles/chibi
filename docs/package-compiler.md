@@ -40,9 +40,9 @@ bytes, or none when `Compile` rejects the input, for a host that takes one
 Packages of functions, records, unions and constants, and the packages they
 import:
 
-- `int`, `bool` and `string` values, records of those, `byte`, `int64` and
-  `uint64` values, unions whose variants carry any of them, and arrays of any
-  of these, as parameters, results and locals; string literals decode as
+- `int`, `bool`, `string`, `byte`, `int64` and `uint64` values, records of
+  those, unions whose variants carry any of them, and arrays of any of these,
+  as parameters, results and locals; string literals decode as
   JSON strings, as stage zero reads them;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,

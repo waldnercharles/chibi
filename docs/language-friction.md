@@ -522,25 +522,15 @@ matches only `.Variant` arms, so the tokenizer's operator table is a chain of
 
 Suggestion: stage one compiles integer `switch`, then Odin's ranges.
 
-### A function can end without returning
+### Stage one does not check that functions return
 
-Language. `while (true) { ... return x; }` as a function's last statement is
-rejected with "Union result 'Result' requires a value on every return path",
-so the tokenizer's loop breaks out to a return after it. A function with a
-scalar result, meanwhile, may fall off its end and return zero:
-`F :: (n: int) -> int { if n > 0 { return 1; } }` gives `F(-1) == 0`.
+Stage one. Since #MISSING_PR, stage zero rejects a function with results that
+can fall off its end, with "Missing return", and counts a `while (true)`
+without a `break` as an end, as Go and Odin do; the tokenizer's loop no longer
+needs to break out to a return after it (#518). Stage one compiles only what
+stage zero has checked, but on its own it would accept such a function.
 
-- Odin's checker counts `for {}` without a `break` as terminating; Go's spec
-  does the same for a `for` with no condition and no `break`, and both reject
-  a function with results that can fall off its end. Rust's `loop` has type
-  `!`; Zig and C# also treat code after `while (true)` without a `break` as
-  unreachable.
-
-Decision (2026-10-20): a function with results ends in a terminating
-statement, as in Go and Odin: a `return`, an `if`/`else` or `switch` whose
-every arm terminates, or a `while (true)` with no `break` out of it. Otherwise
-the compiler reports "Missing return". A bare `return` still gives the named
-results' current values.
+Suggestion: stage one applies the same terminating-statement rule.
 
 ### Calls and record snapshots are costly
 

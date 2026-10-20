@@ -1443,6 +1443,18 @@ bound type.
 A function gives its results with `return x`, or with `return(a, b)` in
 signature order. A bare `return` gives the current value of each result.
 
+A function with results must end in a terminating statement, as in Go and
+Odin. Otherwise the compiler reports "Missing return" at the closing brace.
+These statements terminate:
+
+- a `return` or a `goto`;
+- an `if` with an `else`, when both branches terminate;
+- a `switch` with a default arm, or over every alternative of a union, when
+  every arm terminates;
+- a `while (true)` that no `break` leaves.
+
+A function whose `after` handlers return its results is exempt.
+
 ### Inferred results
 
 A function without `->` infers its results from its first `return`:

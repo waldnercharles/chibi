@@ -39,6 +39,70 @@ static bool terminates(const script_analysis *a, int index)
     return s->kind == SCRIPT_STMT_IF && terminates(a, s->body) &&
            terminates(a, s->alternative);
 }
+/* Whether a break in this statement leaves the loop around it: one inside a
+ * nested loop leaves that loop instead, and a switch passes it through. */
+static bool breaks_out(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    if (s->kind == SCRIPT_STMT_BREAK) {
+        return true;
+    }
+    if (s->kind == SCRIPT_STMT_WHILE || s->kind == SCRIPT_STMT_FOR ||
+        s->kind == SCRIPT_STMT_FOREACH) {
+        return false;
+    }
+    for (int i = 0; i < s->child_count; i++) {
+        if (breaks_out(a, s->children[i])) {
+            return true;
+        }
+    }
+    return breaks_out(a, s->body) || breaks_out(a, s->alternative);
+}
+/* A while (true) that nothing breaks out of never falls through. */
+static bool endless(const script_analysis *a, const script_statement *s)
+{
+    const script_expression *condition = s->expression >= 0
+                                           ? &a->expressions[s->expression]
+                                           : NULL;
+    return s->kind == SCRIPT_STMT_WHILE && condition &&
+           condition->kind == SCRIPT_EXPR_CONSTANT &&
+           condition->constant.type == PIN_BOOL && condition->constant.b &&
+           !breaks_out(a, s->body);
+}
+/* Go's terminating statement, which Odin's checker also requires at the end
+ * of a procedure with results: control cannot fall past it. */
+static bool ends(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    switch (s->kind) {
+        case SCRIPT_STMT_RETURN:
+        case SCRIPT_STMT_GOTO: return true;
+        case SCRIPT_STMT_BLOCK:
+            return s->child_count && ends(a, s->children[s->child_count - 1]);
+        case SCRIPT_STMT_IF: return ends(a, s->body) && ends(a, s->alternative);
+        case SCRIPT_STMT_WHILE: return endless(a, s);
+        case SCRIPT_STMT_MATCH: {
+            bool exhaustive = s->expression >= 0 &&
+                              (a->expressions[s->expression].type.flags &
+                               SCRIPT_TYPE_UNION);
+            for (int i = 0; i < s->child_count; i++) {
+                const script_statement *arm = &a->statements[s->children[i]];
+                exhaustive |= arm->expression < 0;
+                if (!ends(a, arm->body)) {
+                    return false;
+                }
+            }
+            return exhaustive;
+        }
+        default: return false;
+    }
+}
 static bool reads_result(const script_analysis *a, int index, int symbol, int depth)
 {
     if (index < 0 || depth == SCRIPT_MAX_DEPTH) {
@@ -127,11 +191,29 @@ static bool union_result_paths(
         bool body_falls;
         union_result_paths(a, s->body, symbol, initialized, &body_falls, valid);
     }
+    *falls = !endless(a, s);
     return initialized;
+}
+/* A function with action handlers may return from them instead. */
+static bool handles_actions(const analyzer *a, int function)
+{
+    for (int i = 0; i < acount(a->out->functions); i++) {
+        if (a->out->functions[i].parent == function &&
+            a->out->functions[i].kind != SCRIPT_FUNCTION_AUTHORED) {
+            return true;
+        }
+    }
+    return false;
 }
 void script_analyzer_union_results(analyzer *a, int function, TSNode body)
 {
     const script_function *f = &a->out->functions[function];
+    if (f->kind == SCRIPT_FUNCTION_AUTHORED && acount(f->results) &&
+        !ends(a->out, f->body) && !handles_actions(a, function)) {
+        uint32_t count = ts_node_child_count(body);
+        script_analyzer_diagnostic(a, count ? ts_node_child(body, count - 1) : body, "Missing return");
+        return;
+    }
     for (int i = 0; i < acount(f->results); i++) {
         int symbol = f->results[i];
         const script_symbol *result = &a->out->symbols[symbol];

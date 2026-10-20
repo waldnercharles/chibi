@@ -167,6 +167,22 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* Constants fold integer expressions of literals and other constants,
+     * declared in any order and in an imported package. */
+    { .name = "constant expressions",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "import lib \"project:lib\"\n"
+                "Area :: Width * Height;\n"
+                "Width :: (Unit << 2) + 1;\n"
+                "Height: int : -(Width - 7) / 2 % 3;\n"
+                "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
+                "Small: byte : 0x10 | 2;\n"
+                "Unit :: 2;\n"
+                "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
+                "int64(Small); }\n",
+      .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
+      .calls = { { "Folded", "[]", "[56313]" } } },
     /* An omitted argument takes its parameter's literal default. */
     { .name = "defaults",
       .source = "package facts\n"
@@ -922,9 +938,14 @@ static const sample samples[] = {
       .message = "constant type is not supported yet",
       .line = 2,
       .column = 5 },
-    { .name = "constant expression",
-      .source = "package facts\nA: int : 1 + 2;",
-      .message = "constant value must be an integer literal",
+    { .name = "constant cycle",
+      .source = "package facts\nA: int : B + 1;\nB: int : A;",
+      .message = "Constant 'A' depends on itself",
+      .line = 2,
+      .column = 10 },
+    { .name = "constant overflow",
+      .source = "package facts\nA: int : 65536 * 65536 / 65536;",
+      .message = "Constant value is outside the range of int",
       .line = 2,
       .column = 10 },
     { .name = "constant clash",
@@ -1053,12 +1074,11 @@ static const sample samples[] = {
       .message = "A conversion argument may only be named wrap or clamp",
       .line = 2,
       .column = 33 },
-    { .name = "untyped constant",
-      .source = "package facts\nTwo :: 2;",
-      .message = "an untyped number is a double; give the constant an integer "
-                 "type",
+    { .name = "floating constant",
+      .source = "package facts\nHalf :: 0.5;",
+      .message = "only integer constants are supported yet",
       .line = 2,
-      .column = 8 },
+      .column = 9 },
     { .name = "negative zero byte",
       .source = "package facts\nOne :: () -> byte { x: byte = -0; "
                 "return x; }",

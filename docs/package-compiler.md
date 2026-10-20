@@ -112,10 +112,12 @@ import:
   native with several results, such as `compiler_json_string`, gives a value
   whose `.name` reads one result, directly or through a local:
   `decoded := compiler_json_string(text); decoded.valid`;
-- integer constants whose value is an integer literal, `-` allowed, with their
-  type (`Mask: uint64 : 0xFF;`). An untyped constant, `Name :: 5;`, is a
-  double in stage zero, and stage one rejects it. A use is the value itself;
-  a local hides a constant of the same name;
+- integer constants, typed (`Mask: int64 : 1 << 40;`) or untyped, which
+  are `int` (`Width :: Unit * 4 + 1;`), whose value folds from literals, other
+  constants of the package in any order or of an import, parentheses and the
+  integer operators. Every intermediate value must fit the constant's type,
+  so stage zero's wrapping never shows, and a uint64 constant is a literal. A
+  use is the value itself; a local hides a constant of the same name;
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
@@ -124,8 +126,8 @@ import:
 Anything else is rejected with its source position. Floating record fields
 and payloads, other integer types, implicit widening of call arguments,
 element stores, literal
-members, payloads and in-place natives, constants of other types or computed
-values, type patterns, record field defaults, fields of array elements, named
+members, payloads and in-place natives, constants of other types, constant
+arrays and constants computed by calls, type patterns, record field defaults, fields of array elements, named
 payload arguments and literal variants come next. A literal passed to a
 wildcard port, as in `format_text("{}", 1)`, is an `int` in stage zero, and
 stage one rejects it. One check stage zero makes at compile time happens at

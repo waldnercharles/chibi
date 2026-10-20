@@ -28,11 +28,11 @@ static const char
     FACTS[] = "package facts\n"
               "import strings \"core:strings\"\n"
               "Check :: (amount: int) {\n"
-              "    expect(amount > 2, \"amount is large\");\n"
+              "    assert(amount > 2, \"amount is large\");\n"
               "}\n"
               "@test\n"
               "Passes :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "@test\n"
               "Fails :: () {\n"
@@ -41,7 +41,7 @@ static const char
               "@test\n"
               "Faults :: () {\n"
               "    values: int[] = [1];\n"
-              "    expect(values[3] == 1, \"unreachable\");\n"
+              "    assert(values[3] == 1, \"unreachable\");\n"
               "}\n"
               "@test\n"
               "Spins :: () {\n"
@@ -135,7 +135,7 @@ TEST_CASE(package_tests_find_the_project_tests_in_order)
 }
 
 /* A test passes when it returns; otherwise the innermost failure explains it:
- * the expect that failed, an out-of-range read or the exhausted budget. A
+ * the assert that failed, an out-of-range read or the exhausted budget. A
  * test runs alone, so one that waits or starts a task fails. */
 TEST_CASE(package_tests_report_where_each_failure_stopped)
 {
@@ -149,7 +149,7 @@ TEST_CASE(package_tests_report_where_each_failure_stopped)
         }
 
         REQUIRE(!package_test_run(&tests[3], backends[b], BUDGET, &failure));
-        REQUIRE(!strcmp(failure.message, "Expectation failed: amount is large"));
+        REQUIRE(!strcmp(failure.message, "Assertion failed: amount is large"));
         REQUIRE(failure.path && !strcmp(failure.path, "/project/facts/Facts.chibi"));
         REQUIRE(failure.line == 4 && failure.column == 5);
 

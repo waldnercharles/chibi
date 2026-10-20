@@ -130,17 +130,22 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
-A test passes when it returns. It fails when `expect(condition, message)` sees
-a false condition, which fails the call with `Expectation failed: message` at
-the `expect` call's position, or on any other runtime failure, such as an
-out-of-bounds read or a checked conversion. `expect` is a core function with an
-effect, so a function that calls it is not pure and no optimization removes the
-call. Tests are ordinary functions: they compile into the package like any other and run
-only when something calls them.
+A test passes when it returns. It fails when an `assert` sees a false
+condition, or on any other runtime failure, such as an out-of-bounds read or a
+checked conversion. Tests are ordinary functions: they compile into the
+package like any other and run only when something calls them.
+
+`assert(condition, message)` does nothing when the condition holds. Otherwise
+it fails the call with `Assertion failed: message` at the `assert` call's
+position, as a checked conversion fails one. Without a message it reports the
+condition's source text instead, `Assertion failed: n >= 0`, as Odin's
+`assert` does. The message is a string constant. `assert` is pure: a function
+that calls it stays pure, no optimization removes the call, and when the
+compiler evaluates a constant, a false `assert` is a compile error.
 
 `chibi test [ROOT]` calls them: it prepares every package below ROOT, runs the
 tests of those packages in file and line order, and reports each failure at the

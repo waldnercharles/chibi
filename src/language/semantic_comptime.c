@@ -375,6 +375,38 @@ static bool compile_conversion(
     return behavior_scalar_cast(out->value, type, mode, &out->value) ||
            fail(a, call, "constant does not fit the conversion type");
 }
+/* A false assert while the compiler evaluates is a compile error, with the
+ * message or the condition's text that it fails a call with at run time. */
+static bool compile_assert(analyzer *a, TSNode node, compile_binding *bindings, compile_value *out, int *budget)
+{
+    TSNode arguments = script_analyzer_field(node, "arguments"), values[2] = { 0 };
+    int count = 0;
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (!ts_node_is_extra(child) && count < 2) {
+            values[count++] = child;
+        }
+    }
+    bool test = false;
+    if (!count ||
+        !script_analyzer_compile_expression(a, values[0], bindings, out, budget) ||
+        !truth(a, values[0], *out, &test)) {
+        return false;
+    }
+    *out = (compile_value){ .value = { .type = PIN_FLOW } };
+    if (test) {
+        return true;
+    }
+    char *text = count == 2 ? script_analyzer_name_copy(a, values[1])
+                            : script_analyzer_text_copy(a, values[0]);
+    size_t size = sizeof "Assertion failed: " + strlen(text);
+    char *message = xmalloc(size);
+    snprintf(message, size, "Assertion failed: %s", text);
+    fail(a, node, message);
+    free(message);
+    free(text);
+    return false;
+}
 static bool compile_call_expression(
     analyzer *a,
     TSNode node,
@@ -384,6 +416,12 @@ static bool compile_call_expression(
     compile_expression_frame *frame
 )
 {
+    TSNode target = script_analyzer_field(node, "function");
+    int symbol = script_analyzer_callable_symbol(a, "assert");
+    if (script_analyzer_text_is(a, target, "assert") &&
+        (symbol < 0 || a->out->symbols[symbol].function < 0)) {
+        return compile_assert(a, node, bindings, out, budget);
+    }
     if (conversion_type(a, node, bindings, &frame->common)) {
         return compile_conversion(a, node, bindings, frame->common.storage, out, budget);
     }

@@ -2487,36 +2487,64 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
     }
     return true;
 }
-/* expect passes a true condition and fails the call with its message at its
- * own position otherwise, on each backend. */
-TEST_CASE(program_expect_fails_with_its_message_and_position)
+/* assert passes a true condition and fails the call at its own position
+ * otherwise, with its message or else its condition's text, on each backend.
+ * It is pure, and a helper that only asserts still runs. */
+TEST_CASE(program_assert_fails_with_its_message_or_condition)
 {
-    const char *source = "Checks :: behavior {\n"
-                         "  on Impulse(amount, enabled) {\n"
-                         "    expect(enabled, \"enabled is set\");\n"
-                         "    expect(amount > 2.0, \"amount is large\");\n"
-                         "  }\n"
-                         "}";
+    const char
+        *source = "Checks :: behavior {\n"
+                  "  Positive :: (value: double) { assert(value > 0.0); }\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    assert(enabled, \"enabled is set\");\n"
+                  "    Positive(amount);\n"
+                  "    assert(amount > 2.0, \"amount is large\");\n"
+                  "  }\n"
+                  "}";
+    static const struct
+    {
+        double amount;
+        const char *message;
+        int line, column;
+    } cases[] = {
+        { 3, NULL, 0, 0 },
+        { 1, "Assertion failed: amount is large", 6, 5 },
+        { -1, "Assertion failed: value > 0.0", 2, 33 },
+    };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
-        prepare();
-        REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
-        ecs_entity owner = ecs_world_create_entity(world);
-        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
-        REQUIRE(instance != NULL);
-        pin_value args[] = { { .type = PIN_F64, .d = 3 },
-                             { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
-        REQUIRE(execution_program_error(program) == NULL);
-        args[0].d = 1;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
-        const execution_program_failure *failure = execution_program_error(program);
-        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
-        REQUIRE(!strcmp(failure->message, "Expectation failed: amount is large"));
-        REQUIRE(failure->line == 4 && failure->column == 5);
-        execution_program_free(program);
-        program = NULL;
+        for (int c = 0; c < 3; c++) {
+            prepare();
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance != NULL);
+            pin_value args[] = { { .type = PIN_F64, .d = cases[c].amount },
+                                 { .type = PIN_BOOL, .b = true } };
+            int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+            const execution_program_failure *failure = execution_program_error(program);
+            if (!cases[c].message) {
+                REQUIRE(status >= 0 && failure == NULL);
+            } else {
+                REQUIRE(status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
+                REQUIRE(!strcmp(failure->message, cases[c].message));
+                REQUIRE(
+                    failure->line == cases[c].line &&
+                    failure->column == cases[c].column
+                );
+            }
+            execution_program_free(program);
+            program = NULL;
+        }
     }
+    /* The message is fixed when the call is compiled. */
+    prepare();
+    REQUIRE(!compile_pack(
+        "Checks :: behavior { on Impulse(amount, enabled) { "
+        "assert(enabled, format_text(\"{}\", amount)); } }",
+        BEHAVIOR_BYTECODE,
+        &NATIVE_TEXT_DEFINITION_PACK
+    ));
     return true;
 }
 /* A failed call stack unwinds at once, so neither payload collection nor a
@@ -8724,7 +8752,7 @@ void test_language_program()
     RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
-    RUN_TEST_CASE(program_expect_fails_with_its_message_and_position);
+    RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);

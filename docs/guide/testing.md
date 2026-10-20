@@ -1,7 +1,7 @@
 # Testing
 
 Tests are Chibi functions. Mark a package-level function that takes and
-returns nothing with `@test`, and check what it computes with `expect`:
+returns nothing with `@test`, and check what it computes with `assert`:
 
 ```chibi
 package scoring
@@ -12,13 +12,14 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
-`expect(condition, message)` does nothing when the condition holds. When it
-does not, the test fails with `Expectation failed: message` at the position of
-the `expect` call, even inside a function the test calls.
+`assert(condition, message)` does nothing when the condition holds. When it
+does not, the test fails with `Assertion failed: message` at the position of
+the `assert` call, even inside a function the test calls. Without a message,
+it reports the condition's source text instead.
 
 ## Running tests
 
@@ -28,7 +29,7 @@ by default, and runs each test alone:
 ```text
 PASS scoring.DoublesPoints
 FAIL scoring.HalvesPoints
-  /work/scoring/Scoring.chibi:14:5: Expectation failed: four halves to two
+  /work/scoring/Scoring.chibi:14:5: Assertion failed: four halves to two
 2 tests, 1 failed
 ```
 

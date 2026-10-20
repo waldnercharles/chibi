@@ -3,7 +3,6 @@
 #include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "backend.h"
 #include "ecs/ecs.h"
@@ -6976,52 +6975,28 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    size_t old_anchor = (size_t)(strstr(source, "game_move_transform(p") - source),
-           new_anchor = (size_t)(strstr(current_expected, "move_transform(p") -
-                                 current_expected);
-    char metadata[1024];
-    snprintf(
-        metadata,
-        sizeof metadata,
-        "{\"version\":2,\"description\":\"GameTransform\","
-        "\"graphs\":[{\"nodes\":[{\"id\":42,\"type\":\"Break_GameTransform\","
-        "\"x\":17,\"inputs\":[{\"id\":43,\"name\":\"GameTransform\","
-        "\"parents\":[\"GameTransform\"]}]}],"
-        "\"edges\":[{\"from\":\"42.GameTransform\",\"to\":\"44.Value\"}]}],"
-        "\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":\"node\"}]}",
-        old_anchor
-    );
-    char *bound = authoring_source_metadata_bind(metadata, source);
-    REQUIRE(bound);
     const char *files[][2] = {
         { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
         { "content/B.chibi", source },
-        { "content/B.chibi.meta", bound },
         { "content/Scene.kdl", asset },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         REQUIRE(file);
         fputs(files[i][1], file);
         fclose(file);
     }
-    free(bound);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    snprintf(path, sizeof path, "%s/content/B.chibi.meta", root);
+    snprintf(path, sizeof path, "%s/content/B.chibi", root);
     FILE *file = fopen(path, "rb");
     REQUIRE(file);
-    char text[2048], anchor[64];
+    char text[2048];
     text[fread(text, 1, sizeof text - 1, file)] = '\0';
     fclose(file);
-    snprintf(anchor, sizeof anchor, "\"start\":%zu", new_anchor);
-    REQUIRE(authoring_source_metadata_matches(text, current_expected));
-    REQUIRE(strstr(text, "\"type\":\"Break_Transform\"") && strstr(text, anchor));
-    REQUIRE(strstr(text, "\"description\":\"GameTransform\"") && strstr(text, "\"x\":17"));
-    REQUIRE(strstr(text, "\"name\":\"Transform\"") && strstr(text, "\"parents\":[\"Transform\"]"));
-    REQUIRE(strstr(text, "\"from\":\"42.Transform\"") && strstr(text, "\"to\":\"44.Value\""));
-    for (int i = 0; i < 4; i++) {
+    REQUIRE(!strcmp(text, current_expected));
+    for (int i = 0; i < 3; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -7111,35 +7086,23 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    char metadata[256];
-    snprintf(
-        metadata,
-        sizeof metadata,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "self.GameTransform") - source)
-    );
-    char *bound = authoring_source_metadata_bind(metadata, source);
-    REQUIRE(bound);
     const char *files[][2] = {
         { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
         { "content/B.chibi", source },
-        { "content/B.chibi.meta", bound },
         { "content/Helpers.chibi", library },
         { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         REQUIRE(file);
         fputs(files[i][1], file);
         fclose(file);
     }
-    free(bound);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    bool source_matches = false, library_matches = false, metadata_matches = false;
-    for (int i = 1; i <= 3; i++) {
+    bool source_matches = false, library_matches = false;
+    for (int i = 1; i <= 2; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "rb");
         REQUIRE(file);
@@ -7153,21 +7116,10 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
             }
         }
         if (i == 2) {
-            char anchor[64];
-            snprintf(
-                anchor,
-                sizeof anchor,
-                "\"start\":%zu",
-                (size_t)(strstr(current_expected, "self.Transform") - current_expected)
-            );
-            metadata_matches = authoring_source_metadata_matches(text, current_expected) &&
-                               strstr(text, anchor);
-        }
-        if (i == 3) {
             library_matches = !strcmp(text, current_library);
         }
     }
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -7176,7 +7128,7 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
     rmdir(root);
     free(current_expected);
     free(current_library);
-    REQUIRE(source_matches && library_matches && metadata_matches);
+    REQUIRE(source_matches && library_matches);
     return true;
 }
 TEST_CASE(program_constant_definitions_execute)
@@ -7246,43 +7198,21 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
     script_syntax_free(syntax);
     REQUIRE(!chibi_migrate_declarations(migrated, &again, error, sizeof error));
     REQUIRE(!again);
-    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], sidecar[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "pure /* keep */") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Damage.chibi", "Damage.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Damage.chibi", root);
+    write_whole(path, source);
+    /* A leftover sidecar from before they were dropped is left alone. */
+    const char *leftover = "{\"version\":2,\"anchors\":[{\"start\":0}]}";
+    snprintf(sidecar, sizeof sidecar, "%s.meta", path);
+    write_whole(sidecar, leftover);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
-    snprintf(path, sizeof path, "%s/Damage.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
     /* migrate_content advances exactly one version, unlike project_migrate. */
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "DamageFor ::") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated));
-    REQUIRE(strstr(remapped, json));
-    REQUIRE(strstr(remapped, "\"id\":41"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    const char *written = read_whole(path);
+    REQUIRE(written && !strcmp(written, migrated));
+    written = read_whole(sidecar);
+    REQUIRE(written && !strcmp(written, leftover));
+    REQUIRE(!unlink(path) && !unlink(sidecar));
     REQUIRE(!rmdir(root));
     free(migrated);
     free(current);
@@ -7470,32 +7400,18 @@ TEST_CASE(program_version_24_retention_migrates_and_executes)
     return true;
 }
 
-TEST_CASE(program_version_24_retention_preserves_source_metadata)
+TEST_CASE(program_version_24_retention_content_is_all_or_nothing)
 {
     const char *source = "behavior B {\nstate /* keep */ int count = 0\n"
                          "on Impulse(amount, enabled) { count += 1 }\n}\n";
     char error[192] = { 0 }, *migrated = NULL;
     REQUIRE(!chibi_migrate_retention(source, &migrated, error, sizeof error));
     REQUIRE(migrated);
-    char root[] = "/tmp/chibi-retention-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-retention-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "state /* keep */") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "B.chibi", "B.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file && fputs(contents[i], file) >= 0 && !fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/B.chibi", root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
     /* One invalid source prevents every staged replacement in this step. */
     snprintf(path, sizeof path, "%s/Bad.chibi", root);
     FILE *bad = fopen(path, "wb");
@@ -7511,19 +7427,12 @@ TEST_CASE(program_version_24_retention_preserves_source_metadata)
     error[0] = '\0';
     REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
     REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
+    file = fopen(path, "rb");
     REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "count: retain") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated));
-    REQUIRE(strstr(remapped, json) && strstr(remapped, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    char written[512];
+    written[fread(written, 1, sizeof written - 1, file)] = '\0';
+    REQUIRE(!fclose(file) && !strcmp(written, migrated));
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -7609,43 +7518,26 @@ TEST_CASE(program_version_25_syntax_preserves_storage_and_comments)
     return true;
 }
 
-TEST_CASE(program_version_25_syntax_preserves_header_metadata)
+TEST_CASE(program_version_25_syntax_content_preserves_header_comments)
 {
     const char *source = "// authored source\nbehavior /* header */ Counter { "
                          "count := 0 }";
     char error[192] = { 0 }, *migrated = NULL;
     REQUIRE(!chibi_migrate_syntax(source, &migrated, error, sizeof error) && migrated);
-    char root[] = "/tmp/chibi-syntax-XXXXXX", path[256], json[256];
+    REQUIRE(strstr(migrated, "// authored source") && strstr(migrated, "/* header */"));
+    char root[] = "/tmp/chibi-syntax-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "behavior") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "B.chibi", "B.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file && fputs(contents[i], file) >= 0 && !fclose(file));
-    }
-    free(metadata);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "Counter ::") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated) && strstr(remapped, json));
-    const char *per_row = "system S { visits: retain int = 0 }";
     snprintf(path, sizeof path, "%s/B.chibi", root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
+    file = fopen(path, "rb");
+    REQUIRE(file);
+    char written[1024];
+    written[fread(written, 1, sizeof written - 1, file)] = '\0';
+    REQUIRE(!fclose(file) && !strcmp(written, migrated));
+    const char *per_row = "system S { visits: retain int = 0 }";
     file = fopen(path, "wb");
     REQUIRE(file && fputs(per_row, file) >= 0 && !fclose(file));
     REQUIRE(chibi_project_migrate_content(root, NULL, 25, error, sizeof error) < 0);
@@ -7655,15 +7547,7 @@ TEST_CASE(program_version_25_syntax_preserves_header_metadata)
     char unchanged[1024];
     unchanged[fread(unchanged, 1, sizeof unchanged - 1, file)] = '\0';
     REQUIRE(!fclose(file) && !strcmp(unchanged, per_row));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    unchanged[fread(unchanged, 1, sizeof unchanged - 1, file)] = '\0';
-    REQUIRE(!fclose(file) && !strcmp(unchanged, remapped));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -7748,22 +7632,12 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
         FILE *file = fopen(path, "wb");
         REQUIRE(file && fputs(sources[i], file) >= 0 && !fclose(file));
     }
-    char *metadata = authoring_source_metadata_bind(
-        "{\"version\":2,\"anchors\":[{\"start\":0,\"id\":42,\"kind\":\"node\"}]"
-        "}",
-        sources[1]
-    );
-    REQUIRE(metadata);
-    snprintf(path, sizeof path, "%s/App.chibi.meta", root);
-    FILE *file = fopen(path, "wb");
-    REQUIRE(file && fputs(metadata, file) >= 0 && !fclose(file));
-    free(metadata);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
     REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
     char contents[2][2048];
     for (int i = 0; i < 2; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        file = fopen(path, "rb");
+        FILE *file = fopen(path, "rb");
         REQUIRE(file);
         contents[i][fread(contents[i], 1, sizeof contents[i] - 1, file)] = 0;
         REQUIRE(!fclose(file));
@@ -7779,14 +7653,7 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
     REQUIRE(strstr(contents[1], "add_component(Health)"));
     REQUIRE(strstr(contents[1], "hit:=self.Health.current"));
     REQUIRE(strstr(contents[1], "print_string(\"Drone\")"));
-    snprintf(path, sizeof path, "%s/App.chibi.meta", root);
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = 0;
-    REQUIRE(!fclose(file));
-    REQUIRE(authoring_source_metadata_matches(remapped, contents[1]));
-    REQUIRE(!unlink(path) && !rmdir(root));
+    REQUIRE(!rmdir(root));
     char *migrated = NULL;
     REQUIRE(
         chibi_migrate_syntax(
@@ -7904,40 +7771,14 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
         REQUIRE(chibi_migrate_entry(captured[i], &unchanged, error, sizeof error) < 0);
         REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
     }
-    char root[] = "/tmp/chibi-entry-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-entry-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "Twice ::") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Moves.chibi", "Moves.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Moves.chibi", root);
+    write_whole(path, source);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 27, error, sizeof error));
-    snprintf(path, sizeof path, "%s/%s", root, files[0]);
     const char *text = read_whole(path);
     REQUIRE(text && !strcmp(text, expected));
-    snprintf(path, sizeof path, "%s/%s", root, files[1]);
-    text = read_whole(path);
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Twice ::") - expected));
-    REQUIRE(text && authoring_source_metadata_matches(text, expected));
-    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     script_syntax *refused = script_parse(
         "L :: library { F :: (a: int) -> int { return entry.a } }"
@@ -8074,60 +7915,14 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
         REQUIRE(!unlink(file));
     }
     REQUIRE(!rmdir(project));
-    char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"},"
-        "{\"start\":%zu,\"id\":43,\"kind\":\"node\"},"
-        "{\"start\":%zu,\"id\":44,\"kind\":\"graph\"}]}",
-        (size_t)(strstr(source, "return Speed") - source),
-        (size_t)(strstr(source, "Spawn ::") - source),
-        (size_t)(strstr(source, "after entry {\n        //") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Moves.chibi", "Moves.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Moves.chibi", root);
+    write_whole(path, source);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 28, error, sizeof error));
-    snprintf(path, sizeof path, "%s/%s", root, files[0]);
     const char *text = read_whole(path);
     REQUIRE(text && !strcmp(text, expected));
-    snprintf(path, sizeof path, "%s/%s", root, files[1]);
-    text = read_whole(path);
-    REQUIRE(text && authoring_source_metadata_matches(text, expected));
-    /* Every anchor still starts a token, so the sidecar survives formatting;
-     * one on the handler lands on its first statement. */
-    script_syntax *formatted = script_parse(expected);
-    char *remapped = authoring_source_metadata_remap(text, formatted, formatted);
-    REQUIRE(remapped);
-    free(remapped);
-    script_syntax_free(formatted);
-    const char *moved[] = { "return Speed", "Spawn ::", "// Doubles" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(
-            json,
-            sizeof json,
-            "\"start\":%zu,\"id\":%d",
-            (size_t)(strstr(expected, moved[i]) - expected),
-            42 + i
-        );
-        REQUIRE(strstr(text, json));
-    }
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     prepare();
     syntax = script_parse("L :: library { F :: (a: int) -> int { after entry { return a } } }");
@@ -8178,40 +7973,14 @@ TEST_CASE(program_version_26_casts_migrate_to_conversions)
         ) < 0
     );
     REQUIRE(!unchanged && strstr(error, "no T(value) spelling"));
-    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "Low ::") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Bits.chibi", "Bits.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Bits.chibi", root);
+    write_whole(path, source);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 26, error, sizeof error));
-    snprintf(path, sizeof path, "%s/%s", root, files[0]);
     const char *text = read_whole(path);
     REQUIRE(text && !strcmp(text, expected));
-    snprintf(path, sizeof path, "%s/%s", root, files[1]);
-    text = read_whole(path);
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Low ::") - expected));
-    REQUIRE(text && authoring_source_metadata_matches(text, expected));
-    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -9361,9 +9130,9 @@ void test_language_program()
     RUN_TEST_CASE(program_version_23_declarations_and_switch_migrate);
     RUN_TEST_CASE(program_version_23_not_calls_migrate_with_native_identity);
     RUN_TEST_CASE(program_version_24_retention_migrates_and_executes);
-    RUN_TEST_CASE(program_version_24_retention_preserves_source_metadata);
+    RUN_TEST_CASE(program_version_24_retention_content_is_all_or_nothing);
     RUN_TEST_CASE(program_version_25_syntax_preserves_storage_and_comments);
-    RUN_TEST_CASE(program_version_25_syntax_preserves_header_metadata);
+    RUN_TEST_CASE(program_version_25_syntax_content_preserves_header_comments);
     RUN_TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate);
     RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
     RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);

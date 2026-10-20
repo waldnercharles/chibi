@@ -571,21 +571,17 @@ material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
 `--project-declarations` is one standalone pico compatibility case under the
-shared 60-second ceiling. Its four exact
-fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi`,
-`VirtualList.chibi` and their sidecars from Studio
-`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (36,450 bytes total). Each source must
-migrate from version 23 to 24 and repeat that step unchanged. Explicit retention
-and syntax migrations then produce current-grammar source for parsing. One
+shared 60-second ceiling. Its two exact
+fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi` and
+`VirtualList.chibi` from Studio
+`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (7,147 bytes total). Each source must
+migrate from version 23 to 24 and repeat that step unchanged. Explicit retention,
+syntax, conversion, entry and after-entry migrations then produce current-grammar
+source for parsing. One
 successful content transaction must produce exactly the version-24 direct migrated
 source.
-Both original sidecars are already stale: the public source-binding check must
-fail before migration, and afterward their full bytes, historical source hashes
-and 104/41 anchors must remain unchanged and valid JSON. This does not claim
-valid-bound anchor remapping; the existing
-`program_version_23_declarations_and_switch_migrate` case covers that contract.
 A second transaction adds one 32-byte malformed source and must reject it with
-its actual path, leaving all five input files byte-identical and no `.migrating`
+its actual path, leaving all three input files byte-identical and no `.migrating`
 files. The fixture prints each source name before its migration assertion so a
 rejected rewrite identifies the original source and current-parser diagnostic.
 
@@ -599,13 +595,10 @@ check exact rewrite exclusions for comments, strings, member and already-quoted
 call targets, plus unchanged current `not(value)` syntax with a unary CST node
 and no call node.
 
-The redesigned success-path ceiling is six declaration migration calls, four
-retention/syntax migration calls, three explicit current parses, four metadata
-checks and two content transactions over four then five input files. Including
-the migration implementation, there are at most 63 current/historical syntax
-parses (twenty declaration, twelve retention/syntax, three explicit, twelve
-successful content and sixteen rejected content) and six simultaneous
-content/staging files. This updated workload requires independent exact-source
+The success-path ceiling is six declaration migration calls, ten later-step
+migration calls, three explicit current parses and two content transactions over
+two then three input files, with at most four simultaneous content/staging
+files. This updated workload requires independent exact-source
 admission before execution under the unchanged production 60-second ceiling.
 There is no authored execution, backend, renderer, child process, network or
 additional corpus. The test object consumes only explicitly linked public
@@ -613,8 +606,8 @@ additional corpus. The test object consumes only explicitly linked public
 `Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
 all default aggregates. At `c4a9ed52`, this fixed route passed one case and
 60 assertions, exit 0 in 0.082 supervised seconds. That historical run predates
-the redesigned migration chain. The current 63-parse bound is source-derived,
-not an instrumented count. Already-current `not(value)` keeps the existing
+the redesigned migration chain. On 2026-10-20 the route passed one case and 72
+assertions in 0.6 seconds on macOS. Already-current `not(value)` keeps the existing
 unchanged early return; this is not general version-aware
 call/unary disambiguation.
 
@@ -2754,8 +2747,8 @@ review covered the grammar, semantic kinds, authoring equivalence and migration.
   check per-owner helper retention, system versus query-row ownership, copied
   values, membership reentry and publication/restart identity. Each dispatch has
   a 1000-instruction budget. Two migration cases use small literal sources and
-  one temporary directory to check execution, idempotence, metadata remapping
-  and refusal before staged replacement.
+  one temporary directory to check execution, idempotence and refusal before
+  staged replacement.
 - `language`, `language-semantic`, `language-format` and `language-navigation`:
   accepted/rejected binding forms, ordinary value types, storage restrictions,
   formatter/minimizer ownership preservation and source intelligence. Numeric

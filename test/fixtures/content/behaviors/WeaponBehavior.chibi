@@ -1,3 +1,4 @@
+// Spawns a projectile beside the owning entity when Fire is dispatched.
 WeaponBehavior :: behavior {
     on Fire {
         await WeaponActions.Fire_Projectile(self.Transform, {

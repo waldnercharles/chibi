@@ -1,3 +1,6 @@
+// A preparing XP pickup preserves the dead enemy pose and material while
+// emitting its actual primitive parts, then restores its ordinary flat outline
+// pickup presentation.
 ArenaDropBehavior :: behavior {
 
     on Begin as begin() {

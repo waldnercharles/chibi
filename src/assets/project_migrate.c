@@ -3584,227 +3584,10 @@ char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t 
     return out;
 }
 
-static void prefix_hash(const char *text, char out[17])
-{
-    uint64_t hash = UINT64_C(14695981039346656037);
-    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
-        hash = (hash ^ *p) * UINT64_C(1099511628211);
-    }
-    snprintf(out, 17, "%016llx", (unsigned long long)hash);
-}
-static bool aggregate_pins(const char *type)
-{
-    if (!type) {
-        return false;
-    }
-    const char *aggregate = !strncmp(type, "Make_", 5)  ? type + 5
-                          : !strncmp(type, "Break_", 6) ? type + 6
-                                                        : NULL;
-    if (!aggregate) {
-        return false;
-    }
-    if (prefixed_native(aggregate, strlen(aggregate))) {
-        return true;
-    }
-    char name[128];
-    snprintf(name, sizeof name, "Game%s", aggregate);
-    return prefixed_native(name, strlen(name));
-}
-static bool metadata_edge_prefixes(yyjson_mut_doc *document, yyjson_mut_val *graph)
-{
-    yyjson_mut_val *nodes = yyjson_mut_obj_get(graph, "nodes"),
-                   *edges = yyjson_mut_obj_get(graph, "edges"), *edge;
-    bool changed = false;
-    size_t i, count;
-    yyjson_mut_arr_foreach(edges, i, count, edge)
-    {
-        static const char *const endpoints[] = { "from", "to" };
-        for (size_t j = 0; j < sizeof endpoints / sizeof *endpoints; j++) {
-            yyjson_mut_val *value = yyjson_mut_obj_get(edge, endpoints[j]);
-            const char *text = yyjson_mut_get_str(value);
-            if (!text) {
-                continue;
-            }
-            char *end;
-            uint64_t id = strtoull(text, &end, 10);
-            if (end == text || *end != '.') {
-                continue;
-            }
-            size_t n, node_count;
-            yyjson_mut_val *node;
-            yyjson_mut_arr_foreach(nodes, n, node_count, node)
-            {
-                if (yyjson_mut_get_uint(yyjson_mut_obj_get(node, "id")) != id ||
-                    !aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(node, "type")))) {
-                    continue;
-                }
-                char *renamed = unprefix_name(text);
-                if (renamed) {
-                    yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, renamed)));
-                    free(renamed);
-                    changed = true;
-                }
-                break;
-            }
-        }
-    }
-    return changed;
-}
-static bool metadata_prefixes(yyjson_mut_doc *document, yyjson_mut_val *value, bool semantic, bool pins)
-{
-    if (yyjson_mut_is_str(value) && semantic) {
-        char *name = unprefix_name(yyjson_mut_get_str(value));
-        if (!name) {
-            return false;
-        }
-        yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, name)));
-        free(name);
-        return true;
-    }
-    bool changed = false;
-    size_t i, count;
-    yyjson_mut_val *key, *child;
-    yyjson_mut_obj_foreach(value, i, count, key, child)
-    {
-        const char *name = yyjson_mut_get_str(key);
-        bool selector = false;
-        const char *pin = yyjson_mut_get_str(yyjson_mut_obj_get(value, "name"));
-        if (!strcmp(name, "value") && pin && names_match(pin, "Component")) {
-            selector = true;
-        }
-        bool pin_name = pins && (!strcmp(name, "name") || !strcmp(name, "parents"));
-        changed |= metadata_prefixes(
-            document,
-            child,
-            semantic || prefix_field(name) || selector || pin_name,
-            (!strcmp(name, "inputs") || !strcmp(name, "outputs")) &&
-                aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(value, "type")))
-        );
-    }
-    yyjson_mut_arr_foreach(value, i, count, child)
-    {
-        changed |= metadata_prefixes(document, child, semantic, pins);
-    }
-    return metadata_edge_prefixes(document, value) || changed;
-}
-/* Moving a function keyword past its name changes the declaration's start,
- * particularly when a comment separates the old keyword and name. */
-static int declaration_anchor(TSNode node, int offset, int version)
-{
-    if (((version == 23 && is(node, "function_declaration")) ||
-         (version == 24 && is(node, "state_declaration") &&
-          !ts_node_is_null(ts_node_child_by_field_name(node, "storage", 7))) ||
-         (version == 25 && (is(node, "behavior") || is(node, "library") ||
-                            is(node, "system") || is(node, "component")))) &&
-        ts_node_start_byte(node) == (uint32_t)offset) {
-        return (int)ts_node_start_byte(ts_node_child_by_field_name(node, "name", 4));
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        TSNode child = ts_node_named_child(node, i);
-        if (ts_node_start_byte(child) <= (uint32_t)offset &&
-            ts_node_end_byte(child) > (uint32_t)offset) {
-            return declaration_anchor(child, offset, version);
-        }
-    }
-    return offset;
-}
-typedef struct
-{
-    int from, to; /* The moved text in the old source. */
-    int at;       /* Where the moved statements are inserted. */
-    int offset;   /* Where this text starts among them. */
-    bool whole;   /* Anchors in the range land at its start. */
-} moved_span;
-/* Where an anchor inside text that moved lands in the migrated source, or -1.
- * Edits are sorted and do not overlap, so those before the insertion point
- * shift it. */
-static int moved_offset(const moved_span *spans, const replacement *edits, int offset)
-{
-    for (int i = 0; i < acount(spans); i++) {
-        const moved_span *span = &spans[i];
-        if (offset < span->from || offset >= span->to) {
-            continue;
-        }
-        int target = span->at + span->offset + (span->whole ? 0 : offset - span->from);
-        for (int j = 0; j < acount(edits) && edits[j].start < span->at; j++) {
-            target += (int)strlen(edits[j].text) - (edits[j].end - edits[j].start);
-        }
-        return target;
-    }
-    return -1;
-}
-/* Source-bound graph IDs and layout survive the rename. Only metadata bound
- * to the old source gets a new hash; already stale metadata stays stale. */
-static char *migrate_source_metadata(
-    const char *json,
-    const char *before,
-    const char *after,
-    replacement *edits,
-    const moved_span *spans,
-    int version
-)
-{
-    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
-    if (!parsed || !yyjson_is_obj(yyjson_doc_get_root(parsed))) {
-        yyjson_doc_free(parsed);
-        return NULL;
-    }
-    yyjson_mut_doc *document = yyjson_doc_mut_copy(parsed, NULL);
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(document);
-    bool changed = version == 22 && metadata_prefixes(document, root, false, false);
-    char old_hash[17], new_hash[17];
-    prefix_hash(before, old_hash);
-    prefix_hash(after, new_hash);
-    const char *bound = yyjson_mut_get_str(yyjson_mut_obj_get(root, "source_hash"));
-    if (strcmp(before, after) && bound && !strcmp(bound, old_hash)) {
-        script_syntax *syntax = version == 22 ? NULL
-                              : version == 23 ? parse23(before)
-                              : version == 24 ? parse24(before)
-                              : version == 25 ? parse25(before)
-                              : version == 26 ? parse26(before)
-                              : version == 27 ? parse27(before)
-                              : version == 28 ? parse28(before)
-                                              : script_parse(before);
-        yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
-        size_t i, count;
-        yyjson_mut_arr_foreach(anchors, i, count, anchor)
-        {
-            yyjson_mut_val *start = yyjson_mut_obj_get(anchor, "start");
-            int offset = (int)yyjson_mut_get_uint(start), shift = 0;
-            if (syntax) {
-                offset = declaration_anchor(ts_tree_root_node(syntax->tree), offset, version);
-            }
-            int moved = moved_offset(spans, edits, offset);
-            if (moved >= 0) {
-                offset = moved;
-            }
-            for (int j = 0; moved < 0 && j < acount(edits) && edits[j].end <= offset;
-                 j++) {
-                shift += (int)strlen(edits[j].text) - (edits[j].end - edits[j].start);
-            }
-            if (yyjson_mut_is_uint(start)) {
-                yyjson_mut_set_uint(start, (uint64_t)(offset + shift));
-            }
-        }
-        script_syntax_free(syntax);
-        yyjson_mut_obj_put(
-            root,
-            yyjson_mut_str(document, "source_hash"),
-            yyjson_mut_strcpy(document, new_hash)
-        );
-        changed = true;
-    }
-    char *out = changed ? yyjson_mut_write(document, 0, NULL) : NULL;
-    yyjson_mut_doc_free(document);
-    yyjson_doc_free(parsed);
-    return out;
-}
-
 static char **migrate_prefixes(char **sources, char **paths, int count, char *error, size_t error_size)
 {
     corpus context = { .sources = (const char *const *)sources };
     script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
-    replacement **edits = xcalloc((size_t)count, sizeof *edits);
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count; i++) {
         if (has_suffix(paths[i], ".chibi")) {
@@ -3820,39 +3603,20 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
     }
     for (int i = 0; i < count && !error[0]; i++) {
         if (syntax[i]) {
-            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits[i]);
-            migrated[i] = prefix_apply(sources[i], edits[i]);
-        } else if (!has_suffix(paths[i], ".chibi.meta")) {
+            replacement *edits = NULL;
+            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits);
+            migrated[i] = prefix_apply(sources[i], edits);
+            prefix_edits_free(edits);
+        } else {
             migrated[i] = chibi_migrate_prefixes(sources[i], false, error, error_size);
-        }
-    }
-    for (int i = 0; i < count && !error[0]; i++) {
-        if (!has_suffix(paths[i], ".chibi.meta")) {
-            continue;
-        }
-        size_t length = strlen(paths[i]) - strlen(".meta");
-        for (int j = 0; j < count; j++) {
-            if (strlen(paths[j]) == length && !memcmp(paths[i], paths[j], length)) {
-                migrated[i] = migrate_source_metadata(
-                    sources[i],
-                    sources[j],
-                    migrated[j] ? migrated[j] : sources[j],
-                    edits[j],
-                    NULL,
-                    22
-                );
-                break;
-            }
         }
     }
     for (int i = 0; i < count; i++) {
         if (syntax[i]) {
             script_syntax_free(syntax[i]);
         }
-        prefix_edits_free(edits[i]);
     }
     free(syntax);
-    free(edits);
     afree(context.functions);
     return migrated;
 }
@@ -5204,24 +4968,6 @@ static char **migrate_syntax(char **sources, char **paths, int count, char *erro
             free(detail);
             break;
         }
-        if (!migrated[i]) {
-            continue;
-        }
-        script_syntax *syntax = parse25(sources[i]);
-        replacement *edits = NULL;
-        bool valid = cleanup_edits(sources[i], ts_tree_root_node(syntax->tree), &edits, error, size);
-        assert(valid);
-        (void)valid;
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, NULL, 25);
-            }
-        }
-        prefix_edits_free(edits);
-        script_syntax_free(syntax);
     }
     for (int i = 0; i < count && !error[0]; i++) {
         if (!has_suffix(paths[i], DECLARATIVE_ASSET_EXTENSION)) {
@@ -5255,29 +5001,6 @@ static char **migrate_syntax(char **sources, char **paths, int count, char *erro
                 free(after);
                 continue;
             }
-            replacement *edits = NULL;
-            for (int j = 0; j < acount(references[i]); j++) {
-                syntax_edit(
-                    &edits,
-                    references[i][j].start,
-                    references[i][j].end,
-                    references[i][j].text
-                );
-            }
-            qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-            size_t length = strlen(paths[i]);
-            for (int j = 0; j < count; j++) {
-                if (!strncmp(paths[j], paths[i], length) &&
-                    !strcmp(paths[j] + length, ".meta")) {
-                    const char *metadata = migrated[j] ? migrated[j] : sources[j];
-                    char *remapped = migrate_source_metadata(metadata, inputs[i], after, edits, NULL, 26);
-                    if (remapped) {
-                        free(migrated[j]);
-                        migrated[j] = remapped;
-                    }
-                }
-            }
-            prefix_edits_free(edits);
             free(migrated[i]);
             migrated[i] = after;
         }
@@ -5302,23 +5025,7 @@ static char **migrate_retention(char **sources, char **paths, int count, char *e
         if (!has_suffix(paths[i], ".chibi")) {
             continue;
         }
-        if (chibi_migrate_retention(sources[i], &migrated[i], error, size) ||
-            !migrated[i]) {
-            continue;
-        }
-        script_syntax *syntax = parse24(sources[i]);
-        replacement *edits = NULL;
-        retention_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, NULL, 24);
-            }
-        }
-        prefix_edits_free(edits);
-        script_syntax_free(syntax);
+        chibi_migrate_retention(sources[i], &migrated[i], error, size);
     }
     return migrated;
 }
@@ -5334,24 +5041,7 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
             char *detail = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], detail);
             free(detail);
-            continue;
         }
-        if (!migrated[i]) {
-            continue;
-        }
-        script_syntax *syntax = parse23(sources[i]);
-        replacement *edits = NULL;
-        declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, NULL, 23);
-            }
-        }
-        prefix_edits_free(edits);
-        script_syntax_free(syntax);
     }
     return migrated;
 }
@@ -5534,25 +5224,7 @@ static char **migrate_conversions(char **sources, char **paths, int count, char 
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);
-            continue;
         }
-        if (!migrated[i]) {
-            continue;
-        }
-        script_syntax *syntax = parse26(sources[i]);
-        replacement *edits = NULL;
-        TSNode unsupported = { 0 };
-        conversion_edits(sources[i], ts_tree_root_node(syntax->tree), &edits, &unsupported);
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, NULL, 26);
-            }
-        }
-        prefix_edits_free(edits);
-        script_syntax_free(syntax);
     }
     return migrated;
 }
@@ -5750,31 +5422,7 @@ static char **migrate_entry(char **sources, char **paths, int count, char *error
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);
-            continue;
         }
-        if (!migrated[i]) {
-            continue;
-        }
-        script_syntax *syntax = parse27(sources[i]);
-        entry_rewrite rewrite = { 0 };
-        entry_edits(sources[i], ts_tree_root_node(syntax->tree), &rewrite);
-        qsort(rewrite.edits, (size_t)acount(rewrite.edits), sizeof *rewrite.edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(
-                    sources[j],
-                    sources[i],
-                    migrated[i],
-                    rewrite.edits,
-                    NULL,
-                    27
-                );
-            }
-        }
-        prefix_edits_free(rewrite.edits);
-        script_syntax_free(syntax);
     }
     return migrated;
 }
@@ -6012,29 +5660,21 @@ static int line_indent(const char *text, int offset, int *line_start)
 typedef struct
 {
     replacement *edits;
-    moved_span *spans;
     char **references; /* Borrowed callables that take a parameter by reference. */
     char *moved;       /* The current function's moved statements. */
     TSNode refused;
     const char *reason;
 } entry_body_rewrite;
-static void move_text(entry_body_rewrite *out, const char *text, int from, int to, int at)
-{
-    int offset = acount(out->moved);
-    apush(out->spans, ((moved_span){ .from = from, .to = to, .at = at, .offset = offset }));
-    asetlen(out->moved, offset + (to - from));
-    memcpy(out->moved + offset, text + from, (size_t)(to - from));
-}
 static void move_literal(entry_body_rewrite *out, const char *text, int length)
 {
     int offset = acount(out->moved);
     asetlen(out->moved, offset + length);
     memcpy(out->moved + offset, text, (size_t)length);
 }
-/* Moves the statements of block, between its braces, to at. A block on one
- * line moves trimmed; with lines, each line moves without the indent its
- * statements had beyond the handler's. */
-static void move_statements(entry_body_rewrite *out, const char *text, TSNode block, int at, bool inline_close)
+/* Appends the statements of block, between its braces, to the moved text. A
+ * block on one line moves trimmed; with lines, each line moves without the
+ * indent its statements had beyond the handler's. */
+static void move_statements(entry_body_rewrite *out, const char *text, TSNode block, bool inline_close)
 {
     int from = (int)ts_node_start_byte(block) + 1,
         to = (int)ts_node_end_byte(block) - 1;
@@ -6053,7 +5693,7 @@ static void move_statements(entry_body_rewrite *out, const char *text, TSNode bl
         if (!inline_close) {
             move_literal(out, text + line_start, indent);
         }
-        move_text(out, text, from, to, at);
+        move_literal(out, text + from, to - from);
         move_literal(out, inline_close ? " " : "\n", 1);
         return;
     }
@@ -6069,7 +5709,7 @@ static void move_statements(entry_body_rewrite *out, const char *text, TSNode bl
         while (end < to && text[end] != '\n') {
             end++;
         }
-        move_text(out, text, line + skip, end, at);
+        move_literal(out, text + line + skip, end - line - skip);
         move_literal(out, "\n", 1);
         line = end + 1;
     }
@@ -6125,20 +5765,6 @@ static int entry_insertion(const char *text, TSNode body, int close_start)
     }
     return close_start;
 }
-/* Where anchors on a moved handler land: its first moved token, or the
- * function's name when it moved nothing. */
-static moved_span handler_span(const entry_body_rewrite *out, int first, int at, TSNode function)
-{
-    if (first == acount(out->spans)) {
-        TSNode name = ts_node_child_by_field_name(function, "name", 4);
-        return (moved_span){ .at = (int)ts_node_start_byte(name) };
-    }
-    int offset = out->spans[first].offset;
-    while (isspace((unsigned char)out->moved[offset])) {
-        offset++;
-    }
-    return (moved_span){ .at = at, .offset = offset };
-}
 /* `after entry { B }` in a function runs B after the function's statements,
  * with the arguments as they were passed, so B's statements move after them,
  * before the handlers that follow. The refusals keep the moved statements
@@ -6191,13 +5817,7 @@ static void move_entry_bodies(const char *text, TSNode function, entry_body_rewr
          * statements go is replaced by them. */
         merged = from == at ? acount(out->edits) : merged;
         push_edit(&out->edits, from, own_line ? after + 1 : after, xstrdup(""));
-        int first = acount(out->spans);
-        move_statements(out, text, ts_node_child_by_field_name(handler, "body", 4), at, inline_close);
-        moved_span whole = handler_span(out, first, at, function);
-        whole.from = start;
-        whole.to = end;
-        whole.whole = true;
-        apush(out->spans, whole);
+        move_statements(out, text, ts_node_child_by_field_name(handler, "body", 4), inline_close);
     }
     apush(out->moved, '\0');
     if (merged < 0) {
@@ -6245,33 +5865,26 @@ static int after_entry_rewrite(const char *source, entry_body_rewrite *rewrite, 
     script_syntax_free(syntax);
     return 0;
 }
-/* Moves the statements; keeps rewrite's edits and spans for the sidecars. */
-static int migrate_entry_bodies(
-    const char *source,
-    char **migrated,
-    entry_body_rewrite *rewrite,
-    char *error,
-    size_t size
-)
+/* Moves the statements of each `after entry`; references are the callables
+ * that take a parameter by reference. */
+static int migrate_entry_bodies(const char *source, char **references, char **migrated, char *error, size_t size)
 {
     *migrated = NULL;
-    if (after_entry_rewrite(source, rewrite, error, size)) {
-        return -1;
+    entry_body_rewrite rewrite = { .references = references };
+    int status = after_entry_rewrite(source, &rewrite, error, size);
+    if (!status && acount(rewrite.edits)) {
+        char *result = prefix_apply(source, rewrite.edits);
+        status = accept_migrated(source, result, "After entry", 29, migrated, error, size);
     }
-    if (!acount(rewrite->edits)) {
-        return 0;
-    }
-    char *result = prefix_apply(source, rewrite->edits);
-    return accept_migrated(source, result, "After entry", 29, migrated, error, size);
+    prefix_edits_free(rewrite.edits);
+    return status;
 }
 int chibi_migrate_after_entry(const char *source, char **migrated, char *error, size_t size)
 {
-    entry_body_rewrite rewrite = { 0 };
-    collect_source_references(source, &rewrite.references);
-    int status = migrate_entry_bodies(source, migrated, &rewrite, error, size);
-    prefix_edits_free(rewrite.edits);
-    afree(rewrite.spans);
-    reference_callables_free(rewrite.references);
+    char **references = NULL;
+    collect_source_references(source, &references);
+    int status = migrate_entry_bodies(source, references, migrated, error, size);
+    reference_callables_free(references);
     return status;
 }
 static char **migrate_after_entry(char **sources, char **paths, int count, char *error, size_t size)
@@ -6287,28 +5900,11 @@ static char **migrate_after_entry(char **sources, char **paths, int count, char 
         if (!has_suffix(paths[i], ".chibi")) {
             continue;
         }
-        entry_body_rewrite rewrite = { .references = references };
-        if (migrate_entry_bodies(sources[i], &migrated[i], &rewrite, error, size)) {
+        if (migrate_entry_bodies(sources[i], references, &migrated[i], error, size)) {
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);
         }
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (migrated[i] && !strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(
-                    sources[j],
-                    sources[i],
-                    migrated[i],
-                    rewrite.edits,
-                    rewrite.spans,
-                    28
-                );
-            }
-        }
-        prefix_edits_free(rewrite.edits);
-        afree(rewrite.spans);
     }
     reference_callables_free(references);
     return migrated;
@@ -6333,21 +5929,14 @@ int chibi_project_migrate_content(
                        from == 20 || from == 21 || from == 22 || from == 25;
     int status = collect_sources(
         content,
-        from >= 22    ? ".chibi.meta"
-        : declarative ? DECLARATIVE_ASSET_EXTENSION
-                      : ".chibi",
+        declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
         &paths,
         error,
         error_size
     );
-    /* Replace sidecars before their sources so interrupted source migrations
-     * can rerun without losing the old hash needed to remap anchors. */
-    if (!status && (from == 22 || from == 25)) {
-        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
-    }
-    /* Versions 16 and 18 also check scripts for names they remove, and every
-     * step from version 22 on rewrites scripts after their sidecars. */
-    if (!status && (from == 15 || from == 17 || from >= 22)) {
+    /* Versions 16 and 18 also check scripts for names they remove, and
+     * versions 23 and 26 also rewrite scripts. */
+    if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the

@@ -32,15 +32,4 @@ char *authoring_source_migrate_generated(
     size_t size
 );
 
-/* Additionally returns malloc-owned positions for each original byte offset,
- * including EOF. Changed tokens map to their surviving replacement start. */
-char *authoring_source_migrate_generated_mapped(
-    const char *,
-    const script_catalog *,
-    const char *identity,
-    int **positions,
-    char *error,
-    size_t size
-);
-
 #endif

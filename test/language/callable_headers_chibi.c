@@ -689,7 +689,7 @@ static bool witness(int index, const script_callable_facts *facts, const script_
         for (int i = 0; i < header->symbol_count; i++) {
             entries += !strcmp(header->symbols[i].symbol.name, "entry");
         }
-        REQUIRE(entries == 1);
+        REQUIRE(entries == 0);
     }
     if (index == 8) {
         REQUIRE(f->inferred);

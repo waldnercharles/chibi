@@ -553,7 +553,7 @@ static bool compile(const char *source, behavior_backend backend)
 }
 /* Historical migration cases assert their intermediate spelling, then run
  * it through every later source step: version 23 declarations, 24
- * retention, 25 syntax and 26 conversions. */
+ * retention, 25 syntax, 26 conversions and 27 parameter names. */
 static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
 {
     switch (step) {
@@ -561,14 +561,14 @@ static int migrate_step(int step, const char *source, char **migrated, char *err
             return chibi_migrate_declarations(source, migrated, error, size);
         case 1: return chibi_migrate_retention(source, migrated, error, size);
         case 2: return chibi_migrate_syntax(source, migrated, error, size);
-        default:
-            return chibi_migrate_conversions(source, migrated, error, size);
+        case 3: return chibi_migrate_conversions(source, migrated, error, size);
+        default: return chibi_migrate_entry(source, migrated, error, size);
     }
 }
 static char *current_source(const char *source)
 {
     char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 4; step++) {
+    for (int step = 0; step < 5; step++) {
         char *migrated = NULL;
         if (migrate_step(step, current, &migrated, error, sizeof error)) {
             fprintf(stderr, "migration: %s\n", error);
@@ -4232,6 +4232,34 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
     return true;
 }
 
+/* A handler without a parameter list binds its payload's names. A bare read
+ * of one that is also a parameter of the function around it is refused, and
+ * naming the payload's parameters lets the read reach the function's own. */
+TEST_CASE(program_handler_payloads_do_not_hide_parameters)
+{
+    const char *sources[] = {
+        "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
+        "Value * 2) } "
+        "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
+        "after entry { doubled(); } after doubled { return Value; } } }",
+        "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
+        "Value * 2) } "
+        "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
+        "after entry { doubled(); } after doubled(twice) { return Value; } } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        syntax = script_parse(sources[i]);
+        analysis = script_analyze(syntax, &catalog);
+        bool hidden = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            hidden |= strstr(analysis->diagnostics[d].message, "names both this handler's payload") !=
+                      NULL;
+        }
+        REQUIRE(hidden == !i && analysis->valid == (i == 1));
+    }
+    return true;
+}
 TEST_CASE(program_nested_functions_wait_for_themselves)
 {
     /* Version 10 blocked on nested callees too; action initializers keep
@@ -7353,6 +7381,115 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
     return true;
 }
 
+/* Version 28 reads parameters by name: `entry.X` becomes `X`, a bare
+ * `entry` becomes the callable's only parameter, and `after entry` stays. The
+ * current grammar refuses `entry` as a value. */
+TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
+{
+    const char *source = "Moves :: library {\n"
+                         "Step :: (Speed: float, Scale: float) -> float {\n"
+                         "    // entry.Speed stays in comments.\n"
+                         "    return entry.Speed * entry.Scale\n"
+                         "}\n"
+                         "Twice :: (Value: float) -> float {\n"
+                         "    return entry * 2\n"
+                         "}\n"
+                         "Across :: (p: Point) -> float {\n"
+                         "    return entry.x\n"
+                         "}\n"
+                         "}";
+    const char *expected = "Moves :: library {\n"
+                           "Step :: (Speed: float, Scale: float) -> float {\n"
+                           "    // entry.Speed stays in comments.\n"
+                           "    return Speed * Scale\n"
+                           "}\n"
+                           "Twice :: (Value: float) -> float {\n"
+                           "    return Value * 2\n"
+                           "}\n"
+                           "Across :: (p: Point) -> float {\n"
+                           "    return p.x\n"
+                           "}\n"
+                           "}";
+    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_entry(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    free(migrated);
+    REQUIRE(!chibi_migrate_entry(expected, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    const char *handler = "M :: library { macro Go() -> () { exit Then; after "
+                          "entry { } } }";
+    REQUIRE(!chibi_migrate_entry(handler, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    REQUIRE(
+        chibi_migrate_entry(
+            "L :: library { F :: (a: int, b: int) -> int { return entry } }",
+            &unchanged,
+            error,
+            sizeof error
+        ) < 0
+    );
+    REQUIRE(!unchanged && strstr(error, "names no parameter of its callable"));
+    REQUIRE(
+        chibi_migrate_entry(
+            "L :: library { F :: (a: int) -> int { a := entry.a; return a } }",
+            &unchanged,
+            error,
+            sizeof error
+        ) < 0
+    );
+    REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
+    const char *captured[] = {
+        "L :: library { F :: (v: int) -> int { v := 2; return entry } }",
+        "L :: library { F :: (i: int) -> int { for i in 0..3 { } return "
+        "entry.i } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(chibi_migrate_entry(captured[i], &unchanged, error, sizeof error) < 0);
+        REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
+    }
+    char root[] = "/tmp/chibi-entry-XXXXXX", path[256], json[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(
+        json,
+        sizeof json,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "Twice ::") - source)
+    );
+    char *metadata = authoring_source_metadata_bind(json, source);
+    REQUIRE(metadata);
+    const char *files[] = { "Moves.chibi", "Moves.chibi.meta" };
+    const char *contents[] = { source, metadata };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        REQUIRE(fputs(contents[i], file) >= 0);
+        REQUIRE(!fclose(file));
+    }
+    free(metadata);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 27, error, sizeof error));
+    snprintf(path, sizeof path, "%s/%s", root, files[0]);
+    const char *text = read_whole(path);
+    REQUIRE(text && !strcmp(text, expected));
+    snprintf(path, sizeof path, "%s/%s", root, files[1]);
+    text = read_whole(path);
+    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Twice ::") - expected));
+    REQUIRE(text && authoring_source_metadata_matches(text, expected));
+    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    script_syntax *refused = script_parse(
+        "L :: library { F :: (a: int) -> int { return entry.a } }"
+    );
+    bool rejected = refused->diagnostic_count > 0;
+    script_syntax_free(refused);
+    REQUIRE(rejected);
+    return true;
+}
 TEST_CASE(program_version_26_casts_migrate_to_conversions)
 {
     const char
@@ -8540,6 +8677,7 @@ void test_language_program()
     RUN_TEST_CASE(program_many_tasks_collect_in_linear_mark_work);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
+    RUN_TEST_CASE(program_handler_payloads_do_not_hide_parameters);
     RUN_TEST_CASE(program_nested_functions_wait_for_themselves);
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
@@ -8568,6 +8706,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate);
     RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
     RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
+    RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

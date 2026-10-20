@@ -28,6 +28,7 @@ const TSLanguage *tree_sitter_chibi_project23();
 const TSLanguage *tree_sitter_chibi_project24();
 const TSLanguage *tree_sitter_chibi_project25();
 const TSLanguage *tree_sitter_chibi_project26();
+const TSLanguage *tree_sitter_chibi_project27();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -66,7 +67,8 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         version == 23   ? tree_sitter_chibi_project23()
         : version == 24 ? tree_sitter_chibi_project24()
         : version == 25 ? tree_sitter_chibi_project25()
-                        : tree_sitter_chibi_project26()
+        : version == 26 ? tree_sitter_chibi_project26()
+                        : tree_sitter_chibi_project27()
     );
     assert(compatible);
     (void)compatible;
@@ -117,6 +119,11 @@ static script_syntax *parse25(const char *text)
 static script_syntax *parse26(const char *text)
 {
     return chibi_migrate_parse(text, 26);
+}
+
+static script_syntax *parse27(const char *text)
+{
+    return chibi_migrate_parse(text, 27);
 }
 
 typedef struct
@@ -3722,6 +3729,7 @@ static char *migrate_source_metadata(
                               : version == 24 ? parse24(before)
                               : version == 25 ? parse25(before)
                               : version == 26 ? parse26(before)
+                              : version == 27 ? parse27(before)
                                               : script_parse(before);
         yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
         size_t i, count;
@@ -4131,7 +4139,7 @@ int chibi_migrate_retention(const char *source, char **migrated, char *error, si
             script_syntax_free(syntax);
         }
         if (!valid) {
-            syntax = script_parse(source);
+            syntax = parse27(source);
             valid = !syntax->diagnostic_count;
             script_syntax_free(syntax);
         }
@@ -5310,16 +5318,20 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
 
 /* Publishes a step's result, or NULL for unchanged source, only when the
  * current grammar parses it. */
+/* Accepts a step's result when the grammar of the version it produces
+ * parses it: 27 for the conversion step, the current grammar after that. */
 static int accept_migrated(
     const char *source,
     char *result,
     const char *step,
+    int version,
     char **migrated,
     char *error,
     size_t size
 )
 {
-    script_syntax *check = script_parse(result ? result : source);
+    const char *text = result ? result : source;
+    script_syntax *check = version == 27 ? parse27(text) : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
         snprintf(
@@ -5434,8 +5446,9 @@ int chibi_migrate_conversions(const char *source, char **migrated, char *error, 
     script_syntax *syntax = parse26(source);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
-        /* A rerun after an interrupted step finds sources already converted. */
-        syntax = script_parse(source);
+        /* A rerun after an interrupted step finds sources already converted,
+         * which the version 27 grammar reads at version 27 or later. */
+        syntax = parse27(source);
         bool valid = !syntax->diagnostic_count;
         script_syntax_free(syntax);
         if (valid) {
@@ -5465,7 +5478,7 @@ int chibi_migrate_conversions(const char *source, char **migrated, char *error, 
     }
     char *result = prefix_apply(source, edits);
     prefix_edits_free(edits);
-    return accept_migrated(source, result, "Conversion", migrated, error, size);
+    return accept_migrated(source, result, "Conversion", 27, migrated, error, size);
 }
 static char **migrate_conversions(char **sources, char **paths, int count, char *error, size_t size)
 {
@@ -5501,6 +5514,225 @@ static char **migrate_conversions(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+/* The callable a node is inside, or a null node. */
+static TSNode enclosing_callable(TSNode node)
+{
+    for (TSNode up = ts_node_parent(node); !ts_node_is_null(up);
+         up = ts_node_parent(up)) {
+        if (is(up, "function_declaration") || is(up, "macro_declaration")) {
+            return up;
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* Whether two nodes are spelled alike. */
+static bool spelled_alike(const char *text, TSNode a, TSNode b)
+{
+    if (ts_node_is_null(a) || ts_node_is_null(b)) {
+        return false;
+    }
+    size_t length = ts_node_end_byte(a) - ts_node_start_byte(a);
+    return length == ts_node_end_byte(b) - ts_node_start_byte(b) &&
+           !strncmp(text + ts_node_start_byte(a), text + ts_node_start_byte(b), length);
+}
+/* Whether node itself binds a name spelled like name: a local or constant, a
+ * handler parameter or alias, or a loop name or key. */
+static bool binds_here(const char *text, TSNode node, TSNode name)
+{
+    if (is(node, "handler")) {
+        return spelled_alike(text, ts_node_child_by_field_name(node, "alias", 5), name);
+    }
+    if (is(node, "for_statement")) {
+        return spelled_alike(text, ts_node_child_by_field_name(node, "name", 4), name) ||
+               spelled_alike(text, ts_node_child_by_field_name(node, "key", 3), name);
+    }
+    bool named = is(node, "local_declaration") ||
+                 is(node, "constant_declaration") || is(node, "parameter");
+    return named &&
+           spelled_alike(text, ts_node_child_by_field_name(node, "name", 4), name);
+}
+/* Whether node binds a name spelled like name, outside the callables nested
+ * in it. Such a binding would capture a rewritten read of the parameter. */
+static bool binds_name(const char *text, TSNode node, TSNode name)
+{
+    if (binds_here(text, node, name)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (is(child, "function_declaration") || is(child, "macro_declaration")) {
+            continue;
+        }
+        if ((is(node, "pattern_bindings") && spelled_alike(text, child, name)) ||
+            binds_name(text, child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The parameter in parameters spelled like name, or a null node. */
+static TSNode named_parameter(const char *text, TSNode parameters, TSNode name)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode parameter = ts_node_child_by_field_name(ts_node_named_child(parameters, i), "name", 4);
+        if (spelled_alike(text, parameter, name)) {
+            return parameter;
+        }
+    }
+    return (TSNode){ 0 };
+}
+typedef struct
+{
+    replacement *edits;
+    TSNode unnamed; /* an entry naming no parameter of its callable */
+    TSNode shadowed; /* an entry whose parameter a binding in the callable hides */
+} entry_rewrite;
+/* Rewrites one read through entry: `entry.X` of a parameter X loses its
+ * prefix, and otherwise entry names the callable's only parameter, so
+ * `entry.x` becomes `p.x` and a bare `entry` becomes `p`. */
+static void entry_read(const char *text, TSNode node, entry_rewrite *out)
+{
+    TSNode parent = ts_node_parent(node);
+    TSNode callable = enclosing_callable(node);
+    TSNode parameters = ts_node_is_null(callable)
+                          ? (TSNode){ 0 }
+                          : ts_node_child_by_field_name(callable, "parameters", 10);
+    TSNode object = ts_node_child_by_field_name(parent, "object", 6);
+    TSNode member = is(parent, "member_expression") && ts_node_eq(object, node)
+                      ? ts_node_child_by_field_name(parent, "member", 6)
+                      : (TSNode){ 0 };
+    TSNode parameter = ts_node_is_null(member)
+                         ? (TSNode){ 0 }
+                         : named_parameter(text, parameters, member);
+    bool only = !ts_node_is_null(parameters) &&
+                ts_node_named_child_count(parameters) == 1;
+    if (ts_node_is_null(parameter) && !only) {
+        if (ts_node_is_null(out->unnamed)) {
+            out->unnamed = node;
+        }
+        return;
+    }
+    if (ts_node_is_null(parameter)) {
+        parameter = ts_node_child_by_field_name(ts_node_named_child(parameters, 0), "name", 4);
+    }
+    if (binds_name(text, ts_node_child_by_field_name(callable, "body", 4), parameter) &&
+        ts_node_is_null(out->shadowed)) {
+        out->shadowed = node;
+    }
+    if (!ts_node_is_null(member) && spelled_alike(text, member, parameter)) {
+        push_edit(
+            &out->edits,
+            (int)ts_node_start_byte(node),
+            (int)ts_node_start_byte(member),
+            xstrdup("")
+        );
+        return;
+    }
+    int from = (int)ts_node_start_byte(parameter),
+        to = (int)ts_node_end_byte(parameter);
+    char *spelling = xmalloc((size_t)(to - from) + 1);
+    memcpy(spelling, text + from, (size_t)(to - from));
+    spelling[to - from] = '\0';
+    push_edit(&out->edits, (int)ts_node_start_byte(node), (int)ts_node_end_byte(node), spelling);
+}
+/* Every read through entry is rewritten; `after entry` names a handler, not a
+ * value, and stays. */
+static void entry_edits(const char *text, TSNode node, entry_rewrite *out)
+{
+    if (is(node, "builtin_reference") &&
+        ts_node_end_byte(node) - ts_node_start_byte(node) == 5 &&
+        !strncmp(text + ts_node_start_byte(node), "entry", 5)) {
+        if (!is(ts_node_parent(node), "handler")) {
+            entry_read(text, node, out);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        entry_edits(text, ts_node_child(node, i), out);
+    }
+}
+int chibi_migrate_entry(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse27(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already migrated. */
+        syntax = script_parse(source);
+        bool valid = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (valid) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 27 source");
+        return -1;
+    }
+    entry_rewrite rewrite = { 0 };
+    entry_edits(source, ts_tree_root_node(syntax->tree), &rewrite);
+    bool named = ts_node_is_null(rewrite.unnamed),
+         clear = ts_node_is_null(rewrite.shadowed);
+    if (!named || !clear) {
+        script_range range = script_node_range(
+            named ? rewrite.shadowed : rewrite.unnamed
+        );
+        snprintf(
+            error,
+            size,
+            "entry at %d:%d %s",
+            range.line,
+            range.column,
+            !named ? "names no parameter of its callable; name the parameter" : "reads a parameter that a binding of the same name hides; rename the binding"
+        );
+        script_syntax_free(syntax);
+        prefix_edits_free(rewrite.edits);
+        return -1;
+    }
+    script_syntax_free(syntax);
+    if (!acount(rewrite.edits)) {
+        return 0;
+    }
+    char *result = prefix_apply(source, rewrite.edits);
+    prefix_edits_free(rewrite.edits);
+    return accept_migrated(source, result, "Entry", 28, migrated, error, size);
+}
+static char **migrate_entry(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_entry(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+            continue;
+        }
+        if (!migrated[i]) {
+            continue;
+        }
+        script_syntax *syntax = parse27(sources[i]);
+        entry_rewrite rewrite = { 0 };
+        entry_edits(sources[i], ts_tree_root_node(syntax->tree), &rewrite);
+        qsort(rewrite.edits, (size_t)acount(rewrite.edits), sizeof *rewrite.edits, by_start);
+        size_t length = strlen(paths[i]);
+        for (int j = 0; j < count; j++) {
+            if (!strncmp(paths[j], paths[i], length) &&
+                !strcmp(paths[j] + length, ".meta")) {
+                migrated[j] = migrate_source_metadata(
+                    sources[j],
+                    sources[i],
+                    migrated[i],
+                    rewrite.edits,
+                    27
+                );
+            }
+        }
+        prefix_edits_free(rewrite.edits);
+        script_syntax_free(syntax);
+    }
+    return migrated;
+}
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -5520,7 +5752,8 @@ int chibi_project_migrate_content(
                        from == 20 || from == 21 || from == 22 || from == 25;
     int status = collect_sources(
         content,
-        (from == 22 || from == 23 || from == 24 || from == 25 || from == 26) ? ".chibi.meta"
+        (from == 22 || from == 23 || from == 24 || from == 25 || from == 26 || from == 27)
+            ? ".chibi.meta"
         : declarative ? DECLARATIVE_ASSET_EXTENSION
                       : ".chibi",
         &paths,
@@ -5534,7 +5767,7 @@ int chibi_project_migrate_content(
     }
     /* Versions 16 and 18 also check scripts for names they remove. */
     if (!status && (from == 15 || from == 17 || from == 22 || from == 23 ||
-                    from == 24 || from == 25 || from == 26)) {
+                    from == 24 || from == 25 || from == 26 || from == 27)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -5662,6 +5895,11 @@ int chibi_project_migrate_content(
             case 26:
                 error[0] = '\0';
                 migrated = migrate_conversions(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 27:
+                error[0] = '\0';
+                migrated = migrate_entry(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

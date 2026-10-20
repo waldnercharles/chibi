@@ -18,7 +18,7 @@ WaveBehavior :: behavior {
                     return
                 } else {
                     Elapsed = Elapsed - max(Interval, B: float = 0.01)
-                    await Spawn_Enemy(entry.Player_Position)
+                    await Spawn_Enemy(Player_Position)
                     Spawned = add(Spawned, B: int = 1)
                     Side = Side * -1.0
                 }
@@ -32,7 +32,7 @@ WaveBehavior :: behavior {
             spawn_prototype_action()
         }
         after spawn_prototype_action {
-            spawn_prototype_action.Entity.Transform = make_transform(entry.Player_Position.x + Side * SpawnDistance, entry.Player_Position.y)
+            spawn_prototype_action.Entity.Transform = make_transform(Player_Position.x + Side * SpawnDistance, Player_Position.y)
             return
         }
     }

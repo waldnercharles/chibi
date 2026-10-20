@@ -18,7 +18,10 @@ targets.
 - **Chibi parser.** A Chibi parser on the Chibi tokenizer is wanted, but does
   not hold up M5. Only the tokenizer exists so far, on the odin-tokenizer
   branch.
-- **`entry`.** Removed from field libraries, which read their parameters.
+- **`entry`.** Removed from the language. Phase 1 (project version 28):
+  `entry.X` and a bare `entry` became the parameter's own name. Phase 2,
+  under discussion: `after entry` and macro entry and exit paths become
+  ordinary functions returning a union.
 - **Named results.** A named, defaulted single result whose name adds nothing
   is dropped. Named results remain where natives need them.
 - **Events.** Under discussion: declare events name-first with a typed
@@ -158,17 +161,6 @@ typed payload, `Tick :: event (dt: Seconds)`, as other declarations are. A
 handler then lists that payload, checked against the declaration, and the
 other three forms go. Godot's `signal tick(dt: float)` and Pony's
 `be tick(dt: F64)` declare events with typed payloads the same way.
-
-## The field library reads `entry` beside its own parameters
-
-`QuarryShapes.Quarry` declares `X` and `Y` but reads `entry.X` and `entry.Y`.
-
-Change: read the parameters, and retire `entry` from libraries if it is left
-over from graphs. Before the redesign touches it, that needs the owner's
-answer on what `entry` still means. The terrain itself is one nested call
-expression. SDF tools such as Houdini, Dreams and Inigo Quilez's examples
-compose named operations instead, which `field_*` could offer as a short
-vocabulary later.
 
 ## Single named results with defaults
 

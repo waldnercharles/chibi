@@ -97,9 +97,9 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) && x->writable == y->writable &&
-           x->disabled == y->disabled && x->outcome == y->outcome &&
-           ((payload(x) && payload(y)) || same_text(x->name, y->name));
+           (parameter || x->function == y->function) &&
+           x->writable == y->writable && x->disabled == y->disabled &&
+           x->outcome == y->outcome && same_text(x->name, y->name);
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
  * well as their parameters. */

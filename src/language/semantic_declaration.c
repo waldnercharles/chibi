@@ -1159,9 +1159,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
                                                         : NULL;
     int count = signature ? after ? signature->result_count : signature->parameter_count
                           : 0;
-    bool named = !ts_node_is_null(script_analyzer_field(node, "binding"));
-    a->out->functions[function].named = named;
-    if (named) {
+    if (!after) {
         script_analyzer_named_payload(a, function, parameter_nodes, payload, count, name);
     } else {
         positional_payload(a, function, parameter_nodes, payload, count);

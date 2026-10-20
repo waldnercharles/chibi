@@ -937,14 +937,8 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     return true;
 }
 
-TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
+TEST_CASE(source_minimize_preserves_cast_and_storage_comments)
 {
-    REQUIRE(minimize_valid(
-        &catalog,
-        "Demo :: behavior { on Tick :: (dt: float s) { x := dt; } }",
-        "Demo :: behavior { on Tick :: (dt: float s) { x := dt } }"
-    ));
-    cleanup();
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { total: retain /* declared */ float = 0.0\n"
@@ -1014,8 +1008,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     return true;
 }
 
-/* A handler that names its payload fields keeps the list and its types; the
- * older positional list that repeats the payload's names still drops. */
+/* A handler that names its payload fields keeps the list and its types. */
 TEST_CASE(source_minimize_keeps_named_payload_fields)
 {
     REQUIRE(minimize(
@@ -1259,7 +1252,39 @@ static const script_catalog component_catalog = {
     .entity_type = 40,
     .tick_event = 30,
 };
-
+/* An `after` list that repeats the results' own names drops; one that
+ * renames them stays. */
+static const script_catalog_parameter measured[] = {
+    { .name = "Value", .type = { .storage = PIN_F64 } },
+};
+static const char *const measure_completion[] = { "Completed" };
+static const script_catalog_capability measure_capabilities[] = {
+    { .id = 30, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 },
+    { .id = 31,
+      .name = "Measure",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .results = measured,
+      .result_count = 1,
+      .outcomes = measure_completion,
+      .outcome_count = 1,
+      .completion_outcome = 0 },
+};
+static const script_catalog measure_catalog = { .capabilities = measure_capabilities,
+                                                .capability_count = 2 };
+TEST_CASE(source_minimize_drops_repeated_result_lists)
+{
+    const char
+        *prefix = "Demo :: behavior { saved: double = 0; action update = "
+                  "Measure(); on Tick :: () { update() } ";
+    char input[512], expected[512];
+    snprintf(input, sizeof input, "%safter update(Value) { saved = Value } }", prefix);
+    snprintf(expected, sizeof expected, "%safter update { saved = Value } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, expected));
+    cleanup();
+    snprintf(input, sizeof input, "%safter update(moved) { saved = moved } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, input));
+    return true;
+}
 TEST_CASE(source_minimize_preserves_accessor_and_operator_comments)
 {
     REQUIRE(minimize_in(
@@ -1702,11 +1727,12 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_preserves_wrapper_comments);
     RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);
-    RUN_TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments);
+    RUN_TEST_CASE(source_minimize_preserves_cast_and_storage_comments);
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
     RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
     RUN_TEST_CASE(source_minimize_keeps_named_payload_fields);
+    RUN_TEST_CASE(source_minimize_drops_repeated_result_lists);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

@@ -167,6 +167,22 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* An omitted argument takes its parameter's literal default. */
+    { .name = "defaults",
+      .source = "package facts\n"
+                "Add :: (a: int, b: int = -10, c: int64 = 0x10) -> int64 { "
+                "return int64(a + b) + c; }\n"
+                "Greet :: (name: string = \"you\", loud: bool = true) -> "
+                "string {\n"
+                "    if (loud) { return format_text(\"HI {}\", name); }\n"
+                "    return name;\n}\n"
+                "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
+                "3); }\n"
+                "Hello :: () -> string { return Greet(); }\n",
+      .calls = { { "Add", "[5,6,7]", "[18]" },
+                 { "Use", "[]", "[32]" },
+                 { "Hello", "[]", "[\"HI you\"]" },
+                 { "Greet", "[\"ada\",false]", "[\"ada\"]" } } },
     /* An integer switch tests its arms in order and runs the default arm
      * after them all, wherever it is written. */
     { .name = "integer switch",

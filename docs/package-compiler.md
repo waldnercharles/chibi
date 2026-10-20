@@ -45,6 +45,9 @@ import:
   as parameters, results and locals; `float` and `double` values as
   parameters, results and locals; string literals decode as JSON strings, as
   stage zero reads them;
+- parameter defaults that are literals, `(name: string = "you", count: int =
+  1)`: a call that omits trailing arguments passes their defaults, as stage
+  zero does;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
   is a local, zero until the body sets it; `return (a, b)` gives each its
   value, and `return` or the body's end returns them. A call's `.name` reads
@@ -124,7 +127,7 @@ element stores, literal
 members, payloads and in-place natives, constants of other types or computed
 values, type patterns, record field defaults, fields of array elements, named
 payload arguments and literal variants come next. A literal passed to a
-wildcard port, as in `format_text("{}", 1)`, is a double in stage zero, and
+wildcard port, as in `format_text("{}", 1)`, is an `int` in stage zero, and
 stage one rejects it. One check stage zero makes at compile time happens at
 run time here: a checked conversion of a named constant that does not fit
 fails the call.

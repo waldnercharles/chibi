@@ -110,6 +110,11 @@ Param :: struct {
     storage: int;
     container: int;
     record: int;
+    // A literal default a call that omits the argument passes: its bits, or
+    // its text for a string.
+    has_default: bool;
+    default_bits: uint64;
+    default_text: string;
 }
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
@@ -636,6 +641,44 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     return Declarations.Collected(callables, params, types, members, constants);
 }
 
+Default :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Read(bits: uint64, text: string)
+}
+// A parameter's default, as the literal stage zero folds it to: an integer of
+// the parameter's type, a bool or a string.
+LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int, declared: ValueType) -> Default {
+    if (declared.container != 0) {
+        return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+    }
+    if (Integer(declared.storage)) {
+        switch ParseNumber(forest, text, node) {
+            case .Invalid:
+                return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+            case .Number(negative, magnitude):
+                if (!Fits(negative, magnitude, declared.storage)) {
+                    return Default.Failed(Diagnose(forest, node, file,
+                                                   format_text("Numeric literal is outside the range of {}",
+                                                               TypeName(declared.storage))));
+                }
+                return Default.Read(Bits(negative, magnitude), "");
+        }
+    }
+    if (declared.storage == BoolStorage && Is(forest, node, "boolean")) {
+        if (Text(forest, text, node) == "true") {
+            return Default.Read(1, "");
+        }
+        return Default.Read(0, "");
+    }
+    if (declared.storage == TextStorage && Is(forest, node, "string")) {
+        decoded := compiler_json_string(Text(forest, text, node));
+        if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+            return Default.Failed(Diagnose(forest, node, file, "Invalid string or embedded NUL"));
+        }
+        return Default.Read(0, decoded.value);
+    }
+    return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
+}
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[],
@@ -653,7 +696,18 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
                                              "Invalid string or embedded NUL"));
         }
         param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                        record: declared.record};
+                        record: declared.record, has_default: false, default_bits: 0, default_text: ""};
+        default_value := Field(forest, parameter, "value");
+        if (default_value >= 0) {
+            switch LiteralDefault(forest, text, file, default_value, declared) {
+                case .Failed(diagnostic):
+                    return Signature.Failed(diagnostic);
+                case .Read(bits, literal):
+                    param.has_default = true;
+                    param.default_bits = bits;
+                    param.default_text = literal;
+            }
+        }
         added = array_add(added, param);
         parameter = NextMember(forest, parameter);
     }
@@ -672,7 +726,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
-            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record};
+            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
+                            has_default: false, default_bits: 0, default_text: ""};
             added = array_add(added, param);
             named = NextMember(forest, named);
         }

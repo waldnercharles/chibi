@@ -134,8 +134,7 @@ TEST_CASE(language_handlers_name_payload_fields)
         "Demo :: behavior { on Tick { } }",
         "Demo :: behavior { on Tick(dt) { } }",
         "Demo :: behavior { on Tick as tick { } }",
-        "Demo :: behavior { action go = delay(Duration: 1); after go as done { "
-        "} }",
+        "Demo :: behavior { action go = Go(); after go as done { } }",
     };
     for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
         parse(removed[i]);

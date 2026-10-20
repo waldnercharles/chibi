@@ -196,8 +196,8 @@ TEST_CASE(source_views_keep_named_invalid_drafts)
     const char *drafts[] = {
         "Draft :: behavior { on Tick :: () { missing.x; } }",
         "Draft :: behavior { on Tick :: () { x := Unknown(1); x.message; } }",
-        "Draft :: behavior { text: string = \"draft\"; on Tick :: () { text = "
-        "; } }",
+        ("Draft :: behavior { text: string = \"draft\"; on Tick :: () { text = "
+         "; } }"),
     };
     for (int i = 0; i < 3; i++) {
         cleanup();

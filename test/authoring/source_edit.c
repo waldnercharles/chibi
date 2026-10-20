@@ -1090,8 +1090,8 @@ TEST_CASE(source_retype_compact_inferred_retention_preserves_owner)
 {
     const char *sources[] = {
         "Edit :: behavior { count:retain=/* keep */1; }",
-        "Edit :: behavior { F :: () -> int { count:retain=/* keep */1; return "
-        "0; } }",
+        ("Edit :: behavior { F :: () -> int { count:retain=/* keep */1; return "
+         "0; } }"),
         "Edit :: system() { count:retain=/* keep */1; }",
     };
     for (int i = 0; i < 3; i++) {

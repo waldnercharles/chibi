@@ -705,8 +705,8 @@ TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context)
         "Effects :: behavior { on Tick :: () { Create(Prototype: "
         "MovementEmitter); } "
         "}",
-        "Effects :: behavior { on Tick :: () { Configure(Count: 1, Prototype: "
-        "MovementEmitter); } }",
+        ("Effects :: behavior { on Tick :: () { Configure(Count: 1, Prototype: "
+         "MovementEmitter); } }"),
     };
     for (int i = 0; i < 7; i++) {
         cleanup();

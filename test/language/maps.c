@@ -192,8 +192,8 @@ TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types)
         "Bad :: behavior { m: Map<int,int> = {}; on Run :: () { key: float = "
         "1; "
         "m[key] = 2; } }",
-        "Bad :: behavior { m: Map<string,int> = {}; n: Map<string,bool> = {}; "
-        "on Run :: () { m = n; } }",
+        ("Bad :: behavior { m: Map<string,int> = {}; n: Map<string,bool> = {}; "
+         "on Run :: () { m = n; } }"),
     };
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
         syntax = script_parse(invalid[i]);

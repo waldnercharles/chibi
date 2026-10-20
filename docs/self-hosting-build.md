@@ -266,8 +266,11 @@ The existing Linux/Darwin `chibi-compiler-host` has an optional private
 `--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
 `--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
 finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
-`--batch` are mutually exclusive. Without the new switch, JSON stdout and JSON
-batch behavior are unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
+`--batch` are mutually exclusive. `--output-bytes FILE` writes a `byte[]`
+result that is not a compiler, such as stage one's closure of a game's
+modules, without loading it as one, and fails when the entry returns no
+bytes. Without either switch, JSON stdout and JSON batch behavior are
+unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
 selection, cache and installed-format contracts do not change.
 
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
@@ -398,7 +401,8 @@ check takes one compile, about 11 s, or two when the sources changed, about
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
 tools/compiler --core packages/core` and needs neither stage zero, nor a
-compiler built from Chibi, nor a network. Git stores the artifact by content,
+compiler built from Chibi, nor a network. `--recover FILE` also writes the
+compiler it recovers, which `tools/toolchain/StageOne.chibi` runs. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
 before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
 target is the value layout and prepared ABI rather than an operating system,

@@ -144,7 +144,12 @@ The game arguments are flat tables, since records hold no arrays:
 - the entity type that owns behaviors.
 
 As in stage zero, the module lists every type as a requirement, and lists the
-events its handlers take. Events and components match their names as the
+events its handlers take. `CompileBehaviors` takes the identities and sources
+of a project's behavior assets, then the same arguments, and returns a
+CHIBICLO closure of their modules, or no bytes when it rejects one; then
+`BehaviorRejection` returns the first rejection's identity, line, column and
+message. `tools/toolchain/StageOne.chibi` runs both on the input `chibi-compile
+--stage-one-input` exports (`docs/testing.md#game-equivalence`). Events and components match their names as the
 catalog matches them: exactly, else loosely, ignoring case, spaces,
 underscores and hyphens.
 
@@ -296,7 +301,8 @@ and stage zero's each play five ticks on an owner of their own, and the
 rejected with their exact messages. With a project's path as its identity,
 Counter's module, state and handler must take stage zero's IDs. A second
 case fails when any of stage one's functions, other than `Compile`,
-`CompileClosure`, `CompileBehavior`, `Declare` and `DeclarePackage`, copies
+`CompileClosure`, `CompileBehavior`, `CompileBehaviors`, `Declare` and
+`DeclarePackage`, copies
 its arguments on each call: one such function, through its callers, takes
 stage one compiling itself past its ceiling (4,329 assertions in 33.2 s; see
 `docs/language-friction.md`).

@@ -2,9 +2,10 @@ GameEquivalence :: library {
     // Rebuilds stories with a reference and a candidate compiler and compares
     // what their artifacts declare and how they play. A story is a project and
     // the scenario that plays it. A compiler is any program that takes
-    // --project-root ROOT --output FILE, as chibi-compile does. The observer
-    // plays artifacts under their scenarios and writes one trace: for each
-    // story a play line, its declarations, then one line per fixed step.
+    // --project-root ROOT --output FILE, as chibi-compile does, or a build
+    // program whose Compile entry takes them, which the build host runs. The
+    // observer plays artifacts under their scenarios and writes one trace: for
+    // each story a play line, its declarations, then one line per fixed step.
     Join :: (parts: string[]) -> string {
         return build.join(parts, "")
     }
@@ -16,9 +17,26 @@ GameEquivalence :: library {
         }
         return rest
     }
+    // Whether text ends with suffix.
+    Ends :: (text: string, suffix: string) -> bool {
+        rest := text
+        while (build.before(rest, suffix) != rest) {
+            rest = build.after(rest, suffix)
+        }
+        return rest == "" && build.before(text, suffix) != text
+    }
+    // The command that runs compiler: the program, or the build host running
+    // a build program's Compile entry.
+    Command :: (host: string, compiler: string) -> string[] {
+        if (!Ends(compiler, ".chibi")) {
+            return [compiler]
+        }
+        return [host, "--root", build.root(), "--source", compiler, "--entry", "Compile", "--timeout-ms", "50000",
+                "--"]
+    }
     // Compiles each story's project with compiler into FOLDER/NAME.chibip and
     // plays them all into FOLDER.trace.
-    Play :: (compiler: string, observer: string, folder: string, stories: string[]) -> bool {
+    Play :: (host: string, compiler: string, observer: string, folder: string, stories: string[]) -> bool {
         if (!build.make_directory(folder)) {
             build.report(Join(["cannot make ", folder]))
             return false
@@ -27,7 +45,7 @@ GameEquivalence :: library {
         index: int = 0
         while (index < build.length(stories)) {
             artifact := Join([folder, "/", Base(stories[index]), ".chibip"])
-            if (build.run([compiler, "--project-root", stories[index], "--output", artifact]) != 0) {
+            if (build.run(build.concat(Command(host, compiler), ["--project-root", stories[index], "--output", artifact])) != 0) {
                 build.report(Join([compiler, " cannot compile ", stories[index]]))
                 return false
             }
@@ -120,27 +138,28 @@ GameEquivalence :: library {
         build.report(Join(["the candidate matches the reference in ", build.join(stories, ", ")]))
         return 0
     }
-    // Arguments: REFERENCE CANDIDATE OBSERVER FOLDER, then a PROJECT and
-    // SCENARIO for each story. Artifacts and traces go in FOLDER.
+    // Arguments: HOST REFERENCE CANDIDATE OBSERVER FOLDER, then a PROJECT
+    // and SCENARIO for each story. HOST is the build host that runs a build
+    // program compiler. Artifacts and traces go in FOLDER.
     Rebuild :: () -> int {
         arguments := build.arguments()
         count := build.length(arguments)
-        if (count < 6 || (count - 4) % 2 != 0) {
-            build.report("usage: REFERENCE CANDIDATE OBSERVER FOLDER PROJECT SCENARIO [PROJECT SCENARIO]...")
+        if (count < 7 || (count - 5) % 2 != 0) {
+            build.report("usage: HOST REFERENCE CANDIDATE OBSERVER FOLDER PROJECT SCENARIO [PROJECT SCENARIO]...")
             return 2
         }
         stories: string[] = []
-        index: int = 4
+        index: int = 5
         while (index < count) {
             stories = build.concat(stories, [arguments[index]])
             index += 1
         }
-        folder := arguments[3]
+        folder := arguments[4]
         reference := Join([folder, "/reference"])
         candidate := Join([folder, "/candidate"])
         if (!build.make_directory(folder) ||
-            !Play(arguments[0], arguments[2], reference, stories) ||
-            !Play(arguments[1], arguments[2], candidate, stories)) {
+            !Play(arguments[0], arguments[1], arguments[3], reference, stories) ||
+            !Play(arguments[0], arguments[2], arguments[3], candidate, stories)) {
             return 2
         }
         return Compare(Join([reference, ".trace"]), Join([candidate, ".trace"]))

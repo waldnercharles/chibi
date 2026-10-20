@@ -5,6 +5,7 @@ import raw "project:compiler_syntax"
 import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
+import writer "project:prepared_writer"
 
 // Compiles a behavior asset to the prepared module of the game a target
 // describes: its retained states, and its event handlers, which read and
@@ -183,13 +184,14 @@ ScalarPayload :: (declared: GameEvent, event_fields: GameEventField[]) -> bool {
 }
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
-// from it. `game_events`, `types` and `entity` are the game's, as the target
-// exports them.
+// from it. The target, natives, events, types and entity are the game's, as
+// `chibi-compile --stage-one-target` exports them.
 CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
-                    game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
-                    type_fields: GameField[], entity: uint64) -> Result {
+                    natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                    event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                    entity: uint64) -> Result {
     ops := ResolveOps(names);
-    if (abi == 0 || !Complete(ops)) {
+    if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
     }
     forest: snapshot.SnapshotNode[] = [];
@@ -292,10 +294,60 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    natives: Native[] = [];
-    ports: Port[] = [];
-    identities: uint64[] = [];
     return Assemble(forest, [document], 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
-                    callables, params, declared_types, members, constants, natives, ports, identities, ops, target, abi,
+                    callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity));
+}
+// The modules of a project's behavior assets, `identities[i]` holding
+// `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
+// takes one byte[] result; empty when stage one rejects any of them, which
+// BehaviorRejection then says why.
+CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                     natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                     event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                     entity: uint64) -> byte[] {
+    if (length(identities) == 0 || length(identities) != length(sources)) {
+        return [];
+    }
+    ids: uint64[] = [];
+    data: byte[] = [];
+    starts: int[] = [];
+    lengths: int[] = [];
+    index: int = 0;
+    while (index < length(identities)) {
+        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+                               game_events, event_fields, types, type_fields, entity) {
+            case .Rejected(diagnostic):
+                return [];
+            case .Compiled(module, bytes):
+                ids = array_add(ids, module);
+                starts = array_add(starts, length(data));
+                lengths = array_add(lengths, length(bytes));
+                data = append(data, bytes);
+        }
+        index += 1;
+    }
+    return writer.Closure(ids[0], ids, identities, data, starts, lengths);
+}
+// The first of CompileBehaviors' behaviors stage one rejects, as
+// "identity:line:column: message"; "" when it compiles them all.
+BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                      natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                      event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                      entity: uint64) -> string {
+    if (length(identities) == 0 || length(identities) != length(sources)) {
+        return "the behaviors' identities and sources differ in number, or there are none";
+    }
+    index: int = 0;
+    while (index < length(identities)) {
+        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+                               game_events, event_fields, types, type_fields, entity) {
+            case .Rejected(diagnostic):
+                return format_text("{}:{}:{}: {}", identities[index], diagnostic.line, diagnostic.column,
+                                   diagnostic.message);
+            case .Compiled(module, bytes):
+                index += 1;
+        }
+    }
+    return "";
 }

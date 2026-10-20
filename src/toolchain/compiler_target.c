@@ -108,16 +108,12 @@ char *compiler_target_json(const script_catalog *catalog, size_t *length)
     add_target(doc, target, catalog);
     return written(doc, length);
 }
-static void add_type(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *key, script_type type)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, key);
-    yyjson_mut_obj_add_int(doc, value, "storage", (int)type.storage);
-    yyjson_mut_obj_add_int(doc, value, "container", (int)type.container);
-    yyjson_mut_obj_add_uint(doc, value, "nominal", type.nominal);
-}
+/* Each event, with a range of payload fields, then the fields. */
 static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
 {
-    yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, root, "events");
+    yyjson_mut_val *events = yyjson_mut_arr_add_arr(doc, root);
+    yyjson_mut_val *fields = yyjson_mut_arr_add_arr(doc, root);
+    size_t first = 0;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
         if (c->kind != SCRIPT_CAPABILITY_EVENT) {
@@ -127,20 +123,27 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_c
         yyjson_mut_obj_add_str(doc, event, "name", c->name);
         yyjson_mut_obj_add_uint(doc, event, "id", c->id);
         yyjson_mut_obj_add_uint(doc, event, "abi", script_catalog_capability_abi(catalog, c));
-        yyjson_mut_val *fields = yyjson_mut_obj_add_arr(doc, event, "fields");
+        yyjson_mut_obj_add_uint(doc, event, "first", first);
+        yyjson_mut_obj_add_int(doc, event, "count", c->parameter_count);
+        first += (size_t)c->parameter_count;
         for (int j = 0; j < c->parameter_count; j++) {
             const script_catalog_parameter *parameter = &c->parameters[j];
             yyjson_mut_val *field = yyjson_mut_arr_add_obj(doc, fields);
             yyjson_mut_obj_add_str(doc, field, "name", parameter->name);
-            add_type(doc, field, "type", parameter->type);
+            yyjson_mut_obj_add_int(doc, field, "storage", (int)parameter->type.storage);
+            yyjson_mut_obj_add_uint(doc, field, "nominal", parameter->type.nominal);
             yyjson_mut_obj_add_bool(doc, field, "has_default", parameter->has_default);
             yyjson_mut_obj_add_bool(doc, field, "default_owner", parameter->default_owner);
         }
     }
 }
+/* Each type stage zero lists as a requirement, with a range of fields, then
+ * the fields. */
 static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
 {
-    yyjson_mut_val *types = yyjson_mut_obj_add_arr(doc, root, "types");
+    yyjson_mut_val *types = yyjson_mut_arr_add_arr(doc, root);
+    yyjson_mut_val *fields = yyjson_mut_arr_add_arr(doc, root);
+    size_t first = 0;
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *t = &catalog->types[i];
         if (t->internal ||
@@ -153,29 +156,40 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
         yyjson_mut_obj_add_uint(doc, type, "layout", t->layout);
         yyjson_mut_obj_add_int(doc, type, "storage", (int)t->type.storage);
         yyjson_mut_obj_add_uint(doc, type, "size", t->size);
-        yyjson_mut_obj_add_bool(doc, type, "component", t->component);
-        yyjson_mut_obj_add_uint(doc, type, "component_id", t->component_id);
-        yyjson_mut_val *fields = yyjson_mut_obj_add_arr(doc, type, "fields");
+        yyjson_mut_obj_add_uint(doc, type, "component", t->component ? t->component_id : 0);
+        yyjson_mut_obj_add_uint(doc, type, "first", first);
+        yyjson_mut_obj_add_int(doc, type, "count", t->field_count);
+        first += (size_t)t->field_count;
         for (int j = 0; j < t->field_count; j++) {
             const script_catalog_field *f = &t->fields[j];
             yyjson_mut_val *field = yyjson_mut_arr_add_obj(doc, fields);
             yyjson_mut_obj_add_str(doc, field, "name", f->name);
-            yyjson_mut_obj_add_uint(doc, field, "id", f->id);
-            add_type(doc, field, "type", f->type);
+            yyjson_mut_obj_add_int(doc, field, "storage", (int)f->type.storage);
             yyjson_mut_obj_add_uint(doc, field, "offset", f->offset);
             yyjson_mut_obj_add_bool(doc, field, "writable", f->writable);
         }
     }
 }
-char *compiler_game_target_json(const script_catalog *catalog, size_t *length)
+char *compiler_behavior_input_json(
+    const script_catalog *catalog,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    size_t *length
+)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_val *root = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, root);
-    add_target(doc, yyjson_mut_obj_add_arr(doc, root, "target"), catalog);
+    yyjson_mut_val *named = yyjson_mut_arr_add_arr(doc, root);
+    yyjson_mut_val *texts = yyjson_mut_arr_add_arr(doc, root);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_str(doc, named, identities[i]);
+        yyjson_mut_arr_add_str(doc, texts, sources[i]);
+    }
+    add_target(doc, root, catalog);
     add_events(doc, root, catalog);
     add_types(doc, root, catalog);
-    yyjson_mut_obj_add_uint(doc, root, "entity", catalog->entity_type);
-    yyjson_mut_obj_add_uint(doc, root, "tick", catalog->tick_event);
+    yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
     return written(doc, length);
 }

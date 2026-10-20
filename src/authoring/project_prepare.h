@@ -50,12 +50,15 @@ void authoring_project_artifact_free(authoring_project_artifact *);
 /* The declarations a project's modules link against, as preparation reads
  * them: its natives, with the components the project declares. */
 typedef struct authoring_project_catalog authoring_project_catalog;
+typedef struct source_catalog source_catalog;
 authoring_project_catalog *authoring_project_catalog_open(
     const authoring_project_options *,
     char *error,
     size_t size
 );
 const script_catalog *authoring_project_catalog_view(const authoring_project_catalog *);
+/* The project's executable sources, each with its identity and text. */
+const source_catalog *authoring_project_catalog_sources(const authoring_project_catalog *);
 void authoring_project_catalog_free(authoring_project_catalog *);
 /* The manifest's application settings as preparation reads them: a title
  * that fits, and an icon that decodes as a PNG. */

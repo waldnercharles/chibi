@@ -31,7 +31,8 @@
 #define STORIES "test/stories"
 #define SCENARIO "/content/scenarios/Story.kdl"
 #define STORY_COUNT 5
-#define HARNESS_ARGUMENTS (4 + 2 * STORY_COUNT)
+#define HARNESS_ARGUMENTS (5 + 2 * STORY_COUNT)
+#define STAGE_ONE "tools/toolchain/StageOne.chibi"
 
 /* The stories, in the order the stage-one increments reach them. */
 static const char *const story_names[STORY_COUNT] = { "Counter",
@@ -361,11 +362,12 @@ TEST_CASE(stories_play_alike_under_both_compilers)
 {
     char folder[128], projects[STORY_COUNT][4096], scenarios[STORY_COUNT][4096];
     path(folder, sizeof folder, "compare");
-    const char *arguments[HARNESS_ARGUMENTS] = { reference_path,
+    const char *arguments[HARNESS_ARGUMENTS] = { build_host_path,
+                                                 reference_path,
                                                  candidate_path,
                                                  observer_path,
                                                  folder };
-    int count = 4;
+    int count = 5;
     for (int i = 0; i < STORY_COUNT; i++) {
         story_path(projects[i], sizeof projects[i], story_names[i], "");
         story_path(scenarios[i], sizeof scenarios[i], story_names[i], SCENARIO);
@@ -510,12 +512,33 @@ static bool assembles_from_its_own_modules(const char *story)
     REQUIRE(same && missing && extra && !refused.data);
     return true;
 }
-/* Whether the exported target lists the type requirements and events of a
- * module stage zero prepared, in order, as a stage-one module must. */
-static bool target_matches(yyjson_val *root, const execution_module *module)
+/* Positions of CompileBehaviors' arguments in the exported input: the
+ * behaviors' identities and sources, the six target arguments, then the
+ * game's. */
+enum
+{
+    INPUT_IDENTITIES = 0,
+    INPUT_SOURCES,
+    INPUT_EVENTS = 8,
+    INPUT_EVENT_FIELDS,
+    INPUT_TYPES,
+    INPUT_TYPE_FIELDS,
+    INPUT_ENTITY,
+    INPUT_ARGUMENTS
+};
+/* Whether the exported input holds the story's behavior and lists the type
+ * requirements and events of the module stage zero prepared for it, in
+ * order, as a stage-one module must. */
+static bool target_matches(yyjson_val *root, const execution_module *module, const char *source)
 {
     const execution_module_plan *plan = &module->plan;
-    yyjson_val *types = yyjson_obj_get(root, "types");
+    REQUIRE(yyjson_arr_size(root) == INPUT_ARGUMENTS);
+    yyjson_val *identities = yyjson_arr_get(root, INPUT_IDENTITIES);
+    yyjson_val *sources = yyjson_arr_get(root, INPUT_SOURCES);
+    REQUIRE(yyjson_arr_size(identities) == 1 && yyjson_arr_size(sources) == 1);
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_arr_get(identities, 0)), "behaviors/Counter.chibi"));
+    REQUIRE(source && !strcmp(yyjson_get_str(yyjson_arr_get(sources, 0)), source));
+    yyjson_val *types = yyjson_arr_get(root, INPUT_TYPES);
     REQUIRE(yyjson_arr_size(types) == (size_t)plan->type_count);
     for (int i = 0; i < plan->type_count; i++) {
         yyjson_val *type = yyjson_arr_get(types, (size_t)i);
@@ -526,7 +549,8 @@ static bool target_matches(yyjson_val *root, const execution_module *module)
         REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "size")) == expected->size);
         REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(type, "name")), expected->name));
     }
-    yyjson_val *events = yyjson_obj_get(root, "events");
+    yyjson_val *events = yyjson_arr_get(root, INPUT_EVENTS);
+    yyjson_val *fields = yyjson_arr_get(root, INPUT_EVENT_FIELDS);
     for (int i = 0; i < plan->event_count; i++) {
         const execution_module_event_declaration *expected = &plan->events[i];
         yyjson_val *event = NULL;
@@ -539,38 +563,39 @@ static bool target_matches(yyjson_val *root, const execution_module *module)
         REQUIRE(event);
         REQUIRE(yyjson_get_uint(yyjson_obj_get(event, "abi")) == expected->abi);
         REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(event, "name")), expected->name));
-        yyjson_val *fields = yyjson_obj_get(event, "fields");
-        REQUIRE(yyjson_arr_size(fields) == (size_t)expected->field_count);
+        REQUIRE(yyjson_get_int(yyjson_obj_get(event, "count")) == expected->field_count);
+        size_t first = yyjson_get_uint(yyjson_obj_get(event, "first"));
         for (int j = 0; j < expected->field_count; j++) {
-            yyjson_val *field = yyjson_arr_get(fields, (size_t)j);
-            yyjson_val *type = yyjson_obj_get(field, "type");
+            yyjson_val *field = yyjson_arr_get(fields, first + (size_t)j);
             REQUIRE(!strcmp(
                 yyjson_get_str(yyjson_obj_get(field, "name")),
                 expected->fields[j].name
             ));
             REQUIRE(
-                yyjson_get_int(yyjson_obj_get(type, "storage")) ==
+                yyjson_get_int(yyjson_obj_get(field, "storage")) ==
                 (int)expected->fields[j].initial.type
             );
             REQUIRE(
-                yyjson_get_uint(yyjson_obj_get(type, "nominal")) ==
+                yyjson_get_uint(yyjson_obj_get(field, "nominal")) ==
                 expected->fields[j].nominal
             );
         }
     }
-    REQUIRE(yyjson_get_uint(yyjson_obj_get(root, "entity")) == plan->owner_type);
+    REQUIRE(yyjson_get_uint(yyjson_arr_get(root, INPUT_ENTITY)) == plan->owner_type);
     return true;
 }
-/* chibi-compile --stage-one-target exports what each story's behavior links
- * against: the same type requirements, events and entity type that stage zero
- * writes into the behavior's module. */
-TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require)
+/* chibi-compile --stage-one-input exports stage one's input for a story: its
+ * behavior's identity and source, and what the behavior links against, the
+ * same type requirements, events and entity type that stage zero writes into
+ * the behavior's module. */
+TEST_CASE(stage_one_input_lists_what_stage_zero_modules_require)
 {
-    char project[4096], target[4096], error[512] = { 0 };
+    char project[4096], target[4096], behavior[4096], error[512] = { 0 };
     story_path(project, sizeof project, "Counter", "");
-    path(target, sizeof target, "counter-target.json");
-    const char *argv[] = { reference_path,       "--project-root", project,
-                           "--stage-one-target", target,           NULL };
+    story_path(behavior, sizeof behavior, "Counter", "/content/behaviors/Counter.chibi");
+    path(target, sizeof target, "counter-input.json");
+    const char *argv[] = { reference_path,      "--project-root", project,
+                           "--stage-one-input", target,           NULL };
     REQUIRE(tool_run(argv, scratch, log_path) == 0);
     yyjson_doc *doc = yyjson_read_file(target, 0, NULL, NULL);
     REQUIRE(doc);
@@ -610,9 +635,11 @@ TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require)
                                           )
                                         : NULL;
     if (!module) {
-        fprintf(stderr, "stage-one target: %s\n", error);
+        fprintf(stderr, "stage-one input: %s\n", error);
     }
-    bool matches = module && target_matches(yyjson_doc_get_root(doc), module);
+    char *source = tool_read(behavior);
+    bool matches = module && target_matches(yyjson_doc_get_root(doc), module, source);
+    free(source);
     execution_module_free(module);
     afree(modules);
     arena_free(&names);
@@ -622,12 +649,75 @@ TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require)
     REQUIRE(matches);
     return true;
 }
+/* chibi-compile --modules refuses a file that is no closure of modules and
+ * writes no artifact. */
+TEST_CASE(assembly_refuses_what_is_no_closure)
+{
+    char project[4096], closure[128], output[128];
+    story_path(project, sizeof project, "Counter", "");
+    path(closure, sizeof closure, "no-closure.chibip");
+    path(output, sizeof output, "refused.chibip");
+    tool_write(closure, "not a closure of modules");
+    const char *argv[] = { reference_path, "--project-root",
+                           project,        "--modules",
+                           closure,        "--output",
+                           output,         NULL };
+    REQUIRE(tool_run(argv, scratch, log_path) == 1);
+    REQUIRE(log_has("invalid compiler artifact header") && access(output, F_OK) != 0);
+    return true;
+}
 TEST_CASE(stories_assemble_from_their_own_modules)
 {
     for (int i = 0; i < STORY_COUNT; i++) {
         REQUIRE(assembles_from_its_own_modules(story_names[i]));
     }
     return true;
+}
+/* Stage one's route rebuilds Counter as stage zero does: it recovers stage one
+ * from the bootstrap artifact and the compiler sources, compiles the story's
+ * behavior with it, and has chibi-compile assemble the artifact from that
+ * module. Recovery takes one or two compiles of the compiler the first time
+ * its sources change, and none once its closure is kept. */
+TEST_CASE(stage_one_rebuilds_counter_as_stage_zero_does)
+{
+    char folder[128], project[4096], scenario[4096], route[4096];
+    path(folder, sizeof folder, "stage-one");
+    story_path(project, sizeof project, "Counter", "");
+    story_path(scenario, sizeof scenario, "Counter", SCENARIO);
+    snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
+    const char *arguments[] = { build_host_path, reference_path, route,
+                                observer_path,   folder,         project,
+                                scenario };
+    REQUIRE(harness("Rebuild", arguments, 7) == 0);
+    REQUIRE(log_has("the candidate matches the reference in Counter"));
+    return true;
+}
+static void prepare_scratch()
+{
+    snprintf(scratch, sizeof scratch, "/tmp/chibi-equivalence-XXXXXX");
+    char *made = mkdtemp(scratch);
+    assert(made);
+    char *resolved = realpath(made, NULL);
+    assert(resolved && strlen(resolved) < sizeof scratch);
+    snprintf(scratch, sizeof scratch, "%s", resolved);
+    free(resolved);
+    path(log_path, sizeof log_path, "harness.log");
+}
+void test_tool_game_equivalence_stage_one(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *stage_one_host
+)
+{
+    observer_path = observer;
+    build_host_path = build_host;
+    reference_path = reference;
+    setenv("CHIBI_COMPILE", reference, 1);
+    setenv("CHIBI_STAGE_ONE_HOST", stage_one_host, 1);
+    prepare_scratch();
+    RUN_TEST_CASE(stage_one_rebuilds_counter_as_stage_zero_does);
+    tool_remove_tree(scratch);
 }
 void test_tool_game_equivalence(
     const char *observer,
@@ -640,16 +730,10 @@ void test_tool_game_equivalence(
     build_host_path = build_host;
     reference_path = reference;
     candidate_path = candidate;
-    snprintf(scratch, sizeof scratch, "/tmp/chibi-equivalence-XXXXXX");
-    char *made = mkdtemp(scratch);
-    assert(made);
-    char *resolved = realpath(made, NULL);
-    assert(resolved && strlen(resolved) < sizeof scratch);
-    snprintf(scratch, sizeof scratch, "%s", resolved);
-    free(resolved);
-    path(log_path, sizeof log_path, "harness.log");
+    prepare_scratch();
     RUN_TEST_CASE(stories_assemble_from_their_own_modules);
-    RUN_TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require);
+    RUN_TEST_CASE(assembly_refuses_what_is_no_closure);
+    RUN_TEST_CASE(stage_one_input_lists_what_stage_zero_modules_require);
     RUN_TEST_CASE(stories_play_alike_under_both_compilers);
     RUN_TEST_CASE(a_changed_behavior_is_named_at_its_first_frame);
     RUN_TEST_CASE(declarations_and_missing_traces_are_refused);

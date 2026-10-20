@@ -194,6 +194,12 @@ void test_tool_game_equivalence(
     const char *reference,
     const char *candidate
 );
+void test_tool_game_equivalence_stage_one(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *stage_one_host
+);
 #endif
 #ifdef CHIBI_TEST_PREVIEW_COMPONENTS
 void test_preview_components();
@@ -818,6 +824,7 @@ int main(int argc, char **argv)
 #endif
     }
     if ((argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
+        (argc == 5 && !strcmp(argv[1], "--game-equivalence-stage-one")) ||
         (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         tool_init();
@@ -828,7 +835,11 @@ int main(int argc, char **argv)
             return test_tool_game_observe(argv[2], (const char *const *)argv + 3, (argc - 3) / 2);
         }
         pu_display_time(true);
-        test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
+        if (!strcmp(argv[1], "--game-equivalence-stage-one")) {
+            test_tool_game_equivalence_stage_one(argv[0], argv[2], argv[3], argv[4]);
+        } else {
+            test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

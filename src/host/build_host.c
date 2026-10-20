@@ -77,6 +77,9 @@ static const char *const environment_names[] = {
     "LSAN_OPTIONS",
     "CHIBI_DEPENDENCY_PACKAGE_KEEP",
     "CHIBI_DEPENDENCY_PACKAGE_JOBS",
+    /* The tools tools/toolchain/StageOne.chibi runs. */
+    "CHIBI_COMPILE",
+    "CHIBI_STAGE_ONE_HOST",
     "EM_CONFIG",
     "CCACHE_DIR",
     "CCACHE_BASEDIR",

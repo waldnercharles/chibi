@@ -364,6 +364,25 @@ callers.
 Suggestion: export templates, instantiating each at the caller with the
 callee package's declarations in scope, as Odin does.
 
+## Templates don't run at compile time
+
+Language. A constant cannot call a template: in a package declaring the
+language guide's `Identity :: (value: $T) -> T { return value }`,
+`One :: Identity(1)` fails with "Unknown type 'T'", reported at `$T` rather
+than at the call. `Identity(int)`, a typed constant and an argument that is
+itself a constant fail the same way, while the guide's `Size :: Factorial(5)`
+folds and a function body calling `Identity(1)` specializes. The guide says an ordinary procedure runs at
+compile time when its inputs are available, and lists no exception for
+templates (#528).
+
+- Zig calls generic functions from `comptime` code and constant initializers;
+  Jai's `#run`, D's compile-time function evaluation and C++ `constexpr`
+  function templates run templates too. Odin has no compile-time calls.
+
+Suggestion: specialize a template called from a constant as a runtime call
+does, then evaluate the specialization. Until then, report the call:
+templates cannot run at compile time.
+
 ## A pattern test fails as a call argument
 
 Language. `found := r is .Found` and `if Find(n) is .Found { ... }` compile,

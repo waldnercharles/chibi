@@ -51,13 +51,18 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     return include;
 }
 
-// Flags the profile gives a target's compiles, after its defines.
-ProfileFlags :: (target: string, profile: Profile) -> string[] {
+// Defines the profile gives a target's compiles, after its own.
+ProfileDefines :: (target: string, profile: Profile) -> string[] {
     if (target == "reflect") {
-        return [
-            Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""]),
-            Join(["-I", profile.libclang_include])
-        ];
+        return [Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""])];
+    }
+    return [];
+}
+
+// Include directories the profile gives a target, before its others.
+ProfileIncludes :: (target: string, profile: Profile) -> string[] {
+    if (target == "reflect") {
+        return [profile.libclang_include];
     }
     return [];
 }
@@ -254,22 +259,42 @@ IncludeDirectory :: (source_root: string, build_dir: string, third_party: string
     return Resolve(source_root, build_dir, third_party, include);
 }
 
-// Its defines, its include directories, then its system ones, the profile's
-// flags, then its own options: the order CMake writes them. Callers append a
-// source's own options (SourceOptions).
-pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
+// Its defines, a source's own include directories (SourceIncludes) and then
+// its own, its system ones, the profile's flags, then its own options: the
+// order CMake writes them. SourceFlags adds a source's own.
+pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile,
+                     source_includes: string[]) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
         flags = array_add(flags, Join(["-D", define]));
     }
-    flags = append(flags, ProfileFlags(target, profile));
+    flags = append(flags, ProfileDefines(target, profile));
+    for (include in source_includes) {
+        flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+    }
+    for (include in ProfileIncludes(target, profile)) {
+        flags = array_add(flags, Join(["-I", include]));
+    }
     for (include in Includes(target)) {
         flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
         flags = append(flags, ["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
-    return append(append(flags, Flags(profile, build_dir)), Options(target));
+    return append(append(flags, Flags(profile, build_dir, target)), Options(target));
+}
+
+// The flags a source compiles with: its target's, which target_flags holds
+// unless the source has its own include directories, then its own options,
+// last, where CMake puts source properties.
+SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
+                target_flags: string[]) -> string[] {
+    includes := SourceIncludes(target, file);
+    flags := target_flags;
+    if (length(includes) > 0) {
+        flags = CompileFlags(source_root, build_dir, target, profile, includes);
+    }
+    return append(flags, SourceOptions(target, file));
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -294,8 +319,9 @@ BuildTypeFlags :: (build_type: string) -> string[] {
 }
 
 // The flags every C compile takes after its include directories, in the order
-// root CMakeLists.txt and CMake's platform files give them.
-pub Flags :: (profile: Profile, build_dir: string) -> string[] {
+// root CMakeLists.txt and CMake's platform files give them, with the target's
+// C standard and position-independent code.
+pub Flags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     flags: string[] = [];
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
@@ -306,12 +332,15 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
         }
     }
     flags = append(flags, BuildTypeFlags(profile.build_type));
-    flags = array_add(flags, "-std=gnu23");
+    flags = array_add(flags, Join(["-std=", Standard(target)]));
     if (profile.architecture != "") {
         flags = append(flags, ["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
         flags = append(flags, ["-isysroot", profile.sysroot]);
+    }
+    if (PositionIndependent(target)) {
+        flags = array_add(flags, "-fPIC");
     }
     if (profile.warnings) {
         flags = append(flags, [
@@ -399,10 +428,10 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     failed := false;
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        target_flags := CompileFlags(source_root, build_dir, target, profile);
+        target_flags := CompileFlags(source_root, build_dir, target, profile, []);
         for (file in Files(target)) {
             source := Resolve(source_root, build_dir, profile.third_party, file);
-            flags := append(target_flags, SourceOptions(target, file));
+            flags := SourceFlags(source_root, build_dir, target, file, profile, target_flags);
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
@@ -458,10 +487,10 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
     entries: string[] = [];
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        flags := CompileFlags(source_root, build_dir, target, profile);
+        flags := CompileFlags(source_root, build_dir, target, profile, []);
         for (file in Files(target)) {
             source := Resolve(source_root, build_dir, profile.third_party, file);
-            entries = array_add(entries, c.CompileEntry(tools, built, append(flags, SourceOptions(target, file)), source));
+            entries = array_add(entries, c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
         }
     }
     return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);

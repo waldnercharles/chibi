@@ -602,9 +602,13 @@ Slice 2, 2026-10-21: the graph also owns the libraries that use only
 `chibi_ui_document_values`), with private headers and stale-header removal.
 It compiles across libraries in one job window, writes
 `compile_commands.json` on every run, and builds a subset with `--target`.
-Next: the libraries above `chibi_types` (`chibi_events`, `chibi_ecs`,
-`chibi_capabilities`, `chibi_shader_runtime`), then moving profile selection
-from `Build.chibi`'s CMake arguments into the graph.
+Slice 3, 2026-10-21: `chibi_value_document`, `chibi_capabilities`,
+`chibi_ecs` and `chibi_events`, which use `chibi_types`; 32 sources in nine
+libraries, all of which compiled and archived from the graph.
+Next: generated prerequisites, which `chibi_shader_runtime`'s artifact-format
+headers and the libraries after it need; header-only interface libraries
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`); then moving
+profile selection from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

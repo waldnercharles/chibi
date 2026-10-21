@@ -30,7 +30,10 @@ Join :: (parts: string[]) -> string {
 
 // The libraries the graph builds, each after those it depends on.
 pub Targets :: () -> string[] {
-    return ["chibi_support", "chibi_types", "chibi_asset_values", "chibi_text_search", "chibi_ui_document_values"];
+    return [
+        "chibi_support", "chibi_types", "chibi_asset_values", "chibi_text_search", "chibi_ui_document_values",
+        "chibi_value_document", "chibi_capabilities", "chibi_ecs", "chibi_events"
+    ];
 }
 
 // The name a target's headers are published under, its CMake EXPORT_NAME.
@@ -57,6 +60,21 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_ui_document_values") {
         return ["ui/document.c"];
+    }
+    if (target == "chibi_value_document") {
+        return ["types/value_document.c", "types/value_document_read.c"];
+    }
+    if (target == "chibi_capabilities") {
+        return [
+            "capabilities/catalog.c", "capabilities/catalog_snapshot.c", "capabilities/catalog_values.c",
+            "capabilities/definition.c"
+        ];
+    }
+    if (target == "chibi_ecs") {
+        return ["ecs/ecs.c", "ecs/relationship.c", "ecs/hierarchy.c", "ecs/query.c", "ecs/component_catalog.c"];
+    }
+    if (target == "chibi_events") {
+        return ["runtime/events.c"];
     }
     return [];
 }
@@ -86,6 +104,18 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_ui_document_values") {
         return ["ui/document.h"];
     }
+    if (target == "chibi_value_document") {
+        return ["types/value_document.h"];
+    }
+    if (target == "chibi_capabilities") {
+        return ["capabilities/catalog.h", "capabilities/definition.h", "capabilities/catalog_snapshot.h"];
+    }
+    if (target == "chibi_ecs") {
+        return ["ecs/ecs.h", "ecs/execution.h", "ecs/component_catalog.h"];
+    }
+    if (target == "chibi_events") {
+        return ["runtime/events.h"];
+    }
     return [];
 }
 
@@ -97,14 +127,24 @@ pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_asset_values") {
         return ["support/float_text.h"];
     }
+    if (target == "chibi_ecs") {
+        return ["ecs/ecs_internal.h"];
+    }
     return [];
 }
 
-// The targets whose public headers a target's compiles include, in the order
-// CMake gives their directories.
+// The targets whose public headers a target's compiles include, directly or
+// through another, in the order CMake gives their directories: each library it
+// links, followed by what that library links.
 Uses :: (target: string) -> string[] {
     if (target == "chibi_support") {
         return [];
+    }
+    if (target == "chibi_value_document") {
+        return ["chibi_types", "chibi_support", "chibi_asset_values"];
+    }
+    if (target == "chibi_capabilities" || target == "chibi_ecs" || target == "chibi_events") {
+        return ["chibi_types", "chibi_support"];
     }
     return ["chibi_support"];
 }

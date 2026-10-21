@@ -1,3 +1,4 @@
+#include "execution/intrinsics.h"
 #include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -384,6 +385,11 @@ TEST_CASE(record_copy_rejects_changed_nested_layout)
     type_catalog_set_project(&(type_catalog_pack){ .types = text_types,
                                                    .type_count = 1 });
     REQUIRE(!pin_record_current(record));
+    pin_value same = input;
+    REQUIRE(!pin_value_equal(&input, &same));
+    pin_value operands[] = { input, same }, result = { .type = PIN_I32, .i = 123 };
+    REQUIRE(EXECUTION_value_equal_call.value(&owned, operands, 2, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == 123);
     pin_value sentinel = { .type = PIN_I32, .i = 123 };
     output = sentinel;
     REQUIRE(pin_value_snapshot_to_arena(&other, &output, &input));

@@ -888,6 +888,10 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         if (!a->ptr || !b->ptr) {
             return a->ptr == b->ptr;
         }
+        if (a->record &&
+            (!pin_record_current(a->record) || !pin_record_current(b->record))) {
+            return 0;
+        }
         const type_desc *type = pin_value_type(a);
         if (!type || !type->field_count) {
             return a->ptr == b->ptr;

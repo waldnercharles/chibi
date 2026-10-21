@@ -4,6 +4,7 @@
 #include "compiler_fixture.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
@@ -83,12 +84,14 @@ typedef enum
  * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. A
  * `boxed` sample's Boxed functions read only arrays that are never packed,
- * and its Packed functions arrays that may be. */
+ * and its Packed functions arrays that may be. A `moves` sample calls no
+ * native: its Moved functions take fresh values into locals and returns
+ * without copying them, and its Copied function copies an array's element. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game;
+    bool core, updates, boxed, game, moves;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -163,6 +166,27 @@ static const sample samples[] = {
                    "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]",
                    "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { "Total", "[5]", "[123]" } } },
+    { .name = "moved values",
+      .group = COLLECTION_SAMPLES,
+      .moves = true,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "MovedNote :: (n: int) -> Note { return {text: \"a\", count: "
+                "n}; }\n"
+                "MovedResults :: () -> int {\n"
+                "    a := MovedNote(1);\n    b := MovedNote(1);\n"
+                "    a.count = 10;\n    b = MovedNote(2);\n"
+                "    return a.count + b.count;\n}\n"
+                "MovedList :: (n: int) -> int[] { return [n, n + 1]; }\n"
+                "MovedSecond :: (n: int) -> int { xs := MovedList(n); return "
+                "xs[1]; }\n"
+                "Copied :: (notes: Note[]) -> int {\n"
+                "    note := notes[0];\n    note.count += 5;\n"
+                "    return note.count + notes[0].count;\n}",
+      .calls = { { "MovedNote", "[3]", "[{\"text\":\"a\",\"count\":3}]" },
+                 { "MovedResults", "[]", "[12]" },
+                 { "MovedSecond", "[4]", "[5]" },
+                 { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"
@@ -2116,6 +2140,61 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
     REQUIRE(boxed == 4 && packed == 1 && !wrong);
     return true;
 }
+/* An intrinsic's capability ID is "CHII" and its number. */
+static const uint64_t SNAPSHOT_CAPABILITY = UINT64_C(0x4348494900000000) |
+                                            EXECUTION_INTRINSIC_SNAPSHOT;
+static int snapshots(const behavior_function *f)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id == SNAPSHOT_CAPABILITY;
+    }
+    return count;
+}
+/* A literal or an authored function's result is new in the function's
+ * storage, so stage one moves it into a local or a return without a snapshot;
+ * an element read from an array is still copied. */
+static bool moves_fresh_values(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler moves load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int moved = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool move = !strncmp(f.entry, "Moved", 5),
+                 copy = !strcmp(f.entry, "Copied");
+            int count = snapshots(f.body);
+            moved += move;
+            copied += copy;
+            if ((move && count) || (copy && !count)) {
+                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(moved == 4 && copied == 1 && !wrong);
+    return true;
+}
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
  * exact and halfway values, the ends of both ranges, long and hexadecimal
  * spellings. */
@@ -2435,6 +2514,7 @@ static bool run_samples(sample_group group, int b)
         size_t expected_length = 0;
         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
                    (!s->boxed || reads_boxed(bytes, length)) &&
+                   (!s->moves || moves_fresh_values(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

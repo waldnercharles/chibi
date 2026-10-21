@@ -426,7 +426,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // The local is the cell that holds its own copy, or the fresh
                 // value itself.
                 code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
-                if (Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
                     cells = array_add(cells, MovedCell(result));
                     slots = array_add(slots, AddressSlot(target));
                     code = append(code, MoveCode(result, ops, target, at.slot + length(slots) - 1,
@@ -509,7 +509,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (binding.place == CellPlace) {
                 // A fresh value replaces the cell's payload without a copy.
-                if (Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
                     produced = stored;
                 } else {
                     retained = stored;
@@ -534,7 +534,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
             if (Pointer(result.storage, result.container) &&
-                Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
                 // A fresh value is already the copy a return would make.
                 cells = array_add(cells, MovedCell(result));
                 slots = array_add(slots, AddressSlot(target));
@@ -566,8 +566,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     } else if (item.phase == MapStorePhase || item.phase == MapDeletePhase) {
         return MapUpdateStep(forest, text, document, types, names, values, top, item, ops, target, at, node);
     } else if (item.phase == RetainedPhase) {
-        // A retained copy, in the last cell: bind it, store it in a local's
-        // cell, or publish its header.
+        // A retained copy or a moved fresh value, in the last cell: bind it,
+        // store it in a local's cell, or publish its header.
         popped = 1;
         kept := values[top - 1];
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};

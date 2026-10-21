@@ -2174,7 +2174,7 @@ that profile's name, with CMake's compiler as `CC` (and the debug directory,
 which depends on where a build is), the graph finds the rest of its profile
 on the machine and writes the compile commands of every target it owns, including
 the third-party archive's sources and include directories and the options of
-single sources, and each of the 250
+single sources, and each of the 362
 must equal `compile_commands.json`'s for the same source, apart from the
 object path and with the temporary build directory standing for CMake's. In a
 copy of the sources, about ten runs that build only `chibi_support` then check

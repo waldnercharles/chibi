@@ -322,48 +322,40 @@ TEST_CASE(row_array_rejection_atomicity)
     };
     for (int wrapper = 0; wrapper < 2; wrapper++) {
         for (int operation = 0; operation < 2; operation++) {
-            for (int kind = 0; kind < 2; kind++) {
-                cleanup();
-                const pin_record *record = layout(91);
-                const pin_record *different = layout(kind ? 91 : 92);
-                REQUIRE(record && different);
-                expect_layout(record);
-                pin_value item = row(record, 0);
-                pin_array left;
-                pin_value left_value = array_header(&left, record, &item, 1);
-                REQUIRE(!pin_value_snapshot_to_arena(&storage, &result, &left_value));
-                pin_value original = result;
-                REQUIRE(pin_record_valid(different));
-                if (kind) {
-                    REQUIRE(pin_record_same(record, different));
-                    ((pin_record *)different)->type.size++;
-                    REQUIRE(!pin_record_valid(different));
-                }
-                pin_value bad = item;
-                bad.record = different;
-                bad.type_name = bad.record->type.name;
-                pin_array right;
-                pin_value tail = array_header(&right, bad.record, &bad, 1);
-                pin_value args[] = { result, operation ? tail : bad };
-                pin_value output = { .type = PIN_I32, .i = 73 };
-                pin_value before = output;
-                pin_copy_scope_reset(&copies);
-                pin_copy_scope_begin(&copies);
-                const char *error = calls[wrapper][operation]->value(&storage, args, 2, &output);
-                pin_copy_scope_end(&copies);
-                REQUIRE(error);
-                REQUIRE(
-                    !strcmp(error, operation && !kind ? "data function produced an invalid result" : "arena allocation failed")
-                );
-                REQUIRE(output.type == before.type && output.container == before.container);
-                REQUIRE(output.i == before.i && !output.record && !output.type_name);
-                REQUIRE(result.ptr == original.ptr && result.record == original.record);
-                REQUIRE(check_array(&result, 1, NULL));
-                REQUIRE(item.record == record);
-                REQUIRE(check_row(&item, 0, NULL, &producer));
-                REQUIRE(left.count == 1 && left.items == &item && right.count == 1);
-                REQUIRE(!copies.counts.overflow);
-            }
+            cleanup();
+            const pin_record *record = layout(91);
+            const pin_record *different = layout(92);
+            REQUIRE(record && different);
+            expect_layout(record);
+            pin_value item = row(record, 0);
+            pin_array left;
+            pin_value left_value = array_header(&left, record, &item, 1);
+            REQUIRE(!pin_value_snapshot_to_arena(&storage, &result, &left_value));
+            pin_value original = result;
+            pin_value bad = item;
+            bad.record = different;
+            bad.type_name = bad.record->type.name;
+            pin_array right;
+            pin_value tail = array_header(&right, bad.record, &bad, 1);
+            pin_value args[] = { result, operation ? tail : bad };
+            pin_value output = { .type = PIN_I32, .i = 73 };
+            pin_value before = output;
+            pin_copy_scope_reset(&copies);
+            pin_copy_scope_begin(&copies);
+            const char *error = calls[wrapper][operation]->value(&storage, args, 2, &output);
+            pin_copy_scope_end(&copies);
+            REQUIRE(error);
+            REQUIRE(
+                !strcmp(error, operation ? "data function produced an invalid result" : "arena allocation failed")
+            );
+            REQUIRE(output.type == before.type && output.container == before.container);
+            REQUIRE(output.i == before.i && !output.record && !output.type_name);
+            REQUIRE(result.ptr == original.ptr && result.record == original.record);
+            REQUIRE(check_array(&result, 1, NULL));
+            REQUIRE(item.record == record);
+            REQUIRE(check_row(&item, 0, NULL, &producer));
+            REQUIRE(left.count == 1 && left.items == &item && right.count == 1);
+            REQUIRE(!copies.counts.overflow);
         }
     }
     return true;

@@ -570,7 +570,8 @@ compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
-supported host configuration. Keep an explicit stage-zero recovery invocation
+supported host configuration. The Linux x86_64 and Windows x64 runs wait for
+CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
 ### M6. Replace the internal build graph
@@ -592,8 +593,9 @@ Status: in progress. Every command is implemented and covered; only moving
 `export` behind Chibi modules remains, and that is M6's build-graph work.
 `check` runs the build's compiler with `--check`, which prepares the project
 read-only: it neither migrates an older project nor writes an artifact. The `chibi-cli` fixture covers it in the build tree, through the
-launcher with a fake compiler and through the real `chibi-compile`; its
-installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
+launcher with a fake compiler and through the real `chibi-compile`;
+`chibi-cli-installed` covers the installed SDK and
+`commands_fail_without_the_compiler` a missing compiler. `version` prints the SDK,
 build, compiler and artifact-format identity from one generated document,
 `share/chibi/engine.json`: configuring writes it, build trees keep it beside
 their shaders, and SDK packaging installs it with the build ID. The document
@@ -615,8 +617,9 @@ stopped and a count. A test that waits or starts a task fails. ROOT holds only
 package files, so a game project's behaviors are not tests yet.
 `src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
 the launcher, the real compiler and a compiler without the core collection.
-The compiler's own packages cannot run under it yet, because their raw-syntax
-bridge is not among those natives. `chibi fmt [--check] [PATH...]` hands
+Since 2026-10-20 it also links the compiler's raw-syntax and JSON bridges, so
+the compiler's own packages can hold tests (`chibi-cli`'s
+`compiler_test_links_the_compiler_bridges`). `chibi fmt [--check] [PATH...]` hands
 each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. A PATH that is a folder
@@ -625,8 +628,9 @@ without a `project.kdl` is a package tree instead: the compiler formats each
 source formatter package syntax. Every file must declare a package, checked
 before anything is written, so a project's behaviors are never formatted
 without the metadata only project formatting keeps. `packages/` and
-`tools/docs` are canonical; `tools/compiler` is not yet, and is left to the
-M5 work that owns it. `chibi web [PROJECT] --player PLAYER [--port PORT]`
+`tools/docs` are canonical, and so is `tools/compiler` since the M5 work
+formats it with every change; the `chibi-cli` case
+`repository_packages_are_canonical` checks all three with the real compiler. `chibi web [PROJECT] --player PLAYER [--port PORT]`
 exports the browser site into a `mkdtemp` folder under
 `TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
 launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or
@@ -812,6 +816,10 @@ and game runtime installation (`make update-game-runtime`,
 and `tools/kdl_asset.py`), which served the retired game repositories. Git
 history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
 `browser-sample.js` sampler followed the same day, also approved.
+On 2026-10-20 build programs became packages: one file with a `package`
+header that may import `core:`, with `format_text` and the array natives
+(host protocol 5). Their `build.` string natives go once the programs use
+`core:strings`.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.
@@ -887,8 +895,20 @@ Host status on 2026-10-20:
   (`wasm-package-compiler-chibi*`, `docs/package-compiler.md#hosts`).
 - The bootstrap itself stays native: stage one compiling itself outgrows
   Wasm's 2 GiB linear memory.
-- Linux x86_64 and Windows x64 wait for a host, since CI has been disabled
-  since 2026-09-25 and a local container needs the owner's approval.
+- Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
+  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+    a bigger host is available.
+  - Until then, stage one stays off as the normal compiler, and stage zero
+    remains the normal compiler.
+- Local attempt on 2026-10-20, an Ubuntu 24.04 container under Rancher
+  Desktop:
+  - Linux x86_64 under Rosetta built the Release `test_language` and
+    `chibi-compiler-host` from main in 13.5 min.
+  - The bootstrap check and the Debug build were killed for memory. The 6 GB
+    VM is shared with other containers, and the check peaks at about 5 GB.
+  - Linux aarch64 doesn't build, because Cute's build passes `-msse4.1`.
+  - CMake 4 also needs `clang-scan-deps` (`clang-tools-18`), which CI's
+    package list lacks.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1107,7 +1127,8 @@ recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
 the exported input, and assembles the artifact with `chibi-compile
 --modules` (`make test-stage-one`). Stage one passes step 4's gate since
 2026-10-20, and its functions have all of stage zero's debugger points and
-watches. Next: the sequence on every supported host configuration before
+watches. Next: the sequence on Linux x86_64 and Windows x64, deferred until
+CI is back or a bigger host is available (2026-10-20), before
 stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
@@ -1119,8 +1140,17 @@ address, so 62 of the compiler's 63 functions share their tables. Compiling is
 still slow, about 0.9 s for a 50-line sample on SLJIT in a Debug + ASan build.
 Call retirement no longer re-measures every spare frame, a running stack reuses
 frames larger than the 64 KiB idle budget, and descriptor copies no longer
-re-derive layouts. The bytecode interpreter's dispatch and record validation
-remain the measured costs to remove before stage one compiles the compiler.
+re-derive layouts.
+
+Compiler speed, measured on 2026-10-20 in Release on macOS arm64 with SLJIT
+(`--package-compiler-chibi-bootstrap`): stage zero prepares the compiler in
+2.7 s. Stage one compiled the compiler in 23.7 s and stage two in 16.9 s, about
+70% of it re-validating immutable record descriptors on every value copy.
+Records are now validated where they enter (creation, prepared loading, value
+documents), so stage one takes about 7.6 s and stage two 6.5 s; a row copy in
+`--script-benchmark` fell from 1,050 to 110 ns. Copying values (memmove, string
+and field snapshots) is the next measured cost. LLVM AOT is evaluated only if
+SLJIT-path fixes cannot bring stage one close to stage zero.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

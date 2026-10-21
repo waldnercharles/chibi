@@ -585,7 +585,8 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
-    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
+    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_source_catalog
+        chibi_text_capabilities chibi_array_capabilities chibi_support)
     target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
     add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c"
         "${CHIBI_SDK_ROOT}/src/host/process.c")

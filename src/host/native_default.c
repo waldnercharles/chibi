@@ -99,9 +99,14 @@ native_capabilities *host_native_default_catalog_new(
     afree(selected);
     return out;
 }
-native_capabilities *host_native_standalone_catalog_new(char *error, size_t size)
+native_capabilities *host_native_standalone_catalog_new(
+    const native_definition_pack *extra,
+    int extra_count,
+    char *error,
+    size_t size
+)
 {
-    const native_definition_pack packs[] = {
+    const native_definition_pack standalone[] = {
         CORE_DEFINITION_PACK,
         NATIVE_TEXT_DEFINITION_PACK,
         NATIVE_ARRAY_DEFINITION_PACK,
@@ -113,6 +118,15 @@ native_capabilities *host_native_standalone_catalog_new(char *error, size_t size
         NATIVE_COMPARISON_DEFINITION_PACK,
         NATIVE_CONVERSION_DEFINITION_PACK,
     };
-    int count = (int)(sizeof packs / sizeof *packs);
-    return native_capabilities_from_definition_packs(NULL, 0, packs, count, error, size);
+    native_definition_pack *packs = NULL;
+    for (size_t i = 0; i < sizeof standalone / sizeof *standalone; i++) {
+        apush(packs, standalone[i]);
+    }
+    for (int i = 0; i < extra_count; i++) {
+        apush(packs, extra[i]);
+    }
+    native_capabilities *
+        out = native_capabilities_from_definition_packs(NULL, 0, packs, acount(packs), error, size);
+    afree(packs);
+    return out;
 }

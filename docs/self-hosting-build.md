@@ -6,7 +6,7 @@ bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
 
 ## First increment
 
-`test/language/BuildWorkflow.chibi` is an ordinary library whose `Build`
+`test/language/BuildWorkflow.chibi` is an ordinary package whose `Build`
 function constructs argv arrays, requests configuration, stops on failure and
 requests the build only after success. Its `build.run` capability exists only
 in the C test's private catalog. The host copies borrowed arguments into fixed
@@ -40,11 +40,17 @@ game catalogs and public SDK library exports. Windows retains the
 existing stage-zero path; its equivalent process-tree implementation is pending.
 
 ```text
-chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]
+chibi-build-host --root DIR --source FILE [--core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]
 ```
 
 The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
-named zero-argument function returning `int`. Relative source paths resolve from
+named zero-argument function returning `int`. The file is the one file of the
+package at its directory, so it starts with a `package` header. With `--core`,
+it may import that collection's packages, such as `core:strings`; a relative
+`--core` resolves from the root. Besides the `build.` natives, a program has
+the text and array natives every host offers, such as `format_text` and
+`length`. Nothing resumes a build program, so waiting or starting a task fails
+it with a diagnostic. Relative source paths resolve from
 the explicit root. The CLI uses bytecode; the private C invocation API also
 supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
@@ -108,7 +114,7 @@ Run it through the private host with an explicit engine source checkout as root:
 ```sh
 SDK/libexec/chibi/chibi-build-host --root SOURCE \
   --source SDK/share/chibi/tools/toolchain/Build.chibi \
-  --entry Build --timeout-ms 1800000 -- \
+  --core SDK/share/chibi/core --entry Build --timeout-ms 1800000 -- \
   tool-host BUILD --target chibi-build-host --jobs 8 -- \
   -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF
 ```
@@ -120,11 +126,12 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 4
+`make build` uses this program when its private host reports protocol version 5
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
-file primitives and probes and the redesigned syntax, and version 4 names the
-natives under `build.`. A cold build or an older host
+file primitives and probes and the redesigned syntax, version 4 names the
+natives under `build.`, and version 5 runs programs as packages that may import
+`core:`. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery

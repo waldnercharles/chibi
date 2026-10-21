@@ -56,7 +56,7 @@ pin_array *pin_array_snapshot_like(arena *, const pin_array *, int count);
 int pin_array_snapshot_set(arena *, pin_array *, int index, const pin_value *);
 int pin_array_snapshot_copy(arena *, pin_array *out, int to, const pin_array *items, int from, int count);
 /* Internal array construction. Validate the destination layout's ownership once
- * per range, and each original source layout before copying. Items already
+ * per range, and that each original source layout matches it. Items already
  * copied on failure must be abandoned with the unpublished destination array. */
 int pin_array_snapshot_items(arena *, const pin_record *, pin_value *out, const pin_value *items, int count);
 /* As above for an array the arena already owns, whose layout ownership was

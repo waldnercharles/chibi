@@ -218,8 +218,9 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
 
 // Copies each header that differs to its place below a staged include root,
 // and removes files there that no header names, as CMake's chibi_sdk_headers
-// does, so a moved header cannot still be included.
-pub StageHeaders :: (root: string, headers: string[], destination: string) -> bool {
+// does, so a moved header cannot still be included. The kept headers are
+// ones a step wrote there itself.
+pub StageHeaders :: (root: string, headers: string[], destination: string, kept: string[]) -> bool {
     for (header in headers) {
         from := Join([root, "/", header]);
         to := Join([destination, "/", header]);
@@ -231,7 +232,9 @@ pub StageHeaders :: (root: string, headers: string[], destination: string) -> bo
             return false;
         }
     }
-    return !build.file_exists(destination) || RemoveUnlisted(destination, "", headers);
+    listed := headers;
+    listed.extend(kept);
+    return !build.file_exists(destination) || RemoveUnlisted(destination, "", listed);
 }
 
 // Removes the files below directory whose path from the staged root, under

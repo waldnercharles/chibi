@@ -657,11 +657,18 @@ archived (or, for `reflect`, linked) from the graph.
 `build-graph-archive` builds SLJIT and a math-header library, and
 `build-graph-reflect` now reads the math headers the graph staged. Writing the
 commands quotes arguments through the host's split, 7 s down to 2.4 s.
-Next: run `reflect` from the graph to generate `chibi_native_types` (43
-libraries wait on it); Box2D/Box3D, which compile as C17; tree-sitter's
-runtime and grammars; per-source options (the project, UI and language
-syntax documents); then moving profile selection from `Build.chibi`'s CMake
-arguments into the graph.
+Slice 11, 2026-10-21: generated sources and per-source options. A target
+whose sources `reflect` writes makes the graph build reflect, stage the math
+headers and run it as `generate_runtime_registry` does, recorded like a link
+(`c.Step`); `--reflect` runs another, as cross builds do. Generated sources
+are `build/` paths, and a source can add options, as CMake's source property
+does. The graph owns `chibi_native_types`, `chibi_native_bindings` and ten
+libraries over them: 72 libraries and 250 compile commands, equal to CMake's,
+whose reflected sources equal CMake's byte for byte.
+Next: tree-sitter's runtime and grammars (the project, UI and language syntax
+documents and UI authoring wait on it); Box2D/Box3D, which compile as C17; the
+platform and engine libraries over Cute; then moving profile selection from
+`Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

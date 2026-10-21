@@ -847,8 +847,17 @@ Since 2026-10-20 stage one's functions also have all of stage zero's
 debugger points (function, statement, completion, expression and symbol) and
 watches (`docs/package-compiler.md#output`). The bootstrap compiles the
 compiler without them, since with watches stage two outgrew the compiler
-host's bounds. Next action: the bootstrap
-sequence on every supported host configuration.
+host's bounds. Also on 2026-10-20:
+- #586: stage one binds handler parameters to payload fields by name, in any
+  order or subset, as format 30 does.
+- #588: stage one compiles maps.
+
+Still open:
+- Stage one doesn't check a handler parameter's written type or unit against
+  its field. Its game input carries no field units.
+- Stage-one `ref` parameters are in progress.
+
+Next action: the bootstrap sequence on every supported host configuration.
 
 Host status on 2026-10-20:
 - macOS arm64 runs the whole sequence locally.

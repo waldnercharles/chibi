@@ -259,9 +259,9 @@ Current-source recovery reproduced those exact bytes in 6.313 s. Generation
 through the documented `bootstrap-artifact` target, including its incremental
 build and self-checks, took 29.089 s under an outer 60-second deadline.
 
-The checked-in artifact files are modified locally with the accurate revision
-`4a751bd5fb2bb414ec867f089acae9b9736e1d9e-dirty`. Regenerate from the final clean
-candidate before publication. No commit, push or merge occurred. The historical
+At this pre-integration checkpoint, the artifact files were modified locally
+with revision `4a751bd5fb2bb414ec867f089acae9b9736e1d9e-dirty`; no commit, push
+or merge had occurred. The integration evidence below supersedes that status. The historical
 HEAD-export recovery selector, Windows, browser-host execution and quarantined
 full suites remain unrun. String storage, default checked arithmetic and lexical
 wrapping are still pending; this checkpoint does not claim those prerequisites.
@@ -271,3 +271,52 @@ Generated scratch artifacts were removed after copying the verified pair into
 `.chibi/odin-package-foundations`; regular native/Wasm build directories remain.
 No scratch executables or project copies remain; normal `build-release/`
 outputs and `.chibi/logs/` build logs are retained.
+
+### Main integration evidence, 2026-10-21
+
+Checkpoint `9de30764f` preserved the existing implementation. Merge commit
+`11bd35f7a4e275a09e810cfb4c19ec715695ef5f` integrates remote main at
+`72cfa7903e54294a196e18ccd563b77087477657` in the isolated worktree. No other
+checkout was edited. Independent review covered both the original changes and
+their interaction with the merged array-method, mutation and parameter-copy
+logic. The compiler-test conflict retains all three probe flags: `moves`,
+`aliases` and `same_rejection`.
+
+Native Release and Wasm builds passed. The following production-supervised
+admissions passed on the clean integrated source; each invocation had its own
+60-second ceiling. These are selected affected-contract checks, not a full-suite
+pass.
+
+| Admission | Assertions | Wall time |
+| --- | ---: | ---: |
+| `language-execution` | 3,685 | 0.398 s |
+| `language-constant-scalar-chibi` | 19,580 | 0.455 s |
+| `c-export-alias` | 8,256 | 3.174 s |
+| `language-package-compiler-chibi-types` | 2,148 | 3.936 s |
+| `language-package-compiler-chibi-types-compiled` | 1,864 | 3.273 s |
+| `language-package-compiler-chibi-imports` | 3,226 | 6.130 s |
+| `language-package-compiler-chibi-imports-compiled` | 3,084 | 4.328 s |
+| `language-package-compiler-chibi-sharing` | 11 | 4.686 s |
+| `language-prepared-writer-chibi` | 1,026 | 2.169 s |
+| `language-scalar-lowering-chibi` | 33,382 | 0.216 s |
+| `language-bounded-compiler-chibi` | 36,589 | 0.835 s |
+| `language-record-prepared` | 1,036 | 0.118 s |
+| `wasm-execution` | 3,681 | 0.263 s |
+| Clean-source bootstrap generation, including self-compilation | 10,109 | 35.574 s |
+| Recovery through that generated artifact | Exact closure match | 6.489 s |
+
+The clean bootstrap records revision `11bd35f7a4e275a09e810cfb4c19ec715695ef5f`,
+all 18 source hashes, 11,262,184 closure bytes and SHA-256
+`c40689a0a5c3572f1d2d2cc24c077328748013205709cec3230867eff767cd21`.
+It is byte-identical to the closure generated during integration; only manifest
+revision metadata changes in the final checkpoint. Recovery reproduced those
+bytes. Formatting with clang-format 22 and whitespace checks passed. Test logs
+remain under `.chibi/odin-package-foundations/integrated-*.log`; generated
+scratch closures were removed after verification. Windows, browser hosts,
+sanitizer configurations and quarantined broader suites were not run for this
+integration.
+
+Next, settle the native C-string embedded-NUL boundary before the descriptor
+cutover. Accessor preparation preserves existing semantics; the remaining
+descriptor and shared-slice phases follow the merged design. Discuss arithmetic
+edge cases and each package's API before assigning their implementations.

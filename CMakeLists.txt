@@ -240,8 +240,10 @@ if(TARGET chibi)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/docs/${source}"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
     endforeach()
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/compiler/source_tokenizer/Tokenizer.chibi"
-        "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/source_tokenizer/Tokenizer.chibi" COPYONLY)
+    foreach(source compiler_syntax/Syntax.chibi syntax_diagnostics/Diagnostics.chibi)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/compiler/${source}"
+            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
+    endforeach()
     add_custom_target(chibi_build_shaders
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")

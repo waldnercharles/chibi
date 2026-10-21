@@ -1,10 +1,12 @@
 #include "compiler_fixture.h"
 #include "docs_markdown_source.h"
 #include "package_core_source.h"
-#include "source_tokenizer_chibi_source.h"
+#include "package_snapshot_chibi_source.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
+#include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 
 #include <math.h>
@@ -42,11 +44,14 @@ static bool prepare()
           DOCS_REFERENCE_SOURCE,
           strlen(DOCS_REFERENCE_SOURCE) },
         { "/compiler/grammar/Grammar.chibi", DOCS_GRAMMAR_SOURCE, strlen(DOCS_GRAMMAR_SOURCE) },
-        { "/compiler/source_tokenizer/Tokenizer.chibi",
-          SOURCE_TOKENIZER_CHIBI_SOURCE,
-          strlen(SOURCE_TOKENIZER_CHIBI_SOURCE) },
+        { "/compiler/compiler_syntax/Syntax.chibi",
+          COMPILER_SYNTAX_CHIBI_SOURCE,
+          strlen(COMPILER_SYNTAX_CHIBI_SOURCE) },
+        { "/compiler/syntax_diagnostics/Diagnostics.chibi",
+          SYNTAX_CHIBI_SOURCE,
+          strlen(SYNTAX_CHIBI_SOURCE) },
     };
-    REQUIRE(compiler_fixture_prepare(&fixture, files, 6));
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, files, 7, &COMPILER_SYNTAX_DEFINITION_PACK, 1));
     return true;
 }
 static pin_value text(const char *value)
@@ -152,7 +157,9 @@ TEST_CASE(docs_markdown_renders_blocks)
             "docs/code-language.md",
             "<h1 id=\"tests-and-test\">Tests and <code>@test</code></h1>\n"
             "<p>A &lt;b&gt; &amp; &quot;c&quot; second line.</p>\n"
-            "<pre><code class=\"language-chibi\">x := a &lt; "
+            "<pre><code class=\"language-chibi\">x <span "
+            "class=\"chibi-operator\">:=</span> a <span "
+            "class=\"chibi-operator\">&lt;</span> "
             "b;\n</code></pre>\n"
         ));
         REQUIRE(renders(
@@ -172,275 +179,222 @@ TEST_CASE(docs_markdown_renders_blocks)
     return true;
 }
 
-/* Highlight original byte slices across the whole fence. Unknown names and
- * an unfinished program are displayable; inserted semicolons and EOF are not
- * source text. Tabs, blank lines and UTF-8 retain their original positions. */
+/* Strip only the highlighter's spans and decode the four HTML escapes. Every
+ * remaining byte must be the original fence, including whitespace and UTF-8. */
+static bool preserves_source(const char *html, const char *source)
+{
+    const char *prefix = "<pre><code class=\"language-chibi\">";
+    if (!html || strncmp(html, prefix, strlen(prefix))) {
+        return false;
+    }
+    html += strlen(prefix);
+    bool span = false;
+    while (*source || !strncmp(html, "</span>", 7)) {
+        if (!strncmp(html, "<span class=\"chibi-", 19)) {
+            const char *end = strstr(html, "\">");
+            if (span || !end || end == html + 19 || !strncmp(end + 2, "</span>", 7)) {
+                return false;
+            }
+            for (const char *at = html + 19; at < end; at++) {
+                if (*at < 'a' || *at > 'z') {
+                    return false;
+                }
+            }
+            span = true;
+            html = end + 2;
+            continue;
+        }
+        if (!strncmp(html, "</span>", 7)) {
+            if (!span) {
+                return false;
+            }
+            span = false;
+            html += 7;
+            continue;
+        }
+        const char *entity = NULL;
+        switch (*source) {
+            case '&': entity = "&amp;"; break;
+            case '<': entity = "&lt;"; break;
+            case '>': entity = "&gt;"; break;
+            case '"': entity = "&quot;"; break;
+            default: break;
+        }
+        if (entity) {
+            if (strncmp(html, entity, strlen(entity))) {
+                return false;
+            }
+            html += strlen(entity);
+        } else if (*html++ != *source) {
+            return false;
+        }
+        source++;
+    }
+    return !span && !strcmp(html, "</code></pre>\n");
+}
+static char *fence(int backend, const char *source)
+{
+    size_t size = strlen(source) + sizeof "```chibi\n```\n";
+    char *markdown = xmalloc(size);
+    snprintf(markdown, size, "```chibi\n%s```\n", source);
+    char *html = page_call(backend, "Render", markdown, "README.md");
+    free(markdown);
+    return html;
+}
+static bool has_token(const char *html, const char *role, const char *escaped)
+{
+    char token[512];
+    int count = snprintf(token, sizeof token, "<span class=\"chibi-%s\">%s</span>", role, escaped);
+    return count > 0 && count < (int)sizeof token && strstr(html, token);
+}
+
+/* Canonical grammatical roles, not capitalization or neighboring words.
+ * Unresolved names need not type-check; ordinary bindings stay neutral. */
 TEST_CASE(docs_markdown_highlights_chibi_fences)
 {
     REQUIRE(prepare());
+    static const char library[] = "Example :: library {\n"
+                                  "/* first <&>\n\tsecond café */\n"
+                                  "Title :: \"café <&> 🧭\"\n"
+                                  "Ratio :: 1.5\n"
+                                  " \t\n"
+                                  "Print :: (value: Position) -> int {\n"
+                                  "\treturn value.x + 2  // kept <&>\n"
+                                  "}\n}\n";
+    static const char
+        package[] = "package demo\n"
+                    "import shapes \"core:shapes\"\n"
+                    "Position :: struct { x: float; }\n"
+                    "Result :: union { Ready | Missing }\n"
+                    "Limit :: (1 + 2)\n"
+                    "@test\n"
+                    "Work :: (string: int, p: shapes.Position) -> bool {\n"
+                    "    number := int(1)\n"
+                    "    total: [string: int]\n"
+                    "    copy := number + string\n"
+                    "    object.int; object.number; object.int(2)\n"
+                    "    answer := Work(value: string)\n"
+                    "    letter := '<'\n"
+                    "    for i in 0..<2 { number += i }\n"
+                    "    return true\n"
+                    "}\n";
+    static const char
+        comments[] = "package demo\n"
+                     "@ /* café <&> */ test\n"
+                     "Fn /* a */ :: /* b */ (arg /* c */ : int) {\n"
+                     "    call /* a\n b */ (arg)\n"
+                     "    reader; (arg)\n"
+                     "}\n";
     for (int b = 0; b < 2; b++) {
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "/* first <&>\n"
-            "\tsecond café */\n"
-            "Title :: \"café <&> 🧭\"\n"
-            "Ratio :: 1.5\n"
-            " \t\n"
-            "if (ready) {\n"
-            "\treturn missing + 2  // kept <&>\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\"><span "
-            "class=\"chibi-comment\">/* first &lt;&amp;&gt;\n"
-            "\tsecond café */</span>\n"
-            "Title :: <span class=\"chibi-string\">&quot;café &lt;&amp;&gt; "
-            "🧭&quot;</span>\n"
-            "Ratio :: <span class=\"chibi-number\">1.5</span>\n"
-            " \t\n"
-            "<span class=\"chibi-keyword\">if</span> (ready) {\n"
-            "\t<span class=\"chibi-keyword\">return</span> missing + <span "
-            "class=\"chibi-number\">2</span>  <span class=\"chibi-comment\">// "
-            "kept &lt;&amp;&gt;</span>\n"
-            "</code></pre>\n"
-        ));
-        REQUIRE(renders(
-            b,
-            "```chibi\r\n\treturn 1  \r\n```\r\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">\t<span "
-            "class=\"chibi-keyword\">return</span> "
-            "<span class=\"chibi-number\">1</span>  \r\n</code></pre>\n"
-        ));
-        /* Builtins use exact catalog spellings, not substrings, case or a
-         * blanket identifier class. These fragments need not type-check. */
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "void bool int8 byte int16 uint16 int uint int64 uint64 float "
-            "double name string handle enum\n"
-            "number char exec flow entity task any Prototype Component "
-            "Relationship Cancelled\n"
-            "voided int32 uint8 float32 stringify my_int Type PrototypeName "
-            "cancelled\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\"><span "
-            "class=\"chibi-type\">void</span> <span "
-            "class=\"chibi-type\">bool</span> <span "
-            "class=\"chibi-type\">int8</span> <span "
-            "class=\"chibi-type\">byte</span> <span "
-            "class=\"chibi-type\">int16</span> <span "
-            "class=\"chibi-type\">uint16</span> <span "
-            "class=\"chibi-type\">int</span> <span "
-            "class=\"chibi-type\">uint</span> <span "
-            "class=\"chibi-type\">int64</span> <span "
-            "class=\"chibi-type\">uint64</span> <span "
-            "class=\"chibi-type\">float</span> <span "
-            "class=\"chibi-type\">double</span> <span "
-            "class=\"chibi-type\">name</span> <span "
-            "class=\"chibi-type\">string</span> <span "
-            "class=\"chibi-type\">handle</span> <span "
-            "class=\"chibi-type\">enum</span>\n"
-            "<span class=\"chibi-type\">number</span> <span "
-            "class=\"chibi-type\">char</span> <span "
-            "class=\"chibi-type\">exec</span> <span "
-            "class=\"chibi-type\">flow</span> <span "
-            "class=\"chibi-type\">entity</span> <span "
-            "class=\"chibi-type\">task</span> <span "
-            "class=\"chibi-type\">any</span> <span "
-            "class=\"chibi-type\">Prototype</span> <span "
-            "class=\"chibi-type\">Component</span> <span "
-            "class=\"chibi-type\">Relationship</span> <span "
-            "class=\"chibi-type\">Cancelled</span>\n"
-            "voided int32 uint8 float32 stringify my_int Type PrototypeName "
-            "cancelled\n"
-            "</code></pre>\n"
-        ));
-        /* Declarations, calls and annotations are contextual. Bindings and
-         * property access stay neutral, including builtin-spelled bindings;
-         * a builtin conversion outranks a call, but a member call does not. */
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "@test\n"
-            "@int\n"
-            "pub Work :: (string: int) -> bool { return Ready(value) }\n"
-            "Empty :: () {}\n"
-            "Position :: struct { x: float }\n"
-            "Result :: union { Ready }\n"
-            "Motion :: component { speed: number }\n"
-            "Flavor :: enum\n"
-            "number := int(1)\n"
-            "string: int\n"
-            "int :: 3\n"
-            "int :: (value: int)\n"
-            "map: [string: int]\n"
-            "object.int; object.number; object.int(2)\n"
-            "Work; object.property; Work(value)\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">@<span "
-            "class=\"chibi-attribute\">test</span>\n"
-            "@<span class=\"chibi-attribute\">int</span>\n"
-            "<span class=\"chibi-keyword\">pub</span> <span "
-            "class=\"chibi-function\">Work</span> :: (string: <span "
-            "class=\"chibi-type\">int</span>) -&gt; <span "
-            "class=\"chibi-type\">bool</span> { <span "
-            "class=\"chibi-keyword\">return</span> <span "
-            "class=\"chibi-function\">Ready</span>(value) }\n"
-            "<span class=\"chibi-function\">Empty</span> :: () {}\n"
-            "<span class=\"chibi-type\">Position</span> :: <span "
-            "class=\"chibi-keyword\">struct</span> { x: <span "
-            "class=\"chibi-type\">float</span> }\n"
-            "<span class=\"chibi-type\">Result</span> :: <span "
-            "class=\"chibi-keyword\">union</span> { Ready }\n"
-            "<span class=\"chibi-type\">Motion</span> :: <span "
-            "class=\"chibi-keyword\">component</span> { speed: <span "
-            "class=\"chibi-type\">number</span> }\n"
-            "<span class=\"chibi-type\">Flavor</span> :: <span "
-            "class=\"chibi-type\">enum</span>\n"
-            "number := <span class=\"chibi-type\">int</span>(<span "
-            "class=\"chibi-number\">1</span>)\n"
-            "string: <span class=\"chibi-type\">int</span>\n"
-            "int :: <span class=\"chibi-number\">3</span>\n"
-            "<span class=\"chibi-function\">int</span> :: (value: <span "
-            "class=\"chibi-type\">int</span>)\n"
-            "map: [<span class=\"chibi-type\">string</span>: <span "
-            "class=\"chibi-type\">int</span>]\n"
-            "object.int; object.number; object.<span "
-            "class=\"chibi-function\">int</span>(<span "
-            "class=\"chibi-number\">2</span>)\n"
-            "Work; object.property; <span "
-            "class=\"chibi-function\">Work</span>(value)\n"
-            "</code></pre>\n"
-        ));
-        /* Comments are transparent neighbors, including multiline comments.
-         * Explicit or inserted statement boundaries must never be discarded. */
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "@ /* café <&> */ test\n"
-            "Fn /* a */ :: /* b */ (arg /* c */ : int)\n"
-            "Kind /* a */ :: /* b */ struct {}\n"
-            "call /* a\n"
-            " b */ (value);\n"
-            "call; /* a */ (value);\n"
-            "Kind :: ; /* a */ struct {}\n"
-            "@; int\n"
-            "object /* a */ . /* b */ int\n"
-            "object.; int\n"
-            "reader\n"
-            "// next statement\n"
-            "next()\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">@ <span "
-            "class=\"chibi-comment\">/* café &lt;&amp;&gt; */</span> <span "
-            "class=\"chibi-attribute\">test</span>\n"
-            "<span class=\"chibi-function\">Fn</span> <span "
-            "class=\"chibi-comment\">/* a */</span> :: <span "
-            "class=\"chibi-comment\">/* b */</span> (arg <span "
-            "class=\"chibi-comment\">/* c */</span> : <span "
-            "class=\"chibi-type\">int</span>)\n"
-            "<span class=\"chibi-type\">Kind</span> <span "
-            "class=\"chibi-comment\">/* a */</span> :: <span "
-            "class=\"chibi-comment\">/* b */</span> <span "
-            "class=\"chibi-keyword\">struct</span> {}\n"
-            "<span class=\"chibi-function\">call</span> <span "
-            "class=\"chibi-comment\">/* a\n"
-            " b */</span> (value);\n"
-            "call; <span class=\"chibi-comment\">/* a */</span> (value);\n"
-            "Kind :: ; <span class=\"chibi-comment\">/* a */</span> <span "
-            "class=\"chibi-keyword\">struct</span> {}\n"
-            "@; <span class=\"chibi-type\">int</span>\n"
-            "object <span class=\"chibi-comment\">/* a */</span> . <span "
-            "class=\"chibi-comment\">/* b */</span> int\n"
-            "object.; <span class=\"chibi-type\">int</span>\n"
-            "reader\n"
-            "<span class=\"chibi-comment\">// next statement</span>\n"
-            "<span class=\"chibi-function\">next</span>()\n"
-            "</code></pre>\n"
-        ));
-        /* A parenthesized value is not a function declaration. A named
-         * parameter gives enough evidence even when its type is unfinished. */
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "Value :: (1 + 2)\n"
-            "Grouped :: (some_value)\n"
-            "Alias :: Custom\n"
-            "GroupCall :: (int(2))\n"
-            "Partial :: (arg:\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">Value :: (<span "
-            "class=\"chibi-number\">1</span> + <span "
-            "class=\"chibi-number\">2</span>)\n"
-            "Grouped :: (some_value)\n"
-            "Alias :: Custom\n"
-            "GroupCall :: (<span class=\"chibi-type\">int</span>(<span "
-            "class=\"chibi-number\">2</span>))\n"
-            "<span class=\"chibi-function\">Partial</span> :: (arg:\n"
-            "</code></pre>\n"
-        ));
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "Undecided :: (\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">Undecided :: (\n"
-            "</code></pre>\n"
-        ));
+        char *html = fence(b, library);
+        REQUIRE(preserves_source(html, library));
+        REQUIRE(has_token(html, "namespace", "Example"));
+        REQUIRE(has_token(html, "keyword", "library"));
+        REQUIRE(has_token(html, "constant", "Title"));
+        REQUIRE(has_token(html, "constant", "Ratio"));
+        REQUIRE(has_token(html, "string", "&quot;café &lt;&amp;&gt; 🧭&quot;"));
+        REQUIRE(has_token(html, "number", "1.5"));
+        REQUIRE(has_token(html, "comment", "/* first &lt;&amp;&gt;\n\tsecond café */"));
+        REQUIRE(has_token(html, "function", "Print"));
+        REQUIRE(has_token(html, "type", "Position"));
+        REQUIRE(has_token(html, "builtin", "int"));
+        REQUIRE(has_token(html, "property", "x"));
+        REQUIRE(has_token(html, "operator", "+"));
+        REQUIRE(strstr(html, "(value: "));
+        free(html);
+
+        html = fence(b, package);
+        REQUIRE(preserves_source(html, package));
+        REQUIRE(has_token(html, "namespace", "demo"));
+        REQUIRE(has_token(html, "namespace", "shapes"));
+        REQUIRE(has_token(html, "type", "Position"));
+        REQUIRE(has_token(html, "type", "Result"));
+        REQUIRE(has_token(html, "builtin", "float"));
+        REQUIRE(has_token(html, "builtin", "bool"));
+        REQUIRE(has_token(html, "constant", "Ready"));
+        REQUIRE(has_token(html, "constant", "Limit"));
+        REQUIRE(has_token(html, "constant", "true"));
+        REQUIRE(!has_token(html, "function", "Limit"));
+        REQUIRE(has_token(html, "attribute", "test"));
+        REQUIRE(has_token(html, "function", "Work"));
+        REQUIRE(has_token(html, "function", "int"));
+        REQUIRE(has_token(html, "property", "int"));
+        REQUIRE(has_token(html, "property", "number"));
+        REQUIRE(has_token(html, "property", "value"));
+        REQUIRE(has_token(html, "string", "'&lt;'"));
+        REQUIRE(has_token(html, "operator", "..&lt;"));
+        REQUIRE(strstr(html, "(string: <span class=\"chibi-builtin\">int</span>"));
+        REQUIRE(strstr(html, "    number <span class=\"chibi-operator\">:=</span>"));
+        REQUIRE(
+            strstr(html, "copy <span class=\"chibi-operator\">:=</span> number <span class=\"chibi-operator\">+</span> string\n")
+        );
+        REQUIRE(!has_token(html, "namespace", "object"));
+        REQUIRE(!has_token(html, "builtin", "number"));
+        free(html);
+
+        html = fence(b, comments);
+        REQUIRE(preserves_source(html, comments));
+        REQUIRE(has_token(html, "attribute", "test"));
+        REQUIRE(has_token(html, "function", "Fn"));
+        REQUIRE(has_token(html, "function", "call"));
+        REQUIRE(!has_token(html, "function", "reader"));
+        REQUIRE(has_token(html, "comment", "/* a\n b */"));
+        free(html);
+
+        static const char crlf[] = "package demo\r\nValue :: 1  \r\n";
+        html = fence(b, crlf);
+        REQUIRE(preserves_source(html, crlf));
+        REQUIRE(has_token(html, "constant", "Value"));
+        REQUIRE(has_token(html, "number", "1"));
+        free(html);
     }
     return true;
 }
 
-/* Tokenization failures fall back for the whole fence, without leaking raw
- * HTML or changing the bytes. Publication still validates the original code. */
-TEST_CASE(docs_markdown_keeps_lexical_errors_plain)
+/* Recovery is presentation only. A broken token or incomplete program cannot
+ * delete source, emit HTML, or discard highlighting of valid subtrees. The
+ * publication integration separately rejects the original invalid snippets. */
+TEST_CASE(docs_markdown_recovers_incomplete_fences)
 {
     REQUIRE(prepare());
+    static const char *const fragments[] = {
+        "package demo\nValue :: 2\n/* <&> café\n",
+        "package demo\nText :: \"first <&>\nsecond café\"\n",
+        "package demo\nText :: \"\\q\"\n",
+        "package demo\nPartial :: (arg: int) {\n\treturn arg + 2\n",
+        "Undecided :: (\n",
+        "Fn :: (arg: int) -> int\n",
+        "Limit :: (1 + 2)\n",
+    };
     for (int b = 0; b < 2; b++) {
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "return 2\n"
-            "/* <&> café\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">return 2\n"
-            "/* &lt;&amp;&gt; café\n"
-            "</code></pre>\n"
-        ));
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "text := \"first <&>\n"
-            "second café\"\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">text := &quot;first "
-            "&lt;&amp;&gt;\n"
-            "second café&quot;\n"
-            "</code></pre>\n"
-        ));
-        REQUIRE(renders(
-            b,
-            "```chibi\n"
-            "text := \"\\q\"\n"
-            "```\n",
-            "README.md",
-            "<pre><code class=\"language-chibi\">text := &quot;\\q&quot;\n"
-            "</code></pre>\n"
-        ));
+        for (size_t i = 0; i < sizeof fragments / sizeof *fragments; i++) {
+            char *html = fence(b, fragments[i]);
+            REQUIRE(preserves_source(html, fragments[i]));
+            if (i < 4) {
+                REQUIRE(has_token(html, "keyword", "package"));
+            }
+            if (i == 0 || i == 3) {
+                REQUIRE(has_token(html, "number", "2"));
+            }
+            /* Complete declaration/signature fragments borrow only grammar
+             * context. No synthetic package or body may reach the output. */
+            if (i == 5) {
+                REQUIRE(has_token(html, "function", "Fn"));
+                REQUIRE(has_token(html, "builtin", "int"));
+                REQUIRE(!has_token(html, "constant", "Fn"));
+            }
+            if (i == 6) {
+                REQUIRE(has_token(html, "constant", "Limit"));
+                REQUIRE(!has_token(html, "function", "Limit"));
+            }
+            free(html);
+        }
     }
     return true;
 }
 
 /* Other languages and unlabelled fences remain plain; empty Chibi fences
- * emit neither an empty span nor text for the tokenizer's EOF. */
+ * emit neither an empty span nor text for missing syntax nodes. */
 TEST_CASE(docs_markdown_leaves_other_fences_plain)
 {
     REQUIRE(prepare());
@@ -756,61 +710,80 @@ static double color_luminance(unsigned rgb)
 static bool readable_color(const char *palette, const char *property)
 {
     const char *foreground = strstr(palette, property);
-    const char *background = strstr(palette, "--panel:");
+    const char *background = strstr(palette, "--syntax-background:");
     unsigned fg, bg;
     if (!foreground || !background ||
         sscanf(foreground + strlen(property), " #%x", &fg) != 1 ||
-        sscanf(background + strlen("--panel:"), " #%x", &bg) != 1) {
+        sscanf(background + strlen("--syntax-background:"), " #%x", &bg) != 1) {
         return false;
     }
     double a = color_luminance(fg), b = color_luminance(bg);
     return (fmax(a, b) + 0.05) / (fmin(a, b) + 0.05) >= 4.5;
 }
 
-/* The stylesheet takes every colour from custom properties, which a dark
- * palette redefines when the system prefers a dark scheme. Every syntax
- * color keeps at least 4.5:1 contrast against its code block's panel. */
+/* Exact GitHub Light Default/Dark Default 6.3.5 syntax roles, including the
+ * code backgrounds they were designed for. Neutral members are intentional.
+ * Every foreground retains at least 4.5:1 contrast in both palettes. */
 TEST_CASE(docs_site_follows_color_scheme)
 {
     REQUIRE(prepare());
-    static const char *const properties[] = { "--text:",
-                                              "--muted:",
-                                              "--page:",
-                                              "--panel:",
-                                              "--line:",
-                                              "--link:",
-                                              "--code:",
-                                              "--syntax-keyword:",
-                                              "--syntax-string:",
-                                              "--syntax-number:",
-                                              "--syntax-comment:",
-                                              "--syntax-type:",
-                                              "--syntax-function:",
-                                              "--syntax-attribute:" };
+    static const char *const properties[] = { "--text:",  "--muted:", "--page:",
+                                              "--panel:", "--line:",  "--link:",
+                                              "--code:" };
+    static const struct
+    {
+        const char *role;
+        unsigned light, dark;
+    } roles[] = {
+        { "namespace", 0x953800, 0xffa657 }, { "type", 0x953800, 0xffa657 },
+        { "builtin", 0x0550ae, 0x79c0ff },   { "function", 0x8250df, 0xd2a8ff },
+        { "property", 0x1f2328, 0xe6edf3 },  { "constant", 0x0550ae, 0x79c0ff },
+        { "attribute", 0x0550ae, 0x79c0ff }, { "keyword", 0xcf222e, 0xff7b72 },
+        { "operator", 0xcf222e, 0xff7b72 },  { "number", 0x0550ae, 0x79c0ff },
+        { "string", 0x0a3069, 0xa5d6ff },    { "comment", 0x6e7781, 0x8b949e },
+    };
     for (int b = 0; b < 2; b++) {
         char *style = call(b, "project:site", "Style", NULL, 0);
         REQUIRE(style);
         char *light = strstr(style, ":root { color-scheme: light dark;");
         char *dark = strstr(style, "@media (prefers-color-scheme: dark) {\n  :root {");
         char *rules = dark ? strstr(dark, "\n}\n") : NULL;
-        bool themed = light == style && dark && rules && !strchr(rules, '#');
+        bool themed = light && dark && light < dark && rules && !strchr(rules, '#');
         for (size_t i = 0; themed && i < sizeof properties / sizeof *properties; i++) {
             char *defined = strstr(light, properties[i]);
             char *redefined = strstr(dark, properties[i]);
             themed = defined && defined < dark && redefined && redefined < rules;
-            if (themed && !strncmp(properties[i], "--syntax-", 9)) {
-                themed = readable_color(light, properties[i]) &&
-                         readable_color(dark, properties[i]);
-            }
         }
-        themed = themed &&
-                 strstr(style, "pre .chibi-keyword { color: var(--syntax-keyword); }") &&
-                 strstr(style, "pre .chibi-string { color: var(--syntax-string); }") &&
-                 strstr(style, "pre .chibi-number { color: var(--syntax-number); }") &&
-                 strstr(style, "pre .chibi-comment { color: var(--syntax-comment); }") &&
-                 strstr(style, "pre .chibi-type { color: var(--syntax-type); }") &&
-                 strstr(style, "pre .chibi-function { color: var(--syntax-function); }") &&
-                 strstr(style, "pre .chibi-attribute { color: var(--syntax-attribute); }");
+        for (size_t i = 0; themed && i < sizeof roles / sizeof *roles; i++) {
+            char expected[80], property[64], selector[128];
+            snprintf(property, sizeof property, "--syntax-%s:", roles[i].role);
+            snprintf(expected, sizeof expected, "%s #%06x;", property, roles[i].light);
+            char *defined = strstr(light, expected);
+            snprintf(expected, sizeof expected, "%s #%06x;", property, roles[i].dark);
+            char *redefined = strstr(dark, expected);
+            snprintf(
+                selector,
+                sizeof selector,
+                "pre .chibi-%s { color: var(--syntax-%s); }",
+                roles[i].role,
+                roles[i].role
+            );
+            themed = defined && defined < dark && redefined && redefined < rules &&
+                     strstr(style, selector) && readable_color(light, property) &&
+                     readable_color(dark, property);
+        }
+        const char *background = light ? strstr(light, "--syntax-background: #ffffff;")
+                                       : NULL;
+        const char *foreground = light ? strstr(light, "--syntax-foreground: #1f2328;")
+                                       : NULL;
+        themed = themed && background && background < dark && foreground &&
+                 foreground < dark && strstr(dark, "--syntax-background: #0d1117;") &&
+                 strstr(dark, "--syntax-foreground: #e6edf3;") &&
+                 strstr(style, "background: var(--syntax-background)") &&
+                 strstr(style, "color: var(--syntax-foreground)") &&
+                 strstr(style, "Copyright (c) 2020 Primer") &&
+                 strstr(style, "Copyright (c) 2018 GitHub Inc.") &&
+                 strstr(style, "Permission is hereby granted, free of charge");
         free(style);
         REQUIRE(themed);
     }
@@ -891,21 +864,81 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\"><span "
-                          "class=\"chibi-keyword\">pub</span> <span "
-                          "class=\"chibi-function\">Area</span> :: (side: "
-                          "<span class=\"chibi-type\">int</span>, scale: <span "
-                          "class=\"chibi-type\">int</span>) -&gt; <span "
-                          "class=\"chibi-type\">int</span>\n</code></"
-                          "pre>\n<p>The "
-                          "area of a square.</p>"
+                          "class=\"language-chibi\">"
+                          "<span class=\"chibi-keyword\">pub</span>"
+                          " "
+                          "<span class=\"chibi-function\">Area</span>"
+                          " "
+                          "<span class=\"chibi-operator\">::</span>"
+                          " (side: "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          ", scale: "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          ") "
+                          "<span class=\"chibi-operator\">-&gt;</span>"
+                          " "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          "\n</code></pre>\n<p>The area of a square.</p>"
                       ) &&
-                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\"><span class=\"chibi-keyword\">pub</span> Sides: <span class=\"chibi-type\">int</span> : <span class=\"chibi-number\">4</span>;\n") &&
-                      strstr(html, "<span class=\"chibi-keyword\">pub</span> <span class=\"chibi-type\">Shape</span> :: <span class=\"chibi-keyword\">struct</span> { sides: <span class=\"chibi-type\">int</span>; }\n") &&
-                      strstr(html, "<span class=\"chibi-keyword\">pub</span> Greeting :: <span class=\"chibi-string\">&quot;Hello {}&quot;</span>;\n") &&
+                      strstr(
+                          html,
+                          "<h3 id=\"sides\">Sides</h3>\n<pre><code "
+                          "class=\"language-chibi\">"
+                          "<span class=\"chibi-keyword\">pub</span>"
+                          " "
+                          "<span class=\"chibi-constant\">Sides</span>"
+                          ": "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          " : "
+                          "<span class=\"chibi-number\">4</span>"
+                          ";\n"
+                      ) &&
+                      strstr(
+                          html,
+                          "<span class=\"chibi-keyword\">pub</span>"
+                          " "
+                          "<span class=\"chibi-type\">Shape</span>"
+                          " "
+                          "<span class=\"chibi-operator\">::</span>"
+                          " "
+                          "<span class=\"chibi-keyword\">struct</span>"
+                          " { "
+                          "<span class=\"chibi-property\">sides</span>"
+                          ": "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          "; }\n"
+                      ) &&
+                      strstr(
+                          html,
+                          "<span class=\"chibi-keyword\">pub</span>"
+                          " "
+                          "<span class=\"chibi-constant\">Greeting</span>"
+                          " "
+                          "<span class=\"chibi-operator\">::</span>"
+                          " "
+                          "<span class=\"chibi-string\">&quot;Hello "
+                          "{}&quot;</span>"
+                          ";\n"
+                      ) &&
                       !strstr(html, "Hidden") && !strstr(html, "Checks") &&
                       !strstr(html, "Also") &&
-                      strstr(html, "<span class=\"chibi-keyword\">pub</span> <span class=\"chibi-type\">Vec</span> :: <span class=\"chibi-keyword\">struct</span> {\n    <span class=\"chibi-comment\">// Horizontal.</span>\n    x: <span class=\"chibi-type\">int</span>;\n}\n") &&
+                      strstr(
+                          html,
+                          "<span class=\"chibi-keyword\">pub</span>"
+                          " "
+                          "<span class=\"chibi-type\">Vec</span>"
+                          " "
+                          "<span class=\"chibi-operator\">::</span>"
+                          " "
+                          "<span class=\"chibi-keyword\">struct</span>"
+                          " {\n    "
+                          "<span class=\"chibi-comment\">// Horizontal.</span>"
+                          "\n    "
+                          "<span class=\"chibi-property\">x</span>"
+                          ": "
+                          "<span class=\"chibi-builtin\">int</span>"
+                          ";\n}\n"
+                      ) &&
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
@@ -1014,7 +1047,7 @@ void test_language_docs_markdown()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(docs_markdown_renders_blocks);
     RUN_TEST_CASE(docs_markdown_highlights_chibi_fences);
-    RUN_TEST_CASE(docs_markdown_keeps_lexical_errors_plain);
+    RUN_TEST_CASE(docs_markdown_recovers_incomplete_fences);
     RUN_TEST_CASE(docs_markdown_leaves_other_fences_plain);
     RUN_TEST_CASE(docs_markdown_lists_contents);
     RUN_TEST_CASE(docs_markdown_renders_tables);

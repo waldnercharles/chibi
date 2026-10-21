@@ -1155,22 +1155,47 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
      * semicolons while escaping every token and gap as HTML text. */
     REQUIRE(file_has(
         "site/build/docs/guide.html",
-        "<pre><code class=\"language-chibi\"><span "
-        "class=\"chibi-keyword\">package</span> sample\n"
-        "<span class=\"chibi-comment\">/* first &lt;&amp;&gt;\n"
-        "\tsecond café */</span>\n"
-        "Title :: <span class=\"chibi-string\">&quot;café &lt;&amp;&gt; "
-        "🧭&quot;</span>\n"
-        "Ratio :: <span class=\"chibi-number\">1.5</span>\n"
+        "<pre><code class=\"language-chibi\">"
+        "<span class=\"chibi-keyword\">package</span>"
+        " "
+        "<span class=\"chibi-namespace\">sample</span>"
+        "\n"
+        "<span class=\"chibi-comment\">/* first &lt;&amp;&gt;\n\tsecond café "
+        "*/</span>"
+        "\n"
+        "<span class=\"chibi-constant\">Title</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-string\">&quot;café &lt;&amp;&gt; 🧭&quot;</span>"
+        "\n"
+        "<span class=\"chibi-constant\">Ratio</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-number\">1.5</span>"
+        "\n"
         " \t\n"
-        "<span class=\"chibi-function\">Double</span> :: (n: <span "
-        "class=\"chibi-type\">int</span>) -&gt; <span "
-        "class=\"chibi-type\">int</span> {\n"
-        "\t<span class=\"chibi-keyword\">return</span> n * <span "
-        "class=\"chibi-number\">2</span>  <span class=\"chibi-comment\">// "
-        "kept &lt;&amp;&gt;</span>\n"
-        "}\n"
-        "</code></pre>\n"
+        "<span class=\"chibi-function\">Double</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " (n: "
+        "<span class=\"chibi-builtin\">int</span>"
+        ") "
+        "<span class=\"chibi-operator\">-&gt;</span>"
+        " "
+        "<span class=\"chibi-builtin\">int</span>"
+        " {\n"
+        "\t"
+        "<span class=\"chibi-keyword\">return</span>"
+        " n "
+        "<span class=\"chibi-operator\">*</span>"
+        " "
+        "<span class=\"chibi-number\">2</span>"
+        "  "
+        "<span class=\"chibi-comment\">// kept &lt;&amp;&gt;</span>"
+        "\n"
+        "}\n</code></pre>\n"
     ));
     REQUIRE(
         file_has("site/build/docs/guide.html", "<pre><code class=\"language-code\">package plain\nreturn 2 &lt; 3\n</code></pre>\n")
@@ -1209,6 +1234,12 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: () {\n    Missing();\n}\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1);
     REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));
+    /* The private parser is available only to the generator, never examples. */
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nProbe :: () {\n    compiler_syntax_parse(\"package hidden\");\n}\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(
+        file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'compiler_syntax_parse'")
+    );
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\nsystem {\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", "docs/guide.md:4:"));
     char bare[256];
@@ -1269,9 +1300,17 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     const char *docs[] = { compiler, "--project-root", site, "--docs", NULL };
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
-    REQUIRE(
-        file_has("generated/build/docs/packages.html", "<span class=\"chibi-keyword\">pub</span> Sides: <span class=\"chibi-type\">int</span> : <span class=\"chibi-number\">4</span>;\n</code></pre>\n<p>Four sides.</p>")
-    );
+    REQUIRE(file_has(
+        "generated/build/docs/packages.html",
+        "<span class=\"chibi-keyword\">pub</span>"
+        " "
+        "<span class=\"chibi-constant\">Sides</span>"
+        ": "
+        "<span class=\"chibi-builtin\">int</span>"
+        " : "
+        "<span class=\"chibi-number\">4</span>"
+        ";\n</code></pre>\n<p>Four sides.</p>"
+    ));
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")
     );
@@ -1537,7 +1576,15 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *docs[] = { launcher, "doc", site, NULL };
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("site/build/docs/index.html", "<a href=\"guide.html\">the guide</a>"));
-    REQUIRE(file_has("site/build/docs/guide.html", "Value :: <span class=\"chibi-number\">1</span>\n"));
+    REQUIRE(file_has(
+        "site/build/docs/guide.html",
+        "<span class=\"chibi-constant\">Value</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-number\">1</span>"
+        "\n"
+    ));
     return true;
 }
 

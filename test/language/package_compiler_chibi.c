@@ -86,12 +86,14 @@ typedef enum
  * `boxed` sample's Boxed functions read only arrays that are never packed,
  * and its Packed functions arrays that may be. A `moves` sample calls no
  * native: its Moved functions take fresh values into locals and returns
- * without copying them, and its Copied function copies an array's element. */
+ * without copying them, and its Copied function copies an array's element.
+ * An `aliases` sample's Aliased functions read records and arrays nothing
+ * changes in place, and its CopiedWalk copies the array its loop changes. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves;
+    bool core, updates, boxed, game, moves, aliases;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -187,6 +189,23 @@ static const sample samples[] = {
                  { "MovedResults", "[]", "[12]" },
                  { "MovedSecond", "[4]", "[5]" },
                  { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+    { .name = "read in place",
+      .group = COLLECTION_SAMPLES,
+      .aliases = true,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "AliasedSum :: (notes: Note[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for (note in notes) { total += note.count; }\n"
+                "    first := notes[0];\n    return total + first.count * "
+                "100;\n}\n"
+                "CopiedWalk :: (notes: Note[]) -> int {\n"
+                "    xs := notes;\n    total: int = 0;\n"
+                "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
+                "total += note.count; }\n"
+                "    return total;\n}",
+      .calls = { { "AliasedSum", "[[{\"text\":\"a\",\"count\":1},{\"text\":\"b\",\"count\":2}]]", "[103]" },
+                 { "CopiedWalk", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}]]", "[3]" } } },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"
@@ -2195,6 +2214,49 @@ static bool moves_fresh_values(const unsigned char *bytes, size_t length)
     REQUIRE(moved == 4 && copied == 1 && !wrong);
     return true;
 }
+/* A loop over an array nothing changes, and a local that reads an element of
+ * it, read in place; a loop whose body changes its array walks a copy. */
+static bool reads_in_place(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler aliases load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int aliased = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool alias = !strncmp(f.entry, "Aliased", 7),
+                 copy = !strcmp(f.entry, "CopiedWalk");
+            int count = snapshots(f.body);
+            aliased += alias;
+            copied += copy;
+            if ((alias && count) || (copy && !count)) {
+                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(aliased == 1 && copied == 1 && !wrong);
+    return true;
+}
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
  * exact and halfway values, the ends of both ranges, long and hexadecimal
  * spellings. */
@@ -2515,6 +2577,7 @@ static bool run_samples(sample_group group, int b)
         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
                    (!s->boxed || reads_boxed(bytes, length)) &&
                    (!s->moves || moves_fresh_values(bytes, length)) &&
+                   (!s->aliases || reads_in_place(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

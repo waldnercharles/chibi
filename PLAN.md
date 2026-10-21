@@ -626,8 +626,9 @@ without a `project.kdl` is a package tree instead: the compiler formats each
 source formatter package syntax. Every file must declare a package, checked
 before anything is written, so a project's behaviors are never formatted
 without the metadata only project formatting keeps. `packages/` and
-`tools/docs` are canonical; `tools/compiler` is not yet, and is left to the
-M5 work that owns it. `chibi web [PROJECT] --player PLAYER [--port PORT]`
+`tools/docs` are canonical, and so is `tools/compiler` since the M5 work
+formats it with every change; the `chibi-cli` case
+`repository_packages_are_canonical` checks all three with the real compiler. `chibi web [PROJECT] --player PLAYER [--port PORT]`
 exports the browser site into a `mkdtemp` folder under
 `TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
 launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or

@@ -858,8 +858,10 @@ All three were checked on the Wasm host too.
 Still open:
 - Stage one doesn't check a handler parameter's written type or unit against
   its field. Its game input carries no field units.
-- Stage one doesn't compile `assert`. It needs a failure kind in `Target` for
-  stage zero's `BEHAVIOR_FUNCTION_DATA`.
+- Stage one compiles `assert` wherever the target links the core pack, as a
+  game does; `Target` carries its failure kind. The compiler host links no
+  core pack, so neither stage compiles `assert` in the compiler's own
+  packages.
 
 Next action: the bootstrap sequence on every supported host configuration.
 

@@ -106,6 +106,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
         { "map_count_offset", (int)offsetof(pin_map, count) },
         { "data_failure", BEHAVIOR_FUNCTION_HOST_DATA },
         { "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT },
+        { "assert_failure", BEHAVIOR_FUNCTION_DATA },
     };
     yyjson_mut_val *values = yyjson_mut_arr_add_obj(doc, target);
     for (size_t i = 0; i < sizeof layout / sizeof *layout; i++) {

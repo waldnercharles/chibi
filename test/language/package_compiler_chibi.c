@@ -11,6 +11,7 @@
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
@@ -610,6 +611,21 @@ static const sample samples[] = {
                  { "Measure", "[\"zebra\"]", "[551]" },
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
+    /* An assert fails the call when its condition is false, with its
+     * message or its condition's source; it names its arguments as the core
+     * catalog does. */
+    { .name = "assertions",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Double :: (n: int) -> int {\n"
+                "    assert(n > 0, \"n is positive\");\n"
+                "    assert(n < 100);\n"
+                "    assert(condition: n != 7, message: \"\");\n"
+                "    return n * 2;\n}",
+      .calls = { { "Double", "[3]", "[6]" },
+                 { "Double", "[-1]", NULL },
+                 { "Double", "[200]", NULL },
+                 { "Double", "[7]", NULL } } },
     /* Package and imported constants. `lib.Scaled(2)` takes a default that
      * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
      * the package's other file declares, whose occurrence is that file's. */
@@ -1177,6 +1193,12 @@ static const sample samples[] = {
       .message = "variant 'A' needs its payload",
       .line = 3,
       .column = 25 },
+    { .name = "assert message",
+      .source = "package facts\nCheck :: (n: int, m: string) -> int {\n"
+                "    assert(n > 0, m);\n    return n;\n}",
+      .message = "assert's message is a string constant",
+      .line = 3,
+      .column = 19 },
     { .name = "unknown imported function",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
@@ -1524,12 +1546,15 @@ static bool natives(int b, pin_value *out)
         return true;
     }
     if (!linked) {
+        /* The compiler host's natives, and the core pack a game links, which
+         * declares assert. */
         const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                                  NATIVE_ARRAY_DEFINITION_PACK,
                                                  COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK };
+                                                 COMPILER_SYNTAX_DEFINITION_PACK,
+                                                 CORE_DEFINITION_PACK };
         char error[256];
-        linked = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+        linked = native_capabilities_from_definition_packs(NULL, 0, packs, 5, error, sizeof error);
         REQUIRE(linked);
     }
     const script_catalog *catalog = native_capabilities_catalog(linked);
@@ -1690,6 +1715,7 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
     REQUIRE(put(&args[6], "map_count_offset", (int)offsetof(pin_map, count)));
     REQUIRE(put(&args[6], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
     REQUIRE(put(&args[6], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    REQUIRE(put(&args[6], "assert_failure", BEHAVIOR_FUNCTION_DATA));
     args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int instructions = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
@@ -1928,8 +1954,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     compiler_fixture_free(&oracle);
     /* The natives the stage-one target links. */
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, 2));
+                                       COMPILER_SYNTAX_DEFINITION_PACK,
+                                       CORE_DEFINITION_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, 3));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);

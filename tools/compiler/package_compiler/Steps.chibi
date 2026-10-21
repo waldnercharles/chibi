@@ -1291,6 +1291,49 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next = array_add(next, finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
+        // `assert(condition, "message")`, where the target links the core
+        // native, fails the call when the condition is false, as stage
+        // zero's intrinsic does.
+        if (qualifier < 0 && found < 0 && callee_name == "assert" && FindNative(natives, "assert") >= 0) {
+            condition: int = -1;
+            message: int = -1;
+            index: int = 0;
+            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            while (argument >= 0) {
+                value := argument;
+                position := index;
+                if (Is(forest, argument, "named_argument")) {
+                    label := Text(forest, text, Field(forest, argument, "name"));
+                    value = Field(forest, argument, "value");
+                    position = -1;
+                    if (NameMatches("Condition", label)) {
+                        position = 0;
+                    } else if (NameMatches("Message", label)) {
+                        position = 1;
+                    }
+                }
+                if (position == 0 && condition < 0) {
+                    condition = value;
+                } else if (position == 1 && message < 0) {
+                    message = value;
+                } else {
+                    return Fail(forest, argument, document, "assert takes a condition and a message");
+                }
+                index += 1;
+                argument = NextMember(forest, argument);
+            }
+            if (condition < 0) {
+                return Fail(forest, item.node, document, "Missing argument 'Condition'");
+            }
+            if (message >= 0 && !Is(forest, message, "string")) {
+                return Fail(forest, message, document, "assert's message is a string constant");
+            }
+            next = array_add(next, Expect(condition, BoolStorage, 0, -1));
+            finish := Resume(item.node, 1, message, condition);
+            finish.c = 6;
+            next = array_add(next, finish);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
+        }
         native: int = -1;
         expected_count: int = 0;
         if (found >= 0) {
@@ -1374,6 +1417,27 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         next = array_add(next, finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
+    }
+    if (item.c == 6) {
+        // An assert fails with its message, or with its condition's source
+        // when it gives none.
+        said := Text(forest, text, item.b);
+        if (item.a >= 0) {
+            decoded := compiler_json_string(Text(forest, text, item.a));
+            if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+                return Fail(forest, item.a, document, "Invalid string or embedded NUL");
+            }
+            if (decoded.value != "") {
+                said = decoded.value;
+            }
+        }
+        check := Instruction(ops.guard, 0, 0, values[top - 1].slot, 0, target.assert_failure, node);
+        check.message = format_text("Assertion failed: {}", said);
+        check.has_message = true;
+        code = array_add(code, check);
+        // Like a call of a function with no result, it leaves no value.
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, Typed(-1, -1, 0, -1),
+                            NoValue(), marks);
     }
     if (item.c == 3) {
         // A conversion to types item.a in mode item.b. A wrapped or clamped

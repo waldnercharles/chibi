@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #define FMT_TEXT_MAX_ARGS 12
@@ -380,6 +381,20 @@ static const char *text_equal_call(arena *storage, const pin_value *arguments, i
 const node_host_call NATIVE_FORMAT_TEXT_HOST = { .value = fmt_text_call,
                                                  .variadic = true };
 const node_host_call NATIVE_TEXT_EQUAL_HOST = { .value = text_equal_call };
+/* The bytes an operation can read: an index's byte, a slice's end, or all of
+ * them. Measuring only that far keeps every clamp while a read near the start
+ * of a long text stays short. */
+static size_t text_bound(const pin_value *arguments, int expected)
+{
+    if (expected == 1) {
+        return SIZE_MAX;
+    }
+    size_t start = arguments[1].i > 0 ? (size_t)arguments[1].i : 0;
+    if (expected == 2) {
+        return arguments[1].i < 0 ? 0 : start + 1;
+    }
+    return start + (arguments[2].i > 0 ? (size_t)arguments[2].i : 0);
+}
 static const char *text_bytes(
     const pin_value *arguments,
     int count,
@@ -399,7 +414,7 @@ static const char *text_bytes(
         }
     }
     *text = arguments[0].str ? arguments[0].str : "";
-    *length = strlen(*text);
+    *length = strnlen(*text, text_bound(arguments, expected));
     if (*length > INT_MAX) {
         return "Text byte length exceeds int range";
     }

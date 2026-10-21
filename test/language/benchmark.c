@@ -3,6 +3,7 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "language/lower.h"
+#include "runtime/text_format.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -28,6 +29,8 @@
 #define RECORD_FIELD_COUNT 24
 #define RECORD_ROW_COUNT 256
 #define RECORD_COPY_COUNT 200
+#define TEXT_BYTES (128 * 1024)
+#define TEXT_READS 4096
 
 static const script_catalog_capability run_event = {
     .id = RUN_EVENT,
@@ -268,10 +271,46 @@ TEST_CASE(record_row_snapshot_benchmark)
     return true;
 }
 
+/* Reads node-sized slices and bytes near the start of a source-sized text, as
+ * a compiler does while it walks a file's syntax. */
+TEST_CASE(text_slice_benchmark)
+{
+    arena storage = { 0 };
+    char *text = xmalloc(TEXT_BYTES + 1);
+    memset(text, 'a', TEXT_BYTES);
+    text[TEXT_BYTES] = 0;
+    for (int trial = 0; trial < TRIAL_COUNT; trial++) {
+        double start = monotonic_seconds();
+        for (int i = 0; i < TEXT_READS; i++) {
+            pin_value slice[] = { { .type = PIN_STR, .str = text },
+                                  { .type = PIN_I32, .i = i * 4 },
+                                  { .type = PIN_I32, .i = 8 } },
+                      out;
+            REQUIRE(
+                !NATIVE_TEXT_SLICE_CALL.value(&storage, slice, 3, &out) &&
+                strlen(out.str) == 8
+            );
+            REQUIRE(!NATIVE_TEXT_BYTE_AT_CALL.value(&storage, slice, 2, &out) && out.i == 'a');
+        }
+        double elapsed = monotonic_seconds() - start;
+        arena_free(&storage);
+        printf(
+            "BENCH text bytes=%d reads=%d trial=%d ns_per_read=%.3f\n",
+            TEXT_BYTES,
+            TEXT_READS,
+            trial,
+            elapsed * 1e9 / (2.0 * TEXT_READS)
+        );
+    }
+    free(text);
+    return true;
+}
+
 void test_language_benchmark()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scalar_authored_call_benchmark);
     RUN_TEST_CASE(record_row_snapshot_benchmark);
+    RUN_TEST_CASE(text_slice_benchmark);
     pu_clear_setup();
 }

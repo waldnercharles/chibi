@@ -193,7 +193,8 @@ MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item:
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
                   params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[],
                   names: Name[], scope: int, package: int, values: Value[], top: int, function: int, named: int,
-                  referenced: string[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+                  referenced: string[], mutated: string[], item: Work, ops: Ops, target: Target,
+                  at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
     kind := node.kind;
@@ -423,10 +424,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                  node: Field(forest, item.node, "name")};
                 bound = array_add(bound, binding);
             } else if (Pointer(local.storage, local.container)) {
-                // The local is the cell that holds its own copy, or the fresh
-                // value itself.
+                // The local is the cell that holds its own copy, or the value
+                // itself when it is fresh, or when neither it nor what it
+                // reads ever changes.
                 code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
-                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
+                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value")) ||
+                    (!Holds(mutated, name) &&
+                     Unchanging(forest, text, callables, names, package, mutated, Field(forest, item.node, "value")))) {
                     cells = array_add(cells, MovedCell(result));
                     slots = array_add(slots, AddressSlot(target));
                     code = append(code, MoveCode(result, ops, target, at.slot + length(slots) - 1,

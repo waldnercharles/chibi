@@ -595,6 +595,63 @@ Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], 
     }
     return Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, names, package, value) >= 0;
 }
+// The name a place reads or writes, through its fields and elements.
+RootOf :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := Unparenthesized(forest, node);
+    while (Is(forest, at, "member_expression") || Is(forest, at, "index_expression")) {
+        at = Unparenthesized(forest, Field(forest, at, "object"));
+    }
+    return at;
+}
+// The names a body changes: each assignment's root, each map a key is
+// deleted from, and each name a ref argument reaches. Shadowing is ignored,
+// so another local of the same spelling counts too.
+MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, referenced: string[]) -> string[] {
+    found := referenced;
+    pending: int[] = [node];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        target: int = -1;
+        if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
+            target = Field(forest, at, "target");
+        } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
+                   Text(forest, text, Field(forest, Field(forest, at, "function"), "member")) == "delete") {
+            target = Field(forest, at, "function");
+        }
+        if (target >= 0 && Is(forest, RootOf(forest, target), "identifier")) {
+            found = array_add(found, Text(forest, text, RootOf(forest, target)));
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending = array_add(pending, child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    return found;
+}
+// Whether a record or array stays as it is while its function runs, so a
+// name may read it in place rather than copy it: a fresh value, or part of a
+// local or parameter the body never changes.
+Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
+               mutated: string[], node: int) -> bool {
+    if (Fresh(forest, text, callables, names, package, node)) {
+        return true;
+    }
+    root := RootOf(forest, node);
+    if (!Is(forest, root, "identifier") || Holds(mutated, Text(forest, text, root))) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, root));
+    return found >= 0 && (names[found].place == CellPlace || names[found].place == ParameterPlace ||
+                          names[found].place == ResultsPlace);
+}
 // Records and arrays are pointers to their storage.
 Pointer :: (storage: int, container: int) -> bool {
     return container != 0 || storage == StructStorage;
@@ -1278,8 +1335,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[], ops: Ops,
-             target: Target) -> Body {
+             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
+             mutated: string[], ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
@@ -1573,17 +1630,26 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                 next = array_add(next, Resume(item.node, 4, 0, 0));
             } else if (item.phase == 1) {
-                // The loop walks its own copy, whatever the body changes.
+                // The loop walks its own copy, whatever the body changes, or
+                // the array itself when nothing can change it.
                 stepped = false;
                 value_top -= 1;
                 array := values[value_top];
                 if (array.container != ArrayContainer && !IsMap(array)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
                 }
-                retained = array;
+                if (Unchanging(forest, text, callables, names, callable.package, mutated,
+                               Field(forest, item.node, "value"))) {
+                    cells = array_add(cells, MovedCell(array));
+                    slots = array_add(slots, AddressSlot(target));
+                    code = append(code, MoveCode(array, ops, target, length(slots) - 1, length(cells) - 1, node));
+                    produced = array;
+                } else {
+                    retained = array;
+                }
                 next = array_add(next, Resume(item.node, 2, 0, 0));
             } else if (item.phase == 2) {
-                // The copy is in the last cell; the step loads each element.
+                // The array or its copy is in the last cell; the step loads each element.
                 value_top -= 1;
                 if (Text(forest, text, ItemField(forest, item.node)) == "") {
                     return Body.Failed(Diagnose(forest, ItemField(forest, item.node), document,
@@ -1597,7 +1663,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                    Field(forest, item.node, "reverse") >= 0, ops, target, at, node);
                 }
             } else if (item.phase == 3) {
-                // A record element was copied into the last cell.
+                // A record element was copied, or read in place, into the
+                // last cell.
                 stepped = false;
                 value_top -= 1;
                 kept := values[value_top];
@@ -1899,7 +1966,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    kind == "return_statement" || kind == "delete_statement") {
             step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
-                                 referenced, item, ops, target, at);
+                                 referenced, mutated, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
@@ -2001,7 +2068,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             }
                             element := produced;
                             produced = NoValue();
-                            if (element.storage == StructStorage) {
+                            if (element.storage == StructStorage &&
+                                Unchanging(forest, text, callables, names, callable.package, mutated,
+                                           Field(forest, item.node, "value"))) {
+                                // The array cannot change, so the element is read in place.
+                                cells = array_add(cells, MovedCell(element));
+                                slots = array_add(slots, AddressSlot(target));
+                                code = append(code, MoveCode(element, ops, target, length(slots) - 1,
+                                                             length(cells) - 1, node));
+                                produced = element;
+                                next = array_add(next, Resume(item.node, 3, 0, 0));
+                            } else if (element.storage == StructStorage) {
                                 retained = element;
                                 next = array_add(next, Resume(item.node, 3, 0, 0));
                             } else {

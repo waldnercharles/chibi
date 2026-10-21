@@ -1137,8 +1137,11 @@ them and about 3% of the bootstrap selector's CPU time. The remaining copy cost 
 emitted code: snapshots that retain locals and fields, and union constructors
 that copy every payload array (about a third of stage one's samples). Cutting
 it needs the emitter to move values at their last use rather than copy them,
-in `tools/compiler`. LLVM AOT is evaluated only if SLJIT-path fixes cannot
-bring stage one close to stage zero.
+in `tools/compiler`. Resetting each call's data values is next (about 10%):
+16 million calls reset 648 million values, of which 29% had changed, and zero
+4.7 GB of buffers. LLVM AOT would not help this workload: code SLJIT generates
+is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
+an LLVM backend would call too.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

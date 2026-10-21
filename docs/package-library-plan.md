@@ -366,3 +366,26 @@ Shared slices follow this checkpoint. Discuss retention behavior, arithmetic
 edge cases and each package's API before assigning further work. Windows,
 browser hosts, sanitizer configurations and quarantined suites remain unverified
 for this increment.
+
+### String bootstrap checkpoint, 2026-10-21
+
+Source commit `796fd5b24038d9dd0e74ecd9eb07fa0ddfb178db` is the clean descriptor
+source revision. Bootstrap version 5 records that revision and all 18 source
+hashes. Its 11,362,875-byte closure has SHA-256
+`4898f9dfa88a51a45383d0fafa67bfbd8e15b4a7ccc42e972377d173b409182e`.
+
+Self-compilation, production-target parity and sample parity passed 16,038
+assertions in 19.143 seconds under the production supervisor. The complete
+seed-to-artifact generation took 25.198 seconds under one 60-second deadline.
+Recovery from a clean export of the recorded source reproduced the closure
+under a separate 60-second deadline in 7.023 seconds. The bootstrap target
+contains production natives only; the C-string probe is explicit in its three
+boundary samples and cannot enter the production seed silently.
+
+Native and Wasm compiler sample checks pass after that target separation. The
+remaining publication checks use the exact clean source/artifact combination,
+with configuration/build time separate from each admitted test deadline. Logs
+remain in `.chibi/odin-package-foundations/string-*.log` and the group logs in
+the same directory. Generated seed closures and migration scripts are removed;
+ordinary native/Wasm build outputs remain. This branch is a review checkpoint;
+main integration and subsequent package semantics remain separate work.

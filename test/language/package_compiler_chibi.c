@@ -1447,9 +1447,12 @@ enum
     SAMPLES = sizeof samples / sizeof *samples
 };
 static compiler_fixture fixture, oracle;
-static native_capabilities *linked;
-/* Compile's native tables per compiler backend, built once from `linked`. */
-static pin_value linked_tables[2][3];
+/* The compiler host's natives, and those with the core pack a game links,
+ * which declares assert. */
+static native_capabilities *linked[2];
+/* Compile's native tables for the host and for a game, per compiler backend,
+ * built once from `linked`. */
+static pin_value linked_tables[2][2][3];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
@@ -1458,8 +1461,9 @@ static void cleanup()
 {
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
-    native_capabilities_free(linked);
-    linked = NULL;
+    native_capabilities_free(linked[0]);
+    native_capabilities_free(linked[1]);
+    linked[0] = linked[1] = NULL;
     memset(linked_tables, 0, sizeof linked_tables);
     arena_free(&input);
     arena_free(&detached);
@@ -1539,25 +1543,23 @@ static int port_storage(script_type type)
 }
 /* The data functions the compiler host links: no flow, outcomes or
  * suspension. */
-static bool natives(int b, pin_value *out)
+static bool natives(int b, bool game, pin_value *out)
 {
-    if (linked_tables[b][0].ptr) {
-        memcpy(out, linked_tables[b], sizeof linked_tables[b]);
+    if (linked_tables[game][b][0].ptr) {
+        memcpy(out, linked_tables[game][b], sizeof linked_tables[game][b]);
         return true;
     }
-    if (!linked) {
-        /* The compiler host's natives, and the core pack a game links, which
-         * declares assert. */
+    if (!linked[game]) {
         const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                                  NATIVE_ARRAY_DEFINITION_PACK,
                                                  COMPILER_JSON_DEFINITION_PACK,
                                                  COMPILER_SYNTAX_DEFINITION_PACK,
                                                  CORE_DEFINITION_PACK };
         char error[256];
-        linked = native_capabilities_from_definition_packs(NULL, 0, packs, 5, error, sizeof error);
-        REQUIRE(linked);
+        linked[game] = native_capabilities_from_definition_packs(NULL, 0, packs, game ? 5 : 4, error, sizeof error);
+        REQUIRE(linked[game]);
     }
-    const script_catalog *catalog = native_capabilities_catalog(linked);
+    const script_catalog *catalog = native_capabilities_catalog(linked[game]);
     pin_value *functions = NULL, *ports = NULL, *identities = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
@@ -1603,7 +1605,7 @@ static bool natives(int b, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    memcpy(linked_tables[b], out, sizeof linked_tables[b]);
+    memcpy(linked_tables[game][b], out, sizeof linked_tables[game][b]);
     afree(functions);
     afree(ports);
     afree(identities);
@@ -1681,8 +1683,8 @@ static pin_value files(const source_package_input *inputs, int count, bool sourc
 }
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
- * links. */
-static bool arguments(int b, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
+ * links: with `game`, also the core pack a game links. */
+static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
 {
     const char *collection_names[] = { "core" };
     const char *collection_paths[] = { "/sdk/core" };
@@ -1723,13 +1725,13 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
     args[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, &args[9]));
+    REQUIRE(natives(b, game, &args[9]));
     return true;
 }
 static bool compile(int b, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
 {
     pin_value args[ARGUMENTS];
-    REQUIRE(arguments(b, inputs, count, args));
+    REQUIRE(arguments(b, true, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
     );
@@ -2448,7 +2450,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, inputs, count, args));
+        REQUIRE(arguments(1, true, inputs, count, args));
         args[DEBUG_ARGUMENT].b = false;
         REQUIRE(
             compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
@@ -2611,7 +2613,7 @@ static bool stage_two_sample(const sample *s)
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, inputs, count, args));
+    REQUIRE(arguments(1, true, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
     );
@@ -2699,7 +2701,7 @@ TEST_CASE(package_compiler_compiles_itself)
         }
     }
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, inputs, count, args));
+    REQUIRE(arguments(1, false, inputs, count, args));
     /* The compiler is compiled without debugger points and watches, which
      * no one debugging a game steps through. */
     args[DEBUG_ARGUMENT].b = false;
@@ -3112,7 +3114,7 @@ static bool game_arguments(int b, pin_value *out)
 static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
 {
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
-    REQUIRE(arguments(b, NULL, 0, compile));
+    REQUIRE(arguments(b, true, NULL, 0, compile));
     args[0] = text(identity);
     args[1] = text(source);
     memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);

@@ -26,6 +26,10 @@ pub Profile :: struct {
     libclang_include: string;
     libclang_library: string;
     clang_resource_include: string;
+    // The unpacked third-party archive the profile builds with, as
+    // cmake/third_party.cmake picks it (ThirdParty); `third-party/` paths are
+    // below it.
+    third_party: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as
@@ -108,7 +112,7 @@ LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        libraries = array_add(libraries, Library(source_root, build_dir, linked).output);
+        libraries = array_add(libraries, Library(source_root, build_dir, profile.third_party, linked).output);
     }
     for (name in SystemLibraries(target)) {
         libraries = array_add(libraries, Join(["-l", name]));
@@ -130,11 +134,12 @@ pub HeaderRoot :: (build_dir: string, target: string, kind: string) -> string {
     return Join([build_dir, "/sdk/", kind, "/", Component(target)]);
 }
 
-pub Library :: (source_root: string, build_dir: string, target: string) -> c.Library {
+pub Library :: (source_root: string, build_dir: string, third_party: string, target: string) -> c.Library {
     return {
         name: target,
         root: source_root,
         generated: Generated(build_dir),
+        third_party: third_party,
         objects: Join([build_dir, "/objects/", target]),
         output: Join([build_dir, "/lib/lib", target, ".a"])
     };
@@ -145,15 +150,24 @@ pub Generated :: (build_dir: string) -> string {
     return Join([build_dir, "/sdk/generated"]);
 }
 
-// A target's sources: below the source root, or for a `generated/` entry,
-// below the build's generated directory.
-pub Sources :: (source_root: string, build_dir: string, target: string) -> string[] {
+// A path the tables name: below the third-party archive for a `third-party/`
+// path, otherwise below the source root.
+Resolve :: (source_root: string, third_party: string, path: string) -> string {
+    if (strings.HasPrefix(path, "third-party/")) {
+        return Join([third_party, "/", build.after(path, "/")]);
+    }
+    return Join([source_root, "/", path]);
+}
+
+// A target's sources: below the build's generated directory for a
+// `generated/` entry, otherwise where Resolve finds them.
+pub Sources :: (source_root: string, build_dir: string, third_party: string, target: string) -> string[] {
     sources: string[] = [];
     for (file in Files(target)) {
         if (strings.HasPrefix(file, "generated/")) {
             sources = array_add(sources, Join([build_dir, "/sdk/", file]));
         } else {
-            sources = array_add(sources, Join([source_root, "/", file]));
+            sources = array_add(sources, Resolve(source_root, third_party, file));
         }
     }
     return sources;
@@ -170,8 +184,17 @@ Embed :: (source_root: string, build_dir: string, target: string) {
     }
 }
 
-// Its defines, its include directories, the profile's flags, then its own
-// options: the order CMake writes them.
+// Where an include directory the tables name is: staged headers below the
+// build's sdk directory, otherwise where Resolve finds it.
+IncludeDirectory :: (source_root: string, build_dir: string, third_party: string, include: string) -> string {
+    if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
+        return Join([build_dir, "/sdk/", include]);
+    }
+    return Resolve(source_root, third_party, include);
+}
+
+// Its defines, its include directories, then its system ones, the profile's
+// flags, then its own options: the order CMake writes them.
 pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
@@ -179,11 +202,10 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
     }
     flags = append(flags, ProfileFlags(target, profile));
     for (include in Includes(target)) {
-        root := source_root;
-        if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
-            root = Join([build_dir, "/sdk"]);
-        }
-        flags = array_add(flags, Join(["-I", root, "/", include]));
+        flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+    }
+    for (include in SystemIncludes(target)) {
+        flags = append(flags, ["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
     return append(append(flags, Flags(profile, build_dir)), Options(target));
 }
@@ -251,13 +273,31 @@ Staged :: (targets: string[]) -> string[] {
     staged: string[] = [];
     for (target in targets) {
         staged = Add(staged, target);
-        for (include in Includes(target)) {
+        for (include in append(Includes(target), SystemIncludes(target))) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
                 staged = Add(staged, Join(["chibi_", build.after(include, "/")]));
             }
         }
     }
     return staged;
+}
+// Whether building the targets reads the third-party archive: their sources
+// or include directories are in it, or a library whose headers they stage
+// publishes them from it.
+pub NeedsThirdParty :: (targets: string[]) -> bool {
+    paths: string[] = [];
+    for (target in targets) {
+        paths = append(append(append(paths, Files(target)), Includes(target)), SystemIncludes(target));
+    }
+    for (target in Staged(targets)) {
+        paths = array_add(paths, HeaderSource(target));
+    }
+    for (path in paths) {
+        if (strings.HasPrefix(path, "third-party/")) {
+            return true;
+        }
+    }
+    return false;
 }
 Add :: (names: string[], name: string) -> string[] {
     for (present in names) {
@@ -278,7 +318,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         Embed(source_root, build_dir, target);
     }
     for (target in Staged(targets)) {
-        published := Join([source_root, "/", HeaderSource(target)]);
+        published := Resolve(source_root, profile.third_party, HeaderSource(target));
         if (!c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"))) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
@@ -289,9 +329,9 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     waited := 0;
     failed := false;
     for (target in targets) {
-        built := Library(source_root, build_dir, target);
+        built := Library(source_root, build_dir, profile.third_party, target);
         flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, build_dir, target)) {
+        for (source in Sources(source_root, build_dir, profile.third_party, target)) {
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
@@ -317,7 +357,8 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         for (compile in running) {
             compiled = compiled || compile.owner == target;
         }
-        if (!c.Archive(tools, Library(source_root, build_dir, target), Sources(source_root, build_dir, target), compiled)) {
+        built := Library(source_root, build_dir, profile.third_party, target);
+        if (!c.Archive(tools, built, Sources(source_root, build_dir, profile.third_party, target), compiled)) {
             build.report(Join(["graph: archiving ", target, " failed"]));
             return -1;
         }
@@ -326,9 +367,9 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         if (!Program(target)) {
             continue;
         }
-        built := Library(source_root, build_dir, target);
+        built := Library(source_root, build_dir, profile.third_party, target);
         objects: string[] = [];
-        for (source in Sources(source_root, build_dir, target)) {
+        for (source in Sources(source_root, build_dir, profile.third_party, target)) {
             objects = array_add(objects, c.Object(built, source));
         }
         if (c.Link(tools, Executable(build_dir, target), objects, LinkFlags(profile, build_dir),
@@ -345,9 +386,9 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
 pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> string {
     entries: string[] = [];
     for (target in targets) {
-        built := Library(source_root, build_dir, target);
+        built := Library(source_root, build_dir, profile.third_party, target);
         flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, build_dir, target)) {
+        for (source in Sources(source_root, build_dir, profile.third_party, target)) {
             entries = array_add(entries, c.CompileEntry(tools, built, flags, source));
         }
     }

@@ -639,12 +639,21 @@ Slice 9, 2026-10-21: profiles. The graph finds the Makefile's sanitizer,
 debug or release profile on the machine: compiler, its kind, architecture,
 SDK, ccache, libclang, `ar` and `ranlib`. From only the profile's name and
 CMake's compiler as `CC`, its 129 commands equal CMake's.
-Next: run `reflect` from the graph to generate `chibi_native_types`, once Cute
-math's headers come from the repository; the fetched
-dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
-which wait for vendoring (#569) so the graph builds them from the repository;
-then moving profile selection from `Build.chibi`'s CMake arguments into the
-graph.
+Slice 10, 2026-10-21: the third-party archive (#569). The graph finds the
+unpacked archive `cmake/third_party.cmake` loads for its profile and builds
+`third-party/` sources and include directories from it: SLJIT,
+`chibi_execution`, the header-only `chibi_math` (Cute's math headers, staged
+and included as system headers), and the fourteen libraries that need only
+those: 60 libraries and 218 compile commands, all of which compiled and
+archived (or, for `reflect`, linked) from the graph.
+`build-graph-archive` builds SLJIT and a math-header library, and
+`build-graph-reflect` now reads the math headers the graph staged. Writing the
+commands quotes arguments through the host's split, 7 s down to 2.4 s.
+Next: run `reflect` from the graph to generate `chibi_native_types` (43
+libraries wait on it); Box2D/Box3D, which compile as C17; tree-sitter's
+runtime and grammars; per-source options (the project, UI and language
+syntax documents); then moving profile selection from `Build.chibi`'s CMake
+arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

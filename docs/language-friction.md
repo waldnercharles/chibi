@@ -567,6 +567,10 @@ Splitting the 25 KB `build/CMakeCache.txt` into lines and testing each takes
 0.9 s with `strings.SplitLines` in a Debug host with sanitizers, against 0.2 s
 with `build.lines`. A 50 KB cache ran out of the host's then 100,000-step budget,
 because each split copies the rest of the text.
+The M6 graph's `compile_commands.json` writer escaped every argument with two
+`strings.ReplaceAll` calls: with 218 commands of about forty arguments the run
+took 7 s, and 2.4 s once it asks `build.before` whether the text holds a quote
+or backslash first and escapes only the rare argument that does.
 
 ## A host's natives can't form a package
 

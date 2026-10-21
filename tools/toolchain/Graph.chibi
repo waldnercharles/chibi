@@ -13,7 +13,7 @@ import strings "core:strings"
 //   --compiler PATH --compiler-id ID --build-type TYPE --architecture ARCH
 //   --sysroot DIR --warnings on|off --sanitizers LIST --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
-//   --libclang-library PATH
+//   --libclang-library PATH --third-party DIR
 // Every path is absolute. Writes BUILD/compile_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
@@ -73,18 +73,22 @@ Libraries :: () -> int {
         warnings = "on";
     }
     libclang_library := Option(arguments, "--libclang-library", found.libclang_library);
+    compiler_id := Option(arguments, "--compiler-id", engine.CompilerId(compiler));
+    sanitizers := Option(arguments, "--sanitizers", found.sanitizers);
     profile: engine.Profile = {
         compiler: compiler,
-        compiler_id: Option(arguments, "--compiler-id", engine.CompilerId(compiler)),
+        compiler_id: compiler_id,
         build_type: Option(arguments, "--build-type", found.build_type),
         architecture: Option(arguments, "--architecture", found.architecture),
         sysroot: Option(arguments, "--sysroot", found.sysroot),
         warnings: Option(arguments, "--warnings", warnings) == "on",
-        sanitizers: Option(arguments, "--sanitizers", found.sanitizers),
+        sanitizers: sanitizers,
         debug_compilation_dir: Option(arguments, "--debug-compilation-dir", found.debug_compilation_dir),
         libclang_include: Option(arguments, "--libclang-include", found.libclang_include),
         libclang_library: libclang_library,
-        clang_resource_include: engine.ClangResourceInclude(libclang_library)
+        clang_resource_include: engine.ClangResourceInclude(libclang_library),
+        // The archive for the profile as overridden.
+        third_party: Option(arguments, "--third-party", engine.ThirdParty(build.root(), compiler_id, sanitizers))
     };
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", build.find_executable("ccache")),
@@ -103,6 +107,15 @@ Libraries :: () -> int {
         if (Selected(arguments, target)) {
             selected = array_add(selected, target);
         }
+    }
+    if (engine.NeedsThirdParty(selected) && profile.third_party == "") {
+        build.report("graph: third_party/archives.tsv pins no archive for this host and profile");
+        return 2;
+    }
+    if (engine.NeedsThirdParty(selected) &&
+        !build.file_exists(strings.Join([profile.third_party, "/third-party.cmake"], ""))) {
+        build.report("graph: the third-party archive is not unpacked; configure with make build first, or name it with --third-party");
+        return 2;
     }
     build.make_directory(build_dir);
     commands := strings.Join([build_dir, "/compile_commands.json"], "");

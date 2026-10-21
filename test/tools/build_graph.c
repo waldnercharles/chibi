@@ -24,8 +24,8 @@ static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
     clone[GRAPH_PATH], log_path[GRAPH_PATH];
 /* The profile root CMakeLists.txt read from its cache, as graph options. */
 static char compiler[GRAPH_PATH], compiler_id[64], build_type[64],
-    architecture[64], sysroot[GRAPH_PATH], sanitizers[128],
-    debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH];
+    architecture[64], sysroot[GRAPH_PATH], sanitizers[128], debug_dir[GRAPH_PATH],
+    archiver[GRAPH_PATH], ranlib[GRAPH_PATH], third_party[GRAPH_PATH];
 static bool warnings;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
@@ -139,6 +139,7 @@ static void read_profile()
     }
     cache_value(cache, "CMAKE_AR", archiver, sizeof archiver);
     cache_value(cache, "CMAKE_RANLIB", ranlib, sizeof ranlib);
+    cache_value(cache, "CHIBI_THIRD_PARTY_DIR", third_party, sizeof third_party);
     ccache_debug_dir(cache);
     free(file);
     free(cache);
@@ -235,6 +236,8 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
         debug_dir,
         "--launcher",
         "",
+        "--third-party",
+        third_party,
         NULL,
     };
     return run_graph(root, build_dir, options, extra);
@@ -312,7 +315,7 @@ TEST_CASE(commands_match_cmake)
     REQUIRE(graph_doc && cmake_doc);
     yyjson_val *ours = yyjson_doc_get_root(graph_doc);
     /* The libraries the graph owns are those its objects belong to. */
-    char owners[64][128];
+    char owners[128][128];
     int owner_count = 0;
     yyjson_val *entry;
     yyjson_arr_iter mine_iter = yyjson_arr_iter_with(ours);
@@ -327,7 +330,7 @@ TEST_CASE(commands_match_cmake)
             seen |= !strcmp(owners[i], owner);
         }
         if (!seen) {
-            assert(owner_count < 64);
+            assert(owner_count < 128);
             strcpy(owners[owner_count++], owner);
         }
     }
@@ -522,6 +525,8 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
     join(build_dir, suite, "reflect");
     const char *const reflect_only[] = { "--target",
                                          "reflect",
+                                         "--target",
+                                         "chibi_math",
                                          "--libclang-include",
                                          include,
                                          "--libclang-library",
@@ -580,7 +585,8 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
     free(libraries);
     free(ninja);
     REQUIRE(same);
-    /* Run as CMake runs it, with CMake's staged math headers. */
+    /* Run as CMake runs it, with the math headers the graph staged from the
+     * third-party archive. */
     char program[GRAPH_PATH], types[GRAPH_PATH], runtime[GRAPH_PATH],
         nodes[GRAPH_PATH], source[GRAPH_PATH], math[GRAPH_PATH],
         manifest[GRAPH_PATH];
@@ -589,7 +595,7 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
     join(runtime, build_dir, "native_capabilities.c");
     join(nodes, CHIBI_SOURCE_ROOT, "src/runtime/native_nodes.c");
     join(source, CHIBI_SOURCE_ROOT, "src");
-    join(math, reference, "sdk/public/math");
+    join(math, build_dir, "sdk/public/math");
     join(manifest, CHIBI_SOURCE_ROOT, "src/runtime/component_ids.tsv");
     const char *argv[24] = {
         program,          nodes,   "--prefix",         "",
@@ -617,6 +623,43 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
         free(mine);
         free(cmake);
     }
+    return true;
+}
+
+/* The graph compiles a third-party archive's sources and stages its headers:
+ * SLJIT and the Cute math headers that chibi_vector_capabilities includes as
+ * system headers. A second run compiles nothing, and a run whose archive is
+ * not unpacked says so before it compiles. */
+TEST_CASE(archive_sources_compile_and_stage)
+{
+    char build_dir[GRAPH_PATH], path[GRAPH_PATH], theirs[GRAPH_PATH];
+    join(build_dir, suite, "archive");
+    const char *const archive_targets[] = { "--target",
+                                            "chibi_execution_sljit",
+                                            "--target",
+                                            "chibi_vector_capabilities",
+                                            NULL };
+    char missing[GRAPH_PATH];
+    join(missing, suite, "no archive");
+    const char *const unpacked[] = { "--third-party", missing, NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, unpacked, archive_targets) == -1);
+    char *log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "the third-party archive is not unpacked"));
+    free(log);
+    join(path, build_dir, "objects");
+    REQUIRE(access(path, F_OK));
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 3);
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 0);
+    join(path, build_dir, "objects/chibi_execution_sljit/third-party/source/sljit/sljit_src/sljitLir.c.o");
+    REQUIRE(!access(path, R_OK));
+    join(path, build_dir, "lib/libchibi_execution_sljit.a");
+    REQUIRE(!access(path, R_OK));
+    join(path, build_dir, "sdk/public/math/cute_math.h");
+    join(theirs, reference, "sdk/public/math/cute_math.h");
+    char *mine = tool_read(path), *cmake = tool_read(theirs);
+    REQUIRE(mine && cmake && !strcmp(mine, cmake));
+    free(mine);
+    free(cmake);
     return true;
 }
 
@@ -676,5 +719,13 @@ void test_build_graph_reflect(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: SLJIT's compile with sanitizers takes seconds. */
+void test_build_graph_archive(const char *host)
+{
+    set_up(host);
+    RUN_TEST_CASE(archive_sources_compile_and_stage);
     tool_remove_tree(suite);
 }

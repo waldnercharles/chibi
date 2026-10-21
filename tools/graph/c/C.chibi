@@ -18,14 +18,15 @@ pub Tools :: struct {
     jobs: int;
 }
 
-// A static library: the root its sources are below, the directory generated
-// sources are below, the directory its objects go to and the archive it
-// becomes. Its sources and the flags each compile takes, in order, are arrays
-// beside it, since records hold only scalars.
+// A static library: the root its sources are below, the directories generated
+// and third-party sources are below, the directory its objects go to and the
+// archive it becomes. Its sources and the flags each compile takes, in order,
+// are arrays beside it, since records hold only scalars.
 pub Library :: struct {
     name: string;
     root: string;
     generated: string;
+    third_party: string;
     objects: string;
     output: string;
 }
@@ -35,13 +36,17 @@ Join :: (parts: string[]) -> string {
 }
 
 // The object a source compiles to: its path below the root, or below
-// `generated/` for a generated source, below the library's object directory.
+// `generated/` or `third-party/` for a generated or third-party source, below
+// the library's object directory.
 pub Object :: (target: Library, source: string) -> string {
     base := target.root;
     prefix := "";
     if (strings.HasPrefix(source, Join([target.generated, "/"]))) {
         base = target.generated;
         prefix = "generated/";
+    } else if (target.third_party != "" && strings.HasPrefix(source, Join([target.third_party, "/"]))) {
+        base = target.third_party;
+        prefix = "third-party/";
     }
     relative := strings.Slice(source, strings.ByteLength(base) + 1, strings.ByteLength(source));
     return Join([target.objects, "/", prefix, relative, ".o"]);
@@ -235,6 +240,11 @@ RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool
 
 // A JSON string holding text; build arguments hold no control characters.
 Quote :: (text: string) -> string {
+    // core:strings replaces byte by byte in the interpreter, and few arguments
+    // hold a backslash or quote; the host's split finds one natively.
+    if (build.before(text, "\\") == text && build.before(text, "\"") == text) {
+        return Join(["\"", text, "\""]);
+    }
     return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
 }
 

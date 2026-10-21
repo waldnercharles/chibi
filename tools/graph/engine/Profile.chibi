@@ -7,7 +7,9 @@ import strings "core:strings"
 // SANITIZER_, DEBUG_ and RELEASE_CMAKE_FLAGS, its default the first.
 
 // The profile `name` names on this machine, or a profile whose compiler is
-// empty when the name is unknown or no compiler is found.
+// empty when the name is unknown or no compiler is found. Its archive depends
+// on the compiler and sanitizers a caller may override, so ThirdParty finds
+// it once they are final.
 pub Discover :: (name: string, source_root: string, build_dir: string) -> Profile {
     compiler := DiscoverCompiler();
     profile: Profile = {
@@ -21,7 +23,8 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         debug_compilation_dir: "",
         libclang_include: "",
         libclang_library: "",
-        clang_resource_include: ""
+        clang_resource_include: "",
+        third_party: ""
     };
     if (name == "sanitizer") {
         profile.sanitizers = "address,undefined";
@@ -41,6 +44,48 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
     profile.libclang_library = DiscoverLibclang("library");
     profile.clang_resource_include = ClangResourceInclude(profile.libclang_library);
     return profile;
+}
+
+// The unpacked third-party archive cmake/third_party.cmake loads for a
+// profile: third_party/archives.tsv's pin for this host's target and the
+// profile's variant, below .git/chibi/third_party in the clone's Git
+// directory, where tools/toolchain/Build.chibi unpacks it. Sanitized builds
+// use the archive instrumented the same way, except with Apple clang, whose
+// sanitizer runtime the instrumented archives do not link with. Empty when
+// nothing is pinned for this host; the directory is missing until something
+// unpacks it. Build.chibi's ThirdPartyTarget and ThirdPartyCache name the
+// target and cache the same way; that program parses with older hosts, so it
+// keeps its own copy.
+pub ThirdParty :: (source_root: string, compiler_id: string, sanitizers: string) -> string {
+    if (build.probe(["uname", "-m"]) != 0) {
+        return "";
+    }
+    machine := strings.TrimSpace(build.last_stdout());
+    os := "linux";
+    if (build.platform() == "Darwin") {
+        os = "macos";
+    }
+    architecture := "x64";
+    if (machine == "arm64" || machine == "aarch64") {
+        architecture = "arm64";
+    }
+    variant := "release";
+    if (compiler_id != "AppleClang" && sanitizers == "address,undefined") {
+        variant = "address-undefined";
+    } else if (compiler_id != "AppleClang" && sanitizers == "thread") {
+        variant = "thread";
+    }
+    cache := Join([source_root, "/.chibi/third_party"]);
+    if (build.probe(["git", "-C", source_root, "rev-parse", "--path-format=absolute", "--git-common-dir"]) == 0) {
+        cache = Join([strings.TrimSpace(build.last_stdout()), "/chibi/third_party"]);
+    }
+    pin := Join([os, "-", architecture, "\t", variant, "\t"]);
+    for (line in build.lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
+        if (strings.HasPrefix(line, pin)) {
+            return Join([cache, "/", build.after(build.after(build.after(line, "\t"), "\t"), "\t")]);
+        }
+    }
+    return "";
 }
 
 // CC, or Homebrew LLVM's clang as the Makefile prefers it, or cc.

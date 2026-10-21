@@ -246,6 +246,8 @@ SelfPlace: int : 6;
 // A name the game binds; its index is the global's.
 GlobalPlace: int : 7;
 ArrayContainer: int : 1;
+// A map, as PIN_CONTAINER_MAP; its record is its MapDecl.
+MapContainer: int : 3;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
 SnapshotIntrinsic: int : 1;
@@ -431,8 +433,8 @@ TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], o
 Expression :: (kind: string) -> bool {
     return kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
-           kind == "array_expression" || kind == "call_expression" || kind == "unary_expression" ||
-           kind == "binary_expression" || kind == "is_expression";
+           kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
+           kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression";
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -549,7 +551,7 @@ Statement :: (kind: string) -> bool {
     return kind == "callable_body" || kind == "block" || kind == "if_statement" || kind == "while_statement" ||
            kind == "for_statement" || kind == "switch_statement" || kind == "break_statement" ||
            kind == "continue_statement" || kind == "local_declaration" || kind == "assignment" ||
-           kind == "expression_statement" || kind == "return_statement";
+           kind == "expression_statement" || kind == "return_statement" || kind == "delete_statement";
 }
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
@@ -1527,7 +1529,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 stepped = false;
                 value_top -= 1;
                 array := values[value_top];
-                if (array.container != ArrayContainer) {
+                if (array.container != ArrayContainer && !IsMap(array)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
                 }
                 retained = array;
@@ -1540,8 +1542,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                                 "Invalid string or embedded NUL"));
                 }
                 array := values[value_top];
-                step = ForStep(array, Packable(array.storage, array.record, types, members),
-                               Field(forest, item.node, "reverse") >= 0, ops, target, at, node);
+                if (IsMap(array)) {
+                    step = MapForStep(forest, text, document, types, array, item, ops, target, at);
+                } else {
+                    step = ForStep(array, Packable(array.storage, array.record, types, members),
+                                   Field(forest, item.node, "reverse") >= 0, ops, target, at, node);
+                }
             } else if (item.phase == 3) {
                 // A record element was copied into the last cell.
                 stepped = false;
@@ -1840,7 +1846,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
                                  target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
-                   kind == "return_statement") {
+                   kind == "return_statement" || kind == "delete_statement") {
             step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named, item,
                                  ops, target, at);
@@ -1850,6 +1856,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                              names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
+        } else if (kind == "map_expression") {
+            step = MapLiteralStep(forest, document, types, values, value_top, item, ops, target, at);
+        } else if ((kind == "binary_expression" && (operator == "in" || NotIn(forest, item.node, operator))) ||
+                   (kind == "call_expression" &&
+                    (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
+            step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
             step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, item, ops, target, at);
@@ -1905,6 +1917,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             current := switches[length(switches) - 1];
                             current.skip = marks[0];
                             switches[length(switches) - 1] = current;
+                        }
+                        if (length(marks) == 2) {
+                            // A map loop's head, whose step binds its names.
+                            loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
+                                          each: true, index: at.local, mark: length(names), leave: marks[1],
+                                          reverse: false, counted: false, bound: -1, empty: -1};
+                            loops = array_add(loops, loop);
                         }
                         if (length(marks) == 3) {
                             // A for head: its loop, then its element's binding.

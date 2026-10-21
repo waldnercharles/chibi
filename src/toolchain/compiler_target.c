@@ -4,6 +4,7 @@
 #include "execution/instruction.h"
 #include "execution/prepared.h"
 #include "types/array.h"
+#include "types/map.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -102,6 +103,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
         { "items_offset", (int)offsetof(pin_array, items) },
         { "data_offset", (int)offsetof(pin_array, data) },
         { "stride_offset", (int)offsetof(pin_array, stride) },
+        { "map_count_offset", (int)offsetof(pin_map, count) },
         { "data_failure", BEHAVIOR_FUNCTION_HOST_DATA },
         { "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT },
     };

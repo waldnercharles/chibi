@@ -2,30 +2,35 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "c3889b8b5ed02a3254ff4c092e864a8dda506694",
+  "revision": "ae629d4d9d3c388f4d59d440bae7082d92605b35",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 9667653,
-    "sha256": "feeb15fcc6587e7de127c6e899d244d989f8ebc20f7bdf02efdbf412bef0d058"
+    "bytes": 10513137,
+    "sha256": "76c12f3e02e3f77b3004b7a9fbf3073a7a96d40c6d0a991ca98141a8417dbfa0"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 83234,
-      "sha256": "ff17bb270d90c8f54954bb9b47d9530cd324a590a3469b3999efa9c46cf5ae68"
+      "bytes": 88199,
+      "sha256": "89d32715935fff20a383e78af9ba61d31205632312e438f1c23135969fc72fab"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 98937,
-      "sha256": "a5e294708938135fddd9764f1a63eb6e4fd84bac95aaae4ba974122bf96437f8"
+      "bytes": 100387,
+      "sha256": "21cb65c646cdf16af2b21369b3e5a31d49a5afaf6c73c973f26626c3d0efc6fb"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 171705,
-      "sha256": "6f56d5c0670c23fb3e13da32a33f73bd64bc76964a349f0ae79544562a881e21"
+      "bytes": 173009,
+      "sha256": "1cc2ced432327cb6e8c9e1873e57fc7e1a67541148feb27ea5345417b72161ee"
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "bytes": 27111,
+      "sha256": "1eb10564ee07aaf2733efca26f2266572491ede95a99a34ee599669e4feac1d7"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -39,8 +44,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 21915,
-      "sha256": "179872c8d72eebfcf4b8e1aa5587430d9c4ce63d3a92060403c0c53032dcd362"
+      "bytes": 22004,
+      "sha256": "f6428f32cf21a24cd6c1b5aafd82338a7d2c30703d6bbe27b3800923dcbb2978"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -108,6 +113,7 @@
       "items_offset": 32,
       "data_offset": 40,
       "stride_offset": 48,
+      "map_count_offset": 80,
       "data_failure": 4,
       "argument_failure": 7
     },

@@ -11,12 +11,15 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/component_catalog.h"
+#include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -1217,8 +1220,21 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
     native_capabilities *native = valid
                                     ? host_native_standalone_catalog_new(error, sizeof error)
                                     : NULL;
+    /* The private parser belongs to the generator, never to validated examples. */
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    native_capabilities *render_native = native ? native_capabilities_from_definition_packs(
+                                                      NULL,
+                                                      0,
+                                                      packs,
+                                                      3,
+                                                      error,
+                                                      sizeof error
+                                                  )
+                                                : NULL;
     authoring_packages *packages = NULL;
-    if (native) {
+    if (render_native) {
         source_package_collection collections[] = { { "core", core } };
         source_package_disk_options options = { generator_root, collections, 1 };
         source_package_load_error load = { 0 };
@@ -1226,10 +1242,10 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         if (!snapshot) {
             fprintf(stderr, "%s: %s\n", load.path, load.message);
         }
-        script_lower_bindings bindings = authoring_native_bindings(native);
+        script_lower_bindings bindings = authoring_native_bindings(render_native);
         packages = snapshot ? authoring_packages_prepare(
                                   snapshot,
-                                  native_capabilities_catalog(native),
+                                  native_capabilities_catalog(render_native),
                                   &bindings,
                                   behavior_default_backend(),
                                   NULL
@@ -1282,6 +1298,7 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         }
     }
     authoring_packages_free(packages);
+    native_capabilities_free(render_native);
     native_capabilities_free(native);
     afree(pages);
     av_doc_free(doc);

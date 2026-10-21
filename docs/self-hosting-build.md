@@ -210,6 +210,7 @@ interprocess lock they needed, go away rather than move.
 | `build.rename(source, destination) -> bool` | `rename(2)`. |
 | `build.remove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
 | `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -280,15 +281,20 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
   target's own options, such as `-w` for vendored C.
 
-`graph:engine`'s `Targets.chibi` lists the 40 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 41 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
 over ckdl) and the libraries over them, and three header-only libraries
-(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`): 100 sources
-in 37 archives. For each it gives sources, the directory its public headers
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`), and
+`chibi_builtin_fonts`, whose sixteen fonts are generated sources: 117 sources
+in 38 archives. For each it gives sources, the directory its public headers
 come from (`src`, or `third_party/yyjson` for `chibi_json`), public and private
-headers, include directories, defines and options. CMake still builds them and
+headers, include directories, defines, options and embedded files. A
+`generated/NAME.c` source is written below `BUILD/sdk/generated` by
+`build.embed_file` from the file `Embeds` names, before any compile. Building
+a subset with `--target` also stages the headers of every library its
+includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
 owns is a manual check, about 130 s with sanitizers, and an unchanged build

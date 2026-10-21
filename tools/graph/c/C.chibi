@@ -18,12 +18,14 @@ pub Tools :: struct {
     jobs: int;
 }
 
-// A static library: the root its sources are below, the directory its objects
-// go to and the archive it becomes. Its sources and the flags each compile
-// takes, in order, are arrays beside it, since records hold only scalars.
+// A static library: the root its sources are below, the directory generated
+// sources are below, the directory its objects go to and the archive it
+// becomes. Its sources and the flags each compile takes, in order, are arrays
+// beside it, since records hold only scalars.
 pub Library :: struct {
     name: string;
     root: string;
+    generated: string;
     objects: string;
     output: string;
 }
@@ -32,11 +34,17 @@ Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
-// The object a source compiles to: its path below the root, below the
-// library's object directory.
+// The object a source compiles to: its path below the root, or below
+// `generated/` for a generated source, below the library's object directory.
 pub Object :: (target: Library, source: string) -> string {
-    relative := strings.Slice(source, strings.ByteLength(target.root) + 1, strings.ByteLength(source));
-    return Join([target.objects, "/", relative, ".o"]);
+    base := target.root;
+    prefix := "";
+    if (strings.HasPrefix(source, Join([target.generated, "/"]))) {
+        base = target.generated;
+        prefix = "generated/";
+    }
+    relative := strings.Slice(source, strings.ByteLength(base) + 1, strings.ByteLength(source));
+    return Join([target.objects, "/", prefix, relative, ".o"]);
 }
 
 // The compile command of a source, as CMake writes it, without its launcher.

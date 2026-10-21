@@ -405,6 +405,7 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
         "build.hash_text",
         "build.start",
         "build.wait",
+        "build.embed_file",
     };
     bool absent = true;
     for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
@@ -709,6 +710,83 @@ TEST_CASE(private_programs_import_named_collections)
     bool usage = text && strstr(text, "usage:");
     free(text);
     REQUIRE(usage);
+    return true;
+}
+
+/* build.embed_file writes the C that cmake/embed_binary.cmake writes, and
+ * leaves an unchanged output alone. */
+TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
+{
+    char input[256], empty[256];
+    snprintf(input, sizeof input, "%s/bytes.bin", root);
+    snprintf(empty, sizeof empty, "%s/empty.bin", root);
+    unsigned char bytes[18];
+    for (int i = 0; i < 18; i++) {
+        bytes[i] = (unsigned char)(i * 15);
+    }
+    FILE *file = fopen(input, "wb");
+    REQUIRE(file && fwrite(bytes, 1, sizeof bytes, file) == sizeof bytes && !fclose(file));
+    tool_write(empty, "");
+    static const char
+        *source = "package embed\nBuild :: () -> int { "
+                  "if (!build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 1; } "
+                  "stamp := build.file_stamp(\"out/bytes.c\"); "
+                  "if (build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 2; } "
+                  "if (build.file_stamp(\"out/bytes.c\") != stamp) { return 3; "
+                  "} "
+                  "if (!build.embed_file(\"empty.bin\", \"out/empty.c\", "
+                  "\"_empty\")) { return 4; } "
+                  "return 0; }";
+    char directory[256];
+    snprintf(directory, sizeof directory, "%s/out", root);
+    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0);
+    char path[320];
+    snprintf(path, sizeof path, "%s/out/bytes.c", root);
+    char *text = tool_read(path);
+    REQUIRE(
+        text &&
+        !strcmp(
+            text,
+            "#include <stddef.h>\n\nconst unsigned char bytes_blob[] = {\n"
+            "    0x00, 0x0f, 0x1e, 0x2d, 0x3c, 0x4b, 0x5a, 0x69, 0x78, 0x87, "
+            "0x96, 0xa5, "
+            "0xb4, 0xc3, 0xd2, 0xe1,\n    0xf0, 0xff,\n};\n"
+            "const size_t bytes_blob_size = sizeof bytes_blob;\n"
+        )
+    );
+    free(text);
+    snprintf(path, sizeof path, "%s/out/empty.c", root);
+    text = tool_read(path);
+    REQUIRE(
+        text && !strcmp(
+                    text,
+                    "#include <stddef.h>\n\nconst unsigned char _empty[] = {\n "
+                    "   \n};\n"
+                    "const size_t _empty_size = sizeof _empty;\n"
+                )
+    );
+    free(text);
+    static const char *refused[] = {
+        "package embed\nBuild :: () -> int { build.embed_file(\"bytes.bin\", "
+        "\"out/x.c\", \"1st\"); return 0; }",
+        "package embed\nBuild :: () -> int { build.embed_file(\"out\", "
+        "\"out/x.c\", \"x\"); return 0; }",
+    };
+    static const char *diagnostics[] = {
+        "build embed symbol must be a C identifier",
+        "build embed input must be a regular file of at most 64 MiB",
+    };
+    for (int i = 0; i < 2; i++) {
+        options = primitive_options(refused[i], BEHAVIOR_BYTECODE);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+    }
     return true;
 }
 
@@ -1432,6 +1510,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
     RUN_TEST_CASE(private_programs_import_named_collections);
+    RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
     RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);

@@ -41,17 +41,42 @@ pub Library :: (source_root: string, build_dir: string, target: string) -> c.Lib
     return {
         name: target,
         root: source_root,
+        generated: Generated(build_dir),
         objects: Join([build_dir, "/objects/", target]),
         output: Join([build_dir, "/lib/lib", target, ".a"])
     };
 }
 
-pub Sources :: (source_root: string, target: string) -> string[] {
+// Where generated sources are written, as CMake writes them below sdk/.
+pub Generated :: (build_dir: string) -> string {
+    return Join([build_dir, "/sdk/generated"]);
+}
+
+// A target's sources: below the source root, or for a `generated/` entry,
+// below the build's generated directory.
+pub Sources :: (source_root: string, build_dir: string, target: string) -> string[] {
     sources: string[] = [];
     for (file in Files(target)) {
-        sources = array_add(sources, Join([source_root, "/", file]));
+        if (strings.HasPrefix(file, "generated/")) {
+            sources = array_add(sources, Join([build_dir, "/sdk/", file]));
+        } else {
+            sources = array_add(sources, Join([source_root, "/", file]));
+        }
     }
     return sources;
+}
+
+// Writes each file a target embeds, as `generated/NAME.c` defining the symbol
+// NAME's last part names, with the bytes of a file below the source root. An
+// unchanged output keeps its stamp; a failure fails the program.
+Embed :: (source_root: string, build_dir: string, target: string) {
+    for (embed in Embeds(target)) {
+        name := build.before(embed, "=");
+        output := Join([Generated(build_dir), "/", name, ".c"]);
+        symbol := strings.Slice(name, strings.LastIndex(name, "/") + 1, strings.ByteLength(name));
+        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+        build.embed_file(Join([source_root, "/", build.after(embed, "=")]), output, symbol);
+    }
 }
 
 // Its defines, its include directories, the profile's flags, then its own
@@ -128,6 +153,29 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
     return flags;
 }
 
+// The libraries whose headers the targets' compiles include: the targets, and
+// each library a `public/NAME` or `private/NAME` include names.
+Staged :: (targets: string[]) -> string[] {
+    staged: string[] = [];
+    for (target in targets) {
+        staged = Add(staged, target);
+        for (include in Includes(target)) {
+            if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
+                staged = Add(staged, Join(["chibi_", build.after(include, "/")]));
+            }
+        }
+    }
+    return staged;
+}
+Add :: (names: string[], name: string) -> string[] {
+    for (present in names) {
+        if (present == name) {
+            return names;
+        }
+    }
+    return array_add(names, name);
+}
+
 // Builds the selected targets: stages every one's headers, compiles what
 // changed across all of them, at most `jobs` at once, then archives each in
 // order. Compiles need only staged headers, so one target's compiles do not
@@ -135,6 +183,9 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
 pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> int {
     source_dir := Join([source_root, "/src"]);
     for (target in targets) {
+        Embed(source_root, build_dir, target);
+    }
+    for (target in Staged(targets)) {
         published := Join([source_root, "/", HeaderSource(target)]);
         if (!c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"))) {
@@ -148,7 +199,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     for (target in targets) {
         built := Library(source_root, build_dir, target);
         flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, target)) {
+        for (source in Sources(source_root, build_dir, target)) {
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
@@ -174,7 +225,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         for (compile in running) {
             compiled = compiled || compile.owner == target;
         }
-        if (!c.Archive(tools, Library(source_root, build_dir, target), Sources(source_root, target), compiled)) {
+        if (!c.Archive(tools, Library(source_root, build_dir, target), Sources(source_root, build_dir, target), compiled)) {
             build.report(Join(["graph: archiving ", target, " failed"]));
             return -1;
         }
@@ -189,7 +240,7 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
     for (target in targets) {
         built := Library(source_root, build_dir, target);
         flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, target)) {
+        for (source in Sources(source_root, build_dir, target)) {
             entries = array_add(entries, c.CompileEntry(tools, built, flags, source));
         }
     }

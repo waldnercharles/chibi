@@ -249,6 +249,23 @@ static const char *build_hash_file(void *service, const pin_value *arguments, pi
     );
     return failure ? failure : string_result(host, results, digest);
 }
+static const char *build_embed_file(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(3);
+    bool written;
+    const char *failure = build_io_embed(
+        host->root,
+        arguments[0].str,
+        arguments[1].str,
+        arguments[2].str,
+        host->deadline,
+        host->options->cancelled,
+        &written
+    );
+    results[0].b = written;
+    return failure;
+}
 static const char *build_hash_text(void *service, const pin_value *arguments, pin_value *results)
 {
     READY_HOST();
@@ -293,6 +310,11 @@ static const script_catalog_parameter join_parameters[] = {
 static const script_catalog_parameter concat_parameters[] = {
     { .name = "left", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
     { .name = "right", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
+};
+static const script_catalog_parameter embed_parameters[] = {
+    { .name = "input", .type = { .storage = PIN_STR } },
+    { .name = "output", .type = { .storage = PIN_STR } },
+    { .name = "symbol", .type = { .storage = PIN_STR } },
 };
 static const script_catalog_parameter handle_parameter = { .name = "handle",
                                                            .type = { .storage = PIN_I32 } };
@@ -347,7 +369,8 @@ static const script_catalog_parameter array_result = {
     X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)             \
     X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)             \
     X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                \
-    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)
+    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                 \
+    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

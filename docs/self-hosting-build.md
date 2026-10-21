@@ -40,14 +40,16 @@ game catalogs and public SDK library exports. Windows retains the
 existing stage-zero path; its equivalent process-tree implementation is pending.
 
 ```text
-chibi-build-host --root DIR --source FILE [--core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]
+chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]
 ```
 
 The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
 named zero-argument function returning `int`. The file is the one file of the
 package at its directory, so it starts with a `package` header. With `--core`,
 it may import that collection's packages, such as `core:strings`; a relative
-`--core` resolves from the root. Besides the `build.` natives, a program has
+`--core` resolves from the root. Each `--collection NAME=DIR`, at most eight,
+adds another collection the program imports as `NAME:`, as Odin's
+`-collection:name=path` does. Besides the `build.` natives, a program has
 the text and array natives every host offers, such as `format_text` and
 `length`. Nothing resumes a build program, so waiting or starting a task fails
 it with a diagnostic. Relative source paths resolve from
@@ -222,6 +224,50 @@ modification-time order, symbolic-link reads and unique staging directories.
 Each invocation has a 100,000-step execution budget, which bounds authored
 walks over large SDK trees; a walk of thousands of files needs a larger budget
 or a native tree operation. Add each with the move that first calls it.
+
+## Build graph (M6)
+
+The build graph replaces CMake's internal build graph one target at a time
+(PLAN.md M6). Its library is the `graph:` collection in `tools/graph`, and
+`tools/toolchain/Graph.chibi` is the program that runs it:
+
+```sh
+build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
+  --core packages/core --collection graph=tools/graph --entry Support \
+  --timeout-ms 600000 -- --build "$PWD/build-graph" \
+  --compiler /opt/homebrew/opt/llvm/bin/clang --compiler-id Clang \
+  --build-type Debug --architecture arm64 --sysroot "$(xcrun --show-sdk-path)" \
+  --sanitizers address,undefined --archiver /usr/bin/ar \
+  --ranlib /opt/homebrew/opt/llvm/bin/llvm-ranlib --jobs 8
+```
+
+- `graph:c` compiles C sources into static libraries. Its functions read like
+  Jai's `BuildCpp` (`build_cpp_static_lib`) rather than a declarative target
+  language: `c.StaticLibrary(tools, library, sources, flags)` takes a `c.Tools`
+  record (compiler, optional launcher such as ccache, archiver, ranlib, jobs)
+  and a `c.Library` (root, object directory, archive). Sources and flags are
+  arrays beside the record, because records hold only scalar fields.
+- Up to `jobs` compiles run at once through `build.start` and `build.wait`;
+  the graph executes them itself, as Zig's build runner does, with no Ninja.
+- Each compile writes `-MD` dependencies. After it succeeds, the graph writes
+  a record beside the object: the command, then the `build.file_stamp` and
+  path of every input and of the object. A later run recompiles a source when
+  its record is missing, its command differs, or any recorded stamp changed;
+  the archive is rebuilt when an object was or its own record differs. A
+  failed compile leaves no record, so the next run retries it. Records are
+  read with `build.lines`, because `core:strings` copies the rest of the text
+  at each line and an up-to-date run took seconds.
+- Headers a target publishes are staged below `BUILD/sdk/public/COMPONENT` as
+  CMake stages them, copied only when their contents differ, so unchanged
+  headers keep their stamps.
+- `graph:engine` describes the engine's targets and the profile flags root
+  `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
+  type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
+  sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
+
+Slice 1 owns `chibi_support` on macOS and Linux; CMake still builds it and
+everything else, and `build-graph` checks that their compile commands agree.
+Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones
 

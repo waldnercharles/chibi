@@ -703,7 +703,7 @@ TEST_CASE(fmt_formats_each_project)
  * and the compiler, are as the formatter writes them. */
 TEST_CASE(repository_packages_are_canonical)
 {
-    const char *const trees[] = { "packages", "tools/docs", "tools/compiler" };
+    const char *const trees[] = { "packages", "tools/docs", "tools/compiler", "tools/graph" };
     for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
         char tree[512], output[256];
         snprintf(tree, sizeof tree, "%s/%s", CHIBI_SOURCE_ROOT, trees[i]);

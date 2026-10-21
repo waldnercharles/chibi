@@ -2164,6 +2164,19 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
+`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
+build that configured the tests. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler file, builds `chibi_support` into a
+temporary directory, and requires each of its five compile commands to equal
+`compile_commands.json`'s, apart from the object path and with the temporary
+build directory standing for CMake's. The archive must link a program that
+runs. In a copy of the sources, about ten graph runs then check that an
+unchanged build compiles nothing, that changing a source, a header or the flags
+or deleting an object recompiles exactly what depends on it, and that a source
+that fails to compile keeps no record and is retried alone. It compiles about
+thirty C files with the profile's sanitizers, about 30 s at a load average of 8.
+
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
 `version` and `doctor`, then `check`, `fmt`, `build` and a native `export` of one tiny project,

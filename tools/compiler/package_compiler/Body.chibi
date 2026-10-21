@@ -1195,36 +1195,6 @@ FindResult :: (ports: Port[], native: Native, name: string) -> int {
     }
     return found;
 }
-// Whether the statements under `node` assign `name`, a field of it or an
-// element of it.
-Assigns :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
-    pending: int[] = [node];
-    top: int = 1;
-    while (top > 0) {
-        top -= 1;
-        at := pending[top];
-        if (Is(forest, at, "assignment")) {
-            target := Field(forest, at, "target");
-            while (Is(forest, target, "member_expression") || Is(forest, target, "index_expression")) {
-                target = Field(forest, target, "object");
-            }
-            if (Is(forest, target, "identifier") && Text(forest, text, target) == name) {
-                return true;
-            }
-        }
-        child := forest[at].first_child;
-        while (child >= 0) {
-            if (top < length(pending)) {
-                pending[top] = child;
-            } else {
-                pending = array_add(pending, child);
-            }
-            top += 1;
-            child = forest[child].next_sibling;
-        }
-    }
-    return false;
-}
 // The port of a native's argument `index`; a variadic native's last
 // parameter takes every argument from it on.
 NativePort :: (native: Native, index: int) -> int {
@@ -1358,7 +1328,8 @@ Start :: union {
     Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], code: Code[], points: SourcePoint[], named: int)
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
-             key: string, solid: int[], meaning: uint64, referenced: string[], ops: Ops) -> Start {
+             key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[],
+             ops: Ops) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
@@ -1378,9 +1349,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
             names = array_add(names, name);
         } else if (Holds(referenced, param.name) && !Pointer(param.storage, param.container)) {
             work = array_add(work, Resume(callable.node, 0, index, 1));
-        } else if (Pointer(param.storage, param.container) &&
-                   (Assigns(forest, text, Field(forest, callable.node, "body"), param.name) ||
-                    Holds(referenced, param.name))) {
+        } else if (Pointer(param.storage, param.container) && Holds(mutated, param.name)) {
             work = array_add(work, Resume(callable.node, 0, index, 0));
         } else if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
@@ -1448,7 +1417,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, ops);
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, ops);
     switch begun {
         case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_code, begun_points, begun_named):
             work = begun_work;

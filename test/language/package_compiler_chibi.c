@@ -224,12 +224,14 @@ static const sample samples[] = {
                 "Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); "
                 "return part; }\n"
                 "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
-                "ys.append(3); return xs.length(); }",
+                "ys.append(3); return xs.length(); }\n"
+                "Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }",
       .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
                  { "Count", "[[1,2,3]]", "[35]" },
                  { "Has", "[[1,2],2]", "[true]" },
                  { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
-                 { "Separate", "[]", "[2]" } } },
+                 { "Separate", "[]", "[2]" },
+                 { "Grow", "[[5]]", "[[5,1]]" } } },
     { .name = "array method in an expression",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "

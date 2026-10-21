@@ -462,6 +462,9 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     bound: Name[] = [binding];
     code = array_add(code, SymbolCode(ops, value_node, node));
     key_node := Field(forest, item.node, "key");
+    if (key_node >= 0 && Text(forest, text, key_node) == binding.name) {
+        return Fail(forest, value_node, document, format_text("Duplicate declaration '{}'", binding.name));
+    }
     if (key_node >= 0) {
         first := at.cell + length(cells);
         cells = append(cells, MapItemCells(types, held.record, true));

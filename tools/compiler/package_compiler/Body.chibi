@@ -1929,9 +1929,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             switches[length(switches) - 1] = current;
                         }
                         if (length(marks) == 2) {
-                            // A map loop's head, whose step binds its names.
+                            // A map loop's head, whose step binds its names; leaving
+                            // the loop drops them.
                             loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
-                                          each: true, index: at.local, mark: length(names), leave: marks[1],
+                                          each: true, index: at.local, mark: length(names) - length(added_names),
+                                          leave: marks[1],
                                           reverse: false, counted: false, bound: -1, empty: -1};
                             loops = array_add(loops, loop);
                         }

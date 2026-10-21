@@ -805,13 +805,13 @@ archives in CI and `cmake/third_party.cmake` can download one on the CMake-only
 recovery path; both are temporary and leave with CMake. Windows CI is paused
 until the build host runs there. The configuration signature can move next.
 On 2026-10-20 the owner approved three deletions with no replacement, now
-done: the hosted M5 validation
-helpers in `.github/scripts/` with their `native-unit-dependencies.tsv` and
-`build-tools.txt`, which no workflow ran; the CUT61 `analyze.py`; and game
-runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py`
+done: the hosted M5 validation helpers in `.github/scripts/` with their
+`native-unit-dependencies.tsv`, which no workflow ran; the CUT61 `analyze.py`;
+and game runtime installation (`make update-game-runtime`,
+`tools/install_game_runtime.py`
 and `tools/kdl_asset.py`), which served the retired game repositories. Git
-history keeps them. The CUT61 `run.py.txt` record still waits on review of the
-stale record.
+history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
+`browser-sample.js` sampler followed the same day, also approved.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.
@@ -873,8 +873,10 @@ All three were checked on the Wasm host too.
 Still open:
 - Stage one doesn't check a handler parameter's written type or unit against
   its field. Its game input carries no field units.
-- Stage one doesn't compile `assert`. It needs a failure kind in `Target` for
-  stage zero's `BEHAVIOR_FUNCTION_DATA`.
+- Stage one compiles `assert` wherever the target links the core pack, as a
+  game does; `Target` carries its failure kind. The compiler host links no
+  core pack, so neither stage compiles `assert` in the compiler's own
+  packages.
 
 Next action: the bootstrap sequence on every supported host configuration.
 

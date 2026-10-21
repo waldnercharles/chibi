@@ -134,7 +134,6 @@ also bounds authored walks over large trees.
 | `tools/mesh_sdf/worker.py` | Blender worker. `convert.py`. | **Keep**: runs inside Blender. |
 | `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
 | `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
-| `docs/research/cut61-iframe-profile/run.py.txt` | Runner of CUT61's historical capture, which policy forbids rerunning. Only its own record; nothing cites the record. | **Owner decision**: delete with the stale record; Git keeps the history. |
 
 ### Shell
 
@@ -170,7 +169,6 @@ also bounds authored walks over large trees.
 | Files | Responsibility and callers | Decision |
 | --- | --- | --- |
 | `tools/collab/server/` | Collaboration room service. `test/tools/collab.c`, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
-| `docs/reviews/studio-ux-2026-10-02/performance/browser-sample.js` | Sampler for a finished Studio UX review. Only its own record. | **Owner decision**: delete with the stale record. |
 
 Only Python that Blender imports through `bpy` belongs to the Blender exception.
 `convert.py` runs under ordinary Python and is part of the migration set. Split

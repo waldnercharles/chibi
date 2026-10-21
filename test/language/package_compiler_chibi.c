@@ -11,6 +11,7 @@
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
@@ -64,16 +65,21 @@ typedef struct
 } sample_call;
 /* Each group of samples runs under its own selector, so each selector stays
  * within its time ceiling: unions, constants, patterns and integer types
- * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings
- * (IMPORT_SAMPLES). */
+ * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
+ * with the samples that link the core pack, whose oracle costs seconds more
+ * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
+ * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
     TYPE_SAMPLES,
-    IMPORT_SAMPLES
+    IMPORT_SAMPLES,
+    COLLECTION_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
- * `library` is package lib when present, and `core` adds core:strings. An `updates` sample's `Build(count)` updates a
+ * `library` is package lib when present, and `core` adds core:strings. A
+ * `game` sample's target links the core pack a game links, which declares
+ * assert; preparing every sample with it would cost each selector seconds. An `updates` sample's `Build(count)` updates a
  * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. A
  * `boxed` sample's Boxed functions read only arrays that are never packed,
@@ -82,7 +88,7 @@ typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed;
+    bool core, updates, boxed, game;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -135,6 +141,7 @@ static const sample samples[] = {
                  { "Both", "[2,4]", "[true]" },
                  { "Both", "[3,3]", "[true]" } } },
     { .name = "records",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; title: string; open: bool; "
                 "}\n"
@@ -285,6 +292,7 @@ static const sample samples[] = {
      * forward and reversed, ending at a bound without wrapping; `for x, i`
      * names an array's item and its index, and `for <` walks it backwards. */
     { .name = "ranges",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Sum :: (first: int, last: int) -> int {\n"
                 "    total: int = 0;\n    for i in first..last { total += i; "
@@ -329,6 +337,7 @@ static const sample samples[] = {
                  { "Keys", "[[5,6,7]]", "[20]" },
                  { "Back", "[[1,2,3]]", "[322110]" } } },
     { .name = "arrays",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Squares :: (n: int) -> int[] {\n"
@@ -382,7 +391,7 @@ static const sample samples[] = {
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
     { .name = "maps",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source =
           "package facts\n"
           "Point :: struct { x: int; y: int; }\n"
@@ -447,7 +456,7 @@ static const sample samples[] = {
                  { "Walk", "[]", "[\"Ada4Cid2Bea5 95911\"]" },
                  { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Bump :: (v: ref int) { v += 1; }\n"
@@ -477,20 +486,20 @@ static const sample samples[] = {
                  { "Count", "[]", "[12]" },
                  { "Moved", "[]", "[1007]" } } },
     { .name = "reference literal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
                 "Bump(3); }",
       .message = "Reference argument requires a writable value",
       .line = 3,
       .column = 18 },
     { .name = "reference default",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
       .message = "a reference parameter takes no default",
       .line = 2,
       .column = 10 },
     { .name = "reference type",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
                 "n: int64 = 1; Bump(n); }",
       .message = "reference argument differs from the parameter's type",
@@ -610,6 +619,24 @@ static const sample samples[] = {
                  { "Measure", "[\"zebra\"]", "[551]" },
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
+    /* An assert fails the call when its condition is false, with its
+     * message or its condition's source; it names its arguments as the core
+     * catalog does. */
+    { .name = "assertions",
+      .group = IMPORT_SAMPLES,
+      .game = true,
+      .source = "package facts\n"
+                "Double :: (n: int) -> int {\n"
+                "    assert(n > 0, \"n is positive\");\n"
+                "    assert(n < 100);\n"
+                "    assert(condition: n != 7, message: \"\");\n"
+                "    assert((n != 8), (\"not eight\"));\n"
+                "    return n * 2;\n}",
+      .calls = { { "Double", "[3]", "[6]" },
+                 { "Double", "[-1]", NULL },
+                 { "Double", "[200]", NULL },
+                 { "Double", "[7]", NULL },
+                 { "Double", "[8]", NULL } } },
     /* Package and imported constants. `lib.Scaled(2)` takes a default that
      * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
      * the package's other file declares, whose occurrence is that file's. */
@@ -950,7 +977,7 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[6]" } } },
     { .name = "map updates",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBuild :: (count: int) -> int {\n"
                 "    squares: [int: int] = [:];\n"
                 "    index: int = 0;\n"
@@ -965,7 +992,7 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[1]" } } },
     { .name = "map loop names",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () -> int {\n"
                 "    m: [int: int] = [1: 2];\n    total: int = 0;\n"
                 "    for (k, v in m) { total += k * 10 + v; }\n"
@@ -973,28 +1000,28 @@ static const sample samples[] = {
                 "    return total * 100 + v + k;\n}",
       .calls = { { "Answer", "[]", "[1207]" } } },
     { .name = "duplicate map loop names",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () { m: [int: int] = [:]; for (x, x "
                 "in m) {} }",
       .message = "Duplicate declaration 'x'",
       .line = 2,
       .column = 45 },
     { .name = "inferred map literal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () -> int { m := [\"a\": 1]; return "
                 "0; }",
       .message = "map literal needs a [K: V] type",
       .line = 2,
       .column = 28 },
     { .name = "compound map assignment",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAdd :: () -> int { m: [int: int] = [:]; m[1] "
                 "+= 2; return m[1]; }",
       .message = "compound map assignment is not supported yet",
       .line = 2,
       .column = 41 },
     { .name = "map parameter removal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nDrop :: (m: [int: int]) -> int { delete m[1]; "
                 "return 0; }",
       .message = "deleting a key needs a local map",
@@ -1177,6 +1204,14 @@ static const sample samples[] = {
       .message = "variant 'A' needs its payload",
       .line = 3,
       .column = 25 },
+    { .name = "assert message",
+      .group = IMPORT_SAMPLES,
+      .game = true,
+      .source = "package facts\nCheck :: (n: int, m: string) -> int {\n"
+                "    assert(n > 0, m);\n    return n;\n}",
+      .message = "assert's message is a string constant",
+      .line = 3,
+      .column = 19 },
     { .name = "unknown imported function",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
@@ -1425,9 +1460,12 @@ enum
     SAMPLES = sizeof samples / sizeof *samples
 };
 static compiler_fixture fixture, oracle;
-static native_capabilities *linked;
-/* Compile's native tables per compiler backend, built once from `linked`. */
-static pin_value linked_tables[2][3];
+/* The compiler host's natives, and those with the core pack a game links,
+ * which declares assert. */
+static native_capabilities *linked[2];
+/* Compile's native tables for the host and for a game, per compiler backend,
+ * built once from `linked`. */
+static pin_value linked_tables[2][2][3];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
@@ -1436,8 +1474,9 @@ static void cleanup()
 {
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
-    native_capabilities_free(linked);
-    linked = NULL;
+    native_capabilities_free(linked[0]);
+    native_capabilities_free(linked[1]);
+    linked[0] = linked[1] = NULL;
     memset(linked_tables, 0, sizeof linked_tables);
     arena_free(&input);
     arena_free(&detached);
@@ -1517,22 +1556,23 @@ static int port_storage(script_type type)
 }
 /* The data functions the compiler host links: no flow, outcomes or
  * suspension. */
-static bool natives(int b, pin_value *out)
+static bool natives(int b, bool game, pin_value *out)
 {
-    if (linked_tables[b][0].ptr) {
-        memcpy(out, linked_tables[b], sizeof linked_tables[b]);
+    if (linked_tables[game][b][0].ptr) {
+        memcpy(out, linked_tables[game][b], sizeof linked_tables[game][b]);
         return true;
     }
-    if (!linked) {
+    if (!linked[game]) {
         const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                                  NATIVE_ARRAY_DEFINITION_PACK,
                                                  COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK };
+                                                 COMPILER_SYNTAX_DEFINITION_PACK,
+                                                 CORE_DEFINITION_PACK };
         char error[256];
-        linked = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
-        REQUIRE(linked);
+        linked[game] = native_capabilities_from_definition_packs(NULL, 0, packs, game ? 5 : 4, error, sizeof error);
+        REQUIRE(linked[game]);
     }
-    const script_catalog *catalog = native_capabilities_catalog(linked);
+    const script_catalog *catalog = native_capabilities_catalog(linked[game]);
     pin_value *functions = NULL, *ports = NULL, *identities = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
@@ -1578,7 +1618,7 @@ static bool natives(int b, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    memcpy(linked_tables[b], out, sizeof linked_tables[b]);
+    memcpy(linked_tables[game][b], out, sizeof linked_tables[game][b]);
     afree(functions);
     afree(ports);
     afree(identities);
@@ -1656,8 +1696,8 @@ static pin_value files(const source_package_input *inputs, int count, bool sourc
 }
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
- * links. */
-static bool arguments(int b, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
+ * links: with `game`, also the core pack a game links. */
+static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
 {
     const char *collection_names[] = { "core" };
     const char *collection_paths[] = { "/sdk/core" };
@@ -1690,6 +1730,7 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
     REQUIRE(put(&args[6], "map_count_offset", (int)offsetof(pin_map, count)));
     REQUIRE(put(&args[6], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
     REQUIRE(put(&args[6], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    REQUIRE(put(&args[6], "assert_failure", BEHAVIOR_FUNCTION_DATA));
     args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int instructions = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
@@ -1697,13 +1738,13 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
     args[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, &args[9]));
+    REQUIRE(natives(b, game, &args[9]));
     return true;
 }
-static bool compile(int b, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
+static bool compile(int b, bool game, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
 {
     pin_value args[ARGUMENTS];
-    REQUIRE(arguments(b, inputs, count, args));
+    REQUIRE(arguments(b, game, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
     );
@@ -1928,8 +1969,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     compiler_fixture_free(&oracle);
     /* The natives the stage-one target links. */
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, 2));
+                                       COMPILER_SYNTAX_DEFINITION_PACK,
+                                       CORE_DEFINITION_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 3 : 2));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -2342,7 +2384,7 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
+        REQUIRE(compile(b, s->game, inputs, count, COMPILE_BUDGET, &out));
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -2421,7 +2463,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, inputs, count, args));
+        REQUIRE(arguments(1, false, inputs, count, args));
         args[DEBUG_ARGUMENT].b = false;
         REQUIRE(
             compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
@@ -2471,6 +2513,14 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages)
 TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
 {
     return run_samples(TYPE_SAMPLES, 1);
+}
+TEST_CASE(package_compiler_builds_runnable_collection_packages)
+{
+    return run_samples(COLLECTION_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
+{
+    return run_samples(COLLECTION_SAMPLES, 1);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
@@ -2584,7 +2634,7 @@ static bool stage_two_sample(const sample *s)
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, inputs, count, args));
+    REQUIRE(arguments(1, s->game, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
     );
@@ -2672,7 +2722,7 @@ TEST_CASE(package_compiler_compiles_itself)
         }
     }
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, inputs, count, args));
+    REQUIRE(arguments(1, false, inputs, count, args));
     /* The compiler is compiled without debugger points and watches, which
      * no one debugging a game steps through. */
     args[DEBUG_ARGUMENT].b = false;
@@ -3085,7 +3135,7 @@ static bool game_arguments(int b, pin_value *out)
 static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
 {
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
-    REQUIRE(arguments(b, NULL, 0, compile));
+    REQUIRE(arguments(b, false, NULL, 0, compile));
     args[0] = text(identity);
     args[1] = text(source);
     memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
@@ -3496,6 +3546,18 @@ void test_language_package_compiler_chibi_types_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_collections()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_collections_compiled()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports_compiled()

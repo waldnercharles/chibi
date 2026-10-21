@@ -32,6 +32,8 @@ pub Target :: struct {
     map_count_offset: int;
     data_failure: int;
     argument_failure: int;
+    // The failure kind of an assert whose condition is false.
+    assert_failure: int;
 }
 // Prepared instructions this compiler emits, as ordinals on the target.
 Ops :: struct {

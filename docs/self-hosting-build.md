@@ -236,11 +236,7 @@ The build graph replaces CMake's internal build graph one target at a time
 ```sh
 build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   --core packages/core --collection graph=tools/graph --entry Libraries \
-  --timeout-ms 600000 -- --build "$PWD/build-graph" \
-  --compiler /opt/homebrew/opt/llvm/bin/clang --compiler-id Clang \
-  --build-type Debug --architecture arm64 --sysroot "$(xcrun --show-sdk-path)" \
-  --sanitizers address,undefined --archiver /usr/bin/ar \
-  --ranlib /opt/homebrew/opt/llvm/bin/llvm-ranlib --jobs 8
+  --timeout-ms 600000 -- --build "$PWD/build-graph" --profile sanitizer
 ```
 
 - `graph:c` compiles C sources into static libraries. Its functions read like
@@ -310,6 +306,18 @@ builds the libraries it links. `reflect` takes libclang from the profile
 (`--libclang-include`, `--libclang-library`), and the graph finds clang's
 builtin headers as `tools/reflect/resource.cmake` does, by asking that
 libclang's `clang -print-resource-dir`.
+
+A run finds its profile on the machine unless told otherwise
+(`graph:engine`'s `Profile.chibi`). `--profile` names the Makefile's
+`sanitizer` (the default), `debug` or `release` profile. The compiler is `CC`,
+or Homebrew LLVM's clang as the Makefile prefers it, or `cc`, and its kind
+comes from its `--version` banner. On macOS the architecture comes from
+`uname -m` and the SDK from `SDKROOT`, the compiler's `-###` report (resolved
+through its versioned link, as `Build.chibi` resolves it) or `xcrun`. ccache,
+when found, launches compiles and, for a build below the source tree, sets the
+debug directory CMake sets. libclang comes from root `CMakeLists.txt`'s
+hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
+explicit option still overrides what it names.
 
 Windows keeps CMake: the build host has no Windows process support yet.
 

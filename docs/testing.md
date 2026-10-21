@@ -2167,8 +2167,10 @@ configuration and compilation are separate build evidence.
 `python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
 build that configured the tests. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler file. With `--commands-only`, the graph
-writes the compile commands of every target it owns, and each of the 129
+`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` (and the debug directory,
+which depends on where a build is), the graph finds the rest of its profile
+on the machine and writes the compile commands of every target it owns, and each of the 129
 must equal `compile_commands.json`'s for the same source, apart from the
 object path and with the temporary build directory standing for CMake's. In a
 copy of the sources, about ten runs that build only `chibi_support` then check

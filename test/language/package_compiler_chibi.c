@@ -68,7 +68,8 @@ typedef struct
  * within its time ceiling: unions, constants, patterns and integer types
  * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
  * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
+ * to prepare, and the moves, reads in place and array methods
+ * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
  * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
@@ -169,7 +170,7 @@ static const sample samples[] = {
                    "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { "Total", "[5]", "[123]" } } },
     { .name = "moved values",
-      .group = COLLECTION_SAMPLES,
+      .group = IMPORT_SAMPLES,
       .moves = true,
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; }\n"
@@ -190,7 +191,7 @@ static const sample samples[] = {
                  { "MovedSecond", "[4]", "[5]" },
                  { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
     { .name = "read in place",
-      .group = COLLECTION_SAMPLES,
+      .group = IMPORT_SAMPLES,
       .aliases = true,
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; }\n"
@@ -206,6 +207,38 @@ static const sample samples[] = {
                 "    return total;\n}",
       .calls = { { "AliasedSum", "[[{\"text\":\"a\",\"count\":1},{\"text\":\"b\",\"count\":2}]]", "[103]" },
                  { "CopiedWalk", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}]]", "[3]" } } },
+    { .name = "array methods",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Build :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    ys: int[] = [100, 200];\n"
+                "    xs.extend(ys);\n    seven: int = 7;\n    xs.insert(0, "
+                "seven);\n    xs.reverse();\n"
+                "    return xs;\n}\n"
+                "Count :: (xs: int[]) -> int { return xs.length() * 10 + "
+                "Build(2).length(); }\n"
+                "Has :: (xs: int[], x: int) -> bool { return xs.contains(x); "
+                "}\n"
+                "Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); "
+                "return part; }\n"
+                "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
+                "ys.append(3); return xs.length(); }\n"
+                "Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }",
+      .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
+                 { "Count", "[[1,2,3]]", "[35]" },
+                 { "Has", "[[1,2],2]", "[true]" },
+                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
+                 { "Separate", "[]", "[2]" },
+                 { "Grow", "[[5]]", "[[5,1]]" } } },
+    { .name = "array method in an expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "
+                "xs.append(1); return xs; }",
+      .message = "append changes the array; call it as a statement on a name",
+      .line = 2,
+      .column = 45 },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"

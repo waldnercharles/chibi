@@ -617,7 +617,7 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
             target = Field(forest, at, "target");
         } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
-                   Text(forest, text, Field(forest, Field(forest, at, "function"), "member")) == "delete") {
+                   ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
             target = Field(forest, at, "function");
         }
         if (target >= 0 && Is(forest, RootOf(forest, target), "identifier")) {
@@ -635,6 +635,18 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         }
     }
     return found;
+}
+// Whether a method of that name changes what it is called on: a map's
+// `delete`, or an array method such as `append`.
+ChangingMethod :: (name: string) -> bool {
+    changers: string[] = ["delete", "append", "extend", "insert", "remove_index", "remove_item", "add_unique",
+                          "set_array_elem", "clear", "reverse", "swap", "resize"];
+    for (changer in changers) {
+        if (NameMatches(name, changer)) {
+            return true;
+        }
+    }
+    return false;
 }
 // Whether a record or array stays as it is while its function runs, so a
 // name may read it in place rather than copy it: a fresh value, or part of a
@@ -1183,36 +1195,6 @@ FindResult :: (ports: Port[], native: Native, name: string) -> int {
     }
     return found;
 }
-// Whether the statements under `node` assign `name`, a field of it or an
-// element of it.
-Assigns :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
-    pending: int[] = [node];
-    top: int = 1;
-    while (top > 0) {
-        top -= 1;
-        at := pending[top];
-        if (Is(forest, at, "assignment")) {
-            target := Field(forest, at, "target");
-            while (Is(forest, target, "member_expression") || Is(forest, target, "index_expression")) {
-                target = Field(forest, target, "object");
-            }
-            if (Is(forest, target, "identifier") && Text(forest, text, target) == name) {
-                return true;
-            }
-        }
-        child := forest[at].first_child;
-        while (child >= 0) {
-            if (top < length(pending)) {
-                pending[top] = child;
-            } else {
-                pending = array_add(pending, child);
-            }
-            top += 1;
-            child = forest[child].next_sibling;
-        }
-    }
-    return false;
-}
 // The port of a native's argument `index`; a variadic native's last
 // parameter takes every argument from it on.
 NativePort :: (native: Native, index: int) -> int {
@@ -1225,7 +1207,7 @@ NativePort :: (native: Native, index: int) -> int {
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
 // zero, the native is recognized by its capability identity.
 InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                  identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
                   value: int) -> int {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
@@ -1233,16 +1215,17 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return -1;
     }
     callee := Field(forest, value, "function");
-    first := FirstMember(forest, Field(forest, value, "arguments"));
-    if (!Is(forest, callee, "identifier") || FindCallable(callables, package, Text(forest, text, callee)) >= 0 ||
-        !Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination)) {
+    first := ArrayArgument(forest, value);
+    if (!Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination) ||
+        ItemArgument(forest, value) < 0 || NextMember(forest, ItemArgument(forest, value)) >= 0) {
         return -1;
     }
-    second := NextMember(forest, first);
-    if (second < 0 || NextMember(forest, second) >= 0) {
-        return -1;
+    native: int = -1;
+    if (Is(forest, callee, "member_expression")) {
+        native = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+    } else if (Is(forest, callee, "identifier") && FindCallable(callables, package, Text(forest, text, callee)) < 0) {
+        native = FindNative(natives, Text(forest, text, callee));
     }
-    native := FindNative(natives, Text(forest, text, callee));
     if (native < 0) {
         return -1;
     }
@@ -1256,13 +1239,97 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     return -1;
 }
 
+// The array function a method call on an array runs, with the array first:
+// `append` adds an item and `extend` an array's items, which array_add and
+// append do until they take those names. -1 for none.
+ArrayMethod :: (natives: Native[], ports: Port[], method: string) -> int {
+    name := method;
+    if (NameMatches(method, "append")) {
+        name = "array_add";
+    } else if (NameMatches(method, "extend")) {
+        name = "append";
+    } else if (NameMatches(method, "array_add")) {
+        return -1;
+    }
+    index: int = 0;
+    for (native in natives) {
+        if (native.parameters > 0 && ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Whether an array function returns its array changed, so its method changes
+// the array in place, as `append` does and `slice` does not.
+ArrayChanger :: (natives: Native[], native: int) -> bool {
+    changers: string[] = ["array_add", "add_unique", "append", "set_array_elem", "insert", "remove_index",
+                          "remove_item", "clear", "reverse", "swap", "resize"];
+    for (changer in changers) {
+        if (NameMatches(natives[native].name, changer)) {
+            return true;
+        }
+    }
+    return false;
+}
+// The array an expression statement's method call changes, as `xs.append(x)`
+// changes xs: the receiver, a name of an array, or -1.
+ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: Port[],
+                 statement: int) -> int {
+    call := FirstMember(forest, statement);
+    function := Field(forest, call, "function");
+    if (!Is(forest, statement, "expression_statement") || !Is(forest, call, "call_expression") ||
+        !Is(forest, function, "member_expression") || !Is(forest, Field(forest, function, "object"), "identifier")) {
+        return -1;
+    }
+    object := Field(forest, function, "object");
+    found := Lookup(names, Text(forest, text, object));
+    if (found < 0 || names[found].container != ArrayContainer) {
+        return -1;
+    }
+    method := ArrayMethod(natives, ports, Text(forest, text, Field(forest, function, "member")));
+    if (method < 0 || !ArrayChanger(natives, method)) {
+        return -1;
+    }
+    return object;
+}
+// An assignment's target and value, or the array a method statement changes
+// and its call.
+StatementTarget :: (forest: snapshot.SnapshotNode[], statement: int) -> int {
+    if (Is(forest, statement, "expression_statement")) {
+        return Field(forest, Field(forest, FirstMember(forest, statement), "function"), "object");
+    }
+    return Field(forest, statement, "target");
+}
+StatementValue :: (forest: snapshot.SnapshotNode[], statement: int) -> int {
+    if (Is(forest, statement, "expression_statement")) {
+        return FirstMember(forest, statement);
+    }
+    return Field(forest, statement, "value");
+}
+// The array a call updates, `xs` in both `array_add(xs, x)` and
+// `xs.append(x)`, and the item or array it adds.
+ArrayArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
+    callee := Field(forest, call, "function");
+    if (Is(forest, callee, "member_expression")) {
+        return Field(forest, callee, "object");
+    }
+    return FirstMember(forest, Field(forest, call, "arguments"));
+}
+ItemArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
+    if (Is(forest, Field(forest, call, "function"), "member_expression")) {
+        return FirstMember(forest, Field(forest, call, "arguments"));
+    }
+    return NextMember(forest, FirstMember(forest, Field(forest, call, "arguments")));
+}
 // The tables a body starts from: its parameters, its record or array result's
 // symbol, its point and its named results, which are locals from `named` on.
 Start :: union {
     Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], code: Code[], points: SourcePoint[], named: int)
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
-             key: string, solid: int[], meaning: uint64, referenced: string[], ops: Ops) -> Start {
+             key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[],
+             ops: Ops) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
@@ -1282,9 +1349,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
             names = array_add(names, name);
         } else if (Holds(referenced, param.name) && !Pointer(param.storage, param.container)) {
             work = array_add(work, Resume(callable.node, 0, index, 1));
-        } else if (Pointer(param.storage, param.container) &&
-                   (Assigns(forest, text, Field(forest, callable.node, "body"), param.name) ||
-                    Holds(referenced, param.name))) {
+        } else if (Pointer(param.storage, param.container) && Holds(mutated, param.name)) {
             work = array_add(work, Resume(callable.node, 0, index, 0));
         } else if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
@@ -1352,7 +1417,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, ops);
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, ops);
     switch begun {
         case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_code, begun_points, begun_named):
             work = begun_work;
@@ -1964,7 +2029,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                  target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement" || kind == "delete_statement") {
-            step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
+            step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
                                  referenced, mutated, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||

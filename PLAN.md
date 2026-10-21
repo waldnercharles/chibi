@@ -673,7 +673,7 @@ the C compiler) and the target's C++ standard, and stages `private/NAME`
 directories several libraries share. It owns enkiTS's task scheduler and the
 twelve libraries it unblocks (task pool, material, physics, physics3d,
 visibility, graph model, authoring and compilation, Studio catalog and graph,
-engine and the default native catalog): 92 libraries and 482 compile
+engine and the default native catalog): 92 libraries and 484 compile
 commands, equal to CMake's. The host's value storage rose to 256 MB for
 up-to-date builds of graphs this size.
 Next: the image codecs generated from Cute's headers (image preparation, then

@@ -309,7 +309,7 @@ and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
 project syntax documents and UI authoring over them, and enkiTS's C++ task
 scheduler with the task pool, material, physics, visibility, graph model,
 authoring and compilation, Studio catalog and graph, engine and default
-native catalog libraries over it: 475 sources in 88 archives. A name that is
+native catalog libraries over it: 477 sources in 88 archives. A name that is
 no target, such as `chibi_physics` or `chibi_graph`, lists the headers of a
 `private/NAME` directory several libraries include, as CMake stages it. For
 each it gives sources, the directory its public headers

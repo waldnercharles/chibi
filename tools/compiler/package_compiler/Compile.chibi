@@ -123,6 +123,8 @@ Param :: struct {
     // The occurrence of the default's expression, which stage zero evaluates
     // where a call omits the argument.
     default_occurrence: uint64;
+    // A `ref` parameter, whose argument is a reference to the caller's value.
+    reference: bool;
     // The node that declares the parameter, -1 when the source declares none.
     node: int;
 }
@@ -389,9 +391,29 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // array of one; storage 0 for any other.
 ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
              node: int) -> ValueType {
+    if (Field(forest, node, "trait") >= 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return ReadReferencedType(forest, text, types, names, package, node);
+}
+// Whether the type `node` is `ref T`: its only trait is `ref`.
+Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    traits: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == "trait") {
+            traits += 1;
+        }
+        child = forest[child].next_sibling;
+    }
+    return traits == 1 && Text(forest, text, Field(forest, node, "trait")) == "ref";
+}
+// The type `node` names, as ReadType reads it, or the T of `ref T`.
+ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                       node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
-        HasToken(forest, node, "?")) {
+    if (!Is(forest, node, "type") || (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node)) ||
+        Field(forest, node, "arguments") >= 0 || HasToken(forest, node, "?")) {
         return none;
     }
     container: int = 0;
@@ -985,9 +1007,14 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
-        declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+        type_node := Field(forest, parameter, "type");
+        declared := ReadReferencedType(forest, text, types, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
+        }
+        reference := Field(forest, type_node, "trait") >= 0;
+        if (reference && Field(forest, parameter, "value") >= 0) {
+            return Signature.Failed(Diagnose(forest, parameter, file, "a reference parameter takes no default"));
         }
         param_name := Text(forest, text, Field(forest, parameter, "name"));
         if (param_name == "") {
@@ -1002,7 +1029,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         }
         param: Param = {name: param_name, storage: declared.storage, container: declared.container,
                         record: declared.record, has_default: false, default_bits: 0, default_text: "",
-                        default_occurrence: default_occurrence, node: Field(forest, parameter, "name")};
+                        default_occurrence: default_occurrence, reference: reference,
+                        node: Field(forest, parameter, "name")};
         if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {
                 case .Failed(diagnostic):
@@ -1033,7 +1061,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             result_name := Text(forest, text, Field(forest, named, "name"));
             param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
                             has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                            node: Field(forest, named, "name")};
+                            reference: false, node: Field(forest, named, "name")};
             added = array_add(added, param);
             named = NextMember(forest, named);
         }
@@ -1085,6 +1113,13 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
             authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
             count: types[record].count};
+}
+// A parameter's header: its type's, or a `ref` parameter's descriptor pointer.
+ParamHeader :: (param: Param, types: TypeDecl[], layouts: int[], target: Target) -> writer.Value {
+    if (param.reference) {
+        return ScalarValue(target.pointer_storage, 0);
+    }
+    return Header(param.storage, param.container, param.record, types, layouts);
 }
 NoSource :: () -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
@@ -1373,6 +1408,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     imports: writer.Import[] = [];
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
+    // Only a package that calls a ref parameter keeps locals in data cells.
+    referencing := AnyReference(params);
     // Debugger points count each document's bytes that are not whitespace.
     solid: int[] = [];
     solid_document: int = -1;
@@ -1399,10 +1436,17 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (owner_type != 0) {
             meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
         }
+        aliases := append(Aliases(links, callable.document), behaving);
+        // The names a ref argument reaches live in data cells.
+        referenced: string[] = [];
+        if (referencing) {
+            referenced = ReferencedNames(forest, documents[callable.document].text, callables, params, aliases, package,
+                                         Field(forest, callable.node, "body"));
+        }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
-                           append(Aliases(links, callable.document), behaving), documents[callable.document].key, solid,
-                           undeclared, meaning, index, ops, target);
+                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced, ops,
+                           target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
@@ -1413,14 +1457,17 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 spans = array_add(spans, Range(length(values), callable.count));
                 at: int = 0;
                 while (at < callable.count) {
-                    param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
                     at += 1;
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    ints = array_add(ints, int(0));
+                    kind: int = 0;
+                    if (params[callable.first + at].reference) {
+                        kind = ReferenceKind;
+                    }
+                    ints = array_add(ints, kind);
                     at += 1;
                 }
                 // Result defaults and kinds: the one result, or each named one.
@@ -1497,8 +1544,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 spans = array_add(spans, Range(length(parameters), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
                     parameters = array_add(parameters, parameter);
                     at += 1;

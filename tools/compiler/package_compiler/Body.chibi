@@ -1190,7 +1190,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], undeclared: uint64, meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
+             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[], ops: Ops,
+             target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
@@ -1224,8 +1225,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
-        if (Pointer(param.storage, param.container) &&
-            Assigns(forest, text, Field(forest, callable.node, "body"), param.name)) {
+        if (param.reference) {
+            name: Name = {name: param.name, place: ReferencePlace, index: index, storage: param.storage,
+                          container: param.container, record: param.record, writable: true, node: param.node};
+            names = array_add(names, name);
+        } else if (Holds(referenced, param.name) && !Pointer(param.storage, param.container)) {
+            work = array_add(work, Resume(callable.node, 0, index, 1));
+        } else if (Pointer(param.storage, param.container) &&
+                   (Assigns(forest, text, Field(forest, callable.node, "body"), param.name) ||
+                    Holds(referenced, param.name))) {
             work = array_add(work, Resume(callable.node, 0, index, 0));
         } else if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
@@ -1842,14 +1850,16 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
         } else if (item.phase == CombinePhase) {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+        } else if (item.phase == ReferencePhase) {
+            step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
         } else if (item.phase == AggregatePhase) {
             step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
                                  target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement" || kind == "delete_statement") {
             step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
-                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named, item,
-                                 ops, target, at);
+                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
+                                 referenced, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
@@ -2096,7 +2106,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                   start: placed.start, end: placed.end, line: placed.line, column: placed.column,
                                   storage: placed.value_storage, container: placed.value_container,
                                   record: placed.value_record, ordinal: placed.right, output: placed.output == 1,
-                                  reference: false};
+                                  reference: placed.offset == 1};
             watches = array_add(watches, watch);
             code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0, length(watches) - 1,
                                          Located(placed));

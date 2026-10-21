@@ -178,7 +178,7 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
                   params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[],
                   names: Name[], scope: int, package: int, values: Value[], top: int, function: int, named: int,
-                  item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+                  referenced: string[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
     kind := node.kind;
@@ -305,8 +305,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (found >= 0 && !names[found].writable) {
                     return Fail(forest, destination, document, "Assignment requires a writable value");
                 }
-                if (found < 0 || names[found].place != CellPlace || names[found].storage != StructStorage ||
-                    names[found].container != 0) {
+                if (found < 0 || (names[found].place != CellPlace && names[found].place != ReferencePlace) ||
+                    names[found].storage != StructStorage || names[found].container != 0) {
                     return Fail(forest, destination, document, "field assignment needs a local record");
                 }
                 member := Text(forest, text, Field(forest, destination, "member"));
@@ -411,6 +411,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
                 retained = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, 0, 0));
+            } else if (Holds(referenced, name)) {
+                // A ref argument reaches it, so it lives in a data cell.
+                return BoxStep(forest, text, local, result, item, ops, target, at, node);
             } else {
                 locals = array_add(locals, ValueLocal(local.storage));
                 code = array_add(code, Instruction(ops.save, local.storage, 0, result.slot, 0, at.local, node));
@@ -436,6 +439,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, destination, document, "Assignment requires a writable value");
             }
             binding := names[found];
+            if (binding.place == ReferencePlace || binding.place == BoxPlace) {
+                return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
+            }
             stored := result;
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
             if (binding.container == 0 && result.container == 0 && Widens(result.storage, binding.storage)) {
@@ -800,6 +806,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (binding.place == GlobalPlace) {
             return Fail(forest, item.node, document,
                         format_text("reading the global '{}' is not supported yet", wanted));
+        }
+        if (binding.place == ReferencePlace || binding.place == BoxPlace) {
+            return PlaceReadStep(binding, ops, target, at, node);
         }
         if (binding.place == LocalPlace || binding.place == StatePlace || binding.place == SelfPlace) {
             op := ops.local;
@@ -1324,6 +1333,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (found >= 0 && count < expected_count) {
                 param := params[callables[found].first + count];
                 expected = Expect(argument, param.storage, param.container, param.record);
+                if (param.reference) {
+                    expected.phase = ReferencePhase;
+                }
             } else if (native >= 0 && (count < expected_count || natives[native].variadic) &&
                        ports[NativePort(natives[native], count)].storage > 0) {
                 port := ports[NativePort(natives[native], count)];
@@ -1537,12 +1549,18 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         } else {
             param := params[callables[item.a].first + index];
             expected = Typed(-1, param.storage, param.container, param.record);
+            if (param.reference) {
+                expected = Typed(-1, ReferenceStorage, 0, -1);
+            }
         }
         if (!SameType(expected.storage, expected.container, expected.record, argument)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
         cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0, variant: -1,
                       kind: ValueKind};
+        if (argument.storage == ReferenceStorage) {
+            cell = ReferenceCell(target);
+        }
         cells = array_add(cells, cell);
         index += 1;
     }
@@ -1600,13 +1618,20 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     index = 0;
     while (index < total) {
         argument := arguments[index];
-        // Each argument is watched as the call's input.
-        code = array_add(code, WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record, index,
-                                         false, node, target));
+        // Each argument is watched as the call's input; a ref argument as the
+        // value it reaches.
+        written := SlotStorage(argument.storage, argument.container, target);
+        if (argument.storage == ReferenceStorage) {
+            written = target.pointer_storage;
+            code = array_add(code, ReferenceWatch(ops, params[callables[item.a].first + index], index, argument.slot,
+                                                  node, target));
+        } else {
+            code = array_add(code, WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record,
+                                             index, false, node, target));
+        }
         slots = array_add(slots, address);
         code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, b + index, at.cell + index, 0, 0, node));
-        write := Instruction(ops.write, SlotStorage(argument.storage, argument.container, target), 0, argument.slot,
-                             b + index, 0, node);
+        write := Instruction(ops.write, written, 0, argument.slot, b + index, 0, node);
         write.offset = target.payload_offset;
         code = array_add(code, write);
         index += 1;
@@ -2026,6 +2051,10 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
         slots = append(slots, NumberSlots(value.storage, field.storage));
         code = append(code, NumberCode(ops, value.storage, field.storage, value.slot, at.slot, node));
         stored = Typed(at.slot + length(slots) - 1, field.storage, 0, -1);
+    }
+    if (binding.place == ReferencePlace) {
+        return ReferenceFieldStep(forest, text, document, binding, field, stored, code, slots, item, ops, target, at,
+                                  node);
     }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
@@ -2984,6 +3013,9 @@ ParameterStep :: (params: Param[], callable: Callable, item: Work, ops: Ops, tar
     next: Work[] = [];
     marks: int[] = [];
     param := params[callable.first + item.a];
+    if (item.b == 1) {
+        return BoxParameterStep(param, item.a, ops, target, at, node);
+    }
     if (item.phase == 1) {
         binding: Name = {name: param.name, place: CellPlace, index: at.cell - 1, storage: param.storage,
                          container: param.container, record: param.record, writable: true, node: param.node};

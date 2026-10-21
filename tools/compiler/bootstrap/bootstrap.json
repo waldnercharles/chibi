@@ -2,35 +2,40 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "ec0f28be551e7ccd85823c25c2f4640a2f64c402",
+  "revision": "b6589d5b71ed8494dddadaa03d158b9a88b3710b",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 10514140,
-    "sha256": "cd17a353581b8e3435326cc3fc98b84d3f131850aead6bc8f2d68b86cc3173b5"
+    "bytes": 11189444,
+    "sha256": "affff37a658010d66de9fb04e0195931aeabeb1ac35ce5251c7ed69b8c4a36f0"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 88220,
-      "sha256": "78586170747bc4905b2df6c222d12d7c6d1481b96b7d0605775f02326d40def7"
+      "bytes": 90470,
+      "sha256": "02e166bec693d8895d4994907b456c52ef6c37f39858f973320af8752b31114f"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 100387,
-      "sha256": "21cb65c646cdf16af2b21369b3e5a31d49a5afaf6c73c973f26626c3d0efc6fb"
+      "bytes": 101138,
+      "sha256": "8d8463e868ecc7009d6983026499acca1b265e0daadc70f1286be07649423eeb"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 173009,
-      "sha256": "1cc2ced432327cb6e8c9e1873e57fc7e1a67541148feb27ea5345417b72161ee"
+      "bytes": 174644,
+      "sha256": "5818e6dca624137695c2d3879b3686917d9541cc8c5fed1616f04e39a52e69f7"
     },
     {
       "path": "package_compiler/Maps.chibi",
       "bytes": 27111,
       "sha256": "1eb10564ee07aaf2733efca26f2266572491ede95a99a34ee599669e4feac1d7"
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "bytes": 25651,
+      "sha256": "5b1094f76a0af678de024d14dc99c3d35911ebfd71503d2b32fad44d4f3eebd5"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -44,8 +49,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 22004,
-      "sha256": "f6428f32cf21a24cd6c1b5aafd82338a7d2c30703d6bbe27b3800923dcbb2978"
+      "bytes": 22022,
+      "sha256": "00de6adf4904a5e8505f98ab9a55a8efa850e85f28cf93879104d0121fc33ba5"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",

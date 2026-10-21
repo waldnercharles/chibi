@@ -86,16 +86,16 @@ name &quot;Main&quot;
 <summary><h2 id="move-with-input">Move with input</h2>
 </summary>
 <p>Attach this behavior to an entity with <code>Input</code> and <code>Transform</code> components. <code>Move</code> supplies a direction. <code>dt</code> is the time in seconds since the previous tick.</p>
-<pre><code class="language-chibi">MovePlayer :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
-        self.Transform += self.Input.Move * <span class="chibi-number">105</span> * dt
+<pre><code class="language-chibi"><span class="chibi-type">MovePlayer</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> <span class="chibi-operator">::</span> (dt: <span class="chibi-type">s</span>) {
+        self.<span class="chibi-property">Transform</span> <span class="chibi-operator">+=</span> self.<span class="chibi-property">Input</span>.<span class="chibi-property">Move</span> <span class="chibi-operator">*</span> <span class="chibi-number">105</span> <span class="chibi-operator">*</span> dt
     }
 }
 </code></pre>
 <p>This moves the position directly. For a physics character, set <code>Velocity</code> instead. Keep its vertical velocity when changing horizontal movement:</p>
-<pre><code class="language-chibi">MovePlayer :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: () {
-        self.Velocity = <span class="chibi-function">vec2</span>(self.Input.Move.x * <span class="chibi-number">105</span>, self.Velocity.y)
+<pre><code class="language-chibi"><span class="chibi-type">MovePlayer</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> <span class="chibi-operator">::</span> () {
+        self.<span class="chibi-property">Velocity</span> <span class="chibi-operator">=</span> <span class="chibi-function">vec2</span>(self.<span class="chibi-property">Input</span>.<span class="chibi-property">Move</span>.<span class="chibi-property">x</span> <span class="chibi-operator">*</span> <span class="chibi-number">105</span>, self.<span class="chibi-property">Velocity</span>.<span class="chibi-property">y</span>)
     }
 }
 </code></pre>
@@ -110,9 +110,9 @@ name &quot;Main&quot;
 }
 </code></pre>
 <p>Use <code>pressed</code> for one action per press. Use <code>held</code> for continuous input.</p>
-<pre><code class="language-chibi">Shoot :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Input</span> :: () {
-        <span class="chibi-keyword">if</span> input.Shoot.pressed {
+<pre><code class="language-chibi"><span class="chibi-type">Shoot</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Input</span> <span class="chibi-operator">::</span> () {
+        <span class="chibi-keyword">if</span> input.<span class="chibi-property">Shoot</span>.<span class="chibi-property">pressed</span> {
             <span class="chibi-function">print_string</span>(<span class="chibi-string">&quot;Fire&quot;</span>)
         }
     }
@@ -123,8 +123,8 @@ name &quot;Main&quot;
 <summary><h2 id="move-every-matching-entity">Move every matching entity</h2>
 </summary>
 <p>A system selects entities by their components. This system needs <code>Transform</code> and <code>Velocity</code> on each matching entity.</p>
-<pre><code class="language-chibi">Drift :: <span class="chibi-keyword">system</span>(position: Transform, velocity: Velocity) <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
-    position += velocity * dt
+<pre><code class="language-chibi"><span class="chibi-type">Drift</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">system</span>(position: <span class="chibi-type">Transform</span>, velocity: <span class="chibi-type">Velocity</span>) <span class="chibi-keyword">on</span> Tick <span class="chibi-operator">::</span> (dt: <span class="chibi-type">s</span>) {
+    position <span class="chibi-operator">+=</span> velocity <span class="chibi-operator">*</span> dt
 }
 </code></pre>
 <p>Save it in <code>content/systems/Drift.chibi</code>. Register it on an entity with the <code>EngineSystem</code> component:</p>
@@ -139,11 +139,11 @@ components {
 <summary><h2 id="spawn-an-object">Spawn an object</h2>
 </summary>
 <p>Create a <code>Projectile</code> prototype with a <code>Transform</code> component. Attach this behavior to an entity that also has <code>Transform</code>:</p>
-<pre><code class="language-chibi">FireProjectile :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Input</span> :: () {
-        <span class="chibi-keyword">if</span> input.Shoot.pressed {
-            projectile := <span class="chibi-keyword">await</span> <span class="chibi-function">spawn_prototype</span>(Projectile)
-            projectile.Transform = self.Transform
+<pre><code class="language-chibi"><span class="chibi-type">FireProjectile</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Input</span> <span class="chibi-operator">::</span> () {
+        <span class="chibi-keyword">if</span> input.<span class="chibi-property">Shoot</span>.<span class="chibi-property">pressed</span> {
+            projectile <span class="chibi-operator">:=</span> <span class="chibi-keyword">await</span> <span class="chibi-function">spawn_prototype</span>(Projectile)
+            projectile.<span class="chibi-property">Transform</span> <span class="chibi-operator">=</span> self.<span class="chibi-property">Transform</span>
         }
     }
 }
@@ -154,24 +154,24 @@ components {
 <summary><h2 id="remove-an-object-after-a-delay">Remove an object after a delay</h2>
 </summary>
 <p>Store the countdown on the entity. Declare <code>content/components/Lifetime.chibi</code>:</p>
-<pre><code class="language-chibi"><span class="chibi-type">Lifetime</span> :: <span class="chibi-keyword">component</span> {
-    remaining: s
+<pre><code class="language-chibi"><span class="chibi-type">Lifetime</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">component</span> {
+    <span class="chibi-property">remaining</span>: <span class="chibi-type">s</span>
 }
 </code></pre>
 <p>Create <code>content/behaviors/Expire.chibi</code>:</p>
-<pre><code class="language-chibi">Expire :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: (dt: s) {
-        self.Lifetime.remaining -= dt
-        <span class="chibi-keyword">if</span> self.Lifetime.remaining &lt;= <span class="chibi-number">0</span> {
+<pre><code class="language-chibi"><span class="chibi-type">Expire</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> <span class="chibi-operator">::</span> (dt: <span class="chibi-type">s</span>) {
+        self.<span class="chibi-property">Lifetime</span>.<span class="chibi-property">remaining</span> <span class="chibi-operator">-=</span> dt
+        <span class="chibi-keyword">if</span> self.<span class="chibi-property">Lifetime</span>.<span class="chibi-property">remaining</span> <span class="chibi-operator">&lt;=</span> <span class="chibi-number">0</span> {
             <span class="chibi-function">destroy_entity</span>(self)
         }
     }
 }
 </code></pre>
 <p>Give a prototype a two-second lifetime in <code>content/prototypes/TimedObject.chibi</code>:</p>
-<pre><code class="language-chibi">TimedObject :: <span class="chibi-keyword">prototype</span> {
-    Lifetime { remaining: <span class="chibi-number">2</span> }
-    behaviors: [Expire]
+<pre><code class="language-chibi"><span class="chibi-type">TimedObject</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">prototype</span> {
+    Lifetime { <span class="chibi-property">remaining</span>: <span class="chibi-number">2</span> }
+    <span class="chibi-property">behaviors</span>: [Expire]
 }
 </code></pre>
 <p>Each instance has its own countdown. Add visible components to the prototype to see it disappear.</p>
@@ -180,17 +180,17 @@ components {
 <summary><h2 id="check-for-an-obstacle">Check for an obstacle</h2>
 </summary>
 <p>This ray checks 200 world units to the right. It selects collision category bit 1, ignores the calling entity, and excludes sensors. The behavior needs <code>Transform</code> and <code>Velocity</code> components.</p>
-<pre><code class="language-chibi">AvoidObstacle :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> :: () {
-        hit := <span class="chibi-function">raycast</span>(
-            self.Transform,
-            self.Transform + <span class="chibi-function">vec2</span>(<span class="chibi-number">200</span>, <span class="chibi-number">0</span>),
+<pre><code class="language-chibi"><span class="chibi-type">AvoidObstacle</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Tick</span> <span class="chibi-operator">::</span> () {
+        hit <span class="chibi-operator">:=</span> <span class="chibi-function">raycast</span>(
+            self.<span class="chibi-property">Transform</span>,
+            self.<span class="chibi-property">Transform</span> <span class="chibi-operator">+</span> <span class="chibi-function">vec2</span>(<span class="chibi-number">200</span>, <span class="chibi-number">0</span>),
             <span class="chibi-number">1</span>,
             self,
-            <span class="chibi-keyword">false</span>
+            <span class="chibi-constant">false</span>
         )
-        <span class="chibi-keyword">if</span> hit.Found {
-            self.Velocity = self.Velocity * <span class="chibi-number">0.5</span>
+        <span class="chibi-keyword">if</span> hit.<span class="chibi-property">Found</span> {
+            self.<span class="chibi-property">Velocity</span> <span class="chibi-operator">=</span> self.<span class="chibi-property">Velocity</span> <span class="chibi-operator">*</span> <span class="chibi-number">0.5</span>
         }
     }
 }
@@ -201,9 +201,9 @@ components {
 <summary><h2 id="react-to-a-collision">React to a collision</h2>
 </summary>
 <p>Attach this behavior to a 2D physics body with <code>Body</code> and <code>Collider</code> components. It applies an impulse when contact begins:</p>
-<pre><code class="language-chibi">Bounce :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">ContactBegin</span> :: () {
-        <span class="chibi-function">apply_impulse</span>(self, <span class="chibi-function">vec2</span>(<span class="chibi-number">0</span>, self.Body.mass * <span class="chibi-number">20</span>))
+<pre><code class="language-chibi"><span class="chibi-type">Bounce</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">ContactBegin</span> <span class="chibi-operator">::</span> () {
+        <span class="chibi-function">apply_impulse</span>(self, <span class="chibi-function">vec2</span>(<span class="chibi-number">0</span>, self.<span class="chibi-property">Body</span>.<span class="chibi-property">mass</span> <span class="chibi-operator">*</span> <span class="chibi-number">20</span>))
     }
 }
 </code></pre>
@@ -213,18 +213,18 @@ components {
 <summary><h2 id="sum-a-collection">Sum a collection</h2>
 </summary>
 <p>Use an array for a sequence of scores. A <code>for</code> loop visits each value.</p>
-<pre><code class="language-chibi">Scores :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-function">TotalScore</span> :: (points: <span class="chibi-type">int</span>[]) -&gt; <span class="chibi-type">int</span> {
-        total: <span class="chibi-type">int</span> = <span class="chibi-number">0</span>
+<pre><code class="language-chibi"><span class="chibi-type">Scores</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-function">TotalScore</span> <span class="chibi-operator">::</span> (points: <span class="chibi-builtin">int</span>[]) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span> {
+        total: <span class="chibi-builtin">int</span> <span class="chibi-operator">=</span> <span class="chibi-number">0</span>
         <span class="chibi-keyword">for</span> point <span class="chibi-keyword">in</span> points {
-            total += point
+            total <span class="chibi-operator">+=</span> point
         }
         <span class="chibi-keyword">return</span> total
     }
 
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
-        points: <span class="chibi-type">int</span>[] = [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">5</span>]
-        points = <span class="chibi-function">array_add</span>(points, <span class="chibi-number">15</span>)
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> <span class="chibi-operator">::</span> () {
+        points: <span class="chibi-builtin">int</span>[] <span class="chibi-operator">=</span> [<span class="chibi-number">10</span>, <span class="chibi-number">20</span>, <span class="chibi-number">5</span>]
+        points <span class="chibi-operator">=</span> <span class="chibi-function">array_add</span>(points, <span class="chibi-number">15</span>)
         <span class="chibi-function">print_string</span>(<span class="chibi-function">format_text</span>(<span class="chibi-string">&quot;Score: {}&quot;</span>, <span class="chibi-function">TotalScore</span>(points)))
     }
 }
@@ -246,9 +246,9 @@ components {
 (array)behaviors &quot;ScoreLabel&quot;
 </code></pre>
 <p>Define <code>content/behaviors/ScoreLabel.chibi</code>:</p>
-<pre><code class="language-chibi">ScoreLabel :: <span class="chibi-keyword">behavior</span> {
-    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> :: () {
-        <span class="chibi-keyword">await</span> <span class="chibi-function">set_ui_text</span>(Element: <span class="chibi-string">&quot;#score&quot;</span>, Text: <span class="chibi-string">&quot;Score: 50&quot;</span>)
+<pre><code class="language-chibi"><span class="chibi-type">ScoreLabel</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">behavior</span> {
+    <span class="chibi-keyword">on</span> <span class="chibi-function">Begin</span> <span class="chibi-operator">::</span> () {
+        <span class="chibi-keyword">await</span> <span class="chibi-function">set_ui_text</span>(<span class="chibi-property">Element</span>: <span class="chibi-string">&quot;#score&quot;</span>, <span class="chibi-property">Text</span>: <span class="chibi-string">&quot;Score: 50&quot;</span>)
     }
 }
 </code></pre>

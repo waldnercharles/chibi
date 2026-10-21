@@ -92,175 +92,175 @@
 <h2 id="strings">strings</h2>
 <p>Import it as <code>core:strings</code>.</p>
 <h3 id="bytelength">ByteLength</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ByteLength</span> :: (value: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ByteLength</span> <span class="chibi-operator">::</span> (value: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>Compiler text operations use bytes, including bytes inside UTF-8 sequences.</p>
 <h3 id="byteat">ByteAt</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ByteAt</span> :: (value: <span class="chibi-type">string</span>, index: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ByteAt</span> <span class="chibi-operator">::</span> (value: <span class="chibi-builtin">string</span>, index: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>Returns -1 outside the string; valid bytes are unsigned values from 0 to 255. Each call measures the string, so a loop over a long one should read Bytes.</p>
 <h3 id="bytes">Bytes</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Bytes</span> :: (value: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Bytes</span> <span class="chibi-operator">::</span> (value: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>[]
 </code></pre>
 <p>Every byte of the string, from 0 to 255, read in one pass.</p>
 <h3 id="slice">Slice</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Slice</span> :: (value: <span class="chibi-type">string</span>, start: <span class="chibi-type">int</span>, count: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Slice</span> <span class="chibi-operator">::</span> (value: <span class="chibi-builtin">string</span>, start: <span class="chibi-builtin">int</span>, count: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>Start clamps to the string and count clamps to its remaining bytes.</p>
 <h3 id="compare">Compare</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Compare</span> :: (left: <span class="chibi-type">string</span>, right: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Compare</span> <span class="chibi-operator">::</span> (left: <span class="chibi-builtin">string</span>, right: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <h3 id="isidentifier">IsIdentifier</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IsIdentifier</span> :: (value: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IsIdentifier</span> <span class="chibi-operator">::</span> (value: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <h3 id="basename">BaseName</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">BaseName</span> :: (path: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">BaseName</span> <span class="chibi-operator">::</span> (path: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="contains">Contains</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Contains</span> :: (s: <span class="chibi-type">string</span>, substr: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Contains</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, substr: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <h3 id="containsany">ContainsAny</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ContainsAny</span> :: (s: <span class="chibi-type">string</span>, chars: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ContainsAny</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, chars: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <h3 id="hasprefix">HasPrefix</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">HasPrefix</span> :: (s: <span class="chibi-type">string</span>, prefix: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">HasPrefix</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, prefix: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <h3 id="hassuffix">HasSuffix</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">HasSuffix</span> :: (s: <span class="chibi-type">string</span>, suffix: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">HasSuffix</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, suffix: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <h3 id="indexbyte">IndexByte</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IndexByte</span> :: (s: <span class="chibi-type">string</span>, c: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IndexByte</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, c: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <h3 id="lastindexbyte">LastIndexByte</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndexByte</span> :: (s: <span class="chibi-type">string</span>, c: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndexByte</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, c: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <h3 id="index">Index</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Index</span> :: (s: <span class="chibi-type">string</span>, substr: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Index</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, substr: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.</p>
 <h3 id="lastindex">LastIndex</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndex</span> :: (s: <span class="chibi-type">string</span>, substr: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndex</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, substr: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>Index's search from the end. An empty substring is found at the length of s.</p>
 <h3 id="indexany">IndexAny</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IndexAny</span> :: (s: <span class="chibi-type">string</span>, chars: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IndexAny</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, chars: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>The offset of the first byte of s that is any byte of chars.</p>
 <h3 id="lastindexany">LastIndexAny</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndexAny</span> :: (s: <span class="chibi-type">string</span>, chars: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">LastIndexAny</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, chars: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <h3 id="count">Count</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Count</span> :: (s: <span class="chibi-type">string</span>, substr: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">int</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Count</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, substr: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span>
 </code></pre>
 <p>Non-overlapping occurrences. An empty substring occurs at every byte boundary, one more than the byte length.</p>
 <h3 id="truncatetobyte">TruncateToByte</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TruncateToByte</span> :: (s: <span class="chibi-type">string</span>, c: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TruncateToByte</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, c: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>Everything before the first c, or all of s when c is absent.</p>
 <h3 id="equalfold">EqualFold</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">EqualFold</span> :: (u: <span class="chibi-type">string</span>, v: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">EqualFold</span> <span class="chibi-operator">::</span> (u: <span class="chibi-builtin">string</span>, v: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <p>ASCII letters match in either case; every other byte must be equal.</p>
 <h3 id="tolower">ToLower</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ToLower</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ToLower</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>ASCII letters only; other bytes, including those of UTF-8 sequences, stay.</p>
 <h3 id="toupper">ToUpper</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ToUpper</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ToUpper</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="isasciispace">IsAsciiSpace</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IsAsciiSpace</span> :: (c: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">bool</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">IsAsciiSpace</span> <span class="chibi-operator">::</span> (c: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">bool</span>
 </code></pre>
 <p>Tab, line feed, vertical tab, form feed, carriage return and space.</p>
 <h3 id="trimleft">TrimLeft</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimLeft</span> :: (s: <span class="chibi-type">string</span>, cutset: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimLeft</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, cutset: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>Removes the leading bytes that are bytes of cutset.</p>
 <h3 id="trimright">TrimRight</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimRight</span> :: (s: <span class="chibi-type">string</span>, cutset: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimRight</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, cutset: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trim">Trim</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Trim</span> :: (s: <span class="chibi-type">string</span>, cutset: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Trim</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, cutset: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trimleftspace">TrimLeftSpace</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimLeftSpace</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimLeftSpace</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trimrightspace">TrimRightSpace</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimRightSpace</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimRightSpace</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trimspace">TrimSpace</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimSpace</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimSpace</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trimprefix">TrimPrefix</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimPrefix</span> :: (s: <span class="chibi-type">string</span>, prefix: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimPrefix</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, prefix: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="trimsuffix">TrimSuffix</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimSuffix</span> :: (s: <span class="chibi-type">string</span>, suffix: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">TrimSuffix</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, suffix: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="cut">Cut</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Cut</span> :: (s: <span class="chibi-type">string</span>, offset: <span class="chibi-type">int</span>, count: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Cut</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, offset: <span class="chibi-builtin">int</span>, count: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>The count bytes from offset, or all bytes from offset when count is below 1. An offset outside s keeps all of s. A count past the end keeps the rest.</p>
 <h3 id="split">Split</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Split</span> :: (s: <span class="chibi-type">string</span>, sep: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Split</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, sep: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitn">SplitN</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitN</span> :: (s: <span class="chibi-type">string</span>, sep: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitN</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, sep: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitafter">SplitAfter</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitAfter</span> :: (s: <span class="chibi-type">string</span>, sep: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitAfter</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, sep: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitaftern">SplitAfterN</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitAfterN</span> :: (s: <span class="chibi-type">string</span>, sep: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitAfterN</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, sep: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitlines">SplitLines</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLines</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLines</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitlinesn">SplitLinesN</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesN</span> :: (s: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesN</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitlinesafter">SplitLinesAfter</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesAfter</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesAfter</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="splitlinesaftern">SplitLinesAfterN</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesAfterN</span> :: (s: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">SplitLinesAfterN</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <h3 id="fields">Fields</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Fields</span> :: (s: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>[]
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Fields</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>[]
 </code></pre>
 <p>The runs of bytes between ASCII spaces.</p>
 <h3 id="join">Join</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Join</span> :: (a: <span class="chibi-type">string</span>[], sep: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Join</span> <span class="chibi-operator">::</span> (a: <span class="chibi-builtin">string</span>[], sep: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="concatenate">Concatenate</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Concatenate</span> :: (a: <span class="chibi-type">string</span>[]) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Concatenate</span> <span class="chibi-operator">::</span> (a: <span class="chibi-builtin">string</span>[]) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="repeat">Repeat</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Repeat</span> :: (s: <span class="chibi-type">string</span>, count: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Repeat</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, count: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>Doubles the result until it reaches the requested length. A count below 1 gives an empty string.</p>
 <h3 id="replace">Replace</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Replace</span> :: (s: <span class="chibi-type">string</span>, old: <span class="chibi-type">string</span>, new: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Replace</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, old: <span class="chibi-builtin">string</span>, new: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <p>Replaces the first n non-overlapping matches of old, or all of them when n is negative. An empty old matches at every byte boundary.</p>
 <h3 id="replaceall">ReplaceAll</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ReplaceAll</span> :: (s: <span class="chibi-type">string</span>, old: <span class="chibi-type">string</span>, new: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">ReplaceAll</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, old: <span class="chibi-builtin">string</span>, new: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="remove">Remove</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Remove</span> :: (s: <span class="chibi-type">string</span>, key: <span class="chibi-type">string</span>, n: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Remove</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, key: <span class="chibi-builtin">string</span>, n: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="removeall">RemoveAll</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">RemoveAll</span> :: (s: <span class="chibi-type">string</span>, key: <span class="chibi-type">string</span>) -&gt; <span class="chibi-type">string</span>
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">RemoveAll</span> <span class="chibi-operator">::</span> (s: <span class="chibi-builtin">string</span>, key: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">string</span>
 </code></pre>
 <h3 id="parts">Parts</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-type">Parts</span> :: <span class="chibi-keyword">struct</span> {
-    head: <span class="chibi-type">string</span>;
-    match: <span class="chibi-type">string</span>;
-    tail: <span class="chibi-type">string</span>;
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-type">Parts</span> <span class="chibi-operator">::</span> <span class="chibi-keyword">struct</span> {
+    <span class="chibi-property">head</span>: <span class="chibi-builtin">string</span>;
+    <span class="chibi-property">match</span>: <span class="chibi-builtin">string</span>;
+    <span class="chibi-property">tail</span>: <span class="chibi-builtin">string</span>;
 }
 </code></pre>
 <h3 id="partition">Partition</h3>
-<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Partition</span> :: (str: <span class="chibi-type">string</span>, sep: <span class="chibi-type">string</span>) -&gt; Parts
+<pre><code class="language-chibi"><span class="chibi-keyword">pub</span> <span class="chibi-function">Partition</span> <span class="chibi-operator">::</span> (str: <span class="chibi-builtin">string</span>, sep: <span class="chibi-builtin">string</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-type">Parts</span>
 </code></pre>
 <p>The text before the first sep, sep and the text after it; when sep is absent, head is all of str and the others are empty.</p>
 </main>

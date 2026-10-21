@@ -40,15 +40,15 @@
 <p>Use <code>@test</code> on a package function with no parameters and no result. Use <code>assert</code> to check its output.</p>
 <h2 id="write-a-test">Write a test</h2>
 <p>Save this file as <code>packages/scoring/Scoring.chibi</code>:</p>
-<pre><code class="language-chibi"><span class="chibi-keyword">package</span> scoring
+<pre><code class="language-chibi"><span class="chibi-keyword">package</span> <span class="chibi-namespace">scoring</span>
 
-<span class="chibi-function">Double</span> :: (points: <span class="chibi-type">int</span>) -&gt; <span class="chibi-type">int</span> {
-    <span class="chibi-keyword">return</span> points * <span class="chibi-number">2</span>;
+<span class="chibi-function">Double</span> <span class="chibi-operator">::</span> (points: <span class="chibi-builtin">int</span>) <span class="chibi-operator">-&gt;</span> <span class="chibi-builtin">int</span> {
+    <span class="chibi-keyword">return</span> points <span class="chibi-operator">*</span> <span class="chibi-number">2</span>;
 }
 
 @<span class="chibi-attribute">test</span>
-<span class="chibi-function">DoublesPoints</span> :: () {
-    <span class="chibi-function">assert</span>(<span class="chibi-function">Double</span>(<span class="chibi-number">3</span>) == <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>);
+<span class="chibi-function">DoublesPoints</span> <span class="chibi-operator">::</span> () {
+    <span class="chibi-function">assert</span>(<span class="chibi-function">Double</span>(<span class="chibi-number">3</span>) <span class="chibi-operator">==</span> <span class="chibi-number">6</span>, <span class="chibi-string">&quot;three doubles to six&quot;</span>);
 }
 </code></pre>
 <p>Run the package tests:</p>

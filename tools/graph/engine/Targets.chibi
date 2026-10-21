@@ -30,7 +30,9 @@ pub Targets :: () -> string[] {
         "chibi_native_types", "chibi_spatial_runtime", "chibi_native_bindings", "chibi_entity_runtime",
         "chibi_rhythm_runtime", "chibi_particle_runtime", "chibi_input_runtime",
         "chibi_visual_motion_runtime", "chibi_declared_components", "chibi_visual_catalog",
-        "chibi_scene_authoring", "chibi_scenario_document", "reflect"
+        "chibi_scene_authoring", "chibi_scenario_document", "chibi_syntax_runtime", "chibi_ui_syntax",
+        "chibi_language_syntax", "chibi_project_document", "chibi_box2d", "chibi_box3d",
+        "chibi_ui_authoring", "reflect"
     ];
 }
 
@@ -345,6 +347,85 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_scenario_document") {
         return ["src/assets/scenario_document.c"];
     }
+    if (target == "chibi_syntax_runtime") {
+        return ["third-party/source/tree_sitter/lib/src/lib.c"];
+    }
+    if (target == "chibi_language_syntax") {
+        return ["src/language/syntax.c", "src/language/src/parser.c", "src/language/src/scanner.c"];
+    }
+    if (target == "chibi_project_document") {
+        return [
+            "src/assets/project.c", "src/assets/project_migrate.c", "src/assets/project_migrate26.c",
+            "src/assets/project_migrate29.c", "src/assets/project_migrate30.c",
+            "src/assets/project_parser23.c", "src/assets/project_parser24.c", "src/assets/project_parser25.c",
+            "src/assets/project_parser26.c", "src/assets/project_parser27.c", "src/assets/project_parser28.c",
+            "src/assets/project_parser29.c", "src/assets/project_parser30.c"
+        ];
+    }
+    if (target == "chibi_box2d") {
+        return [
+            "third-party/source/box2d/src/aabb.c", "third-party/source/box2d/src/arena_allocator.c",
+            "third-party/source/box2d/src/array.c", "third-party/source/box2d/src/bitset.c",
+            "third-party/source/box2d/src/body.c", "third-party/source/box2d/src/broad_phase.c",
+            "third-party/source/box2d/src/constraint_graph.c", "third-party/source/box2d/src/contact.c",
+            "third-party/source/box2d/src/contact_solver.c", "third-party/source/box2d/src/core.c",
+            "third-party/source/box2d/src/distance.c", "third-party/source/box2d/src/distance_joint.c",
+            "third-party/source/box2d/src/dynamic_tree.c", "third-party/source/box2d/src/geometry.c",
+            "third-party/source/box2d/src/hull.c", "third-party/source/box2d/src/id_pool.c",
+            "third-party/source/box2d/src/island.c", "third-party/source/box2d/src/joint.c",
+            "third-party/source/box2d/src/manifold.c", "third-party/source/box2d/src/math_functions.c",
+            "third-party/source/box2d/src/motor_joint.c", "third-party/source/box2d/src/mouse_joint.c",
+            "third-party/source/box2d/src/mover.c", "third-party/source/box2d/src/prismatic_joint.c",
+            "third-party/source/box2d/src/revolute_joint.c", "third-party/source/box2d/src/sensor.c",
+            "third-party/source/box2d/src/shape.c", "third-party/source/box2d/src/solver.c",
+            "third-party/source/box2d/src/solver_set.c", "third-party/source/box2d/src/table.c",
+            "third-party/source/box2d/src/timer.c", "third-party/source/box2d/src/types.c",
+            "third-party/source/box2d/src/weld_joint.c", "third-party/source/box2d/src/wheel_joint.c",
+            "third-party/source/box2d/src/world.c"
+        ];
+    }
+    if (target == "chibi_box3d") {
+        return [
+            "third-party/source/box3d/src/aabb.c", "third-party/source/box3d/src/arena_allocator.c",
+            "third-party/source/box3d/src/bitset.c", "third-party/source/box3d/src/block_allocator.c",
+            "third-party/source/box3d/src/body.c", "third-party/source/box3d/src/broad_phase.c",
+            "third-party/source/box3d/src/capsule.c", "third-party/source/box3d/src/compound.c",
+            "third-party/source/box3d/src/constraint_graph.c", "third-party/source/box3d/src/contact.c",
+            "third-party/source/box3d/src/contact_solver.c", "third-party/source/box3d/src/convex_manifold.c",
+            "third-party/source/box3d/src/core.c", "third-party/source/box3d/src/distance.c",
+            "third-party/source/box3d/src/distance_joint.c", "third-party/source/box3d/src/dynamic_tree.c",
+            "third-party/source/box3d/src/height_field.c", "third-party/source/box3d/src/hull.c",
+            "third-party/source/box3d/src/id_pool.c", "third-party/source/box3d/src/island.c",
+            "third-party/source/box3d/src/joint.c", "third-party/source/box3d/src/manifold.c",
+            "third-party/source/box3d/src/math_functions.c", "third-party/source/box3d/src/mesh.c",
+            "third-party/source/box3d/src/mesh_contact.c", "third-party/source/box3d/src/motor_joint.c",
+            "third-party/source/box3d/src/mover.c", "third-party/source/box3d/src/parallel_for.c",
+            "third-party/source/box3d/src/parallel_joint.c", "third-party/source/box3d/src/physics_world.c",
+            "third-party/source/box3d/src/prismatic_joint.c", "third-party/source/box3d/src/recording.c",
+            "third-party/source/box3d/src/recording_replay.c", "third-party/source/box3d/src/revolute_joint.c",
+            "third-party/source/box3d/src/scheduler.c", "third-party/source/box3d/src/sensor.c",
+            "third-party/source/box3d/src/shape.c", "third-party/source/box3d/src/simd.c",
+            "third-party/source/box3d/src/solver.c", "third-party/source/box3d/src/solver_set.c",
+            "third-party/source/box3d/src/sphere.c", "third-party/source/box3d/src/spherical_joint.c",
+            "third-party/source/box3d/src/table.c", "third-party/source/box3d/src/timer.c",
+            "third-party/source/box3d/src/triangle_manifold.c", "third-party/source/box3d/src/types.c",
+            "third-party/source/box3d/src/weld_joint.c", "third-party/source/box3d/src/wheel_joint.c",
+            "third-party/source/box3d/src/world_snapshot.c"
+        ];
+    }
+    if (target == "chibi_ui_syntax") {
+        return [
+            "third-party/source/tree_sitter_css/src/parser.c", "third-party/source/tree_sitter_css/src/scanner.c",
+            "third-party/source/tree_sitter_html/src/parser.c", "third-party/source/tree_sitter_html/src/scanner.c"
+        ];
+    }
+    if (target == "chibi_ui_authoring") {
+        return [
+            "src/assets/ui_events.c", "src/assets/ui_source.c", "src/assets/ui_source_complete.c",
+            "src/assets/ui_source_edit.c", "src/assets/ui_source_format.c", "src/assets/ui_source_hover.c",
+            "src/assets/ui_source_resources.c"
+        ];
+    }
     return [];
 }
 
@@ -357,6 +438,9 @@ pub HeaderSource :: (target: string) -> string {
     }
     if (target == "chibi_math") {
         return "third-party/source/cute_framework/include";
+    }
+    if (target == "chibi_syntax_runtime") {
+        return "third-party/source/tree_sitter/lib/include";
     }
     return "src";
 }
@@ -622,6 +706,18 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_scenario_document") {
         return ["assets/scenario_document.h"];
     }
+    if (target == "chibi_syntax_runtime") {
+        return ["tree_sitter/api.h"];
+    }
+    if (target == "chibi_language_syntax") {
+        return ["language/syntax.h"];
+    }
+    if (target == "chibi_project_document") {
+        return ["assets/project.h", "assets/project_migrate.h"];
+    }
+    if (target == "chibi_ui_authoring") {
+        return ["assets/ui_events.h", "assets/ui_source.h"];
+    }
     return [];
 }
 
@@ -657,6 +753,9 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_visual_catalog") {
         return ["render/shader_catalog_internal.h"];
+    }
+    if (target == "chibi_ui_authoring") {
+        return ["assets/ui_source_internal.h"];
     }
     return [];
 }
@@ -1031,6 +1130,37 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_text"
         ];
     }
+    if (target == "chibi_syntax_runtime") {
+        return [
+            "public/syntax_runtime", "third-party/source/tree_sitter/lib/src",
+            "third-party/source/tree_sitter/lib/include"
+        ];
+    }
+    if (target == "chibi_language_syntax") {
+        return ["public/language_syntax", "src/language/src", "public/support", "public/syntax_runtime"];
+    }
+    if (target == "chibi_project_document") {
+        return [
+            "src/language/src", "public/project_document", "public/input_action", "public/asset_text",
+            "public/asset_values", "public/support", "public/language_syntax", "public/syntax_runtime",
+            "public/json"
+        ];
+    }
+    if (target == "chibi_box2d") {
+        return ["third-party/source/box2d/src", "third-party/source/box2d/include"];
+    }
+    if (target == "chibi_box3d") {
+        return ["third-party/source/box3d/src", "third-party/source/box3d/include"];
+    }
+    if (target == "chibi_ui_syntax") {
+        return ["public/syntax_runtime"];
+    }
+    if (target == "chibi_ui_authoring") {
+        return [
+            "public/ui_authoring", "private/ui_authoring", "public/text_source", "public/support",
+            "public/text_search", "public/ui_document", "public/ui_document_values", "public/syntax_runtime"
+        ];
+    }
     return [];
 }
 
@@ -1105,6 +1235,9 @@ pub Defines :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return ["CHIBI_HAVE_SJLIT=1"];
     }
+    if (target == "chibi_syntax_runtime") {
+        return ["_DARWIN_C_SOURCE", "_DEFAULT_SOURCE"];
+    }
     return [];
 }
 
@@ -1139,12 +1272,25 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_scene_authoring") {
         return ["-ffp-contract=off"];
     }
+    if (target == "chibi_syntax_runtime") {
+        return ["-w"];
+    }
+    if (target == "chibi_box2d") {
+        return ["-ffp-contract=off"];
+    }
+    if (target == "chibi_box3d") {
+        return ["-ffp-contract=off"];
+    }
+    if (target == "chibi_ui_syntax") {
+        return ["-w"];
+    }
     return [];
 }
 
 // Options one source adds after its target's, as CMake's COMPILE_OPTIONS
-// source property adds them: these kernels keep floating-point contraction
-// off, as fields does.
+// source property adds them: the transform and particle kernels keep
+// floating-point contraction off, as fields does, and generated parsers
+// compile without warnings.
 pub SourceOptions :: (target: string, file: string) -> string[] {
     if (target == "chibi_spatial_runtime" && file == "src/runtime/visual_transform.c") {
         return ["-ffp-contract=off"];
@@ -1155,7 +1301,41 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
     if (target == "chibi_particle_runtime" && file == "src/runtime/particles.c") {
         return ["-ffp-contract=off"];
     }
+    if (target == "chibi_language_syntax" && file == "src/language/src/parser.c") {
+        return ["-w"];
+    }
+    if (target == "chibi_project_document" && strings.HasPrefix(file, "src/assets/project_parser")) {
+        return ["-w"];
+    }
     return [];
+}
+
+// Include directories one source adds before its target's, as CMake's
+// INCLUDE_DIRECTORIES source property adds them: each tree-sitter grammar
+// includes its own parser headers.
+pub SourceIncludes :: (target: string, file: string) -> string[] {
+    if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_css/")) {
+        return ["third-party/source/tree_sitter_css/src"];
+    }
+    if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_html/")) {
+        return ["third-party/source/tree_sitter_html/src"];
+    }
+    return [];
+}
+
+// The C standard a target compiles with, its CMake C_STANDARD with GNU
+// extensions: Box2D and Box3D declare C17.
+pub Standard :: (target: string) -> string {
+    if (target == "chibi_box2d" || target == "chibi_box3d") {
+        return "gnu17";
+    }
+    return "gnu23";
+}
+
+// Whether a target compiles as position-independent code, its CMake
+// POSITION_INDEPENDENT_CODE.
+pub PositionIndependent :: (target: string) -> bool {
+    return target == "chibi_box2d" || target == "chibi_box3d";
 }
 
 // The program that writes a target's `build/` sources before it compiles, or

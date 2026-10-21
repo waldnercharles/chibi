@@ -60,21 +60,24 @@ pub Command :: (tools: Tools, target: Library, flags: string[], source: string) 
 }
 
 // The record that says what built a file: its command, one argument per line,
-// an empty line, then a stamp and path for each input and for the output.
+// an empty line, then for each input and for the output its path and, on the
+// next line, its stamp.
 Record :: (output: string) -> string {
     return Join([output, ".chibi-record"]);
 }
 RecordText :: (command: string, inputs: string[], output: string) -> string {
     lines := [command, ""];
     for (input in array_add(inputs, output)) {
-        lines = array_add(lines, Join([build.file_stamp(input), " ", input]));
+        lines = append(lines, [input, build.file_stamp(input)]);
     }
     return Join([strings.Join(lines, "\n"), "\n"]);
 }
 
 // Whether output was built by command from inputs that have not changed since.
 // Records are read with the host's line natives: core:strings copies the rest
-// of the text at each line, which costs seconds over a few records.
+// of the text at each line, which costs seconds over a few records. A path and
+// its stamp are separate lines, so reading one copies nothing more: build
+// values are never freed, and an up-to-date build reads every record.
 Current :: (command: string[], output: string) -> bool {
     record := Record(output);
     if (!build.file_exists(record) || !build.file_exists(output)) {
@@ -90,9 +93,12 @@ Current :: (command: string[], output: string) -> bool {
             return false;
         }
     }
-    for (i in count + 1..<length(lines)) {
-        line := lines[i];
-        if (build.file_stamp(build.after(line, " ")) != build.before(line, " ")) {
+    if ((length(lines) - count - 1) % 2 != 0) {
+        return false;
+    }
+    for (i in 0..<(length(lines) - count - 1) / 2) {
+        at := count + 1 + 2 * i;
+        if (build.file_stamp(lines[at]) != lines[at + 1]) {
             return false;
         }
     }

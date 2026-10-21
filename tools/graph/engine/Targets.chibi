@@ -1,0 +1,403 @@
+package engine
+
+// The libraries the graph owns, as sdk/CMakeLists.txt and its includes define
+// them. Records hold only scalars, so a target is its name, and these tables
+// give its arrays. Paths are below src/.
+
+// The libraries the graph builds, each after those it depends on. A library
+// with no sources only publishes headers, as CMake's INTERFACE libraries do.
+pub Targets :: () -> string[] {
+    return [
+        "chibi_support", "chibi_types", "chibi_asset_values", "chibi_text_search", "chibi_ui_document_values",
+        "chibi_value_document", "chibi_capabilities", "chibi_ecs", "chibi_events", "chibi_execution_contract",
+        "chibi_tasks", "chibi_input_action", "chibi_shader_runtime", "chibi_model_runtime",
+        "chibi_image_catalog", "chibi_native_capabilities", "chibi_state_capabilities",
+        "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
+        "chibi_conversion_capabilities", "chibi_audio_runtime", "chibi_url_runtime",
+        "chibi_host_native_catalog", "chibi_ui_documents", "chibi_fields", "chibi_field_catalog",
+        "chibi_scheduling", "chibi_text_source", "chibi_ui_document", "chibi_reference_index"
+    ];
+}
+
+// A target's sources.
+Files :: (target: string) -> string[] {
+    if (target == "chibi_support") {
+        return [
+            "support/arena.c", "support/file_io.c", "support/text_edit.c", "support/xalloc.c",
+            "support/rcss_map.c"
+        ];
+    }
+    if (target == "chibi_types") {
+        return [
+            "types/type.c", "types/catalog.c", "types/array.c", "types/map.c", "types/record.c",
+            "types/copy.c", "types/trace.c", "types/union.c", "types/index.c", "types/value_format.c",
+            "types/value_wire.c"
+        ];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/asset_value.c"];
+    }
+    if (target == "chibi_text_search") {
+        return ["support/text_search.c", "support/text_rank.c"];
+    }
+    if (target == "chibi_ui_document_values") {
+        return ["ui/document.c"];
+    }
+    if (target == "chibi_value_document") {
+        return ["types/value_document.c", "types/value_document_read.c"];
+    }
+    if (target == "chibi_capabilities") {
+        return [
+            "capabilities/catalog.c", "capabilities/catalog_snapshot.c", "capabilities/catalog_values.c",
+            "capabilities/definition.c"
+        ];
+    }
+    if (target == "chibi_ecs") {
+        return [
+            "ecs/ecs.c", "ecs/relationship.c", "ecs/hierarchy.c", "ecs/query.c", "ecs/component_catalog.c"
+        ];
+    }
+    if (target == "chibi_events") {
+        return ["runtime/events.c"];
+    }
+    if (target == "chibi_shader_runtime") {
+        return [
+            "runtime/shaders/bake.c", "runtime/shaders/program.c", "runtime/shaders/prepared.c",
+            "runtime/shaders/detail.c", "runtime/shaders/effects.c", "runtime/shaders/image.c",
+            "runtime/shaders/volume.c", "runtime/shaders/inspection.c"
+        ];
+    }
+    if (target == "chibi_model_runtime") {
+        return [
+            "runtime/models/model_lifecycle.c", "runtime/models/prepared.c",
+            "runtime/models/model_parameters.c", "runtime/models/model_bounds.c",
+            "runtime/models/model_finite.c", "runtime/models/model_frames.c", "runtime/models/model_hit.c",
+            "runtime/models/model_inspection.c"
+        ];
+    }
+    if (target == "chibi_image_catalog") {
+        return ["runtime/images/catalog.c", "runtime/images/sky.c"];
+    }
+    if (target == "chibi_native_capabilities") {
+        return [
+            "runtime/native_capabilities.c", "runtime/native_definitions.c", "runtime/type_definitions.c"
+        ];
+    }
+    if (target == "chibi_state_capabilities") {
+        return ["runtime/state_definition.c"];
+    }
+    if (target == "chibi_selection_capabilities") {
+        return ["runtime/selection.c", "runtime/selection_definition.c"];
+    }
+    if (target == "chibi_set_capabilities") {
+        return ["runtime/sets.c", "runtime/sets_definition.c"];
+    }
+    if (target == "chibi_comparison_capabilities") {
+        return ["runtime/comparisons.c", "runtime/comparison_definition.c"];
+    }
+    if (target == "chibi_conversion_capabilities") {
+        return ["runtime/conversions.c", "runtime/conversion_definition.c"];
+    }
+    if (target == "chibi_audio_runtime") {
+        return ["runtime/audio.c", "runtime/audio_analysis.c", "runtime/audio_definition.c"];
+    }
+    if (target == "chibi_url_runtime") {
+        return ["runtime/url.c", "runtime/url_definition.c"];
+    }
+    if (target == "chibi_host_native_catalog") {
+        return ["host/native_catalog.c"];
+    }
+    if (target == "chibi_ui_documents") {
+        return ["runtime/ui/documents.c", "runtime/ui/font.c"];
+    }
+    if (target == "chibi_fields") {
+        return ["runtime/fields/program.c", "runtime/fields/prepared.c"];
+    }
+    if (target == "chibi_field_catalog") {
+        return ["runtime/material_field.c", "runtime/material_field_prepared.c"];
+    }
+    if (target == "chibi_scheduling") {
+        return ["runtime/systems/scheduler.c"];
+    }
+    if (target == "chibi_text_source") {
+        return [
+            "support/file_watch.c", "support/code_lex.c", "support/text_file.c", "support/text_overlay.c"
+        ];
+    }
+    if (target == "chibi_ui_document") {
+        return ["assets/ui_document.c", "support/rcss.c"];
+    }
+    if (target == "chibi_reference_index") {
+        return ["authoring/reference_index.c"];
+    }
+    return [];
+}
+
+// The headers a target publishes. Windows adds posix shims to chibi_support;
+// this graph does not build Windows yet.
+pub PublicHeaders :: (target: string) -> string[] {
+    if (target == "chibi_support") {
+        return [
+            "support/arena.h", "support/array.h", "support/cos_sin.h", "support/enum.h", "support/file_io.h",
+            "support/math.h", "support/rcss_map.h", "support/text_edit.h", "support/xalloc.h"
+        ];
+    }
+    if (target == "chibi_types") {
+        return [
+            "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
+            "types/record.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
+            "types/union.h", "types/value.h", "types/value_format.h", "types/value_wire.h"
+        ];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/asset_format.h", "support/asset_value.h"];
+    }
+    if (target == "chibi_text_search") {
+        return ["support/text_rank.h", "support/text_search.h"];
+    }
+    if (target == "chibi_ui_document_values") {
+        return ["ui/document.h"];
+    }
+    if (target == "chibi_value_document") {
+        return ["types/value_document.h"];
+    }
+    if (target == "chibi_capabilities") {
+        return ["capabilities/catalog.h", "capabilities/catalog_snapshot.h", "capabilities/definition.h"];
+    }
+    if (target == "chibi_ecs") {
+        return ["ecs/component_catalog.h", "ecs/ecs.h", "ecs/execution.h"];
+    }
+    if (target == "chibi_events") {
+        return ["runtime/events.h"];
+    }
+    if (target == "chibi_execution_contract") {
+        return [
+            "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
+            "execution/diagnostic.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
+            "execution/log.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
+            "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
+            "execution/value_kind.h"
+        ];
+    }
+    if (target == "chibi_tasks") {
+        return ["runtime/tasks.h"];
+    }
+    if (target == "chibi_input_action") {
+        return ["runtime/input_action.h"];
+    }
+    if (target == "chibi_shader_runtime") {
+        return [
+            "runtime/shaders/bake.h", "runtime/shaders/detail.h", "runtime/shaders/effects.h",
+            "runtime/shaders/image.h", "runtime/shaders/inspection.h", "runtime/shaders/prepared.h",
+            "runtime/shaders/program.h", "runtime/shaders/volume.h"
+        ];
+    }
+    if (target == "chibi_model_runtime") {
+        return [
+            "runtime/models/model_inspection.h", "runtime/models/model_program.h", "runtime/models/prepared.h"
+        ];
+    }
+    if (target == "chibi_image_catalog") {
+        return ["runtime/images/catalog.h", "runtime/images/sky.h", "runtime/images/table.h"];
+    }
+    if (target == "chibi_native_capabilities") {
+        return [
+            "runtime/native_capabilities.h", "runtime/native_definitions.h", "runtime/type_definitions.h"
+        ];
+    }
+    if (target == "chibi_state_capabilities") {
+        return ["runtime/state_definition.h"];
+    }
+    if (target == "chibi_selection_capabilities") {
+        return ["runtime/selection.h", "runtime/selection_definition.h"];
+    }
+    if (target == "chibi_set_capabilities") {
+        return ["runtime/sets.h", "runtime/sets_definition.h"];
+    }
+    if (target == "chibi_comparison_capabilities") {
+        return ["runtime/comparison_definition.h", "runtime/comparisons.h"];
+    }
+    if (target == "chibi_conversion_capabilities") {
+        return ["runtime/conversion_definition.h", "runtime/conversions.h"];
+    }
+    if (target == "chibi_audio_runtime") {
+        return ["runtime/audio.h", "runtime/audio_analysis.h", "runtime/audio_definition.h"];
+    }
+    if (target == "chibi_url_runtime") {
+        return ["runtime/url.h", "runtime/url_definition.h"];
+    }
+    if (target == "chibi_host_native_catalog") {
+        return ["host/native_catalog.h"];
+    }
+    if (target == "chibi_ui_documents") {
+        return ["runtime/ui/documents.h", "runtime/ui/font.h"];
+    }
+    if (target == "chibi_fields") {
+        return ["runtime/fields/ir.h", "runtime/fields/prepared.h", "runtime/fields/program.h"];
+    }
+    if (target == "chibi_field_catalog") {
+        return ["runtime/material_field.h", "runtime/material_field_prepared.h"];
+    }
+    if (target == "chibi_scheduling") {
+        return ["runtime/systems/scheduler.h"];
+    }
+    if (target == "chibi_text_source") {
+        return [
+            "support/code_lex.h", "support/file_watch.h", "support/text_file.h", "support/text_overlay.h"
+        ];
+    }
+    if (target == "chibi_ui_document") {
+        return ["assets/ui_document.h", "support/rcss.h"];
+    }
+    if (target == "chibi_reference_index") {
+        return ["authoring/reference_index.h"];
+    }
+    return [];
+}
+
+// The headers only a target's own sources include.
+pub PrivateHeaders :: (target: string) -> string[] {
+    if (target == "chibi_types") {
+        return ["types/array_internal.h", "types/copy_internal.h"];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/float_text.h"];
+    }
+    if (target == "chibi_ecs") {
+        return ["ecs/ecs_internal.h"];
+    }
+    if (target == "chibi_shader_runtime") {
+        return ["runtime/shaders/prepared_internal.h"];
+    }
+    if (target == "chibi_model_runtime") {
+        return [
+            "runtime/models/model_bounds.h", "runtime/models/model_program_internal.h",
+            "runtime/shaders/prepared_internal.h"
+        ];
+    }
+    if (target == "chibi_native_capabilities") {
+        return ["capabilities/catalog_index.h"];
+    }
+    return [];
+}
+
+// The targets whose public headers a target's compiles include, directly or
+// through another, in the order CMake gives their directories.
+pub Uses :: (target: string) -> string[] {
+    if (target == "chibi_types") {
+        return ["chibi_support"];
+    }
+    if (target == "chibi_asset_values") {
+        return ["chibi_support"];
+    }
+    if (target == "chibi_text_search") {
+        return ["chibi_support"];
+    }
+    if (target == "chibi_ui_document_values") {
+        return ["chibi_support"];
+    }
+    if (target == "chibi_value_document") {
+        return ["chibi_types", "chibi_support", "chibi_asset_values"];
+    }
+    if (target == "chibi_capabilities") {
+        return ["chibi_types", "chibi_support"];
+    }
+    if (target == "chibi_ecs") {
+        return ["chibi_types", "chibi_support"];
+    }
+    if (target == "chibi_events") {
+        return ["chibi_types", "chibi_support"];
+    }
+    if (target == "chibi_shader_runtime") {
+        return ["chibi_support", "chibi_types"];
+    }
+    if (target == "chibi_model_runtime") {
+        return ["chibi_shader_runtime", "chibi_support", "chibi_types"];
+    }
+    if (target == "chibi_image_catalog") {
+        return ["chibi_shader_runtime", "chibi_support", "chibi_types"];
+    }
+    if (target == "chibi_native_capabilities") {
+        return ["chibi_capabilities", "chibi_types", "chibi_support", "chibi_execution_contract"];
+    }
+    if (target == "chibi_state_capabilities") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_selection_capabilities") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_set_capabilities") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_comparison_capabilities") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_conversion_capabilities") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_audio_runtime") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_url_runtime") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract"
+        ];
+    }
+    if (target == "chibi_host_native_catalog") {
+        return [
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_types", "chibi_support",
+            "chibi_execution_contract", "chibi_events"
+        ];
+    }
+    if (target == "chibi_ui_documents") {
+        return ["chibi_types", "chibi_support"];
+    }
+    if (target == "chibi_fields") {
+        return ["chibi_types", "chibi_support", "chibi_tasks"];
+    }
+    if (target == "chibi_field_catalog") {
+        return ["chibi_fields", "chibi_types", "chibi_support", "chibi_tasks"];
+    }
+    if (target == "chibi_scheduling") {
+        return ["chibi_ecs", "chibi_types", "chibi_support", "chibi_execution_contract", "chibi_tasks"];
+    }
+    if (target == "chibi_text_source") {
+        return ["chibi_support", "chibi_text_search"];
+    }
+    if (target == "chibi_ui_document") {
+        return ["chibi_text_source", "chibi_support", "chibi_text_search", "chibi_ui_document_values"];
+    }
+    if (target == "chibi_reference_index") {
+        return ["chibi_support", "chibi_events", "chibi_types"];
+    }
+    return [];
+}
+
+// Options a target adds after the profile's flags when the compiler is Clang
+// or GCC: fields keeps floating-point contraction off so its results match on
+// every backend.
+pub Options :: (target: string) -> string[] {
+    if (target == "chibi_fields") {
+        return ["-ffp-contract=off"];
+    }
+    return [];
+}

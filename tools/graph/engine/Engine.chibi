@@ -3,10 +3,9 @@ package engine
 import c "graph:c"
 import strings "core:strings"
 
-// The engine's libraries, described for the C graph. Each matches the target
-// of the same name in sdk/CMakeLists.txt; the build-graph route compares their
-// compile commands with CMake's. Records hold only scalars, so a target is its
-// name, and these functions give its arrays.
+// Builds the engine's libraries, which Targets.chibi describes, with the C
+// graph. Each matches the target of the same name in sdk/CMakeLists.txt; the
+// build-graph route compares their compile commands with CMake's.
 
 // A build configuration: what root CMakeLists.txt reads from its cache.
 pub Profile :: struct {
@@ -28,125 +27,9 @@ Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
-// The libraries the graph builds, each after those it depends on.
-pub Targets :: () -> string[] {
-    return [
-        "chibi_support", "chibi_types", "chibi_asset_values", "chibi_text_search", "chibi_ui_document_values",
-        "chibi_value_document", "chibi_capabilities", "chibi_ecs", "chibi_events"
-    ];
-}
-
 // The name a target's headers are published under, its CMake EXPORT_NAME.
 pub Component :: (target: string) -> string {
     return strings.Slice(target, 6, strings.ByteLength(target) - 6);
-}
-
-// A target's sources, below src/.
-Files :: (target: string) -> string[] {
-    if (target == "chibi_support") {
-        return ["support/arena.c", "support/file_io.c", "support/text_edit.c", "support/xalloc.c", "support/rcss_map.c"];
-    }
-    if (target == "chibi_types") {
-        return [
-            "types/type.c", "types/catalog.c", "types/array.c", "types/map.c", "types/record.c", "types/copy.c",
-            "types/trace.c", "types/union.c", "types/index.c", "types/value_format.c", "types/value_wire.c"
-        ];
-    }
-    if (target == "chibi_asset_values") {
-        return ["support/asset_value.c"];
-    }
-    if (target == "chibi_text_search") {
-        return ["support/text_search.c", "support/text_rank.c"];
-    }
-    if (target == "chibi_ui_document_values") {
-        return ["ui/document.c"];
-    }
-    if (target == "chibi_value_document") {
-        return ["types/value_document.c", "types/value_document_read.c"];
-    }
-    if (target == "chibi_capabilities") {
-        return [
-            "capabilities/catalog.c", "capabilities/catalog_snapshot.c", "capabilities/catalog_values.c",
-            "capabilities/definition.c"
-        ];
-    }
-    if (target == "chibi_ecs") {
-        return ["ecs/ecs.c", "ecs/relationship.c", "ecs/hierarchy.c", "ecs/query.c", "ecs/component_catalog.c"];
-    }
-    if (target == "chibi_events") {
-        return ["runtime/events.c"];
-    }
-    return [];
-}
-
-// The headers a target publishes, below src/. Windows adds posix shims to
-// chibi_support; this graph does not build Windows yet.
-pub PublicHeaders :: (target: string) -> string[] {
-    if (target == "chibi_support") {
-        return [
-            "support/arena.h", "support/array.h", "support/xalloc.h", "support/rcss_map.h", "support/text_edit.h",
-            "support/enum.h", "support/cos_sin.h", "support/file_io.h", "support/math.h"
-        ];
-    }
-    if (target == "chibi_types") {
-        return [
-            "types/value.h", "types/type.h", "types/record.h", "types/catalog.h", "types/copy.h", "types/array.h",
-            "types/map.h", "types/trace.h", "types/union.h", "types/annotate.h", "types/state_machine.h",
-            "types/value_format.h", "types/scalar.h", "types/value_wire.h"
-        ];
-    }
-    if (target == "chibi_asset_values") {
-        return ["support/asset_value.h", "support/asset_format.h"];
-    }
-    if (target == "chibi_text_search") {
-        return ["support/text_search.h", "support/text_rank.h"];
-    }
-    if (target == "chibi_ui_document_values") {
-        return ["ui/document.h"];
-    }
-    if (target == "chibi_value_document") {
-        return ["types/value_document.h"];
-    }
-    if (target == "chibi_capabilities") {
-        return ["capabilities/catalog.h", "capabilities/definition.h", "capabilities/catalog_snapshot.h"];
-    }
-    if (target == "chibi_ecs") {
-        return ["ecs/ecs.h", "ecs/execution.h", "ecs/component_catalog.h"];
-    }
-    if (target == "chibi_events") {
-        return ["runtime/events.h"];
-    }
-    return [];
-}
-
-// The headers only a target's own sources include, below src/.
-pub PrivateHeaders :: (target: string) -> string[] {
-    if (target == "chibi_types") {
-        return ["types/array_internal.h", "types/copy_internal.h"];
-    }
-    if (target == "chibi_asset_values") {
-        return ["support/float_text.h"];
-    }
-    if (target == "chibi_ecs") {
-        return ["ecs/ecs_internal.h"];
-    }
-    return [];
-}
-
-// The targets whose public headers a target's compiles include, directly or
-// through another, in the order CMake gives their directories: each library it
-// links, followed by what that library links.
-Uses :: (target: string) -> string[] {
-    if (target == "chibi_support") {
-        return [];
-    }
-    if (target == "chibi_value_document") {
-        return ["chibi_types", "chibi_support", "chibi_asset_values"];
-    }
-    if (target == "chibi_capabilities" || target == "chibi_ecs" || target == "chibi_events") {
-        return ["chibi_types", "chibi_support"];
-    }
-    return ["chibi_support"];
 }
 
 // Where a target's public or private headers are staged.
@@ -172,7 +55,8 @@ pub Sources :: (source_root: string, target: string) -> string[] {
 }
 
 // Its own public headers, then its private ones, then those of the targets it
-// uses, then the profile's flags: the order CMake writes them.
+// uses, then the profile's flags and its own options: the order CMake writes
+// them.
 pub CompileFlags :: (build_dir: string, target: string, profile: Profile) -> string[] {
     flags := [Join(["-I", HeaderRoot(build_dir, target, "public")])];
     if (length(PrivateHeaders(target)) > 0) {
@@ -181,7 +65,11 @@ pub CompileFlags :: (build_dir: string, target: string, profile: Profile) -> str
     for (used in Uses(target)) {
         flags = array_add(flags, Join(["-I", HeaderRoot(build_dir, used, "public")]));
     }
-    return append(flags, Flags(profile, build_dir));
+    flags = append(flags, Flags(profile, build_dir));
+    if (Clang(profile) || profile.compiler_id == "GNU") {
+        flags = append(flags, Options(target));
+    }
+    return flags;
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -279,6 +167,9 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         return -1;
     }
     for (target in targets) {
+        if (length(Files(target)) == 0) {
+            continue;
+        }
         compiled := false;
         for (compile in running) {
             compiled = compiled || compile.owner == target;

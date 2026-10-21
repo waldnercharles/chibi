@@ -117,8 +117,8 @@ The **host file primitives** below are those in the "Host file primitives"
 section: file kinds, change stamps, directory listing, copy, rename, remove,
 SHA-256 and environment names, with 1 MiB of output per step. The host still
 cannot read sizes, modification-time order or link targets, create unique
-staging directories, or limit a child's resources. Its 100,000-step budget
-also bounds authored walks over large trees.
+staging directories, or limit a child's resources. Its instruction budget,
+100 million since the build graph, also bounds authored walks over large trees.
 
 ### Python
 

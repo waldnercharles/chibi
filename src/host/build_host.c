@@ -26,7 +26,10 @@
 
 #define BUILD_MAX_ARGUMENTS 256
 #define BUILD_MAX_ARGUMENT_BYTES 65536
-#define BUILD_MAX_STEPS 64
+#define BUILD_MAX_STEPS 4096
+/* Instructions one program may run, as many as a package test: a build graph
+ * parses a dependency file per object. The deadline bounds the time. */
+#define BUILD_INSTRUCTION_BUDGET 100000000
 
 static const char *const environment_names[] = {
     "PATH",
@@ -728,7 +731,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     pin_value value = { .type = PIN_I32 };
     context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
                                            .results = &value,
-                                           .budget = 100000,
+                                           .budget = options->instruction_budget
+                                                       ? options->instruction_budget
+                                                       : BUILD_INSTRUCTION_BUDGET,
                                            .begin_command = refuse_wait,
                                            .start_task = refuse_task };
     behavior_function_bind_storage(&context, &storage);

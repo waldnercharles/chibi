@@ -605,10 +605,17 @@ It compiles across libraries in one job window, writes
 Slice 3, 2026-10-21: `chibi_value_document`, `chibi_capabilities`,
 `chibi_ecs` and `chibi_events`, which use `chibi_types`; 32 sources in nine
 libraries, all of which compiled and archived from the graph.
-Next: generated prerequisites, which `chibi_shader_runtime`'s artifact-format
-headers and the libraries after it need; header-only interface libraries
-(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`); then moving
-profile selection from `Build.chibi`'s CMake arguments into the graph.
+Slice 4, 2026-10-21: the graph owns every library whose compiles include only
+staged headers of libraries it owns: 31 libraries, 82 sources, including
+`chibi_shader_runtime` (which, despite slice 3's note, needs no generated
+header: its artifact-format record goes into `engine.json`), the native
+capability tables, and three header-only libraries. Its target table,
+`tools/graph/engine/Targets.chibi`, was first read from what CMake staged and
+compiled; it is now the source of truth. The host's instruction budget rose
+to 100 million and its step limit to 4,096 for graphs of this size.
+Next: the targets with generated prerequisites or third-party includes
+(`chibi_execution`, `chibi_json`, the language and syntax runtime), then
+moving profile selection from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

@@ -565,7 +565,7 @@ That waits on cheaper strings
 ([Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length)).
 Splitting the 25 KB `build/CMakeCache.txt` into lines and testing each takes
 0.9 s with `strings.SplitLines` in a Debug host with sanitizers, against 0.2 s
-with `build.lines`. A 50 KB cache runs out of the host's 100,000-step budget,
+with `build.lines`. A 50 KB cache ran out of the host's then 100,000-step budget,
 because each split copies the rest of the text.
 
 ## A host's natives can't form a package

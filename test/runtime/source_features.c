@@ -1176,7 +1176,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
          * publication sees +infinity and stores the finite high endpoint. */
         REQUIRE(dispatch(tick, 4096) >= 0);
         pin_value actual;
-        REQUIRE(ecs_component_read_field(test_world, owner, desc->id, 0, &actual) == ECS_OK);
+        REQUIRE(ecs_component_read_field(NULL, test_world, owner, desc->id, 0, &actual) == ECS_OK);
         REQUIRE(actual.d == 10);
         cleanup();
     }

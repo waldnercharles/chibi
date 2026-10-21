@@ -15,6 +15,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -33,7 +34,19 @@ static const type_desc box_type = { .name = "fixture.box",
                                     .size = sizeof(fixture_box),
                                     .fields = &box_field,
                                     .field_count = 1 };
-static const type_desc *const types[] = { &box_type };
+typedef struct
+{
+    const char *text;
+} fixture_c_text;
+static const type_field c_text_field = { .name = "text",
+                                         .type = PIN_STR,
+                                         .size = sizeof(const char *),
+                                         .type_name = "const char *" };
+static const type_desc c_text_type = { .name = "fixture.c_text",
+                                       .size = sizeof(fixture_c_text),
+                                       .fields = &c_text_field,
+                                       .field_count = 1 };
+static const type_desc *const types[] = { &box_type, &c_text_type };
 type_catalog_pack test_program_types();
 type_catalog_pack test_reductions_types();
 type_catalog_pack test_graph_model_types();
@@ -61,7 +74,7 @@ type_catalog_pack type_catalog_pack_at(int index)
                                     .enums = SHADER_PACK.enums,
                                     .enum_count = SHADER_PACK.enum_count };
     }
-    return (type_catalog_pack){ .types = types, .type_count = 1 };
+    return (type_catalog_pack){ .types = types, .type_count = 2 };
 }
 
 static behavior_function_builder *builder;
@@ -346,10 +359,12 @@ TEST_CASE(execution_branches_state_and_host_calls)
 
 TEST_CASE(execution_finished_definition_owns_producer_strings)
 {
-    char text[] = "producer text", type_name[] = "fixture.text",
-         origin[] = "fixture.chibi";
+    char text[] = { 'p', 0, 'x', (char)0xff, 0 };
+    const char expected[] = { 'p', 0, 'x', (char)0xff };
+    char type_name[] = "fixture.text", origin[] = "fixture.chibi";
     builder = behavior_function_builder_new();
-    pin_value initial = { .type = PIN_STR, .str = text, .type_name = type_name };
+    pin_string descriptor = { text, sizeof text - 1 };
+    pin_value initial = { .type = PIN_STR, .text = &descriptor, .type_name = type_name };
     behavior_function_builder_signature(builder, NULL, 0, &initial, 1, NULL, 0);
     int source = behavior_function_builder_origin(
         builder,
@@ -366,19 +381,26 @@ TEST_CASE(execution_finished_definition_owns_producer_strings)
     REQUIRE(finish());
     behavior_function_builder_free(builder);
     builder = NULL;
-    memset(text, 'X', sizeof text - 1);
+    memset(text, 'X', sizeof text);
     memset(type_name, 'X', sizeof type_name - 1);
     memset(origin, 'X', sizeof origin - 1);
     int count = 0;
     const pin_value *defaults = behavior_function_results(function, &count);
     REQUIRE(count == 1 && defaults[0].type == PIN_STR);
-    REQUIRE(defaults[0].str != text && !strcmp(defaults[0].str, "producer text"));
+    REQUIRE(
+        pin_text(defaults[0]).bytes != text &&
+        pin_text(defaults[0]).length == sizeof expected &&
+        !memcmp(pin_text(defaults[0]).bytes, expected, sizeof expected)
+    );
     REQUIRE(defaults[0].type_name != type_name && !strcmp(defaults[0].type_name, "fixture.text"));
     REQUIRE(behavior_function_compile(function));
     for (int backend = 0; backend < 2; backend++) {
         pin_value result = defaults[0];
         REQUIRE(run(NULL, 0, NULL, &result, backend == 1, 100) == FLOW_OK);
-        REQUIRE(!strcmp(result.str, "producer text"));
+        REQUIRE(
+            pin_text(result).length == sizeof expected &&
+            !memcmp(pin_text(result).bytes, expected, sizeof expected)
+        );
     }
     return true;
 }
@@ -1299,7 +1321,9 @@ TEST_CASE(execution_print_string_is_synchronous_and_preserves_context)
             if (mode != 2) {
                 apush(log_services, ((service_binding){ EXECUTION_LOG_SERVICE, &sink }));
             }
-            text.str = mode == 0 ? "logged before return" : NULL;
+            pin_string descriptor = { "logged before return",
+                                      sizeof("logged before return") - 1 };
+            text.text = mode == 0 ? &descriptor : NULL;
             context = (behavior_function_context){
                 .arguments = &text,
                 .argument_count = 1,
@@ -1525,13 +1549,23 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
 
 TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)
 {
-    pin_value payload = { .type = PIN_STR, .str = "owned payload" }, value;
+    pin_value payload, value;
+    REQUIRE(!pin_value_text(&managed, &payload, "owned payload", sizeof("owned payload") - 1));
     REQUIRE(!pin_union_value(&managed, 42, &payload, 1, &value));
     builder = behavior_function_builder_new();
     pin_value args[] = { value,
                          { .type = PIN_U64, .u64 = 42 },
                          { .type = PIN_I32 },
                          { .type = PIN_BOOL } };
+    pin_value text = { .type = PIN_STR };
+    REQUIRE(!EXECUTION_union_get_call.value(&managed, args, 4, &text));
+    REQUIRE(
+        pin_text(text).length == sizeof("owned payload") - 1 &&
+        !memcmp(pin_text(text).bytes, "owned payload", sizeof("owned payload") - 1)
+    );
+    text.type_name = "fixture.text_alias";
+    REQUIRE(EXECUTION_union_get_call.value(&managed, args, 4, &text));
+    REQUIRE(text.type_name && !strcmp(text.type_name, "fixture.text_alias"));
     pin_value output = { .type = PIN_F64 };
     args[3].b = true;
     REQUIRE(EXECUTION_union_get_call.value(&managed, args, 4, &output));
@@ -1927,6 +1961,100 @@ TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp)
     return true;
 }
 
+TEST_CASE(execution_string_equality_and_iteration_use_full_bytes)
+{
+    pin_value args[] = { { .type = PIN_STR }, { .type = PIN_STR } };
+    pin_value returned = { .type = PIN_BOOL };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, args, 2, &returned, 1, NULL, 0);
+    int x = slot(PIN_STR), y = slot(PIN_STR), same = slot(PIN_BOOL);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_STR, .left = 0, .output = x, .value = args[0] });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_STR, .left = 1, .output = y, .value = args[1] });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_STRING_EQUAL, .type = PIN_BOOL, .left = x, .right = y, .output = same });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_BOOL, .left = same });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish() && behavior_function_compile(function));
+    const char first[] = { 'A', 0, 'B', (char)0xff, 0 };
+    const char second[] = { 'A', 0, 'C', (char)0xff, 0 };
+    pin_string texts[] = { { first, sizeof first - 1 },
+                           { second, sizeof second - 1 },
+                           { first, 1 },
+                           { first, sizeof first - 1 } };
+    const bool expected[] = { true, false, false, true };
+    for (int backend = 0; backend < 2; backend++) {
+        args[0].text = &texts[0];
+        for (int n = 0; n < 4; n++) {
+            args[1].text = &texts[n];
+            pin_value result = returned;
+            REQUIRE(run(args, 2, NULL, &result, backend == 1, 100) == FLOW_OK);
+            REQUIRE(result.b == expected[n]);
+        }
+    }
+    pin_value cursor = { 0 };
+    REQUIRE(!EXECUTION_string_cursor_call.value(&managed, args, 1, &cursor));
+    pin_value step[] = { cursor, { .type = PIN_I32, .i = 1 } }, item = { 0 };
+    REQUIRE(!EXECUTION_string_item_call.value(&managed, step, 2, &item));
+    REQUIRE(item.type == PIN_STR && pin_text(item).length == 1 && pin_text(item).bytes[0] == 0);
+    REQUIRE(!EXECUTION_string_next_call.value(&managed, step, 2, &item) && item.i == 2);
+    step[1].i = 3;
+    REQUIRE(EXECUTION_string_item_call.value(&managed, step, 2, &item));
+    return true;
+}
+
+TEST_CASE(execution_native_string_fields_validate_before_publication)
+{
+    char source[] = "before";
+    fixture_c_text native = { source };
+    pin_value root = { .type = PIN_STRUCT, .type_name = "fixture.c_text", .ptr = &native };
+    behavior_function_context owner = { .value_storage = &managed };
+    pin_value reference = execution_reference_value(&managed, &owner, &root, root);
+    pin_value field_args[] = { reference,
+                               { .type = PIN_STR },
+                               { .type = PIN_U64 },
+                               { .type = PIN_BOOL } };
+    pin_value field = { 0 };
+    REQUIRE(!EXECUTION_reference_field_call.value(&managed, field_args, 4, &field));
+    pin_value read = { .type = PIN_STR };
+    REQUIRE(!EXECUTION_reference_read_call.value(&managed, &field, 1, &read));
+    memset(source, 'x', sizeof source - 1);
+    REQUIRE(pin_text(read).length == 6 && !memcmp(pin_text(read).bytes, "before", 6));
+    const char binary[] = { 'A', 0, 'B', 0 };
+    pin_string descriptor = { binary, 3 };
+    pin_value writes[] = { field, { .type = PIN_STR, .text = &descriptor } }, result;
+    void *previous = root.ptr;
+    REQUIRE(EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
+    REQUIRE(root.ptr == previous && native.text == source && !strcmp(source, "xxxxxx"));
+    pin_value construct[] = { { .type = PIN_STRUCT, .type_name = "fixture.c_text" },
+                              { .type = PIN_U64 },
+                              writes[1] };
+    result = (pin_value){ .type = PIN_I32, .i = 77 };
+    REQUIRE(EXECUTION_construct_call.value(&managed, construct, 3, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == 77);
+    descriptor = (pin_string){ "after", 5 };
+    REQUIRE(!EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
+    REQUIRE(root.ptr != previous && !strcmp(((fixture_c_text *)root.ptr)->text, "after"));
+    construct[2] = writes[1];
+    REQUIRE(!EXECUTION_construct_call.value(&managed, construct, 3, &result));
+    REQUIRE(result.type == PIN_STRUCT && !strcmp(((fixture_c_text *)result.ptr)->text, "after"));
+    pin_value named = { .type = PIN_NAME, .str = "stable" };
+    REQUIRE(!EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
+    REQUIRE(named.type == PIN_NAME && !strcmp(named.str, "after"));
+    const char *kept = named.str;
+    descriptor = (pin_string){ binary, 3 };
+    REQUIRE(EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
+    REQUIRE(named.type == PIN_NAME && named.str == kept);
+    pin_value converted = { .type = PIN_STR };
+    REQUIRE(!EXECUTION_snapshot_call.value(&managed, &named, 1, &converted));
+    REQUIRE(pin_text(converted).length == 5 && !memcmp(pin_text(converted).bytes, "after", 5));
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
@@ -1937,6 +2065,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls);
     RUN_TEST_CASE(execution_costs_include_managed_scalar_result_and_state_escape);
     RUN_TEST_CASE(execution_finished_definition_owns_producer_strings);
+    RUN_TEST_CASE(execution_string_equality_and_iteration_use_full_bytes);
+    RUN_TEST_CASE(execution_native_string_fields_validate_before_publication);
     RUN_TEST_CASE(execution_verifier_rejects_invalid_lowering);
     RUN_TEST_CASE(execution_budget_limits_checked_back_edges);
     RUN_TEST_CASE(execution_verifier_rejects_invalid_banks_and_metadata);

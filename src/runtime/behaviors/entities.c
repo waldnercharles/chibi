@@ -13,6 +13,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -957,7 +958,16 @@ static int spawn_command(
     assert(count == 1);
     (void)count;
     entities *entities = service;
-    scene *prototype = entities_prepare_spawn(entities, arguments[0].str, message);
+    arena storage = { 0 };
+    const char *name;
+    const char *error = pin_text_cstring(&storage, arguments[0], &name, NULL);
+    if (error) {
+        *message = error;
+        arena_free(&storage);
+        return FLOW_ERR_NODE;
+    }
+    scene *prototype = entities_prepare_spawn(entities, name, message);
+    arena_free(&storage);
     if (!prototype) {
         return FLOW_ERR_NODE;
     }
@@ -1247,11 +1257,17 @@ static const char *get_global_host(
     pin_value *out
 )
 {
+    const char *key;
+    const char *key_error = pin_text_cstring(context->value_storage, arguments[0], &key, NULL);
+    if (key_error) {
+        return key_error;
+    }
+
     if (!context->value_storage) {
         return "Get Global Variable requires invocation storage";
     }
     pin_value value;
-    if (entities_get_global_value(service, arguments[0].str, context->value_storage, &value)) {
+    if (entities_get_global_value(service, key, context->value_storage, &value)) {
         return "Get Global Variable references an unknown value";
     }
     return global_result(out, value);
@@ -1263,6 +1279,12 @@ static const char *set_global_host(
     pin_value *out
 )
 {
+    const char *key;
+    const char *key_error = pin_text_cstring(context->value_storage, arguments[0], &key, NULL);
+    if (key_error) {
+        return key_error;
+    }
+
     if (!context->value_storage) {
         return "Set Global Variable requires invocation storage";
     }
@@ -1276,7 +1298,7 @@ static const char *set_global_host(
     if (pin_value_snapshot_to_arena(context->value_storage, &value, &arguments[1])) {
         return "Set Global Variable could not snapshot its result";
     }
-    if (entities_set_global_value(service, arguments[0].str, &arguments[1])) {
+    if (entities_set_global_value(service, key, &arguments[1])) {
         return "Set Global Variable received an invalid value";
     }
     return global_result(out, value);
@@ -1305,13 +1327,24 @@ static const ecs_component_desc *query_component(entities *entities, const char 
     return NULL;
 }
 
-static const char *has_component_host(void *service, const pin_value *inputs, pin_value *out)
+static const char *has_component_host(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *inputs,
+    pin_value *out
+)
 {
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, inputs[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
     entities *entities = service;
     if (!entities) {
         return "Has Entities With Component requires a game world";
     }
-    const char *key = inputs[0].str;
+    const char *key = text;
     if (!key || !key[0]) {
         return "Choose a component for Has Entities With Component";
     }
@@ -1329,7 +1362,7 @@ static const char *has_component_host(void *service, const pin_value *inputs, pi
 }
 
 const node_host_call ENTITY_HAS_COMPONENT_CALL = { .service = "game.entities",
-                                                   .invoke = has_component_host };
+                                                   .context = has_component_host };
 
 const char *entities_find_snapshot(void *service, const char *key, pin_array *out)
 {

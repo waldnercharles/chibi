@@ -139,6 +139,16 @@ owns that program's sequence, semantic decisions and implementation status.
 Read it before expanding `core:` or adding public collections. The toolchain
 milestones below retain their existing order and acceptance conditions.
 
+The current prerequisite is the approved byte-preserving string representation:
+one immutable public `string` carrying bytes and length, with explicit UTF-8
+operations. This branch implements descriptors and ownership throughout the
+compiler, execution backends, persistence, and native adapters. It diagnoses
+provably invalid embedded NUL at C-only uses during compilation and validates
+unknown values before native effects. Existing boolean APIs return failure and
+existing diagnostic APIs fail the invocation. New APIs accepting external data
+must expose recoverable errors. Shared slices follow the descriptor cutover.
+Track language friction and discuss each package's semantics before porting it.
+
 ### Bootstrap terms
 
 - **Stage zero** is the existing C compiler and native build used to create the
@@ -1277,8 +1287,9 @@ compiler's own run:
   code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
   need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
   budget (36,292 instructions × 14,750 slots), so it must be split first.
-- `Text(forest, text, node)` still measures the source up to each node it
-  slices, because strings do not carry their length.
+- The descriptor cutover resolves repeated source-length scans in
+  `Text(forest, text, node)`. Slice still copies its selected bytes; shared
+  backing remains a separate ownership optimization.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

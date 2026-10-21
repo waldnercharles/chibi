@@ -76,6 +76,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
             yyjson_mut_obj_add_str(doc, port, "name", declared->name ? declared->name : "");
             yyjson_mut_obj_add_int(doc, port, "storage", port_storage(declared->type));
             yyjson_mut_obj_add_int(doc, port, "container", (int)declared->type.container);
+            yyjson_mut_obj_add_bool(doc, port, "c_string", declared->c_string);
         }
         yyjson_mut_arr_add_uint(doc, identities, c->id);
         yyjson_mut_arr_add_uint(doc, identities, script_catalog_capability_abi(catalog, c));
@@ -215,6 +216,7 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
             yyjson_mut_obj_add_int(doc, field, "storage", (int)f->type.storage);
             yyjson_mut_obj_add_uint(doc, field, "offset", f->offset);
             yyjson_mut_obj_add_bool(doc, field, "writable", f->writable);
+            yyjson_mut_obj_add_bool(doc, field, "c_string", f->c_string);
             yyjson_mut_obj_add_int(
                 doc,
                 field,

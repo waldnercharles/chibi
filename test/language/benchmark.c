@@ -9,6 +9,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -237,8 +238,21 @@ TEST_CASE(record_row_snapshot_benchmark)
                                .ptr = arena_alloc(&source, record->type.size) };
         memset(rows[i].ptr, 0, record->type.size);
         for (int f = 0; f < RECORD_FIELD_COUNT; f += 3) {
-            pin_value text = { .type = PIN_STR, .str = "identifier" };
-            pin_write_field(rows[i].ptr, &record->type.fields[f], text);
+            pin_value text = { .type = PIN_STR,
+                               .text = &(const pin_string){
+                                   .bytes = "identifier",
+                                   .length = sizeof("identifier") - 1 } };
+            {
+                const char *error = pin_write_field(
+                    &source,
+                    rows[i].ptr,
+                    &record->type.fields[f],
+                    text
+                );
+                if (error) {
+                    abort();
+                }
+            };
         }
     }
     pin_value *out = xmalloc(RECORD_ROW_COUNT * sizeof *out);
@@ -282,13 +296,16 @@ TEST_CASE(text_slice_benchmark)
     for (int trial = 0; trial < TRIAL_COUNT; trial++) {
         double start = monotonic_seconds();
         for (int i = 0; i < TEXT_READS; i++) {
-            pin_value slice[] = { { .type = PIN_STR, .str = text },
+            pin_value slice[] = { { .type = PIN_STR,
+                                    .text = &(
+                                        const pin_string
+                                    ){ .bytes = text, .length = (uint32_t)strlen(text) } },
                                   { .type = PIN_I32, .i = i * 4 },
                                   { .type = PIN_I32, .i = 8 } },
                       out;
             REQUIRE(
                 !NATIVE_TEXT_SLICE_CALL.value(&storage, slice, 3, &out) &&
-                strlen(out.str) == 8
+                strlen(pin_text(out).bytes) == 8
             );
             REQUIRE(!NATIVE_TEXT_BYTE_AT_CALL.value(&storage, slice, 2, &out) && out.i == 'a');
         }

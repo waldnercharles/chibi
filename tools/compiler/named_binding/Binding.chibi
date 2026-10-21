@@ -439,6 +439,10 @@ pub Text :: (environment: Environment, request: Request) -> Resolution {
         // JSON contains NUL. Parsed-name validation is a different entry path.
         if (decoded.valid) {
             name = decoded.value;
+            nul := strings.IndexByte(name, 0);
+            if (nul >= 0) {
+                name = strings.Slice(name, 0, nul);
+            }
         }
     }
     tokens: string[] = [];

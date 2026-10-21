@@ -5,6 +5,7 @@
 #include "support/array.h"
 #include "test/graph/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -490,7 +491,9 @@ TEST_CASE(authored_defaults_and_literals_save)
         { .type = PIN_I32, .i = 8 },
         { .type = PIN_I64, .i64 = 9 },
         { .type = PIN_NAME, .str = "ExactName" },
-        { .type = PIN_STR, .str = "literal" },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "literal",
+                                       .length = sizeof("literal") - 1 } },
     };
     for (int i = 0; i < 6; i++) {
         REQUIRE(graph_set_pin_default(&g, literals[i], 0, 0, &values[i]) == 0);
@@ -502,9 +505,10 @@ TEST_CASE(authored_defaults_and_literals_save)
     const pin_value *real = loaded_default(loaded, literal);
     const pin_value *name = loaded_default(loaded, literals[4]);
     const pin_value *text = loaded_default(loaded, literals[5]);
-    bool kept = acount(loaded->nodes) == 7 && real->d == 9.0 && name->str &&
-                !strcmp(name->str, "ExactName") && text->str &&
-                !strcmp(text->str, "literal");
+    bool kept = acount(loaded->nodes) == 7 && real->d == 9.0 &&
+                pin_text(*name).bytes &&
+                !strcmp(pin_text(*name).bytes, "ExactName") &&
+                pin_text(*text).bytes && !strcmp(pin_text(*text).bytes, "literal");
     graph_free(loaded);
     free(loaded);
     REQUIRE(kept);

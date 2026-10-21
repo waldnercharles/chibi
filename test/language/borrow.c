@@ -12,6 +12,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/copy.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@ static behavior_function *function;
 static behavior_function *helper_function;
 static behavior_function_context context;
 static behavior_function_activation activation;
-static arena storage;
+static arena storage, string_inputs;
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -50,6 +51,7 @@ static void release_run()
 static void cleanup()
 {
     release_run();
+    arena_free(&string_inputs);
     if (test_activation) {
         program_activation_free(test_activation);
     }
@@ -785,6 +787,7 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
     REQUIRE(guarded() == 1);
     for (int mode = 0; mode < 4; mode++) {
         for (int variant = 0; variant < 8; variant++) {
+            const pin_string retained_text = { "retained", sizeof("retained") - 1 };
             pin_value item = { .type = PIN_F64, .d = 7 };
             pin_array array = { .element_type = PIN_F64,
                                 .count = 1,
@@ -797,7 +800,7 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             } else if (variant == 1) {
                 array.count = 0;
             } else if (variant == 3) {
-                item = (pin_value){ .type = PIN_STR, .str = "retained" };
+                item = (pin_value){ .type = PIN_STR, .text = &retained_text };
             } else if (variant == 4) {
                 array.element_type = PIN_I32;
             } else if (variant == 5) {
@@ -829,8 +832,13 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             );
             if (variant == 3) {
                 pin_array *retained = context.data->values[result_bank].ptr;
-                REQUIRE(pin_array_get(retained, 0).str != item.str);
-                REQUIRE(!strcmp(pin_array_get(retained, 0).str, item.str));
+                REQUIRE(
+                    pin_text(pin_array_get(retained, 0)).bytes != pin_text(item).bytes
+                );
+                REQUIRE(!strcmp(
+                    pin_text(pin_array_get(retained, 0)).bytes,
+                    pin_text(item).bytes
+                ));
             }
         }
     }
@@ -1594,8 +1602,10 @@ static behavior_function *authored_function(int index)
 }
 static pin_value strings(pin_array *array, pin_value *items, const char *const *texts, int count)
 {
+    pin_string *descriptors = arena_alloc(&string_inputs, (size_t)count * sizeof *descriptors);
     for (int i = 0; i < count; i++) {
-        items[i] = (pin_value){ .type = PIN_STR, .str = texts[i] };
+        descriptors[i] = (pin_string){ texts[i], (uint32_t)strlen(texts[i]) };
+        items[i] = (pin_value){ .type = PIN_STR, .text = &descriptors[i] };
     }
     *array = (pin_array){ .element_type = PIN_STR,
                           .count = count,
@@ -1638,7 +1648,10 @@ TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
         pin_copy_scope_begin(&copies);
         int status = begin(&input, 1, &output, NULL, 0);
         pin_copy_scope_end(&copies);
-        REQUIRE(status == FLOW_OK && output.i == 1116 && !strcmp(items[0].str, "a"));
+        REQUIRE(
+            status == FLOW_OK && output.i == 1116 &&
+            !strcmp(pin_text(items[0]).bytes, "a")
+        );
         copied[run] = copies.counts.text_bytes;
     }
     REQUIRE(copied[0] * 8 < copied[1]);
@@ -1678,7 +1691,10 @@ TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
     pin_value input = strings(&array, items, texts, 2);
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-        REQUIRE(output.i == 12 && !strcmp(items[0].str, "a") && !strcmp(items[1].str, "b"));
+        REQUIRE(
+            output.i == 12 && !strcmp(pin_text(items[0]).bytes, "a") &&
+            !strcmp(pin_text(items[1]).bytes, "b")
+        );
     }
     return true;
 }
@@ -1703,7 +1719,7 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     pin_value input = strings(&array, items, texts, 1);
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-        REQUIRE(output.i == 1 && !strcmp(items[0].str, "a"));
+        REQUIRE(output.i == 1 && !strcmp(pin_text(items[0]).bytes, "a"));
     }
     return true;
 }

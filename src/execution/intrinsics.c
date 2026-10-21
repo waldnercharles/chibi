@@ -12,6 +12,7 @@
 #include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -27,6 +28,32 @@ static const char *snapshot_value(arena *storage, const pin_value *args, int cou
 {
     assert(count == 1);
     (void)count;
+    if (out->container == PIN_CONTAINER_SINGLE &&
+        args[0].container == PIN_CONTAINER_SINGLE) {
+        if (out->type == PIN_STR && args[0].type == PIN_NAME) {
+            pin_string text = pin_text(args[0]);
+            pin_value value;
+            const char *error = pin_value_text(storage, &value, text.bytes, text.length);
+            if (error) {
+                return error;
+            }
+            value.type_name = out->type_name;
+            *out = value;
+            return NULL;
+        }
+        if (out->type == PIN_NAME && args[0].type == PIN_STR) {
+            const char *text;
+            const char *error = pin_text_cstring(storage, args[0], &text, NULL);
+            if (error) {
+                return error;
+            }
+            pin_value value = *out;
+            value.str = text;
+            return pin_value_snapshot_to_arena(storage, out, &value)
+                     ? "Cannot retain native name conversion"
+                     : NULL;
+        }
+    }
     return pin_value_snapshot_to_arena(storage, out, args)
              ? "Cannot retain language value"
              : NULL;
@@ -121,6 +148,23 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
         if (value.type == PIN_STRUCT &&
             value.container == PIN_CONTAINER_SINGLE && !value.ptr) {
             return "Struct field has no payload";
+        }
+        if (value.type == PIN_STR && value.container == PIN_CONTAINER_SINGLE) {
+            const type_field *field = NULL;
+            for (int n = 0; n < type->field_count; n++) {
+                if (type->fields[n].offset == offset && type->fields[n].type == PIN_STR) {
+                    field = &type->fields[n];
+                    break;
+                }
+            }
+            if (!field) {
+                return "Unknown string constructor field";
+            }
+            const char *error = pin_write_field(storage, result.ptr, field, value);
+            if (error) {
+                return error;
+            }
+            continue;
         }
         const void *data = value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE
                              ? value.ptr
@@ -631,6 +675,28 @@ static void *reference_data(language_reference *ref, pin_value *root)
                    : &root->d;
     return reference_path_data(ref->path, &type, data, reference_root_layout(ref));
 }
+static const type_field *reference_text_field(const language_reference *ref, pin_value root)
+{
+    const language_reference_path *path = ref->path;
+    if (!path || path->element || path->map || path->type.type != PIN_STR) {
+        return NULL;
+    }
+    pin_value type = root;
+    void *data = root.type == PIN_STRUCT && root.container == PIN_CONTAINER_SINGLE
+                   ? root.ptr
+                   : &root.d;
+    const type_desc *root_layout = reference_root_layout(ref);
+    data = reference_path_data(path->parent, &type, data, root_layout);
+    const type_desc *layout = !path->parent && root_layout ? root_layout
+                                                           : pin_value_type(&type);
+    for (int n = 0; data && layout && n < layout->field_count; n++) {
+        const type_field *field = &layout->fields[n];
+        if (field->offset == path->offset && field->type == PIN_STR) {
+            return field;
+        }
+    }
+    return NULL;
+}
 static pin_array *reference_array(const language_reference *ref, pin_value *root)
 {
     const language_reference_path *path = ref->path;
@@ -755,6 +821,19 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     if ((!data && (ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) || !size) {
         return "Referenced storage is unavailable";
     }
+    const type_field *text_field = reference_text_field(ref, root);
+    if (text_field && !text_field->text_descriptor) {
+        const char *text;
+        memcpy(&text, data, sizeof text);
+        pin_value value;
+        const char *error = pin_value_text(storage, &value, text ? text : "", text ? strlen(text) : 0);
+        if (error) {
+            return error;
+        }
+        value.type_name = ref->type.type_name;
+        *out = value;
+        return NULL;
+    }
     *out = ref->type;
     if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
         out->ptr = data;
@@ -802,6 +881,14 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
     }
     if (!owner_storage) {
         return "Referenced owner has no retained value storage";
+    }
+    const type_field *text_field = reference_text_field(ref, root);
+    if (text_field && !text_field->text_descriptor) {
+        const char *text;
+        const char *error = pin_text_cstring(owner_storage, args[1], &text, NULL);
+        if (error) {
+            return error;
+        }
     }
     if (component_scalar_path(ref)) {
         size_t offset = (const char *)current - (const char *)root.ptr;
@@ -875,7 +962,16 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         const void *source = value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE
                                ? value.ptr
                                : &value.d;
-        memcpy(target, source, size);
+        if (text_field && !text_field->text_descriptor) {
+            type_field field = *text_field;
+            field.offset = 0;
+            const char *error = pin_write_field(owner_storage, target, &field, value);
+            if (error) {
+                return error;
+            }
+        } else {
+            memcpy(target, source, size);
+        }
     }
     if (ref->kind != LANGUAGE_REFERENCE_COMPONENT && retained.type == PIN_STRUCT &&
         retained.container == PIN_CONTAINER_SINGLE) {
@@ -1205,14 +1301,15 @@ static const char *string_cursor(arena *storage, const pin_value *args, int coun
 {
     assert(count == 1);
     (void)count;
-    size_t bytes = args[0].str ? strlen(args[0].str) : 0;
+    pin_string text = pin_text(args[0]);
+    size_t bytes = text.length;
     if (bytes > INT_MAX) {
         return "String iterator exceeds its byte cursor range";
     }
     string_snapshot *cursor = arena_alloc(storage, sizeof *cursor + bytes + 1);
     cursor->bytes = (int)bytes;
     if (bytes) {
-        memcpy(cursor->text, args[0].str, bytes);
+        memcpy(cursor->text, text.bytes, bytes);
     }
     cursor->text[bytes] = 0;
     *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)cursor };
@@ -1250,11 +1347,7 @@ static const char *string_step(arena *storage, const pin_value *args, int count,
         *out = (pin_value){ .type = PIN_I32, .i = offset + width };
         return NULL;
     }
-    char *text = arena_alloc(storage, (size_t)width + 1);
-    memcpy(text, p, (size_t)width);
-    text[width] = 0;
-    *out = (pin_value){ .type = PIN_STR, .str = text };
-    return NULL;
+    return pin_value_text(storage, out, (const char *)p, (size_t)width);
 }
 static const char *string_item(arena *storage, const pin_value *args, int count, pin_value *out)
 {

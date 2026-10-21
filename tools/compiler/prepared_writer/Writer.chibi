@@ -14,7 +14,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: uint64 : 0x4348494249505245;
-Version: int : 19;
+Version: int : 20;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -355,7 +355,11 @@ ValueHead :: (v: Value, bits: uint64) -> byte[] {
         }
         return append(bytes, Words([Flag(v.authored), 1, bits, Zig(v.count)]));
     }
-    if (v.tag == TextTag || v.tag == NameTag) {
+    if (v.tag == TextTag) {
+        raw := Raw(v.text);
+        return append(bytes, append(Words([Flag(v.authored), uint64(length(raw))]), raw));
+    }
+    if (v.tag == NameTag) {
         bytes = append(bytes, Words([Flag(v.authored)]));
         return append(bytes, Text(v.text, v.has_text));
     }
@@ -490,6 +494,7 @@ pub Write :: (module: Module) -> byte[] {
                         bytes = append(bytes, Ints([field.kind]));
                         bytes = append(bytes, Text(field.type_name, field.has_type_name));
                         bytes = append(bytes, Text(field.unit, field.has_unit));
+                        bytes = append(bytes, Words([Flag(field.kind == TextTag)]));
                         index += 1;
                     }
                 }

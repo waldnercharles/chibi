@@ -167,7 +167,7 @@ static void write_field(ecs_entity owner, const ecs_component_desc *desc, int fi
 static pin_value read_field(ecs_entity owner, const ecs_component_desc *desc, int field)
 {
     pin_value value = { 0 };
-    int status = ecs_component_read_field(f.world, owner, desc->id, field, &value);
+    int status = ecs_component_read_field(NULL, f.world, owner, desc->id, field, &value);
     assert(!status);
     (void)status;
     return value;

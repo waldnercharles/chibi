@@ -141,6 +141,45 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+The length-carrying string migration adds independently reviewed, fixed CPU
+workloads under the existing 60-second deadline per selector. This is admission
+for the first measurement; it does not record a pass.
+
+- `language-record-values`: thirteen cases, including eight fixed UTF-8 vectors,
+  eight indexed string keys, and ownership/native-boundary checks. One tiny
+  nested-record case checks local type resolution, a conflicting global shape,
+  atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
+  it adds no loops or child processes.
+- `language-execution`: twenty-eight cases. The added five-instruction function
+  runs eight times across two backends with a 100-instruction budget; four
+  iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
+  checks read ownership and rejection before reference/constructor publication.
+- `language-package-core`: seven cases and 386 calls, retaining the existing
+  10,000-instruction per-call budget.
+- `language-record-document`: five cases, adding three tiny JSON roundtrips,
+  four malformed byte tags and one rejected NUL name.
+- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. A native-field
+  size check uses an 81-byte stack string and a nearly exhausted logical budget
+  with a hash sink; it allocates no large output buffer.
+- `build-process`: thirty-four cases. The new helper case adds five operations
+  on at most seven bytes and no processes. Existing invocation and child limits
+  remain unchanged; binary-output and file assertions replace text rejection.
+- `ecs-strings`: three cases, each with one entity, at most two components and
+  fixed short strings. Rejected writes preserve payloads, versions and intern
+  statistics; successful writes retain bytes after the original storage changes.
+- `language-program` and its `language-query-program` subset add one descriptor
+  observer case: one entity, two tiny bytecode functions and two program steps
+  with a 1,000-instruction budget to check a three-byte payload.
+- `c-export-alias`: the existing second compiler child includes one additional
+  ten-instruction string function, two samples and four VM/generated-C calls
+  with budget 64. A fixed 4 KiB stack disturbance checks returned descriptor
+  lifetime. The two compiler children, 10-second child deadlines and second
+  child's 64 KiB source cap remain unchanged.
+
+These extensions add no rendering, GPU or network work and no additional child
+process launches. They do not enable a quarantined aggregate.
+
 The compiled-runtime rollout passed native, language, tooling, materials and
 project groups under their shared 60-second deadlines. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine
@@ -1169,7 +1208,7 @@ make test-list
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | The admitted native language aggregate under one shared deadline; standalone selectors are listed separately by `make test-list`. |
-| `test-bootstrap` | Stage one compiles the compiler and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; see `docs/package-compiler.md`. |
+| `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
 | `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -1289,7 +1328,7 @@ identifiers, basename extraction, the byte procedures ported from Odin's
 counting, case, trimming, cutting, repetition, splitting, joining, replacement
 and partition), generic native arrays, binding-generation invalidation and
 retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
-and 18 imports, with at most 36 package visits before reuse and 378 direct
+and 18 imports, with at most 36 package visits before reuse and 386 direct
 calls, each with a 10,000-instruction budget. At most three owners and
 three-element arrays are live; core source is below 16 KiB and the app below
 4 KiB. There is no filesystem, process, service or GPU work. Installed consumers

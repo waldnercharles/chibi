@@ -1,5 +1,6 @@
 #include "graph/compiler/field_program.h"
 
+#include "graph/model/value_copy.h"
 #include "graph/nodes/core_nodes.h"
 #include "graph/nodes/field_nodes.h"
 #include "runtime/fields/ir.h"
@@ -170,7 +171,7 @@ static int compile_node(compiler *c, node *n, int output)
             fail(c->error, c->size, "Field Parameter name must be a literal");
             return -1;
         }
-        const char *name = n->input_pins[0].default_value.str;
+        const char *name = graph_text_cstring(c->graph, n->input_pins[0].default_value);
         ir.parameter = -1;
         for (int i = 0; i < acount(c->program->parameters); i++) {
             if (name && !strcmp(c->program->parameters[i].name, name)) {

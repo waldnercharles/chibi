@@ -497,6 +497,11 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         const script_catalog_field *f = &type->fields[index];
         script_analyzer_use(a, member, -1, SCRIPT_READ, f->id);
         free(name);
+        pin_value value = { .type = PIN_STR };
+        const char *error = pin_value_text(&a->out->constants, &value, f->name, strlen(f->name));
+        if (error) {
+            script_analyzer_diagnostic(a, member, "%s", error);
+        }
         return script_analyzer_expr_add(
             a,
             (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
@@ -506,7 +511,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .left = -1,
                                  .right = -1,
                                  .member = f->id,
-                                 .constant = { .type = PIN_STR, .str = xstrdup(f->name) } }
+                                 .constant_snapshot = true,
+                                 .constant = value }
         );
     }
     if (index >= 0) {
@@ -1577,6 +1583,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                    )
                                  : script_analyzer_expression(a, value, type);
         if (capability && parameter >= 0 && parameter < parameter_count &&
+            capability->parameters[parameter].c_string) {
+            script_analyzer_c_string_argument(
+                a,
+                value,
+                expression_index,
+                capability->parameters[parameter].name
+            );
+        }
+        if (capability && parameter >= 0 && parameter < parameter_count &&
             capability->parameters[parameter].default_owner &&
             a->out->owner_symbol >= 0) {
             const script_expression *provided = &a->out->expressions[expression_index];
@@ -1699,6 +1714,14 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                      .left = -1,
                                      .right = -1 }
             );
+            if (capability->parameters[i].c_string) {
+                script_analyzer_c_string_argument(
+                    a,
+                    arguments,
+                    index,
+                    capability->parameters[i].name
+                );
+            }
             apush(
                 result.arguments,
                 ((script_argument){ index, i, 0, script_analyzer_range(a, arguments) })

@@ -149,6 +149,7 @@ pub Port :: struct {
     name: string;
     storage: int;
     container: int;
+    c_string: bool;
 }
 AnyPort: int : -2;
 UnsupportedPort: int : -1;
@@ -190,6 +191,7 @@ TypeMember :: struct {
     record: int;
     offset: int;
     writable: bool;
+    c_string: bool;
     constant: bool;
     read: int;
     read_key: string;
@@ -682,7 +684,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
-                                             writable: true, constant: false, read: -1, read_key: ""};
+                                             writable: true, c_string: false, constant: false, read: -1, read_key: ""};
                         members = array_add(members, field);
                         size += width;
                         if (width > alignment) {
@@ -731,7 +733,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
-                                                 writable: true, constant: false, read: -1, read_key: ""};
+                                                 writable: true, c_string: false, constant: false, read: -1, read_key: ""};
                             members = array_add(members, field);
                             parameter = NextMember(forest, parameter);
                         }
@@ -1017,9 +1019,9 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
         return Default.Read(0, "");
     }
     if (declared.storage == TextStorage && Is(forest, node, "string")) {
-        decoded := compiler_json_string(Text(forest, text, node));
-        if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
-            return Default.Failed(Diagnose(forest, node, file, "Invalid string or embedded NUL"));
+        decoded := compiler_json_value_string(Text(forest, text, node));
+        if (!decoded.valid) {
+            return Default.Failed(Diagnose(forest, node, file, "Invalid string literal"));
         }
         return Default.Read(0, decoded.value);
     }
@@ -1189,7 +1191,7 @@ HashText :: (hash: uint64, text: string) -> uint64 {
     return HashBytes(out, 0, 1);
 }
 // The runtime's layout hash of a record: its size and field count, then each
-// field's name, offset, size, storage and (absent) type name.
+// field's name, offset, size, storage, string descriptor marker and absent type name.
 LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
     hash: uint64 = 1469598103934665603;
     hash = HashBytes(hash, uint64(record.size), target.pointer_size);
@@ -1201,6 +1203,9 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64
         hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
         hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
         hash = HashBytes(hash, uint64(field.storage), 4);
+        if (field.storage == TextStorage) {
+            hash = HashBytes(hash, 1, 1);
+        }
         hash = HashText(hash, "");
         at += 1;
     }

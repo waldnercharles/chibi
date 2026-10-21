@@ -76,6 +76,7 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 /* Retain managed fields in an already copied struct. Nested structs are inline;
  * only their strings need separate storage. Publish data only on success. */
 int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data);
+int pin_struct_snapshot_fields_resolved(arena *, const type_desc *, void *, type_resolver);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 /* Grows an exclusively owned arena array to hold count items, doubling its

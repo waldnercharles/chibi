@@ -422,6 +422,25 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
             }
     }
 }
+// Literal alternatives carry byte strings; ordinary variant names remain strict metadata.
+VariantText :: union {
+    Read(value: string, diagnostics: syntax.Diagnostic[])
+}
+ReadVariant :: (tree: reader.Tree, node: int, document: int, literal: bool) -> VariantText {
+    if (literal) {
+        decoded := compiler_json_value_string(reader.Text(tree, node));
+        diagnostics: syntax.Diagnostic[] = [];
+        if (!decoded.valid) {
+            diagnostics = array_add(diagnostics, reader.Diagnostic(tree, node, document, "Invalid string literal"));
+            return VariantText.Read("", diagnostics);
+        }
+        return VariantText.Read(decoded.value, diagnostics);
+    }
+    switch reader.Name(tree, node, document) {
+        case .Name(value, diagnostics):
+            return VariantText.Read(value, diagnostics);
+    }
+}
 BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, document: int,
                union_value: named.Value) -> Members {
     current := initial;
@@ -444,11 +463,16 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                     if (literal_node >= 0) {
                         name_node = literal_node;
                     }
-                    switch reader.Name(tree, name_node, document) {
-                        case .Name(name, errors):
+                    switch ReadVariant(tree, name_node, document, literal_node >= 0) {
+                        case .Read(decoded_name, errors):
                             current = Errors(current, errors);
-                            tag := binding.ID("union-literal", name);
+                            name := decoded_name;
+                            literal_value := decoded_name;
+                            tag := binding.ID("union-literal", literal_value);
                             payload := named.Value.Typed(13, 0, 1024, 0, tag);
+                            if (literal_node >= 0 && strings.IndexByte(name, 0) >= 0) {
+                                name = reader.Text(tree, literal_node);
+                            }
                             if (literal_node < 0) {
                                 key := strings.Slice(format_text("{}:{}", union_id, name), 0, 511);
                                 tag = binding.ID("union-variant", key);
@@ -512,7 +536,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                     ids = array_add(pool, tag);
                                     literal := "";
                                     if (literal_node >= 0) {
-                                        literal = name;
+                                        literal = literal_value;
                                     }
                                     row: DeclaredVariant = {name: name, tag_slot: tag_slot, type: type_index,
                                                             tagged: literal_node < 0, is_literal: literal_node >= 0, literal: literal,

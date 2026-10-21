@@ -8,8 +8,10 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Three fixed service cases, no world step, entity spawn, renderer or worker. */
@@ -68,13 +70,22 @@ static pin_value row(const pin_record *record, int number)
             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
             char *copy = arena_alloc(&producer, strlen(text) + 1);
             strcpy(copy, text);
-            field.str = copy;
+            const char *error = pin_value_text(&producer, &field, copy, strlen(copy));
+            if (error) {
+                abort();
+            }
         } else if (field.type == PIN_I32) {
             field.i = number + i;
         } else {
             field.b = (number + i) % 2;
         }
-        pin_write_field(value.ptr, &record->type.fields[i], field);
+        {
+            const char *
+                error = pin_write_field(&producer, value.ptr, &record->type.fields[i], field);
+            if (error) {
+                abort();
+            }
+        };
     }
     return value;
 }
@@ -107,12 +118,12 @@ static bool check_row(const pin_value *value, int number, const arena *owner)
     REQUIRE(arena_contains(owner, value->ptr));
     for (int i = 0; i < 12; i++) {
         pin_value field;
-        pin_read_field(value->ptr, &value->record->type.fields[i], &field);
+        REQUIRE(!pin_read_field(&reads, value->ptr, &value->record->type.fields[i], &field));
         if (i < 5) {
             char text[32];
             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
-            REQUIRE(field.str && !strcmp(field.str, text));
-            REQUIRE(arena_contains(owner, field.str));
+            REQUIRE(pin_text(field).bytes && !strcmp(pin_text(field).bytes, text));
+            REQUIRE(arena_contains(owner, pin_text(field).bytes));
         } else if (i < 7) {
             REQUIRE(field.i == number + i);
         } else {
@@ -163,30 +174,53 @@ TEST_CASE(record_globals_owned_values)
     REQUIRE(!entities_set_global_value(globals, "rows", &array));
     REQUIRE(!entities_get_global_value(globals, "row", &reads, &saved));
     REQUIRE(!entities_get_global_value(globals, "rows", &reads, &saved_array));
-    pin_value arguments[] = { { .type = PIN_STR, .str = "row" }, scalar };
+    pin_value arguments[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "row", .length = sizeof("row") - 1 } },
+        scalar
+    };
     pin_value get = result_header(scalar), get_array = result_header(array);
     void *get_backing = get.ptr;
     REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, arguments, &get));
     REQUIRE(get.ptr == get_backing);
-    arguments[0].str = "rows";
+    arguments[0].text = &(const pin_string){ .bytes = "rows",
+                                             .length = (uint32_t)strlen("rows") };
     REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, arguments, &get_array));
     REQUIRE(check_row(&get, 7, &invocation));
     REQUIRE(check_rows(&get_array, 3, &invocation));
-    arguments[0].str = "row";
+    arguments[0].text = &(const pin_string){ .bytes = "row",
+                                             .length = (uint32_t)strlen("row") };
     arguments[1] = row(record, 9);
     pin_value set = result_header(scalar), set_array = result_header(array);
     void *backing = set.ptr;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set));
     REQUIRE(set.ptr == backing);
     pin_value text;
-    pin_read_field(arguments[1].ptr, &record->type.fields[0], &text);
-    ((char *)text.str)[0] = 'X';
+    {
+        const char *
+            error = pin_read_field(&reads, arguments[1].ptr, &record->type.fields[0], &text);
+        if (error) {
+            abort();
+        }
+    };
+    ((char *)pin_text(text).bytes)[0] = 'X';
     REQUIRE(check_row(&set, 9, &invocation));
-    arguments[0].str = "rows";
+    arguments[0].text = &(const pin_string){ .bytes = "rows",
+                                             .length = (uint32_t)strlen("rows") };
     arguments[1] = array;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set_array));
-    pin_read_field(pin_array_data(array.ptr, 0), &record->type.fields[0], &text);
-    ((char *)text.str)[0] = 'X';
+    {
+        const char *error = pin_read_field(
+            &reads,
+            pin_array_data(array.ptr, 0),
+            &record->type.fields[0],
+            &text
+        );
+        if (error) {
+            abort();
+        }
+    };
+    ((char *)pin_text(text).bytes)[0] = 'X';
     REQUIRE(check_rows(&set_array, 3, &invocation));
     arena_free(&producer);
     pin_value stored, stored_array;
@@ -246,7 +280,11 @@ TEST_CASE(record_globals_atomic_rejections)
     REQUIRE(entities_set_global_value(globals, "invalid_first", &array));
     REQUIRE(unchanged_rows());
     items->items[1].record = record;
-    pin_value arguments[] = { { .type = PIN_STR, .str = "rows" }, rows(record, 0) };
+    pin_value arguments[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "rows", .length = sizeof("rows") - 1 } },
+        rows(record, 0)
+    };
     pin_value output = result_header(other), before = output;
     REQUIRE(host(&ENTITY_SET_GLOBAL_CALL, arguments, &output));
     REQUIRE(!memcmp(&output, &before, sizeof output));
@@ -281,24 +319,36 @@ static bool check_document_row(const av_value *value, int number)
 }
 TEST_CASE(record_headless_ui_owned_data)
 {
+    behavior_function_context context = { .value_storage = &invocation };
     model = ui_new();
     const pin_record *record = pin_record_create(&producer, "Rows.Row", 91, fields, 12);
     REQUIRE(record);
     pin_value array = rows(record, 3);
-    pin_value arguments[] = { { .type = PIN_U64, .u64 = 17 },
-                              { .type = PIN_STR, .str = "rows" },
-                              array };
-    REQUIRE(!UI_SET_DATA_CALL.invoke(model, arguments, NULL));
+    pin_value arguments[] = {
+        { .type = PIN_U64, .u64 = 17 },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "rows", .length = sizeof("rows") - 1 } },
+        array
+    };
+    REQUIRE(!UI_SET_DATA_CALL.context(&context, model, arguments, NULL));
     REQUIRE(ui_data_count(model) == 1);
     const ui_datum *datum = ui_data_at(model, 0);
     REQUIRE(datum->entity == 17 && !strcmp(datum->name, "rows"));
     REQUIRE(av_arr_size(datum->value) == 3);
     uint64_t revision = ui_revision(model);
     const av_value *before = datum->value;
+    const pin_string *valid_name = arguments[1].text;
+    const char nul_name[] = "rows\0other";
+    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
+    arguments[1].text = &invalid_name;
+    const char *invalid_text = UI_SET_DATA_CALL.context(&context, model, arguments, NULL);
+    REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));
+    REQUIRE(ui_revision(model) == revision && ui_data_at(model, 0)->value == before);
+    arguments[1].text = valid_name;
     pin_record malformed = *record;
     malformed.type.size++;
     ((pin_array *)array.ptr)->items[1].record = &malformed;
-    REQUIRE(UI_SET_DATA_CALL.invoke(model, arguments, NULL));
+    REQUIRE(UI_SET_DATA_CALL.context(&context, model, arguments, NULL));
     REQUIRE(ui_revision(model) == revision && ui_data_at(model, 0)->value == before);
     arena_free(&producer);
     for (int i = 0; i < 3; i++) {
@@ -307,10 +357,10 @@ TEST_CASE(record_headless_ui_owned_data)
     record = pin_record_create(&producer, "Rows.Row", 91, fields, 12);
     REQUIRE(record);
     arguments[2] = rows(record, 0);
-    REQUIRE(!UI_SET_DATA_CALL.invoke(model, arguments, NULL));
+    REQUIRE(!UI_SET_DATA_CALL.context(&context, model, arguments, NULL));
     REQUIRE(ui_revision(model) == revision + 1);
     REQUIRE(av_arr_size(ui_data_at(model, 0)->value) == 0);
-    REQUIRE(!UI_SET_DATA_CALL.invoke(model, arguments, NULL));
+    REQUIRE(!UI_SET_DATA_CALL.context(&context, model, arguments, NULL));
     REQUIRE(ui_revision(model) == revision + 1);
     arena_free(&producer);
     REQUIRE(av_arr_size(ui_data_at(model, 0)->value) == 0);
@@ -334,8 +384,12 @@ TEST_CASE(record_globals_native_compatibility)
     REQUIRE((double)(float)precise != precise);
     pin_value initial = { .type = PIN_F32, .f = 0.5f };
     REQUIRE(!entities_set_global_value(globals, "narrow", &initial));
-    pin_value args[] = { { .type = PIN_STR, .str = "narrow" },
-                         { .type = PIN_F64, .d = precise } };
+    pin_value args[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "narrow",
+                                       .length = sizeof("narrow") - 1 } },
+        { .type = PIN_F64, .d = precise }
+    };
     pin_value out = { .type = PIN_F64 }, saved;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
     REQUIRE(out.type == PIN_F64 && out.d == precise && !out.record);
@@ -345,7 +399,8 @@ TEST_CASE(record_globals_native_compatibility)
 
     initial = (pin_value){ .type = PIN_F64, .d = 0.25 };
     REQUIRE(!entities_set_global_value(globals, "wide", &initial));
-    args[0].str = "wide";
+    args[0].text = &(const pin_string){ .bytes = "wide",
+                                        .length = (uint32_t)strlen("wide") };
     args[1] = (pin_value){ .type = PIN_F32, .f = 1.25f };
     out = (pin_value){ .type = PIN_F64 };
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
@@ -358,18 +413,22 @@ TEST_CASE(record_globals_native_compatibility)
 
     char *text = arena_alloc(&producer, 16);
     strcpy(text, "native-text");
-    pin_value values[] = { { .type = PIN_BOOL, .b = true },
-                           { .type = PIN_I32, .i = -37 },
-                           { .type = PIN_STR, .str = text } };
+    pin_value values[] = {
+        { .type = PIN_BOOL, .b = true },
+        { .type = PIN_I32, .i = -37 },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) } }
+    };
     const char *names[] = { "boolean", "integer", "text" };
     for (int i = 0; i < 3; i++) {
-        args[0].str = names[i];
+        args[0].text = &(const pin_string){ .bytes = names[i],
+                                            .length = (uint32_t)strlen(names[i]) };
         args[1] = values[i];
         out = (pin_value){ .type = values[i].type };
         REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
         REQUIRE(out.type == values[i].type && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&invocation, out.str));
+            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
             text[0] = 'X';
             arena_free(&producer);
             values[i].str = "native-text";
@@ -382,8 +441,8 @@ TEST_CASE(record_globals_native_compatibility)
         REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
         REQUIRE(pin_value_equal(&out, &values[i]) && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&reads, saved.str));
-            REQUIRE(arena_contains(&invocation, out.str));
+            REQUIRE(arena_contains(&reads, pin_text(saved).bytes));
+            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
         }
     }
 
@@ -391,7 +450,8 @@ TEST_CASE(record_globals_native_compatibility)
     REQUIRE(entity.slot && ecs_entity_is_alive(world, entity));
     REQUIRE(!ecs_world_destroy_entity(world, entity));
     REQUIRE(!ecs_entity_is_alive(world, entity));
-    args[0].str = "dead";
+    args[0].text = &(const pin_string){ .bytes = "dead",
+                                        .length = (uint32_t)strlen("dead") };
     args[1] = (pin_value){ .type = PIN_HANDLE,
                            .type_name = "ecs.entity",
                            .u64 = ecs_entity_to_u64(entity) };

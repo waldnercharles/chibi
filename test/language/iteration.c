@@ -7,6 +7,7 @@
 #include "language/lower.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -115,7 +116,10 @@ TEST_CASE(iteration_unicode_strings_keep_scalar_values_and_snapshot)
         REQUIRE(execution_instance_dispatch(instance, 10, NULL, 0, 0, 0, 1000) == FLOW_OK);
         REQUIRE(state(instance, "count") && state(instance, "count")->i == 3);
         REQUIRE(state(instance, "middle") && state(instance, "middle")->b);
-        REQUIRE(state(instance, "text") && !strcmp(state(instance, "text")->str, ""));
+        REQUIRE(
+            state(instance, "text") &&
+            !strcmp(pin_text(*(state(instance, "text"))).bytes, "")
+        );
         REQUIRE(execution_instance_dispatch(instance, 10, NULL, 0, 1, 0, 1000) == FLOW_OK);
         REQUIRE(state(instance, "count")->i == 3);
     }
@@ -177,28 +181,36 @@ TEST_CASE(iteration_unicode_intrinsics_reject_invalid_scalars)
     arena storage = { 0 };
     const char *invalid[] = { "\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\xe2\x82" };
     for (int i = 0; i < 4; i++) {
-        pin_value text = { .type = PIN_STR, .str = invalid[i] }, cursor;
+        pin_value text = { .type = PIN_STR,
+                           .text = &(
+                               const pin_string
+                           ){ .bytes = invalid[i],
+                              .length = (uint32_t)strlen(invalid[i]) } },
+                  cursor;
         REQUIRE(!EXECUTION_string_cursor_call.value(&storage, &text, 1, &cursor));
         pin_value args[] = { cursor, { .type = PIN_I32 } };
         pin_value out = { 0 };
         REQUIRE(EXECUTION_string_item_call.value(&storage, args, 2, &out));
     }
     char mutable[] = "Aé";
-    pin_value text = { .type = PIN_STR, .str = mutable }, cursor, out;
+    pin_value text = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = mutable,
+                                                    .length = (uint32_t)strlen(mutable) } },
+              cursor, out;
     REQUIRE(!EXECUTION_string_cursor_call.value(&storage, &text, 1, &cursor));
     mutable[0] = 0;
     REQUIRE(!EXECUTION_string_bytes_call.value(&storage, &cursor, 1, &out));
     REQUIRE(out.i == 3);
     pin_value args[] = { cursor, { .type = PIN_I32 } };
     REQUIRE(!EXECUTION_string_item_call.value(&storage, args, 2, &out));
-    REQUIRE(!strcmp(out.str, "A"));
+    REQUIRE(!strcmp(pin_text(out).bytes, "A"));
     const int offsets[] = { -1, 2, 3, INT_MAX };
     for (int i = 0; i < 4; i++) {
         args[1].i = offsets[i];
         REQUIRE(EXECUTION_string_item_call.value(&storage, args, 2, &out));
         REQUIRE(EXECUTION_string_next_call.value(&storage, args, 2, &out));
     }
-    text.str = "";
+    text.text = &(const pin_string){ .bytes = "", .length = (uint32_t)strlen("") };
     REQUIRE(!EXECUTION_string_cursor_call.value(&storage, &text, 1, &cursor));
     REQUIRE(!EXECUTION_string_bytes_call.value(&storage, &cursor, 1, &out));
     REQUIRE(out.i == 0);

@@ -79,7 +79,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_types") {
         return [
-            "src/types/type.c", "src/types/catalog.c", "src/types/array.c", "src/types/map.c",
+            "src/types/type.c", "src/types/catalog.c", "src/types/array.c", "src/types/text.c", "src/types/map.c",
             "src/types/record.c", "src/types/copy.c", "src/types/trace.c", "src/types/union.c",
             "src/types/index.c", "src/types/value_format.c", "src/types/value_wire.c"
         ];
@@ -383,7 +383,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return [
             "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
             "types/record.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
-            "types/union.h", "types/value.h", "types/value_format.h", "types/value_wire.h"
+            "types/union.h", "types/value.h", "types/text.h", "types/value_format.h", "types/value_wire.h"
         ];
     }
     if (target == "chibi_asset_values") {

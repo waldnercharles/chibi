@@ -322,6 +322,7 @@ typedef struct behavior_function_context
      * The caller resets this storage only after those values are released. */
     void *value_storage;
     const char *(*copy_string)(void *storage, const char *text);
+    const pin_string *(*copy_text)(void *storage, const pin_string *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);
     void (*add_set_value)(void *owner, int variable, const pin_value *item);
@@ -540,5 +541,10 @@ const pin_value *behavior_function_frame_inputs(
     int frame,
     arena *storage,
     int *count
+);
+const pin_string *behavior_function_intern_text(
+    behavior_function_context *,
+    const struct ecs_execution_view *,
+    const pin_string *
 );
 #endif

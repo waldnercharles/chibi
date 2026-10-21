@@ -5,17 +5,20 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/value_document.h"
 #include "types/value_wire.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
-/* Six fixed C cases. No authored compiler, backend dispatch, I/O, worker pool,
+/* Fixed C cases. No authored compiler, backend dispatch, I/O, worker pool,
  * environment-controlled size or timing loop is exercised by this foundation. */
-static arena source, owned, other;
+static arena source, owned, other, reads;
 bool record_prepared_guard(const pin_value *);
 static av_doc *document;
 static bool project_set;
@@ -48,6 +51,7 @@ static void cleanup()
     arena_free(&source);
     arena_free(&owned);
     arena_free(&other);
+    arena_free(&reads);
 }
 static char *text(arena *storage, const char *value)
 {
@@ -77,20 +81,26 @@ static pin_value row(arena *storage, const pin_record *record, int number)
         if (field.type == PIN_STR) {
             char buffer[32];
             snprintf(buffer, sizeof buffer, "row-%d-field-%d", number, i);
-            field.str = text(storage, buffer);
+            const char *error = pin_value_text(storage, &field, buffer, strlen(buffer));
+            assert(!error);
+            (void)error;
         } else if (field.type == PIN_I32) {
             field.i = number + i;
         } else {
             field.b = (i + number) % 2;
         }
-        pin_write_field(result.ptr, &record->type.fields[i], field);
+        const char *error = pin_write_field(storage, result.ptr, &record->type.fields[i], field);
+        assert(!error);
+        (void)error;
     }
     return result;
 }
 static pin_value member(const pin_value *value, int index)
 {
     pin_value field;
-    pin_read_field(value->ptr, &value->record->type.fields[index], &field);
+    if (pin_read_field(&reads, value->ptr, &value->record->type.fields[index], &field)) {
+        return (pin_value){ 0 };
+    }
     return field;
 }
 static void collect(arena *storage, const void *root)
@@ -105,7 +115,7 @@ static size_t row_text_bytes(const pin_value *value)
 {
     size_t size = 0;
     for (int i = 0; i < 5; i++) {
-        size += strlen(member(value, i).str) + 1;
+        size += sizeof(pin_string) + pin_text(member(value, i)).length + 1;
     }
     return size;
 }
@@ -208,7 +218,7 @@ TEST_CASE(record_raw_trace_lifetime)
     arena_free(&source);
     collect(&owned, output.ptr); /* Only raw payload roots the metadata trace shape. */
     REQUIRE(pin_record_valid(output.record));
-    REQUIRE(!strcmp(member(&output, 1).str, "row-7-field-1"));
+    REQUIRE(!strcmp(pin_text(member(&output, 1)).bytes, "row-7-field-1"));
     size_t bytes, capacity;
     arena_usage(&owned, &bytes, &capacity);
     REQUIRE(bytes == expected);
@@ -268,13 +278,15 @@ TEST_CASE(record_identity_and_borrow)
     REQUIRE(!pin_value_copy(&borrowed, &input));
     REQUIRE(borrowed.ptr == input.ptr && borrowed.record == record);
     pin_value_destroy(&borrowed);
-    REQUIRE(!strcmp(member(&input, 1).str, "row-1-field-1"));
+    REQUIRE(!strcmp(pin_text(member(&input, 1)).bytes, "row-1-field-1"));
     pin_value shallow;
     REQUIRE(!pin_value_copy_to_arena(&owned, &shallow, &input));
     REQUIRE(shallow.ptr == input.ptr && shallow.record == record);
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&owned, &saved, &input));
-    pin_write_field(input.ptr, &record->type.fields[1], (pin_value){ .type = PIN_STR, .str = "changed" });
+    pin_value changed_text;
+    REQUIRE(!pin_value_text(&source, &changed_text, "changed", 7));
+    REQUIRE(!pin_write_field(&source, input.ptr, &record->type.fields[1], changed_text));
     REQUIRE(!pin_value_equal(&input, &saved));
     REQUIRE(pin_value_equal(&equal, &saved));
     type_field changed[12];
@@ -527,8 +539,13 @@ TEST_CASE(record_projection_and_codec_guard)
         if (i < 5) {
             char expected[32];
             snprintf(expected, sizeof expected, "row-4-field-%d", i);
-            REQUIRE(field.str && !strcmp(field.str, expected));
-            REQUIRE(arena_contains(&other, field.str));
+            REQUIRE(field.text && !strcmp(field.text->bytes, expected));
+            const pin_string *stored = *(const pin_string *const
+                                             *)((const char *)output.ptr +
+                                                output.record->type.fields[i].offset);
+            REQUIRE(
+                arena_contains(&other, stored) && arena_contains(&other, stored->bytes)
+            );
         } else if (i < 7) {
             REQUIRE(field.i == 4 + i);
         } else {
@@ -536,6 +553,237 @@ TEST_CASE(record_projection_and_codec_guard)
         }
     }
     REQUIRE(!strcmp(av_get_str(av_obj_get(projected, "key")), "row-4-field-0"));
+    return true;
+}
+TEST_CASE(text_bytes_ownership_and_c_boundary)
+{
+    char bytes[] = { 'a', 0, 'b', 0 };
+    pin_value input, copy, prefix;
+    REQUIRE(!pin_value_text(&source, &input, bytes, 3));
+    REQUIRE(input.type == PIN_STR && !input.type_name);
+    REQUIRE(!pin_value_snapshot_to_arena(&owned, &copy, &input));
+    REQUIRE(!pin_value_text(&other, &prefix, bytes, 1));
+    REQUIRE(pin_value_equal(&input, &copy));
+    REQUIRE(!pin_value_equal(&copy, &prefix));
+    bytes[2] = 'x';
+    arena_free(&source);
+    REQUIRE(pin_text(copy).length == 3 && pin_text(copy).bytes[2] == 'b');
+    const char *converted = "unchanged";
+    const char *unchanged = converted;
+    size_t offset = SIZE_MAX;
+    REQUIRE(pin_text_cstring(&other, copy, &converted, &offset));
+    REQUIRE(converted == unchanged && offset == 1);
+    const type_field native = { .type = PIN_STR, .size = sizeof(char *) };
+    const char *field = "original";
+    REQUIRE(pin_write_field(&other, &field, &native, copy));
+    REQUIRE(!strcmp(field, "original"));
+    const type_field member = { .name = "text", .type = PIN_STR, .size = sizeof(char *) };
+    const type_desc custom = { .name = "test.unregistered.text",
+                               .size = sizeof(char *),
+                               .fields = &member,
+                               .field_count = 1 };
+    const pin_record *record = pin_record_create(&other, custom.name, 987, &member, 1);
+    REQUIRE(record);
+    const pin_string *stored = copy.text;
+    pin_value authored = { .type = PIN_STRUCT,
+                           .type_name = custom.name,
+                           .record = record,
+                           .ptr = &stored };
+    REQUIRE(pin_write_struct(&other, &field, &custom, authored));
+    REQUIRE(!strcmp(field, "original"));
+    const char *native_source = "custom";
+    pin_value native_record = { .type = PIN_STRUCT,
+                                .type_name = custom.name,
+                                .ptr = &native_source };
+    REQUIRE(!pin_write_struct(&other, &field, &custom, native_record));
+    REQUIRE(!strcmp(field, "custom") && field != native_source);
+    native_record.type_name = "different";
+    REQUIRE(pin_write_struct(&other, &field, &custom, native_record));
+    REQUIRE(!strcmp(field, "custom"));
+    const type_desc opaque = { .name = "test.unregistered.opaque",
+                               .size = sizeof(uint64_t) };
+    uint64_t opaque_source = UINT64_C(0x123456789ABCDEF0), opaque_copy = 0;
+    pin_value opaque_value = { .type = PIN_STRUCT,
+                               .type_name = opaque.name,
+                               .ptr = &opaque_source };
+    REQUIRE(!pin_write_struct(&other, &opaque_copy, &opaque, opaque_value));
+    REQUIRE(opaque_copy == opaque_source);
+    char native_bytes[] = "native";
+    field = native_bytes;
+    pin_value read;
+    REQUIRE(!pin_read_field(&other, &field, &native, &read));
+    native_bytes[0] = 'x';
+    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ "native", 6 }));
+    const pin_string slice = { "abc", 2 };
+    REQUIRE(
+        !pin_text_cstring(&other, (pin_value){ .type = PIN_STR, .text = &slice }, &converted, &offset)
+    );
+    REQUIRE(offset == SIZE_MAX && !strcmp(converted, "ab"));
+    REQUIRE(converted != slice.bytes);
+    pin_value heap;
+    copy.type_name = "test.text.alias";
+    REQUIRE(!pin_value_copy(&heap, &copy));
+    REQUIRE(pin_value_equal(&heap, &copy) && heap.text != copy.text);
+    REQUIRE(heap.type_name == copy.type_name);
+    pin_value_destroy(&heap);
+    pin_value alias_snapshot;
+    REQUIRE(!pin_value_snapshot_to_arena(&other, &alias_snapshot, &copy));
+    REQUIRE(alias_snapshot.type_name != copy.type_name);
+    REQUIRE(!strcmp(alias_snapshot.type_name, "test.text.alias"));
+    REQUIRE(pin_text_equal(pin_text(alias_snapshot), pin_text(copy)));
+    return true;
+}
+TEST_CASE(text_utf8_validation)
+{
+    static const struct
+    {
+        const char *bytes;
+        uint32_t length;
+        bool valid;
+    } cases[] = {
+        { "a\0b", 3, true },
+        { "\xC2\x80\xE0\xA0\x80\xF4\x8F\xBF\xBF", 9, true },
+        { "\xC0\x80", 2, false },
+        { "\xE0\x80\x80", 3, false },
+        { "\xED\xA0\x80", 3, false },
+        { "\xF4\x90\x80\x80", 4, false },
+        { "\xF0\x90\x80", 3, false },
+        { "\xE2x\x80", 3, false },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        REQUIRE(
+            pin_text_valid_utf8((pin_string){ cases[i].bytes, cases[i].length }) ==
+            cases[i].valid
+        );
+    }
+    return true;
+}
+TEST_CASE(text_keys_preserve_suffix_after_nul)
+{
+    pin_map_entry entries[8];
+    for (int i = 0; i < 8; i++) {
+        const char bytes[] = { 'k', 0, (char)('0' + i) };
+        REQUIRE(!pin_value_text(&source, &entries[i].key, bytes, sizeof bytes));
+        entries[i].value = (pin_value){ .type = PIN_I32, .i = i };
+    }
+    pin_map *map = pin_map_create(&owned, entries[0].key, entries[0].value, entries, 8);
+    REQUIRE(map && map->count == 8 && map->slots);
+    arena_free(&source);
+    for (int i = 0; i < 8; i++) {
+        const char bytes[] = { 'k', 0, (char)('0' + i) };
+        pin_value key;
+        REQUIRE(!pin_value_text(&other, &key, bytes, sizeof bytes));
+        int index = pin_map_find(map, &key);
+        REQUIRE(index >= 0 && map->entries[index].value.i == i);
+    }
+    return true;
+}
+static const type_desc *resolve_local(void *user, const char *name)
+{
+    const type_catalog_pack *types = user;
+    for (int i = 0; i < types->type_count; i++) {
+        if (!strcmp(types->types[i]->name, name)) {
+            return types->types[i];
+        }
+    }
+    return NULL;
+}
+TEST_CASE(record_native_nested_resolution_is_call_owned)
+{
+    typedef struct
+    {
+        const char *label;
+        int32_t weight;
+    } leaf;
+    typedef struct
+    {
+        leaf child;
+        int32_t code;
+    } root;
+    const type_field leaf_fields[] = {
+        { .name = "label", .type = PIN_STR, .size = sizeof(char *) },
+        { .name = "weight",
+          .type = PIN_I32,
+          .offset = offsetof(leaf, weight),
+          .size = sizeof(int32_t),
+          .range_contract = true,
+          .min = 1,
+          .max = 5,
+          .range_default = 1 }
+    };
+    const type_desc leaf_type = { .name = "Resolved.Leaf",
+                                  .size = sizeof(leaf),
+                                  .fields = leaf_fields,
+                                  .field_count = 2 };
+    const type_field root_fields[] = {
+        { .name = "child", .type = PIN_STRUCT, .size = sizeof(leaf), .type_name = "Resolved.Leaf" },
+        { .name = "code", .type = PIN_I32, .offset = offsetof(root, code), .size = sizeof(int32_t) }
+    };
+    const type_desc root_type = { .name = "Resolved.Root",
+                                  .size = sizeof(root),
+                                  .fields = root_fields,
+                                  .field_count = 2 };
+    const type_desc *types[] = { &leaf_type, &root_type };
+    const type_catalog_pack pack = { .types = types, .type_count = 2 };
+    type_resolver resolver = { resolve_local, (void *)&pack };
+    REQUIRE(!type_catalog_find(leaf_type.name));
+    const pin_record *layout = pin_record_create(&source, leaf_type.name, 12981, leaf_fields, 2);
+    REQUIRE(layout);
+    void *payload = arena_alloc(&source, layout->type.size);
+    pin_value text;
+    REQUIRE(!pin_value_text(&source, &text, "bad\0suffix", 10));
+    REQUIRE(!pin_write_field(&source, payload, &layout->type.fields[0], text));
+    REQUIRE(
+        !pin_write_field(&source, payload, &layout->type.fields[1], (pin_value){ .type = PIN_I32, .i = 3 })
+    );
+    pin_value authored = { .type = PIN_STRUCT,
+                           .type_name = leaf_type.name,
+                           .record = layout,
+                           .ptr = payload };
+    root destination = { .child = { "before", 2 }, .code = 77 };
+    REQUIRE(pin_write_field_resolved(&owned, &destination, &root_fields[0], authored, resolver));
+    REQUIRE(
+        !strcmp(destination.child.label, "before") &&
+        destination.child.weight == 2 && destination.code == 77
+    );
+    REQUIRE(!pin_value_text(&source, &text, "after", 5));
+    REQUIRE(!pin_write_field(&source, payload, &layout->type.fields[0], text));
+    REQUIRE(!pin_write_field_resolved(&owned, &destination, &root_fields[0], authored, resolver));
+    REQUIRE(
+        !strcmp(destination.child.label, "after") &&
+        destination.child.weight == 3 && destination.code == 77
+    );
+    const type_field shadow_field = { .name = "plain",
+                                      .type = PIN_I32,
+                                      .size = sizeof(int32_t) };
+    const type_desc shadow = { .name = leaf_type.name,
+                               .size = sizeof(leaf),
+                               .fields = &shadow_field,
+                               .field_count = 1 };
+    const type_desc *global_types[] = { &shadow };
+    const type_catalog_pack global_pack = { .types = global_types, .type_count = 1 };
+    type_catalog_set_project(&global_pack);
+    project_set = true;
+    REQUIRE(type_catalog_find(leaf_type.name) == &shadow && type_is_plain(&shadow));
+    REQUIRE(type_resolve(resolver, leaf_type.name) == &leaf_type);
+    REQUIRE(!pin_write_field_resolved(&owned, &destination, &root_fields[0], authored, resolver));
+    root snapshot = destination;
+    REQUIRE(!pin_struct_snapshot_fields_resolved(&other, &root_type, &snapshot, resolver));
+    arena_free(&owned);
+    arena_free(&source);
+    REQUIRE(
+        !strcmp(snapshot.child.label, "after") &&
+        arena_contains(&other, snapshot.child.label)
+    );
+    snapshot.child.weight = 99;
+    type_validate_ranges_resolved(&root_type, &snapshot, resolver);
+    REQUIRE(snapshot.child.weight == 5);
+    arena_init_collectable(&reads);
+    root unchanged = snapshot;
+    pin_value native = { .type = PIN_STRUCT, .type_name = root_type.name, .ptr = &snapshot };
+    REQUIRE(pin_write_struct_resolved(&reads, &unchanged, &root_type, native, resolver));
+    REQUIRE(pin_struct_snapshot_fields_resolved(&reads, &root_type, &unchanged, resolver));
+    REQUIRE(unchanged.child.label == snapshot.child.label && !arena_storage_bytes(&reads));
     return true;
 }
 void test_language_record_values()
@@ -550,5 +798,9 @@ void test_language_record_values()
     RUN_TEST_CASE(record_snapshot_reuses_copy_in_arena);
     RUN_TEST_CASE(record_array_checked_changes);
     RUN_TEST_CASE(record_projection_and_codec_guard);
+    RUN_TEST_CASE(text_bytes_ownership_and_c_boundary);
+    RUN_TEST_CASE(text_utf8_validation);
+    RUN_TEST_CASE(text_keys_preserve_suffix_after_nul);
+    RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);
     pu_clear_setup();
 }

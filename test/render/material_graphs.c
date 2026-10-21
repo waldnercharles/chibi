@@ -7,6 +7,7 @@
 #include "runtime/images/catalog.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -166,7 +167,10 @@ static node *image_node(graph *g, int index)
     node *image = graph_add_node(g, pack_node("Shader Image Texture"));
     char key[64];
     snprintf(key, sizeof key, "content/images/test-%d.png", index);
-    pin_value value = { .type = PIN_STR, .str = key };
+    pin_value value = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = key, .length = (uint32_t)strlen(key) }
+    };
     assert(image && !graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value));
     return image;
 }

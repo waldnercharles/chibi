@@ -151,6 +151,7 @@ static const pin_record *initialize(
         const char *unit = fields[i].unit ? copy_name(&text, fields[i].unit) : NULL;
         owned[i] = (type_field){ .name = name,
                                  .type = fields[i].type,
+                                 .text_descriptor = fields[i].type == PIN_STR,
                                  .offset = offset,
                                  .size = field_size(&fields[i]),
                                  .type_name = type_name,
@@ -270,7 +271,8 @@ bool pin_record_valid(const pin_record *record)
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
         size_t width = field_size(field), step = field_align(field);
-        if (field->name != text || !*field->name || !width ||
+        if (field->text_descriptor != (field->type == PIN_STR) ||
+            field->name != text || !*field->name || !width ||
             !align(&size, step) || field->offset != size || field->size != width ||
             !add(&size, width) || !add(&bytes, strlen(field->name) + 1) ||
             field->description || field->color || field->min || field->max ||

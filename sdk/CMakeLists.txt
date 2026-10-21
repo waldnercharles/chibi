@@ -128,6 +128,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/type.c"
     "${CHIBI_SDK_ROOT}/src/types/catalog.c"
     "${CHIBI_SDK_ROOT}/src/types/array.c"
+    "${CHIBI_SDK_ROOT}/src/types/text.c"
     "${CHIBI_SDK_ROOT}/src/types/map.c"
     "${CHIBI_SDK_ROOT}/src/types/record.c"
     "${CHIBI_SDK_ROOT}/src/types/copy.c"
@@ -138,7 +139,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/text.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
 configure_file("${CHIBI_SDK_ROOT}/src/types/array_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/array_internal.h" COPYONLY)
 configure_file("${CHIBI_SDK_ROOT}/src/types/copy_internal.h"

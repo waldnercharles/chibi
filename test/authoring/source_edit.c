@@ -2,6 +2,7 @@
 
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -713,7 +714,9 @@ TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically)
     REQUIRE(edit(r));
     REQUIRE(strstr(result.text, "Add(a:1.25,b:4)"));
     authoring_edit_result_free(&result);
-    pin_value text = { .type = PIN_STR, .str = "wrong" };
+    pin_value text = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "wrong",
+                                                    .length = sizeof("wrong") - 1 } };
     r.value = &text;
     REQUIRE(!edit(r) && error[0]);
     cleanup();

@@ -2,11 +2,13 @@
 
 #include "runtime/component_catalog.h"
 #include "runtime/ui/documents.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/rcss_map.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
+#include "types/text.h"
 #include "ui/list.h"
 #include "ui/popover.h"
 
@@ -439,10 +441,11 @@ bool ui_mount_take(ui_mount *m, ui_activation *out)
 
 /* An emit argument read as a payload value of `type`, or false for a type
    a UI event cannot carry. */
-static bool argument_value(const char *text, pin_value *value)
+static bool argument_value(arena *storage, const char *text, pin_value *value)
 {
     switch (value->type) {
         case PIN_STR:
+            return !pin_value_text(storage, value, text, strlen(text));
         case PIN_NAME: value->str = text; return true;
         case PIN_BOOL:
             value->b = !strcmp(text, "true") || strtod(text, NULL) != 0;
@@ -492,10 +495,11 @@ static bool event_value(
  * declares none), in its order: bool Shift, Alt and Mod (`primary` holds
  * Mod's modifier bits) and CF_V2 Pointer come from the DOM event, as a web
  * handler reads event.shiftKey and event.clientX; each other value is emit's
- * next argument read as its type (strings borrow `a`). Returns how many
- * values it wrote to `out`, or -1 for a payload a UI event cannot carry or
+ * next argument read as its type (strings use dispatch storage). Returns how
+ * many values it wrote to `out`, or -1 for a payload a UI event cannot carry or
  * more than `capacity`. */
 static int ui_activation_payload(
+    arena *storage,
     const ui_activation *a,
     const render_ui_event_field *fields,
     int count,
@@ -520,7 +524,7 @@ static int ui_activation_payload(
         }
         const char *text = argument < a->argc ? a->args[argument] : "";
         argument++;
-        if (!argument_value(text, &out[i])) {
+        if (!argument_value(storage, text, &out[i])) {
             return -1;
         }
     }
@@ -545,16 +549,20 @@ static int activation_send(const render_ui_host *host, ecs_entity entity, const 
     }
     pin_value values[PAYLOAD_MAX];
     float pointer[2];
-    count = ui_activation_payload(a, fields, count, primary, pointer, values, PAYLOAD_MAX);
+    arena storage = { 0 };
+    count = ui_activation_payload(&storage, a, fields, count, primary, pointer, values, PAYLOAD_MAX);
     if (count < 0) {
+        arena_free(&storage);
         return UNCARRIED;
     }
-    return host->dispatch(
+    int status = host->dispatch(
         host->context,
         ecs_entity_to_u64(entity),
         a->event,
         (execution_arguments){ .values = values, .count = count }
     );
+    arena_free(&storage);
+    return status;
 }
 
 bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary)

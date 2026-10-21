@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/value_wire.h"
 
 #include <math.h>
@@ -243,7 +244,11 @@ TEST_CASE(model_resource_changes_require_geometry_preparation)
     source->domain = BEHAVIOR_DOMAIN_MODEL;
     graph *g = source->graph;
     node *sampled = graph_add_node(g, &NODE_ModelSampledSdf);
-    pin_value key = { .type = PIN_STR, .str = "content/sdf/0000000000000000.sdf.png" };
+    pin_value key = { .type = PIN_STR,
+                      .text = &(
+                          const pin_string
+                      ){ .bytes = "content/sdf/0000000000000000.sdf.png",
+                         .length = sizeof("content/sdf/0000000000000000.sdf.png") - 1 } };
     REQUIRE(!graph_set_pin_default(g, sampled, false, 0, &key));
     REQUIRE(connect(sampled, model_graph_add_output(g), 0));
     shader_error error = { 0 };
@@ -251,7 +256,10 @@ TEST_CASE(model_resource_changes_require_geometry_preparation)
     REQUIRE(
         model_program_compile_bindings(&program, source, NULL, 0, &bindings, &error) == MODEL_BINDINGS_READY
     );
-    key.str = "content/sdf/1111111111111111.sdf.png";
+    key.text = &(const pin_string){
+        .bytes = "content/sdf/1111111111111111.sdf.png",
+        .length = (uint32_t)strlen("content/sdf/1111111111111111.sdf.png")
+    };
     REQUIRE(!graph_set_pin_default(g, sampled, false, 0, &key));
     REQUIRE(
         model_program_compile_bindings(&program, source, NULL, 0, &bindings, &error) ==

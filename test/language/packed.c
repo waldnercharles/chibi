@@ -10,10 +10,12 @@
 #include "types/array.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/trace.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -158,7 +160,17 @@ TEST_CASE(packed_record_updates_box_compatible_null_elements)
         if (i != 2) {
             item = pin_array_get(result, i == 0 ? 0 : 1);
             pin_value value;
-            pin_read_field(item.ptr, &item.record->type.fields[0], &value);
+            {
+                const char *error = pin_read_field(
+                    &producer,
+                    item.ptr,
+                    &item.record->type.fields[0],
+                    &value
+                );
+                if (error) {
+                    abort();
+                }
+            };
             REQUIRE(value.i == 23);
         }
     }
@@ -213,7 +225,17 @@ TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks)
         for (int f = 0; f < 4; f++) {
             pin_value value = scalar(fields[f].type, i + f + 1);
             value.type_name = fields[f].type_name;
-            pin_write_field(values[i].ptr, &record->type.fields[f], value);
+            {
+                const char *error = pin_write_field(
+                    &producer,
+                    values[i].ptr,
+                    &record->type.fields[f],
+                    value
+                );
+                if (error) {
+                    abort();
+                }
+            };
         }
     }
     pin_array source = { .element_type = PIN_STRUCT,
@@ -235,7 +257,19 @@ TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks)
                        .type_name = managed->type.name,
                        .record = managed,
                        .ptr = arena_alloc(&producer, managed->type.size) };
-    pin_write_field(text.ptr, &managed->type.fields[0], (pin_value){ .type = PIN_STR, .str = "owned" });
+    {
+        const char *error = pin_write_field(
+            &producer,
+            text.ptr,
+            &managed->type.fields[0],
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = "owned",
+                                                      .length = sizeof("owned") - 1 } }
+        );
+        if (error) {
+            abort();
+        }
+    };
     pin_array texts = { .element_type = PIN_STRUCT,
                         .type_name = managed->type.name,
                         .record = managed,
@@ -253,13 +287,23 @@ TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks)
     arena_collect_mark(&collection, kept);
     arena_collect_end(&collection);
     pin_value row = pin_array_get(packed, 1), member;
-    pin_read_field(row.ptr, &row.record->type.fields[2], &member);
+    {
+        const char *error = pin_read_field(&producer, row.ptr, &row.record->type.fields[2], &member);
+        if (error) {
+            abort();
+        }
+    };
     REQUIRE(member.type == PIN_I64 && member.i64 == 4);
     row = pin_array_get(nullable, 1);
     REQUIRE(!row.ptr && pin_record_valid(row.record));
     row = pin_array_get(kept, 0);
-    pin_read_field(row.ptr, &row.record->type.fields[0], &member);
-    REQUIRE(member.type == PIN_STR && !strcmp(member.str, "owned"));
+    {
+        const char *error = pin_read_field(&producer, row.ptr, &row.record->type.fields[0], &member);
+        if (error) {
+            abort();
+        }
+    };
+    REQUIRE(member.type == PIN_STR && !strcmp(pin_text(member).bytes, "owned"));
     return true;
 }
 static double now()

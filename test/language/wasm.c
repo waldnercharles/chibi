@@ -195,7 +195,7 @@ TEST_CASE(wasm_integer_operations_preserve_width_and_exact_bits)
                   "0;if a + 2 == 9007199254740995 { total += 1 }if a << 1 == "
                   "18014398509481986 { total += 1 }if ~a == -9007199254740994 "
                   "{ total += 1 }if b >> 1 == -4 { total += 1 }if u >> 63 == 1 "
-                  "{ total += 1 }if small >> 9 == -1 { total += 1 } } }";
+                  "{ total += 1 }if small >> 7 == -1 { total += 1 } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_WASM };
     for (int i = 0; i < 2; i++) {
         cleanup();

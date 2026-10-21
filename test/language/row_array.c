@@ -16,10 +16,12 @@
 #include "types/array.h"
 #include "types/copy.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Proposed authored construction path, not the current one-pass Studio C
@@ -87,13 +89,6 @@ static void cleanup()
     arena_free(&storage);
     result = (pin_value){ 0 };
 }
-static char *text(arena *a, const char *value)
-{
-    size_t bytes = strlen(value) + 1;
-    char *out = arena_alloc(a, bytes);
-    memcpy(out, value, bytes);
-    return out;
-}
 static const pin_record *layout(uint64_t id)
 {
     return pin_record_create(&producer, "Rows.Row", id, fields, 12);
@@ -101,7 +96,17 @@ static const pin_record *layout(uint64_t id)
 static pin_value member(const pin_value *value, int field)
 {
     pin_value out;
-    pin_read_field(value->ptr, &value->record->type.fields[field], &out);
+    {
+        const char *error = pin_read_field(
+            &producer,
+            value->ptr,
+            &value->record->type.fields[field],
+            &out
+        );
+        if (error) {
+            abort();
+        }
+    };
     return out;
 }
 static pin_value row(const pin_record *record, int number)
@@ -116,13 +121,22 @@ static pin_value row(const pin_record *record, int number)
         if (v.type == PIN_STR) {
             char buffer[20];
             snprintf(buffer, sizeof buffer, "row-%02d-%d", number, f);
-            v.str = text(&producer, buffer);
+            const char *error = pin_value_text(&producer, &v, buffer, strlen(buffer));
+            if (error) {
+                abort();
+            }
         } else if (v.type == PIN_I32) {
             v.i = number + f;
         } else {
             v.b = (number + f) % 2;
         }
-        pin_write_field(value.ptr, &record->type.fields[f], v);
+        {
+            const char *
+                error = pin_write_field(&producer, value.ptr, &record->type.fields[f], v);
+            if (error) {
+                abort();
+            }
+        };
     }
     return value;
 }
@@ -154,8 +168,11 @@ static bool check_row(const pin_value *value, int number, const char *shared_tex
         if (v.type == PIN_STR) {
             char buffer[20];
             snprintf(buffer, sizeof buffer, "row-%02d-%d", number, f);
-            REQUIRE(v.str && !strcmp(v.str, shared_text ? shared_text : buffer));
-            REQUIRE(arena_contains(owner, v.str));
+            REQUIRE(
+                pin_text(v).bytes &&
+                !strcmp(pin_text(v).bytes, shared_text ? shared_text : buffer)
+            );
+            REQUIRE(arena_contains(owner, pin_text(v).bytes));
         } else if (v.type == PIN_I32) {
             REQUIRE(v.i == number + f);
         } else {
@@ -187,7 +204,7 @@ static uint64_t row_text_bytes(const pin_value *value)
 {
     uint64_t bytes = 0;
     for (int f = 0; f < 5; f++) {
-        bytes += strlen(member(value, f).str) + 1;
+        bytes += strlen(pin_text(member(value, f)).bytes) + 1;
     }
     return bytes;
 }
@@ -272,7 +289,7 @@ TEST_CASE(row_array_direct_cost_and_aliases)
                 REQUIRE(check_array(&result, count, NULL));
                 for (int i = 0; i < count; i++) {
                     for (int f = 0; f < 5; f++) {
-                        ((char *)member(&items[i], f).str)[0] = 'X';
+                        ((char *)pin_text(member(&items[i], f)).bytes)[0] = 'X';
                     }
                 }
                 arena_free(&producer);
@@ -388,7 +405,7 @@ TEST_CASE(row_array_call_collectable_results)
         REQUIRE(check_array(&retained[i], counts[i], NULL));
     }
     for (int f = 0; f < 5; f++) {
-        ((char *)member(&item, f).str)[0] = 'X';
+        ((char *)pin_text(member(&item, f)).bytes)[0] = 'X';
     }
     arena_free(&producer);
     arena_collection collection;
@@ -499,7 +516,10 @@ static bool run(behavior_backend backend, int count, const char *source_text, co
     result = function->result_defaults[0];
     behavior_function_prepare_results(function, &result, &storage);
     pin_value args[] = { { .type = PIN_I32, .i = count },
-                         { .type = PIN_STR, .str = source_text } };
+                         { .type = PIN_STR,
+                           .text = &(const pin_string){
+                               .bytes = source_text,
+                               .length = (uint32_t)strlen(source_text) } } };
     context = (behavior_function_context){ .activation = &activation,
                                            .arguments = args,
                                            .argument_count = 2,
@@ -568,8 +588,12 @@ TEST_CASE(row_array_authored_construction)
      * in-place append of one-row arrays: both are linear in the row count.
      * Constructor, argument and return work remains in these totals. */
     static const uint64_t row_copies[][4] = { { 0, 5, 17, 65 }, { 0, 6, 21, 81 } };
-    static const uint64_t text_bytes[][4] = { { 0, 225, 900, 3600 },
-                                              { 0, 270, 1080, 4320 } };
+    /* Each constructor also owns five explicit field values: 5 * 9 extra
+     * bytes per row. The first constructor snapshots the empty base's five
+     * descriptors once, adding 5 bytes per nonempty invocation. Later base
+     * snapshots contain the strings already counted in the original totals. */
+    static const uint64_t text_bytes[][4] = { { 0, 275, 1085, 4325 },
+                                              { 0, 320, 1265, 5045 } };
     static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 22, 73, 277 } };
     static const char *sources[] = {
         "Rows :: library { " ROW

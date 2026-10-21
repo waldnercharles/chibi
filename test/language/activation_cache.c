@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -259,35 +260,67 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
         REQUIRE(prepare(source, backends[backend]));
         char first[] = "first", second[] = "second", third[] = "third!";
         REQUIRE(
-            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = first }, 0) ==
-                FLOW_OK &&
+            dispatch(
+                0,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = first,
+                                                          .length = (uint32_t)strlen(first) } },
+                0
+            ) == FLOW_OK &&
             cached()
         );
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = second }, 1) ==
-                FLOW_OK &&
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = second,
+                                                          .length = (uint32_t)strlen(second) } },
+                1
+            ) == FLOW_OK &&
             cached()
         );
         first[0] = second[0] = 'X';
         const pin_value *one = execution_instance_state(instances[0], state_id("kept"));
         const pin_value *two = execution_instance_state(instances[1], state_id("kept"));
-        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "second"));
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = third }, 1.5) ==
-                FLOW_OK &&
+            one && two && !strcmp(pin_text(*one).bytes, "first") &&
+            !strcmp(pin_text(*two).bytes, "second")
+        );
+        REQUIRE(
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = third,
+                                                          .length = (uint32_t)strlen(third) } },
+                1.5
+            ) == FLOW_OK &&
             cached()
         );
         third[0] = 'X';
         one = execution_instance_state(instances[0], state_id("kept"));
         two = execution_instance_state(instances[1], state_id("kept"));
-        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "third!"));
+        REQUIRE(
+            one && two && !strcmp(pin_text(*one).bytes, "first") &&
+            !strcmp(pin_text(*two).bytes, "third!")
+        );
         REQUIRE(run(0, 1, 2) == FLOW_OK && cached());
         REQUIRE(run(0, -2, 3) < 0);
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(execution_program_error(program));
         REQUIRE(run(1, 3, 4) == FLOW_OK && total(0, 1) && total(1, 3) && cached());
         REQUIRE(
-            dispatch(0, RUN_EVENT, (pin_value){ .type = PIN_STR, .str = "wrong" }, 5) == FLOW_ERR_ARGUMENT
+            dispatch(
+                0,
+                RUN_EVENT,
+                (pin_value){
+                    .type = PIN_STR,
+                    .text = &(const pin_string){ .bytes = "wrong",
+                                                 .length = sizeof("wrong") - 1 } },
+                5
+            ) == FLOW_ERR_ARGUMENT
         );
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(run(0, 2, 6) == FLOW_OK && total(0, 3) && cached());
@@ -319,7 +352,14 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
         memset(large_payload, 'x', CACHE_LIMIT);
         large_payload[CACHE_LIMIT] = '\0';
         REQUIRE(
-            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = large_payload }, 3) == FLOW_OK
+            dispatch(
+                0,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = large_payload,
+                                                          .length = (uint32_t)strlen(large_payload) } },
+                3
+            ) == FLOW_OK
         );
         REQUIRE(
             total(0, 15) &&
@@ -329,12 +369,26 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
         large_payload = NULL;
 
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 4) ==
-                FLOW_OK &&
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){
+                    .type = PIN_STR,
+                    .text = &(const pin_string){ .bytes = "tiny",
+                                                 .length = sizeof("tiny") - 1 } },
+                4
+            ) == FLOW_OK &&
             total(1, 8) && cached()
         );
         xalloc_stats_get(&before);
-        int small = dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 5);
+        int small = dispatch(
+            0,
+            TEXT_EVENT,
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = "tiny",
+                                                      .length = sizeof("tiny") - 1 } },
+            5
+        );
         xalloc_stats_get(&after);
         REQUIRE(small == FLOW_OK && total(0, 16) && cached());
         REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);

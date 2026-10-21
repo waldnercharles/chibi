@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #define PREVIEW_LOG_LIMIT 1024
 static void log_message(void *user, const execution_log_message *message)
 {
@@ -14,13 +15,19 @@ static void log_message(void *user, const execution_log_message *message)
         r->dropped_logs++;
         return;
     }
+    char *text = xmalloc(message->text_length + 1);
+    if (message->text_length) {
+        memcpy(text, message->text, message->text_length);
+    }
+    text[message->text_length] = 0;
     apush(
         r->logs,
         ((preview_log){ .owner = message->owner,
                         .node = message->node_id,
                         .now = message->now,
                         .program = xstrdup(message->program_name ? message->program_name : ""),
-                        .text = xstrdup(message->text ? message->text : "") })
+                        .text = text,
+                        .text_length = message->text_length })
     );
 }
 preview_runtime *preview_runtime_new(ecs_world *ecs)

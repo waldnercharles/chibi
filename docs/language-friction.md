@@ -914,3 +914,35 @@ table aside for them (the PR that removed the old handler forms).
 
 Suggestion: declare an event's payload as a record in `.chibi` source, which
 the compilers, Studio, migrations and tests then share.
+
+### Saved text still uses a C-string JSON boundary
+
+Runtime boundary checkpoint (2026-10-21). Ordinary `string` values preserve
+arbitrary bytes, but the existing save text API persists a JSON object of UTF-8
+text keys and values. Its authored adapter rejects embedded NUL before calling
+`save_set`, and the store validates JSON encoding before changing an entry or
+revision, rejecting malformed UTF-8. Reading a missing entry can still return
+an arbitrary-byte fallback string without persisting it. This limitation belongs
+to the save format, not to the `string` invariant. Lossless binary saved values
+need a separately reviewed encoding/API contract; no replacement or truncation
+is performed at the existing boundary.
+
+### Preview diagnostic JSON still requires UTF-8
+
+Runtime boundary checkpoint (2026-10-21). Execution logs and preview log storage
+retain explicit byte lengths, including embedded NUL. The existing controller
+JSON transport can escape NUL but still cannot serialize malformed UTF-8 as a
+JSON string. Serialization failure remains explicit; bytes are not replaced or
+silently truncated. A lossless transport encoding needs its own response-contract
+review and is not implied by the runtime string invariant.
+
+### Record construction repeats some string copies
+
+The descriptor cutover gives authored string fields owned storage, including
+when an input string already belongs to the destination arena. The bounded
+row-array attribution fixture records 45 additional copied text bytes per
+constructed row from five nine-byte field copies, plus five empty terminators
+once per nonempty invocation. This remains linear, but same-owner retention
+could remove redundant copies.
+Review it with shared slices and escaped-value lifetimes; keeping an arbitrary
+borrowed pointer would not preserve the ownership contract.

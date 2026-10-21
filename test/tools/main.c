@@ -75,6 +75,7 @@ void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
 void test_tool_types();
 void test_tool_ecs();
+void test_tool_ecs_strings();
 void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
@@ -752,6 +753,13 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--ecs-strings")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_ecs_strings();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
         tool_init();
         pu_display_time(true);
@@ -1138,7 +1146,7 @@ int main(int argc, char **argv)
             "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --package-ownership | --unit | "
             "--reflect-ranges | --c-export-alias | "
-            "--ecs-query | "
+            "--ecs-query | --ecs-strings | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
             "--terrain-storage | "

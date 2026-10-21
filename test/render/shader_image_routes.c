@@ -11,6 +11,7 @@
 #include "runtime/images/catalog.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -60,7 +61,10 @@ static int materials[IMAGES];
 static node *image_node(graph *g, const char *key)
 {
     node *image = graph_add_node(g, registry_node_by_name("Shader Image Texture"));
-    pin_value value = { .type = PIN_STR, .str = key };
+    pin_value value = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = key, .length = (uint32_t)strlen(key) }
+    };
     assert(graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
     for (int i = SHADER_IMAGE_INPUT_COLOR_SPACE; i < SHADER_IMAGE_INPUT_COUNT; i++) {
         value = (pin_value){ .type = PIN_I32,

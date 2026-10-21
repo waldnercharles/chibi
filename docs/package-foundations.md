@@ -3,7 +3,9 @@
 Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. The owner selected
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
 The merged string design specifies one public `string` type and a descriptor behind the existing
-pointer, followed by shared slices. The general descriptor migration is not implemented yet.
+pointer, followed by shared slices. The descriptor implementation is local to
+the isolated package-foundations worktree and passes its admitted integration
+checks; publication evidence is in the [package library plan](package-library-plan.md).
 Other semantics and fidelity remain decisions for the user, separately per package. Helpful language prerequisites precede dependent
 implementations. This record covers bytes, strings and UTF-8; it is not an exhaustive Odin API review.
 Discuss each new semantic step with the owner before implementing it. The approved invariant and migration
@@ -26,10 +28,9 @@ not fresh test results. Friction suggestions remain proposals; implementation mu
 compiler stages.
 
 The later [merged string design](https://github.com/waldnercharles/chibi/blob/a9d87eaf1a28ff15c710d8475af1a8b722d98bfa/docs/design-notes.md#strings-carry-their-length)
-records the representation and implementation phases. Existing byte operations and compiler scans that read
-bytes once are already present; they reduce repeated scans but do not establish length-carrying runtime
-strings. The current audit found no general descriptor implementation. Check overlapping string work before
-assigning these phases; neither a design commit nor the existing scan optimizations completes the migration.
+records the representation and implementation phases. The descriptor cutover is implemented locally;
+validation and integration status are recorded in the package library plan. ByteLength and ByteAt use
+stored lengths. Slice still copies its selected bytes; shared backing remains a separate phase.
 
 | Responsibility | Proposed owner |
 | --- | --- |
@@ -92,10 +93,16 @@ values may share backing storage only when the runtime retains its owner. Copyin
 borrowed views, pointers into temporary storage and mutable aliases wait for lifetime rules. Length-carrying
 storage alone does not supply ownership.
 
-The owner decision on interior NUL at a native C-string boundary is pending. Recommend rejecting it through
-the adapter's failure path, without a partial write, and allocating/providing a terminator for an
-explicitly documented lifetime when conversion succeeds. This is a proposal, not approval of a new failure
-policy. Converting a raw C pointer requires a trusted bound or a deliberate bounded
+Approved on 2026-10-21: reject a provably embedded-NUL value at a C-string-only
+use during compilation. Validate values whose contents are unknown before a
+native call or field write. A rejected operation does not call C or change its
+destination. New public APIs accepting external data return an explicit,
+recoverable error, with the offending byte offset where available. This is
+distinct from the existing invocation-failure diagnostic, which stops the
+current invocation. Proven-safe values can omit redundant runtime validation.
+Ordinary Chibi strings and length-aware APIs continue to preserve every byte.
+Successful adapters provide a terminator with an explicitly documented lifetime.
+Converting a raw C pointer requires a trusted bound or a deliberate bounded
 terminator scan. Filesystem/OS adapters separately specify their native encoding and errors; no generic string
 conversion may silently truncate, normalize or replace bytes.
 
@@ -154,18 +161,18 @@ authored contract requiring rewriting, not merely for runtime representation cha
 
 ### String representation boundary
 
-The source audit found one-pointer, NUL-terminated strings throughout the value
-system. Length-carrying strings require a coordinated runtime change, not only
-new text helpers. UTF-8 validity is a separate semantic choice.
+The initial source audit found one-pointer, NUL-terminated strings throughout
+the value system. The local cutover replaces that representation across these
+layers. UTF-8 validity remains separate from the byte-preserving string invariant.
 
-| Layer | Existing dependency and required work |
+| Layer | Local descriptor implementation |
 | --- | --- |
-| Values and execution | [value.h](../src/types/value.h) and [scalar.h](../src/types/scalar.h) use `const char *`; [function.h](../src/execution/function.h) uses `uint64_t` execution cells. Interpreter, SLJIT and C-backend moves/comparisons must agree on the new representation. |
-| Records and native fields | [type.c](../src/types/type.c) reads/writes `PIN_STR` fields as C pointers; stage one's [Compile.chibi](../tools/compiler/package_compiler/Compile.chibi) assigns text fields pointer size. Authored strings need explicit adapters to reflected native C-string fields. |
-| Ownership, equality and keys | [array.c](../src/types/array.c) copies with `strlen`/`xstrdup`; [trace.c](../src/types/trace.c) traces one pointer. Copy/free/trace paths, [map.c](../src/types/map.c), [index.c](../src/types/index.c) and persistent keys must use byte lengths. Distinct suffixes after NUL must remain distinct values. |
-| Formatting and transport | [text_format.c](../src/runtime/text_format.c) measures and emits C strings. [value_document_read.c](../src/types/value_document_read.c) rejects a document string whose explicit length differs from `strlen`; [value_document.c](../src/types/value_document.c) writes via a C-string helper. Preserve lengths through both directions. |
-| Prepared persistence | [value_wire.c](../src/types/value_wire.c) already prefixes encoded strings with a length but derives it from a terminator and rejects interior NUL. Separate value-string encoding from metadata/name encoding, with bounded allocation and ownership on decode. |
-| Compiler host and bootstrap | [compiler_host.c](../src/toolchain/compiler_host.c) measures string quotas with `strnlen`; [compiler_target.c](../src/toolchain/compiler_target.c) exports layout facts. Update host adapters, explicit semantic ABI invalidation and [bootstrap recovery](package-compiler.md) together. Unchanged struct sizes alone cannot prove compatibility. |
+| Values and execution | [value.h](../src/types/value.h) stores `PIN_STR` in `.text`, pointing to a descriptor. `PIN_NAME` retains its C-string `.str`. Execution cells remain one pointer wide; moves, copies and comparisons use the descriptor. |
+| Records and native fields | [type.c](../src/types/type.c) distinguishes authored descriptor fields with `text_descriptor`. Native C fields use checked adapters; compiler catalogs carry the corresponding `c_string` marker. |
+| Ownership, equality and keys | [array.c](../src/types/array.c), [trace.c](../src/types/trace.c), [map.c](../src/types/map.c) and [index.c](../src/types/index.c) preserve explicit lengths and owned bytes. Suffixes after NUL participate in equality and keys. |
+| Formatting and transport | [text_format.c](../src/runtime/text_format.c) preserves lengths. Document strings preserve NUL; malformed UTF-8 uses the lossless `{"bytes":[...]}` representation. Names retain their restrictions. |
+| Prepared persistence | [value_wire.c](../src/types/value_wire.c) separates raw value bytes from metadata strings and charges descriptor storage to decode budgets. Prepared format 20 carries the new field marker. |
+| Compiler host and bootstrap | Host quotas use stored lengths; target layout facts and semantic ABI include the new metadata. Bootstrap regeneration and [recovery](package-compiler.md) accompany publication. Unchanged struct sizes do not imply compatibility. |
 
 A two-word pointer/length value would change execution cells, calls and record
 layouts. The merged design uses one pointer to an immutable descriptor,
@@ -178,47 +185,43 @@ serve explicit C adapters, but must never determine value length. Do not assume 
 header exists before arbitrary C pointers: literals, native fields and foreign
 pointers do not have one.
 
-The smallest preparation step is to centralize runtime string construction,
-length, byte access, equality and ownership while preserving current behavior.
-Keep value strings distinct from symbol names and native C strings. Public NUL
-support then waits until the storage, copy/trace, equality/hash, transport,
-formatting and compiler-host paths agree. The byte-preserving contract is
-approved; this implementation choice does not approve the proposed package APIs.
+Construction, byte access and equality are centralized in [text.h](../src/types/text.h).
+Value strings remain distinct from symbol names and native C strings. The
+byte-preserving contract is approved; this implementation does not approve the
+proposed package APIs.
 
-The 2026-10-21 audit found two boundaries that must move with storage:
+The 2026-10-21 cutover addresses two boundaries identified by the initial audit:
 
-- Native reflected C-string fields and authored string fields currently share
-  `PIN_STR`. Field reads have no allocator and field writes have no failure
-  result. Distinguish their storage explicitly and provide owned reads and
-  checked writes; pointer size cannot distinguish the two. Generated native
-  glue and direct field instructions must use the same adapters.
-- Value strings and metadata currently share literal and prepared-string
-  decoding. Split those paths so values preserve bytes while names and source
-  text retain their intentional restrictions. Explicit-length JSON functions
-  preserve escaped NUL, but ordinary JSON strings cannot round-trip arbitrary
-  invalid UTF-8. Document persistence needs a lossless byte encoding; textual
-  host APIs need an explicit rejection outcome. Neither may replace bytes
-  silently.
+- `pin_read_field` and `pin_write_field` accept an arena and return an error.
+  `text_descriptor` distinguishes authored descriptors from native C pointers.
+  Authored reads borrow descriptors; native reads construct owned descriptors;
+  native writes validate before mutation. Generated glue and field instructions
+  use the same storage distinction.
+- Values and metadata have separate literal and prepared-string decoding.
+  Values preserve bytes while names and source text retain their restrictions.
+  Document persistence uses a lossless byte encoding for malformed UTF-8;
+  textual host boundaries reject unsupported values without replacing bytes.
 
 The storage cutover must include ownership, native fields, literals, all execution
 backends, equality/hash, formatting, prepared values, document transport and host
 quotas together. Acceptance must retain `A\0B` after its source owner is freed,
 distinguish it from `A` and `A\0C` as map keys, preserve malformed UTF-8 in byte
 operations and binary persistence, and exercise each C-string adapter's approved
-NUL outcome once that pending policy is settled. Current runtime strings still
-use the old representation.
+NUL outcome. The in-progress cutover must pass these checks before it is
+reported as implemented.
 
-[compiler_json.c](../src/toolchain/compiler_json.c) can already decode a JSON
-string with NUL and return its byte length; downstream C-string users can lose
-the suffix. That does not establish runtime support. Conversely,
+[compiler_json.c](../src/toolchain/compiler_json.c) keeps strict Unicode decoding
+for metadata in `compiler_json_string` and permits arbitrary literal bytes in
+`compiler_json_value_string`; both return explicit lengths. Conversely,
 [source_package_snapshot.c](../src/authoring/source_package_snapshot.c)
 deliberately rejects source NUL. Preserve explicit source-language rejection
-when runtime values gain NUL support; do not let parser input truncate or
+while runtime values support NUL; do not let parser input truncate or
 silently change the source contract.
 
 ### Implementation sequence
 
-The merged design records three phases, each intended for its own PR:
+The merged design records three phases. This checkpoint combines accessor
+preparation with the descriptor cutover so the value ABI changes together:
 
 1. Route C value-string readers and producers through accessors. Preserve the
    current representation and behavior; accessors still measure C strings.
@@ -226,11 +229,15 @@ The merged design records three phases, each intended for its own PR:
 2. Switch accessors and producers to descriptors, migrate native C-field
    adapters, and update ownership, literals, prepared/document formats and
    host boundaries together. Bump the prepared format and rebuild the
-   bootstrap through the documented procedure. Resolve the pending C-NUL
-   boundary policy before changing that behavior.
-3. Make Slice share retained backing bytes; make ByteAt and ByteLength use
-   the stored length in constant time. Add direct compiler byte paths where
-   useful. Existing byte-reading scan optimizations do not complete this phase.
+   bootstrap through the documented procedure. Implement the approved static
+   and runtime C-NUL boundary safeguards as part of that cutover.
+3. Make Slice share retained backing bytes. ByteAt and ByteLength already use
+   the stored length in constant time after the cutover. Add direct compiler
+   byte paths where useful; shared slice ownership remains pending.
+
+Static C-NUL checks cover values that the compiler can prove. Stage one's
+current proof is limited to literal and parenthesized uses within its supported
+constant subset. Runtime adapters validate unknown values before native effects.
 
 New package operations follow their own semantic reviews. In particular,
 changing `strings.Bytes` from `int[]` to `byte[]`, adding `FromBytes`, and
@@ -238,8 +245,8 @@ choosing UTF-8 decoder result signatures remain proposed. They are not implicit
 parts of the representation approval. Builders need their own approved API
 and container-valued record fields before implementation.
 
-The descriptor phases follow the merged design's PR sequence; later package dependencies do not require one
-PR per operation. Bytes and codecs can run in parallel once their shared contracts are fixed. No public
+Later package dependencies do not require one PR per operation. Bytes and codecs
+can run in parallel once their shared contracts are fixed. No public
 allocator/context, borrow checker, generic constraints, callable values or
 Unicode tables are required for this selected subset. New syntax is optional unless a reproducer shows a
 correctness or performance blocker. Track each discovered limitation in the existing friction log with
@@ -267,7 +274,7 @@ strings.Reset(builder)                   // label remains stable
 | Length/offsets | Byte units; explicitly named scalar operations | Scalar indexing with traversal cost and separate byte-offset API |
 | Access failures | Preserve ByteAt sentinel and Slice clamping; strict future syntax | Change existing helpers to checked failure/try variants and migrate callers |
 | Ownership — shared-slice direction recorded in merged design | Immutable values; slices retain backing ownership; copying can stage the migration | Public borrowed views still need a separate lifetime contract |
-| Native C-string interior NUL — pending owner decision | Reject through an explicit adapter failure, without a partial write | Another explicit boundary policy approved for the consumer |
+| Native C-string interior NUL — approved 2026-10-21 | Diagnose known-invalid uses during compilation; validate unknown values before native effects; expose recoverable errors in new public APIs | Do not truncate or abort the process on invalid input |
 | Malformed iteration — no replacement approved | Preserve current strict failure; explicit Decode proposal is also strict | U+FFFD and one-byte advance after a separate decision |
 | Byte/string conversion signatures — proposed | Review `Bytes -> byte[]` and `FromBytes` with package consumers | Retain current `Bytes -> int[]` until that review |
 | Characters | Existing char; preserve one-scalar-string loop result initially | Change loop yield to char with byte offset after caller audit |

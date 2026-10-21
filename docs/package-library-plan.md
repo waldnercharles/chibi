@@ -10,13 +10,18 @@ implemented before the ports that need them.
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.
 - Worktree: `/Users/cwaldner/Personal/chibi/.worktrees/odin-package-foundations/chibi`.
-- Integration base on 2026-10-21: `72cfa7903e54294a196e18ccd563b77087477657`
-  from fetched `origin/main`; includes the array-method/parameter-copy fixes
-  and third-party archive build changes.
+- Integration base on 2026-10-21: `e20bd6af83b1dd4e3fa48dcd5d1c4769bb818a97`
+  from fetched `origin/main`; includes the array-method/parameter-copy fixes,
+  third-party archive build changes and M6 native type libraries.
 - Upstream comparison: Odin `779c8c0a4778f994389e2a681ffc7b3cbd6c1f65`.
 - Program and per-package decision process: approved.
 - String invariant approved on 2026-10-21: immutable, length-carrying,
   byte-preserving strings, including NUL, with explicit UTF-8 operations.
+- C-string safeguards approved on 2026-10-21: diagnose provably invalid uses
+  during compilation and validate unknown values before native effects. New
+  public APIs accepting external data expose recoverable errors. The descriptor
+  migration and regressions pass the admitted native, language, Wasm, material,
+  project and tooling checks. Bootstrap publication is recorded below.
 - New text/binary APIs and new public collection names: proposed, awaiting
   semantic review. Approval of the program does not settle these choices.
 - Shift behavior approved on 2026-10-21: reject counts outside the operand
@@ -33,7 +38,7 @@ implemented before the ports that need them.
 | --- | --- | --- | --- |
 | P0 | [Odin inventory](odin-package-inventory.md) | Every source package directory in the pinned base/core/vendor trees is accounted for, including internal/test directories; current Chibi coverage and dependency groups are explicit. | Complete: 355 source directories mapped; individual feature reviews remain |
 | P1 | [Foundation decisions](package-foundations.md) and [numeric contract](package-numeric-contract.md) | Each first-wave feature has a proposed API/example, alternatives, compatibility consequences, prerequisite list and an owner decision. | Proposals ready; semantic decisions pending |
-| P2 | Language/runtime prerequisites | Approved prerequisite behavior works through its owning compiler/runtime paths, with meaningful regressions and declared target coverage. | Visibility and shifts implemented locally; strings and checked arithmetic pending |
+| P2 | Language/runtime prerequisites | Approved prerequisite behavior works through its owning compiler/runtime paths, with meaningful regressions and declared target coverage. | Visibility, shifts and string descriptors implemented locally; shared slices and remaining checked arithmetic pending |
 | P3 | First portable package batch | Each approved subset imports, compiles, runs, documents and installs through the SDK; fidelity gaps and friction are recorded. | Waiting on P1/P2 |
 | P4 | Further package batches | Repeat P1-P3 for data structures, data formats, host services and selected vendor bindings. | Queued |
 
@@ -134,6 +139,12 @@ main, branch ancestry and dirty state before every implementation batch.
   wire decoding still reject embedded NUL. General length-carrying descriptors,
   accessors and shared slices are not implemented at that revision. Recheck
   this worktree before assigning string work; its active owner may advance it.
+- Direct coordination with that Claude session confirmed ownership: this branch
+  handles descriptors and C-string boundaries; Claude handles the array rename,
+  native arrays and move-at-last-use work. Claude agreed to leave `record.c` and
+  `array.c` unchanged until the descriptor checkpoint reaches main. Keep
+  `packages/core/strings/Strings.chibi` out of this increment until its array
+  rename lands. A pushed checkpoint is not a main-branch integration.
 - [PR 569](https://github.com/waldnercharles/chibi/pull/569) and
   [PR 629](https://github.com/waldnercharles/chibi/pull/629) are merged in the
   integration base and supply third-party archives/build support.
@@ -316,7 +327,42 @@ scratch closures were removed after verification. Windows, browser hosts,
 sanitizer configurations and quarantined broader suites were not run for this
 integration.
 
-Next, settle the native C-string embedded-NUL boundary before the descriptor
-cutover. Accessor preparation preserves existing semantics; the remaining
-descriptor and shared-slice phases follow the merged design. Discuss arithmetic
-edge cases and each package's API before assigning their implementations.
+### String descriptor evidence, 2026-10-21
+
+The descriptor cutover preserves arbitrary bytes, including embedded NUL, across
+owned values, execution backends, records, arrays, persistence and length-aware
+host APIs. C-only boundaries reject embedded NUL before native effects. Static
+checks catch supported literal/constant proofs; runtime checks cover unknown
+values. This is not whole-program proof. Existing no-result APIs retain
+controlled invocation failure; new fallible public APIs remain a semantic review.
+
+Prepared format 20 distinguishes authored descriptor fields from native C-string
+fields. Bootstrap version 5 accompanies it. JSON uses strings for valid UTF-8
+and a byte-array encoding for other string values. The prototype registry stays
+authoritative for its own nested native types through call-scoped resolution;
+the global type catalog is not changed by a prototype write. Failed native
+conversions leave destination fields unchanged.
+
+Merge `cb0faa79213ed2959d3f0d4a812eb444cb61a836` integrates main at
+`e20bd6af83b1dd4e3fa48dcd5d1c4769bb818a97`. Native Release and Wasm builds pass.
+The production-supervised `native`, `language`, `wasm`, `materials` and `projects`
+groups and the tooling `short` aggregate pass, each with its own 60-second
+deadline. Focused checks cover record values/documents/prepared decoding, native
+write atomicity, ECS ownership and observers, core strings, generated C,
+compiler constants/binding/signatures/union members, prepared writing and
+compiler self-compilation. These are admitted checks, not the quarantined full
+suite.
+
+M6 build-graph, reflection and archive admissions pass, including parity for 251
+compile commands across 69 native libraries. The graph check used the same Xcode
+SDK as the configured CMake build through `SDKROOT`; the shell's default
+CommandLineTools SDK otherwise makes that comparison differ. Independent review
+covered ownership, native conversion failure, nominal type identity, compiler
+metadata and wire allocation budgets. Formatting uses clang-format 22.
+
+Bootstrap generation and clean-candidate evidence are recorded in the following
+publication checkpoint. Logs remain under `.chibi/odin-package-foundations/`.
+Shared slices follow this checkpoint. Discuss retention behavior, arithmetic
+edge cases and each package's API before assigning further work. Windows,
+browser hosts, sanitizer configurations and quarantined suites remain unverified
+for this increment.

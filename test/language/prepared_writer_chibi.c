@@ -16,11 +16,13 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/type.h"
 #include "types/union.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* The authored prepared writer must reproduce execution_prepared_write byte
@@ -136,7 +138,12 @@ static void put(pin_value *v, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(v), name);
     assert(field && field->type == value.type);
-    pin_write_field(v->ptr, field, value);
+    {
+        const char *error = pin_write_field(&input, v->ptr, field, value);
+        if (error) {
+            abort();
+        }
+    };
 }
 static void put_int(pin_value *v, const char *name, int n)
 {
@@ -151,7 +158,11 @@ static void put_text(pin_value *v, const char *name, const char *flag, const cha
     size_t size = text ? strlen(text) + 1 : 1;
     char *copy = arena_alloc(&input, size);
     memcpy(copy, text ? text : "", size);
-    put(v, name, (pin_value){ .type = PIN_STR, .str = copy });
+    put(v,
+        name,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = copy,
+                                                  .length = (uint32_t)strlen(copy) } });
     if (flag) {
         put_bool(v, flag, text != NULL);
     }
@@ -208,7 +219,12 @@ static pin_value value_row(model *m, const pin_value *v)
             pin_value *members = NULL;
             for (int i = 0; i < type->field_count; i++) {
                 pin_value member = { 0 };
-                pin_read_field(v->ptr, &type->fields[i], &member);
+                {
+                    const char *error = pin_read_field(&input, v->ptr, &type->fields[i], &member);
+                    if (error) {
+                        abort();
+                    }
+                };
                 apush(members, member);
             }
             put_int(&row, "first", value_rows(m, members, type->field_count));
@@ -226,8 +242,19 @@ static pin_value value_row(model *m, const pin_value *v)
         }
         return row;
     }
-    if (v->type == PIN_STR || v->type == PIN_NAME) {
+    if (v->type == PIN_NAME) {
         put_text(&row, "text", "has_text", v->str);
+        return row;
+    }
+    if (v->type == PIN_STR) {
+        pin_string text = pin_text(*v);
+        pin_value value;
+        const char *error = pin_value_text(&input, &value, text.bytes, text.length);
+        if (error) {
+            abort();
+        }
+        put(&row, "text", value);
+        put_bool(&row, "has_text", true);
         return row;
     }
     put_int(&row, "wide", wide(m, scalar_bits(*v)));
@@ -1019,15 +1046,17 @@ TEST_CASE(prepared_writer_fingerprints_and_closes_modules)
                                                .id = module->plan.id,
                                                .data = modules[c - 1],
                                                .length = length };
-            pin_value input = byte_array(modules[c - 1], length), hash = { 0 };
+            pin_value encoded = byte_array(modules[c - 1], length), hash = { 0 };
             arena detached = { 0 };
             REQUIRE(
-                compiler_fixture_call(&fixture, b, PACKAGE, "Fingerprint", &input, 1, BUDGET, &detached, &hash)
+                compiler_fixture_call(&fixture, b, PACKAGE, "Fingerprint", &encoded, 1, BUDGET, &detached, &hash)
             );
             REQUIRE(hash.type == PIN_U64 && hash.u64 == (fingerprint ? fingerprint : 1));
             arena_free(&detached);
             apush(ids, ((pin_value){ .type = PIN_U64, .u64 = module->plan.id }));
-            apush(names, ((pin_value){ .type = PIN_STR, .str = CORPUS[c] }));
+            pin_value name;
+            REQUIRE(!pin_value_text(&input, &name, CORPUS[c], strlen(CORPUS[c])));
+            apush(names, name);
             apush(starts, ((pin_value){ .type = PIN_I32, .i = acount(data) }));
             apush(lengths, ((pin_value){ .type = PIN_I32, .i = (int)length }));
             for (size_t i = 0; i < length; i++) {

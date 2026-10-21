@@ -12,6 +12,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/scalar.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -36,7 +37,8 @@ enum
     CAST_FIXTURES = 17,
     INTEGER_FIXTURE = CAST_FIXTURE + CAST_FIXTURES,
     INTEGER_FIXTURES = 8,
-    FIXTURES = INTEGER_FIXTURE + INTEGER_FIXTURES
+    TEXT_FIXTURE = INTEGER_FIXTURE + INTEGER_FIXTURES,
+    FIXTURES = TEXT_FIXTURE + 1
 };
 /* Representative BF_CAST pairs; generated C must match the VM per sample. */
 static const struct
@@ -63,6 +65,7 @@ static const struct
     { PIN_I64, PIN_F64, BEHAVIOR_CAST_EXACT },
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
+static const pin_string managed_text = { "managed", sizeof("managed") - 1 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
 static char directory[128];
@@ -772,11 +775,11 @@ static bool borrows_exported_plain_arrays()
             if (sample == 1) {
                 values.element_type = PIN_STR;
                 for (int item = 0; item < 3; item++) {
-                    items[item] = (pin_value){ .type = PIN_STR, .str = "managed" };
+                    items[item] = (pin_value){ .type = PIN_STR, .text = &managed_text };
                 }
             } else if (sample == 2) {
                 /* A plain header cannot prove that each payload is plain. */
-                items[1] = (pin_value){ .type = PIN_STR, .str = "managed" };
+                items[1] = (pin_value){ .type = PIN_STR, .text = &managed_text };
             } else if (sample == 3) {
                 /* Native inputs can alias the public saved-value bank even
                  * when this function itself never suspends. */
@@ -824,8 +827,11 @@ static bool borrows_exported_plain_arrays()
                 );
                 REQUIRE(arena_storage_bytes(&pause_storage) > 0);
                 if (sample == 1 || sample == 2) {
-                    REQUIRE(pin_array_get(snapshot, 1).str != items[1].str);
-                    REQUIRE(!strcmp(pin_array_get(snapshot, 1).str, "managed"));
+                    REQUIRE(
+                        pin_text(pin_array_get(snapshot, 1)).bytes !=
+                        pin_text(items[1]).bytes
+                    );
+                    REQUIRE(!strcmp(pin_text(pin_array_get(snapshot, 1)).bytes, "managed"));
                 } else {
                     REQUIRE(pin_array_get(snapshot, 0).type == PIN_F64);
                     REQUIRE(pin_array_get(snapshot, 0).d == 1);
@@ -1564,6 +1570,110 @@ static bool writes_exported_current_world_scalars()
     return true;
 }
 
+static const char binary_text_bytes[] = { 'A', 0, 'B', (char)0xff, 0 };
+static const char other_text_bytes[] = { 'A', 0, 'C', (char)0xff, 0 };
+static const pin_string binary_text = { binary_text_bytes,
+                                        sizeof binary_text_bytes - 1 };
+static const pin_string other_text = { other_text_bytes, sizeof other_text_bytes - 1 };
+static bool binary_text_fixture()
+{
+    pin_value argument = { .type = PIN_STR };
+    pin_value outputs[] = { argument, { .type = PIN_BOOL }, { .type = PIN_BOOL } };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &argument, 1, outputs, 3, NULL, 0);
+    int input = behavior_function_builder_slot(builder, PIN_STR);
+    int first = behavior_function_builder_slot(builder, PIN_STR);
+    int second = behavior_function_builder_slot(builder, PIN_STR);
+    int equal = behavior_function_builder_slot(builder, PIN_BOOL);
+    int different = behavior_function_builder_slot(builder, PIN_BOOL);
+    const behavior_function_instruction code[] = {
+        { .op = BF_ARGUMENT, .type = PIN_STR, .output = input, .value = argument },
+        { .op = BF_CONSTANT,
+          .type = PIN_STR,
+          .output = first,
+          .value = { .type = PIN_STR, .text = &binary_text } },
+        { .op = BF_CONSTANT,
+          .type = PIN_STR,
+          .output = second,
+          .value = { .type = PIN_STR, .text = &other_text } },
+        { .op = BF_STRING_EQUAL, .type = PIN_BOOL, .output = equal, .left = input, .right = first },
+        { .op = BF_STRING_EQUAL, .type = PIN_BOOL, .output = different, .left = first, .right = second },
+        { .op = BF_RESULT, .type = PIN_STR, .left = first, .target = 0 },
+        { .op = BF_RESULT, .type = PIN_BOOL, .left = equal, .target = 1 },
+        { .op = BF_RESULT, .type = PIN_BOOL, .left = different, .target = 2 },
+        { .op = BF_RETURN },
+        { .op = BF_END },
+    };
+    for (int i = 0; i < (int)(sizeof code / sizeof *code); i++) {
+        behavior_function_builder_emit(builder, code[i]);
+    }
+    char error[256];
+    functions[TEXT_FIXTURE] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[TEXT_FIXTURE]) {
+        fprintf(stderr, "C export text fixture: %s\n", error);
+    }
+    REQUIRE(functions[TEXT_FIXTURE]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    behavior_function_write_c(functions[TEXT_FIXTURE], source, "export_binary_text");
+    return true;
+}
+/* An unrelated call after the export returns exercises descriptor lifetime. */
+__attribute__((noinline)) static unsigned disturb_export_stack()
+{
+    volatile unsigned char bytes[4096];
+    unsigned sum = 0;
+    for (int i = 0; i < (int)sizeof bytes; i++) {
+        bytes[i] = (unsigned char)i;
+        sum += bytes[i];
+    }
+    return sum;
+}
+static bool exported_binary_text_matches_the_vm()
+{
+    typedef int (*entry)(behavior_function_context *);
+    entry generated = (entry)dlsym(library, "export_binary_text");
+    REQUIRE(generated);
+    const pin_string *samples[] = { &binary_text, &other_text };
+    for (int sample = 0; sample < 2; sample++) {
+        pin_value argument = { .type = PIN_STR, .text = samples[sample] };
+        pin_value expected[] = { { .type = PIN_STR },
+                                 { .type = PIN_BOOL },
+                                 { .type = PIN_BOOL } };
+        pin_value actual[] = { { .type = PIN_STR },
+                               { .type = PIN_BOOL },
+                               { .type = PIN_BOOL } };
+        arena vm_storage = { 0 }, generated_storage = { 0 };
+        behavior_function_context vm = { .arguments = &argument,
+                                         .argument_count = 1,
+                                         .results = expected,
+                                         .budget = 64 };
+        behavior_function_context compiled = { .arguments = &argument,
+                                               .argument_count = 1,
+                                               .results = actual,
+                                               .budget = 64 };
+        behavior_function_bind_storage(&vm, &vm_storage);
+        behavior_function_bind_storage(&compiled, &generated_storage);
+        REQUIRE(behavior_function_bind(functions[TEXT_FIXTURE], &vm, NULL, 0));
+        REQUIRE(behavior_function_run(functions[TEXT_FIXTURE], &vm, false) == FLOW_OK);
+        REQUIRE(generated(&compiled) == FLOW_OK);
+        REQUIRE(disturb_export_stack() == 522240);
+        for (int backend = 0; backend < 2; backend++) {
+            const pin_value *result = backend ? actual : expected;
+            REQUIRE(result[0].type == PIN_STR && result[0].text);
+            REQUIRE(pin_text(result[0]).length == sizeof binary_text_bytes - 1);
+            REQUIRE(
+                !memcmp(pin_text(result[0]).bytes, binary_text_bytes, sizeof binary_text_bytes - 1)
+            );
+            REQUIRE(result[1].type == PIN_BOOL && result[1].b == (sample == 0));
+            REQUIRE(result[2].type == PIN_BOOL && !result[2].b);
+        }
+        arena_free(&vm_storage);
+        arena_free(&generated_storage);
+    }
+    return true;
+}
+
 static bool begin_export()
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
@@ -1710,8 +1820,12 @@ TEST_CASE(generated_c_checks_shift_counts)
     for (int i = 0; i < INTEGER_FIXTURES; i++) {
         REQUIRE(shift_fixture(i));
     }
+    /* Nine fixed functions share this compiler child. The binary fixture adds
+     * two VM and two generated-C calls, each with a 64-instruction budget. */
+    REQUIRE(binary_text_fixture());
     REQUIRE(compile_export(64 * 1024));
     REQUIRE(exported_shifts_check_counts());
+    REQUIRE(exported_binary_text_matches_the_vm());
     return true;
 }
 void test_tool_c_export()

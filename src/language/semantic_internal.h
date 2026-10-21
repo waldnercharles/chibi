@@ -4,6 +4,7 @@
 #include "language/constant_proof.h"
 #include "language/named_binding.h"
 #include "language/signature_reader.h"
+#include "types/text.h"
 #include "types/type.h"
 
 /* Optional grammar fields have a null TSNode; Tree-sitter count/range APIs
@@ -154,6 +155,8 @@ bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text);
 char *script_analyzer_text_copy(const analyzer *a, TSNode node);
 void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...);
 char *script_analyzer_name_copy(analyzer *a, TSNode node);
+pin_value script_analyzer_string_value(analyzer *, TSNode);
+void script_analyzer_c_string_argument(analyzer *, TSNode, int expression, const char *boundary);
 /* The one Unicode scalar a character literal holds; false after diagnosing
  * a malformed, empty or longer literal. */
 bool script_analyzer_character_value(analyzer *a, TSNode node, int *value);

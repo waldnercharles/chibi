@@ -2,19 +2,23 @@
 
 #include "runtime/save_native.h"
 
-static const native_parameter_definition READ_IN[] = { SAVE_READ_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition READ_IN[] = { SAVE_KEY(
+    NATIVE_CSTRING_PORT
+) SAVE_PORT(NATIVE_PORT, "Default", NATIVE_PARAMETER_DATA, PIN_STR, NULL) };
 static const native_parameter_definition READ_OUT[] = { SAVE_READ_OUTPUTS(NATIVE_PORT) };
-static const native_parameter_definition SET_IN[] = { SAVE_SET_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition SET_IN[] = { SAVE_SET_INPUTS(NATIVE_CSTRING_PORT) };
 static const native_parameter_definition READ_NUMBER_IN[] = {
-    SAVE_READ_NUMBER_INPUTS(NATIVE_PORT)
+    SAVE_READ_NUMBER_INPUTS(NATIVE_CSTRING_PORT)
 };
 static const native_parameter_definition READ_NUMBER_OUT[] = {
     SAVE_READ_NUMBER_OUTPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition SET_NUMBER_IN[] = {
-    SAVE_SET_NUMBER_INPUTS(NATIVE_PORT)
+    SAVE_SET_NUMBER_INPUTS(NATIVE_CSTRING_PORT)
 };
-static const native_parameter_definition REMOVE_IN[] = { SAVE_REMOVE_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition REMOVE_IN[] = {
+    SAVE_REMOVE_INPUTS(NATIVE_CSTRING_PORT)
+};
 static const native_parameter_definition EXEC[] = { SAVE_EXEC(NATIVE_PORT) };
 static const native_parameter_definition THEN[] = { SAVE_THEN(NATIVE_PORT) };
 static const native_parameter_definition COMMIT_OUT[] = { SAVE_COMMIT_OUTPUTS(NATIVE_PORT) };

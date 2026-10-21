@@ -2,8 +2,11 @@
 
 #include "execution/function.h"
 #include "runtime/save.h"
+#include "types/array.h"
+#include "types/text.h"
 
 #include <assert.h>
+#include <string.h>
 
 static const char missing_read[] = "Reading save data requires a game world";
 static const char missing_write[] = "Saving requires a game world";
@@ -18,47 +21,111 @@ static const char *read_text(
     if (!save) {
         return missing_read;
     }
-    assert(ctx->copy_string);
-    const char *text = save_get(save, in[0].str);
-    out[0].b = text != NULL;
-    if (!text) {
-        text = in[1].str ? in[1].str : "";
+    const char *key;
+    const char *error = pin_text_cstring(ctx->value_storage, in[0], &key, NULL);
+    if (error) {
+        return error;
     }
-    out[1].str = ctx->copy_string(ctx->value_storage, text);
+    const char *text = save_get(save, key);
+    out[0].b = text != NULL;
+    pin_value value;
+    if (!text) {
+        if (pin_value_snapshot_to_arena(ctx->value_storage, &value, &in[1])) {
+            return "Cannot retain save fallback";
+        }
+    } else {
+        error = pin_value_text(ctx->value_storage, &value, text, strlen(text));
+        if (error) {
+            return error;
+        }
+    }
+    out[1].text = value.text;
     return NULL;
 }
-static const char *set_text(void *service, const pin_value *in, pin_value *)
+static const char *set_text(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *
+)
 {
+    const char *error;
+    const char *text0;
+    error = pin_text_cstring(ctx->value_storage, in[0], &text0, NULL);
+    if (error) {
+        return error;
+    }
+    const char *text1;
+    error = pin_text_cstring(ctx->value_storage, in[1], &text1, NULL);
+    if (error) {
+        return error;
+    }
+
     save *save = service;
     if (!save) {
         return missing_write;
     }
-    return save_set(save, in[0].str, in[1].str ? in[1].str : "") ? NULL
-                                                                 : save_error(save);
+    return save_set(save, text0, text1) ? NULL : save_error(save);
 }
-static const char *read_number(void *service, const pin_value *in, pin_value *out)
+static const char *read_number(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *out
+)
 {
+    const char *error;
+    const char *text0;
+    error = pin_text_cstring(ctx->value_storage, in[0], &text0, NULL);
+    if (error) {
+        return error;
+    }
+
     if (!service) {
         return missing_read;
     }
     out[1].d = in[1].d;
-    out[0].b = save_get_number(service, in[0].str, &out[1].d);
+    out[0].b = save_get_number(service, text0, &out[1].d);
     return NULL;
 }
-static const char *set_number(void *service, const pin_value *in, pin_value *)
+static const char *set_number(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *
+)
 {
+    const char *error;
+    const char *text0;
+    error = pin_text_cstring(ctx->value_storage, in[0], &text0, NULL);
+    if (error) {
+        return error;
+    }
+
     if (!service) {
         return missing_write;
     }
-    return save_set_number(service, in[0].str, in[1].d) ? NULL : save_error(service);
+    return save_set_number(service, text0, in[1].d) ? NULL : save_error(service);
 }
-static const char *remove_text(void *service, const pin_value *in, pin_value *)
+static const char *remove_text(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *
+)
 {
+    const char *error;
+    const char *text0;
+    error = pin_text_cstring(ctx->value_storage, in[0], &text0, NULL);
+    if (error) {
+        return error;
+    }
+
     save *save = service;
     if (!save) {
         return missing_write;
     }
-    return save_remove(save, in[0].str) ? NULL : save_error(save);
+    return save_remove(save, text0) ? NULL : save_error(save);
 }
 static const char *commit(
     const behavior_function_context *,
@@ -98,22 +165,22 @@ const node_host_call SAVE_READ_CALL = {
 };
 const node_host_call SAVE_SET_CALL = {
     .service = "game.save",
-    .invoke = set_text,
+    .context = set_text,
     .missing_service = missing_write,
 };
 const node_host_call SAVE_READ_NUMBER_CALL = {
     .service = "game.save",
-    .invoke = read_number,
+    .context = read_number,
     .missing_service = missing_read,
 };
 const node_host_call SAVE_SET_NUMBER_CALL = {
     .service = "game.save",
-    .invoke = set_number,
+    .context = set_number,
     .missing_service = missing_write,
 };
 const node_host_call SAVE_REMOVE_CALL = {
     .service = "game.save",
-    .invoke = remove_text,
+    .context = remove_text,
     .missing_service = missing_write,
 };
 const node_host_call SAVE_COMMIT_CALL = {

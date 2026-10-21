@@ -2,6 +2,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/type.h"
 #include "types/value_document.h"
@@ -280,7 +281,26 @@ static int read_struct(
             }
             return -1;
         }
-        pin_write_field(block, field, member);
+        if (field->type == PIN_STR) {
+            void *destination = (unsigned char *)block + field->offset;
+            if (field->text_descriptor) {
+                *(const pin_string **)destination = member.text;
+            } else {
+                const char *bytes;
+                const char *error = pin_text_cstring(reader->storage, member, &bytes, NULL);
+                if (error) {
+                    read_error(reader, "%s", error);
+                    return -1;
+                }
+                *(const char **)destination = bytes;
+            }
+        } else if (field->type != PIN_STRUCT) {
+            const char *error = pin_write_field(reader->storage, block, field, member);
+            if (error) {
+                read_error(reader, "%s", error);
+                return -1;
+            }
+        }
     }
     *out = (pin_value){ .type = PIN_STRUCT,
                         .type_name = out->type_name,
@@ -425,8 +445,41 @@ static int read_single(
             }
             break;
         }
+        case PIN_STR: {
+            const av_value *encoded = av_is_obj(v) ? av_obj_get(v, "bytes") : NULL;
+            bool binary = encoded && av_obj_size(v) == 1 && av_is_arr(encoded);
+            if (!av_is_str(v) && !binary) {
+                return -1;
+            }
+            size_t length = binary ? av_arr_size(encoded) : av_get_len(v);
+            if (length > UINT32_MAX ||
+                length > DOCUMENT_MAX_BYTES - sizeof(pin_string) - 1 ||
+                (binary && length > (size_t)(DOCUMENT_MAX_VALUES - reader->values))) {
+                return -1;
+            }
+            if (binary) {
+                reader->values += (int)length;
+                for (size_t i = 0; i < length; i++) {
+                    const av_value *byte = av_arr_get(encoded, i);
+                    if (!av_is_uint(byte) || av_get_uint(byte) > UINT8_MAX) {
+                        return -1;
+                    }
+                }
+            }
+            pin_string *text = allocate(reader, sizeof *text + length + 1);
+            if (!text) {
+                return -1;
+            }
+            char *bytes = (char *)(text + 1);
+            for (size_t i = 0; i < length; i++) {
+                bytes[i] = binary ? (char)av_get_uint(av_arr_get(encoded, i))
+                                  : av_get_str(v)[i];
+            }
+            *text = (pin_string){ .bytes = bytes, .length = (uint32_t)length };
+            out->text = text;
+            return 0;
+        }
         case PIN_NAME:
-        case PIN_STR:
             if (!av_is_str(v) || strlen(av_get_str(v)) != av_get_len(v)) {
                 return -1;
             }
@@ -670,9 +723,10 @@ static int read_map(pin_value declaration, const av_value *document, pin_value *
             read_error(reader, "invalid map entry %d", i);
             return -1;
         }
-        size_t width = entry->key.type == PIN_STR || entry->key.type == PIN_NAME
-                         ? strlen(entry->key.str) + 1
-                         : 1;
+        size_t width = entry->key.type == PIN_STR
+                         ? (size_t)pin_text(entry->key).length + 1
+                     : entry->key.type == PIN_NAME ? strlen(entry->key.str) + 1
+                                                   : 1;
         if (width > DOCUMENT_MAX_WORK || (size_t)i > DOCUMENT_MAX_WORK / width ||
             key_bytes > DOCUMENT_MAX_WORK - (size_t)i * width ||
             key_bytes + (size_t)i * width > DOCUMENT_MAX_WORK - reader->work) {

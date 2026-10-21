@@ -6,13 +6,25 @@
 #include <math.h>
 #include <string.h>
 
-static bool convert(pin_value *value, pin_type type, behavior_cast_mode mode)
+static bool convert(arena *storage, pin_value *value, pin_type type, behavior_cast_mode mode)
 {
     if (value->type == type) {
         return true;
     }
     if (behavior_scalar_string(value->type) && behavior_scalar_string(type)) {
-        value->type = type;
+        if (type == PIN_STR) {
+            pin_string text = pin_text(*value);
+            return !pin_value_text(storage, value, text.bytes, text.length);
+        }
+        const char *name = NULL;
+        size_t nul = 0;
+        if (pin_text_cstring(storage, *value, &name, &nul)) {
+            return false;
+        }
+        size_t length = strlen(name) + 1;
+        char *owned = arena_alloc(storage, length);
+        memcpy(owned, name, length);
+        *value = (pin_value){ .type = PIN_NAME, .str = owned };
         return true;
     }
     if (value->type == PIN_F32 && type == PIN_F64) {
@@ -52,7 +64,7 @@ const char *script_scalar_operation(
     if (op == SCRIPT_OP_EQ || op == SCRIPT_OP_NE) {
         bool equal;
         if (behavior_scalar_string(left.type)) {
-            equal = behavior_string_equal(left.str, right.str);
+            equal = pin_text_equal(pin_text(left), pin_text(right));
         } else if (left.type == PIN_F32) {
             equal = left.f == right.f;
         } else if (left.type == PIN_F64) {
@@ -176,7 +188,14 @@ const char *script_scalar_operation(
     }
     return "unsupported scalar constant operator";
 }
-static const char *evaluate(const script_analysis *analysis, int index, pin_value *out, int depth, int *steps)
+static const char *evaluate(
+    arena *storage,
+    const script_analysis *analysis,
+    int index,
+    pin_value *out,
+    int depth,
+    int *steps
+)
 {
     if (index < 0 || depth >= SCRIPT_MAX_DEPTH || --*steps < 0) {
         return "constant evaluation exceeds its bounded budget";
@@ -190,19 +209,19 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
     switch (e->kind) {
         case SCRIPT_EXPR_CONSTANT: *out = e->constant; return NULL;
         case SCRIPT_EXPR_SYMBOL:
-            return evaluate(analysis, analysis->symbols[e->symbol].initializer, out, depth + 1, steps);
+            return evaluate(storage, analysis, analysis->symbols[e->symbol].initializer, out, depth + 1, steps);
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_BINARY:
         case SCRIPT_EXPR_CAST: break;
         default: return "requires scalar compile-time values and operators";
     }
     pin_value left = { 0 }, right = { 0 };
-    const char *error = evaluate(analysis, e->left, &left, depth + 1, steps);
+    const char *error = evaluate(storage, analysis, e->left, &left, depth + 1, steps);
     if (error) {
         return error;
     }
     if (e->kind == SCRIPT_EXPR_CAST) {
-        if (!convert(&left, e->type.storage, e->conversion)) {
+        if (!convert(storage, &left, e->type.storage, e->conversion)) {
             return behavior_scalar_cast_supported(left.type, e->type.storage)
                      ? "constant does not fit its conversion"
                      : "unsupported scalar constant conversion";
@@ -217,9 +236,9 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
                 *out = left;
                 return NULL;
             }
-            return evaluate(analysis, e->right, out, depth + 1, steps);
+            return evaluate(storage, analysis, e->right, out, depth + 1, steps);
         }
-        error = evaluate(analysis, e->right, &right, depth + 1, steps);
+        error = evaluate(storage, analysis, e->right, &right, depth + 1, steps);
         if (error) {
             return error;
         }
@@ -227,8 +246,8 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
                     y = analysis->expressions[e->right].type;
         if (script_type_numeric(x) && script_type_numeric(y)) {
             pin_type operand = script_analyzer_arithmetic_type(x, y).storage;
-            if (!convert(&left, operand, BEHAVIOR_CAST_EXACT) ||
-                !convert(&right, operand, BEHAVIOR_CAST_EXACT)) {
+            if (!convert(storage, &left, operand, BEHAVIOR_CAST_EXACT) ||
+                !convert(storage, &right, operand, BEHAVIOR_CAST_EXACT)) {
                 return "unsupported scalar constant conversion";
             }
         } else if (
@@ -241,6 +260,7 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
     return script_scalar_operation(e->op, left, right, e->type.storage, out);
 }
 const char *script_scalar_evaluate(
+    arena *storage,
     const script_analysis *analysis,
     int expression,
     pin_type expected,
@@ -249,11 +269,11 @@ const char *script_scalar_evaluate(
 {
     int steps = SCRIPT_SCALAR_CONSTANT_STEPS;
     pin_value result = { 0 };
-    const char *error = evaluate(analysis, expression, &result, 0, &steps);
+    const char *error = evaluate(storage, analysis, expression, &result, 0, &steps);
     if (error) {
         return error;
     }
-    if (!convert(&result, expected, BEHAVIOR_CAST_EXACT)) {
+    if (!convert(storage, &result, expected, BEHAVIOR_CAST_EXACT)) {
         return "incompatible scalar constant result";
     }
     *out = result;

@@ -6,6 +6,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -619,11 +620,14 @@ TEST_CASE(default_comparison_storage_is_bounded)
     REQUIRE(large);
     memset(large, 'x', bytes);
     large[bytes] = 0;
-    script_catalog_parameter parameter = { .name = "unused",
-                                           .type = { .storage = PIN_STR },
-                                           .has_default = true,
-                                           .default_value = { .type = PIN_STR,
-                                                              .str = large } };
+    script_catalog_parameter parameter = {
+        .name = "unused",
+        .type = { .storage = PIN_STR },
+        .has_default = true,
+        .default_value = { .type = PIN_STR,
+                           .text = &(const pin_string){ .bytes = large,
+                                                        .length = (uint32_t)strlen(large) } }
+    };
     script_catalog_capability capabilities[] = { tick,
                                                  { .id = 75,
                                                    .name = "LargeDefault",

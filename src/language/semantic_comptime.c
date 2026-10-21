@@ -300,11 +300,7 @@ static bool compile_string(
     (void)budget;
     (void)frame;
 
-    char *text = script_analyzer_name_copy(a, node);
-    char *owned = arena_alloc(&a->out->constants, strlen(text) + 1);
-    strcpy(owned, text);
-    free(text);
-    *out = (compile_value){ .value = { .type = PIN_STR, .str = owned } };
+    *out = (compile_value){ .value = script_analyzer_string_value(a, node) };
     return true;
 }
 /* The numeric type `T` in a call `T(value)`, as in a runtime conversion: a

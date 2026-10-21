@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -127,7 +128,10 @@ TEST_CASE(authored_images_own_their_keys_and_settings)
     REQUIRE(!shader_graph_from_graph(g, &ir, &error));
     REQUIRE(error.node == image->id && strstr(error.message, "Choose an image"));
     char key[] = "content/textures/check.png";
-    pin_value value = { .type = PIN_STR, .str = key };
+    pin_value value = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = key, .length = (uint32_t)strlen(key) }
+    };
     REQUIRE(graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
     key[0] = 'x';
     REQUIRE(shader_graph_from_graph(g, &ir, &error));
@@ -147,7 +151,7 @@ TEST_CASE(authored_images_own_their_keys_and_settings)
     free(json);
     node *copy = graph_node_by_id(loaded->graph, image->id);
     REQUIRE(!strcmp(
-        copy->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
+        pin_text(copy->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value).bytes,
         ir.images[0].key
     ));
     char *clipboard = graph_save_nodes(g, &image, 1);
@@ -155,19 +159,24 @@ TEST_CASE(authored_images_own_their_keys_and_settings)
     graph_init(&pasted);
     node *existing = graph_add_node(&pasted, registry_node_by_name("Shader Image Texture"));
     REQUIRE(existing && shader_graph_init_node(&pasted, existing));
-    value = (pin_value){ .type = PIN_STR, .str = "content/textures/existing.png" };
+    value = (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){
+                             .bytes = "content/textures/existing.png",
+                             .length = sizeof("content/textures/existing.png") - 1 } };
     REQUIRE(graph_set_pin_default(&pasted, existing, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
     REQUIRE(clipboard && graph_append(&pasted, clipboard, 0, 0) == 0);
     free(clipboard);
     behavior_asset_free(asset);
     REQUIRE(acount(pasted.nodes) == 2);
     REQUIRE(!strcmp(
-        pasted.nodes[1]->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
+        pin_text(pasted.nodes[1]->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value)
+            .bytes,
         ir.images[0].key
     ));
-    REQUIRE(
-        !strcmp(existing->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str, "content/textures/existing.png")
-    );
+    REQUIRE(!strcmp(
+        pin_text(existing->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value).bytes,
+        "content/textures/existing.png"
+    ));
     graph_free(&pasted);
     REQUIRE(shader_graph_from_graph(loaded->graph, &ir, &error));
     REQUIRE(

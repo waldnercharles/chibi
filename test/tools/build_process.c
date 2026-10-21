@@ -670,6 +670,48 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
     return true;
 }
 
+/* A program imports a named collection's packages as NAME:path. */
+TEST_CASE(private_programs_import_named_collections)
+{
+    char collection[256], directory[300], file[320];
+    snprintf(collection, sizeof collection, "%s/collection", root);
+    snprintf(directory, sizeof directory, "%s/greet", collection);
+    assert(!mkdir(collection, 0700) && !mkdir(directory, 0700));
+    snprintf(file, sizeof file, "%s/Greet.chibi", directory);
+    tool_write(file, "package greet\npub Answer :: () -> int { return 42; }\n");
+    static const char *source = "package uses\nimport greet \"lib:greet\"\n"
+                                "Build :: () -> int { return greet.Answer(); }";
+    const chibi_build_collection named[] = { { "lib", collection } };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        options.collections = named;
+        options.collection_count = 1;
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 42);
+    }
+    char program[320], log[256];
+    snprintf(program, sizeof program, "%s/UsesCollection.chibi", root);
+    snprintf(log, sizeof log, "%s/collection.log", root);
+    tool_write(program, source);
+    char option[300];
+    snprintf(option, sizeof option, "lib=%s", collection);
+    const char *argv[] = { host_path, "--root",       root,   "--source",
+                           program,   "--collection", option, "--entry",
+                           "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(argv, root, log) == 42);
+    const char *malformed[] = { host_path, "--root",       root,   "--source",
+                                program,   "--collection", "lib",  "--entry",
+                                "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(malformed, root, log) == 1);
+    char *text = tool_read(log);
+    bool usage = text && strstr(text, "usage:");
+    free(text);
+    REQUIRE(usage);
+    return true;
+}
+
 /* Nothing resumes a build program, so waiting or starting a task fails it. */
 TEST_CASE(private_programs_cannot_wait_or_start_tasks)
 {
@@ -1387,6 +1429,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+    RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);

@@ -72,6 +72,10 @@ from when stage one's records held only `int`, `bool` and `string` fields.
 A map type's declaration in stage one keeps its value type in three fields,
 `value_storage`, `value_container` and `value_record`, because `TypeDecl`
 cannot hold a `ValueType`.
+The build graph's `c.Library` (M6) cannot hold its sources or flags, so every
+graph function takes them as two arrays beside the record, and a library's
+description is three functions (`Support`, `SupportSources`, `SupportFlags`)
+instead of one value.
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
@@ -603,6 +607,9 @@ states could not be named `events`, `event` or `state`, nor a loop variable
 `state`; they became `event_declarations`, `event_id` and `retained`.
 A map literal step's loop variable named `entry` failed the same way, as the
 whole file's "Unexpected syntax" at 1:1; it became `pair`.
+The build graph's `c` package (M6) named a parameter `library`, the legacy
+declaration keyword; four functions failed with only "Unexpected syntax"
+until bisecting found it, and it became `target`.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,
@@ -613,6 +620,20 @@ whole file's "Unexpected syntax" at 1:1; it became `pair`.
 
 Suggestion: make declaration-only words contextual, and give build-host
 syntax errors the parser's position and token.
+
+## A struct literal takes its type only from a declaration
+
+Language. In the build graph's `c` package, `array_add(running, {source: s,
+handle: h})` fails with "Struct literal needs an explicit record or reflected
+type", although `running` is a `Running[]`. The literal needs a typed local
+first: `compile: Running = {source: s, handle: h};`.
+
+- Odin infers a compound literal's type from its parameter or element type;
+  Zig's `.{ ... }` coerces to the parameter's type; C# 9 has target-typed
+  `new()`; Swift infers enum cases and literals from context.
+
+Suggestion: type a struct literal from the parameter, element or return type it
+fills, as Odin does.
 
 ## A build host reads `Build.chibi` with the syntax it was built with
 

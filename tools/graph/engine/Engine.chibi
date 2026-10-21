@@ -1,0 +1,117 @@
+package engine
+
+import c "graph:c"
+import strings "core:strings"
+
+// The engine's libraries, described for the C graph. Each matches the target
+// of the same name in sdk/CMakeLists.txt; the build-toolchain equivalence case
+// compares their compile commands with CMake's.
+
+// A build configuration: what root CMakeLists.txt reads from its cache.
+pub Profile :: struct {
+    compiler: string;
+    // Clang, AppleClang or GNU, as CMake identifies the compiler.
+    compiler_id: string;
+    // Debug, Release, RelWithDebInfo or MinSizeRel.
+    build_type: string;
+    architecture: string;
+    sysroot: string;
+    warnings: bool;
+    // Sanitizers to enable, such as address,undefined; empty for none.
+    sanitizers: string;
+    // The directory debug info names for a ccache build, or empty.
+    debug_compilation_dir: string;
+}
+
+Clang :: (profile: Profile) -> bool {
+    return profile.compiler_id == "Clang" || profile.compiler_id == "AppleClang";
+}
+
+// What CMake adds for each build type with Clang and GCC.
+BuildTypeFlags :: (build_type: string) -> string[] {
+    if (build_type == "Debug") {
+        return ["-g"];
+    }
+    if (build_type == "Release") {
+        return ["-O3", "-DNDEBUG"];
+    }
+    if (build_type == "RelWithDebInfo") {
+        return ["-O2", "-g", "-DNDEBUG"];
+    }
+    if (build_type == "MinSizeRel") {
+        return ["-Os", "-DNDEBUG"];
+    }
+    return [];
+}
+
+// The flags every C compile takes after its include directories, in the order
+// root CMakeLists.txt and CMake's platform files give them.
+pub Flags :: (profile: Profile, build_dir: string) -> string[] {
+    flags: string[] = [];
+    if (profile.debug_compilation_dir != "" &&
+        (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
+        if (Clang(profile)) {
+            flags = array_add(flags, strings.Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir], ""));
+        } else if (profile.compiler_id == "GNU") {
+            flags = array_add(flags, strings.Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir], ""));
+        }
+    }
+    flags = append(flags, BuildTypeFlags(profile.build_type));
+    flags = array_add(flags, "-std=gnu23");
+    if (profile.architecture != "") {
+        flags = append(flags, ["-arch", profile.architecture]);
+    }
+    if (profile.sysroot != "") {
+        flags = append(flags, ["-isysroot", profile.sysroot]);
+    }
+    if (profile.warnings) {
+        flags = append(flags, [
+            "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Wno-missing-field-initializers",
+            "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-unused-variable",
+            "-Wno-zero-length-array", "-Wno-string-concatenation"
+        ]);
+    }
+    if (profile.sanitizers != "") {
+        flags = append(flags, [strings.Join(["-fsanitize=", profile.sanitizers], ""), "-fno-omit-frame-pointer"]);
+    }
+    if (Clang(profile)) {
+        flags = array_add(flags, "-Wno-gnu-zero-variadic-macro-arguments");
+    }
+    return flags;
+}
+
+// Where a component's public headers are staged for compiles that include it.
+pub PublicHeaders :: (build_dir: string, component: string) -> string {
+    return strings.Join([build_dir, "/sdk/public/", component], "");
+}
+
+// The headers sdk/CMakeLists.txt publishes for chibi_support, below src/.
+pub SupportHeaders :: () -> string[] {
+    return [
+        "support/arena.h", "support/array.h", "support/xalloc.h", "support/rcss_map.h",
+        "support/text_edit.h", "support/enum.h", "support/cos_sin.h", "support/file_io.h",
+        "support/math.h"
+    ];
+}
+
+// chibi_support: allocation, arrays, file and text helpers.
+pub Support :: (source_root: string, build_dir: string) -> c.Library {
+    return {
+        name: "chibi_support",
+        root: source_root,
+        objects: strings.Join([build_dir, "/objects/chibi_support"], ""),
+        output: strings.Join([build_dir, "/lib/libchibi_support.a"], "")
+    };
+}
+// Windows also compiles src/support/win32/posix.c; this graph does not build
+// Windows yet.
+pub SupportSources :: (source_root: string) -> string[] {
+    sources: string[] = [];
+    for (name in ["arena", "file_io", "text_edit", "xalloc", "rcss_map"]) {
+        sources = array_add(sources, strings.Join([source_root, "/src/support/", name, ".c"], ""));
+    }
+    return sources;
+}
+pub SupportFlags :: (build_dir: string, profile: Profile) -> string[] {
+    return append([strings.Join(["-I", PublicHeaders(build_dir, "support")], "")], Flags(profile, build_dir));
+}

@@ -466,8 +466,8 @@ static void diagnose(chibi_build_result *result, const char *message)
 {
     snprintf(result->diagnostic, sizeof(result->diagnostic), "%s", message);
 }
-/* The program is the one file of the package at its directory; with a core
- * collection, it may import core: packages. */
+/* The program is the one file of the package at its directory; it may import
+ * the packages of its collections, core: among them. */
 static authoring_packages *prepare(
     const build_host *host,
     const native_capabilities *native,
@@ -475,11 +475,30 @@ static authoring_packages *prepare(
 )
 {
     const chibi_build_options *options = host->options;
+    source_package_collection collections[CHIBI_BUILD_MAX_COLLECTIONS + 1];
+    int count = 0;
+    if (options->core) {
+        collections[count++] = (source_package_collection){ "core", options->core };
+    }
+    for (int i = 0; i < options->collection_count; i++) {
+        collections[count++] = (source_package_collection){
+            options->collections[i].name,
+            options->collections[i].root
+        };
+    }
     source_package_input *files = NULL;
-    source_package_load_error load = { 0 };
-    if (options->core && !source_package_files_read(options->core, &files, &load)) {
-        diagnose(host->result, load.message);
-        return NULL;
+    for (int i = 0; i < count; i++) {
+        source_package_input *read = NULL;
+        source_package_load_error load = { 0 };
+        if (!source_package_files_read(collections[i].root, &read, &load)) {
+            diagnose(host->result, load.message);
+            source_package_files_free(files);
+            return NULL;
+        }
+        for (int j = 0; j < acount(read); j++) {
+            apush(files, read[j]);
+        }
+        afree(read);
     }
     const char *slash = strrchr(options->source_path, '/');
     char *path = join(host->program_directory, slash ? slash + 1 : options->source_path);
@@ -487,14 +506,11 @@ static authoring_packages *prepare(
         files,
         ((source_package_input){ path, options->source_text, strlen(options->source_text) })
     );
-    const source_package_collection core = { "core", options->core };
-    const source_package_snapshot_options snapshot = {
-        .project_root = host->program_directory,
-        .files = files,
-        .file_count = acount(files),
-        .collections = &core,
-        .collection_count = options->core ? 1 : 0
-    };
+    const source_package_snapshot_options snapshot = { .project_root = host->program_directory,
+                                                       .files = files,
+                                                       .file_count = acount(files),
+                                                       .collections = collections,
+                                                       .collection_count = count };
     authoring_packages *packages = authoring_packages_prepare(
         source_package_snapshot_new(&snapshot),
         native_capabilities_catalog(native),
@@ -539,9 +555,11 @@ static int refuse_task(behavior_function_context *context, int)
 bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *result)
 {
     *result = (chibi_build_result){ 0 };
-    if (!options || !options->root || !options->source_path ||
-        !options->source_text || !options->entry || !options->entry[0] ||
-        options->argument_count < 0 || options->argument_count > BUILD_MAX_ARGUMENTS ||
+    if (!options || !options->root || !options->source_path || !options->source_text ||
+        !options->entry || !options->entry[0] || options->argument_count < 0 ||
+        options->argument_count > BUILD_MAX_ARGUMENTS || options->collection_count < 0 ||
+        options->collection_count > CHIBI_BUILD_MAX_COLLECTIONS ||
+        (options->collection_count && !options->collections) ||
         (options->argument_count && !options->arguments) ||
         !isfinite(options->deadline) || options->deadline <= 0 ||
         (options->backend != BEHAVIOR_BYTECODE && options->backend != BEHAVIOR_SLJIT) ||

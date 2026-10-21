@@ -1,0 +1,203 @@
+package c
+
+import strings "core:strings"
+
+// Compiles C sources into static libraries, starting independent compiles
+// together, and rebuilds an object only when its command or an input changed.
+// Paths are absolute, so steps behave the same from any working directory.
+
+// The tools that build C, and how many compiles may run at once. A launcher,
+// such as ccache, runs the compiler when it is not empty.
+pub Tools :: struct {
+    launcher: string;
+    compiler: string;
+    archiver: string;
+    ranlib: string;
+    jobs: int;
+}
+
+// A static library: the root its sources are below, the directory its objects
+// go to and the archive it becomes. Its sources and the flags each compile
+// takes, in order, are arrays beside it, since records hold only scalars.
+pub Library :: struct {
+    name: string;
+    root: string;
+    objects: string;
+    output: string;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+// The object a source compiles to: its path below the root, below the
+// library's object directory.
+pub Object :: (target: Library, source: string) -> string {
+    relative := strings.Slice(source, strings.ByteLength(target.root) + 1, strings.ByteLength(source));
+    return Join([target.objects, "/", relative, ".o"]);
+}
+
+// The compile command of a source, as CMake writes it, without its launcher.
+pub Command :: (tools: Tools, target: Library, flags: string[], source: string) -> string[] {
+    command := append([tools.compiler], flags);
+    return append(command, ["-o", Object(target, source), "-c", source]);
+}
+
+// The record that says what built a file: its command, an empty line, then a
+// stamp and path for each input and for the output.
+Record :: (output: string) -> string {
+    return Join([output, ".chibi-record"]);
+}
+RecordText :: (command: string[], inputs: string[], output: string) -> string {
+    lines := array_add(command, "");
+    for (input in array_add(inputs, output)) {
+        lines = array_add(lines, Join([build.file_stamp(input), " ", input]));
+    }
+    return Join([strings.Join(lines, "\n"), "\n"]);
+}
+
+// Whether output was built by command from inputs that have not changed since.
+// Records are read with the host's line natives: core:strings copies the rest
+// of the text at each line, which costs seconds over a few records.
+Current :: (command: string[], output: string) -> bool {
+    record := Record(output);
+    if (!build.file_exists(record) || !build.file_exists(output)) {
+        return false;
+    }
+    lines := build.lines(build.read_file(record));
+    count := length(command);
+    if (length(lines) < count + 2 || lines[count] != "") {
+        return false;
+    }
+    for (i in 0..<count) {
+        if (lines[i] != command[i]) {
+            return false;
+        }
+    }
+    for (i in count + 1..<length(lines)) {
+        line := lines[i];
+        if (build.file_stamp(build.after(line, " ")) != build.before(line, " ")) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The prerequisites a compiler's -MD file lists: everything after the target,
+// with line continuations joined and escaped spaces, `#` and `$` restored.
+pub Dependencies :: (text: string) -> string[] {
+    joined := strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", " "), "\\\n", " ");
+    colon := strings.Index(joined, ": ");
+    if (colon < 0) {
+        return [];
+    }
+    rest := strings.Slice(joined, colon + 2, strings.ByteLength(joined));
+    bytes := strings.Bytes(rest);
+    paths: string[] = [];
+    start := -1;
+    escaped := false;
+    for (i in 0..<length(bytes)) {
+        byte := bytes[i];
+        space := byte == 32 || byte == 9 || byte == 10 || byte == 13;
+        if (space && !escaped) {
+            if (start >= 0) {
+                paths = array_add(paths, Unescape(strings.Slice(rest, start, i - start)));
+                start = -1;
+            }
+        } else if (start < 0) {
+            start = i;
+        }
+        escaped = byte == 92 && !escaped;
+    }
+    if (start >= 0) {
+        paths = array_add(paths, Unescape(strings.Slice(rest, start, length(bytes) - start)));
+    }
+    return paths;
+}
+Unescape :: (path: string) -> string {
+    return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(path, "\\ ", " "), "\\#", "#"), "$$", "$");
+}
+
+// A compile a library started: its source and the handle to wait for.
+Running :: struct {
+    source: string;
+    handle: int;
+}
+
+// Waits for a compile and records what built its object; false when it failed.
+Finish :: (tools: Tools, target: Library, flags: string[], compile: Running) -> bool {
+    object := Object(target, compile.source);
+    if (build.wait(compile.handle) != 0) {
+        build.remove(Record(object));
+        return false;
+    }
+    inputs := Dependencies(build.read_file(Join([object, ".d"])));
+    return build.write_file(Record(object), RecordText(Command(tools, target, flags, compile.source), inputs, object));
+}
+
+// Compiles each changed source and archives the objects when any changed or
+// the archive is missing. The number of compiles started, or -1 on failure.
+pub StaticLibrary :: (tools: Tools, target: Library, sources: string[], flags: string[]) -> int {
+    running: Running[] = [];
+    waited := 0;
+    failed := false;
+    for (source in sources) {
+        object := Object(target, source);
+        if (failed || Current(Command(tools, target, flags, source), object)) {
+            continue;
+        }
+        build.make_directory(strings.Slice(object, 0, strings.LastIndex(object, "/")));
+        command := Command(tools, target, flags, source);
+        if (tools.launcher != "") {
+            command = append([tools.launcher], command);
+        }
+        command = append(command, ["-MD", "-MF", Join([object, ".d"])]);
+        compile: Running = {source: source, handle: build.start(command)};
+        running = array_add(running, compile);
+        // At most `jobs` compiles run; the oldest finishes first.
+        if (length(running) - waited >= tools.jobs) {
+            failed = !Finish(tools, target, flags, running[waited]) || failed;
+            waited += 1;
+        }
+    }
+    while (waited < length(running)) {
+        failed = !Finish(tools, target, flags, running[waited]) || failed;
+        waited += 1;
+    }
+    if (failed) {
+        return -1;
+    }
+    objects: string[] = [];
+    for (source in sources) {
+        objects = array_add(objects, Object(target, source));
+    }
+    archive := append([tools.archiver, "qc", target.output], objects);
+    if (length(running) == 0 && Current(archive, target.output)) {
+        return 0;
+    }
+    build.make_directory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/")));
+    build.remove(target.output);
+    if (build.run(archive) != 0 || build.run([tools.ranlib, target.output]) != 0) {
+        return -1;
+    }
+    if (!build.write_file(Record(target.output), RecordText(archive, objects, target.output))) {
+        return -1;
+    }
+    return length(running);
+}
+
+// Copies each header that differs to its place below a staged include root.
+pub StageHeaders :: (root: string, headers: string[], destination: string) -> bool {
+    for (header in headers) {
+        from := Join([root, "/", header]);
+        to := Join([destination, "/", header]);
+        if (build.file_exists(to) && build.hash_file(to) == build.hash_file(from)) {
+            continue;
+        }
+        build.make_directory(strings.Slice(to, 0, strings.LastIndex(to, "/")));
+        if (!build.copy_file(from, to)) {
+            return false;
+        }
+    }
+    return true;
+}

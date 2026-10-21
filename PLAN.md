@@ -211,7 +211,7 @@ Current integration constraints:
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | **Complete on macOS arm64 and Wasm** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. Open gate: the Linux x86_64 and Windows x64 runs. |
-| M6 | **Ready** | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
+| M6 | **In progress** | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
@@ -583,6 +583,22 @@ commit's. Until each of those platforms passes its run, M6 must not remove
 stage zero, recovery, or a build path that platform uses, and Windows keeps
 its CMake and stage-zero path because the build host has no Windows process
 support yet.
+
+Approach (owner, 2026-10-21): the graph is Chibi code the build host runs
+itself, with no Ninja. `build.start` and `build.wait` run compiles in
+parallel (#612); `-MD` dependency files and recorded stamps decide rebuilds;
+targets are functions over typed records, as Jai's `BuildCpp` and `build.zig`
+are; each target's compile commands must equal CMake's
+`compile_commands.json` apart from output paths, and its result must link.
+Later slices that compile Chibi should call the compiler in process, as Jai's
+workspaces do, rather than start `chibi-compile`.
+
+Slice 1, 2026-10-21: the `graph:` collection (`tools/graph`, with
+`--collection` on the build host) builds `chibi_support` on macOS and Linux
+through `tools/toolchain/Graph.chibi`, beside CMake. `build-graph` checks its
+five compile commands against CMake's, links its archive, and checks rebuilds.
+Next: the leaf libraries that depend only on `chibi_support`, then moving
+profile selection from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

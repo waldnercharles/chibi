@@ -131,5 +131,9 @@ int chibi_migrate_handlers(
  * `error` set when a read cannot move there or the current grammar rejects
  * the result. */
 int chibi_migrate_step_globals(const char *source, char **migrated, char *error, size_t error_size);
+/* Version 32 calls array_add `append` and append `extend`: see
+ * chibi_migrate31_array_calls. Returns -1 with `error` set when the source
+ * declares one of those names or the current grammar rejects the result. */
+int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

@@ -418,7 +418,7 @@ static const sample samples[] = {
                 "Point :: struct { x: int; y: int; }\n"
                 "Squares :: (n: int) -> int[] {\n"
                 "    out: int[] = [];\n    i: int = 0;\n"
-                "    while (i < n) { out = array_add(out, i * i); i += 1; }\n"
+                "    while (i < n) { out = append(out, i * i); i += 1; }\n"
                 "    return out;\n}\n"
                 "Total :: (xs: int[]) -> int {\n"
                 "    sum: int = 0;\n"
@@ -428,13 +428,13 @@ static const sample samples[] = {
                 "Edit :: () -> int {\n"
                 "    xs: int[] = [1, 2, 3];\n    xs[1] = 20;\n    xs[2] += 5;\n"
                 "    copy := xs;\n    more: int[] = [7, 8];\n    xs = "
-                "append(xs, more);\n"
+                "extend(xs, more);\n"
                 "    return xs[1] + xs[2] + length(xs) * 100 + length(copy) * "
                 "1000;\n}\n"
                 "Points :: (n: int) -> Point[] {\n"
                 "    ps: Point[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { p: Point = {x: i, y: i * 2}; ps = "
-                "array_add(ps, p); i += 1; }\n"
+                "append(ps, p); i += 1; }\n"
                 "    return ps;\n}\n"
                 "SumY :: (ps: Point[]) -> int {\n"
                 "    total: int = 0;\n"
@@ -540,7 +540,7 @@ static const sample samples[] = {
                 "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
                 "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
                 "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = array_add(xs, int(7)); }\n"
+                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
                 "Inc :: (k: int) -> int { Bump(k); return k; }\n"
                 "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
                 "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
@@ -823,8 +823,8 @@ static const sample samples[] = {
                 "    return hash;\n}\n"
                 "Bytes :: () -> byte[] {\n"
                 "    out: byte[] = [1, 2, 255];\n"
-                "    out = array_add(out, byte(wrap: 300));\n"
-                "    out = array_add(out, Small);\n"
+                "    out = append(out, byte(wrap: 300));\n"
+                "    out = append(out, Small);\n"
                 "    return out;\n}\n"
                 "High :: (n: int) -> int { return int(wrap: (Mask >> "
                 "56) + uint64(n)); }\n"
@@ -882,7 +882,7 @@ static const sample samples[] = {
                 "    out.delta *= 2;\n    return out;\n}\n"
                 "Total :: (n: int) -> int64 {\n"
                 "    es: Entry[] = [];\n    i: int = 0;\n"
-                "    while (i < n) { es = array_add(es, Make(i)); i += 1; }\n"
+                "    while (i < n) { es = append(es, Make(i)); i += 1; }\n"
                 "    total: int64 = 0;\n"
                 "    for (e in es) { total += e.delta + int64(e.small); }\n"
                 "    return total;\n}",
@@ -997,7 +997,7 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Grow :: (xs: int[], n: int) -> int[] { xs = "
-                "array_add(xs, n); xs[0] = 9; return xs; }\n"
+                "append(xs, n); xs[0] = 9; return xs; }\n"
                 "Swap :: (p: Point, q: Point) -> int { p = q; return "
                 "p.x * 10 + q.y; }\n"
                 "Caller :: () -> int {\n"
@@ -1035,7 +1035,7 @@ static const sample samples[] = {
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
                 "        node: Node = {kind: \"a\", start: index};\n"
-                "        nodes = array_add(nodes, node);\n"
+                "        nodes = append(nodes, node);\n"
                 "        index += 1;\n"
                 "    }\n"
                 "    return length(nodes);\n}",
@@ -1046,7 +1046,7 @@ static const sample samples[] = {
                 "    xs: int[] = [];\n"
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
-                "        xs = append(xs, [index, index]);\n"
+                "        xs = extend(xs, [index, index]);\n"
                 "        index += 1;\n"
                 "    }\n"
                 "    return length(xs);\n}",
@@ -1238,7 +1238,7 @@ static const sample samples[] = {
       .column = 48 },
     { .name = "inferred mismatch",
       .source = "package facts\nOne :: (xs: int[]) -> int { ys := "
-                "array_add(xs, true); return length(ys); }",
+                "append(xs, true); return length(ys); }",
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 35 },

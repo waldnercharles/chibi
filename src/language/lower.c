@@ -5189,7 +5189,7 @@ static bool self_call(lower *l, const script_expression *e, int symbol, const ch
            l->a->expressions[array].symbol == symbol &&
            !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
 }
-/* `xs = array_add(xs, x)`, `xs = append(xs, ys)` and `xs[i] = x` on an owned
+/* `xs = append(xs, x)`, `xs = extend(xs, ys)` and `xs[i] = x` on an owned
  * local update its array in place, so building an array is linear rather
  * than quadratic. */
 static bool in_place_array(lower *l, const script_statement *s)
@@ -5200,8 +5200,8 @@ static bool in_place_array(lower *l, const script_statement *s)
     const script_expression *target = &l->a->expressions[s->expression],
                             *rhs = &l->a->expressions[s->second];
     bool owned = owned_local(l, s->expression, PIN_CONTAINER_ARRAY);
-    bool push = owned && self_call(l, rhs, target->symbol, "Array Add");
-    bool extend = owned && self_call(l, rhs, target->symbol, "Append");
+    bool push = owned && self_call(l, rhs, target->symbol, "Append");
+    bool extend = owned && self_call(l, rhs, target->symbol, "Extend");
     bool store = target->kind == SCRIPT_EXPR_INDEX &&
                  owned_local(l, target->left, PIN_CONTAINER_ARRAY);
     if (!push && !extend && !store) {

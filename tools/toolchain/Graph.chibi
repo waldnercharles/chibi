@@ -104,7 +104,7 @@ Libraries :: () -> int {
     selected: string[] = [];
     for (target in engine.Targets()) {
         if (Selected(arguments, target)) {
-            selected = array_add(selected, target);
+            selected.append(target);
         }
     }
     if (engine.NeedsThirdParty(selected) && profile.third_party == "") {

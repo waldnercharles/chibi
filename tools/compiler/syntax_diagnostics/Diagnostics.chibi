@@ -57,7 +57,7 @@ pub Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
                 document: 0,
                 message: strings.Slice(message, 0, 191)
             };
-            diagnostics = array_add(diagnostics, diagnostic);
+            diagnostics.append(diagnostic);
         }
 
         // An ERROR already describes its descendants. Otherwise walk children

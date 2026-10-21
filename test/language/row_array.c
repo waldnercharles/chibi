@@ -224,8 +224,8 @@ static void report(const char *path, int wrapper, int count, uint64_t blocks)
 TEST_CASE(row_array_direct_cost_and_aliases)
 {
     static const node_host_call *const calls[2][2] = {
-        { &NATIVE_ARRAY_add_HOST, &NATIVE_ARRAY_append_HOST },
-        { &NATIVE_ARRAY_add_CALL, &NATIVE_ARRAY_append_CALL },
+        { &NATIVE_ARRAY_add_HOST, &NATIVE_ARRAY_extend_HOST },
+        { &NATIVE_ARRAY_add_CALL, &NATIVE_ARRAY_extend_CALL },
     };
     for (int wrapper = 0; wrapper < 2; wrapper++) {
         for (int operation = 0; operation < 2; operation++) {
@@ -317,8 +317,8 @@ TEST_CASE(row_array_direct_cost_and_aliases)
 TEST_CASE(row_array_rejection_atomicity)
 {
     static const node_host_call *const calls[2][2] = {
-        { &NATIVE_ARRAY_add_HOST, &NATIVE_ARRAY_append_HOST },
-        { &NATIVE_ARRAY_add_CALL, &NATIVE_ARRAY_append_CALL },
+        { &NATIVE_ARRAY_add_HOST, &NATIVE_ARRAY_extend_HOST },
+        { &NATIVE_ARRAY_add_CALL, &NATIVE_ARRAY_extend_CALL },
     };
     for (int wrapper = 0; wrapper < 2; wrapper++) {
         for (int operation = 0; operation < 2; operation++) {
@@ -382,7 +382,7 @@ TEST_CASE(row_array_call_collectable_results)
                                    .type_name = "poison",
                                    .record = record,
                                    .i = 73 };
-        const node_host_call *call = i ? &NATIVE_ARRAY_append_CALL
+        const node_host_call *call = i ? &NATIVE_ARRAY_extend_CALL
                                        : &NATIVE_ARRAY_add_CALL;
         REQUIRE(!call->value(&storage, arguments[i], 2, &retained[i]));
         REQUIRE(check_array(&retained[i], counts[i], NULL));
@@ -575,11 +575,11 @@ TEST_CASE(row_array_authored_construction)
         "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
-        "rows=array_add(rows,row); i=i+1; } return rows; } }",
+        "rows=append(rows,row); i=i+1; } return rows; } }",
         "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
-        "rows=append(rows,[row]); i=i+1; } return rows; } }",
+        "rows=extend(rows,[row]); i=i+1; } return rows; } }",
     };
     for (int operation = 0; operation < 2; operation++) {
         for (int b = 0; b < 2; b++) {
@@ -612,7 +612,7 @@ TEST_CASE(row_array_authored_retained_prefix)
         [] = "Rows :: library { " ROW "Keep::(count:int,text:string)->Row[] { "
              "rows:Row[]=[]; prefix:Row[]=[]; i:int=0; "
              "while i<count { " MAKE_ROW
-             "rows=array_add(rows,row); if i==0 { prefix=rows; } i=i+1; } "
+             "rows=append(rows,row); if i==0 { prefix=rows; } i=i+1; } "
              "if length(prefix)!=1 or length(rows)!=count or "
              "rows[count-1].depth!=count+4 { "
              "prefix[0].depth=-99; } rows[0].key=\"changed\"; return prefix; } "
@@ -671,14 +671,14 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "pub Build :: (n: int) -> int {\n"
              "    items: int[] = [];\n"
              "    i: int = 0;\n"
-             "    while (i < n) { items = array_add(items, i); i += 1; }\n"
+             "    while (i < n) { items = append(items, i); i += 1; }\n"
              "    items[n - 1] = 7;\n"
              "    return length(items) + items[n - 1] + items[n - 2];\n"
              "}\n"
              "pub Alias :: () -> int {\n"
              "    a: int[] = [1, 2];\n"
              "    b := a;\n"
-             "    a = array_add(a, int(3));\n"
+             "    a = append(a, int(3));\n"
              "    a[0] = 9;\n"
              "    return b[0] * 1000 + length(b) * 100 + a[0] * 10 + "
              "length(a);\n"
@@ -686,21 +686,21 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "Count :: (xs: int[]) -> int { return length(xs); }\n"
              "pub Borrow :: () -> int {\n"
              "    xs: int[] = [];\n"
-             "    xs = array_add(xs, int(1));\n"
+             "    xs = append(xs, int(1));\n"
              "    n := Count(xs);\n"
-             "    xs = array_add(xs, int(2));\n"
+             "    xs = append(xs, int(2));\n"
              "    return n * 10 + Count(xs);\n"
              "}\n"
              "pub Iterate :: () -> int {\n"
              "    xs: int[] = [1, 2, 3];\n"
              "    total: int = 0;\n"
-             "    for (x in xs) { xs = array_add(xs, x); total += x; }\n"
+             "    for (x in xs) { xs = append(xs, x); total += x; }\n"
              "    return total * 10 + length(xs);\n"
              "}\n"
              "pub Records :: () -> int {\n"
              "    rows: Row[] = [];\n"
              "    row: Row = {a: 1, b: \"x\"};\n"
-             "    rows = array_add(rows, row);\n"
+             "    rows = append(rows, row);\n"
              "    row.a = 5;\n"
              "    rows[0] = {a: rows[0].a + 1, b: \"y\"};\n"
              "    return rows[0].a * 10 + row.a;\n"
@@ -708,27 +708,27 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "pub Extend :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    ys: int[] = [2, 3];\n"
-             "    xs = append(xs, ys);\n"
+             "    xs = extend(xs, ys);\n"
              "    ys[0] = 9;\n"
-             "    xs = append(xs, xs);\n"
+             "    xs = extend(xs, xs);\n"
              "    rows: Row[] = [];\n"
              "    row: Row = {a: 4, b: \"z\"};\n"
-             "    rows = array_add(rows, row);\n"
-             "    rows = array_add(rows, rows[0]);\n"
+             "    rows = append(rows, row);\n"
+             "    rows = append(rows, rows[0]);\n"
              "    return rows[1].a * 1000 + length(xs) * 100 + xs[1] * 10 + "
              "xs[5];\n"
              "}\n"
              "pub Named :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    ys: int[] = [2];\n"
-             "    xs = append(other_array: xs, array: ys);\n"
+             "    xs = extend(other_array: xs, array: ys);\n"
              "    return xs[0] * 10 + xs[1];\n"
              "}\n"
              "Bump :: (values: ref int[]) -> int { values = "
-             "array_add(values, int(9)); return 5; }\n"
+             "append(values, int(9)); return 5; }\n"
              "pub Order :: () -> int {\n"
              "    xs: int[] = [1];\n"
-             "    xs = array_add(xs, Bump(xs));\n"
+             "    xs = append(xs, Bump(xs));\n"
              "    return length(xs) * 10 + xs[length(xs) - 1];\n"
              "}\n"
              "pub Rows :: (n: int) -> int {\n"
@@ -736,7 +736,7 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "    i: int = 0;\n"
              "    while (i < n) {\n"
              "        row: Row = {a: i, b: \"r\"};\n"
-             "        rows = array_add(rows, row);\n"
+             "        rows = append(rows, row);\n"
              "        i += 1;\n"
              "    }\n"
              "    return rows[n - 1].a + length(rows);\n"
@@ -744,21 +744,21 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "pub Branch :: () -> bool {\n"
              "    xs: bool[] = [];\n"
              "    a := length(xs) == 0;\n"
-             "    xs = array_add(xs, a && !a);\n"
+             "    xs = append(xs, a && !a);\n"
              "    xs[0] = a || !a;\n"
              "    return length(xs) == 1;\n"
              "}\n"
              "pub Ready :: () -> bool {\n"
              "    xs: int[] = [];\n"
-             "    xs = array_add(xs, int(1));\n"
-             "    xs = append(xs, xs);\n"
+             "    xs = append(xs, int(1));\n"
+             "    xs = extend(xs, xs);\n"
              "    xs[0] = 2;\n"
              "    return length(xs) == 2;\n"
              "}\n"
              "pub Payload :: () -> int {\n"
              "    xs: int[] = [1];\n"
              "    h := Holder.Some(xs);\n"
-             "    xs = array_add(xs, int(2));\n"
+             "    xs = append(xs, int(2));\n"
              "    xs[0] = 7;\n"
              "    switch h { case .Some(items): return items[0] * 10 + "
              "length(items); }\n"
@@ -800,7 +800,7 @@ TEST_CASE(row_array_local_arrays_update_in_place)
         REQUIRE(build && ready && branch);
         REQUIRE(execution_query_predicate_valid(ready, UINT_MAX));
         REQUIRE(execution_query_predicate_valid(branch, UINT_MAX));
-        int call = (int)(strstr(source, "array_add(items, i)") - source);
+        int call = (int)(strstr(source, "append(items, i)") - source);
         bool pointed = false;
         for (int p = 0; p < acount(build->source_points); p++) {
             pointed |= build->source_points[p].start == call;
@@ -808,8 +808,8 @@ TEST_CASE(row_array_local_arrays_update_in_place)
         REQUIRE(pointed);
         /* The array argument, both inputs and the result keep their watches,
          * and the assignment point follows the value. */
-        int statement = (int)(strstr(source, "items = array_add(items, i)") - source);
-        int argument = watch_pc(build, call + (int)strlen("array_add("), true, 0),
+        int statement = (int)(strstr(source, "items = append(items, i)") - source);
+        int argument = watch_pc(build, call + (int)strlen("append("), true, 0),
             array = watch_pc(build, call, false, 0),
             item = watch_pc(build, call, false, 1),
             assigned = symbol_point_pc(build, statement),

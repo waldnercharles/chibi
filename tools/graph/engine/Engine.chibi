@@ -97,20 +97,20 @@ LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
     flags: string[] = [];
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo") && Clang(profile)) {
-        flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
+        flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
     }
-    flags = append(flags, BuildTypeFlags(profile.build_type));
+    flags.extend(BuildTypeFlags(profile.build_type));
     if (profile.architecture != "") {
-        flags = append(flags, ["-arch", profile.architecture]);
+        flags.extend(["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
-        flags = append(flags, ["-isysroot", profile.sysroot]);
+        flags.extend(["-isysroot", profile.sysroot]);
     }
     if (build.platform() == "Darwin") {
-        flags = append(flags, ["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
+        flags.extend(["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
     }
     if (profile.sanitizers != "") {
-        flags = array_add(flags, Join(["-fsanitize=", profile.sanitizers]));
+        flags.append(Join(["-fsanitize=", profile.sanitizers]));
     }
     return flags;
 }
@@ -120,10 +120,10 @@ LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        libraries = array_add(libraries, Library(source_root, build_dir, profile.third_party, linked).output);
+        libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
     }
     for (name in SystemLibraries(target)) {
-        libraries = array_add(libraries, Join(["-l", name]));
+        libraries.append(Join(["-l", name]));
     }
     return libraries;
 }
@@ -170,7 +170,7 @@ Resolve :: (source_root: string, build_dir: string, third_party: string, path: s
 pub Sources :: (source_root: string, build_dir: string, third_party: string, target: string) -> string[] {
     sources: string[] = [];
     for (file in Files(target)) {
-        sources = array_add(sources, Resolve(source_root, build_dir, third_party, file));
+        sources.append(Resolve(source_root, build_dir, third_party, file));
     }
     return sources;
 }
@@ -211,7 +211,7 @@ Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: st
     for (target in Targets()) {
         built := profile.reflect == "" && (target == "reflect" || Linked("reflect", target));
         if (built || target == "chibi_math") {
-            prerequisites = array_add(prerequisites, target);
+            prerequisites.append(target);
         }
     }
     compiled := Build(tools, profile, source_root, build_dir, prerequisites);
@@ -226,12 +226,12 @@ Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: st
         Join([build_dir, "/sdk/public/math"]), "--manifest", Join([source_root, "/src/runtime/component_ids.tsv"])
     ];
     if (profile.sysroot != "") {
-        command = append(command, ["--sysroot", profile.sysroot]);
+        command.extend(["--sysroot", profile.sysroot]);
     }
     inputs := [program, bindings];
     for (input in ["src/runtime/component_ids.tsv", "src/runtime/native_nodes.c", "src/runtime/interface.h",
                    "src/runtime/components.h", "src/types/annotate.h"]) {
-        inputs = array_add(inputs, Join([source_root, "/", input]));
+        inputs.append(Join([source_root, "/", input]));
     }
     if (c.Step(command, inputs, types) < 0) {
         build.report("graph: reflect failed");
@@ -266,22 +266,24 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
                      source_includes: string[]) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
-        flags = array_add(flags, Join(["-D", define]));
+        flags.append(Join(["-D", define]));
     }
-    flags = append(flags, ProfileDefines(target, profile));
+    flags.extend(ProfileDefines(target, profile));
     for (include in source_includes) {
-        flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+        flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in ProfileIncludes(target, profile)) {
-        flags = array_add(flags, Join(["-I", include]));
+        flags.append(Join(["-I", include]));
     }
     for (include in Includes(target)) {
-        flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+        flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
-        flags = append(flags, ["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
+        flags.extend(["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
-    return append(append(flags, Flags(profile, build_dir, target)), Options(target));
+    flags.extend(Flags(profile, build_dir, target));
+    flags.extend(Options(target));
+    return flags;
 }
 
 // The flags a source compiles with: its target's, which target_flags holds
@@ -294,7 +296,8 @@ SourceFlags :: (source_root: string, build_dir: string, target: string, file: st
     if (length(includes) > 0) {
         flags = CompileFlags(source_root, build_dir, target, profile, includes);
     }
-    return append(flags, SourceOptions(target, file));
+    flags.extend(SourceOptions(target, file));
+    return flags;
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -326,34 +329,34 @@ pub Flags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
         if (Clang(profile)) {
-            flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
+            flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
         } else if (profile.compiler_id == "GNU") {
-            flags = array_add(flags, Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
+            flags.append(Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
         }
     }
-    flags = append(flags, BuildTypeFlags(profile.build_type));
-    flags = array_add(flags, Join(["-std=", Standard(target)]));
+    flags.extend(BuildTypeFlags(profile.build_type));
+    flags.append(Join(["-std=", Standard(target)]));
     if (profile.architecture != "") {
-        flags = append(flags, ["-arch", profile.architecture]);
+        flags.extend(["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
-        flags = append(flags, ["-isysroot", profile.sysroot]);
+        flags.extend(["-isysroot", profile.sysroot]);
     }
     if (PositionIndependent(target)) {
-        flags = array_add(flags, "-fPIC");
+        flags.append("-fPIC");
     }
     if (profile.warnings) {
-        flags = append(flags, [
+        flags.extend([
             "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Wno-missing-field-initializers",
             "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-unused-variable",
             "-Wno-zero-length-array", "-Wno-string-concatenation"
         ]);
     }
     if (profile.sanitizers != "") {
-        flags = append(flags, [Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
+        flags.extend([Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
     }
     if (Clang(profile)) {
-        flags = array_add(flags, "-Wno-gnu-zero-variadic-macro-arguments");
+        flags.append("-Wno-gnu-zero-variadic-macro-arguments");
     }
     return flags;
 }
@@ -364,7 +367,9 @@ Staged :: (targets: string[]) -> string[] {
     staged: string[] = [];
     for (target in targets) {
         staged = Add(staged, target);
-        for (include in append(Includes(target), SystemIncludes(target))) {
+        includes := Includes(target);
+        includes.extend(SystemIncludes(target));
+        for (include in includes) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
                 staged = Add(staged, Join(["chibi_", build.after(include, "/")]));
             }
@@ -378,10 +383,12 @@ Staged :: (targets: string[]) -> string[] {
 pub NeedsThirdParty :: (targets: string[]) -> bool {
     paths: string[] = [];
     for (target in targets) {
-        paths = append(append(append(paths, Files(target)), Includes(target)), SystemIncludes(target));
+        paths.extend(Files(target));
+        paths.extend(Includes(target));
+        paths.extend(SystemIncludes(target));
     }
     for (target in Staged(targets)) {
-        paths = array_add(paths, HeaderSource(target));
+        paths.append(HeaderSource(target));
     }
     for (path in paths) {
         if (strings.HasPrefix(path, "third-party/")) {
@@ -396,7 +403,9 @@ Add :: (names: string[], name: string) -> string[] {
             return names;
         }
     }
-    return array_add(names, name);
+    added := names;
+    added.append(name);
+    return added;
 }
 
 // Builds the selected targets: stages every one's headers, compiles what
@@ -435,7 +444,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
-            running = array_add(running, c.Start(tools, built, flags, source));
+            running.append(c.Start(tools, built, flags, source));
             if (length(running) - waited >= tools.jobs) {
                 failed = !c.Finish(running[waited]) || failed;
                 waited += 1;
@@ -470,7 +479,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         built := Library(source_root, build_dir, profile.third_party, target);
         objects: string[] = [];
         for (source in Sources(source_root, build_dir, profile.third_party, target)) {
-            objects = array_add(objects, c.Object(built, source));
+            objects.append(c.Object(built, source));
         }
         if (c.Link(tools, Executable(build_dir, target), objects, LinkFlags(profile, build_dir),
                    LinkLibraries(source_root, build_dir, target, profile)) < 0) {
@@ -490,7 +499,7 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
         flags := CompileFlags(source_root, build_dir, target, profile, []);
         for (file in Files(target)) {
             source := Resolve(source_root, build_dir, profile.third_party, file);
-            entries = array_add(entries, c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
+            entries.append(c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
         }
     }
     return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);

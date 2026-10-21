@@ -540,7 +540,7 @@ TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers)
         "Links :: behavior { count:retain int=0; phase:retain int=0; "
         "targets:retain handle<ecs.entity>[]=[]; on Tick :: () { if phase==0 { "
         "for target in self.ChildOf { "
-        "targets=array_add(targets,target); } for target in targets { "
+        "targets=append(targets,target); } for target in targets { "
         "if has_pair(self,ChildOf,target) { remove_pair(self,ChildOf,target); "
         "count+=1; } } phase=1; } else { for target in targets { "
         "if not has_pair(self,ChildOf,target) { add_pair(self,ChildOf,target); "

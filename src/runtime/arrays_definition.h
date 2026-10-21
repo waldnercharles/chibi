@@ -100,12 +100,12 @@
 #define NATIVE_ARRAY_FIND_SOURCE "find"
 #define NATIVE_ARRAY_IDENTICAL_NAME "Identical"
 #define NATIVE_ARRAY_IDENTICAL_SOURCE "identical"
-#define NATIVE_ARRAY_ADD_NAME "Array Add"
-#define NATIVE_ARRAY_ADD_SOURCE "array_add"
+#define NATIVE_ARRAY_ADD_NAME "Append"
+#define NATIVE_ARRAY_ADD_SOURCE "append"
 #define NATIVE_ARRAY_ADD_UNIQUE_NAME "Add Unique"
 #define NATIVE_ARRAY_ADD_UNIQUE_SOURCE "add_unique"
-#define NATIVE_ARRAY_APPEND_NAME "Append"
-#define NATIVE_ARRAY_APPEND_SOURCE "append"
+#define NATIVE_ARRAY_EXTEND_NAME "Extend"
+#define NATIVE_ARRAY_EXTEND_SOURCE "extend"
 #define NATIVE_ARRAY_SET_ELEM_NAME "Set Array Elem"
 #define NATIVE_ARRAY_SET_ELEM_SOURCE "set_array_elem"
 #define NATIVE_ARRAY_INSERT_NAME "Insert"
@@ -198,9 +198,9 @@
       NATIVE_ARRAY_ARRAY_ARRAY_ITEM_INPUTS,                                    \
       NATIVE_ARRAY_ARRAY_ONLY_OUTPUTS,                                         \
       false)                                                                   \
-    X(append,                                                                  \
-      NATIVE_ARRAY_APPEND_NAME,                                                \
-      NATIVE_ARRAY_APPEND_SOURCE,                                              \
+    X(extend,                                                                  \
+      NATIVE_ARRAY_EXTEND_NAME,                                                \
+      NATIVE_ARRAY_EXTEND_SOURCE,                                              \
       NATIVE_ARRAY_ARRAY_TWO_INPUTS,                                           \
       NATIVE_ARRAY_ARRAY_ONLY_OUTPUTS,                                         \
       false)                                                                   \
@@ -301,15 +301,15 @@ extern const native_definition_pack NATIVE_ARRAY_DEFINITION_PACK;
                    "and "                                                      \
                    "equal elements in order."
 #define NATIVE_ARRAY_add_PRESENTATION                                          \
-    .category = "Array", .keywords = "array add",                              \
+    .category = "Array", .keywords = "array append add push",                  \
     .description = "Returns a copy of Array with Item added at the end."
 #define NATIVE_ARRAY_add_unique_PRESENTATION                                   \
     .category = "Array", .keywords = "array add unique",                       \
     .description = "Returns a copy of Array with Item added at the end "       \
                    "unless "                                                   \
                    "an equal element exists."
-#define NATIVE_ARRAY_append_PRESENTATION                                       \
-    .category = "Array", .keywords = "array append",                           \
+#define NATIVE_ARRAY_extend_PRESENTATION                                       \
+    .category = "Array", .keywords = "array extend concatenate",               \
     .description = "Returns a new array with the second Array's elements "     \
                    "after "                                                    \
                    "the first's."

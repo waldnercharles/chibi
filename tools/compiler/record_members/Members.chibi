@@ -74,22 +74,22 @@ pub Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
             switch annotation {
                 case .Read(value, has_unit, unit, updated, errors, uses, publications):
                     for (error in errors) {
-                        diagnostics = array_add(diagnostics, error);
+                        diagnostics.append(error);
                     }
                     admissible := true;
                     switch value {
                         case .Typed(storage, container, flags, nominal, parameter):
                             if (name == "" || nominal != 0 || flags != 0 || container != 0 ||
                                 (storage != 13 && storage != 6 && storage != 1)) {
-                                diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
-                                                                                       "Record fields require nonoptional string, int or bool values"));
+                                diagnostics.append(reader.Diagnostic(tree, member, document,
+                                                                     "Record fields require nonoptional string, int or bool values"));
                                 admissible = false;
                             }
                     }
                     for (previous in previous_names) {
                         if (previous == name) {
-                            diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
-                                                                                   format_text("Duplicate record field '{}'", name)));
+                            diagnostics.append(reader.Diagnostic(tree, member, document,
+                                                                 format_text("Duplicate record field '{}'", name)));
                             admissible = false;
                         }
                     }

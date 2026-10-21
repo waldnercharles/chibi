@@ -279,8 +279,9 @@ Every array function is also a method on its first argument: `xs.length()`,
 (`append`, `extend`, `insert`, `remove_index`, `remove_item`, `add_unique`,
 `set_array_elem`, `clear`, `reverse`, `swap` and `resize`) are statements on
 the array's name and change it in place; using one in an expression is an
-error. The functions `array_add` and `append` still return a changed copy until
-a project migration replaces them with the methods.
+error. As functions, they return a changed copy instead: `ys := append(xs, x)`
+and `zs := extend(xs, ys)` leave `xs` as it was. Project version 32 renamed
+`array_add` to `append` and the concatenating `append` to `extend`.
 
 Arrays have value semantics. Changing a copy leaves the original unchanged.
 Appending to an owned local array and writing its elements update that local

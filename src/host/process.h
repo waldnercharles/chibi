@@ -70,6 +70,41 @@ chibi_process_capture_result chibi_process_capture(
     chibi_process_output *err
 );
 
+/* One child of chibi_process_begin, until chibi_process_end reaps it. */
+typedef struct
+{
+    pid_t pid;    /* Zero once ended. */
+    int pipes[2]; /* Read ends of its stdout and stderr. */
+    chibi_process_output *out, *err;
+    bool leader_finished; /* Its direct child exited; descendants may remain. */
+    chibi_process_capture_result result;
+} chibi_process_job;
+#define CHIBI_PROCESS_SERVICE_JOBS 64
+
+/* Starts a child as chibi_process_capture does and returns at once. Unless the
+ * result's error is CHIBI_PROCESS_OK nothing was started. The output buffers
+ * are borrowed until chibi_process_end; other inputs only during the call. */
+chibi_process_capture_result chibi_process_begin(
+    chibi_process_job *,
+    const char *executable,
+    const char *const *argv,
+    const char *cwd,
+    const char *const *envp,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    chibi_process_output *out,
+    chibi_process_output *err
+);
+/* Drains the output of each running job and notes which have exited, waiting
+ * at most 10 ms. Past the deadline, on cancellation or host failure, every
+ * running job records that error. At most CHIBI_PROCESS_SERVICE_JOBS jobs. */
+void chibi_process_service(chibi_process_job *, int count, double deadline, const volatile sig_atomic_t *cancelled);
+/* Whether the job's child is still running without error. */
+bool chibi_process_running(const chibi_process_job *);
+/* Kills the job's process group, reaps its child and reads its last output.
+ * Status is valid when the job finished without error. */
+chibi_process_capture_result chibi_process_end(chibi_process_job *);
+
 typedef struct
 {
     pid_t pid;

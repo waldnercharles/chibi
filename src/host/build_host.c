@@ -175,58 +175,121 @@ char *build_host_executable(build_host *host, const char *name)
     }
     return NULL;
 }
-/* A reported step adds its output to the invocation's result; a probe's
- * output is only data for build.last_stdout and build.last_stderr. */
-static const char *run_step(void *service, const pin_value *arguments, pin_value *results, bool reported)
+/* The argv a step's arguments name, owned by the caller with its resolved
+ * program, after the host's limits; NULL with the failure in *failure. */
+static char **step_argv(build_host *host, const pin_value *arguments, char **program, const char **failure)
 {
-    build_host *host = service;
-    if (!host) {
-        return "build host service is unavailable";
-    }
-    const char *failure = build_host_ready(host);
-    if (failure) {
-        return failure;
+    *failure = build_host_ready(host);
+    if (*failure) {
+        return NULL;
     }
     if (host->result->steps >= BUILD_MAX_STEPS) {
-        return "build step limit exceeded";
+        *failure = "build step limit exceeded";
+        return NULL;
     }
+    *failure = "invalid build process arguments";
     const pin_array *array = arguments[0].ptr;
     if (arguments[0].type != PIN_STR || arguments[0].container != PIN_CONTAINER_ARRAY ||
         !array || array->element_type != PIN_STR || array->count < 1 ||
         array->count > BUILD_MAX_ARGUMENTS) {
-        return "invalid build process arguments";
+        return NULL;
     }
     size_t bytes = 0;
     for (int i = 0; i < array->count; i++) {
         const pin_value *value = &array->items[i];
         if (value->type != PIN_STR ||
             value->container != PIN_CONTAINER_SINGLE || !value->str) {
-            return "invalid build process arguments";
+            return NULL;
         }
         size_t length = strlen(value->str) + 1;
         if (length > BUILD_MAX_ARGUMENT_BYTES - bytes) {
-            return "invalid build process arguments";
+            return NULL;
         }
         bytes += length;
     }
     if (!array->items[0].str[0]) {
-        return "invalid build process arguments";
+        return NULL;
     }
-    char *program = build_host_executable(host, array->items[0].str);
-    if (!program) {
-        return "build process spawn failed";
+    *program = build_host_executable(host, array->items[0].str);
+    if (!*program) {
+        *failure = "build process spawn failed";
+        return NULL;
     }
     char **argv = xmalloc((array->count + 1) * sizeof(*argv));
     for (int i = 0; i < array->count; i++) {
         argv[i] = xstrdup(array->items[i].str);
     }
     argv[array->count] = NULL;
+    *failure = NULL;
+    host->result->steps++;
+    return argv;
+}
+static void free_argv(char **argv, char *program)
+{
+    for (int i = 0; argv[i]; i++) {
+        free(argv[i]);
+    }
+    free(argv);
+    free(program);
+}
+static const char *process_failure(chibi_process_error error)
+{
+    switch (error) {
+        case CHIBI_PROCESS_OK: return NULL;
+        case CHIBI_PROCESS_INVALID_INPUT:
+            return "invalid build process arguments";
+        case CHIBI_PROCESS_SPAWN_FAILED: return "build process spawn failed";
+        case CHIBI_PROCESS_TIMEOUT: return "build process timeout";
+        case CHIBI_PROCESS_CANCELLED: return "build process cancelled";
+        case CHIBI_PROCESS_HOST_FAILED: return "build process host failure";
+    }
+    return "build process host failure";
+}
+/* A finished step's output becomes build.last_stdout and build.last_stderr;
+ * a reported step also adds it to the invocation's result. */
+static void finish_output(
+    build_host *host,
+    const chibi_process_output *out,
+    const chibi_process_output *err,
+    bool reported
+)
+{
     chibi_build_result *result = host->result;
+    if (reported) {
+        size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
+        size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
+        size_t out_copy = out->size < out_remaining ? out->size : out_remaining;
+        size_t err_copy = err->size < err_remaining ? err->size : err_remaining;
+        memcpy(result->stdout_text + result->stdout_size, out->data, out_copy);
+        memcpy(result->stderr_text + result->stderr_size, err->data, err_copy);
+        result->stdout_size += out_copy;
+        result->stderr_size += err_copy;
+        result->stdout_text[result->stdout_size] = 0;
+        result->stderr_text[result->stderr_size] = 0;
+        result->stdout_truncated |= out->truncated || out_copy != out->size;
+        result->stderr_truncated |= err->truncated || err_copy != err->size;
+    }
+    host->last_stdout_size = out->size;
+    host->last_stderr_size = err->size;
+    host->last_stdout_truncated = out->truncated;
+    host->last_stderr_truncated = err->truncated;
+}
+static const char *run_step(void *service, const pin_value *arguments, pin_value *results, bool reported)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    char *program = NULL;
+    const char *failure;
+    char **argv = step_argv(host, arguments, &program, &failure);
+    if (!argv) {
+        return failure;
+    }
     chibi_process_output out = { .data = host->last_stdout,
                                  .capacity = BUILD_STEP_OUTPUT_CAPACITY };
     chibi_process_output err = { .data = host->last_stderr,
                                  .capacity = BUILD_STEP_OUTPUT_CAPACITY };
-    result->steps++;
     chibi_process_capture_result child = chibi_process_capture(
         program,
         (const char *const *)argv,
@@ -237,39 +300,10 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
         &out,
         &err
     );
-    for (int i = 0; i < array->count; i++) {
-        free(argv[i]);
-    }
-    free(argv);
-    free(program);
-    if (reported) {
-        size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
-        size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
-        size_t out_copy = out.size < out_remaining ? out.size : out_remaining;
-        size_t err_copy = err.size < err_remaining ? err.size : err_remaining;
-        memcpy(result->stdout_text + result->stdout_size, out.data, out_copy);
-        memcpy(result->stderr_text + result->stderr_size, err.data, err_copy);
-        result->stdout_size += out_copy;
-        result->stderr_size += err_copy;
-        result->stdout_text[result->stdout_size] = 0;
-        result->stderr_text[result->stderr_size] = 0;
-        result->stdout_truncated |= out.truncated || out_copy != out.size;
-        result->stderr_truncated |= err.truncated || err_copy != err.size;
-    }
-    host->last_stdout_size = out.size;
-    host->last_stderr_size = err.size;
-    host->last_stdout_truncated = out.truncated;
-    host->last_stderr_truncated = err.truncated;
-    switch (child.error) {
-        case CHIBI_PROCESS_OK: results[0].i = child.status; return NULL;
-        case CHIBI_PROCESS_INVALID_INPUT:
-            return "invalid build process arguments";
-        case CHIBI_PROCESS_SPAWN_FAILED: return "build process spawn failed";
-        case CHIBI_PROCESS_TIMEOUT: return "build process timeout";
-        case CHIBI_PROCESS_CANCELLED: return "build process cancelled";
-        case CHIBI_PROCESS_HOST_FAILED: return "build process host failure";
-    }
-    return "build process host failure";
+    free_argv(argv, program);
+    finish_output(host, &out, &err, reported);
+    results[0].i = child.status;
+    return process_failure(child.error);
 }
 const char *build_host_run_step(void *service, const pin_value *arguments, pin_value *results)
 {
@@ -278,6 +312,104 @@ const char *build_host_run_step(void *service, const pin_value *arguments, pin_v
 const char *build_host_run_probe(void *service, const pin_value *arguments, pin_value *results)
 {
     return run_step(service, arguments, results, false);
+}
+/* build.start begins a reported step and returns its handle at once;
+ * build.wait(handle) waits for it while every other started step keeps
+ * running, then gives its status as build.run does. */
+const char *build_host_start(void *service, const pin_value *arguments, pin_value *results)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    int slot = 0;
+    while (slot < BUILD_MAX_JOBS && host->job_handles[slot]) {
+        slot++;
+    }
+    if (slot == BUILD_MAX_JOBS) {
+        return "build job limit exceeded";
+    }
+    char *program = NULL;
+    const char *failure;
+    char **argv = step_argv(host, arguments, &program, &failure);
+    if (!argv) {
+        return failure;
+    }
+    chibi_process_output *out = &host->job_outputs[slot][0],
+                         *err = &host->job_outputs[slot][1];
+    *out = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
+                                   .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    *err = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
+                                   .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    chibi_process_capture_result started = chibi_process_begin(
+        &host->jobs[slot],
+        program,
+        (const char *const *)argv,
+        host->root,
+        (const char *const *)host->environment,
+        host->deadline,
+        host->options->cancelled,
+        out,
+        err
+    );
+    free_argv(argv, program);
+    if (started.error != CHIBI_PROCESS_OK) {
+        free(out->data);
+        free(err->data);
+        return process_failure(started.error);
+    }
+    host->job_handles[slot] = ++host->job_count;
+    results[0].i = host->job_handles[slot];
+    return NULL;
+}
+const char *build_host_wait(void *service, const pin_value *arguments, pin_value *results)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    int slot = 0;
+    while (slot < BUILD_MAX_JOBS &&
+           (!host->job_handles[slot] || host->job_handles[slot] != arguments[0].i)) {
+        slot++;
+    }
+    if (slot == BUILD_MAX_JOBS) {
+        return "unknown build job";
+    }
+    chibi_process_job *job = &host->jobs[slot];
+    while (chibi_process_running(job)) {
+        chibi_process_service(
+            host->jobs,
+            BUILD_MAX_JOBS,
+            host->deadline,
+            host->options->cancelled
+        );
+    }
+    chibi_process_capture_result child = chibi_process_end(job);
+    chibi_process_output *out = &host->job_outputs[slot][0],
+                         *err = &host->job_outputs[slot][1];
+    /* The step's own buffers become the last output. */
+    free(host->last_stdout);
+    free(host->last_stderr);
+    host->last_stdout = out->data;
+    host->last_stderr = err->data;
+    finish_output(host, out, err, true);
+    host->job_handles[slot] = 0;
+    results[0].i = child.status;
+    return process_failure(child.error);
+}
+/* Steps the program started and never waited for stop with it. */
+void build_host_stop_jobs(build_host *host)
+{
+    for (int slot = 0; slot < BUILD_MAX_JOBS; slot++) {
+        if (!host->job_handles[slot]) {
+            continue;
+        }
+        chibi_process_end(&host->jobs[slot]);
+        free(host->job_outputs[slot][0].data);
+        free(host->job_outputs[slot][1].data);
+        host->job_handles[slot] = 0;
+    }
 }
 const char *build_host_environment(void *service, const pin_value *arguments, pin_value *results)
 {
@@ -603,6 +735,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         success = true;
     }
 done:
+    build_host_stop_jobs(&host);
     if (failure) {
         diagnose(result, failure);
     }

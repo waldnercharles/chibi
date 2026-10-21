@@ -964,6 +964,21 @@ static const sample samples[] = {
                 "    return total;\n}",
       .updates = true,
       .calls = { { "Build", "[3]", "[1]" } } },
+    { .name = "map loop names",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nAnswer :: () -> int {\n"
+                "    m: [int: int] = [1: 2];\n    total: int = 0;\n"
+                "    for (k, v in m) { total += k * 10 + v; }\n"
+                "    v: int = 3;\n    k: int = 4;\n"
+                "    return total * 100 + v + k;\n}",
+      .calls = { { "Answer", "[]", "[1207]" } } },
+    { .name = "duplicate map loop names",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nAnswer :: () { m: [int: int] = [:]; for (x, x "
+                "in m) {} }",
+      .message = "Duplicate declaration 'x'",
+      .line = 2,
+      .column = 45 },
     { .name = "inferred map literal",
       .group = TYPE_SAMPLES,
       .source = "package facts\nAnswer :: () -> int { m := [\"a\": 1]; return "

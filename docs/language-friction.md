@@ -372,6 +372,11 @@ where Odin's `repeat` panics on a negative count, hiding the caller's mistake.
 Suggestion: stage one lowers `assert` to the same `ASSERT` instruction, then
 `Repeat` asserts its count.
 
+Update (2026-10-20): stage one now lowers `assert` to stage zero's `ASSERT`
+wherever the target links the core pack, as a game does. The compiler host
+links no core pack, so neither stage compiles `assert` in packages the host
+compiles. `Repeat` can't assert its count until the host links it.
+
 ### No runes
 
 Language. `core:strings` works on bytes: `Cut` takes byte offsets,

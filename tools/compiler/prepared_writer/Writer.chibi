@@ -269,7 +269,7 @@ pub Entry :: struct {
     subscription: int;
 }
 pub Module :: union {
-    Tables(id: uint64, owner_type: uint64, abi: uint64, wide: uint64[], values: Value[], ints: int[],
+    Tables(id: uint64, owner_type: uint64, abi: uint64, pointer_size: int, wide: uint64[], values: Value[], ints: int[],
            requirements: Requirement[], fields: Field[], event_declarations: Event[],
            event_fields: EventField[], imports: Import[], functions: Function[], spans: Span[], roots: Root[],
            instructions: Instruction[], locals: Local[], parameters: Parameter[], frames: Frame[],
@@ -456,7 +456,7 @@ EventBytes :: (v: Event, fields: EventField[], wide: uint64[], pool: byte[], sta
 // The complete inner module.
 pub Write :: (module: Module) -> byte[] {
     switch module {
-        case .Tables(id, owner_type, abi, wide, values, ints, requirements, fields, event_declarations,
+        case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
                      sources, results, data, hosts, calls, references, components, points, watches, states,
                      entries):
@@ -474,7 +474,8 @@ pub Write :: (module: Module) -> byte[] {
                 at -= 1;
             }
 
-            bytes := Words([Magic, uint64(Version), 8, abi, id, owner_type, Zig(length(requirements))]);
+            bytes := Words([Magic, uint64(Version), uint64(pointer_size), abi, id, owner_type,
+                            Zig(length(requirements))]);
             for (requirement in requirements) {
                 bytes = append(bytes, Words([wide[requirement.id], wide[requirement.layout],
                                              Zig(requirement.storage)]));

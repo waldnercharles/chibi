@@ -20,6 +20,8 @@ typedef struct
     uint64_t bytecode_entries, sljit_entries, wasm_entries;
     uint64_t inspected_sljit_entries, inspected_wasm_entries;
     uint64_t inspection_bytecode_fallbacks;
+    /* Entries of definitions past the Wasm JIT's size budget. */
+    uint64_t size_bytecode_fallbacks;
     bool overflow; /* Sticky saturation makes the sample inexact. */
 } behavior_run_counts;
 typedef struct behavior_run_scope
@@ -502,6 +504,9 @@ void behavior_function_write_sequence_c(
 void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
+ * budget. */
+bool behavior_function_interpreted(const behavior_function *function);
 /* Caller-owned output storage outlives the invocation. Only aggregate results
  * allocate; scalar result slots are already initialized by the runtime. */
 void behavior_function_prepare_results(

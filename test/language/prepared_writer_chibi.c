@@ -725,6 +725,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         { .type = PIN_U64, .u64 = p->id },
         { .type = PIN_U64, .u64 = p->owner_type },
         { .type = PIN_U64, .u64 = abi },
+        { .type = PIN_I32, .i = (int)sizeof(void *) },
         rows(m, NULL, PIN_U64, m->wide),
         rows(m, "Value", PIN_STRUCT, m->values),
         rows(m, NULL, PIN_I32, m->ints),

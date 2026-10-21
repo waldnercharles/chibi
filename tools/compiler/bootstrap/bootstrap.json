@@ -2,35 +2,30 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "ae629d4d9d3c388f4d59d440bae7082d92605b35",
+  "revision": "f8093cf76b74d90038091d66db0055975dc5108a",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 10513137,
-    "sha256": "76c12f3e02e3f77b3004b7a9fbf3073a7a96d40c6d0a991ca98141a8417dbfa0"
+    "bytes": 9668658,
+    "sha256": "9630ac9465ed9d73ec89583c38e149fac5ded7e74cbff42bf17a57c4360b0514"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 88199,
-      "sha256": "89d32715935fff20a383e78af9ba61d31205632312e438f1c23135969fc72fab"
+      "bytes": 83255,
+      "sha256": "c4e2982969f4602ac4aefebad0ac218d03d77dd9f0e511df36e1c430ca2fadef"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 100387,
-      "sha256": "21cb65c646cdf16af2b21369b3e5a31d49a5afaf6c73c973f26626c3d0efc6fb"
+      "bytes": 98937,
+      "sha256": "a5e294708938135fddd9764f1a63eb6e4fd84bac95aaae4ba974122bf96437f8"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 173009,
-      "sha256": "1cc2ced432327cb6e8c9e1873e57fc7e1a67541148feb27ea5345417b72161ee"
-    },
-    {
-      "path": "package_compiler/Maps.chibi",
-      "bytes": 27111,
-      "sha256": "1eb10564ee07aaf2733efca26f2266572491ede95a99a34ee599669e4feac1d7"
+      "bytes": 171705,
+      "sha256": "6f56d5c0670c23fb3e13da32a33f73bd64bc76964a349f0ae79544562a881e21"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -44,8 +39,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 22004,
-      "sha256": "f6428f32cf21a24cd6c1b5aafd82338a7d2c30703d6bbe27b3800923dcbb2978"
+      "bytes": 21915,
+      "sha256": "179872c8d72eebfcf4b8e1aa5587430d9c4ce63d3a92060403c0c53032dcd362"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -94,8 +89,8 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 26784,
-      "sha256": "65319354296bad973274d8e00860be33144387b2d5364867f4c21547cdbff777"
+      "bytes": 26864,
+      "sha256": "d28a54e6873a83462e0f370de77f7ce0516c38ff1d2edb7f94e393a232ed7753"
     }
   ],
   "target": [
@@ -113,7 +108,6 @@
       "items_offset": 32,
       "data_offset": 40,
       "stride_offset": 48,
-      "map_count_offset": 80,
       "data_failure": 4,
       "argument_failure": 7
     },

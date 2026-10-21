@@ -6252,7 +6252,8 @@ int chibi_project_migrate_content(
     }
     /* Every source is staged before any original is replaced, and a failed
      * step leaves the originals. Each step is idempotent, so a step
-     * interrupted while replacing reruns cleanly. */
+     * interrupted while replacing reruns cleanly, except version 31's: see
+     * chibi_migrate31_array_calls. */
     int staged = 0;
     for (; !status && staged < count; staged++) {
         if (migrated[staged]) {

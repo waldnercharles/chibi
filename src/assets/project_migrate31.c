@@ -50,6 +50,7 @@ static bool array_name(const char *text, TSNode name)
 static bool declaration(TSNode node)
 {
     return is(node, "function_declaration") || is(node, "macro_declaration") ||
+           is(node, "action_declaration") || is(node, "event_declaration") ||
            is(node, "local_declaration") || is(node, "constant_declaration") ||
            is(node, "parameter");
 }

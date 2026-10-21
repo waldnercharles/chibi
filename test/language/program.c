@@ -8225,6 +8225,7 @@ TEST_CASE(program_version_31_array_calls_take_their_new_names)
         "L :: library { Extend :: (xs: int[]) -> int[] { return xs } }",
         "L :: library { F :: (array_add: int) -> int { return array_add } }",
         "L :: library { F :: () -> int { append := 1; return append } }",
+        "B :: behavior { action Append = Go(); on Begin :: () { Append() } }",
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
         REQUIRE(chibi_migrate_array_calls(refused[i], &migrated, error, sizeof error) < 0);

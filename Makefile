@@ -62,7 +62,7 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -81,7 +81,6 @@ help:
 		'make package-studio Package the external Studio distribution' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
-		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
 		'make agent-test AGENT_SELECTOR=--source-edit' \
 		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
@@ -206,14 +205,6 @@ install:
 
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
-
-update-game-runtime:
-ifneq ($(wildcard .chibi/game-runtime.json),)
-ifeq ($(UPDATE_RUNTIME),1)
-	@$(MAKE) package-player UPDATE_RUNTIME=0
-	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PLAYER_OUTPUT)" --config .chibi/game-runtime.json
-endif
-endif
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"

@@ -86,21 +86,7 @@ make package-player PLAYER_OUTPUT=dist/game-runtime
 This builds a native reflection tool and an optimized compiler-free desktop
 runtime SDK before deriving the player package. `RUNTIME_SDK_BUILD_DIR` and
 `RUNTIME_SDK_PREFIX` select the intermediate build and installed SDK.
-`SDK_REFLECT_BUILD_DIR` selects the host tool build. Packaging does not install
-into registered games.
-
-```sh
-COMPILER_SDK=/absolute/path/to/packaged/compiler-sdk
-python3 "$COMPILER_SDK/share/chibi/tools/install_game_runtime.py" \
-  --package /absolute/path/to/game-runtime \
-  --config /absolute/path/to/game-runtime.json
-```
-
-`make update-game-runtime` performs this refresh for the checkout registration
-when `UPDATE_RUNTIME=1`. Installation verifies complete package inventories,
-project format requirements, and the captured prior deployment. A valid formerly
-managed combined runtime can be replaced; unmanaged or modified directories are
-preserved. Restart running games after installation.
+`SDK_REFLECT_BUILD_DIR` selects the host tool build.
 
 Use a compiler-enabled installed SDK for `chibi-compile` and the separate Studio
 package for authoring. See [runtime authoring](runtime-authoring.md) for preparation,
@@ -199,32 +185,6 @@ Engine-owned web deployment is retired and its publisher removed; deployment
 belongs to the extracted Studio product.
 Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
 Historical browser publication fixtures do not establish current deployment.
-
-## Deliver runtime updates to local games
-
-Register game workspaces in the editor checkout's ignored
-`.chibi/game-runtime.json`:
-
-```json
-{
-  "games": ["/path/to/neon-swarm"]
-}
-```
-
-`make update-game-runtime` explicitly packages the player and refreshes
-registered games. Ordinary build and test commands do not update external
-runtimes. Games are selected by absolute paths in the registration file;
-there is no implicit engine-owned game root.
-
-Delivery verifies the complete package and each game's project version, then
-stages a full copy inside each game's `.chibi` directory. It replaces
-`.chibi/runtime` with regular files and refreshes `.chibi-engine.json`.
-Codex configuration is preserved exactly. A failed copy leaves the active runtime alone;
-a failed activation restores the previous runtimes and metadata. Runtime
-delivery creates no symlinks or hardlinks to external packages. New game launches use the update; restart existing sessions after delivery.
-
-Browser publishing and runtime delivery are separate operations. Use the
-installed compiler/player packages for authored game preparation and playback.
 
 ## Build and verify
 

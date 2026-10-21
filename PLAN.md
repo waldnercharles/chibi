@@ -613,9 +613,18 @@ capability tables, and three header-only libraries. Its target table,
 `tools/graph/engine/Targets.chibi`, was first read from what CMake staged and
 compiled; it is now the source of truth. The host's instruction budget rose
 to 100 million and its step limit to 4,096 for graphs of this size.
-Next: the targets with generated prerequisites or third-party includes
-(`chibi_execution`, `chibi_json`, the language and syntax runtime), then
-moving profile selection from `Build.chibi`'s CMake arguments into the graph.
+Slice 5, 2026-10-21: the in-tree vendored C (`chibi_fmt`, `chibi_json`,
+`chibi_asset_kdl`) and the libraries over it (`chibi_asset_json`,
+`chibi_asset_text`, `chibi_text_capabilities`), plus `chibi_array_capabilities`,
+`chibi_field_capabilities` and `chibi_input_map`: 40 libraries, 100 sources.
+Each target now names its include directories, defines and options
+explicitly, as CMake orders them.
+Next: generated sources and headers (`chibi_builtin_fonts`' fonts,
+`chibi_component_presentation`, `chibi_language`'s parser) and the fetched
+dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
+which wait for vendoring (#569) so the graph builds them from the repository;
+then moving profile selection from `Build.chibi`'s CMake arguments into the
+graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

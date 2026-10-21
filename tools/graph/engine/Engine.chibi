@@ -49,27 +49,26 @@ pub Library :: (source_root: string, build_dir: string, target: string) -> c.Lib
 pub Sources :: (source_root: string, target: string) -> string[] {
     sources: string[] = [];
     for (file in Files(target)) {
-        sources = array_add(sources, Join([source_root, "/src/", file]));
+        sources = array_add(sources, Join([source_root, "/", file]));
     }
     return sources;
 }
 
-// Its own public headers, then its private ones, then those of the targets it
-// uses, then the profile's flags and its own options: the order CMake writes
-// them.
-pub CompileFlags :: (build_dir: string, target: string, profile: Profile) -> string[] {
-    flags := [Join(["-I", HeaderRoot(build_dir, target, "public")])];
-    if (length(PrivateHeaders(target)) > 0) {
-        flags = array_add(flags, Join(["-I", HeaderRoot(build_dir, target, "private")]));
+// Its defines, its include directories, the profile's flags, then its own
+// options: the order CMake writes them.
+pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
+    flags: string[] = [];
+    for (define in Defines(target)) {
+        flags = array_add(flags, Join(["-D", define]));
     }
-    for (used in Uses(target)) {
-        flags = array_add(flags, Join(["-I", HeaderRoot(build_dir, used, "public")]));
+    for (include in Includes(target)) {
+        root := source_root;
+        if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
+            root = Join([build_dir, "/sdk"]);
+        }
+        flags = array_add(flags, Join(["-I", root, "/", include]));
     }
-    flags = append(flags, Flags(profile, build_dir));
-    if (Clang(profile) || profile.compiler_id == "GNU") {
-        flags = append(flags, Options(target));
-    }
-    return flags;
+    return append(append(flags, Flags(profile, build_dir)), Options(target));
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -136,7 +135,8 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
 pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> int {
     source_dir := Join([source_root, "/src"]);
     for (target in targets) {
-        if (!c.StageHeaders(source_dir, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
+        published := Join([source_root, "/", HeaderSource(target)]);
+        if (!c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"))) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
             return -1;
@@ -147,7 +147,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     failed := false;
     for (target in targets) {
         built := Library(source_root, build_dir, target);
-        flags := CompileFlags(build_dir, target, profile);
+        flags := CompileFlags(source_root, build_dir, target, profile);
         for (source in Sources(source_root, target)) {
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
@@ -188,7 +188,7 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
     entries: string[] = [];
     for (target in targets) {
         built := Library(source_root, build_dir, target);
-        flags := CompileFlags(build_dir, target, profile);
+        flags := CompileFlags(source_root, build_dir, target, profile);
         for (source in Sources(source_root, target)) {
             entries = array_add(entries, c.CompileEntry(tools, built, flags, source));
         }

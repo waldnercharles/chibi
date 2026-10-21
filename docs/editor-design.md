@@ -930,11 +930,10 @@ not have the original distance, so neither reproduces this operation. Keep the
 dependency change reproducible against the pinned Cute revision rather than
 modifying only the generated build checkout.
 
-The checked-in `cmake/patches/cute-interior-border.patch` adds
-`cf_draw_push_interior_border`, paired with the existing outline pop. Configure
-applies the patch to fresh or populated dependency checkouts, accepts an already
-applied patch, and fails on a mismatch. Cute compiles its built-in GLSL at runtime;
-rebuilding consumes the patched shader header without an offline compiler.
+The prebuilt Cute carries `third_party/cute_framework/interior-border.patch`,
+which adds `cf_draw_push_interior_border`, paired with the existing outline pop.
+Cute compiles its built-in GLSL at runtime; rebuilding consumes the patched
+shader header without an offline compiler.
 
 Appearance Border Width now uses interior coverage without expanding body
 bounds. Glow remains an independent local effect. Interior borders conservatively

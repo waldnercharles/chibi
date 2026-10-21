@@ -241,7 +241,7 @@ extern "C"
         RML_EVENT_SUBMIT,
         RML_EVENT_TABCHANGE,
         /* A text field's edit, as HTML's; change follows once it commits
-         * (cmake/patches/rmlui-input-events.patch). */
+         * (third_party/rmlui/input-events.patch). */
         RML_EVENT_INPUT,
     } rml_event_id;
 
@@ -427,7 +427,7 @@ extern "C"
     double rml_context_next_update_delay(const rml_context *context);
     bool rml_context_update(rml_context *context);
     /* Opt-in disjoint Context::Update timings, in seconds. Keep this order
-     * aligned with cmake/patches/rmlui-context-update-profile.patch. */
+     * aligned with third_party/rmlui/context-update-profile.patch. */
     typedef enum rml_update_part
     {
         RML_UPDATE_MODELS,
@@ -828,7 +828,7 @@ extern "C"
     /* Handles every data-if binding's change of whether its element shows,
      * in place of setting or removing its inline display: none; `first`
      * marks a binding's first evaluation. Returning false leaves the change
-     * to the binding (cmake/patches/rmlui-data-if-handler.patch). NULL
+     * to the binding (third_party/rmlui/data-if-handler.patch). NULL
      * removes the handler. */
     typedef bool (*rml_data_if_fn)(rml_element *element, bool show, bool first);
     void rml_set_data_if_handler(rml_data_if_fn fn);

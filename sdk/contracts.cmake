@@ -126,7 +126,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_native_types chibi_entity_runtime chibi_native_capabilities chibi_task_pool_runtime
         chibi_spatial_runtime chibi_mesh_runtime chibi_execution chibi_support chibi_box3d)
     chibi_sdk_contract(chibi_task_pool_runtime "${CHIBI_SDK_ROOT}/src/runtime"
-        chibi_tasks chibi_support chibi_task_scheduler Tracy::TracyClient)
+        chibi_tasks chibi_support chibi_task_scheduler)
     chibi_sdk_contract(chibi_host_native_default "${CHIBI_SDK_ROOT}/src/host"
         chibi_host_native_catalog chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities
         chibi_state_capabilities chibi_selection_capabilities chibi_set_capabilities chibi_comparison_capabilities
@@ -199,9 +199,9 @@ endif()
 
 if(CHIBI_SDK_BUILD_DESKTOP)
     chibi_sdk_contract(chibi_platform "${CHIBI_SDK_ROOT}/src/support" chibi_json chibi_support
-        "$<BUILD_INTERFACE:cute>" "$<INSTALL_INTERFACE:${CHIBI_DESKTOP_CUTE}>")
+        "${CHIBI_DESKTOP_CUTE}")
     chibi_sdk_contract(chibi_ui_host "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_builtin_fonts chibi_text_search chibi_support
-        "$<BUILD_INTERFACE:RmlUi::Core>" "$<INSTALL_INTERFACE:${CHIBI_DESKTOP_RMLUI}>" c++ stdc++)
+        "${CHIBI_DESKTOP_RMLUI}" c++ stdc++)
     chibi_sdk_contract(chibi_renderer "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_ui_host chibi_engine chibi_player
         chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_native_capabilities
         chibi_particle_runtime chibi_material_runtime chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog

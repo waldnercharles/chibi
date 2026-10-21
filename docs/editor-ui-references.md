@@ -157,7 +157,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
 - Kit:
   - `kit_presence` uses the RCSS transitions declared for `data-starting-style` and `data-ending-style`.
   - `kit_layout` uses a 0.35 s critically damped spring.
-- Authored UI: `presence` on a `data-if` element does what `kit_presence` does, as the web's `@starting-style` and exit animations do. The element shows with `data-starting-style` and no transition for one frame. When `data-if` hides it, it keeps its display with `data-ending-style` and no pointer events until its transitions end. Showing it while it leaves turns it back. A binding's first evaluation, Reduce Motion and elements without `presence` show and hide at once (`src/ui/motion.c`, over `cmake/patches/rmlui-data-if-handler.patch`).
+- Authored UI: `presence` on a `data-if` element does what `kit_presence` does, as the web's `@starting-style` and exit animations do. The element shows with `data-starting-style` and no transition for one frame. When `data-if` hides it, it keeps its display with `data-ending-style` and no pointer events until its transitions end. Showing it while it leaves turns it back. A binding's first evaluation, Reduce Motion and elements without `presence` show and hide at once (`src/ui/motion.c`, over `third_party/rmlui/data-if-handler.patch`).
   - Studio motion tokens: press 110 ms, popovers 140 ms in and 100 ms out, drawers 200 ms in and 100 ms out.
 
 ### NumberFlow

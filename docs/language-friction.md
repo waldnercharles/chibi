@@ -682,14 +682,23 @@ validated descriptors, keyed by address and a checksum of their bytes, answered
 94% of the bootstrap's 63 million checks, yet saved no time on Release or
 Debug: checksumming a descriptor costs about as much as validating it. A hit
 that costs O(1) would have to trust a stamp of the header alone and stop
-catching a field changed in place.
+catching a field changed in place. So copies now trust the descriptor: a
+record is validated where it enters (creation, prepared loading, value
+documents), and copies check only that rows share their array's layout and
+that nested catalog types are still plain. Stage one then compiled the
+compiler in 7.6 s instead of 23.7 s on Release SLJIT. Deep copies of the rows
+and strings passed between passes are the largest cost left.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none
   hashes a type's layout at run time.
+- Swift's arrays are copy-on-write, so passing one shares its storage until a
+  write; Rust moves owned values and borrows the rest; Odin and Zig pass large
+  structs by pointer.
 
 Suggestion: an implementation change rather than a language one: hash each
-record type's layout once, and inline small pure functions.
+record type's layout once (done), and inline small pure functions. For the
+copies, a read-only borrow for parameters or copy-on-write arrays.
 
 ## Game projects use library blocks, not packages
 

@@ -1,3 +1,4 @@
+#include "execution/intrinsics.h"
 #include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -292,20 +293,14 @@ TEST_CASE(record_identity_and_borrow)
     REQUIRE(!pin_array_equal(&a, &b));
     b.record = clone;
     REQUIRE(pin_array_equal(&a, &b));
-    pin_value forged = input;
-    pin_record invalid = *record;
-    invalid.layout ^= 1;
-    forged.record = &invalid;
+    /* Rows must carry the array's layout: a valid row does not vouch for the
+     * next. */
+    pin_value other_row = row(&other, distinct, 1);
     pin_value sentinel = { .type = PIN_I32, .i = 123 }, output = sentinel;
-    REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &forged));
-    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
-    pin_record *invalid_shape = (pin_record *)pin_record_snapshot(&other, record);
-    invalid_shape->type.size++; /* Canonical pointers, same identity/hash/name, wrong shape. */
-    forged.record = invalid_shape;
     pin_array bad_array = { .element_type = PIN_STRUCT,
                             .type_name = record->type.name,
                             .record = record,
-                            .items = &forged,
+                            .items = &other_row,
                             .count = 1,
                             .capacity = 1 };
     pin_value bad_input = { .type = PIN_STRUCT,
@@ -315,28 +310,18 @@ TEST_CASE(record_identity_and_borrow)
                             .ptr = &bad_array };
     REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &bad_input));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
-    bad_array.items = &input;
-    bad_array.record = invalid_shape;
+    pin_value mixed[2] = { input, other_row };
+    bad_array.items = mixed;
+    bad_array.count = bad_array.capacity = 2;
     REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &bad_input));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
-    bad_array.record = record;
-    pin_value bad_args[2] = { bad_input, forged };
+    bad_array.items = &input;
+    bad_array.count = bad_array.capacity = 1;
+    pin_value bad_args[2] = { bad_input, other_row };
     REQUIRE(NATIVE_ARRAY_add_CALL.value(&owned, bad_args, 2, &output));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     bad_args[1] = bad_input; /* A row array cannot masquerade as one scalar row. */
     REQUIRE(NATIVE_ARRAY_add_CALL.value(&owned, bad_args, 2, &output));
-    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
-    pin_record *split = arena_alloc(&owned, sizeof *split);
-    *split = *record; /* Resident wrapper alone does not own producer metadata. */
-    REQUIRE(!pin_record_valid(split));
-    forged.record = split;
-    REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &forged));
-    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
-    /* Rows check each distinct record: a valid row does not vouch for the next. */
-    pin_value mixed[2] = { input, forged };
-    bad_array.items = mixed;
-    bad_array.count = bad_array.capacity = 2;
-    REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &bad_input));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     const type_field native_field = { .name = "number",
                                       .type = PIN_I32,
@@ -360,6 +345,80 @@ TEST_CASE(record_identity_and_borrow)
     type_catalog_set_project(NULL);
     project_set = false;
     REQUIRE(record_prepared_guard(&input));
+    return true;
+}
+/* A record lays out a nested catalog type when it is created. A project
+ * catalog published later may give that name pointers at the same size, which
+ * the record's bytes do not hold, so copying it fails. */
+TEST_CASE(record_copy_rejects_changed_nested_layout)
+{
+    /* A pointer-sized integer, so both layouts have one size. */
+    const pin_type word = sizeof(char *) == sizeof(int64_t) ? PIN_I64 : PIN_I32;
+    const type_field plain_field = { .name = "hp", .type = word, .size = sizeof(char *) };
+    const type_field text_field = { .name = "label",
+                                    .type = PIN_STR,
+                                    .size = sizeof(char *) };
+    const type_desc plain = { .name = "Stats",
+                              .size = sizeof(char *),
+                              .fields = &plain_field,
+                              .field_count = 1 };
+    const type_desc text = { .name = "Stats",
+                             .size = sizeof(char *),
+                             .fields = &text_field,
+                             .field_count = 1 };
+    const type_desc *plain_types[] = { &plain }, *text_types[] = { &text };
+    type_catalog_set_project(&(type_catalog_pack){ .types = plain_types,
+                                                   .type_count = 1 });
+    project_set = true;
+    const type_field nested = { .name = "stats", .type = PIN_STRUCT, .type_name = "Stats" };
+    const pin_record *record = pin_record_create(&source, "Rows.Holder", 93, &nested, 1);
+    REQUIRE(record && pin_record_current(record));
+    uintptr_t hp = 0x7a7a7a7a;
+    pin_value input = { .type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = &hp },
+              output;
+    REQUIRE(!pin_value_snapshot_to_arena(&owned, &output, &input));
+    REQUIRE(*(uintptr_t *)output.ptr == hp);
+    type_catalog_set_project(NULL);
+    type_catalog_set_project(&(type_catalog_pack){ .types = text_types,
+                                                   .type_count = 1 });
+    REQUIRE(!pin_record_current(record));
+    pin_value same = input;
+    REQUIRE(!pin_value_equal(&input, &same));
+    pin_value operands[] = { input, same }, result = { .type = PIN_I32, .i = 123 };
+    REQUIRE(EXECUTION_value_equal_call.value(&owned, operands, 2, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == 123);
+    /* A field list fills the record's bytes under the new layout, so only the
+     * stale record itself can refuse it. */
+    const char *label = "label";
+    pin_value header = input;
+    header.ptr = NULL;
+    pin_value fields[] = {
+        header,
+        { .type = PIN_U64, .u64 = 0 },
+        { .type = PIN_STRUCT, .type_name = "Stats", .ptr = &label },
+    };
+    REQUIRE(EXECUTION_construct_call.value(&owned, fields, 3, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == 123);
+    pin_value sentinel = { .type = PIN_I32, .i = 123 };
+    output = sentinel;
+    REQUIRE(pin_value_snapshot_to_arena(&other, &output, &input));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    pin_array rows = { .element_type = PIN_STRUCT,
+                       .type_name = record->type.name,
+                       .record = record,
+                       .items = &input,
+                       .count = 1,
+                       .capacity = 1 };
+    pin_value array = { .type = PIN_STRUCT,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = &rows };
+    REQUIRE(pin_value_snapshot_to_arena(&other, &output, &array));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     return true;
 }
 TEST_CASE(record_array_checked_changes)
@@ -458,6 +517,7 @@ void test_language_record_values()
     RUN_TEST_CASE(record_raw_trace_lifetime);
     RUN_TEST_CASE(record_copy_owns_field_type_names_and_units);
     RUN_TEST_CASE(record_identity_and_borrow);
+    RUN_TEST_CASE(record_copy_rejects_changed_nested_layout);
     RUN_TEST_CASE(record_array_checked_changes);
     RUN_TEST_CASE(record_projection_and_codec_guard);
     pu_clear_setup();

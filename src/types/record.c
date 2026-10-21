@@ -218,7 +218,7 @@ const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
     if (!record) {
         return NULL;
     }
-    if (!storage || !pin_record_valid(record)) {
+    if (!storage) {
         return NULL;
     }
     if (arena_contains(storage, record)) {
@@ -287,6 +287,16 @@ bool pin_record_valid(const pin_record *record)
            size == record->type.size &&
            record->layout == type_layout_hash(&record->type);
 }
+bool pin_record_current(const pin_record *record)
+{
+    for (int i = 0; i < record->type.field_count; i++) {
+        const type_field *field = &record->type.fields[i];
+        if (field->type == PIN_STRUCT && field_size(field) != field->size) {
+            return false;
+        }
+    }
+    return true;
+}
 bool pin_record_same(const pin_record *a, const pin_record *b)
 {
     if (a == b) {
@@ -304,7 +314,9 @@ const type_desc *pin_value_type(const pin_value *value)
         return NULL;
     }
     if (value->record) {
-        return value->type_name && !strcmp(value->type_name, value->record->type.name)
+        const char *name = value->record->type.name;
+        return value->type_name &&
+                       (value->type_name == name || !strcmp(value->type_name, name))
                  ? &value->record->type
                  : NULL;
     }

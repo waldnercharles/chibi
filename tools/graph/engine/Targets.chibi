@@ -17,13 +17,20 @@ pub Targets :: () -> string[] {
         "chibi_host_native_catalog", "chibi_ui_documents", "chibi_fields", "chibi_field_catalog",
         "chibi_scheduling", "chibi_text_source", "chibi_ui_document", "chibi_reference_index", "chibi_fmt",
         "chibi_json", "chibi_asset_json", "chibi_asset_kdl", "chibi_asset_text", "chibi_text_capabilities",
-        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts", "chibi_component_presentation", "chibi_save_runtime"
+        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts", "chibi_component_presentation", "chibi_save_runtime",
+        "reflect"
     ];
 }
 
 // A target's sources: below the source root, or below the build's generated
 // directory for a `generated/` entry.
 Files :: (target: string) -> string[] {
+    if (target == "reflect") {
+        return [
+            "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
+            "tools/reflect/emit_function.c", "tools/reflect/emit_component.c", "tools/reflect/emit_catalog.c"
+        ];
+    }
     if (target == "chibi_save_runtime") {
         return ["src/runtime/save.c", "src/runtime/save_native.c", "src/runtime/save_definition.c"];
     }
@@ -391,6 +398,9 @@ pub PrivateHeaders :: (target: string) -> string[] {
 // private/NAME are the staged headers of the library chibi_NAME; any other
 // path is below the source root.
 pub Includes :: (target: string) -> string[] {
+    if (target == "reflect") {
+        return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
+    }
     if (target == "chibi_save_runtime") {
         return [
             "public/save_runtime", "third_party/yyjson", "public/native_capabilities", "public/capabilities",
@@ -630,6 +640,28 @@ pub Embeds :: (target: string) -> string[] {
             "generated/fonts/editor_inconsolata_font.c=editor_inconsolata_font=third_party/fonts/inconsolata/Inconsolata-Regular.ttf",
             "generated/fonts/editor_code_font.c=editor_code_font=third_party/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
         ];
+    }
+    return [];
+}
+
+// The executables the graph builds; every other target is a library.
+pub Programs :: () -> string[] {
+    return ["reflect"];
+}
+
+// The libraries an executable links, in CMake's order, after the external
+// libraries its profile names.
+pub Links :: (target: string) -> string[] {
+    if (target == "reflect") {
+        return ["chibi_capabilities", "chibi_types", "chibi_support"];
+    }
+    return [];
+}
+
+// The system libraries an executable links last, as -lNAME on Unix.
+pub SystemLibraries :: (target: string) -> string[] {
+    if (target == "reflect") {
+        return ["m"];
     }
     return [];
 }

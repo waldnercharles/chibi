@@ -544,6 +544,17 @@ static const char *invalid(const authoring_packages *packages)
     const char *message = authoring_packages_error(packages);
     return message ? message : "build source preparation failed";
 }
+/* The innermost failure reports, as in a package test: a called function's
+ * message does not reach the entry's context. */
+static void observe(const behavior_function *, const behavior_function_context *context, int)
+{
+    const char **failure = context->inspection_user;
+    if (!*failure) {
+        *failure = context->error_message
+                     ? context->error_message
+                     : behavior_function_failure_text(context->failure);
+    }
+}
 /* A build program runs alone: nothing resumes a wait or runs a task. */
 static int refuse_wait(behavior_function_context *context, int)
 {
@@ -635,6 +646,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     native_capabilities *native = NULL;
     authoring_packages *packages = NULL;
     char error[256];
+    const char *observed = NULL;
     behavior_function_context context = { 0 };
     behavior_function_activation activation = { 0 };
     arena storage = { 0 };
@@ -734,6 +746,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
                                            .budget = options->instruction_budget
                                                        ? options->instruction_budget
                                                        : BUILD_INSTRUCTION_BUDGET,
+                                           .inspection_user = &observed,
+                                           .failure_observer = observe,
                                            .begin_command = refuse_wait,
                                            .start_task = refuse_task };
     behavior_function_bind_storage(&context, &storage);
@@ -747,7 +761,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     behavior_run_scope_end(&scope);
     result->counts = scope.counts;
     if (result->flow_status != FLOW_OK) {
-        failure = context.error_message
+        /* A task refused at a call reaches only the entry's context. */
+        failure = observed ? observed
+                : context.error_message
                     ? context.error_message
                     : behavior_function_failure_text(context.failure);
         goto done;

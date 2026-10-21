@@ -250,3 +250,28 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
         Quote(Object(target, source)), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"
     ]);
 }
+
+// Links an executable from objects when one changed, or the executable is
+// missing or was linked by another command. `flags` come before the objects
+// and `libraries` after the output, as CMake orders a link; those that are
+// absolute paths are inputs too. 1 when it linked, 0 when it was current, -1
+// on failure.
+pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
+    command := append(append(append([tools.compiler], flags), objects), ["-o", output]);
+    command = append(command, libraries);
+    inputs := objects;
+    for (linked in libraries) {
+        if (strings.HasPrefix(linked, "/")) {
+            inputs = array_add(inputs, linked);
+        }
+    }
+    if (Current(command, output)) {
+        return 0;
+    }
+    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+    if (build.run(command) != 0 ||
+        !build.write_file(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
+}

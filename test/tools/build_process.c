@@ -821,19 +821,28 @@ TEST_CASE(private_runtime_failures_name_their_cause)
         "package fails\nBuild :: () -> int { n := 0; while (true) { n += 1; } "
         "return n; }",
         "package fails\nBuild :: () -> int { xs: int[] = []; return xs[1]; }",
+        /* A called function's failure reaches the program's diagnostic. */
+        "package fails\nInner :: () -> int { xs: int[] = []; return xs[1]; }\n"
+        "Build :: () -> int { return Inner(); }",
+        "package fails\nInner :: () -> int { return build.wait(99); }\n"
+        "Build :: () -> int { return Inner(); }",
     };
     static const char *diagnostics[] = {
         "instruction budget exhausted",
         "array index out of range",
+        "array index out of range",
+        "unknown build job",
     };
     for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 4; i++) {
             behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
             chibi_build_options options = primitive_options(sources[i], backend);
             /* The default budget takes seconds to run out. */
             options.instruction_budget = 100000;
             chibi_build_result result;
             REQUIRE(!chibi_build_invoke(&options, &result));
+            if (strcmp(result.diagnostic, diagnostics[i])) {
+            }
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
         }
     }

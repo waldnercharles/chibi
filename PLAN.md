@@ -850,12 +850,16 @@ compiler without them, since with watches stage two outgrew the compiler
 host's bounds. Also on 2026-10-20:
 - #586: stage one binds handler parameters to payload fields by name, in any
   order or subset, as format 30 does.
-- #588: stage one compiles maps.
+- #588 and #592: stage one compiles maps.
+- #591: stage one compiles `ref` parameters of locals.
+
+All three were checked on the Wasm host too.
 
 Still open:
 - Stage one doesn't check a handler parameter's written type or unit against
   its field. Its game input carries no field units.
-- Stage-one `ref` parameters are in progress.
+- Stage one doesn't compile `assert`. It needs a failure kind in `Target` for
+  stage zero's `BEHAVIOR_FUNCTION_DATA`.
 
 Next action: the bootstrap sequence on every supported host configuration.
 

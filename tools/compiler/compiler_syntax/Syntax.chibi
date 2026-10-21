@@ -21,7 +21,7 @@ Assemble :: (count: int, kinds: string[], starts: int[], ends: int[],
             first_child: first_children[index], next_sibling: next_siblings[index],
             error: errors[index], missing: missing[index], has_error: has_errors[index]
         };
-        nodes = array_add(nodes, node);
+        nodes.append(node);
         index += 1;
     }
     return nodes;

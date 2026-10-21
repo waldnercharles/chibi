@@ -1,8 +1,8 @@
 # Local array construction
 
 Building an array in a loop is linear. A local or result array owns its items,
-because every store into it copies. So lowering turns `xs = array_add(xs, x)`,
-`xs = append(xs, ys)` and `xs[i] = x` on that local into the `array_push`,
+because every store into it copies. So lowering turns `xs = append(xs, x)`,
+`xs = extend(xs, ys)` and `xs[i] = x` on that local into the `array_push`,
 `array_extend` and `array_store` intrinsics, which update the array where it
 is. Capacity doubles as in Odin's
 dynamic arrays, so each append costs amortized O(1) and the old buffer is

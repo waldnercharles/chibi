@@ -202,7 +202,7 @@ pin_value native_array_add_unique(const pin_value *inputs, int count, arena *a)
     return native_array_add(inputs, count, a);
 }
 
-pin_value native_array_append(const pin_value *inputs, int count, arena *a)
+pin_value native_array_extend(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
     const pin_array *left = array_arg(inputs, 0);
@@ -443,7 +443,7 @@ static const char *resize_error(const pin_value *inputs)
         const char *error = KERNEL##_owned(storage, inputs, count, &value);                                     \
         if (error) return error;                                                                                \
         /* These kernels already snapshot every item into storage. */                                           \
-        if (native_array_##KERNEL == native_array_append) {                                                     \
+        if (native_array_##KERNEL == native_array_extend) {                                                     \
             *result = value;                                                                                    \
             return NULL;                                                                                        \
         }                                                                                                       \

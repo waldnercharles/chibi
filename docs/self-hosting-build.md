@@ -141,12 +141,13 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 5
+`make build` uses this program when its private host reports protocol version 6
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
-natives under `build.`, and version 5 runs programs as packages that may import
-`core:`. A cold build or an older host
+natives under `build.`, version 5 runs programs as packages that may import
+`core:`, and version 6 has the array methods and the natives `append` and
+`extend` of project version 32. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery

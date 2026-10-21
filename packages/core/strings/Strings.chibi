@@ -422,10 +422,10 @@ SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
             limit = count;
         }
         while (length(parts) < limit - 1) {
-            parts = array_add(parts, Slice(s, length(parts), 1));
+            parts.append(Slice(s, length(parts), 1));
         }
         if (limit > 0) {
-            parts = array_add(parts, Slice(s, limit - 1, count));
+            parts.append(Slice(s, limit - 1, count));
         }
         return parts;
     }
@@ -441,10 +441,10 @@ SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
         if (m < 0) {
             break;
         }
-        parts = array_add(parts, Slice(rest, 0, m + keep));
+        parts.append(Slice(rest, 0, m + keep));
         rest = Slice(rest, m + size, ByteLength(rest));
     }
-    parts = array_add(parts, rest);
+    parts.append(rest);
     return parts;
 }
 
@@ -468,7 +468,7 @@ pub SplitAfterN :: (s: string, sep: string, n: int) -> string[] {
 SplitLinesKeeping :: (s: string, keep: int, n: int) -> string[] {
     lines: string[] = [];
     for (line in SplitKeeping(s, "\n", keep, n)) {
-        lines = array_add(lines, TrimSuffix(line, "\r"));
+        lines.append(TrimSuffix(line, "\r"));
     }
     return lines;
 }
@@ -498,7 +498,7 @@ pub Fields :: (s: string) -> string[] {
     while (i < size) {
         if (IsAsciiSpace(ByteAt(s, i))) {
             if (start >= 0) {
-                fields = array_add(fields, Slice(s, start, i - start));
+                fields.append(Slice(s, start, i - start));
                 start = -1;
             }
         } else if (start < 0) {
@@ -507,7 +507,7 @@ pub Fields :: (s: string) -> string[] {
         i += 1;
     }
     if (start >= 0) {
-        fields = array_add(fields, Slice(s, start, size - start));
+        fields.append(Slice(s, start, size - start));
     }
     return fields;
 }

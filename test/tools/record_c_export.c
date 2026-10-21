@@ -37,9 +37,9 @@ static const char *const sources[] = {
     "if n == 1 { return [a]; } return [a, a, a]; } }",
     "Rows :: library { " ROW
     "Grow :: (n: int) -> Row[] { rows: Row[] = []; i: int = 0; while i < n { "
-    "row: Row = {key: \"a\", label: \"A\"}; rows = array_add(rows, row); i = i "
+    "row: Row = {key: \"a\", label: \"A\"}; rows = append(rows, row); i = i "
     "+ 1; } "
-    "grown: Row[] = []; grown = append(grown, rows); "
+    "grown: Row[] = []; grown = extend(grown, rows); "
     "if n > 1 { grown[n - 1] = {key: \"z\", label: \"Z\"}; } return grown; } }"
 };
 enum

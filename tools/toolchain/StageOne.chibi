@@ -1,125 +1,125 @@
-StageOne :: library {
-    // Builds a project's artifact as chibi-compile does, with the stage-one
-    // compiler compiling its behavior assets. chibi-compile exports stage
-    // one's input, the project's sources and the game they link against; the
-    // compiler host runs stage one's CompileBehaviors on it; and chibi-compile
-    // assembles the artifact from the modules that writes. Stage one is the
-    // compiler the bootstrap artifact recovers from the compiler sources, kept
-    // under .chibi/stage-one for the latest digest of them and of the host.
-    // CHIBI_COMPILE names chibi-compile and CHIBI_STAGE_ONE_HOST a compiler
-    // host, which should be a Release build: recovering stage one compiles all
-    // of it.
-    Join :: (parts: string[]) -> string {
-        return build.join(parts, "")
+package toolchain
+
+// Builds a project's artifact as chibi-compile does, with the stage-one
+// compiler compiling its behavior assets. chibi-compile exports stage
+// one's input, the project's sources and the game they link against; the
+// compiler host runs stage one's CompileBehaviors on it; and chibi-compile
+// assembles the artifact from the modules that writes. Stage one is the
+// compiler the bootstrap artifact recovers from the compiler sources, kept
+// under .chibi/stage-one for the latest digest of them and of the host.
+// CHIBI_COMPILE names chibi-compile and CHIBI_STAGE_ONE_HOST a compiler
+// host, which should be a Release build: recovering stage one compiles all
+// of it.
+Join :: (parts: string[]) -> string {
+    return build.join(parts, "")
+}
+Contains :: (text: string, part: string) -> bool {
+    return build.before(text, part) != text
+}
+// Whether text ends with suffix.
+Ends :: (text: string, suffix: string) -> bool {
+    rest := text
+    while (Contains(rest, suffix)) {
+        rest = build.after(rest, suffix)
     }
-    Contains :: (text: string, part: string) -> bool {
-        return build.before(text, part) != text
-    }
-    // Whether text ends with suffix.
-    Ends :: (text: string, suffix: string) -> bool {
-        rest := text
-        while (Contains(rest, suffix)) {
-            rest = build.after(rest, suffix)
-        }
-        return rest == "" && Contains(text, suffix)
-    }
-    // The digests of the .chibi files in each folder below `folder`.
-    Digests :: (folder: string) -> string[] {
-        digests: string[] = []
-        for (name in build.list_directory(folder)) {
-            path := Join([folder, "/", name])
-            if (build.file_kind(path) == "directory") {
-                for (file in build.list_directory(path)) {
-                    if (Ends(file, ".chibi")) {
-                        digests = build.concat(digests, [Join([name, "/", file, " ", build.hash_file(Join([path, "/", file]))])])
-                    }
+    return rest == "" && Contains(text, suffix)
+}
+// The digests of the .chibi files in each folder below `folder`.
+Digests :: (folder: string) -> string[] {
+    digests: string[] = []
+    for (name in build.list_directory(folder)) {
+        path := Join([folder, "/", name])
+        if (build.file_kind(path) == "directory") {
+            for (file in build.list_directory(path)) {
+                if (Ends(file, ".chibi")) {
+                    digests = build.concat(digests, [Join([name, "/", file, " ", build.hash_file(Join([path, "/", file]))])])
                 }
             }
         }
-        return digests
     }
-    // Stage one's closure, recovered for the digests of the compiler sources,
-    // the core collection, the artifact and the host; "" when it cannot be.
-    // A recovery replaces the closures kept for other digests.
-    Recovered :: (host: string, root: string) -> string {
-        compiler := Join([root, "/tools/compiler"])
-        core := Join([root, "/packages/core"])
-        artifact := Join([compiler, "/bootstrap"])
-        digests := build.concat(Digests(compiler), Digests(core))
-        digests = build.concat(digests, [build.hash_file(Join([compiler, "/bootstrap.kdl"])),
-                                         build.hash_file(Join([artifact, "/bootstrap.json"])),
-                                         build.hash_file(Join([artifact, "/compiler.chibip"])),
-                                         build.hash_file(host)])
-        cache := Join([root, "/.chibi/stage-one"])
-        name := Join([build.hash_text(build.join(digests, "\n")), ".chibip"])
-        closure := Join([cache, "/", name])
-        if (build.file_exists(closure)) {
-            return closure
-        }
-        if (!build.make_directory(Join([root, "/.chibi"])) || !build.make_directory(cache)) {
-            build.report(Join(["cannot make ", cache]))
-            return ""
-        }
-        for (kept in build.list_directory(cache)) {
-            build.remove(Join([cache, "/", kept]))
-        }
-        if (build.run([host, "--bootstrap", artifact, "--compiler", compiler, "--core", core, "--recover", closure]) != 0) {
-            build.report(Join(["cannot recover stage one: ", build.last_stderr()]))
-            return ""
-        }
+    return digests
+}
+// Stage one's closure, recovered for the digests of the compiler sources,
+// the core collection, the artifact and the host; "" when it cannot be.
+// A recovery replaces the closures kept for other digests.
+Recovered :: (host: string, root: string) -> string {
+    compiler := Join([root, "/tools/compiler"])
+    core := Join([root, "/packages/core"])
+    artifact := Join([compiler, "/bootstrap"])
+    digests := build.concat(Digests(compiler), Digests(core))
+    digests = build.concat(digests, [build.hash_file(Join([compiler, "/bootstrap.kdl"])),
+                                     build.hash_file(Join([artifact, "/bootstrap.json"])),
+                                     build.hash_file(Join([artifact, "/compiler.chibip"])),
+                                     build.hash_file(host)])
+    cache := Join([root, "/.chibi/stage-one"])
+    name := Join([build.hash_text(build.join(digests, "\n")), ".chibip"])
+    closure := Join([cache, "/", name])
+    if (build.file_exists(closure)) {
         return closure
     }
-    // Runs stage one's function `callable` on the input; with an output,
-    // writes the byte[] it returns there.
-    Stage :: (host: string, closure: string, callable: string, input: string, output: string) -> int {
-        command := [host, "--artifact", closure, "--entry", callable, "--input", input, "--backend", "sljit",
-                    "--budget", "4000000000", "--timeout-ms", "50000"]
-        if (output != "") {
-            command = build.concat(command, ["--output-bytes", output])
-        }
-        return build.run(command)
+    if (!build.make_directory(Join([root, "/.chibi"])) || !build.make_directory(cache)) {
+        build.report(Join(["cannot make ", cache]))
+        return ""
     }
-    // Arguments: --project-root ROOT --output FILE, as chibi-compile takes them.
-    Compile :: () -> int {
-        arguments := build.arguments()
-        if (build.length(arguments) != 4 || arguments[0] != "--project-root" || arguments[2] != "--output") {
-            build.report("usage: --project-root ROOT --output FILE")
-            return 2
-        }
-        project := arguments[1]
-        output := arguments[3]
-        compile := build.environment("CHIBI_COMPILE")
-        host := build.environment("CHIBI_STAGE_ONE_HOST")
-        if (compile == "" || host == "") {
-            build.report("CHIBI_COMPILE and CHIBI_STAGE_ONE_HOST must name chibi-compile and a compiler host")
-            return 2
-        }
-        closure := Recovered(host, build.root())
-        if (closure == "") {
-            return 1
-        }
-        work := Join([output, ".stage-one"])
-        input := Join([work, "/input.json"])
-        modules := Join([work, "/modules.chibip"])
-        if (!build.make_directory(work) ||
-            build.run([compile, "--project-root", project, "--stage-one-input", input]) != 0) {
-            build.report(Join(["cannot export stage one's input for ", project, ": ", build.last_stderr()]))
-            return 1
-        }
-        // CompileBehaviors and BehaviorRejection: package-symbol
-        // project:package_compiler:1:NAME:callable.
-        if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
-            Stage(host, closure, "2921ca5ea316f0b", input, "")
-            build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
-            return 1
-        }
-        if (build.run([compile, "--project-root", project, "--modules", modules, "--output", output]) != 0) {
-            build.report(Join(["cannot assemble ", project, " from stage one's modules: ", build.last_stderr()]))
-            return 1
-        }
-        build.remove(input)
-        build.remove(modules)
-        build.remove(work)
-        return 0
+    for (kept in build.list_directory(cache)) {
+        build.remove(Join([cache, "/", kept]))
     }
+    if (build.run([host, "--bootstrap", artifact, "--compiler", compiler, "--core", core, "--recover", closure]) != 0) {
+        build.report(Join(["cannot recover stage one: ", build.last_stderr()]))
+        return ""
+    }
+    return closure
+}
+// Runs stage one's function `callable` on the input; with an output,
+// writes the byte[] it returns there.
+Stage :: (host: string, closure: string, callable: string, input: string, output: string) -> int {
+    command := [host, "--artifact", closure, "--entry", callable, "--input", input, "--backend", "sljit",
+                "--budget", "4000000000", "--timeout-ms", "50000"]
+    if (output != "") {
+        command = build.concat(command, ["--output-bytes", output])
+    }
+    return build.run(command)
+}
+// Arguments: --project-root ROOT --output FILE, as chibi-compile takes them.
+Compile :: () -> int {
+    arguments := build.arguments()
+    if (build.length(arguments) != 4 || arguments[0] != "--project-root" || arguments[2] != "--output") {
+        build.report("usage: --project-root ROOT --output FILE")
+        return 2
+    }
+    project := arguments[1]
+    output := arguments[3]
+    compile := build.environment("CHIBI_COMPILE")
+    host := build.environment("CHIBI_STAGE_ONE_HOST")
+    if (compile == "" || host == "") {
+        build.report("CHIBI_COMPILE and CHIBI_STAGE_ONE_HOST must name chibi-compile and a compiler host")
+        return 2
+    }
+    closure := Recovered(host, build.root())
+    if (closure == "") {
+        return 1
+    }
+    work := Join([output, ".stage-one"])
+    input := Join([work, "/input.json"])
+    modules := Join([work, "/modules.chibip"])
+    if (!build.make_directory(work) ||
+        build.run([compile, "--project-root", project, "--stage-one-input", input]) != 0) {
+        build.report(Join(["cannot export stage one's input for ", project, ": ", build.last_stderr()]))
+        return 1
+    }
+    // CompileBehaviors and BehaviorRejection: package-symbol
+    // project:package_compiler:1:NAME:callable.
+    if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
+        Stage(host, closure, "2921ca5ea316f0b", input, "")
+        build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
+        return 1
+    }
+    if (build.run([compile, "--project-root", project, "--modules", modules, "--output", output]) != 0) {
+        build.report(Join(["cannot assemble ", project, " from stage one's modules: ", build.last_stderr()]))
+        return 1
+    }
+    build.remove(input)
+    build.remove(modules)
+    build.remove(work)
+    return 0
 }

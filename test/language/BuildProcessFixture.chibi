@@ -1,8 +1,8 @@
-BuildProcessFixture :: library {
-    BuildFixture :: () -> int {
-        return build.run([
-            build.environment("CHIBI_BUILD_WORKER"), "build-argv", "",
-            "space \"quote\";$literal*"
-        ]);
-    }
+package build_process_fixture
+
+BuildFixture :: () -> int {
+    return build.run([
+        build.environment("CHIBI_BUILD_WORKER"), "build-argv", "",
+        "space \"quote\";$literal*"
+    ]);
 }

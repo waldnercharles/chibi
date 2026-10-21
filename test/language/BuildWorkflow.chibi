@@ -1,12 +1,12 @@
-BuildWorkflow :: library {
-    Build :: () -> int {
-        configure := build.run([
-            "cmake", "-S", ".", "-B", "build self-hosting",
-            "-DCHIBI_NOTE=space \"quote\";$literal*"
-        ]);
-        if (configure != 0) {
-            return configure;
-        }
-        return build.run(["cmake", "--build", "build self-hosting"]);
+package build_workflow
+
+Build :: () -> int {
+    configure := build.run([
+        "cmake", "-S", ".", "-B", "build self-hosting",
+        "-DCHIBI_NOTE=space \"quote\";$literal*"
+    ]);
+    if (configure != 0) {
+        return configure;
     }
+    return build.run(["cmake", "--build", "build self-hosting"]);
 }

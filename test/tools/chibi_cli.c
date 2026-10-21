@@ -660,6 +660,28 @@ TEST_CASE(fmt_formats_each_project)
     return true;
 }
 
+/* The repository's own package trees, the core collection, the docs generator
+ * and the compiler, are as the formatter writes them. */
+TEST_CASE(repository_packages_are_canonical)
+{
+    const char *const trees[] = { "packages", "tools/docs", "tools/compiler" };
+    for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
+        char tree[512], output[256];
+        snprintf(tree, sizeof tree, "%s/%s", CHIBI_SOURCE_ROOT, trees[i]);
+        path(output, "canonical.log");
+        const char *check[] = { compiler,   "--project-root", tree,
+                                "--format", "--check",        NULL };
+        int status = tool_run(check, root, output);
+        if (status) {
+            char *log = contents("canonical.log");
+            fprintf(stderr, "%s is not canonical: %s\n", trees[i], log);
+            free(log);
+        }
+        REQUIRE(status == 0);
+    }
+    return true;
+}
+
 static const char
     MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
 static const char MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
@@ -1494,6 +1516,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
     RUN_TEST_CASE(compiler_format_rewrites_package_sources);
+    RUN_TEST_CASE(repository_packages_are_canonical);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
     RUN_TEST_CASE(doc_runs_the_compiler_docs);

@@ -90,7 +90,8 @@ static const struct
       NULL,
       NULL },
     /* S12 */
-    { "Arrays :: library { Bools :: [true, false]; Numbers :: [1, 2]; Ints: "
+    { "Arrays :: library { Bools :: [true, false]; Numbers :: [1.0, 2.0]; "
+      "Ints: "
       "int[] : [1, 2]; Names :: [name(\"alpha\"), \"beta\"]; }",
       NULL,
       NULL },

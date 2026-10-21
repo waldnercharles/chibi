@@ -235,9 +235,7 @@ build/model-evidence/player/bin/chibi-player /absolute/output/game.chibip \
   --resource-root /absolute/output
 ```
 
-Packaging leaves registered games untouched. If validating installation, pass
-`install_game_runtime.py --config` a registration containing only disposable
-copied projects. Compiler preparation and package integrity do not establish
+Packaging leaves games untouched. Compiler preparation and package integrity do not establish
 successful rendered model behavior; use admitted bounded runtime/GPU checks.
 See [native packages](native-package.md) for product boundaries and exact pins.
 

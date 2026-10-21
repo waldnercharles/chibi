@@ -70,9 +70,9 @@ This is a model-preparation benchmark, not a whole-editor speedup. Full index
 rebuild work remains necessary. The benchmark includes correctness assertions,
 raw results, compiler details, and its source hash.
 
-[browser-sample.js](performance/browser-sample.js) records settled editor CPU
+`browser-sample.js` (removed on 2026-10-20; Git keeps it) recorded settled editor CPU
 zones, frame intervals, and retained-render counters from a profiling build.
-It clears trace entries before and after each bounded sample. CPU submission
+It cleared trace entries before and after each bounded sample. CPU submission
 measurements must not be interpreted as GPU execution time.
 
 The [rebuilt-editor samples](performance/browser-results.md) recorded 596 frames

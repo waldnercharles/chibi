@@ -128,13 +128,9 @@ TEST_CASE(source_tick_rebinds_service_after_current_host_call)
         memset(service_name, 'x', sizeof service_name - 1);
         behavior_backend backend = variant ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         publication_override = &values[1];
-        REQUIRE(publish(
-            0,
-            "Counter",
-            "Counter :: behavior { count:int=0; on Tick { count += read() } }",
-            backend,
-            backend != BEHAVIOR_BYTECODE
-        ));
+        REQUIRE(
+            publish(0, "Counter", "Counter :: behavior { count:int=0; on Tick :: () { count += read() } }", backend, backend != BEHAVIOR_BYTECODE)
+        );
         ecs_entity owner = ecs_world_create_entity(world);
         REQUIRE(!ecs_world_apply_commands(world));
         source_publication defaults = { .name = "Defaults", .module = retained };
@@ -188,10 +184,10 @@ static int dispatch_all(double now)
 TEST_CASE(source_tick_preserves_incremental_attachment_state_and_order)
 {
     REQUIRE(
-        publish(0, "Counter", "Counter :: behavior { count:int=10; on Tick { count += read() } }", BEHAVIOR_BYTECODE, false)
+        publish(0, "Counter", "Counter :: behavior { count:int=10; on Tick :: () { count += read() } }", BEHAVIOR_BYTECODE, false)
     );
     REQUIRE(
-        publish(1, "Alternate", "Alternate :: behavior { count:int=10; on Tick { count += read() } }", BEHAVIOR_SLJIT, false)
+        publish(1, "Alternate", "Alternate :: behavior { count:int=10; on Tick :: () { count += read() } }", BEHAVIOR_SLJIT, false)
     );
     ecs_entity owners[4];
     for (int i = 0; i < 4; i++) {
@@ -233,7 +229,7 @@ TEST_CASE(source_tick_preserves_incremental_attachment_state_and_order)
     REQUIRE(dispatch_all(3) == 2);
     REQUIRE(count("Counter", owners[2], 0) == 11 && count("Counter", owners[3], 0) == 14);
     REQUIRE(
-        publish(0, "Counter", "Counter :: behavior { count:int=10; on Tick { count += read() } }", BEHAVIOR_SLJIT, true)
+        publish(0, "Counter", "Counter :: behavior { count:int=10; on Tick :: () { count += read() } }", BEHAVIOR_SLJIT, true)
     );
     REQUIRE(dispatch_all(4) == 2);
     REQUIRE(count("Counter", owners[0], 0) == 15 && count("Counter", owners[2], 0) == 12);

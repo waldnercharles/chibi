@@ -52,14 +52,23 @@ grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
 which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
 must parse, and each whole package must analyze, so a language change that
 breaks one fails `make test-projects` instead of the next site build. The site
-it writes stays out of the source tree. The Release `--docs` took 0.2–1.0 s on
-an M-series Mac under load; the sanitized one took 5–9 s.
+it writes stays out of the source tree. The same selector checks documentation
+fixtures for rendering, package references, and rejection of invalid original
+snippets. These compiler-only cases need no player or launcher. The Release
+`--docs` took 0.2–1.0 s on an M-series Mac under load; the sanitized one took 5–9 s.
 
-`chibi-cli` runs nineteen launcher cases: each command over a fake sibling
+`chibi-cli` runs seventeen launcher cases: each command over a fake sibling
 compiler and player, the launcher's own `version` and `doctor`, and the real
-`chibi-compile`'s `--check`, `--test`, `--format` and `--docs` on fixture
-projects, package trees and sites. Its two `--docs` cases start the compiler 22
-times, including three fixtures for package imports.
+`chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
+package trees. Its `doc` case checks forwarding to the compiler; the real
+compiler's documentation cases run under `published-docs`.
+
+`python3 tools/test_policy.py tool language-docs-markdown` checks the authored
+renderer on both bytecode and the compiled backend, including grammar-derived
+highlighting, incomplete-fragment recovery, exact source slices, escaping,
+whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
+Those presentation checks are separate from the original-snippet validation
+above, which cannot access the generator's private parser native.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and those Release tools, except
@@ -262,7 +271,10 @@ frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
 
-Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. `make
+test-wasm` also runs the package compiler's base samples on both backends
+(`wasm-package-compiler-chibi` and `-compiled`); every other package-compiler
+selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples, and run under the production 60-second deadline. Configuration and
@@ -1263,13 +1275,18 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects eleven fixed C
+`python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
-`markdown`, `site`, `reference` and `grammar` packages with `core:strings` per
-case, rendering blocks, tables and site links, laying out navigation and
-generating a package reference and a grammar page on bytecode and SLJIT, each
-call under a 2,000,000-instruction budget. There is no filesystem, process, service or
-GPU work. This focused route is outside the language aggregate.
+`markdown`, `site`, `reference`, `grammar`, `compiler_syntax` and
+`syntax_diagnostics` packages with `core:strings` per case. The fixture opts into
+the existing private Tree-sitter bridge. Cases render blocks, tables and site
+links, lay out navigation, generate a package reference and a grammar page, and
+check grammar roles, exact escaped source bytes, recovery and GitHub theme colors
+on bytecode and SLJIT. A fence uses at most three parses: its original source,
+then declaration/signature contexts only when needed; synthetic context never
+reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
+There is no filesystem, process, service or GPU work. This focused route is
+outside the language aggregate and retains the shared 60-second ceiling.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C
 cases for the shared runner behind `chibi test`. One preparation per backend has
@@ -2148,6 +2165,30 @@ four outer and four recursive Make calls run marker recipes only. The process ro
 transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
+
+`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
+build that configured the tests. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` (and the debug directory,
+which depends on where a build is), the graph finds the rest of its profile
+on the machine and writes the compile commands of every target it owns, and each of the 129
+must equal `compile_commands.json`'s for the same source, apart from the
+object path and with the temporary build directory standing for CMake's. In a
+copy of the sources, about ten runs that build only `chibi_support` then check
+that an unchanged build compiles nothing, that changing a source, a header or
+the flags or deleting an object recompiles exactly what depends on it, that a
+staged header nothing publishes is removed, and that a source that fails to
+compile keeps no record and is retried alone. The archive must link a program
+that runs. It compiles about fifteen C files with the profile's sanitizers,
+about 32 s at a load average of 8.
+
+`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`reflect` from the graph (27 C files with the profile's sanitizers), requires
+its link command to equal CMake's `build.ninja` statement apart from where
+objects, the output and archives sit, and runs it as CMake does: its
+`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
+About 42 s at a load average of 11.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

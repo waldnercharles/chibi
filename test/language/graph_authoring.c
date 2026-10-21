@@ -39,7 +39,7 @@ static pin_spec inputs[] = {
       .default_value = { .type = PIN_F64, .d = 4.0 } },
 };
 static pin_spec output = { .name = "product", .kind = PIN_DATA, .type = PIN_F64 };
-static pin_binding delta_binding = { .kind = PIN_BINDING_DELTA_TIME };
+static pin_binding local_binding = { .kind = PIN_BINDING_LOCAL };
 static node_desc product = {
     .name = "fixture product",
     .inputs = inputs,
@@ -76,7 +76,7 @@ TEST_CASE(graph_authoring_constant_uses_authored_defaults_and_refuses_runtime_in
     n->input_pins[0].default_value.d = 3.0;
     REQUIRE(graph_constant_value(asset->graph, n, &storage, &value));
     REQUIRE(value.d == 12.0);
-    n->input_pins[0].binding = &delta_binding;
+    n->input_pins[0].binding = &local_binding;
     value.d = 91.0;
     REQUIRE(!graph_constant_value(asset->graph, n, &storage, &value));
     REQUIRE(value.d == 91.0);

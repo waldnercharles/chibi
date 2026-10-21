@@ -5,8 +5,11 @@ Weapon :: behavior {
         elapsed = float(double(elapsed) + dt)
     }
     elapsed: float = 0.125
-    action elapsed_dt = AdvanceElapsed(elapsed, delta)
-    on Tick :: () {
+    // The step the next advance adds.
+    step: double = 0
+    action elapsed_dt = AdvanceElapsed(elapsed, step)
+    on Tick :: (dt: float s) {
+        step = dt
         if self.Aim.Manual {
             elapsed_dt()
         } else {

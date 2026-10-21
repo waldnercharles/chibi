@@ -77,16 +77,16 @@ static bool type_text(
     if (type.container == PIN_CONTAINER_MAP || type.container == PIN_CONTAINER_ARRAY) {
         bool map = type.container == PIN_CONTAINER_MAP;
         if (map) {
-            source_refactor_append(text, "Map<");
+            source_refactor_append(text, "[");
             if (!type_text(catalog, script_catalog_key_type(catalog, type), false, text, error, size, depth + 1)) {
                 return false;
             }
-            source_refactor_append(text, ", ");
+            source_refactor_append(text, ": ");
         }
         if (!type_text(catalog, script_catalog_element_type(catalog, type), false, text, error, size, depth + 1)) {
             return false;
         }
-        source_refactor_append(text, "%s%s", map ? ">" : "[]", type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
+        source_refactor_append(text, "%s%s", map ? "]" : "[]", type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
         return true;
     }
     if (type.container != PIN_CONTAINER_SINGLE) {

@@ -294,8 +294,8 @@ TEST_CASE(source_format_hugs_struct_braces)
 }
 TEST_CASE(source_format_options_preserve_defaults)
 {
-    const char
-        *input = "Demo :: behavior{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
+    const char *input = "Demo :: behavior{value:=[\n1,\n2];on Tick :: "
+                        "(){value[0]+=1;}}";
     REQUIRE(configured(input, authoring_format_defaults()));
     char error[192];
     char *legacy = authoring_source_format(source, error, sizeof error);
@@ -318,7 +318,7 @@ TEST_CASE(source_format_options_preserve_defaults)
 
 TEST_CASE(source_format_configures_indentation)
 {
-    const char *input = "Demo :: behavior{on Tick{call(\n1,\n2);}}";
+    const char *input = "Demo :: behavior{on Tick :: (){call(\n1,\n2);}}";
     const int widths[] = { 1, 2, 16 };
     for (int i = 0; i < 3; i++) {
         authoring_format_options options = { .indent_width = widths[i] };
@@ -329,7 +329,9 @@ TEST_CASE(source_format_configures_indentation)
         cleanup();
     }
     REQUIRE(configured(input, (authoring_format_options){ .indent_width = 4, .use_tabs = true }));
-    REQUIRE(!strcmp(text, "Demo :: behavior {\n\ton Tick {\n\t\tcall(\n\t\t\t1,\n\t\t\t2);\n\t}\n}\n"));
+    REQUIRE(
+        !strcmp(text, "Demo :: behavior {\n\ton Tick :: () {\n\t\tcall(\n\t\t\t1,\n\t\t\t2);\n\t}\n}\n")
+    );
     return true;
 }
 
@@ -402,7 +404,7 @@ TEST_CASE(source_format_reflow_preserves_comments)
     REQUIRE(configured(
         "/* module\r\n comment */\r\nDemo :: behavior{x:=[1, // first\r\n2, /* "
         "hé "
-        "*/ 3];on Tick{call(\"// exact\",/* x\ny */\"é\");}} // end",
+        "*/ 3];on Tick :: (){call(\"// exact\",/* x\ny */\"é\");}} // end",
         (authoring_format_options){ .indent_width = 2, .preferred_width = 12 }
     ));
     REQUIRE(strstr(text, "/* module\r\n comment */"));
@@ -560,9 +562,9 @@ TEST_CASE(source_format_preserves_package_separators)
 
 TEST_CASE(source_format_block_layout)
 {
-    REQUIRE(format("Demo :: behavior{count:=1;on Tick{count+=2;}}"));
+    REQUIRE(format("Demo :: behavior{count:=1;on Tick :: (){count+=2;}}"));
     REQUIRE(
-        !strcmp(text, "Demo :: behavior {\n    count := 1;\n    on Tick {\n        count += 2;\n    }\n}\n")
+        !strcmp(text, "Demo :: behavior {\n    count := 1;\n    on Tick :: () {\n        count += 2;\n    }\n}\n")
     );
     return true;
 }
@@ -622,10 +624,11 @@ TEST_CASE(source_format_measured_signatures)
 
 TEST_CASE(source_format_preserves_comments_and_literals)
 {
-    const char *input = "// module comment\nquoted_name :: behavior { "
-                        "label: string=\"héllo { // }\"; // trailing\n"
-                        "/* first\n second */ on Begin { print(label); /* "
-                        "inline */ } }";
+    const char
+        *input = "// module comment\nquoted_name :: behavior { "
+                 "label: string=\"héllo { // }\"; // trailing\n"
+                 "/* first\n second */ on Begin :: () { print(label); /* "
+                 "inline */ } }";
     REQUIRE(format(input));
     REQUIRE(strstr(text, "// module comment\n"));
     REQUIRE(strstr(text, "\"héllo { // }\""));
@@ -656,7 +659,7 @@ TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
         "Move :: system(p:Position) without Disabled{query p;\n"
-        "on Tick(dt:float){for(i in 0..3){p.x+=float(i);}\n"
+        "on Tick :: (dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
         "F :: (x:array<int>)->(r:int){return(g<int>(x[0]));}}"
@@ -687,7 +690,7 @@ TEST_CASE(source_format_query_header_words)
         "Move :: system(position:Transform,velocity:Velocity? "
         ") join aim:Targets.Transform? where not Disabled and "
         "(Targets.Active or ancestor(ChildOf).Active) and has(Targets)"
-        "{on Tick{position.x+=1;}}"
+        "{on Tick :: (){position.x+=1;}}"
     ));
     REQUIRE(
         strstr(text, "where not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
@@ -934,14 +937,8 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     return true;
 }
 
-TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
+TEST_CASE(source_minimize_preserves_cast_and_storage_comments)
 {
-    REQUIRE(minimize_valid(
-        &catalog,
-        "Demo :: behavior { on Tick /* alias */ as frame { x := frame.dt; } }",
-        "Demo :: behavior { on Tick /* alias */ as frame { x := frame.dt } }"
-    ));
-    cleanup();
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { total: retain /* declared */ float = 0.0\n"
@@ -1011,8 +1008,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     return true;
 }
 
-/* A handler that names its payload fields keeps the list and its types; the
- * older positional list that repeats the payload's names still drops. */
+/* A handler that names its payload fields keeps the list and its types. */
 TEST_CASE(source_minimize_keeps_named_payload_fields)
 {
     REQUIRE(minimize(
@@ -1021,7 +1017,7 @@ TEST_CASE(source_minimize_keeps_named_payload_fields)
         "    on Tick :: (dt: float) {\n"
         "        angle = angle + dt\n"
         "    }\n"
-        "    on Tick(dt) {\n"
+        "    on Tick :: (dt: float s) {\n"
         "        angle = angle - dt\n"
         "    }\n"
         "}\n",
@@ -1030,7 +1026,7 @@ TEST_CASE(source_minimize_keeps_named_payload_fields)
         "    on Tick :: (dt: float) {\n"
         "        angle = angle + dt\n"
         "    }\n"
-        "    on Tick {\n"
+        "    on Tick :: (dt: float s) {\n"
         "        angle = angle - dt\n"
         "    }\n"
         "}\n"
@@ -1256,16 +1252,48 @@ static const script_catalog component_catalog = {
     .entity_type = 40,
     .tick_event = 30,
 };
-
+/* An `after` list that repeats the results' own names drops; one that
+ * renames them stays. */
+static const script_catalog_parameter measured[] = {
+    { .name = "Value", .type = { .storage = PIN_F64 } },
+};
+static const char *const measure_completion[] = { "Completed" };
+static const script_catalog_capability measure_capabilities[] = {
+    { .id = 30, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 },
+    { .id = 31,
+      .name = "Measure",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .results = measured,
+      .result_count = 1,
+      .outcomes = measure_completion,
+      .outcome_count = 1,
+      .completion_outcome = 0 },
+};
+static const script_catalog measure_catalog = { .capabilities = measure_capabilities,
+                                                .capability_count = 2 };
+TEST_CASE(source_minimize_drops_repeated_result_lists)
+{
+    const char
+        *prefix = "Demo :: behavior { saved: double = 0; action update = "
+                  "Measure(); on Tick :: () { update() } ";
+    char input[512], expected[512];
+    snprintf(input, sizeof input, "%safter update(Value) { saved = Value } }", prefix);
+    snprintf(expected, sizeof expected, "%safter update { saved = Value } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, expected));
+    cleanup();
+    snprintf(input, sizeof input, "%safter update(moved) { saved = moved } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, input));
+    return true;
+}
 TEST_CASE(source_minimize_preserves_accessor_and_operator_comments)
 {
     REQUIRE(minimize_in(
         &component_catalog,
-        "Demo :: behavior { on Tick { if has_velocity(/* present */) { "
+        "Demo :: behavior { on Tick :: () { if has_velocity(/* present */) { "
         "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
         "multiply */ 3.0), self); "
         "} } }",
-        "Demo :: behavior { on Tick { if has_velocity(/* present */) { "
+        "Demo :: behavior { on Tick :: () { if has_velocity(/* present */) { "
         "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
         "multiply */ 3.0), self); "
         "} } }"
@@ -1278,7 +1306,7 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
     char error[256];
     const char
         *input = "Demo :: behavior {\n"
-                 "    on Tick {\n"
+                 "    on Tick :: () {\n"
                  "        if has_velocity() {\n"
                  "            set_velocity_x(multiply(get_velocity().Value.x, "
                  "2.0))\n"
@@ -1301,7 +1329,7 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
     script_catalog invalid_catalog = component_catalog;
     invalid_catalog.types = &invalid_type;
     text = authoring_source_migrate_generated(
-        "Demo :: behavior { on Tick { current := get_velocity(); } }",
+        "Demo :: behavior { on Tick :: () { current := get_velocity(); } }",
         &invalid_catalog,
         "Demo",
         error,
@@ -1325,7 +1353,7 @@ TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results)
     const char *input = "Demo :: behavior { saved: double = 0; "
                         "action update = set_velocity_x(Target: self, Value: "
                         "saved + 1); "
-                        "on Tick { update(); } after update { saved = "
+                        "on Tick :: () { update(); } after update { saved = "
                         "update.Value.x; } }";
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
@@ -1349,7 +1377,7 @@ TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers)
         *input = "Demo :: behavior { Write :: (value: Velocity) -> (Value: "
                  "Velocity) "
                  "{ self.Velocity = value; /* retained */ return value; } "
-                 "action update = Write({x: 1}); on Tick { update(); } }";
+                 "action update = Write({x: 1}); on Tick :: () { update(); } }";
     char error[256];
     text = authoring_source_canonical(input, &component_catalog, "Demo", error, sizeof error);
     REQUIRE(text);
@@ -1460,7 +1488,7 @@ TEST_CASE(source_migration_commutes_stable_self_with_deferred_receiver)
     const char *input = "Demo :: behavior { target: entity = self; saved: "
                         "entity = self; "
                         "action attach = set_link_parent(self, target); "
-                        "on Tick { attach(); } after attach { saved = "
+                        "on Tick :: () { attach(); } after attach { saved = "
                         "attach.Value.parent; } }";
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
@@ -1481,7 +1509,7 @@ TEST_CASE(source_migration_commutes_stable_self_with_deferred_receiver)
 TEST_CASE(source_minimize_keeps_generic_component_calls)
 {
     const char *input = "Demo :: behavior {\n"
-                        "    on Tick {\n"
+                        "    on Tick :: () {\n"
                         "        if has_component(\"Velocity\", self) {\n"
                         "            e := self\n"
                         "        }\n"
@@ -1622,14 +1650,18 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
         "Size:int){items:Element[];}"
         "Identity::(value:$ T)->T=>{return value;}"
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
-        "Use::(){scores:Map<string,int>={\"Ada\":1,[key]:2};"
+        "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
+        "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
         "for item:ref in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
     REQUIRE(strstr(text, "Identity :: (value: $T) -> T => {"));
     REQUIRE(strstr(text, "ProductType(L, R)"));
-    REQUIRE(strstr(text, "scores: Map<string, int>"));
-    REQUIRE(strstr(text, "\"Ada\": 1, [key]: 2"));
+    REQUIRE(strstr(text, "scores: [string: int] = [\"Ada\": 1, key: 2]"));
+    REQUIRE(strstr(text, "empty: [int: int] = [:]"));
+    REQUIRE(strstr(text, "delete scores[key]"));
+    REQUIRE(strstr(text, "gone := key not in scores"));
+    REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
     REQUIRE(strstr(text, "for item: ref in items {"));
     return true;
 }
@@ -1699,11 +1731,12 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_preserves_wrapper_comments);
     RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);
-    RUN_TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments);
+    RUN_TEST_CASE(source_minimize_preserves_cast_and_storage_comments);
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
     RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
     RUN_TEST_CASE(source_minimize_keeps_named_payload_fields);
+    RUN_TEST_CASE(source_minimize_drops_repeated_result_lists);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

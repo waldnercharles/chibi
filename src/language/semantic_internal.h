@@ -201,6 +201,8 @@ int script_analyzer_authored_parameter_index(
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
+int script_analyzer_map_operation(analyzer *, TSNode, script_expression_kind, int map, TSNode key);
+bool script_analyzer_map_method(analyzer *, TSNode function, const char *name);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);

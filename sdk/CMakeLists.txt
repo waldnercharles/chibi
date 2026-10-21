@@ -303,6 +303,10 @@ install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/reference/Reference.chibi" DESTINATION share/chibi/docs/reference)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/grammar/Grammar.chibi" DESTINATION share/chibi/docs/grammar)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/compiler_syntax/Syntax.chibi"
+    DESTINATION share/chibi/docs/compiler_syntax)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/syntax_diagnostics/Diagnostics.chibi"
+    DESTINATION share/chibi/docs/syntax_diagnostics)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")
@@ -417,9 +421,7 @@ if(CHIBI_SDK_BUILD_DESKTOP)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py" "${CHIBI_SDK_ROOT}/tools/package_player.py"
-        "${CHIBI_SDK_ROOT}/tools/package_studio.py"
-        "${CHIBI_SDK_ROOT}/tools/install_game_runtime.py" DESTINATION share/chibi/tools)
-    install(FILES "${CHIBI_SDK_ROOT}/tools/kdl_asset.py" DESTINATION share/chibi/tools)
+        "${CHIBI_SDK_ROOT}/tools/package_studio.py" DESTINATION share/chibi/tools)
     add_library(chibi_asset_json STATIC "${CHIBI_SDK_ROOT}/src/support/asset_json.c")
     add_library(Chibi::asset_json ALIAS chibi_asset_json)
     set_target_properties(chibi_asset_json PROPERTIES EXPORT_NAME asset_json)
@@ -479,13 +481,15 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate26.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate29.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate30.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
@@ -494,6 +498,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
@@ -579,7 +584,8 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
-    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
+    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_source_catalog
+        chibi_text_capabilities chibi_array_capabilities chibi_support)
     target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
     add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c"
         "${CHIBI_SDK_ROOT}/src/host/process.c")

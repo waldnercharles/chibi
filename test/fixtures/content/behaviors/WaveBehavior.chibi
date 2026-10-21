@@ -1,6 +1,8 @@
 // Spawns a bounded wave beside the Player at regular intervals, alternating
 // left and right.
 WaveBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
     // Wave
     CountLimit: int = 8
     Interval: float = 1.5
@@ -9,9 +11,10 @@ WaveBehavior :: behavior {
     Elapsed: float = 0.0
     Spawned: int = 0
     Side: float = -1.0
-    on Tick :: () {
+    on Tick :: (dt: float s) {
+        Step = dt
         if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
-            Elapsed = Elapsed + delta_time()
+            Elapsed = Elapsed + Step
             await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
         }
     }

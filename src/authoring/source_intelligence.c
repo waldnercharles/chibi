@@ -182,11 +182,11 @@ static void type_text(char **out, const script_catalog *catalog, script_type typ
         type.flags &= ~SCRIPT_TYPE_REFERENCE;
     }
     if (type.container == PIN_CONTAINER_MAP) {
-        append(out, "Map<");
+        append(out, "[");
         type_text(out, catalog, script_catalog_key_type(catalog, type));
-        append(out, ", ");
+        append(out, ": ");
         type_text(out, catalog, script_catalog_element_type(catalog, type));
-        append(out, ">");
+        append(out, "]");
         if (type.flags & SCRIPT_TYPE_OPTIONAL) {
             append(out, "?");
         }
@@ -1374,7 +1374,7 @@ void authoring_source_complete(
         }
     }
     if (types) {
-        const char *names[] = { "Map",       "Type",      "number",      "char",
+        const char *names[] = { "Type",      "number",    "char",
                                 "Prototype", "Component", "Relationship" };
         for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
             offer(

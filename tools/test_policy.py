@@ -226,17 +226,17 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Nineteen finite CLI cases: launcher calls over fake sibling compiler,
+    # Seventeen finite CLI cases: launcher calls over fake sibling compiler,
     # player, node and browser player; the Release launcher's version and doctor;
-    # its real chibi-compile's --check, --test, --format and --docs on tiny
-    # projects, package trees and sites; loopback serving for web and doc,
-    # started and stopped in-process. No network. About 6-8 s Release, 22-26 s
-    # sanitized, mostly the --docs cases.
+    # its real chibi-compile's --check, --test and --format on tiny projects and
+    # package trees; loopback serving for web and doc, started and stopped
+    # in-process. No external network. Compiler docs cases run in published-docs.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
-    # One case: the Release chibi-compile's --docs builds the repository's published
-    # site from copies of the pages docs/site.kdl lists, in a temporary root. One
-    # compiler child (about a second) and a few copies; no network or GPU.
+    # Three cases: the Release chibi-compile's --docs builds the published site
+    # from copied inputs, then checks fixed Markdown/reference fixtures and
+    # rejection of invalid original snippets. Twenty-three compiler starts;
+    # temporary roots and copies, no network or GPU.
     'published-docs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                        '--published-docs', str(ROOT / os.environ.get('CHIBI_COMPILE', 'build-release/sdk/chibi-compile'))],
     # The packaged SDK's launcher in place (make package-sdk first): three cases,
@@ -279,6 +279,18 @@ TOOLS = {
                            str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'tools/compiler/bootstrap'))],
     # Seven fixed orchestration cases: 50 API invocations on both backends, one CLI,
     # twelve tiny Git roots, controlled CMake workers and Make routing; no engine builds.
+    # Four Chibi build-graph cases over chibi_support: its compile commands match
+    # the configured CMake build's, its archive links, and about ten graph runs in
+    # a copied root rebuild only what changed. Compiles about thirty C files.
+    'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                    '--build-graph',
+                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: the graph builds and links reflect (about 27 C files with the
+    # profile's sanitizers), its link command matches CMake's build.ninja, and
+    # the program writes the same reflected sources as CMake's.
+    'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--build-graph-reflect',
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
@@ -701,16 +713,30 @@ TOOLS = {
     # One shared60s including bootstrap; no aggregate.
     'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--prepared-writer-chibi'],
-    # One pico_unit case: the authored package compiler over fixed sample
-    # packages on both compiler backends; each accepted closure loads in a fresh
-    # runtime host and runs on bytecode and SLJIT, and stage zero's build of the
-    # same package agrees. Rejections check message and position. shared60s.
+    # One pico_unit case: the authored package compiler, running on the
+    # bytecode backend, over fixed sample packages; each accepted closure loads
+    # in a fresh runtime host and runs on bytecode and SLJIT, and stage zero's
+    # build of the same package agrees and has the same points. Rejections
+    # check message and position. shared60s.
     'language-package-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--package-compiler-chibi'],
+    # The same samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                '--package-compiler-chibi-compiled'],
     # The same case over the samples of unions, constants, patterns and
     # integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # The type samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-types-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                      '--package-compiler-chibi-types-compiled'],
+    # The samples of maps, references, arrays, ranges and records, split off from the
+    # base and type groups so each selector keeps its own shared60s.
+    'language-package-compiler-chibi-collections': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                   '--package-compiler-chibi-collections'],
+    # The collection samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-collections-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                            '--package-compiler-chibi-collections-compiled'],
     # The stage-one compiler's reading of floating literals against stage
     # zero's: listed spellings on both backends, long and generated ones on
     # the compiled one. shared60s.
@@ -729,10 +755,20 @@ TOOLS = {
     # call. shared60s.
     'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-sharing'],
+    # Stage one compiles samples without debugger points and watches, as the
+    # bootstrap compiles the compiler: none remain, and they run. shared60s.
+    'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                  '--package-compiler-chibi-debug-free'],
     # The same case over the imports sample, which compiles all of
-    # core:strings, split off so it keeps its own shared60s.
-    'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+    # core:strings. Stage one compiling it on the bytecode backend under
+    # sanitizers came within a few seconds of the ceiling once it placed
+    # every point, so both imports selectors run an unsanitized Release
+    # test_language, as the bootstrap check does. shared60s.
+    'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
+    # The imports sample compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
+                                                        '--package-compiler-chibi-imports-compiled'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same
     # bytes. Sanitizers make one compile take about two minutes, so this runs
@@ -897,9 +933,9 @@ TOOLS = {
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
-    # Six C cases rendering fixed Markdown, navigation, a package reference and a
-    # grammar with the shipped site generator on two backends; 2,000,000-instruction
-    # budget per call; no files/processes.
+    # Fourteen C cases rendering fixed Markdown, highlighting, navigation, a package
+    # reference and grammar with the shipped generator and tokenizer on two backends;
+    # 2,000,000-instruction budget per call; no files/processes.
     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--docs-markdown'],
     # Two C cases, eight tests in two project packages per backend; one test
@@ -996,11 +1032,20 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
 for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
+# Stage one on the 32-bit Wasm host: each package-compiler selector, compiling
+# with the compiler prepared for Wasm, without sanitizers. The bootstrap stays
+# native: stage one compiling itself outgrows Wasm's 2 GiB linear memory.
+for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
+                 '-imports', '-imports-compiled', '-behaviors',
+                 '-behaviors-rest', '-sharing', '-debug-free', '-literals'):
+    TOOLS['wasm-package-compiler-chibi' + selector] = ['node', str(wasm_build / 'test_language.js'),
+                                                       '--package-compiler-chibi' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',

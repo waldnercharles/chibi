@@ -14,6 +14,11 @@ typedef struct
     uint64_t live_entries;
 } execution_wasm_jit_stats;
 
+/* V8's optimizing tier spends about 4 MB per KiB of a generated module and
+ * aborts the process past its zone limit, which a 482 KiB module reached on
+ * 2026-10-20. A definition whose module would be larger runs on bytecode. */
+#define EXECUTION_WASM_JIT_MAX_BYTES (128u * 1024u)
+
 bool behavior_function_compile_wasm(behavior_function *);
 int behavior_function_run_wasm(const behavior_function *, behavior_function_context *);
 void execution_wasm_jit_free(execution_wasm_jit *);

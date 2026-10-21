@@ -8,15 +8,18 @@ DashBehavior :: behavior {
     }
 
     Just_Started := false
+    // The last frame step, for the input handler and timers.
+    Step: float = 0
     Struck_Entities: handle<ecs.entity>[] = []
     on Dash :: () {
-        if delta_time() >= self.Dash.cooldown_remaining {
+        if Step >= self.Dash.cooldown_remaining {
             if 0.0 >= self.Dash.remaining {
                 await Start_Dash()
             }
         }
     }
-    on Tick :: () {
+    on Tick :: (dt: float s) {
+        Step = dt
         await Advance_Dash_Timers()
         if 0.0 < self.Dash.remaining {
             await Drive_Dash()
@@ -52,7 +55,7 @@ DashBehavior :: behavior {
         }
     }
     Advance_Dash :: () {
-        action set_gamedash_remaining = import_component_write_1(max(self.Dash.remaining - delta_time(), B: float = 0.0))
+        action set_gamedash_remaining = import_component_write_1(max(self.Dash.remaining - Step, B: float = 0.0))
         set_gamedash_remaining()
         after set_gamedash_remaining {
             if 0.0 < set_gamedash_remaining.Value.remaining {
@@ -68,7 +71,7 @@ DashBehavior :: behavior {
             Just_Started = false
             return
         } else {
-            self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - delta_time(), B: float = 0.0)
+            self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - Step, B: float = 0.0)
             if 0.0 < self.Dash.remaining {
                 await Advance_Dash()
                 return

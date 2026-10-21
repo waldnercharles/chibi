@@ -192,8 +192,8 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
             "{ total+=value; if value<0 { await Delay(1); } } Leaf :: "
             "(value:double)->double { return value; } Forward :: "
             "(value:double)->double { return Leaf(value); } on "
-            "Run(amount:double) { total+=Forward(amount); } on "
-            "Reenter(amount:double) { total+=amount; child:task=Work(7); "
+            "Run :: (amount: double) { total+=Forward(amount); } on "
+            "Reenter :: (amount: double) { total+=amount; child:task=Work(7); "
             "total+=amount; } }",
             backends[backend]
         ));
@@ -250,8 +250,8 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
     const char
         *source = "Cache :: behavior { total:retain double=0; kept:retain "
                   "string=\"\"; Echo :: (value:string)->string { return value; "
-                  "} on Text(value:string) { kept=Echo(value); } on "
-                  "Run(amount:double) { if amount<0 { values:=[10,20]; "
+                  "} on Text :: (value: string) { kept=Echo(value); } on "
+                  "Run :: (amount: double) { if amount<0 { values:=[10,20]; "
                   "total=values[int(-amount)]; } else { total+=amount; } "
                   "} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -298,9 +298,9 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
 {
     const char *source = "Cache :: behavior { total:retain double=0; on "
-                         "Run(amount:double) { values:=[amount,amount+1]; "
+                         "Run :: (amount: double) { values:=[amount,amount+1]; "
                          "values[0]+=2; total+=values[0]+values[1]; } on "
-                         "Text(value:string) { total+=1; } }";
+                         "Text :: () { total+=1; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
@@ -349,7 +349,7 @@ TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls)
 {
     const char *source = "Cache :: behavior { total: retain double=0; "
                          "Leaf :: (value:double)->double { return value + 1; } "
-                         "on Run(amount:double) { i:int=0; "
+                         "on Run :: (amount: double) { i:int=0; "
                          "while i < 300 { total += Leaf(amount); i += 1; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -385,7 +385,7 @@ TEST_CASE(activation_cache_reuses_large_frames_within_a_run)
                  "Big :: (value:double)->double { values:=[value",
         item[] = ",value",
         tail[] = "]; return values[0]; } "
-                 "on Run(amount:double) { i:int=0; "
+                 "on Run :: (amount: double) { i:int=0; "
                  "while i < int(amount) { total += Big(1); i += 1; } } }";
     char *source = xmalloc(sizeof head + (ITEMS - 1) * (sizeof item - 1) + sizeof tail);
     char *at = source;
@@ -415,10 +415,10 @@ TEST_CASE(activation_cache_reuses_large_frames_within_a_run)
 }
 TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
 {
-    const char *
-        source = "Cache :: behavior { total:retain double=0; on "
-                 "Run(amount:double) { total+=amount; } on Wait(amount:double) "
-                 "{ total+=amount; await Delay(1); total+=amount; } }";
+    const char *source = "Cache :: behavior { total:retain double=0; on "
+                         "Run :: (amount: double) { total+=amount; } on Wait "
+                         ":: (amount: double) "
+                         "{ total+=amount; await Delay(1); total+=amount; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));

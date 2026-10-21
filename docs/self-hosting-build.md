@@ -6,7 +6,7 @@ bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
 
 ## First increment
 
-`test/language/BuildWorkflow.chibi` is an ordinary library whose `Build`
+`test/language/BuildWorkflow.chibi` is an ordinary package whose `Build`
 function constructs argv arrays, requests configuration, stops on failure and
 requests the build only after success. Its `build.run` capability exists only
 in the C test's private catalog. The host copies borrowed arguments into fixed
@@ -40,11 +40,19 @@ game catalogs and public SDK library exports. Windows retains the
 existing stage-zero path; its equivalent process-tree implementation is pending.
 
 ```text
-chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]
+chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]
 ```
 
 The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
-named zero-argument function returning `int`. Relative source paths resolve from
+named zero-argument function returning `int`. The file is the one file of the
+package at its directory, so it starts with a `package` header. With `--core`,
+it may import that collection's packages, such as `core:strings`; a relative
+`--core` resolves from the root. Each `--collection NAME=DIR`, at most eight,
+adds another collection the program imports as `NAME:`, as Odin's
+`-collection:name=path` does. Besides the `build.` natives, a program has
+the text and array natives every host offers, such as `format_text` and
+`length`. Nothing resumes a build program, so waiting or starting a task fails
+it with a diagnostic. Relative source paths resolve from
 the explicit root. The CLI uses bytecode; the private C invocation API also
 supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
@@ -72,13 +80,26 @@ deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
 Missing allowed names read as empty strings; other names are capability errors.
 `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
-1 MiB. Each invocation permits 64 steps, probes included, and each step permits
+1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
 256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
 1 MiB, one build text value, for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
 the result and CLI. A probe's output is data only: compiler reports and tool
 queries stay out of the build's output and leave room for its diagnostics.
+
+`build.start(arguments: string[]) -> int` begins a reported step and returns
+its handle at once; `build.wait(handle: int) -> int` waits for that step and
+gives its status as `build.run` would. While a program waits for one step, the
+host drains every other started step's output, so steps that write more than a
+pipe holds still finish. Up to 64 started steps run at once, and each counts
+toward the invocation's steps. A wait makes its step's output the last output
+and reports it, so the result holds output in wait order. A handle can be
+waited for once. Steps the program never waits for are killed with their
+process groups when it returns, and a wait past the deadline fails the
+program. Like Zig's `std.process.Child` `spawn` and `wait`, this is how a build
+graph runs independent compiles in parallel; the compiles are ordinary steps,
+not a separate executor such as Ninja.
 
 Child exits return `0..255`; signal termination returns the negative signal
 number. Invalid input, spawn failure, timeout, cancellation and host failure
@@ -108,7 +129,7 @@ Run it through the private host with an explicit engine source checkout as root:
 ```sh
 SDK/libexec/chibi/chibi-build-host --root SOURCE \
   --source SDK/share/chibi/tools/toolchain/Build.chibi \
-  --entry Build --timeout-ms 1800000 -- \
+  --core SDK/share/chibi/core --entry Build --timeout-ms 1800000 -- \
   tool-host BUILD --target chibi-build-host --jobs 8 -- \
   -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF
 ```
@@ -120,11 +141,12 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 4
+`make build` uses this program when its private host reports protocol version 5
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
-file primitives and probes and the redesigned syntax, and version 4 names the
-natives under `build.`. A cold build or an older host
+file primitives and probes and the redesigned syntax, version 4 names the
+natives under `build.`, and version 5 runs programs as packages that may import
+`core:`. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
@@ -190,6 +212,7 @@ interprocess lock they needed, went away rather than moved.
 | `build.rename(source, destination) -> bool` | `rename(2)`. |
 | `build.remove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
 | `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -201,9 +224,104 @@ signature hashes the full environment; children see only the allowlist, so
 `build.environment_names` suffices. It no longer tracks dependency packages or
 source caches. Packaging also needs sizes,
 modification-time order, symbolic-link reads and unique staging directories.
-Each invocation has a 100,000-step execution budget, which bounds authored
-walks over large SDK trees; a walk of thousands of files needs a larger budget
-or a native tree operation. Add each with the move that first calls it.
+Each invocation may run 100 million instructions, as a package test may; the
+build graph raised it from 100,000 because it parses a dependency file per
+object. `chibi_build_options.instruction_budget` sets a smaller one. The
+deadline still bounds the time.
+
+## Build graph (M6)
+
+The build graph replaces CMake's internal build graph one target at a time
+(PLAN.md M6). Its library is the `graph:` collection in `tools/graph`, and
+`tools/toolchain/Graph.chibi` is the program that runs it:
+
+```sh
+build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
+  --core packages/core --collection graph=tools/graph --entry Libraries \
+  --timeout-ms 600000 -- --build "$PWD/build-graph" --profile sanitizer
+```
+
+- `graph:c` compiles C sources into static libraries. Its functions read like
+  Jai's `BuildCpp` rather than a declarative target language: `c.Stale`,
+  `c.Start`, `c.Finish` and `c.Archive` take a `c.Tools` record (compiler,
+  optional launcher such as ccache, archiver, ranlib, jobs) and a `c.Library`
+  (root, object directory, archive). Sources and flags are arrays beside the
+  record, because records hold only scalar fields.
+- `graph:engine` lists the libraries it owns in dependency order (`Targets`)
+  and gives each one's sources, public and private headers and the libraries
+  whose headers it uses, by name. `engine.Build` stages every selected
+  library's headers, then starts the compiles that changed across all of them,
+  up to `jobs` at once, then archives each. A compile needs only staged
+  headers, so no library waits for another's archive. The graph executes the
+  compiles itself through `build.start` and `build.wait`, as Zig's build
+  runner does, with no Ninja.
+- Every run first writes `BUILD/compile_commands.json` in the `arguments` form,
+  as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
+  repeated, builds only the named libraries.
+- Each compile writes `-MD` dependencies. After it succeeds, the graph writes
+  a record beside the object: the command, then the `build.file_stamp` and
+  path of every input and of the object. A later run recompiles a source when
+  its record is missing, its command differs, or any recorded stamp changed;
+  the archive is rebuilt when an object was or its own record differs. A
+  failed compile leaves no record, so the next run retries it. Records are
+  read with `build.lines`, because `core:strings` copies the rest of the text
+  at each line and an up-to-date run took seconds.
+- Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
+  and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
+  CMake stages them. A header is copied only when its contents differ, so
+  unchanged headers keep their stamps, and a staged file no header names is
+  removed, as `chibi_sdk_headers` does.
+- A compile's flags are its defines, then its include directories in CMake's
+  order (staged `public/NAME` and `private/NAME` directories, or source-tree
+  directories such as `third_party/fmt`), then the profile flags root
+  `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
+  type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
+  sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
+  target's own options, such as `-w` for vendored C.
+
+`graph:engine`'s `Targets.chibi` lists the 43 libraries the graph owns on
+macOS and Linux, from `chibi_support` through the shader, model and image
+runtimes, the native capability tables, the documents and fields libraries,
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
+over ckdl) and the libraries over them, and three header-only libraries
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
+`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
+engine component KDL are generated sources, and `chibi_save_runtime`: 122
+sources in 40 archives. For each it gives sources, the directory its public headers
+come from (`src`, or `third_party/yyjson` for `chibi_json`), public and private
+headers, include directories, defines, options and embedded files. An
+`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT (a
+`generated/` path, below `BUILD/sdk`) with `build.embed_file`, before any
+compile. Building
+a subset with `--target` also stages the headers of every library its
+includes name. CMake still builds them and
+everything else, and `build-graph` checks that their compile commands agree.
+That route compiles only `chibi_support`; building every library the graph
+owns is a manual check, about 140 s with sanitizers, and an unchanged build
+then takes about 5 s.
+The graph also links executables. `engine.Programs` lists them (now the
+reflection tool, `reflect`); `c.Link` runs CMake's executable link (the
+language and link flags, the sanitizers, the objects, `-o`, then the
+profile's external libraries, the graph's archives and system libraries) and
+records it as it records compiles. Naming a program with `--target` also
+builds the libraries it links. `reflect` takes libclang from the profile
+(`--libclang-include`, `--libclang-library`), and the graph finds clang's
+builtin headers as `tools/reflect/resource.cmake` does, by asking that
+libclang's `clang -print-resource-dir`.
+
+A run finds its profile on the machine unless told otherwise
+(`graph:engine`'s `Profile.chibi`). `--profile` names the Makefile's
+`sanitizer` (the default), `debug` or `release` profile. The compiler is `CC`,
+or Homebrew LLVM's clang as the Makefile prefers it, or `cc`, and its kind
+comes from its `--version` banner. On macOS the architecture comes from
+`uname -m` and the SDK from `SDKROOT`, the compiler's `-###` report (resolved
+through its versioned link, as `Build.chibi` resolves it) or `xcrun`. ccache,
+when found, launches compiles and, for a build below the source tree, sets the
+debug directory CMake sets. libclang comes from root `CMakeLists.txt`'s
+hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
+explicit option still overrides what it names.
+
+Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones
 
@@ -219,7 +337,11 @@ or a native tree operation. Add each with the move that first calls it.
    used from the existing C compiler; self-hosting is not a prerequisite. Compare
    complete workloads against bytecode/SLJIT, including compile/startup/reload
    cost, steady-state/tail latency, memory, artifact size, diagnostics and ABI.
-   Require matching semantics, not assumed speedups.
+   Require matching semantics, not assumed speedups. On 2026-10-20 the
+   compiler's own workload ruled it out for now: SLJIT's generated code was
+   6.2% of stage one's samples while it compiled the compiler, and the rest
+   was C runtime value copies and per-call resets that an LLVM backend would
+   still call (`PLAN.md` M5).
 
 ## Testing and library replacement
 
@@ -344,7 +466,9 @@ folder). It runs in two steps:
    stage zero, compiles the compiler sources to stage two and has the compiler
    host compile them again with stage two, to the same bytes. With
    `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The target
+   arguments there as `compiler.chibip` and `compile.json`. The compiler is
+   compiled without debugger points and watches: its `debug` argument is
+   false, and the seed must say so. The target
    leaves the seed in `build-release/bootstrap.seed` and removes it after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the

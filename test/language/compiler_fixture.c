@@ -329,7 +329,12 @@ static bool run(
     }
     REQUIRE(status == FLOW_OK && state->context.returned);
     REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
-    REQUIRE(backend == 0 ? runs.counts.bytecode_entries > 0 : !runs.counts.bytecode_entries);
+    /* A compiled run enters bytecode only for a definition past the Wasm
+     * JIT's size budget. */
+    REQUIRE(
+        backend == 0 ? runs.counts.bytecode_entries > 0
+                     : runs.counts.bytecode_entries == runs.counts.size_bytecode_fallbacks
+    );
     REQUIRE(backends[backend] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
     REQUIRE(backends[backend] != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
     REQUIRE(!compiler_fixture_snapshot(detached, out, &state->result));

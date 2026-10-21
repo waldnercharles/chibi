@@ -31,8 +31,8 @@ python3 tools/benchmark_neon_materials.py --output /tmp/neon-full --scale 1
 python3 tools/benchmark_neon_materials.py --output /tmp/neon-800 --width 1280 --height 800
 ```
 
-Tracy uses the same scenario and a symbolized build. The matching upstream
-`capture` and `csvexport` tools can be built from `build-tracy/_deps/tracy-src`.
+Tracy uses the same scenario and a symbolized build; Studio owns Tracy
+profiling (`docs/tracy.md`).
 
 ```text
 python3 tools/benchmark_neon_materials.py --build build-tracy \

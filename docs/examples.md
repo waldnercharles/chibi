@@ -108,8 +108,7 @@ A system selects entities by their components.
 This system needs `Transform` and `Velocity` on each matching entity.
 
 ```chibi
-Drift :: system(position: Transform, velocity: Velocity)
-    on Tick :: (dt: s) {
+Drift :: system(position: Transform, velocity: Velocity) on Tick :: (dt: s) {
     position += velocity * dt
 }
 ```
@@ -190,7 +189,13 @@ The behavior needs `Transform` and `Velocity` components.
 ```chibi
 AvoidObstacle :: behavior {
     on Tick :: () {
-        hit := raycast(self.Transform, self.Transform + vec2(200, 0), 1, self, false)
+        hit := raycast(
+            self.Transform,
+            self.Transform + vec2(200, 0),
+            1,
+            self,
+            false
+        )
         if hit.Found {
             self.Velocity = self.Velocity * 0.5
         }

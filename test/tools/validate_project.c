@@ -378,7 +378,7 @@ TEST_CASE(catalog_errors_are_reported_once)
         "game/content/behaviors/Broken.chibi",
         "Broken :: behavior {\n"
         "    a: retain Foo = 0\n"
-        "    on Tick {\n"
+        "    on Tick :: () {\n"
         "        a = Foo(a)\n"
         "    }\n"
         "}\n"
@@ -1149,7 +1149,7 @@ TEST_CASE(scenes_run_under_their_own_name)
     write_file(
         "game/content/behaviors/Again.chibi",
         "Again :: behavior {\n"
-        "    on Tick {\n"
+        "    on Tick :: () {\n"
         "        reload_scene()\n"
         "    }\n"
         "}\n"
@@ -1479,7 +1479,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     );
     write_file(
         "game/content/systems/Recharge.chibi",
-        "Recharge :: system(charge: Charge) {\n"
+        "Recharge :: system(charge: Charge) on Tick :: (dt: float s) {\n"
         "    charge.level += charge.rate * dt\n"
         "}\n"
     );
@@ -1564,11 +1564,11 @@ TEST_CASE(unit_mismatches_are_errors)
     write_file(
         "game/content/systems/Measure.chibi",
         "Measure :: system(charge: Charge, movement: Movement, collider: "
-        "Collider) {\n"
+        "Collider) on Tick :: (dt: float s) {\n"
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
         "    collider.radius = movement.speed\n"
-        "    collider.radius += delta\n"
+        "    collider.radius += dt\n"
         "}\n"
     );
     /* Proven unit mismatches prevent the project from running. */
@@ -1631,7 +1631,7 @@ TEST_CASE(scenarios_hold_input_actions)
     write_file(
         "game/content/behaviors/Jumper.chibi",
         "Jumper :: behavior {\n"
-        "    on Tick {\n"
+        "    on Tick :: () {\n"
         "        if input.Jump.held {\n"
         "            self.Transform = vec2(7, 0)\n"
         "        }\n"
@@ -1670,7 +1670,7 @@ TEST_CASE(scenarios_hold_controller_slots)
     write_file(
         "game/content/behaviors/Controls.chibi",
         "Controls :: behavior {\n"
-        " on Tick {\n"
+        " on Tick :: () {\n"
         " x := 0\n"
         " if input.Left.held { x += 1 }\n"
         " if input.Confirm.held { x += 10 }\n"
@@ -1739,7 +1739,7 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
     write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
     write_file(
         "game/content/behaviors/Pointer.chibi",
-        "Pointer :: behavior { on Tick {\n"
+        "Pointer :: behavior { on Tick :: () {\n"
         " ray := get_pointer_ray()\n"
         " x := -1.0\n"
         " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"

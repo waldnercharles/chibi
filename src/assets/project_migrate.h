@@ -126,5 +126,10 @@ int chibi_migrate_handlers(
     char *error,
     size_t error_size
 );
+/* Version 31 reads the frame step only through a Tick handler's list or a
+ * system's step clause: see chibi_migrate30_step_globals. Returns -1 with
+ * `error` set when a read cannot move there or the current grammar rejects
+ * the result. */
+int chibi_migrate_step_globals(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

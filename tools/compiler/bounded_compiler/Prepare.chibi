@@ -27,7 +27,7 @@ Reference :: (own: int) -> writer.Reference {
 // canonical definition; the runtime verifies and finalizes them when it loads
 // the module, so nothing is optimized here.
 Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
-            abi: uint64, opcodes: int[]) -> byte[] {
+            abi: uint64, pointer_size: int, opcodes: int[]) -> byte[] {
     switch plan {
         case .Rejected(diagnostics):
             empty: byte[] = [];
@@ -148,7 +148,7 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
             points: writer.Point[] = [];
             watches: writer.Watch[] = [];
             states: writer.State[] = [];
-            return writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements, fields,
+            return writer.Write(writer.Module.Tables(module, 0, abi, pointer_size, wide, values, ints, requirements, fields,
                                                      event_declarations, event_fields, imports, functions, spans, roots,
                                                      instructions, prepared_locals, parameters, frames, sources, layouts,
                                                      data, hosts, calls, references, components, points, watches, states,

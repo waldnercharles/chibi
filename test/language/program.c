@@ -787,7 +787,7 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
                          "    total: double = 0;\n"
                          "    seen: bool = false;\n"
                          "\n"
-                         "    on Impulse(amount, enabled) {\n"
+                         "    on Impulse :: (amount: double, enabled: bool) {\n"
                          "        if (enabled) {\n"
                          "            total += amount;\n"
                          "            seen = true;\n"
@@ -912,9 +912,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         ecs_entity moving = positioned(1, true);
-        REQUIRE(
-            compile("Motion :: system( position: Position, velocity: Velocity) { position.x += velocity.x * dt; position.y = position.x + velocity.x; }", backends[backend])
-        );
+        REQUIRE(compile(
+            "Motion :: system( position: Position, velocity: Velocity) on Tick "
+            ":: (dt: float s) { position.x += velocity.x * dt; position.y = "
+            "position.x + velocity.x; }",
+            backends[backend]
+        ));
         execution_effect_summary effects = execution_module_effects(module);
         REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
         REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
@@ -937,12 +940,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
 
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    const char
-        *source = "Motion :: system(position: Position, velocity: Velocity) {\n"
-                  "    position.x += velocity.x * dt;\n"
-                  "    await Delay(10);\n"
-                  "    position.y = 99;\n"
-                  "}\n";
+    const char *source = "Motion :: system(position: Position, velocity: "
+                         "Velocity) on Tick :: (dt: float s) {\n"
+                         "    position.x += velocity.x * dt;\n"
+                         "    await Delay(10);\n"
+                         "    position.y = 99;\n"
+                         "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -1285,7 +1288,7 @@ TEST_CASE(program_relationship_loops_stream_targets_explicitly)
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
             "Count :: behavior { count:retain int=0; on "
-            "Impulse(amount,enabled) { "
+            "Impulse :: () { "
             "for target in self.Targets { count+=1; } } }",
             backends[backend],
             &active
@@ -1340,7 +1343,7 @@ TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected)
         REQUIRE(compile(
             "Binding :: behavior { saved: double=2; Read :: ()->double { "
             "return saved } "
-            "bind self.Position.y=Read(); on Impulse(amount,enabled) { "
+            "bind self.Position.y=Read(); on Impulse :: (amount: double) { "
             "saved=amount; } }",
             backends[i]
         ));
@@ -1415,7 +1418,8 @@ TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples)
                 "Chained :: system( p:Position) join middle in self.Targets "
                 "join leaf in middle.Leaves join mid:Position from middle join "
                 "aim:Position from leaf where aim.x > mid.x { ticks:retain "
-                "double=0; seen:retain double=0; on Impulse(amount,enabled) { "
+                "double=0; seen:retain double=0; on Impulse :: (amount: "
+                "double, enabled: bool) { "
                 "if enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } "
                 "ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
                 backends[backend],
@@ -1759,8 +1763,9 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
                                  "return(count, self.Position.x); } }";
     const char
         *owner_source = "Owner :: behavior { count: double = 0; local_count: "
-                        "double = 0; position_x: double = 0;on Impulse(amount, "
-                        "enabled) { count += amount; values := await "
+                        "double = 0; position_x: double = 0;on Impulse :: "
+                        "(amount: "
+                        "double) { count += amount; values := await "
                         "library_work();local_count = values.local_count; "
                         "position_x = values.position_x; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1916,8 +1921,8 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
 {
     const char *
         source = "Managed :: behavior { count: double = 0; text: string = "
-                 "\"initial\"; observed: string = \"\";on Impulse(amount, "
-                 "enabled) { count += amount; saved := text;text = "
+                 "\"initial\"; observed: string = \"\";on Impulse :: (amount: "
+                 "double) { count += amount; saved := text;text = "
                  "\"changed\"; await Delay(1); observed = saved; saved = "
                  "text;text = \"final\"; await Delay(1); observed = saved; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1982,7 +1987,7 @@ TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume)
         "TupleCopies :: behavior { first: double = 0; second: double = "
         "0;before_text: string = \"\"; after_text: string = \"\";Pair :: (n: "
         "double, t: string) -> (total: double, message: string) {return(n, t); "
-        "}on Impulse(amount, enabled) { i: double = 0; while i < 2 {current := "
+        "}on Impulse :: () { i: double = 0; while i < 2 {current := "
         "Pair(i, \"before\"); saved := current;current.total = 99; "
         "current.message = \"mutated\";current = Pair(100, \"replacement\"); "
         "await Delay(1);first += saved.total; before_text = "
@@ -2020,7 +2025,7 @@ TEST_CASE(program_array_literals_are_fresh_copies)
         "Literals :: behavior { first: double = 0; second: double = 0; "
         "mixed_total: double = 0; text: string = \"\"; kept: double[] = []; "
         "loop_total: double = 0; Tiles :: () -> (tiles: double[]) { return [3, "
-        "-1.5, 7]; } on Impulse(amount, enabled) { changed := Tiles(); "
+        "-1.5, 7]; } on Impulse :: (amount: double) { changed := Tiles(); "
         "changed[0] = 99; fresh := Tiles(); first = fresh[0] + fresh[1]; "
         "second = changed[0]; mixed: double[] = [amount, 2]; mixed_total = "
         "mixed[0] + mixed[1]; names: string[] = [\"a\", \"b\"]; text = "
@@ -2191,7 +2196,8 @@ static bool capture_retention_case(bool array, bool attached, int ending)
         "if i == 7 { saved = alias; } count += 1; i += 1; yield; } }"
         "Keep :: (value: ref %s) { yield; i := 0; while i < %d {"
         "latest = %s; i += 1; yield; } }"
-        "on Impulse(amount, enabled) { if amount == 0 { v := %s; initial = v;"
+        "on Impulse :: (amount: double, enabled: bool) { if amount == 0 { v := "
+        "%s; initial = v;"
         "writer = Write(v, v); keeper = Keep(v); if enabled { await writer; } }"
         "else if amount == 1 { cancel writer; } else { cancel keeper; } } }",
         array ? "string[]" : "string = \"\"",
@@ -2334,7 +2340,7 @@ TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
                   "{ yield; value = value; before = value;yield; value = "
                   "\"small\"; observed = value;yield; value = \"\"; done = 1; "
                   "yield; }Relay :: (value: ref string) { yield; Child(value); "
-                  "}on Impulse(amount, enabled) { v := capture_text(); "
+                  "}on Impulse :: () { v := capture_text(); "
                   "Relay(v); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -2390,7 +2396,7 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
                   "(value: double) { yield; return 7; }Use :: (jobs: ref "
                   "task<double>[]) { yield; jobs = jobs; yield;answer := await "
                   "jobs[0]; if answer is double n { seen = n; }jobs = []; "
-                  "yield; }on Impulse(amount, enabled) { jobs: task<double>[] "
+                  "yield; }on Impulse :: () { jobs: task<double>[] "
                   "= [Result()]; Use(jobs); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -2427,8 +2433,9 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
                        "copied.message; observed = saved;"
                        "if i == 3 { saved = text; } await Delay(1); count += "
                        "1; i += 1; }";
-    const char *starts[] = { "on Impulse(amount, enabled) {", "Run :: () -> () {" };
-    const char *ends[] = { "}", "} on Impulse(amount, enabled) { await Run(); }" };
+    const char *starts[] = { "on Impulse :: (amount: double, enabled: bool) {",
+                             "Run :: () -> () {" };
+    const char *ends[] = { "}", "} on Impulse :: (amount: double, enabled: bool) { await Run(); }" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int outlined = 0; outlined < 2; outlined++) {
         char source[2048];
@@ -2498,7 +2505,7 @@ TEST_CASE(program_completed_payloads_are_released_without_marking)
     const char
         *source = "Completed :: behavior { seen: double = 0;Pair :: (n: "
                   "double) -> (first: double, second: double) {return(n, n + "
-                  "1); }on Impulse(amount, enabled) {i := 0; while i < 512 { "
+                  "1); }on Impulse :: () {i := 0; while i < 512 { "
                   "current := Pair(i);values: double[] = [current.first, "
                   "current.second];seen = values[0] + values[1]; i += 1; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -2526,7 +2533,7 @@ TEST_CASE(program_temporary_payloads_preserve_roots_across_collection)
     const char
         *source = "Payloads :: behavior { seen: double = 0;Pair :: (n: double) "
                   "-> (first: double, second: double) {return(n, n + 1); }on "
-                  "Impulse(amount, enabled) {saved := Pair(40); kept: double[] "
+                  "Impulse :: () {saved := Pair(40); kept: double[] "
                   "= [2, 3, 5];i := 0; while i < 512 {current := Pair(i); "
                   "values: double[] = [current.first, "
                   "current.second];self.Position.x = values[0]; "
@@ -2557,7 +2564,7 @@ TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_det
     const char
         *source = "Timers :: behavior { early_count: double = 0; late_count: "
                   "double = 0;action early = timer(1); action late = "
-                  "timer(3);on Impulse(amount, enabled) { early(); late(); "
+                  "timer(3);on Impulse :: () { early(); late(); "
                   "}after early.Completed { early_count += 1; }after "
                   "late.Completed { late_count += 1; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -2609,13 +2616,12 @@ TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_det
 }
 TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
 {
-    const char
-        *source = "Failure :: behavior {\n"
-                  "  Outline :: () -> (Result: double) {\n"
-                  "    return fail_native();\n"
-                  "  }\n"
-                  "  on Impulse(amount, enabled) { output := Outline(); }\n"
-                  "}";
+    const char *source = "Failure :: behavior {\n"
+                         "  Outline :: () -> (Result: double) {\n"
+                         "    return fail_native();\n"
+                         "  }\n"
+                         "  on Impulse :: () { output := Outline(); }\n"
+                         "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2674,7 +2680,7 @@ TEST_CASE(program_assert_fails_with_its_message_or_condition)
     const char
         *source = "Checks :: behavior {\n"
                   "  Positive :: (value: double) { assert(value > 0.0); }\n"
-                  "  on Impulse(amount, enabled) {\n"
+                  "  on Impulse :: (amount: double, enabled: bool) {\n"
                   "    assert(enabled, \"enabled is set\");\n"
                   "    Positive(amount);\n"
                   "    assert(amount > 2.0, \"amount is large\");\n"
@@ -2719,7 +2725,7 @@ TEST_CASE(program_assert_fails_with_its_message_or_condition)
     /* The message is fixed when the call is compiled. */
     prepare();
     REQUIRE(lowering_reports(
-        "Checks :: behavior { on Impulse(amount, enabled) { "
+        "Checks :: behavior { on Impulse :: (amount: double, enabled: bool) { "
         "assert(enabled, format_text(\"{}\", amount)); } }",
         &NATIVE_TEXT_DEFINITION_PACK,
         "assert's message is a string constant"
@@ -2734,7 +2740,7 @@ TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure)
         source = "Named :: behavior {\n"
                  "  total: double = 0;\n"
                  "  Check :: (n: double) { assert(n >= 0.0); }\n"
-                 "  on Impulse(amount, enabled) {\n"
+                 "  on Impulse :: (amount: double) {\n"
                  "    local: double? = amount;\n"
                  "    if local != nil { Check(amount); total = local + 1.0; }\n"
                  "    assert(message: \"too small\", condition: amount > "
@@ -2767,7 +2773,7 @@ TEST_CASE(program_failed_call_stacks_unwind_at_once)
     const char *source = "Failure :: behavior { n: double = 0;Inner :: () -> "
                          "(Result: double) { Delay(1); return fail_native() "
                          "}Middle :: () { n += Inner() }Outer :: () { Middle() "
-                         "}on Impulse(amount, enabled) { Outer() } }";
+                         "}on Impulse :: () { Outer() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2832,7 +2838,7 @@ TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
                   "  wide: int = -300; wrapped: int = 0; clamped: int = 0;\n"
                   "  mixed: int64 = 0; narrow: byte = 0;\n"
                   "  same: bool = true; below: bool = false; small: int = 0;\n"
-                  "  on Impulse(amount, enabled) {\n"
+                  "  on Impulse :: (enabled: bool) {\n"
                   "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
                   "-wide);\n"
                   "    mixed = wide + uint(7);\n"
@@ -2879,7 +2885,7 @@ TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars)
     const char *source = "Letters :: behavior {\n"
                          "  code: int = 0; next: int = 0; digit: int = 0;\n"
                          "  step: int = 0; letter: char = 'a';\n"
-                         "  on Impulse(amount, enabled) {\n"
+                         "  on Impulse :: (enabled: bool) {\n"
                          "    letter = char(0x1F408); code = letter;\n"
                          "    next = letter + 1; digit = '7' - '0';\n"
                          "    if (enabled) { letter = char(step + 0xD800); }\n"
@@ -2921,7 +2927,7 @@ TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
         *source = "Steps :: behavior {\n"
                   "  below: bool = false; same: bool = true; code: int = 0;\n"
                   "  minus: int = -1; letter: char = 'a';\n"
-                  "  on Impulse(amount, enabled) {\n"
+                  "  on Impulse :: (enabled: bool) {\n"
                   "    below = minus < letter; same = minus == letter;\n"
                   "    letter += 1; letter = letter + 1; code = letter;\n"
                   "    if (enabled) { letter = -letter; }\n"
@@ -2963,7 +2969,7 @@ TEST_CASE(program_loops_count_half_open_and_in_reverse)
                  "  empty: int = 0; skips: int = 0; items: int = 0; order: int "
                  "= 0;\n"
                  "  edges: int = 0;\n"
-                 "  on Impulse(amount, enabled) {\n"
+                 "  on Impulse :: () {\n"
                  "    for i in 1..4 { up = up * 10 + i; }\n"
                  "    for i in 1..<4 { half = half * 10 + i; }\n"
                  "    for < i in 1..4 { down = down * 10 + i; }\n"
@@ -3013,7 +3019,7 @@ TEST_CASE(program_local_array_survives_collection_mid_build)
     const char
         *source = "Grow :: behavior {\n"
                   "  total: double = 0;\n"
-                  "  on Impulse(amount, enabled) {\n"
+                  "  on Impulse :: () {\n"
                   "    xs: double[] = [];\n"
                   "    i: double = 0;\n"
                   "    while (i < 200) { xs = array_add(xs, i); i += 1; }\n"
@@ -3051,7 +3057,7 @@ TEST_CASE(program_local_array_store_checks_its_range)
 {
     const char *source = "Store :: behavior {\n"
                          "  first: int = 0;\n"
-                         "  on Impulse(amount, enabled) {\n"
+                         "  on Impulse :: (enabled: bool) {\n"
                          "    xs: int[] = [];\n"
                          "    xs = array_add(xs, int(1));\n"
                          "    i: int = 0;\n"
@@ -3087,7 +3093,8 @@ TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
     const char
         *source = "Exact :: behavior { low:int64=0; high:int64=0; "
                   "unsigned_max:uint64=0; precise:uint64=0; mode:Mode=1; on "
-                  "Tick { low=-9223372036854775808; high=9223372036854775807; "
+                  "Tick :: () { low=-9223372036854775808; "
+                  "high=9223372036854775807; "
                   "unsigned_max=18446744073709551615; "
                   "precise=9007199254740993; mode=2147483647; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -3184,7 +3191,7 @@ TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage)
                   "copied_byte:byte=0; source_name:name=\"token\"; "
                   "copied_name:name=\"\"; source_handle:Entity=0; "
                   "copied_handle:Entity=0; source_big:uint64=9007199254740993; "
-                  "copied_big:uint64=0; count:int=0; on Tick { "
+                  "copied_big:uint64=0; count:int=0; on Tick :: () { "
                   "copied_byte=source_byte; copied_name=source_name; "
                   "copied_handle=source_handle; copied_big=source_big; "
                   "count+=1; count+=1; } }";
@@ -3286,7 +3293,7 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
 {
     const char
         *source = "Widths :: behavior { widened:double=0; narrowed:float=0; on "
-                  "Tick { widened=double(NativeFloat()); "
+                  "Tick :: () { widened=double(NativeFloat()); "
                   "narrowed=float(widened+0.25); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     static const script_catalog_parameter result = { .name = "amount",
@@ -3352,9 +3359,10 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
 
 TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit)
 {
-    const char *source = "Mixed :: behavior { count:int=3; level:float=2.5; "
-                         "below:bool=false; scaled:float=0; on Tick { below = "
-                         "level < count; scaled = float(count); } }";
+    const char
+        *source = "Mixed :: behavior { count:int=3; level:float=2.5; "
+                  "below:bool=false; scaled:float=0; on Tick :: () { below = "
+                  "level < count; scaled = float(count); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3407,7 +3415,7 @@ TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state
                   "count=do_n(N:Limit()); action flip=flip_flop(); action "
                   "door=gate(Start_Closed:Closed()); action "
                   "multi=multi_gate(Loop:Loop(),Random:Random(),Start_Index:"
-                  "Start()); on Impulse(amount,enabled){  if enabled "
+                  "Start()); on Impulse :: (enabled: bool) {  if enabled "
                   "{once();count();counter=count.Counter;flip();door();order=0;"
                   "multi();}  else "
                   "{once.Reset();count.Reset();door.Close();multi.Reset();} } "
@@ -3466,15 +3474,15 @@ TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state
     }
     return true;
 }
-TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once)
+TEST_CASE(program_retrigger_evaluates_each_duration_once)
 {
     const char
         *source = "Retriggers :: behavior { evaluations:double=0; "
-                  "completions:double=0; captured:double=0; Duration :: "
+                  "completions:double=0; Duration :: "
                   "()->(seconds:double){evaluations+=1;return(3);} action "
                   "pending=retriggerable_delay(Duration:Duration()); on "
-                  "Impulse as signal(amount,enabled){pending();} after "
-                  "pending.Completed{completions+=1;captured=signal.amount;} }";
+                  "Impulse :: (){pending();} after "
+                  "pending.Completed{completions+=1;} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3493,10 +3501,7 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         REQUIRE(execution_program_update(program, 3.5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "completions", 0));
         REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
-        REQUIRE(
-            number_state(instance, "completions", 1) &&
-            number_state(instance, "captured", 1)
-        );
+        REQUIRE(number_state(instance, "completions", 1));
         args[0].d = 7;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "evaluations", 3));
@@ -3526,16 +3531,18 @@ static int solid_count(const char *text, int offset)
  * kind and its range counted in bytes that are not whitespace. */
 TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source)
 {
-    static const char tight[] =
-        "Debugger :: behavior { calls:double=0; observed:double=0; Work :: "
-        "()->(Value:double,Text:string){calls+=1;return(calls,\"a b\");} "
-        "on Tick { values:=Work(); observed=values.Value; observed+=10; } }";
+    static const char tight[] = "Debugger :: behavior { calls:double=0; "
+                                "observed:double=0; Work :: "
+                                "()->(Value:double,Text:string){calls+=1;"
+                                "return(calls,\"a b\");} "
+                                "on Tick :: () { values:=Work(); "
+                                "observed=values.Value; observed+=10; } }";
     static const char loose
         [] = "Debugger :: behavior {\n    calls: double = 0;\n    observed: "
              "double = 0;\n"
              "    Work :: () -> (Value: double, Text: string) {\n        calls "
              "+= 1;\n"
-             "        return (calls, \"a b\");\n    }\n\n    on Tick {\n"
+             "        return (calls, \"a b\");\n    }\n\n    on Tick :: () {\n"
              "        values := Work();\n        observed = values.Value;\n"
              "        observed += 10;\n    }\n}\n";
     script_syntax *syntaxes[2] = { script_parse(tight), script_parse(loose) };
@@ -3591,7 +3598,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
     const char *source = "Debugger :: behavior { calls:double=0; "
                          "observed:double=0; text:string=\"unset\"; Work :: "
                          "()->(Value:double,Text:string){calls+=1;return(calls,"
-                         "\"snapshot\");} on Tick { values:=Work(); "
+                         "\"snapshot\");} on Tick :: () { values:=Work(); "
                          "observed=values.Value; text=values.Text; await "
                          "Delay(1); observed+=10; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -3727,7 +3734,8 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
 static const char *const task_source =
     "Tasks :: behavior { steps: double = 0; out: double = 0; seen: double = "
     "0;Count :: (n: double) -> (doubled: double) { steps += 1; yield; steps += "
-    "1;await Delay(1); steps += 1; return(n * 2); }on Impulse(amount, enabled) "
+    "1;await Delay(1); steps += 1; return(n * 2); }on Impulse :: (amount: "
+    "double) "
     "{ t := Count(amount); if t { seen += 1; }answer := await t; if answer is "
     "double value { out = value; } if !t { seen += 10; } } }";
 TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
@@ -3757,15 +3765,15 @@ TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
 }
 TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
 {
-    const char
-        *source = "Cancel :: behavior { inner: double = 0; outer: double = 0; "
-                  "woke: double = 0;worker: task;Leaf :: () -> () { await "
-                  "Delay(1); inner += 1; }Inner :: () -> () { Leaf(); Leaf(); "
-                  "await Delay(1); inner += 1; }Outer :: () -> () { Inner(); "
-                  "Inner(); await Delay(1); outer += 1; }Watch :: () -> () { "
-                  "await worker; woke += 1; }on Impulse(amount, enabled) { if "
-                  "enabled { worker = Outer(); Watch(); } else { cancel "
-                  "worker; cancel worker; } } }";
+    const char *
+        source = "Cancel :: behavior { inner: double = 0; outer: double = 0; "
+                 "woke: double = 0;worker: task;Leaf :: () -> () { await "
+                 "Delay(1); inner += 1; }Inner :: () -> () { Leaf(); Leaf(); "
+                 "await Delay(1); inner += 1; }Outer :: () -> () { Inner(); "
+                 "Inner(); await Delay(1); outer += 1; }Watch :: () -> () { "
+                 "await worker; woke += 1; }on Impulse :: (enabled: bool) { if "
+                 "enabled { worker = Outer(); Watch(); } else { cancel "
+                 "worker; cancel worker; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3800,7 +3808,7 @@ TEST_CASE(program_task_cancelling_itself_stops_at_once)
                   "kept += 1000; return 7 }D :: () -> () { cancel inline; kept "
                   "+= 10000 }R :: () -> () { yield; D(); kept += 100000 }Wait "
                   ":: () -> () { answer := await self_task; if answer is "
-                  "Cancelled { got = 1 } }on Impulse(amount, enabled) { worker "
+                  "Cancelled { got = 1 } }on Impulse :: () { worker "
                   "= P(); self_task = Q(); Wait(); inline = R() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -3832,7 +3840,8 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
                   "-> () { while true { ticks += 1; yield } }Count :: () -> "
                   "(shown: double) { return 1 }action act = Count();P :: () -> "
                   "() { act(); await Delay(10) }after act { yield; Spin() }on "
-                  "Impulse(amount, enabled) { if enabled { worker = P() } else "
+                  "Impulse :: (enabled: bool) { if enabled { worker = P() } "
+                  "else "
                   "{ cancel worker } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -3876,7 +3885,7 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
             "action act = Count();"
             "P :: () -> () { yield; act(); await Delay(10) }"
             "after act { %s }"
-            "on Impulse(amount, enabled) { worker = P() } }",
+            "on Impulse :: (amount: double, enabled: bool) { worker = P() } }",
             bodies[c]
         );
         REQUIRE(length > 0 && (size_t)length < sizeof source);
@@ -3906,16 +3915,16 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
 }
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
-    const char
-        *source = "Many :: behavior { done: double = 0; kept: double = 0; "
-                  "stale: double = 0; got: double = -1; first: task;Short :: "
-                  "() -> (v: double) { yield; done += 1; return 7 }Long :: () "
-                  "-> () { await Delay(1); kept += 1; }on Impulse(amount, "
-                  "enabled) { if !enabled { cancel first; if first { stale += "
-                  "1; } } else if amount == 0 { first = Short(); } else if "
-                  "amount == 1 { Short(); } else if amount == 3 { answer := "
-                  "await first; if answer is double value { got = value } } "
-                  "else { Long(); } } }";
+    const char *source =
+        "Many :: behavior { done: double = 0; kept: double = 0; "
+        "stale: double = 0; got: double = -1; first: task;Short :: "
+        "() -> (v: double) { yield; done += 1; return 7 }Long :: () "
+        "-> () { await Delay(1); kept += 1; }on Impulse :: (amount: double, "
+        "enabled: bool) { if !enabled { cancel first; if first { stale += "
+        "1; } } else if amount == 0 { first = Short(); } else if "
+        "amount == 1 { Short(); } else if amount == 3 { answer := "
+        "await first; if answer is double value { got = value } } "
+        "else { Long(); } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3958,15 +3967,15 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 }
 TEST_CASE(program_task_deadlines_use_start_time_and_do_not_cancel_waiters)
 {
-    const char
-        *source = "Deadlines :: behavior { worker: task; began: double = 0; "
-                  "done: double = 0;scheduled: double = 0; cancelled: double = "
-                  "0; continued: double = 0;Work :: () -> (value: double) { "
-                  "began += 1; await Delay(100); done += 1; return 7 }Watch :: "
-                  "() -> () { result := await worker; if result is Cancelled { "
-                  "cancelled += 1; } continued += 1; }on Impulse(amount, "
-                  "enabled) { if enabled { worker = Work(); Watch(); Watch(); "
-                  "} else { cancel worker after amount; scheduled += 1; } } }";
+    const char *source =
+        "Deadlines :: behavior { worker: task; began: double = 0; "
+        "done: double = 0;scheduled: double = 0; cancelled: double = "
+        "0; continued: double = 0;Work :: () -> (value: double) { "
+        "began += 1; await Delay(100); done += 1; return 7 }Watch :: "
+        "() -> () { result := await worker; if result is Cancelled { "
+        "cancelled += 1; } continued += 1; }on Impulse :: (amount: double, "
+        "enabled: bool) { if enabled { worker = Work(); Watch(); Watch(); "
+        "} else { cancel worker after amount; scheduled += 1; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4022,7 +4031,8 @@ TEST_CASE(program_task_copies_retain_results_and_unobserved_results_are_reclaime
     const char *
         source = "Results :: behavior { first: task; copy: task; got: double = "
                  "0; done: double = 0;Work :: () -> (value: double) { yield; "
-                 "done += 1; return 7 }on Impulse(amount, enabled) { if amount "
+                 "done += 1; return 7 }on Impulse :: (amount: double) { if "
+                 "amount "
                  "== 0 { first = Work(); copy = first; } else if amount == 1 { "
                  "Work(); } else { cancel copy after 0; result := await copy; "
                  "if result is double value { got = value; } } } }";
@@ -4069,7 +4079,7 @@ TEST_CASE(program_task_handle_survives_in_a_detached_capture)
                          "held := Work(); Observe :: (held: ref task<double>) "
                          "{ await Delay(10); result := await held; if result "
                          "is double value { got = value; } } Observe(held); "
-                         "}on Impulse(amount, enabled) { Start(); } }";
+                         "}on Impulse :: () { Start(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4095,8 +4105,10 @@ TEST_CASE(program_task_handles_survive_in_suspended_array_values)
     const char
         *source = "Arrays :: behavior { got: double = 0;Work :: () -> double { "
                   "yield; return 7; }Pack :: () -> task<double>[] { held: "
-                  "task<double>[] = [Work()]; return held; }on Impulse(amount, "
-                  "enabled) { first: task<double>[] = []; i := 0;while i < 2 { "
+                  "task<double>[] = [Work()]; return held; }on Impulse :: "
+                  "(amount: double, "
+                  "enabled: bool) { first: task<double>[] = []; i := 0;while i "
+                  "< 2 { "
                   "row := Pack(); if i == 0 { first = row; } i += 1; }copy := "
                   "first; first = [];yield; await Delay(10); result := await "
                   "copy[0];if result is double value { got = value; } } }";
@@ -4160,7 +4172,7 @@ TEST_CASE(program_native_nested_collections_retain_task_handles)
     const char *source = "Nested :: behavior { pulse: task<double>; held: "
                          "uint64[] = []; "
                          "Work :: () -> double { yield; return 7; } "
-                         "on Impulse(amount, enabled) { pulse = Work(); } }";
+                         "on Impulse :: () { pulse = Work(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int variant = 0; variant < 4; variant++) {
         prepare();
@@ -4234,7 +4246,7 @@ TEST_CASE(program_task_scope_exits_drop_only_unobserved_handles)
         "return 7; }Pack :: () -> (number: double, discarded: task<double>) "
         "{return(number: 1, discarded: Work()); }Observe :: (held: ref "
         "task<double>) { await Delay(10);result := await held; if result is "
-        "double value { got = value; } }on Impulse(amount, enabled) {Pack(); "
+        "double value { got = value; } }on Impulse :: () {Pack(); "
         "unused := Pack().number;if true { held := Work(); Observe(held); }i "
         ":= 0; while i < 3 { dropped := Work(); i += 1; continue; }while true "
         "{ dropped := Work(); break; }if true { dropped := Work(); goto "
@@ -4268,7 +4280,7 @@ TEST_CASE(program_task_cancellation_is_distinct_from_zero_false_and_empty_text)
         "yield; return 0; }False :: () -> (value: bool) { yield; return false; "
         "}Empty :: () -> (value: string) { yield; return \"\"; }None :: () -> "
         "double? { yield; return nil; }Some :: () -> double? { yield; return "
-        "0; }on Impulse(amount, enabled) { z := Zero(); f := False(); s := "
+        "0; }on Impulse :: () { z := Zero(); f := False(); s := "
         "Empty(); k := Zero();n := None(); o := Some();cancel k; rz := await "
         "z; rf := await f; rs := await s; rk := await k;if rz is double value "
         "{ zero = value; }if rf is bool value { if !value { false_seen = true; "
@@ -4310,7 +4322,7 @@ TEST_CASE(program_task_waiters_receive_independent_success_snapshots)
                   "= 0;Work :: () -> double[] { yield; return [7]; }Observe :: "
                   "(offset: double) { result := await worker; if result is not "
                   "Cancelled {values := result; values[0] += offset; total += "
-                  "values[0]; } }on Impulse(amount, enabled) { worker = "
+                  "values[0]; } }on Impulse :: () { worker = "
                   "Work(); Observe(1); Observe(2); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4341,7 +4353,7 @@ TEST_CASE(program_task_result_snapshot_outlives_the_last_handle)
     const char
         *source = "Snapshot :: behavior { worker: task; text: string = "
                   "\"\";Work :: (input: string) -> (value: string) { yield; "
-                  "return input; }on Impulse(amount, enabled) { worker = "
+                  "return input; }on Impulse :: () { worker = "
                   "Work(\"retained\"); result := await worker;if result is "
                   "string value { worker = nil; yield; text = value; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -4374,7 +4386,8 @@ TEST_CASE(program_task_await_copies_large_payload_once)
     const char
         *source = "Delivery :: behavior { input: double[] = []; worker: "
                   "task<double[]>;Work :: () -> double[] { yield; return "
-                  "input; }on Impulse(amount, enabled) { if enabled { worker = "
+                  "input; }on Impulse :: (enabled: bool) { if enabled { worker "
+                  "= "
                   "Work(); }else { await worker; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4444,7 +4457,7 @@ TEST_CASE(program_task_collection_indexes_handles_across_many_owners)
     };
     const char *source = "ManyOwners :: behavior { held: task;Work :: () -> "
                          "(value: double) { yield; return 7; }on "
-                         "Impulse(amount, enabled) { held = Work(); } }";
+                         "Impulse :: () { held = Work(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4477,7 +4490,8 @@ TEST_CASE(program_task_results_keep_nested_task_handles_alive)
         *source = "Nested :: behavior { held: task; observed: double = 0;Inner "
                   ":: () -> (value: double) { yield; return 7; }Outer :: () -> "
                   "(child: task) { nested := Inner(); yield; return nested; "
-                  "}on Impulse(amount, enabled) { if enabled { held = Outer(); "
+                  "}on Impulse :: (enabled: bool) { if enabled { held = "
+                  "Outer(); "
                   "} else { result := await held; if result is task child { "
                   "await child; observed = 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -4530,7 +4544,8 @@ TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines)
         *source = "Prepared :: behavior { worker: task; stored: double | "
                   "Cancelled = Cancelled;got: double = 0; initial: double = "
                   "0;Work :: () -> (value: double) { yield; return 7; }on "
-                  "Impulse(amount, enabled) { if stored is Cancelled { initial "
+                  "Impulse :: (amount: double) { if stored is Cancelled { "
+                  "initial "
                   "+= 1; }worker = Work(); cancel worker after amount; answer "
                   ":= await worker; stored = answer;if answer is double value "
                   "{ got = value; } else { got = -1; } } }";
@@ -4581,7 +4596,7 @@ TEST_CASE(program_task_stops_with_owner_and_does_not_block_events)
 {
     const char *source = "Loop :: behavior { ticks: double = 0; hits: double = "
                          "0;Spin :: () -> () { while true { ticks += 1; yield; "
-                         "} }on Impulse(amount, enabled) { if enabled { "
+                         "} }on Impulse :: (enabled: bool) { if enabled { "
                          "Spin(); } hits += 1; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4619,7 +4634,7 @@ TEST_CASE(program_many_tasks_collect_in_linear_mark_work)
     const char
         *source = "Many :: behavior { done: double = 0;Wait :: (n: double) -> "
                   "() { row: double[] = [n, n];await Delay(1); done += row[0] "
-                  "- n + 1; }on Impulse(amount, enabled) { for (i in "
+                  "- n + 1; }on Impulse :: (amount: double) { for (i in "
                   "1..int(amount)) { Wait(i) } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4647,22 +4662,23 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
     {
         const char *source, *message;
     } cases[] = {
-        { "B :: behavior { n: double = 0; on Impulse(amount, enabled) { cancel "
+        { "B :: behavior { n: double = 0; on Impulse :: () { cancel "
           "n; } }",
           "Cancel requires a task" },
-        { "B :: behavior { t: task; n: double = 0; on Impulse(amount, enabled) "
+        { "B :: behavior { t: task; n: double = 0; on Impulse :: () "
           "{ n = t; } }",
           "" },
         /* System-retained bindings belong to the registration, not a row's
          * activation, and cannot own tasks. */
         { "S :: system(p: Position) { worker: retain task }", "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals" },
         /* An unawaited action continues before its result exists. */
-        { "B :: behavior { n: double = 0; on Impulse(amount, enabled) { x := "
+        { "B :: behavior { n: double = 0; on Impulse :: () { x := "
           "make_thing(); n = x } }",
           "Await this call before using its result" },
         { "B :: behavior { pulse: task; power: double = 0;Charge :: (time: "
-          "double) -> (power: double) { yield; return time }on Impulse(amount, "
-          "enabled) { power = await pulse;if enabled { pulse: task = "
+          "double) -> (power: double) { yield; return time }on Impulse :: "
+          "(amount: double, "
+          "enabled: bool) { power = await pulse;if enabled { pulse: task = "
           "Charge(1); pulse = Charge(amount) } } }",
           "" },
     };
@@ -4749,7 +4765,7 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
     const char *plain = "P :: behavior { n: double = 0;"
                         "Outer :: () -> (v: double) { "
                         "Inner :: () { yield } return 3 }"
-                        "on Impulse(amount, enabled) { x := Outer(); n = x } }";
+                        "on Impulse :: () { x := Outer(); n = x } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -5909,7 +5925,7 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     const char *source = "Jumper :: behavior {\n"
                          "    held: bool = false;\n"
                          "    pressed: bool = false;\n"
-                         "    on Tick(dt) {\n"
+                         "    on Tick :: () {\n"
                          "        held = input.Jump.held;\n"
                          "        pressed = input.jump.pressed;\n"
                          "    }\n"
@@ -5934,11 +5950,11 @@ TEST_CASE(program_input_actions_read_through_typed_names)
         REQUIRE(bool_state(instance, "held", false) && bool_state(instance, "pressed", true));
     }
     /* A misspelled action and the retired string reads do not compile. */
-    const char *invalid[] = {
-        "B :: behavior { x: bool = false; on Tick(dt) { x = input.Jmp.held; } "
-        "}",
-        "B :: behavior { x: bool = false; on Tick(dt) { x = held(\"Jump\"); } }"
-    };
+    const char *invalid[] = { "B :: behavior { x: bool = false; on Tick :: () "
+                              "{ x = input.Jmp.held; } "
+                              "}",
+                              "B :: behavior { x: bool = false; on Tick :: () "
+                              "{ x = held(\"Jump\"); } }" };
     for (int i = 0; i < 2; i++) {
         script_syntax *wrong = script_parse(invalid[i]);
         script_analysis *checked = script_analyze(wrong, view);
@@ -6026,8 +6042,9 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
         }
     }
     REQUIRE(definitions == 4);
-    const char *source = "Reader :: behavior { x: double = 0; on Tick(dt) { x "
-                         "= globals.Level.Position.x; } }";
+    const char
+        *source = "Reader :: behavior { x: double = 0; on Tick :: () { x "
+                  "= globals.Level.Position.x; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -6058,8 +6075,8 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
         REQUIRE(!strcmp(failure->message, "Get Global Variable references an unknown value"));
     }
     const char *invalid[] = {
-        "B :: behavior { on Tick(dt) { x := globals.Leve; } }",
-        "B :: behavior { on Tick(dt) { globals.Level = self; } }",
+        "B :: behavior { on Tick :: () { x := globals.Leve; } }",
+        "B :: behavior { on Tick :: () { globals.Level = self; } }",
     };
     for (int i = 0; i < 2; i++) {
         script_syntax *wrong = script_parse(invalid[i]);
@@ -6068,7 +6085,7 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
         script_analysis_free(checked);
         script_syntax_free(wrong);
     }
-    script_syntax *wrong = script_parse("B :: behavior { on Tick(dt) { x := globals; } }");
+    script_syntax *wrong = script_parse("B :: behavior { on Tick :: () { x := globals; } }");
     script_analysis *checked = script_analyze(wrong, view);
     REQUIRE(checked->valid);
     const script_lower_bindings bindings = { .global = global, .host = host };
@@ -7195,7 +7212,7 @@ TEST_CASE(program_constant_definitions_execute)
         "answer: number = 0; fallback: number = 0;\n"
         "DamageFor :: (level: int) -> int { return level * Multiplier }\n"
         "OtherDamage :: (level: int) -> int { return level + Base }\n"
-        "on Impulse(amount, enabled) {\n"
+        "on Impulse :: () {\n"
         "Local :: 4; answer = DamageFor(Local) + OtherDamage(Local);\n"
         "switch answer { case 18: answer += 1; case: answer += 100; }\n"
         "switch answer { case 20: fallback = 1; case: { fallback = 2; } }\n"
@@ -7920,11 +7937,9 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
           "handle<ecs.entity>) { total += a } }",
           "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
           "total += Amount } }" },
-        /* A computed key reads its value; a function's own parameter and a
+        /* An array element reads its value; a function's own parameter and a
          * named argument do not read an alias. */
-        { "B :: behavior { on Damage(a, s) { values := { [a]: 1 } } }",
-          "B :: behavior { on Damage :: (Amount: int) { values := { [Amount]: "
-          "1 } } }" },
+        { "B :: behavior { on Damage(a, s) { values := [a, 1] } }", "B :: behavior { on Damage :: (Amount: int) { values := [Amount, 1] } }" },
         { "B :: behavior { Add :: (hit: int) { total += hit } on Damage as hit "
           "{ Add(hit: hit.Amount) } }",
           "B :: behavior { Add :: (hit: int) { total += hit } on Damage :: "
@@ -8020,6 +8035,96 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
     snprintf(path, sizeof path, "%s/events", root);
     REQUIRE(!rmdir(path));
     REQUIRE(!rmdir(root));
+    return true;
+}
+/* Version 31 reads the frame step only through a Tick handler's list or a
+ * system's step clause. */
+TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += delta + "
+          "delta_time() } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } "
+          "}",
+          NULL },
+        { "S :: system(p: Position) { p.x += dt }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        { "S :: system(p: Position) on Tick :: () { p.x += delta }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        /* The catalog's spellings name the capability; a local declared later
+         * or in an inner block hides only the reads in its scope. */
+        { "B :: behavior { x: float = 0; on Tick :: () { x += DeltaTime() } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt; if x > 1 { "
+          "dt := 1; x += dt } } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt; "
+          "if x > 1 { dt := 1; x += dt } } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "delta } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "S :: system(t: Transform) { delta: retain float = 0; delta += 1; "
+          "t.x = delta }",
+          NULL },
+        /* A parameter, local or state of that name reads no global. */
+        { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
+        { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },
+        { "B :: behavior { dt: float = 0; on Begin :: () { dt = 1 } }", NULL },
+        { "B :: behavior { x: float = 0; on Tick :: () { other.dt = 1; F(dt: "
+          "1) } }",
+          NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_step_globals(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "B :: behavior { x: float = 0; F :: () { x += dt } }", "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () "
+          "{ "
+          "go() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { "
+          "go() "
+          "} after go { x += dt } }",
+          "outside a Tick" },
+        /* Renaming a read to `dt` must not capture another `dt`. */
+        { "B :: behavior { x: float = 0; on Tick :: () { dt := 2.0; x += delta "
+          "* "
+          "dt } }",
+          "another dt" },
+        { "B :: behavior { x: float = 0; on Tick :: () { for dt in 0..3 { x += "
+          "delta_time() } } }",
+          "another dt" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_step_globals(refused[i].source, &migrated, error, sizeof error) < 0);
+        if (!strstr(error, refused[i].message)) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, refused[i].message));
+    }
     return true;
 }
 /* An upgrade that fails after its steps wrote, for example in finalization,
@@ -8247,7 +8352,7 @@ TEST_CASE(program_single_result_call_fields_read_the_result)
     const char
         *source = "B :: behavior { n: double = 0;P :: () -> (v: double) { "
                   "return(n + 1); }W :: () -> (v: double) { await Delay(1); "
-                  "return(n + 10); }on Impulse(amount, enabled) { x := P().v; "
+                  "return(n + 10); }on Impulse :: () { x := P().v; "
                   "n += x; y := await W(); n += y.v;n += (await W()).v; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8275,8 +8380,8 @@ TEST_CASE(program_results_are_inferred_from_returns)
                  "double) { if a > b { return true } return false }Pick :: (a: "
                  "double, b: double) { if Faster(a, b) { return a } return b "
                  "}Split :: (x: double) { return(Low: x, High: x * 10) }Later "
-                 ":: (x: double) { yield; return x + 1 }on Impulse(amount, "
-                 "enabled) { n += Pick(2, 5); r := Split(amount); n += r.Low + "
+                 ":: (x: double) { yield; return x + 1 }on Impulse :: (amount: "
+                 "double) { n += Pick(2, 5); r := Split(amount); n += r.Low + "
                  "r.High; n += await Later(1); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8298,7 +8403,7 @@ TEST_CASE(program_results_are_inferred_from_returns)
     const char *
         nested = "B :: behavior { n: double = 0;Outer :: () { F :: () { return "
                  "Inner() } return F() }Inner :: () { F :: () { return 2 } "
-                 "return F() }on Impulse(amount, enabled) { n = Outer() } }";
+                 "return F() }on Impulse :: () { n = Outer() } }";
     prepare();
     REQUIRE(compile(nested, BEHAVIOR_BYTECODE));
     execution_instance *instance = execution_program_attach(
@@ -8340,7 +8445,8 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
     const char
         *source = "B :: behavior { n: double = 0;P :: (x: double) -> (a: "
                   "double, b: double) { yield; return(x, x * 10); }on "
-                  "Impulse(amount, enabled) { t := P(amount); r := await t; if "
+                  "Impulse :: (amount: double) { t := P(amount); r := await t; "
+                  "if "
                   "r is not Cancelled { n += r.a + r.b; }s := await t; if s is "
                   "not Cancelled { n += s.b; }u := P(2); v := await u; if v is "
                   "not Cancelled { n += v.a; } } }";
@@ -8363,7 +8469,7 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
     /* A task has no result fields until it is awaited. */
     prepare();
     REQUIRE(
-        !compile("B :: behavior { n: double = 0;P :: (x: double) -> (a: double, b: double) { yield; return(x, x * 10); }on Impulse(amount, enabled) { t := P(amount); n = t.a } }", BEHAVIOR_BYTECODE)
+        !compile("B :: behavior { n: double = 0;P :: (x: double) -> (a: double, b: double) { yield; return(x, x * 10); }on Impulse :: (amount: double) { t := P(amount); n = t.a } }", BEHAVIOR_BYTECODE)
     );
     return true;
 }
@@ -8376,7 +8482,7 @@ TEST_CASE(program_library_call_starts_a_task)
                                  "+= 1; return(count, self.Position.x); } }";
     const char
         *owner_source = "Owner :: behavior { n: double = 0; local_count: "
-                        "double = 0;on Impulse(amount, enabled) { t := "
+                        "double = 0;on Impulse :: () { t := "
                         "library_work(); n += 1;if t { n += 10; } result := "
                         "await t; if result is not Cancelled { local_count = "
                         "result.local_count; } } }";
@@ -8414,7 +8520,7 @@ TEST_CASE(program_library_task_writes_the_callers_state)
         *library_source = "Lib :: library { count: double = 10;Bump :: (x: ref "
                           "double) { yield; x += 1; count += 1 } }";
     const char *owner_source = "Owner :: behavior { n: double = 5;on "
-                               "Impulse(amount, enabled) { library_bump(n) } }";
+                               "Impulse :: () { library_bump(n) } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -8442,8 +8548,9 @@ TEST_CASE(program_task_keeps_state_and_component_references)
 {
     const char
         *source = "R :: behavior { n: double = 0;Bump :: (x: ref double) -> () "
-                  "{ yield; x += 1; yield; x += 1; }on Impulse(amount, "
-                  "enabled) { Bump(n); Bump(self.Position.x); } }";
+                  "{ yield; x += 1; yield; x += 1; }on Impulse :: (amount: "
+                  "double, "
+                  "enabled: bool) { Bump(n); Bump(self.Position.x); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -8474,7 +8581,7 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
                   "return(Leaf() + "
                   "1) }Start :: () -> (v: double) { return(Inner()) }Bump :: "
                   "() { n += 1 } Relay :: () { Bump() }Kick :: () { Relay() "
-                  "}on Impulse(amount, enabled) { i := 2; a[i] = 10;n = "
+                  "}on Impulse :: (amount: double) { i := 2; a[i] = 10;n = "
                   "Start() + a[2] + clamp(amount, 0, w); Kick();j := 1.5; for "
                   "(k in 1..int(j)) { n += k } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -8502,7 +8609,7 @@ TEST_CASE(program_returns_convert_to_their_result_type)
                   "{ return v % 2 }First :: () { if k == 2 { return 8.5 } "
                   "return Half(k) }Literal :: () { if k == 2 { return 8.0 } "
                   "return Half(k) }Declared :: () -> (r: double) { return "
-                  "Half(k) }on Impulse(amount, enabled) {n = First() * 0.5 + "
+                  "Half(k) }on Impulse :: () {n = First() * 0.5 + "
                   "Literal() * 0.5 + Declared() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8523,7 +8630,7 @@ TEST_CASE(program_yield_resumes_on_the_next_update_without_time)
 {
     const char
         *source = "Y :: behavior { done: double = 0;Short :: () { yield; done "
-                  "+= 1 }on Impulse(amount, enabled) { Short() } }";
+                  "+= 1 }on Impulse :: () { Short() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -8547,13 +8654,14 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     const char
         *source = "P :: behavior { pulse: task; power: double = 0;Charge :: "
                   "(time: double) -> (power: double) { yield; return(time * "
-                  "2); }on Impulse(amount, enabled) { pulse = Charge(amount); "
+                  "2); }on Impulse :: (amount: double) { pulse = "
+                  "Charge(amount); "
                   "answer := await pulse; if answer is double value { power = "
                   "value } } }";
     /* The await is analyzed before the assignment that types the state. */
     const char
         *reordered = "P :: behavior { pulse: task; power: double = 0;on "
-                     "Impulse(amount, enabled) { Start(amount); answer := "
+                     "Impulse :: (amount: double) { Start(amount); answer := "
                      "await pulse; if answer is double value { power = value } "
                      "}Start :: (time: double) { pulse = Charge(time) }Charge "
                      ":: (time: double) -> (power: double) { yield; "
@@ -8561,32 +8669,36 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     const char
         *local = "P :: behavior { power: double = 0;Charge :: (time: double) "
                  "-> (power: double) { yield; return(time * 2); }on "
-                 "Impulse(amount, enabled) { t: task = Charge(amount); answer "
+                 "Impulse :: (amount: double) { t: task = Charge(amount); "
+                 "answer "
                  ":= await t; if answer is double value { power = value } } }";
-    const char *wrapped = "P :: behavior { pulse: task; power: double = 0;on "
-                          "Impulse(amount, enabled) { Start(amount); answer := "
-                          "await pulse; if answer is double value { power = "
-                          "value } }Start :: (time: double) { pulse = "
-                          "(Charge(time)) }Charge :: (time: double) -> (power: "
-                          "double) { yield; return(time * 2); } }";
-    const char *qualified = "P :: behavior { pulse: task; power: double = 0;on "
-                            "Impulse(amount, enabled) { Start(amount); answer "
-                            ":= await pulse; if answer is double value { power "
-                            "= value } }Start :: (time: double) { state.pulse "
-                            "= Charge(time) }Charge :: (time: double) -> "
-                            "(power: double) { yield; return(time * 2); } }";
-    /* A nested callable's own `pulse` does not shadow the outer one. */
     const char
-        *nested = "P :: behavior { pulse: task; power: double = 0;on "
-                  "Impulse(amount, enabled) { Start(amount); answer := await "
-                  "pulse; if answer is double value { power = value } }Start "
-                  ":: (time: double) { Other :: (pulse: double) { } pulse = "
-                  "Charge(time) }Charge :: (time: double) -> (power: double) { "
-                  "yield; return(time * 2); } }";
+        *wrapped = "P :: behavior { pulse: task; power: double = 0;on "
+                   "Impulse :: (amount: double) { Start(amount); answer := "
+                   "await pulse; if answer is double value { power = "
+                   "value } }Start :: (time: double) { pulse = "
+                   "(Charge(time)) }Charge :: (time: double) -> (power: "
+                   "double) { yield; return(time * 2); } }";
+    const char
+        *qualified = "P :: behavior { pulse: task; power: double = 0;on "
+                     "Impulse :: (amount: double) { Start(amount); answer "
+                     ":= await pulse; if answer is double value { power "
+                     "= value } }Start :: (time: double) { state.pulse "
+                     "= Charge(time) }Charge :: (time: double) -> "
+                     "(power: double) { yield; return(time * 2); } }";
+    /* A nested callable's own `pulse` does not shadow the outer one. */
+    const char *
+        nested = "P :: behavior { pulse: task; power: double = 0;on "
+                 "Impulse :: (amount: double) { Start(amount); answer := await "
+                 "pulse; if answer is double value { power = value } }Start "
+                 ":: (time: double) { Other :: (pulse: double) { } pulse = "
+                 "Charge(time) }Charge :: (time: double) -> (power: double) { "
+                 "yield; return(time * 2); } }";
     /* A sibling block's local `pulse` does not shadow the state. */
     const char
         *sibling = "P :: behavior { pulse: task; power: double = 0;on "
-                   "Impulse(amount, enabled) { Start(amount); answer := await "
+                   "Impulse :: (amount: double) { Start(amount); answer := "
+                   "await "
                    "pulse; if answer is double value { power = value } }Start "
                    ":: (time: double) { if (time > 99) { pulse := 1 } pulse = "
                    "Charge(time) }Charge :: (time: double) -> (power: double) "
@@ -8594,7 +8706,7 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     /* A nested callee types the state for awaits analyzed after it. */
     const char
         *inner = "P :: behavior { pulse: task; power: double = 0;on "
-                 "Impulse(amount, enabled) { Start(amount) }Start :: (time: "
+                 "Impulse :: (amount: double) { Start(amount) }Start :: (time: "
                  "double) { Charge :: (time: double) -> (power: double) { "
                  "yield; return(time * 2); } pulse = Charge(time); answer := "
                  "await pulse; if answer is double value { power = value } } }";
@@ -8614,7 +8726,7 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     }
     /* A task of an unknown function leaves the state without results. */
     prepare();
-    syntax = script_parse("P :: behavior { pulse: task; power: double = 0;Charge :: (time: double) -> (power: double) { yield; return(time) }Keep :: (t: task) { pulse = t }on Impulse(amount, enabled) { pulse = Charge(amount); power = await pulse } }");
+    syntax = script_parse("P :: behavior { pulse: task; power: double = 0;Charge :: (time: double) -> (power: double) { yield; return(time) }Keep :: (t: task) { pulse = t }on Impulse :: (amount: double) { pulse = Charge(amount); power = await pulse } }");
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(!analysis->valid);
     /* So does a state write of another function's task, before or after
@@ -8622,13 +8734,15 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     const char *writes[] = {
         "P :: behavior { pulse: task; power: double = 0;Charge :: (time: "
         "double) -> (power: double) { yield; return(time) }Other :: () -> "
-        "(name: string) { yield; return(\"x\") }on Impulse(amount, enabled) { "
+        "(name: string) { yield; return(\"x\") }on Impulse :: (amount: double) "
+        "{ "
         "pulse = Charge(amount); power = await pulse }Swap :: () { "
         "set_variable<pulse>(Other()) } }",
         "P :: behavior { pulse: task; power: double = 0;Charge :: (time: "
         "double) -> (power: double) { yield; return(time) }Other :: () -> "
         "(name: string) { yield; return(\"x\") }Swap :: () { "
-        "set_variable<pulse>(Other()) }on Impulse(amount, enabled) { pulse = "
+        "set_variable<pulse>(Other()) }on Impulse :: (amount: double) { pulse "
+        "= "
         "Charge(amount); power = await pulse } }"
     };
     for (int i = 0; i < 4; i++) {
@@ -8643,7 +8757,8 @@ TEST_CASE(program_task_handles_belong_to_their_instance)
 {
     const char *source = "P :: behavior { pulse: task; alive: double = "
                          "0;Charge :: (time: double) -> (power: double) { "
-                         "yield; return(time) }on Impulse(amount, enabled) { "
+                         "yield; return(time) }on Impulse :: (amount: double, "
+                         "enabled: bool) { "
                          "if enabled { pulse = Charge(amount) } else { alive = "
                          "0; if pulse { alive = 1 } } } }";
     prepare();
@@ -8674,11 +8789,12 @@ TEST_CASE(program_task_handles_belong_to_their_instance)
 }
 TEST_CASE(program_component_paths_test_presence)
 {
-    const char *source = "H :: behavior { n: double = 0;on Impulse(amount, "
-                         "enabled) {if self.Velocity { n += 1 }if "
-                         "!self.Velocity { n += 10 }if self.Velocity != nil && "
-                         "self.Position { n += 100 }if self.Velocity == nil || "
-                         "self.Velocity.x > 3 { n += 1000 } } }";
+    const char *
+        source = "H :: behavior { n: double = 0;on Impulse :: (amount: double, "
+                 "enabled: bool) {if self.Velocity { n += 1 }if "
+                 "!self.Velocity { n += 10 }if self.Velocity != nil && "
+                 "self.Position { n += 100 }if self.Velocity == nil || "
+                 "self.Velocity.x > 3 { n += 1000 } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 4; b++) {
         prepare();
@@ -8710,7 +8826,7 @@ TEST_CASE(program_branch_completes_inside_action_continuation)
             "Wait :: () { yield }\n"
             "action outer = Count()\n"
             "action inner = branch_if(Condition: outer.shown > 0)\n"
-            "on Impulse(amount, enabled) { outer() }\n"
+            "on Impulse :: (amount: double, enabled: bool) { outer() }\n"
             "after outer { %s }\n"
             "after inner.True { n += 10 }\n"
             "after inner.False { n += 100 } }",
@@ -8747,7 +8863,7 @@ TEST_CASE(program_parameters_defaults_and_contextual_words)
                          "Drain :: (left: double) -> (r: double) { while left "
                          "> 0 { left -= 1\n"
                          " yield } return left + 7 }\n"
-                         "on Impulse(amount, enabled) { split := 1.0\n"
+                         "on Impulse :: (amount: double) { split := 1.0\n"
                          "value := amount\n"
                          "n = Approach(value, split) + Step(m)\n"
                          "k = await Drain(m)\n"
@@ -8779,7 +8895,8 @@ TEST_CASE(program_task_shares_boxed_locals)
                   "}Keep :: (x: ref double) -> () { yield; x += 1; yield; kept "
                   "+= x; }Relay :: (x: ref double) -> () { Keep(x); }Pair :: "
                   "(x: double) -> (a: double, b: double) { return(a: x * 1000 "
-                  "+ 5, b: 0) }on Impulse(amount, enabled) {if amount == 0 { v "
+                  "+ 5, b: 0) }on Impulse :: (amount: double) {if amount == 0 "
+                  "{ v "
                   ":= 1.0; t := Bump(v); v += 100; await t; seen = v; }else if "
                   "amount == 1 { w := 5.0; Keep(w); }else if amount == 2 { i "
                   ":= 0.0; while i < 2 { u := i * 10; Keep(u); i += 1; } }else "
@@ -8817,7 +8934,7 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
      * a number needs no scratch storage. */
     const char *source = "R :: behavior { n: double = 0; m: double = 0;Add :: "
                          "(x: ref double) -> () { i := 0.0; while i < 1000 { x "
-                         "+= 1; i += 1; } }on Impulse(amount, enabled) { i := "
+                         "+= 1; i += 1; } }on Impulse :: () { i := "
                          "0.0; while i < 1000 { n += 1; i += 1; } Add(m); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8839,7 +8956,7 @@ TEST_CASE(program_repeated_helpers_have_bounded_allocations)
 {
     const char
         *source = "B :: behavior { n: double = 0;Twice :: (x: double) -> (v: "
-                  "double) { return x * 2 }on Impulse(amount, enabled) { i := "
+                  "double) { return x * 2 }on Impulse :: () { i := "
                   "0.0; while i < 256 {n += Twice(i); i += 1 } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8875,7 +8992,7 @@ TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls)
                   "double) -> (r: double) { return v * 10 }Count :: (v: "
                   "double) -> (r: double) {if v <= 0 { return 0 } return "
                   "Count(v - 1) + 1 }Outer :: (v: double) -> (r: double) { "
-                  "return Count(v) + Other(v) }on Impulse(amount, enabled) {n "
+                  "return Count(v) + Other(v) }on Impulse :: () {n "
                   "+= Add(m, 2); n += Add(m, -1);n += Other(3); n += Add(m, "
                   "4);n += Outer(3); n += Outer(2); n += Count(4); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -8904,7 +9021,7 @@ TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals)
                   "double) -> (r: double[]) { return [v, v + 1] }Work :: "
                   "(pause: bool) -> (r: double) {local: double = 0; if !pause "
                   "{ local = 7; return local }await Delay(1); return local }on "
-                  "Impulse(amount, enabled) {saved := Text(); replacement := "
+                  "Impulse :: () {saved := Text(); replacement := "
                   "Text(); text = saved;first := Tiles(3); second := Tiles(9); "
                   "second[0] = 100;n = first[0] + first[1] + second[0];n += "
                   "await Work(false); n += await Work(true); } }";
@@ -8943,7 +9060,7 @@ TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows)
     const char
         *source = "R :: behavior { Add :: (x: ref double, y: ref double) -> () "
                   "{ i := 0.0; while i < 1000 { x += 1; y += 1; i += 1; } }on "
-                  "Impulse(amount, enabled) { Add(self.Position.x, "
+                  "Impulse :: () { Add(self.Position.x, "
                   "self.Position.x); self.Position.y = 7; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -8985,7 +9102,8 @@ TEST_CASE(program_pattern_bindings_share_and_spellings)
             "if true %s value is number right { score += right; } "
             "if false %s value is number skipped { score += 100; } return "
             "score; } "
-            "on Impulse(amount, enabled) { total = Check(2) + "
+            "on Impulse :: (amount: double, enabled: bool) { total = Check(2) "
+            "+ "
             "Check(Cancelled); "
             "tagged := Choice.Payload(3); "
             "if tagged is .Payload(left_tag) %s left_tag > 0 { total += "
@@ -9021,7 +9139,7 @@ TEST_CASE(program_switches_use_narrowed_union_tags)
                   ".B(payload): return payload; } } return 1; } Negative :: "
                   "(value: Choice) -> number { if value is Choice.A { return "
                   "2; } switch value { case .B(payload): return payload; } } "
-                  "on Impulse(amount, enabled) { total = Positive(Choice.A) + "
+                  "on Impulse :: () { total = Positive(Choice.A) + "
                   "Positive(Choice.B(3)) + Negative(Choice.A) + "
                   "Negative(Choice.B(4)); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -9048,7 +9166,7 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
         "0; Empty :: () -> number? { return nil; } Default :: () -> (value: "
         "AttackState = AttackState.Idle) { return; } Extract :: (value: number "
         "| Cancelled) -> number? { return value as number; } on "
-        "Impulse(amount, enabled) { default_phase := Default(); if "
+        "Impulse :: () { default_phase := Default(); if "
         "default_phase is AttackState.Idle { total += 1; } switch phase { case "
         ".Idle: total += 10; case .Windup(remaining): total += remaining; case "
         ".Active(damage): total += damage; } status: Status = authored; switch "
@@ -9092,7 +9210,7 @@ TEST_CASE(program_union_arrays_keep_owned_writable_values)
                   "local: Value[] = values; "
                   "local = array_add(local, Value.Item(2)); "
                   "local[0] = Value.Item(3); return local; } "
-                  "on Impulse(amount, enabled) { "
+                  "on Impulse :: (enabled: bool) { "
                   "if enabled { "
                   "original: Value[] = [Value.Item(1)]; copy := original; "
                   "changed := Edit(original); saved_result = changed; "
@@ -9149,7 +9267,7 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                 "Ordered :: system(p:Position,v:Velocity) { "
                 "resumed:retain double=0; event_clock:retain double=0; "
                 "queued_value:retain double=0; finished:retain double=0; "
-                "on Impulse(amount,enabled) { "
+                "on Impulse :: (amount: double, enabled: bool) { "
                 "if enabled { await Delay(1); resumed=InstanceClock(); v.x=7; "
                 "} "
                 "else { event_clock=InstanceClock(); queued_value=p.x; "
@@ -9339,7 +9457,7 @@ void test_language_program()
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
     RUN_TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state);
-    RUN_TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once);
+    RUN_TEST_CASE(program_retrigger_evaluates_each_duration_once);
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
@@ -9396,6 +9514,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
+    RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);

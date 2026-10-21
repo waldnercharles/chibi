@@ -65,9 +65,8 @@ The new C fixtures check unrelated-model isolation, the subsequent normal
 binding update, copied styles/classes, relative image resolution, same-frame
 growth and repeated shrink, geometry/hit testing and callback-driven lifetime
 changes. The graphics-free lifecycle selector checks used the existing C
-pico_unit driver at the recorded revision; the duplicate selector is now retired. Python test launchers were removed; `analyze.py` reads saved
-logs only. The original Python profiling runner is retained as historical text
-in `../run.py.txt`.
+pico_unit driver at the recorded revision; the duplicate selector is now retired. Python test launchers were removed. The analysis script and the original
+profiling runner (`../run.py.txt`) were removed on 2026-10-20; Git keeps them.
 
 ## Historical focused validation
 
@@ -105,8 +104,10 @@ CHIBI_IFRAME_PROFILE=1 make agent-test JOBS=4 AGENT_SELECTOR=--kit-documents
 make test JOBS=4
 make test-studio-selectors JOBS=4
 make web JOBS=4
-python3 docs/research/cut61-iframe-profile/finish/analyze.py
 ```
+
+The analysis script that summarized these captures was removed on 2026-10-20;
+Git history keeps it.
 
 The captures invoke `python3 tools/test_policy.py native <frozen-binary>
 <exact-selector>` directly, with `CHIBI_EXECUTION_PROFILE=iteration`,

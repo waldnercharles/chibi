@@ -11,12 +11,16 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/component_catalog.h"
+#include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_json.h"
+#include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -311,11 +315,15 @@ static int run_tests(const authoring_packages *packages, behavior_backend backen
     afree(tests);
     return failed;
 }
-/* Tests run without a game, so they get the natives that need none of it. */
+/* Tests run without a game, so they get the natives that need none of it, and
+ * the compiler's raw-syntax and JSON bridges, so the compiler's own packages
+ * can hold tests. */
 int authoring_project_test(const char *root, const char *core)
 {
     char error[512] = { 0 };
-    native_capabilities *native = host_native_standalone_catalog_new(error, sizeof error);
+    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
+                                                COMPILER_JSON_DEFINITION_PACK };
+    native_capabilities *native = host_native_standalone_catalog_new(compiler, 2, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
@@ -532,10 +540,9 @@ static bool generate(
     int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
     bool generated = status == FLOW_OK && context.returned;
     if (!generated) {
-        const char *reason = context.error_message ? context.error_message
-                           : context.failure == BEHAVIOR_FUNCTION_BUDGET
-                               ? "instruction budget exhausted"
-                               : "execution failed";
+        const char *reason = context.error_message
+                               ? context.error_message
+                               : behavior_function_failure_text(context.failure);
         snprintf(error, size, "the site generator failed on %s: %s", name, reason);
     }
     const pin_array *pieces = result.ptr;
@@ -1215,10 +1222,23 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         fprintf(stderr, "%s: %s\n", manifest, error);
     }
     native_capabilities *native = valid
-                                    ? host_native_standalone_catalog_new(error, sizeof error)
+                                    ? host_native_standalone_catalog_new(NULL, 0, error, sizeof error)
                                     : NULL;
+    /* The private parser belongs to the generator, never to validated examples. */
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    native_capabilities *render_native = native ? native_capabilities_from_definition_packs(
+                                                      NULL,
+                                                      0,
+                                                      packs,
+                                                      3,
+                                                      error,
+                                                      sizeof error
+                                                  )
+                                                : NULL;
     authoring_packages *packages = NULL;
-    if (native) {
+    if (render_native) {
         source_package_collection collections[] = { { "core", core } };
         source_package_disk_options options = { generator_root, collections, 1 };
         source_package_load_error load = { 0 };
@@ -1226,10 +1246,10 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         if (!snapshot) {
             fprintf(stderr, "%s: %s\n", load.path, load.message);
         }
-        script_lower_bindings bindings = authoring_native_bindings(native);
+        script_lower_bindings bindings = authoring_native_bindings(render_native);
         packages = snapshot ? authoring_packages_prepare(
                                   snapshot,
-                                  native_capabilities_catalog(native),
+                                  native_capabilities_catalog(render_native),
                                   &bindings,
                                   behavior_default_backend(),
                                   NULL
@@ -1282,6 +1302,7 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         }
     }
     authoring_packages_free(packages);
+    native_capabilities_free(render_native);
     native_capabilities_free(native);
     afree(pages);
     av_doc_free(doc);

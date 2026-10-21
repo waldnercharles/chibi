@@ -47,7 +47,7 @@ python3 tools/web_serve.py --build build-web \
 ```
 
 Open `http://127.0.0.1:8137/chibi.html`, which selects the worker bundle. Paste
-[browser-sample.js](browser-sample.js) into the console. After the view settles,
+`browser-sample.js` (removed on 2026-10-20; Git keeps it) into the console. After the view settles,
 run `await sampleStudio(10000)` and save the returned object. For the pan case,
 start `window.sample = sampleStudio(10000)`, pan across empty graph space for
 the interval, then read `await window.sample`.

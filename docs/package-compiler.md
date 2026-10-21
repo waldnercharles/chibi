@@ -10,13 +10,15 @@ compiler sources.
 ## Entry
 
 `Compile(project: string, collection_names: string[], collection_paths:
-string[], paths: string[], sources: string[], target: Target, abi: uint64,
-names: string[], natives: Native[], ports: Port[], identities: uint64[]) ->
-Result` returns `Compiled(module, bytes)`, a CHIBICLO closure with a module
-for every package, or `Rejected(diagnostic)`. `paths` and `sources` hold the
-files of every package, those of imported collections such as `core` under
-their collection's path; the package of `paths[0]` is the closure's root. The
-target supplies what Chibi cannot see:
+string[], paths: string[], sources: string[], debug: bool, target: Target,
+abi: uint64, names: string[], natives: Native[], ports: Port[], identities:
+uint64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO closure
+with a module for every package, or `Rejected(diagnostic)`. `paths` and
+`sources` hold the files of every package, those of imported collections such
+as `core` under their collection's path; the package of `paths[0]` is the
+closure's root. With `debug`, each function has stage zero's debugger points
+and watches (see [Output](#output)); without it, none, as the bootstrap
+compiles the compiler. The target supplies what Chibi cannot see:
 
 - `Target`: pointer width, the offsets of a value header's and an array's
   members, and the failure kinds a host call and a failed assertion report;
@@ -49,6 +51,13 @@ import:
 - parameter defaults that are integer, bool or string literals, `(name:
   string = "you", count: int = 1)`: a call that omits trailing arguments
   passes their defaults, as stage zero does. A floating default is rejected;
+- `assert(condition, "message")`, where the target links the core pack's
+  `assert`, as a game does: the call fails when the condition is false, with
+  "Assertion failed: " and the message, or the condition's source when there
+  is none or it is empty, as stage zero's `ASSERT` does. Its arguments may be
+  named `condition` and `message`; the message must be a string literal.
+  `Target`'s `assert_failure` is that failure's kind. Stage zero compiles an
+  assert without a condition to one that always fails; stage one refuses it;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
   is a local, zero until the body sets it; `return (a, b)` gives each its
   value, and `return` or the body's end returns them. A call's `.name` reads
@@ -189,7 +198,11 @@ member procedures, and `on` handlers of the game's events with scalar
 payloads. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
-event's payload; a parameter names the field in its position. A handler body
+event's payload, one parameter per field in payload order. As in stage zero,
+`on Move :: (y: float)` names fields in any order, matched as the catalog
+matches names; each field it leaves out gets an unnamed parameter. A name the
+payload lacks, or a field listed twice, is refused with stage zero's
+diagnostic. Written types are not checked yet. A handler body
 is a function body, as above. In it, states are names that read and store as
 `VARIABLE` and `STORE`, `self` is the owner, and `self.C.f = v` writes the
 writable field `f` of the owner's component `C`. As in stage zero, the write
@@ -287,18 +300,63 @@ Each package is its own module, assembled dependencies first:
 - The closure has one row per package, named by its identity.
 
 Runtime sources record each instruction's origin. Each function has stage
-zero's function, statement and completion points:
-- one at its entry, meaning the event a handler handles, or the function;
-- one before each statement, and one before each value a `return` gives;
-- a completion point at each `return` and at the function's end.
+zero's points:
+- a function point at its entry, meaning the event a handler handles, or the
+  function, and a completion point at each `return` and at its end;
+- a statement point before each statement, and one before each value a
+  `return` gives;
+- an expression point before each expression it evaluates, outermost first.
+  Parentheses only group, `-1` is one literal, and an array of literals is one
+  constant, so their parts have none;
+- a symbol point where it reads a name, after the name's expression point,
+  and where it stores one: an assignment, a declaration with one value, a
+  `for` element and each value a `return` gives its result.
+
+An assignment's target has the points of its value's reads: a component or
+field target has an expression point for each member it reaches through and a
+symbol point for the name it starts from, and a compound assignment reads its
+target first. Stage zero writes a parameter through its reference, so
+assigning one has the target's points and no store. A local array that `xs =
+array_add(xs, x)` updates in place is stored, then read again. A `switch` arm
+has an expression point for its pattern, and each binding of an arm or of `is`
+a symbol point. A function with a record or array result stores that result's
+symbol at its entry.
 
 A point's occurrence is `script_occurrence` of its record's source range, so
 it is the one Studio's breakpoints find; a completion point's record is the
-function. Its position is where it is placed. Each point is a `SOURCE_POINT`
-instruction, which suspends, so each invocation's and point's target is its
-order among them, as the runtime numbers suspensions; an imported module's
-fingerprint covers those bytes. Expression and symbol points and watches are
-not emitted yet; they must be before stage one becomes the normal compiler.
+function, and a symbol point's is the name's declaration. A symbol the source
+declares nowhere, such as `self` or an unnamed result, spans its package's
+first document, since stage zero's unset range names document 0 and clamps to
+its length; another package's constant is declared
+where this package first uses it. A point's position is where it is placed.
+Each point is a `SOURCE_POINT` instruction, which suspends, so each
+invocation's and point's target is its order among them, as the runtime
+numbers suspensions; an imported module's fingerprint covers those bytes.
+
+Each function also has stage zero's watches, which Studio shows a paused
+function's values with. A watch is a `SOURCE_WATCH` of the slot that holds a
+value, with its expression as origin and its type's header as initial value:
+- an output watch on each value an expression produces, `self` included, and on
+  each number literal once its use gives it a type, except an array of
+  literals;
+- a call's inputs, one per argument with the argument's own type, defaults
+  included (a default also has an output watch); a struct literal's, numbered
+  by each field's place in the record; and a call with several results has
+  an output watch for each, numbered;
+- a compound assignment watches the value it stores at its target, and one on
+  a name or an element also the value it reads there;
+- a `switch` arm watches the subject it reads again and its pattern's test;
+- `xs = array_add(xs, x)` watches the array as its argument and as the call's
+  first input, the item as its second, and the array it leaves as the call's
+  output.
+
+A behavior's handles are its entities, so their watches name the entity type.
+
+Without `debug`, a body places none of these. Steps still leave some
+placeholders, which the body drops at its end, sending a jump or branch to one
+to the instruction after it. `tool language-package-compiler-chibi-debug-free`
+compiles the loops and control samples that way, checks that no point or
+watch remains, and runs them on both backends.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
@@ -321,21 +379,56 @@ Odin's table of powers of five for left shifts, and the decimal point counts
 every significant digit read, not only the stored ones, which Odin's and Go's
 fast paths otherwise cover.
 
+## Hosts
+
+Stage one runs natively on macOS arm64 and on the 32-bit Wasm host. Linux
+x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
+
+- **32-bit Wasm:** the compiler prepared for Wasm compiles every package and
+  behavior sample, and their closures run there. Stage one writes the
+  target's pointer width into each module's header.
+- **Compiler host and bootstrap:** they load closures on the host's compiled
+  backend: SLJIT where the build has it, bytecode where it doesn't, and the
+  Wasm JIT in a browser.
+- **Large definitions on Wasm:** the Wasm JIT runs a definition on bytecode
+  when its generated module would exceed 128 KiB. V8's optimizing tier spends
+  about 4 MB per KiB of module, and aborted on stage one's 482 KiB and 766 KiB
+  modules. The same budget sends an inspected run to bytecode when its
+  inspection module would exceed it.
+- **Selectors:** `tool wasm-package-compiler-chibi` and its `-compiled`,
+  `-types`, `-types-compiled`, `-imports`, `-imports-compiled`, `-behaviors`,
+  `-behaviors-rest`, `-sharing`, `-debug-free` and `-literals` variants run
+  each package-compiler selector in Node, in 4 to 6 s each (2026-10-20).
+  `make test-wasm` runs the base pair.
+- **Bootstrap:** it runs natively only. Stage one compiling itself needs more
+  than Wasm's 2 GiB of linear memory.
+
 ## Test
 
-Three selectors compile 86 samples on both compiler backends, each under its
-own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-20, load average
-about 15 from other sessions):
+Four groups of samples each have two selectors, one for each backend the
+compiler runs on, each under its own 60 s ceiling. The bytecode selector also
+compares each module with stage zero's. Times are from macOS arm64, Debug +
+ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
+stage zero preparing stage one:
 
-- `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (10,859 assertions in
-  38.6 s);
-- `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types, inferred arrays and element reads (3,374 assertions in
-  38.1 s);
-- `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,995 assertions in 51.5 s; 35.7 s on a quiet
-  machine before points).
+- `tool language-package-compiler-chibi` and `-compiled`: scalars, control
+  flow, strings and natives, and the rejections that belong to no other group
+  (50.7 s and 41.7 s);
+- `tool language-package-compiler-chibi-types` and `-types-compiled`: unions,
+  constants, patterns, scopes, integer types, inferred arrays and element
+  reads (49.3 s and 41.5 s);
+- `tool language-package-compiler-chibi-collections` and
+  `-collections-compiled`: maps, references, arrays, ranges and records, and
+  their rejections (50.5 s and 42.0 s). They moved out of the base and type
+  groups once maps and references took the type selector to 58 s;
+- `tool language-package-compiler-chibi-imports` and `-imports-compiled`: the
+  imports sample, which compiles all of `core:strings`, and the samples that
+  link the core pack. Under sanitizers the bytecode selector came within a few
+  seconds of its ceiling, so both run an unsanitized Release `test_language`,
+  as the bootstrap check does (about 5 s and 4 s).
+
+Expression and symbol points made the compiler about 20% slower on this
+sample: 18.2 s to 21.9 s of CPU time to compile it on the bytecode backend.
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
@@ -424,13 +517,25 @@ to 21 s.
 
 `make test-bootstrap` builds an unsanitized Release `test_language` and runs
 `tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
-one, which compiles the compiler's complete source set, 15 files in 11
-packages, to a 6.4 MB closure: stage two. The compiler host loads stage two
-and runs its `CompileClosure` on the same sources and arguments, as JSON, and
-the bytes must equal stage one's. Stage two then compiles every sample, and
-each `Compile` result, closure or rejection, must project to the same JSON as
-stage one's; the existing selectors check stage one's against stage zero and
-run its closures on bytecode and SLJIT. The run takes about 23 s, with a peak
+one, which compiles the compiler's complete source set, without debugger
+points and watches, to a 9.6 MB closure: stage two. The compiler host loads
+stage two and runs its `CompileClosure` on the same sources and arguments, as
+JSON, and the bytes must equal stage one's. Stage two then compiles every
+sample with them: its `CompileClosure` must give stage one's closure, and a
+rejection its `Compile` JSON; the existing selectors check stage one's against
+stage zero and run its closures on bytecode and SLJIT.
+
+With watches, stage two was a 20.6 MB closure, past the host's 16 MiB byte
+result, its million prepared values and its layout work; raising every bound
+took about 10 GB to load it and still failed. On 2026-10-20, in about 41 s of
+wall time at a load average of 12, stage one compiled the compiler in about
+20 s of CPU time and stage two in about 13 s. Before then, every constant,
+default and first use counted whitespace with `ByteAt` from its document's
+start, and each `ByteAt` measures the text. A profile of stage one now puts
+over half of its time in `pin_record_valid` and the layout hash it recomputes
+on every record value it copies.
+
+On 2026-10-19, before points and watches, the run took about 23 s, with a peak
 memory footprint of about 3.5 GB (macOS arm64, 2026-10-19): stage one compiles
 the compiler in 11.7 s of CPU time and stage two in 7.6 s, against 13.3 s,
 8.9 s and 4.2 GB before the changes above, and the closure shrank from 6.64 MB.
@@ -442,8 +547,8 @@ Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
 
-Stage two needs the compiler host's larger closure bounds: the package
-compiler's module needs about 113 M units of record-layout work and decodes to
+Stage two needs the compiler host's larger closure bounds. On 2026-10-19 the
+package compiler's module needed about 113 M units of record-layout work and decoded to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
-prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, is
+prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, was
 past the host's former 1,000,000-value byte result.

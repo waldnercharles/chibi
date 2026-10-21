@@ -777,26 +777,6 @@ void script_analyzer_value_declarations(analyzer *a, TSNode body)
                 true
             );
             apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));
-        } else if (script_analyzer_is(node, "handler") && script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "on")) {
-            TSNode alias = script_analyzer_field(node, "alias");
-            if (ts_node_is_null(alias)) {
-                continue;
-            }
-            char *name = script_analyzer_qualified_name(a, script_analyzer_field(node, "name"));
-            int event = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_EVENT);
-            free(name);
-            if (event < 0) {
-                continue;
-            }
-            uint64_t id = a->catalog->capabilities[event].id;
-            int symbol = script_analyzer_symbol_new(
-                a,
-                alias,
-                SCRIPT_PARAMETER,
-                (script_type){ .storage = PIN_STRUCT, .nominal = id, .flags = SCRIPT_TYPE_RESULTS },
-                false
-            );
-            a->out->symbols[symbol].capability = id;
         } else if (script_analyzer_is(node, "exit_declaration")) {
             script_range range = script_analyzer_range(a, script_analyzer_field(node, "name"));
             bool declared = false;
@@ -909,8 +889,8 @@ static int payload_symbol(analyzer *a, TSNode parameter, const script_catalog_pa
                                                         : NULL;
     return symbol;
 }
-/* `on X(a, b)` binds payload fields in order, and `on X` binds each by its
- * own name. */
+/* `after X(a, b)` binds the action's results in order, and `after X` binds
+ * each by its own name. */
 static void positional_payload(
     analyzer *a,
     int function,
@@ -1169,13 +1149,6 @@ void script_analyzer_handler(analyzer *a, TSNode node)
             );
         }
     }
-    TSNode alias_node = script_analyzer_field(node, "alias");
-    int declared_alias = !after && !ts_node_is_null(alias_node)
-                           ? script_analyzer_lookup(a, alias_node)
-                           : -1;
-    if (declared_alias >= 0) {
-        a->out->symbols[declared_alias].function = function;
-    }
     int old_scope = a->scope, old_function = a->function;
     a->function = function;
     a->scope = script_analyzer_scope_new(a, body);
@@ -1186,16 +1159,13 @@ void script_analyzer_handler(analyzer *a, TSNode node)
                                                         : NULL;
     int count = signature ? after ? signature->result_count : signature->parameter_count
                           : 0;
-    bool named = !ts_node_is_null(script_analyzer_field(node, "binding"));
-    a->out->functions[function].named = named;
-    if (named) {
+    if (!after) {
         script_analyzer_named_payload(a, function, parameter_nodes, payload, count, name);
     } else {
         positional_payload(a, function, parameter_nodes, payload, count);
     }
-    /* The payload aggregate has a semantic identity, independent of aliases.
-     * A handler that names its fields still declares it, so that it hides an
-     * enclosing system's `event`, but reading it is an error. */
+    /* The payload aggregate has a semantic identity. An `on` handler names its
+     * fields, so reading the aggregate there is an error. */
     script_symbol event = { .name = xstrdup("event"),
                             .kind = SCRIPT_PARAMETER,
                             .id = script_catalog_id("payload", name),
@@ -1208,18 +1178,6 @@ void script_analyzer_handler(analyzer *a, TSNode node)
                             .function = function,
                             .declaration = { .start = -1, .end = -1 } };
     apush(a->out->symbols, event);
-    TSNode alias = script_analyzer_field(node, "alias");
-    if (!ts_node_is_null(alias) && declared_alias < 0) {
-        int symbol = script_analyzer_symbol_new(
-            a,
-            alias,
-            SCRIPT_PARAMETER,
-            event.type,
-            false
-        );
-        a->out->symbols[symbol].capability = event.capability;
-        a->out->symbols[symbol].function = function;
-    }
     a->out->functions[function].body = script_analyzer_statement(a, body);
     a->out->functions[function]
         .effects = a->out->statements[a->out->functions[function].body].effects;

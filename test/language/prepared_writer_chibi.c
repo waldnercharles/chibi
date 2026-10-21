@@ -78,11 +78,11 @@ enum
  * payload, and a write to a field of the owner's component. */
 static const char BEHAVIOR[] = "Counter :: behavior {\n"
                                "    steps: int = 0\n"
-                               "    on Tick {\n"
+                               "    on Tick :: () {\n"
                                "        steps += 1\n"
                                "        self.Tally.value = steps\n"
                                "    }\n"
-                               "    on Add(amount: int) {\n"
+                               "    on Add :: (amount: int) {\n"
                                "        steps += amount\n"
                                "    }\n"
                                "}\n";
@@ -725,6 +725,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         { .type = PIN_U64, .u64 = p->id },
         { .type = PIN_U64, .u64 = p->owner_type },
         { .type = PIN_U64, .u64 = abi },
+        { .type = PIN_I32, .i = (int)sizeof(void *) },
         rows(m, NULL, PIN_U64, m->wide),
         rows(m, "Value", PIN_STRUCT, m->values),
         rows(m, NULL, PIN_I32, m->ints),

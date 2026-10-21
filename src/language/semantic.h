@@ -121,6 +121,7 @@ typedef enum
     SCRIPT_OP_SHIFT_LEFT,
     SCRIPT_OP_SHIFT_RIGHT,
     SCRIPT_OP_BIT_NOT,
+    SCRIPT_OP_COALESCE,
 } script_operator;
 typedef struct
 {
@@ -215,7 +216,6 @@ typedef struct
     bool pure, disabled;
     bool inferred; /* No `->`: its returns give the results. */
     bool test;     /* Marked `@test`: chibi test runs it. */
-    bool named;    /* `on X :: (a: T)`: reads only the fields it lists. */
 } script_function;
 typedef enum
 {

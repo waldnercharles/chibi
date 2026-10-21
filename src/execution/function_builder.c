@@ -1131,7 +1131,9 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             }
             return true;
         case EXECUTION_INTRINSIC_MAP_GET:
-            return count == 2 && map_bank(values[0].initial) &&
+            return (count == 2 ||
+                    (count == 3 && same_type(values[2].initial, output))) &&
+                   map_bank(values[0].initial) &&
                    pin_map_key_supported(values[1].initial) &&
                    value_type_valid(output);
         case EXECUTION_INTRINSIC_MAP_HAS:
@@ -1232,7 +1234,9 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    INPUT(2, values[3].initial.b ? PIN_I32 : PIN_U64) &&
                    OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_READ:
-            return count == 1 && INPUT(0, BF_POINTER_TYPE);
+            return (count == 1 ||
+                    (count == 2 && same_type(values[1].initial, output))) &&
+                   INPUT(0, BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
@@ -1255,8 +1259,11 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return count == 3 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
                    values[2].initial.container == PIN_CONTAINER_SINGLE &&
                    OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_MAP_STORE:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_MAP_DELETE:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
-        case EXECUTION_INTRINSIC_EVENT_READ:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    INPUT(1, PIN_U64) && INPUT(2, PIN_I32);
         case EXECUTION_INTRINSIC_ACTION_COMPLETE:
@@ -1658,10 +1665,11 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_STATE_DEMAND:
                 case EXECUTION_INTRINSIC_STATE_TRANSITION:
                 case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
-                case EXECUTION_INTRINSIC_EVENT_READ:
                 case EXECUTION_INTRINSIC_ARRAY_PUSH:
                 case EXECUTION_INTRINSIC_ARRAY_STORE:
                 case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+                case EXECUTION_INTRINSIC_MAP_STORE:
+                case EXECUTION_INTRINSIC_MAP_DELETE:
                     expected = BEHAVIOR_ADDRESS;
                     break;
             }

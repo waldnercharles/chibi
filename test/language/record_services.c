@@ -238,10 +238,9 @@ TEST_CASE(record_globals_atomic_rejections)
     native.record = NULL;
     REQUIRE(entities_set_global_value(globals, "rows", &native));
     REQUIRE(unchanged_rows());
-    pin_record malformed = *record;
-    malformed.type.size++;
+    /* Each row must carry the array's layout, not only the first. */
     pin_array *items = array.ptr;
-    items->items[1].record = &malformed;
+    items->items[1].record = different;
     REQUIRE(entities_set_global_value(globals, "rows", &array));
     REQUIRE(unchanged_rows());
     REQUIRE(entities_set_global_value(globals, "invalid_first", &array));
@@ -253,7 +252,7 @@ TEST_CASE(record_globals_atomic_rejections)
     REQUIRE(!memcmp(&output, &before, sizeof output));
     REQUIRE(unchanged_rows());
     output = result_header(array);
-    output.record = &malformed;
+    output.record = different;
     before = output;
     REQUIRE(host(&ENTITY_SET_GLOBAL_CALL, arguments, &output));
     REQUIRE(!memcmp(&output, &before, sizeof output));

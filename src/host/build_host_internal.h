@@ -2,9 +2,12 @@
 #define CHIBI_HOST_BUILD_HOST_INTERNAL_H
 #include "host/build_host.h"
 #include "host/build_values.h"
-#include "language/lower.h"
+#include "host/process.h"
+#include "runtime/native_capabilities.h"
 
 #define BUILD_ENVIRONMENT_CAPACITY 96
+/* Steps that may run at once through build.start. */
+#define BUILD_MAX_JOBS CHIBI_PROCESS_SERVICE_JOBS
 /* A step's own output may fill one build text value. */
 #define BUILD_STEP_OUTPUT_CAPACITY (BUILD_TEXT_LIMIT + 1)
 
@@ -20,6 +23,10 @@ typedef struct
     bool last_stdout_truncated, last_stderr_truncated;
     char *environment[BUILD_ENVIRONMENT_CAPACITY];
     double deadline;
+    /* Steps build.start began. A slot is free while its handle is zero. */
+    chibi_process_job jobs[BUILD_MAX_JOBS];
+    chibi_process_output job_outputs[BUILD_MAX_JOBS][2];
+    int job_handles[BUILD_MAX_JOBS], job_count;
 } build_host;
 
 const char *build_host_ready(build_host *);
@@ -28,6 +35,9 @@ const char *build_host_run_step(void *, const pin_value *, pin_value *);
 const char *build_host_run_probe(void *, const pin_value *, pin_value *);
 const char *build_host_environment(void *, const pin_value *, pin_value *);
 const char *build_host_environment_names(void *, const pin_value *, pin_value *);
-const script_catalog *build_host_catalog();
-bool build_host_resolve(void *, uint64_t, script_lower_host *);
+const char *build_host_start(void *, const pin_value *, pin_value *);
+const char *build_host_wait(void *, const pin_value *, pin_value *);
+void build_host_stop_jobs(build_host *);
+/* The build.* natives, for the build host's catalog. */
+const native_capability_pack *build_host_natives();
 #endif

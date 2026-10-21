@@ -29,8 +29,11 @@ pub Target :: struct {
     items_offset: int;
     data_offset: int;
     stride_offset: int;
+    map_count_offset: int;
     data_failure: int;
     argument_failure: int;
+    // The failure kind of an assert whose condition is false.
+    assert_failure: int;
 }
 // Prepared instructions this compiler emits, as ordinals on the target.
 Ops :: struct {
@@ -79,6 +82,9 @@ Ops :: struct {
     owner: int;
     convert: int;
     source_point: int;
+    source_watch: int;
+    // Whether the code carries debugger points and watches.
+    debug: bool;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -116,6 +122,13 @@ Param :: struct {
     has_default: bool;
     default_bits: uint64;
     default_text: string;
+    // The occurrence of the default's expression, which stage zero evaluates
+    // where a call omits the argument.
+    default_occurrence: uint64;
+    // A `ref` parameter, whose argument is a reference to the caller's value.
+    reference: bool;
+    // The node that declares the parameter, -1 when the source declares none.
+    node: int;
 }
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
@@ -143,7 +156,9 @@ UnsupportedPort: int : -1;
 // members[first, first + count); a union's variants are types[first, first +
 // count), and each variant names its union as `parent`. A native type, one the
 // game links, also has its storage, ID and layout, and a component its
-// component ID.
+// component ID, and a record or union its package-symbol ID. A map type
+// `[K: V]` that a package spells has its key's storage and its value's type,
+// and is named as stage zero names it.
 TypeDecl :: struct {
     name: string;
     type_name: string;
@@ -157,6 +172,10 @@ TypeDecl :: struct {
     id: uint64;
     layout: uint64;
     component: uint64;
+    key: int;
+    value_storage: int;
+    value_container: int;
+    value_record: int;
 }
 // A record field, with its byte offset, or a variant's payload field. A
 // native type's field may be read-only, a constant whose value is its name,
@@ -187,6 +206,8 @@ ConstDecl :: struct {
     node: int;
     file: int;
     folded: bool;
+    // The occurrence of the constant's symbol, in its own document.
+    occurrence: uint64;
 }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -209,6 +230,7 @@ VariantDecl: int : 2;
 NativeDecl: int : 3;
 // A game namespace, such as SceneGlobals: a native type no module requires.
 NamespaceDecl: int : 4;
+MapDecl: int : 5;
 // Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
 TypeKind: int : 13;
@@ -236,7 +258,7 @@ Position :: (items: int[], value: int) -> int {
     }
     return -1;
 }
-ResolveOps :: (names: string[]) -> Ops {
+ResolveOps :: (names: string[], debug: bool) -> Ops {
     return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
             local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
             array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
@@ -253,7 +275,8 @@ ResolveOps :: (names: string[]) -> Ops {
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
             store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
-            source_point: Ordinal(names, "SOURCE_POINT")};
+            source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
+            debug: debug};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: (ops: Ops) -> bool {
@@ -262,7 +285,8 @@ Complete :: (ops: Ops) -> bool {
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point];
+                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point,
+                   ops.source_watch];
     for (op in used) {
         if (op < 0) {
             return false;
@@ -336,11 +360,22 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
     for (link in links) {
         if (link.file == file) {
             alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
-                           record: -1, writable: false};
+                           record: -1, writable: false, node: -1};
             aliases = array_add(aliases, alias);
         }
     }
     return aliases;
+}
+// The index of the type whose ID is `id`, -1 when none.
+TypeWithId :: (types: TypeDecl[], id: uint64) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        if (types[index].id == id) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
 }
 // The variant `name` of union types[of], -1 when none.
 FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
@@ -358,9 +393,29 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // array of one; storage 0 for any other.
 ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
              node: int) -> ValueType {
+    if (Field(forest, node, "trait") >= 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return ReadReferencedType(forest, text, types, names, package, node);
+}
+// Whether the type `node` is `ref T`: its only trait is `ref`.
+Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    traits: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == "trait") {
+            traits += 1;
+        }
+        child = forest[child].next_sibling;
+    }
+    return traits == 1 && Text(forest, text, Field(forest, node, "trait")) == "ref";
+}
+// The type `node` names, as ReadType reads it, or the T of `ref T`.
+ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                       node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
-        HasToken(forest, node, "?")) {
+    if (!Is(forest, node, "type") || (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node)) ||
+        Field(forest, node, "arguments") >= 0 || HasToken(forest, node, "?")) {
         return none;
     }
     container: int = 0;
@@ -373,6 +428,15 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
     }
     if (container > 1) {
         return none;
+    }
+    map := Field(forest, node, "map");
+    if (map >= 0) {
+        declared := FindMap(types, ReadType(forest, text, types, names, package, Field(forest, map, "key")),
+                            ReadType(forest, text, types, names, package, Field(forest, map, "value")));
+        if (container != 0 || declared < 0) {
+            return none;
+        }
+        return {storage: UnionStorage, container: MapContainer, record: declared};
     }
     first := FirstMember(forest, Field(forest, node, "name"));
     name := Text(forest, text, first);
@@ -395,6 +459,81 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
         return {storage: UnionStorage, container: container, record: declared};
     }
     return {storage: StructStorage, container: container, record: declared};
+}
+// The map type keyed by `key` holding `value`, -1 when none is declared.
+FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.kind == MapDecl && declared.key == key.storage && declared.value_storage == value.storage &&
+            declared.value_container == value.container && declared.value_record == value.record) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The ID stage zero gives a single key or value type: its storage and the
+// ID of the record, union or native type it names.
+TypeTag :: (types: TypeDecl[], storage: int, record: int) -> uint64 {
+    nominal: uint64 = 0;
+    if (record >= 0) {
+        nominal = types[record].id;
+    }
+    return binding.ID("union-type", format_text("{}:0:{}:0:0", storage, nominal));
+}
+// Declares each map type that file `root` spells, inner ones first, when its
+// key is a number, bool or string and its value a single value of a type
+// this compiler supports. Stage zero names the map's collection type from
+// both types.
+DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                root: int) -> TypeDecl[] {
+    // A depth-first walk that skips expressions, where no type is spelled,
+    // so it visits a small part of the file.
+    found: int[] = [];
+    pending: int[] = [root];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        node := pending[top];
+        kind := forest[node].kind;
+        if (kind == "map_type") {
+            found = array_add(found, node);
+        }
+        child := forest[node].first_child;
+        while (child >= 0 && !Expression(kind)) {
+            if (forest[child].is_named && !forest[child].is_extra) {
+                if (top < length(pending)) {
+                    pending[top] = child;
+                } else {
+                    pending = array_add(pending, child);
+                }
+                top += 1;
+            }
+            child = forest[child].next_sibling;
+        }
+    }
+    // The caller's `types` stays unwritten, so its appends stay in place.
+    known := types;
+    at := length(found) - 1;
+    while (at >= 0) {
+        map := found[at];
+        at -= 1;
+        key := ReadType(forest, text, known, aliases, package, Field(forest, map, "key"));
+        value := ReadType(forest, text, known, aliases, package, Field(forest, map, "value"));
+        if (key.storage == 0 || key.container != 0 || key.record >= 0 || value.storage == 0 || value.container != 0 ||
+            value.storage == UnionStorage || FindMap(known, key, value) >= 0) {
+            continue;
+        }
+        id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, TypeTag(known, key.storage, -1),
+                                                        TypeTag(known, value.storage, value.record)));
+        declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, kind: MapDecl,
+                              first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
+                              key: key.storage, value_storage: value.storage, value_container: value.container,
+                              value_record: value.record};
+        known = array_add(known, declared);
+    }
+    return known;
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: (storage: int, target: Target) -> int {
@@ -481,7 +620,11 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
                                       kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1,
-                                      storage: 0, id: 0, layout: 0, component: 0};
+                                      storage: 0,
+                                      id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
+                                                                                   TypeKind, name)),
+                                      layout: 0, component: 0, key: 0, value_storage: 0,
+                                      value_container: 0, value_record: -1};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -502,7 +645,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
-                                                     storage: 0, id: 0, layout: 0, component: 0};
+                                                     storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
+                                                     value_container: 0, value_record: -1};
                             types = array_add(types, alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -554,6 +698,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             member = NextMember(forest, member);
         }
     }
+    for (file in files) {
+        types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+    }
     // Payloads may name any type, so they resolve once every type is known.
     for (file in files) {
         text := documents[file].text;
@@ -591,6 +738,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     }
     for (file in files) {
         text := documents[file].text;
+        solid := SolidOffsets(text);
         aliases := Aliases(links, file);
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
@@ -604,7 +752,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                switch FunctionSignature(forest, text, types, aliases, package, file, member, name, length(params)) {
+                switch FunctionSignature(forest, text, documents[file].key, solid, types, aliases, package, file,
+                                         member, name, length(params)) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
@@ -631,8 +780,11 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
+                named := forest[Field(forest, member, "name")];
                 constant: ConstDecl = {name: name, package: package, storage: storage, bits: 0,
-                                       node: Field(forest, member, "value"), file: file, folded: false};
+                                       node: Field(forest, member, "value"), file: file, folded: false,
+                                       occurrence: Occurrence(documents[file].key, SymbolRecord, solid[named.start],
+                                                              solid[named.end])};
                 constants = array_add(constants, constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
@@ -852,23 +1004,35 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 }
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar.
-FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[],
-                      package: int, file: int, member: int, name: string, first: int) -> Signature {
+FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], types: TypeDecl[],
+                      aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
-        declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+        type_node := Field(forest, parameter, "type");
+        declared := ReadReferencedType(forest, text, types, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
+        }
+        reference := Field(forest, type_node, "trait") >= 0;
+        if (reference && Field(forest, parameter, "value") >= 0) {
+            return Signature.Failed(Diagnose(forest, parameter, file, "a reference parameter takes no default"));
         }
         param_name := Text(forest, text, Field(forest, parameter, "name"));
         if (param_name == "") {
             return Signature.Failed(Diagnose(forest, Field(forest, parameter, "name"), file,
                                              "Invalid string or embedded NUL"));
         }
-        param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                        record: declared.record, has_default: false, default_bits: 0, default_text: ""};
         default_value := Field(forest, parameter, "value");
+        default_occurrence: uint64 = 0;
+        if (default_value >= 0) {
+            default_occurrence = Occurrence(key, ExpressionRecord, solid[forest[default_value].start],
+                                            solid[forest[default_value].end]);
+        }
+        param: Param = {name: param_name, storage: declared.storage, container: declared.container,
+                        record: declared.record, has_default: false, default_bits: 0, default_text: "",
+                        default_occurrence: default_occurrence, reference: reference,
+                        node: Field(forest, parameter, "name")};
         if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {
                 case .Failed(diagnostic):
@@ -898,7 +1062,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
             param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
-                            has_default: false, default_bits: 0, default_text: ""};
+                            has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
+                            reference: false, node: Field(forest, named, "name")};
             added = array_add(added, param);
             named = NextMember(forest, named);
         }
@@ -924,7 +1089,10 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     if (container != 0) {
         value := ScalarValue(storage, 0);
         value.container = container;
-        if (storage == StructStorage) {
+        if (container == MapContainer) {
+            value.type_name = types[record].type_name;
+            value.has_type_name = true;
+        } else if (storage == StructStorage) {
             value.type_name = types[record].type_name;
             value.has_type_name = true;
             value.authored = types[record].kind != NativeDecl;
@@ -947,6 +1115,13 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
             authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
             count: types[record].count};
+}
+// A parameter's header: its type's, or a `ref` parameter's descriptor pointer.
+ParamHeader :: (param: Param, types: TypeDecl[], layouts: int[], target: Target) -> writer.Value {
+    if (param.reference) {
+        return ScalarValue(target.pointer_storage, 0);
+    }
+    return Header(param.storage, param.container, param.record, types, layouts);
 }
 NoSource :: () -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
@@ -972,10 +1147,9 @@ HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
 }
 HashText :: (hash: uint64, text: string) -> uint64 {
     out := hash;
-    index: int = 0;
-    while (index < strings.ByteLength(text)) {
-        out = HashBytes(out, uint64(strings.ByteAt(text, index)), 1);
-        index += 1;
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    for (byte in strings.Bytes(text)) {
+        out = HashBytes(out, uint64(byte), 1);
     }
     return HashBytes(out, 0, 1);
 }
@@ -1035,7 +1209,8 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     starts := resize([int(0)], length(packages));
     lengths := resize([int(0)], length(packages));
     for (package in order) {
-        switch Assemble(forest, documents, package, package_names, package_ids, fingerprints,
+        switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
+                        package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
                         natives, ports, identities, ops, target, abi, Game.Package) {
             case .Rejected(diagnostic):
@@ -1057,7 +1232,76 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
 // functions are its handlers; its bytes are the Compiled result's. Each body
 // is a canonical definition the runtime verifies and finalizes when it loads
 // it.
-Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int,
+// `constants`, each another package's taking the occurrence of the first use
+// in package `package`, where stage zero declares its symbol.
+UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links: graph.Binding[],
+                  callables: Callable[], constants: ConstDecl[], package: int, first_own: int,
+                  reachable: bool[]) -> ConstDecl[] {
+    // Only a package this one imports declares a constant it can use.
+    foreign := false;
+    for (constant in constants) {
+        foreign = foreign || (constant.package != package && reachable[constant.package]);
+    }
+    if (!foreign) {
+        return constants;
+    }
+    seen := resize([false], length(constants));
+    firsts := resize([uint64(0)], length(constants));
+    solid: int[] = [];
+    solid_document: int = -1;
+    index := first_own;
+    while (index < length(callables) && callables[index].package == package) {
+        document := callables[index].document;
+        text := documents[document].text;
+        if (document != solid_document) {
+            solid = SolidOffsets(text);
+            solid_document = document;
+        }
+        aliases := Aliases(links, document);
+        // The body's nodes in source order.
+        pending: int[] = [Field(forest, callables[index].node, "body")];
+        while (length(pending) > 0) {
+            node := pending[length(pending) - 1];
+            pending = slice(pending, 0, length(pending) - 1);
+            found: int = -1;
+            if (Is(forest, node, "member_expression")) {
+                found = ConstantOf(forest, text, constants, aliases, package, node);
+            }
+            if (found >= 0 && constants[found].package != package && !seen[found]) {
+                seen[found] = true;
+                firsts[found] = Occurrence(documents[document].key, SymbolRecord, solid[forest[node].start],
+                                           solid[forest[node].end]);
+            }
+            children: int[] = [];
+            child := forest[node].first_child;
+            while (child >= 0) {
+                children = array_add(children, child);
+                child = forest[child].next_sibling;
+            }
+            at_child := length(children) - 1;
+            while (at_child >= 0) {
+                pending = array_add(pending, children[at_child]);
+                at_child -= 1;
+            }
+        }
+        index += 1;
+    }
+    used: ConstDecl[] = [];
+    at: int = 0;
+    while (at < length(constants)) {
+        occurrence := constants[at].occurrence;
+        if (seen[at]) {
+            occurrence = firsts[at];
+        }
+        first: ConstDecl = {name: constants[at].name, package: constants[at].package, storage: constants[at].storage,
+                            bits: constants[at].bits, node: constants[at].node, file: constants[at].file,
+                            folded: constants[at].folded, occurrence: occurrence};
+        used = array_add(used, first);
+        at += 1;
+    }
+    return used;
+}
+Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
@@ -1159,13 +1403,22 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (first_own < length(callables) && callables[first_own].package != package) {
         first_own += 1;
     }
+    used := UsedConstants(forest, documents, links, callables, constants, package, first_own, reachable);
     // The packages this module calls into, each an import row.
     imported: int[] = [];
     imports: writer.Import[] = [];
     points: writer.Point[] = [];
+    watches: writer.Watch[] = [];
+    // Only a package that calls a ref parameter keeps locals in data cells.
+    referencing := AnyReference(params);
     // Debugger points count each document's bytes that are not whitespace.
     solid: int[] = [];
     solid_document: int = -1;
+    // A symbol the source declares nowhere spans the package's first
+    // document, as stage zero gives it that document's unset range.
+    first_solid := SolidOffsets(documents[first_document].text);
+    undeclared := OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
+                               first_solid[length(first_solid) - 1]);
     index := first_own;
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
@@ -1184,28 +1437,38 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (owner_type != 0) {
             meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
         }
+        aliases := append(Aliases(links, callable.document), behaving);
+        // The names a ref argument reaches live in data cells.
+        referenced: string[] = [];
+        if (referencing) {
+            referenced = ReferencedNames(forest, documents[callable.document].text, callables, params, aliases, package,
+                                         Field(forest, callable.node, "body"));
+        }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-                           types, members, constants, natives, ports, identities, aggregates, record_makes, make_fields,
-                           append(Aliases(links, callable.document), behaving), documents[callable.document].key, solid,
-                           meaning, index, ops, target);
+                           types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
+                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced, ops,
+                           target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
-                          body_points):
+                          body_points, body_watches):
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans = array_add(spans, Range(length(values), callable.count));
                 at: int = 0;
                 while (at < callable.count) {
-                    param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
                     at += 1;
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    ints = array_add(ints, int(0));
+                    kind: int = 0;
+                    if (params[callable.first + at].reference) {
+                        kind = ReferenceKind;
+                    }
+                    ints = array_add(ints, kind);
                     at += 1;
                 }
                 // Result defaults and kinds: the one result, or each named one.
@@ -1282,8 +1545,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 spans = array_add(spans, Range(length(parameters), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
+                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
                     parameters = array_add(parameters, parameter);
                     at += 1;
@@ -1393,6 +1655,26 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          completion: point.completion};
                     points = array_add(points, row);
                 }
+                // Each watch's origin is a point of its own, past the
+                // function's points, and its initial value the type's header.
+                spans = array_add(spans, Range(length(watches), length(body_watches)));
+                for (watched in body_watches) {
+                    wide = array_add(wide, watched.occurrence);
+                    wide = array_add(wide, uint64(0));
+                    origin: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1,
+                                            start: watched.start, end: watched.end, line: watched.line,
+                                            column: watched.column, kind: ExpressionRecord, completion: false};
+                    points = array_add(points, origin);
+                    // A behavior's handles are its entities.
+                    watched_record := watched.record;
+                    if (watched.storage == HandleStorage && watched_record < 0 && owner_type != 0) {
+                        watched_record = TypeWithId(types, owner_type);
+                    }
+                    values = array_add(values, Header(watched.storage, watched.container, watched_record, types, layouts));
+                    row: writer.Watch = {origin: length(points) - 1, initial: length(values) - 1,
+                                         ordinal: watched.ordinal, output: watched.output, reference: watched.reference};
+                    watches = array_add(watches, row);
+                }
                 while (length(spans) < base + writer.Tables) {
                     spans = array_add(spans, Range(0, 0));
                 }
@@ -1475,8 +1757,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         states = array_add(states, row);
     }
     layouts_table: writer.ResultLayout[] = [];
-    watches: writer.Watch[] = [];
-    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, wide, values, ints, requirements,
+    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
                                                                      fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
                                                                      locals, parameters, frames, sources, layouts_table, data, hosts, calls,
                                                                      references, components, points, watches, states, entries)));
@@ -1488,9 +1769,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
-                identities: uint64[]) -> Result {
-    ops := ResolveOps(names);
+                sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
+                ports: Port[], identities: uint64[]) -> Result {
+    ops := ResolveOps(names, debug);
     complete := length(identities) == 2 * length(natives);
     for (native_row in natives) {
         if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
@@ -1544,10 +1825,10 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 // Compile's closure, for a host that takes one byte[] result; empty when
 // Compile rejects the input, whose diagnostic Compile returns.
 pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                       sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
-                       ports: Port[], identities: uint64[]) -> byte[] {
-    switch Compile(project, collection_names, collection_paths, paths, sources, target, abi, names, natives, ports,
-                   identities) {
+                       sources: string[], debug: bool, target: Target, abi: uint64, names: string[],
+                       natives: Native[], ports: Port[], identities: uint64[]) -> byte[] {
+    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
+                   ports, identities) {
         case .Rejected(diagnostic):
             return [];
         case .Compiled(module, bytes):

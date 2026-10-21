@@ -65,8 +65,9 @@ typedef struct
 } sample_call;
 /* Each group of samples runs under its own selector, so each selector stays
  * within its time ceiling: unions, constants, patterns and integer types
- * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings
- * (IMPORT_SAMPLES). */
+ * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
+ * with the samples that link the core pack, whose oracle costs seconds more
+ * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build). */
 typedef enum
 {
     BASE_SAMPLES,
@@ -617,7 +618,7 @@ static const sample samples[] = {
      * message or its condition's source; it names its arguments as the core
      * catalog does. */
     { .name = "assertions",
-      .group = TYPE_SAMPLES,
+      .group = IMPORT_SAMPLES,
       .game = true,
       .source = "package facts\n"
                 "Double :: (n: int) -> int {\n"
@@ -1199,6 +1200,7 @@ static const sample samples[] = {
       .line = 3,
       .column = 25 },
     { .name = "assert message",
+      .group = IMPORT_SAMPLES,
       .game = true,
       .source = "package facts\nCheck :: (n: int, m: string) -> int {\n"
                 "    assert(n > 0, m);\n    return n;\n}",

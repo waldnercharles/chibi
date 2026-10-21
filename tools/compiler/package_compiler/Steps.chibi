@@ -252,7 +252,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     // `xs = array_add(xs, x)` and `xs = append(xs, ys)` on a
                     // local array update it in place.
                     update: int = -1;
-                    if (operator == "") {
+                    // A method call updates in place only as its own statement;
+                    // `xs = xs.append(x)` is an error CallStep reports.
+                    if (operator == "" &&
+                        (changing || !Is(forest, Field(forest, value, "function"), "member_expression"))) {
                         update = InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package,
                                                found, destination, value);
                     }
@@ -1298,10 +1301,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         // `xs.f(...)` calls the array function f with xs first. A method that
         // changes its array is a statement on the array's name.
+        method: int = -1;
         if (Is(forest, callee, "member_expression") &&
-            QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0 &&
-            ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member"))) >= 0) {
-            method := ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+            QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0) {
+            method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+        }
+        if (method >= 0) {
             if (ArrayChanger(natives, method) &&
                 ChangedArray(forest, text, names, natives, ports, forest[item.node].parent) < 0) {
                 return Fail(forest, callee, document,

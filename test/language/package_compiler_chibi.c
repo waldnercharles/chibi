@@ -222,11 +222,21 @@ static const sample samples[] = {
                 "Has :: (xs: int[], x: int) -> bool { return xs.contains(x); "
                 "}\n"
                 "Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); "
-                "return part; }",
+                "return part; }\n"
+                "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
+                "ys.append(3); return xs.length(); }",
       .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
                  { "Count", "[[1,2,3]]", "[35]" },
                  { "Has", "[[1,2],2]", "[true]" },
-                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" } } },
+                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
+                 { "Separate", "[]", "[2]" } } },
+    { .name = "array method in an expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "
+                "xs.append(1); return xs; }",
+      .message = "append changes the array; call it as a statement on a name",
+      .line = 2,
+      .column = 45 },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"

@@ -3124,18 +3124,21 @@ TEST_CASE(program_array_methods_change_their_array)
                           "  on Impulse :: () {\n"
                           "    xs: double[] = [];\n"
                           "    ys := xs.append(1);\n"
+                          "    xs = xs.append(1);\n"
                           "    xs.array_add(1);\n"
+                          "    xs.ArrayAdd(1);\n"
                           "  }\n"
                           "}";
     prepare();
     REQUIRE(!compile_pack(changed, BEHAVIOR_BYTECODE, &NATIVE_ARRAY_DEFINITION_PACK));
-    bool statement = false, unknown = false;
+    int statements = 0, unknown = 0;
     for (int i = 0; i < analysis->diagnostic_count; i++) {
-        statement |= strstr(analysis->diagnostics[i].message, "append changes the array") !=
-                     NULL;
-        unknown |= strstr(analysis->diagnostics[i].message, "array_add") != NULL;
+        statements += strstr(analysis->diagnostics[i].message, "append changes the array") !=
+                      NULL;
+        unknown += strstr(analysis->diagnostics[i].message, "Unknown callable 'xs.") !=
+                   NULL;
     }
-    REQUIRE(statement && unknown);
+    REQUIRE(statements == 2 && unknown == 2);
     return true;
 }
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)

@@ -1163,10 +1163,10 @@ static int conversion(analyzer *a, TSNode node, script_type type)
 const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNode member)
 {
     char *method = script_analyzer_name_copy(a, member);
-    const char *name = !strcmp(method, "append")    ? "array_add"
-                     : !strcmp(method, "extend")    ? "append"
-                     : !strcmp(method, "array_add") ? ""
-                                                    : method;
+    const char *name = script_name_matches(method, "append")    ? "array_add"
+                     : script_name_matches(method, "extend")    ? "append"
+                     : script_name_matches(method, "array_add") ? ""
+                                                                : method;
     const script_catalog_capability *found = NULL;
     for (int i = 0; *name && !found && i < a->catalog->capability_count; i++) {
         const script_catalog_capability *candidate = &a->catalog->capabilities[i];

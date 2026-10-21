@@ -617,7 +617,7 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
             target = Field(forest, at, "target");
         } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
-                   Text(forest, text, Field(forest, Field(forest, at, "function"), "member")) == "delete") {
+                   ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
             target = Field(forest, at, "function");
         }
         if (target >= 0 && Is(forest, RootOf(forest, target), "identifier")) {
@@ -635,6 +635,18 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         }
     }
     return found;
+}
+// Whether a method of that name changes what it is called on: a map's
+// `delete`, or an array method such as `append`.
+ChangingMethod :: (name: string) -> bool {
+    changers: string[] = ["delete", "append", "extend", "insert", "remove_index", "remove_item", "add_unique",
+                          "set_array_elem", "clear", "reverse", "swap", "resize"];
+    for (changer in changers) {
+        if (NameMatches(name, changer)) {
+            return true;
+        }
+    }
+    return false;
 }
 // Whether a record or array stays as it is while its function runs, so a
 // name may read it in place rather than copy it: a fresh value, or part of a
@@ -1262,11 +1274,11 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 // append do until they take those names. -1 for none.
 ArrayMethod :: (natives: Native[], ports: Port[], method: string) -> int {
     name := method;
-    if (method == "append") {
+    if (NameMatches(method, "append")) {
         name = "array_add";
-    } else if (method == "extend") {
+    } else if (NameMatches(method, "extend")) {
         name = "append";
-    } else if (method == "array_add") {
+    } else if (NameMatches(method, "array_add")) {
         return -1;
     }
     index: int = 0;

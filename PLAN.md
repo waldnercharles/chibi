@@ -792,11 +792,14 @@ rather than 4 KiB, probes keep tool reports out of the build's output, and the
 build host gained the file primitives in `docs/self-hosting-build.md`. Owner
 decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
 `dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
-than ported, and the configuration signature shrinks before it moves. Waiting
-on a decision: `.github/scripts/` (the M5 owner
-confirms its hosted runs are finished), the CUT61 analysis scripts (owner
-review of the stale record), and game runtime installation (whether the
-`update-game-runtime` workflow outlived the retired game repositories).
+than ported, and the configuration signature shrinks before it moves. On 2026-10-20 the owner approved
+three deletions with no replacement, now done: the hosted M5 validation
+helpers in `.github/scripts/` with their `native-unit-dependencies.tsv` and
+`build-tools.txt`, which no workflow ran; the CUT61 `analyze.py`; and game
+runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py`
+and `tools/kdl_asset.py`), which served the retired game repositories. Git
+history keeps them. The CUT61 `run.py.txt` record still waits on review of the
+stale record.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.

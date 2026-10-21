@@ -105,8 +105,10 @@ CHIBI_IFRAME_PROFILE=1 make agent-test JOBS=4 AGENT_SELECTOR=--kit-documents
 make test JOBS=4
 make test-studio-selectors JOBS=4
 make web JOBS=4
-python3 docs/research/cut61-iframe-profile/finish/analyze.py
 ```
+
+The analysis script that summarized these captures was removed on 2026-10-20;
+Git history keeps it.
 
 The captures invoke `python3 tools/test_policy.py native <frozen-binary>
 <exact-selector>` directly, with `CHIBI_EXECUTION_PROFILE=iteration`,

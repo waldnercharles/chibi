@@ -1649,7 +1649,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
                 next = array_add(next, Resume(item.node, 2, 0, 0));
             } else if (item.phase == 2) {
-                // The copy is in the last cell; the step loads each element.
+                // The array or its copy is in the last cell; the step loads each element.
                 value_top -= 1;
                 if (Text(forest, text, ItemField(forest, item.node)) == "") {
                     return Body.Failed(Diagnose(forest, ItemField(forest, item.node), document,

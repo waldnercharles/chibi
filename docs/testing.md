@@ -2166,24 +2166,27 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
 build that configured the tests. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` (and the debug directory,
-which depends on where a build is), the graph finds the rest of its profile
-on the machine and writes the compile commands of every target it owns, including
-the third-party archive's sources and include directories and the options of
-single sources, and each of the 579
-must equal `compile_commands.json`'s for the same source, apart from the
-object path and with the temporary build directory standing for CMake's. In a
-copy of the sources, about ten runs that build only `chibi_support` then check
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of the 692 must equal `compile_commands.json`'s for the same source,
+split as the shell splits it, apart from the object path and with the
+temporary build directory standing for CMake's. About 10 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or
 the flags or deleting an object recompiles exactly what depends on it, that a
 staged header nothing publishes is removed, and that a source that fails to
 compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about fifteen C files with the profile's sanitizers,
-about 32 s at a load average of 8.
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
 
 `python3 tools/test_policy.py tool build-graph-reflect` builds and links
 `reflect` from the graph (27 C files with the profile's sanitizers), requires

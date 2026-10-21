@@ -685,10 +685,20 @@ preparation, source catalog and presentation, graph catalog and player
 libraries: 103 libraries and 579 compile commands, equal to CMake's. A text
 value now holds 16 MB, since `compile_commands.json` passed 1 MB; a step's
 own output stays at 1 MB.
-Next: the platform and model import libraries over the desktop Cute archive,
-whose defines hold spaces the command comparison must quote; the UI, render
-and project preparation libraries; executables beyond `reflect`; then moving
-profile selection from `Build.chibi`'s CMake arguments into the graph.
+Slice 15, 2026-10-21: the desktop libraries. The graph compiles each
+source as its language: C, C++ with the target's C++ standard (C++17 for the
+UI host over RmlUi), or Objective-C (`-x objective-c`, CMake's `gnu2x`, and
+no debug directory, which root CMakeLists.txt adds before Objective-C is
+enabled). Export names that differ from a target's name are tables, and the
+Vorbis decoder is rewritten like Cute's codecs. It owns the platform, model
+import, UI host, renderer and project compilation, format and preparation
+libraries: 110 libraries and 692 compile commands, equal to CMake's when
+split as the shell splits them. `build-graph` now compares commands alone,
+and `build-graph-support` holds the rebuild cases.
+Next: executables beyond `reflect` (the players, compiler host, `chibi_ctl`
+and `chibi`), with their system libraries and the C++ runtime; the testing
+libraries and test drivers; then moving profile selection from
+`Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

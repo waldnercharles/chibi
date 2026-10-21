@@ -264,13 +264,43 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
 }
 static const char *const support_only[] = { "--target", "chibi_support", NULL };
 
+/* The next word of a command line as CMake's Unix escaping writes it: double
+ * quotes group, and a backslash takes the next byte literally. Writes the word
+ * over the text in place and returns it, or NULL at the end. */
+static char *shell_word(char **cursor)
+{
+    char *in = *cursor;
+    while (*in == ' ') {
+        in++;
+    }
+    if (!*in) {
+        return NULL;
+    }
+    char *word = in, *out = in;
+    bool quoted = false;
+    for (; *in && (quoted || *in != ' '); in++) {
+        if (*in == '\\' && in[1]) {
+            *out++ = *++in;
+        } else if (*in == '"') {
+            quoted = !quoted;
+        } else {
+            *out++ = *in;
+        }
+    }
+    *cursor = *in ? in + 1 : in;
+    *out = 0;
+    return word;
+}
+
 /* Whether the graph's arguments match CMake's command, except for -o's value,
- * with the graph's build directory standing for CMake's. */
+ * with the graph's build directory standing for CMake's. CMake writes the
+ * command for the shell, so `-DName="two words"` is one argument. */
 static bool same_command(yyjson_val *ours, char *theirs)
 {
     size_t built_length = strlen(built), index = 0;
     const char *previous = "";
-    for (char *token = strtok(theirs, " "); token; token = strtok(NULL, " "), index++) {
+    char *cursor = theirs;
+    for (char *token; (token = shell_word(&cursor)); index++) {
         const char *argument = yyjson_get_str(yyjson_arr_get(ours, index));
         if (!argument) {
             return false;
@@ -281,10 +311,6 @@ static bool same_command(yyjson_val *ours, char *theirs)
             snprintf(expected, sizeof expected, "%.*s%s%s", (int)(at - argument), argument, reference, at + built_length);
         } else {
             snprintf(expected, sizeof expected, "%s", argument);
-        }
-        /* CMake's command escapes quotes for the shell. */
-        for (char *quote; (quote = strstr(token, "\\\""));) {
-            memmove(quote, quote + 1, strlen(quote));
         }
         if (strcmp(previous, "-o") && strcmp(expected, token)) {
             fprintf(stderr, "graph argument %zu: %s, CMake: %s\n", index, expected, token);
@@ -814,8 +840,15 @@ static void set_up(const char *host)
 void test_build_graph(const char *host)
 {
     set_up(host);
-    make_clone();
     RUN_TEST_CASE(commands_match_cmake);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: about ten graph runs over a copied root. */
+void test_build_graph_support(const char *host)
+{
+    set_up(host);
+    make_clone();
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
     RUN_TEST_CASE(support_archive_links);

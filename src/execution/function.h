@@ -504,6 +504,9 @@ void behavior_function_write_sequence_c(
 void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
+ * budget. */
+bool behavior_function_interpreted(const behavior_function *function);
 /* Caller-owned output storage outlives the invocation. Only aggregate results
  * allocate; scalar result slots are already initialized by the runtime. */
 void behavior_function_prepare_results(

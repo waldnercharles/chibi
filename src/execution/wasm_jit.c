@@ -24,6 +24,9 @@ struct execution_wasm_jit
     atomic_uint references;
     atomic_bool retired;
     _Atomic(struct execution_wasm_jit *) inspection;
+    /* The inspected module is past the size budget: inspection runs on
+     * bytecode. */
+    atomic_bool inspection_interpreted;
 };
 
 static atomic_uint_fast64_t compilations;
@@ -219,6 +222,7 @@ static execution_wasm_jit *compile_entry(const behavior_function *f, bool inspec
     atomic_init(&jit->references, 1);
     atomic_init(&jit->retired, false);
     atomic_init(&jit->inspection, NULL);
+    atomic_init(&jit->inspection_interpreted, false);
     jit->id = allocate_id();
     if (!jit->id ||
         !execution_wasm_emit(f, inspected, &jit->bytes, &jit->size, last_error, sizeof last_error)) {
@@ -233,11 +237,17 @@ static execution_wasm_jit *inspection_for(const behavior_function *f)
 {
     execution_wasm_jit *normal = f->artifact->wasm_jit;
     execution_wasm_jit *inspection = atomic_load_explicit(&normal->inspection, memory_order_acquire);
-    if (inspection) {
+    if (inspection ||
+        atomic_load_explicit(&normal->inspection_interpreted, memory_order_relaxed)) {
         return inspection;
     }
     execution_wasm_jit *candidate = compile_entry(f, true);
     if (!candidate) {
+        return NULL;
+    }
+    if (candidate->size > EXECUTION_WASM_JIT_MAX_BYTES) {
+        release(candidate);
+        atomic_store_explicit(&normal->inspection_interpreted, true, memory_order_relaxed);
         return NULL;
     }
     if (atomic_compare_exchange_strong_explicit(
@@ -295,6 +305,11 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
     }
     bool inspected = behavior_function_inspection_required(f, ctx);
     execution_wasm_jit *jit = inspected ? inspection_for(f) : f->artifact->wasm_jit;
+    if (inspected && !jit &&
+        atomic_load_explicit(&f->artifact->wasm_jit->inspection_interpreted, memory_order_relaxed)) {
+        behavior_run_record(EXECUTION_RUN_INSPECTION_BYTECODE_FALLBACK);
+        return behavior_function_run_interpreted(f, ctx);
+    }
     wasm_entry entry = jit ? entry_for(jit) : NULL;
     if (!entry) {
         ctx->error_message = last_error;

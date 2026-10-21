@@ -5674,7 +5674,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
             events++;
             native_events += native_jit &&
                              behavior_function_entry(function.body) != NULL;
-            wasm_events += wasm_jit;
+            wasm_events += wasm_jit && !behavior_function_interpreted(function.body);
         }
     }
     yyjson_mut_obj_add_int(result->doc, execution, "events", events);

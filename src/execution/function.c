@@ -538,6 +538,10 @@ void *behavior_function_entry(const behavior_function *f)
     return f ? (f->artifact->dispatch ? f->artifact->dispatch : f->artifact->code)
              : NULL;
 }
+bool behavior_function_interpreted(const behavior_function *f)
+{
+    return f->artifact->interpreted;
+}
 bool behavior_function_pure_depth(const behavior_function *f, unsigned depth)
 {
     return !f->pure_depth_limit || depth < f->pure_depth_limit;

@@ -446,9 +446,14 @@ bool compiler_bootstrap_write(const compiler_bootstrap *b, char *error, size_t s
     bool valid = read_contract(b->compiler, &c, error, size) &&
                  read_seed(b->seed, &s, error, size);
     yyjson_mut_doc *doc = valid ? manifest(b, &s, &c, error, size) : NULL;
-    compiler_host *host = doc
-                            ? compiler_host_load(s.closure, s.closure_length, BEHAVIOR_SLJIT, error, size)
-                            : NULL;
+    compiler_host *host = doc ? compiler_host_load(
+                                    s.closure,
+                                    s.closure_length,
+                                    behavior_default_backend(),
+                                    error,
+                                    size
+                                )
+                              : NULL;
     size_t length = 0;
     unsigned char *output = host && target_matches(host, s.args, TARGET_FIRST, error, size)
                               ? compile(host, s.json, s.json_length, &length, error, size)
@@ -674,7 +679,7 @@ static bool recover(
         free(first);
         return valid;
     }
-    compiler_host *next = compiler_host_load(first, first_length, BEHAVIOR_SLJIT, report, size);
+    compiler_host *next = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
     unsigned char *second = next
                               ? compile(next, json, length, &second_length, report, size)
                               : NULL;
@@ -711,9 +716,14 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
                  read_artifact(b, c.minimum, &a, report, size);
     char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
                        : NULL;
-    compiler_host *host = json
-                            ? compiler_host_load(a.closure, a.closure_length, BEHAVIOR_SLJIT, report, size)
-                            : NULL;
+    compiler_host *host = json ? compiler_host_load(
+                                     a.closure,
+                                     a.closure_length,
+                                     behavior_default_backend(),
+                                     report,
+                                     size
+                                 )
+                               : NULL;
     bool targeted = host &&
                     target_matches(host, yyjson_obj_get(a.root, "target"), 0, report, size);
     valid = targeted &&

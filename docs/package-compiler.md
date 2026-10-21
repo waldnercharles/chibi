@@ -372,6 +372,30 @@ Odin's table of powers of five for left shifts, and the decimal point counts
 every significant digit read, not only the stored ones, which Odin's and Go's
 fast paths otherwise cover.
 
+## Hosts
+
+Stage one runs natively on macOS arm64 and on the 32-bit Wasm host. Linux
+x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
+
+- **32-bit Wasm:** the compiler prepared for Wasm compiles every package and
+  behavior sample, and their closures run there. Stage one writes the
+  target's pointer width into each module's header.
+- **Compiler host and bootstrap:** they load closures on the host's compiled
+  backend: SLJIT where the build has it, bytecode where it doesn't, and the
+  Wasm JIT in a browser.
+- **Large definitions on Wasm:** the Wasm JIT runs a definition on bytecode
+  when its generated module would exceed 128 KiB. V8's optimizing tier spends
+  about 4 MB per KiB of module, and aborted on stage one's 482 KiB and 766 KiB
+  modules. The same budget sends an inspected run to bytecode when its
+  inspection module would exceed it.
+- **Selectors:** `tool wasm-package-compiler-chibi` and its `-compiled`,
+  `-types`, `-types-compiled`, `-imports`, `-imports-compiled`, `-behaviors`,
+  `-behaviors-rest`, `-sharing`, `-debug-free` and `-literals` variants run
+  each package-compiler selector in Node, in 4 to 6 s each (2026-10-20).
+  `make test-wasm` runs the base pair.
+- **Bootstrap:** it runs natively only. Stage one compiling itself needs more
+  than Wasm's 2 GiB of linear memory.
+
 ## Test
 
 Three groups of 86 samples each have two selectors, one for each backend the

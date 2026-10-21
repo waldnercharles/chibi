@@ -1,5 +1,6 @@
 #include "package_compiler_chibi.h"
 
+#include "backend.h"
 #include "compiler_fixture.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
@@ -1549,7 +1550,13 @@ static uint64_t function_id(const char *name)
 static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
 {
     char error[256];
-    host = compiler_host_load(bytes, length, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, error, sizeof error);
+    host = compiler_host_load(
+        bytes,
+        length,
+        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
     if (!host) {
         fprintf(stderr, "package compiler load: %s\n", error);
     }
@@ -1824,7 +1831,7 @@ static uint64_t copies(int count)
 static bool updates_in_place(const unsigned char *bytes, size_t length, const char *name)
 {
     char error[256];
-    host = compiler_host_load(bytes, length, BEHAVIOR_SLJIT, error, sizeof error);
+    host = compiler_host_load(bytes, length, TEST_COMPILED_BACKEND, error, sizeof error);
     if (!host) {
         fprintf(stderr, "package compiler %s load: %s\n", name, error);
     }
@@ -2525,7 +2532,7 @@ TEST_CASE(package_compiler_compiles_itself)
     char *json = document_json(args, ARGUMENTS, &json_length);
     arena_free(&detached);
     char error[256];
-    host = compiler_host_load(stage_two, length, BEHAVIOR_SLJIT, error, sizeof error);
+    host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
     compiler_host_bytes again = { 0 };
     bool invoked = host &&
                    compiler_host_invoke_bytes(

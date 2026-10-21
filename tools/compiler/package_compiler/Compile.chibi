@@ -1607,7 +1607,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         states = array_add(states, row);
     }
     layouts_table: writer.ResultLayout[] = [];
-    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, wide, values, ints, requirements,
+    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
                                                                      fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
                                                                      locals, parameters, frames, sources, layouts_table, data, hosts, calls,
                                                                      references, components, points, watches, states, entries)));

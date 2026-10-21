@@ -718,6 +718,13 @@ TOOLS = {
     # The type samples compiled by the compiler running on SLJIT. shared60s.
     'language-package-compiler-chibi-types-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                       '--package-compiler-chibi-types-compiled'],
+    # The samples of maps, references, arrays, ranges and records, split off from the
+    # base and type groups so each selector keeps its own shared60s.
+    'language-package-compiler-chibi-collections': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                   '--package-compiler-chibi-collections'],
+    # The collection samples compiled by the compiler running on SLJIT. shared60s.
+    'language-package-compiler-chibi-collections-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                            '--package-compiler-chibi-collections-compiled'],
     # The stage-one compiler's reading of floating literals against stage
     # zero's: listed spellings on both backends, long and generated ones on
     # the compiled one. shared60s.
@@ -1016,7 +1023,8 @@ for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-sta
 # Stage one on the 32-bit Wasm host: each package-compiler selector, compiling
 # with the compiler prepared for Wasm, without sanitizers. The bootstrap stays
 # native: stage one compiling itself outgrows Wasm's 2 GiB linear memory.
-for selector in ('', '-compiled', '-types', '-types-compiled', '-imports', '-imports-compiled', '-behaviors',
+for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
+                 '-imports', '-imports-compiled', '-behaviors',
                  '-behaviors-rest', '-sharing', '-debug-free', '-literals'):
     TOOLS['wasm-package-compiler-chibi' + selector] = ['node', str(wasm_build / 'test_language.js'),
                                                        '--package-compiler-chibi' + selector]

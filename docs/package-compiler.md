@@ -405,22 +405,27 @@ x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
 
 ## Test
 
-Three groups of 86 samples each have two selectors, one for each backend the
-compiler runs on, each under its own 60 s ceiling (macOS arm64, Debug +
-ASan/UBSan, 2026-10-20, load average about 11 from other sessions). The
-bytecode selector also compares each module with stage zero's:
+Four groups of samples each have two selectors, one for each backend the
+compiler runs on, each under its own 60 s ceiling. The bytecode selector also
+compares each module with stage zero's. Times are from macOS arm64, Debug +
+ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
+stage zero preparing stage one:
 
 - `tool language-package-compiler-chibi` and `-compiled`: scalars, control
-  flow, records, arrays, strings and natives, and every rejection (5,598 and
-  5,272 assertions in 40.6 s and 32.6 s);
+  flow, strings and natives, and the rejections that belong to no other group
+  (50.7 s and 41.7 s);
 - `tool language-package-compiler-chibi-types` and `-types-compiled`: unions,
   constants, patterns, scopes, integer types, inferred arrays and element
-  reads (1,811 and 1,574 assertions in 37.2 s and 30.7 s);
+  reads (49.3 s and 41.5 s);
+- `tool language-package-compiler-chibi-collections` and
+  `-collections-compiled`: maps, references, arrays, ranges and records, and
+  their rejections (50.5 s and 42.0 s). They moved out of the base and type
+  groups once maps and references took the type selector to 58 s;
 - `tool language-package-compiler-chibi-imports` and `-imports-compiled`: the
-  imports sample, which compiles all of `core:strings`. Under sanitizers the
-  bytecode selector came within a few seconds of its ceiling, so both run an
-  unsanitized Release `test_language`, as the bootstrap check does (1,018 and
-  988 assertions in 4.3 s and 3.4 s).
+  imports sample, which compiles all of `core:strings`, and the samples that
+  link the core pack. Under sanitizers the bytecode selector came within a few
+  seconds of its ceiling, so both run an unsanitized Release `test_language`,
+  as the bootstrap check does (about 5 s and 4 s).
 
 Expression and symbol points made the compiler about 20% slower on this
 sample: 18.2 s to 21.9 s of CPU time to compile it on the bytecode backend.

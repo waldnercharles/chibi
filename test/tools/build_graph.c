@@ -31,7 +31,11 @@ static const char *const targets[] = { "chibi_support",
                                        "chibi_types",
                                        "chibi_asset_values",
                                        "chibi_text_search",
-                                       "chibi_ui_document_values" };
+                                       "chibi_ui_document_values",
+                                       "chibi_value_document",
+                                       "chibi_capabilities",
+                                       "chibi_ecs",
+                                       "chibi_events" };
 #define TARGET_COUNT (int)(sizeof targets / sizeof *targets)
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)

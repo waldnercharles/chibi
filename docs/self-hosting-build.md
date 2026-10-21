@@ -278,9 +278,12 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
 
 The graph owns `chibi_support`, `chibi_types`, `chibi_asset_values`,
-`chibi_text_search` and `chibi_ui_document_values` on macOS and Linux. CMake
-still builds them and everything else, and `build-graph` checks that their
-compile commands agree.
+`chibi_text_search`, `chibi_ui_document_values`, `chibi_value_document`,
+`chibi_capabilities`, `chibi_ecs` and `chibi_events` on macOS and Linux: 32
+sources. CMake still builds them and everything else, and `build-graph`
+checks that their compile commands agree. That route compiles only
+`chibi_support`; building every library the graph owns is a manual check,
+about 40 s with sanitizers.
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

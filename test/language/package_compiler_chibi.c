@@ -196,29 +196,36 @@ static const sample samples[] = {
     { .name = "returned variants",
       .group = IMPORT_SAMPLES,
       .variants = true,
-      .source = "package facts\n"
-                "Holder :: union { Some(items: int[], name: string) }\n"
-                "KeptMake :: (n: int) -> Holder {\n"
-                "    xs: int[] = [];\n    i: int = 0;\n"
-                "    while (i < n) { xs.append(i); i += 1; }\n"
-                "    return (Holder.Some(xs, \"made\"));\n}\n"
-                "KeptAgain :: (h: Holder) -> Holder {\n"
-                "    switch h { case .Some(items, name): return "
-                "Holder.Some(items, name); }\n}\n"
-                "Total :: () -> int {\n"
-                "    a := KeptMake(3);\n    b := KeptMake(5);\n    c := "
-                "KeptAgain(a);\n"
-                "    total: int = 0;\n"
-                "    switch a { case .Some(items, name): total += items[2] * "
-                "100; }\n"
-                "    switch b { case .Some(items, name): total += items[4] * "
-                "10; }\n"
-                "    switch c { case .Some(items, name): total += items[1]; }\n"
-                "    return total;\n}\n"
-                "CopiedHold :: (xs: int[]) -> int {\n"
-                "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
-                "    switch h { case .Some(items, name): return items[0]; }\n}",
-      .calls = { { "Total", "[]", "[241]" }, { "CopiedHold", "[[5,6]]", "[5]" } } },
+      .source =
+          "package facts\n"
+          "Holder :: union { Some(items: int[], name: string) }\n"
+          "KeptMake :: (n: int) -> Holder {\n"
+          "    xs: int[] = [];\n    i: int = 0;\n"
+          "    while (i < n) { xs.append(i); i += 1; }\n"
+          "    return (Holder.Some(xs, \"made\"));\n}\n"
+          "KeptAgain :: (h: Holder) -> Holder {\n"
+          "    switch h { case .Some(items, name): return Holder.Some(items, "
+          "name); }\n}\n"
+          "KeptParam :: (xs: int[]) -> Holder { return Holder.Some(xs, \"p\"); "
+          "}\n"
+          "Total :: () -> int {\n"
+          "    a := KeptMake(3);\n    b := KeptMake(5);\n    c := "
+          "KeptAgain(a);\n"
+          "    total: int = 0;\n"
+          "    switch a { case .Some(items, name): total += items[2] * 100; }\n"
+          "    switch b { case .Some(items, name): total += items[4] * 10; }\n"
+          "    switch c { case .Some(items, name): total += items[1]; }\n"
+          "    return total;\n}\n"
+          "Changed :: () -> int {\n"
+          "    ys: int[] = [1, 2];\n    h := KeptParam(ys);\n    ys[0] = 7;\n"
+          "    switch h { case .Some(items, name): return items[0] * 10 + "
+          "ys[0]; }\n}\n"
+          "CopiedHold :: (xs: int[]) -> int {\n"
+          "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
+          "    switch h { case .Some(items, name): return items[0]; }\n}",
+      .calls = { { "Total", "[]", "[241]" },
+                 { "Changed", "[]", "[17]" },
+                 { "CopiedHold", "[[5,6]]", "[5]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -2326,7 +2333,7 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
         }
     }
     package_collection_free(packages);
-    REQUIRE(kept == 2 && copied == 1 && !wrong);
+    REQUIRE(kept == 3 && copied == 1 && !wrong);
     return true;
 }
 /* A loop over an array nothing changes, and a local that reads an element of

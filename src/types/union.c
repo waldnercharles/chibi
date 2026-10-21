@@ -37,11 +37,26 @@ int pin_union_value(arena *storage, uint64_t tag, const pin_value *values, int c
     *out = (pin_value){ .type = PIN_UNION, .ptr = value };
     return 0;
 }
-void pin_union_moved(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+/* Whether what a value points to is in storage. Its header's type name and
+ * record are the layout its cell was declared with, which outlives it. */
+static bool held_by(const arena *storage, const pin_value *v)
+{
+    bool pointer = v->container != PIN_CONTAINER_SINGLE || v->type == PIN_STRUCT ||
+                   v->type == PIN_STR || v->type == PIN_NAME || v->type == PIN_UNION;
+    return !pointer || !v->ptr || arena_contains(storage, v->ptr);
+}
+int pin_union_moved(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
 {
     pin_union *value = allocate(storage, tag, values, count);
-    memcpy(value->values, values, (size_t)count * sizeof *values);
+    for (int i = 0; i < count; i++) {
+        if (held_by(storage, &values[i])) {
+            value->values[i] = values[i];
+        } else if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {
+            return -1;
+        }
+    }
     *out = (pin_value){ .type = PIN_UNION, .ptr = value };
+    return 0;
 }
 
 /* Heap-owned copies use one owner header and an arena for nested snapshots.

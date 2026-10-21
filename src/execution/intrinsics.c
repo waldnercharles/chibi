@@ -309,7 +309,9 @@ const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
 const node_access EXECUTION_value_access = { .flags = NODE_EFFECT_PURE };
-static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+/* Builds the union `args` name, copying its payload unless `moved`: then
+ * pin_union_moved keeps the values held in storage. */
+static const char *union_build(arena *storage, const pin_value *args, int count, pin_value *out, bool moved)
 {
     assert(count >= 1);
     if (!args[0].u64) {
@@ -319,22 +321,18 @@ static const char *union_make(arena *storage, const pin_value *args, int count, 
         pin_union_cancelled(out);
         return NULL;
     }
-    return pin_union_value(storage, args[0].u64, args + 1, count - 1, out)
-             ? "Cannot retain union payload"
-             : NULL;
+    int failed = moved
+                   ? pin_union_moved(storage, args[0].u64, args + 1, count - 1, out)
+                   : pin_union_value(storage, args[0].u64, args + 1, count - 1, out);
+    return failed ? "Cannot retain union payload" : NULL;
+}
+static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return union_build(storage, args, count, out, false);
 }
 static const char *union_move(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count >= 1);
-    if (!args[0].u64) {
-        return "Union constructor requires a nonzero tag";
-    }
-    if (args[0].u64 == PIN_UNION_CANCELLED_TAG && count == 1) {
-        pin_union_cancelled(out);
-        return NULL;
-    }
-    pin_union_moved(storage, args[0].u64, args + 1, count - 1, out);
-    return NULL;
+    return union_build(storage, args, count, out, true);
 }
 static const char *union_test(arena *storage, const pin_value *args, int count, pin_value *out)
 {

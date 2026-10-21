@@ -1839,13 +1839,14 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
             case EXECUTION_INTRINSIC_UNION_MAKE:
-            case EXECUTION_INTRINSIC_UNION_MOVE:
             case EXECUTION_INTRINSIC_REFERENCE_READ:
                 output = s->retyped && inputs;
                 break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
+            /* A moved payload keeps what the inputs reach. */
+            case EXECUTION_INTRINSIC_UNION_MOVE:
             case EXECUTION_INTRINSIC_UNION_GET: break;
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 output = share_cell(s, host->first);

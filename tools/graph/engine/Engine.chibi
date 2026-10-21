@@ -4,8 +4,9 @@ import c "graph:c"
 import strings "core:strings"
 
 // The engine's libraries, described for the C graph. Each matches the target
-// of the same name in sdk/CMakeLists.txt; the build-toolchain equivalence case
-// compares their compile commands with CMake's.
+// of the same name in sdk/CMakeLists.txt; the build-graph route compares their
+// compile commands with CMake's. Records hold only scalars, so a target is its
+// name, and these functions give its arrays.
 
 // A build configuration: what root CMakeLists.txt reads from its cache.
 pub Profile :: struct {
@@ -21,6 +22,126 @@ pub Profile :: struct {
     sanitizers: string;
     // The directory debug info names for a ccache build, or empty.
     debug_compilation_dir: string;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+// The libraries the graph builds, each after those it depends on.
+pub Targets :: () -> string[] {
+    return ["chibi_support", "chibi_types", "chibi_asset_values", "chibi_text_search", "chibi_ui_document_values"];
+}
+
+// The name a target's headers are published under, its CMake EXPORT_NAME.
+pub Component :: (target: string) -> string {
+    return strings.Slice(target, 6, strings.ByteLength(target) - 6);
+}
+
+// A target's sources, below src/.
+Files :: (target: string) -> string[] {
+    if (target == "chibi_support") {
+        return ["support/arena.c", "support/file_io.c", "support/text_edit.c", "support/xalloc.c", "support/rcss_map.c"];
+    }
+    if (target == "chibi_types") {
+        return [
+            "types/type.c", "types/catalog.c", "types/array.c", "types/map.c", "types/record.c", "types/copy.c",
+            "types/trace.c", "types/union.c", "types/index.c", "types/value_format.c", "types/value_wire.c"
+        ];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/asset_value.c"];
+    }
+    if (target == "chibi_text_search") {
+        return ["support/text_search.c", "support/text_rank.c"];
+    }
+    if (target == "chibi_ui_document_values") {
+        return ["ui/document.c"];
+    }
+    return [];
+}
+
+// The headers a target publishes, below src/. Windows adds posix shims to
+// chibi_support; this graph does not build Windows yet.
+pub PublicHeaders :: (target: string) -> string[] {
+    if (target == "chibi_support") {
+        return [
+            "support/arena.h", "support/array.h", "support/xalloc.h", "support/rcss_map.h", "support/text_edit.h",
+            "support/enum.h", "support/cos_sin.h", "support/file_io.h", "support/math.h"
+        ];
+    }
+    if (target == "chibi_types") {
+        return [
+            "types/value.h", "types/type.h", "types/record.h", "types/catalog.h", "types/copy.h", "types/array.h",
+            "types/map.h", "types/trace.h", "types/union.h", "types/annotate.h", "types/state_machine.h",
+            "types/value_format.h", "types/scalar.h", "types/value_wire.h"
+        ];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/asset_value.h", "support/asset_format.h"];
+    }
+    if (target == "chibi_text_search") {
+        return ["support/text_search.h", "support/text_rank.h"];
+    }
+    if (target == "chibi_ui_document_values") {
+        return ["ui/document.h"];
+    }
+    return [];
+}
+
+// The headers only a target's own sources include, below src/.
+pub PrivateHeaders :: (target: string) -> string[] {
+    if (target == "chibi_types") {
+        return ["types/array_internal.h", "types/copy_internal.h"];
+    }
+    if (target == "chibi_asset_values") {
+        return ["support/float_text.h"];
+    }
+    return [];
+}
+
+// The targets whose public headers a target's compiles include, in the order
+// CMake gives their directories.
+Uses :: (target: string) -> string[] {
+    if (target == "chibi_support") {
+        return [];
+    }
+    return ["chibi_support"];
+}
+
+// Where a target's public or private headers are staged.
+pub HeaderRoot :: (build_dir: string, target: string, kind: string) -> string {
+    return Join([build_dir, "/sdk/", kind, "/", Component(target)]);
+}
+
+pub Library :: (source_root: string, build_dir: string, target: string) -> c.Library {
+    return {
+        name: target,
+        root: source_root,
+        objects: Join([build_dir, "/objects/", target]),
+        output: Join([build_dir, "/lib/lib", target, ".a"])
+    };
+}
+
+pub Sources :: (source_root: string, target: string) -> string[] {
+    sources: string[] = [];
+    for (file in Files(target)) {
+        sources = array_add(sources, Join([source_root, "/src/", file]));
+    }
+    return sources;
+}
+
+// Its own public headers, then its private ones, then those of the targets it
+// uses, then the profile's flags: the order CMake writes them.
+pub CompileFlags :: (build_dir: string, target: string, profile: Profile) -> string[] {
+    flags := [Join(["-I", HeaderRoot(build_dir, target, "public")])];
+    if (length(PrivateHeaders(target)) > 0) {
+        flags = array_add(flags, Join(["-I", HeaderRoot(build_dir, target, "private")]));
+    }
+    for (used in Uses(target)) {
+        flags = array_add(flags, Join(["-I", HeaderRoot(build_dir, used, "public")]));
+    }
+    return append(flags, Flags(profile, build_dir));
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -51,9 +172,9 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
         if (Clang(profile)) {
-            flags = array_add(flags, strings.Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir], ""));
+            flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
         } else if (profile.compiler_id == "GNU") {
-            flags = array_add(flags, strings.Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir], ""));
+            flags = array_add(flags, Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
         }
     }
     flags = append(flags, BuildTypeFlags(profile.build_type));
@@ -72,7 +193,7 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
         ]);
     }
     if (profile.sanitizers != "") {
-        flags = append(flags, [strings.Join(["-fsanitize=", profile.sanitizers], ""), "-fno-omit-frame-pointer"]);
+        flags = append(flags, [Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
     }
     if (Clang(profile)) {
         flags = array_add(flags, "-Wno-gnu-zero-variadic-macro-arguments");
@@ -80,38 +201,66 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
     return flags;
 }
 
-// Where a component's public headers are staged for compiles that include it.
-pub PublicHeaders :: (build_dir: string, component: string) -> string {
-    return strings.Join([build_dir, "/sdk/public/", component], "");
-}
-
-// The headers sdk/CMakeLists.txt publishes for chibi_support, below src/.
-pub SupportHeaders :: () -> string[] {
-    return [
-        "support/arena.h", "support/array.h", "support/xalloc.h", "support/rcss_map.h",
-        "support/text_edit.h", "support/enum.h", "support/cos_sin.h", "support/file_io.h",
-        "support/math.h"
-    ];
-}
-
-// chibi_support: allocation, arrays, file and text helpers.
-pub Support :: (source_root: string, build_dir: string) -> c.Library {
-    return {
-        name: "chibi_support",
-        root: source_root,
-        objects: strings.Join([build_dir, "/objects/chibi_support"], ""),
-        output: strings.Join([build_dir, "/lib/libchibi_support.a"], "")
-    };
-}
-// Windows also compiles src/support/win32/posix.c; this graph does not build
-// Windows yet.
-pub SupportSources :: (source_root: string) -> string[] {
-    sources: string[] = [];
-    for (name in ["arena", "file_io", "text_edit", "xalloc", "rcss_map"]) {
-        sources = array_add(sources, strings.Join([source_root, "/src/support/", name, ".c"], ""));
+// Builds the selected targets: stages every one's headers, compiles what
+// changed across all of them, at most `jobs` at once, then archives each in
+// order. Compiles need only staged headers, so one target's compiles do not
+// wait for another's archive. The number of sources compiled, or -1 on failure.
+pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> int {
+    source_dir := Join([source_root, "/src"]);
+    for (target in targets) {
+        if (!c.StageHeaders(source_dir, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
+            !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"))) {
+            build.report(Join(["graph: staging ", target, "'s headers failed"]));
+            return -1;
+        }
     }
-    return sources;
+    running: c.Running[] = [];
+    waited := 0;
+    failed := false;
+    for (target in targets) {
+        built := Library(source_root, build_dir, target);
+        flags := CompileFlags(build_dir, target, profile);
+        for (source in Sources(source_root, target)) {
+            if (failed || !c.Stale(tools, built, flags, source)) {
+                continue;
+            }
+            running = array_add(running, c.Start(tools, built, flags, source));
+            if (length(running) - waited >= tools.jobs) {
+                failed = !c.Finish(running[waited]) || failed;
+                waited += 1;
+            }
+        }
+    }
+    while (waited < length(running)) {
+        failed = !c.Finish(running[waited]) || failed;
+        waited += 1;
+    }
+    if (failed) {
+        return -1;
+    }
+    for (target in targets) {
+        compiled := false;
+        for (compile in running) {
+            compiled = compiled || compile.owner == target;
+        }
+        if (!c.Archive(tools, Library(source_root, build_dir, target), Sources(source_root, target), compiled)) {
+            build.report(Join(["graph: archiving ", target, " failed"]));
+            return -1;
+        }
+    }
+    return length(running);
 }
-pub SupportFlags :: (build_dir: string, profile: Profile) -> string[] {
-    return append([strings.Join(["-I", PublicHeaders(build_dir, "support")], "")], Flags(profile, build_dir));
+
+// The compile commands of the selected targets as a compile_commands.json, as
+// CMake exports its own.
+pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> string {
+    entries: string[] = [];
+    for (target in targets) {
+        built := Library(source_root, build_dir, target);
+        flags := CompileFlags(build_dir, target, profile);
+        for (source in Sources(source_root, target)) {
+            entries = array_add(entries, c.CompileEntry(tools, built, flags, source));
+        }
+    }
+    return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);
 }

@@ -609,7 +609,8 @@ A map literal step's loop variable named `entry` failed the same way, as the
 whole file's "Unexpected syntax" at 1:1; it became `pair`.
 The build graph's `c` package (M6) named a parameter `library`, the legacy
 declaration keyword; four functions failed with only "Unexpected syntax"
-until bisecting found it, and it became `target`.
+until bisecting found it, and it became `target`. Its next slice hit it twice
+more, as a record field and as a local, which became `owner` and `built`.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,

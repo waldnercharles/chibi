@@ -1,8 +1,11 @@
 package engine
 
+import strings "core:strings"
+
 // The libraries the graph owns, as sdk/CMakeLists.txt and its includes define
 // them. Records hold only scalars, so a target is its name, and these tables
-// give its arrays. Sources are below the source root.
+// give its arrays. Paths are below the source root, except where a table says
+// otherwise.
 
 // The libraries the graph builds, each after those it depends on. A library
 // with no sources only publishes headers, as CMake's INTERFACE libraries do.
@@ -17,13 +20,19 @@ pub Targets :: () -> string[] {
         "chibi_host_native_catalog", "chibi_ui_documents", "chibi_fields", "chibi_field_catalog",
         "chibi_scheduling", "chibi_text_source", "chibi_ui_document", "chibi_reference_index", "chibi_fmt",
         "chibi_json", "chibi_asset_json", "chibi_asset_kdl", "chibi_asset_text", "chibi_text_capabilities",
-        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts", "chibi_component_presentation", "chibi_save_runtime",
+        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts",
+        "chibi_component_presentation", "chibi_save_runtime", "chibi_math", "chibi_execution_sljit",
+        "chibi_execution", "chibi_core_capabilities", "chibi_behavior_runtime", "chibi_native_prepared",
+        "chibi_scene_runtime", "chibi_vector_capabilities", "chibi_math_capabilities",
+        "chibi_arithmetic_capabilities", "chibi_tilemap_runtime", "chibi_ui_runtime", "chibi_mesh_runtime",
+        "chibi_model_bake", "chibi_studio_capabilities", "chibi_scene_document", "chibi_prototype_document",
         "reflect"
     ];
 }
 
-// A target's sources: below the source root, or below the build's generated
-// directory for a `generated/` entry.
+// A target's sources: below the source root, below the build's generated
+// directory for a `generated/` entry, or below the third-party archive for a
+// `third-party/` entry.
 Files :: (target: string) -> string[] {
     if (target == "reflect") {
         return [
@@ -201,14 +210,97 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_input_map") {
         return ["src/assets/input_map.c"];
     }
+    if (target == "chibi_execution_sljit") {
+        return ["third-party/source/sljit/sljit_src/sljitLir.c"];
+    }
+    if (target == "chibi_execution") {
+        return [
+            "src/execution/artifact.c", "src/execution/backend.c", "src/execution/borrow.c",
+            "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
+            "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
+            "src/execution/fusion.c", "src/execution/host.c", "src/execution/inputs.c",
+            "src/execution/intrinsics.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
+            "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
+            "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
+            "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
+            "src/execution/machine.c", "src/execution/module.c", "src/execution/module_effects.c",
+            "src/execution/opt.c", "src/execution/parallel.c", "src/execution/preparation_budget.c",
+            "src/execution/prepared.c", "src/execution/prepared_function.c", "src/execution/prepared_record.c",
+            "src/execution/program.c", "src/execution/program_inspection.c",
+            "src/execution/program_activation.c", "src/execution/program_observers.c",
+            "src/execution/program_bindings.c", "src/execution/program_commands.c",
+            "src/execution/program_locals.c", "src/execution/program_storage.c",
+            "src/execution/program_preflight.c", "src/execution/program_tasks.c", "src/execution/range_opt.c",
+            "src/execution/reads.c", "src/execution/request.c", "src/execution/runner.c",
+            "src/execution/scalar_lowering_plan.c", "src/execution/scalarize.c",
+            "src/execution/source_debug.c", "src/execution/state.c", "src/execution/storage.c",
+            "src/execution/suspend.c", "src/execution/time.c", "src/execution/vm.c",
+            "src/execution/update_jit.c", "src/execution/wasm_emit.c", "src/execution/wasm_jit.c"
+        ];
+    }
+    if (target == "chibi_core_capabilities") {
+        return ["src/runtime/core_definition.c"];
+    }
+    if (target == "chibi_behavior_runtime") {
+        return [
+            "src/runtime/event_catalog.c", "src/runtime/behaviors/source.c",
+            "src/runtime/behaviors/source_profile.c", "src/runtime/behaviors/source_publication.c",
+            "src/runtime/behaviors/package.c", "src/runtime/behaviors/module_set.c"
+        ];
+    }
+    if (target == "chibi_native_prepared") {
+        return ["src/runtime/native_prepared.c"];
+    }
+    if (target == "chibi_scene_runtime") {
+        return [
+            "src/runtime/scenes/scene.c", "src/runtime/scenes/prototypes.c", "src/runtime/scenes/prepared.c"
+        ];
+    }
+    if (target == "chibi_vector_capabilities") {
+        return ["src/runtime/vectors.c", "src/runtime/vectors_definition.c"];
+    }
+    if (target == "chibi_math_capabilities") {
+        return ["src/runtime/math.c", "src/runtime/math_definition.c"];
+    }
+    if (target == "chibi_arithmetic_capabilities") {
+        return ["src/runtime/arithmetic.c", "src/runtime/arithmetic_definition.c"];
+    }
+    if (target == "chibi_tilemap_runtime") {
+        return ["src/runtime/tilemap.c"];
+    }
+    if (target == "chibi_ui_runtime") {
+        return ["src/runtime/ui.c", "src/runtime/ui_native.c", "src/runtime/ui_definition.c"];
+    }
+    if (target == "chibi_mesh_runtime") {
+        return [
+            "src/runtime/geometry/mesh_asset.c", "src/runtime/geometry/mesh_pick.c",
+            "src/runtime/geometry/mesh_prepared.c"
+        ];
+    }
+    if (target == "chibi_model_bake") {
+        return ["src/runtime/models/model_bake.c"];
+    }
+    if (target == "chibi_studio_capabilities") {
+        return ["src/authoring/studio_native.c", "src/authoring/studio_definition.c"];
+    }
+    if (target == "chibi_scene_document") {
+        return ["src/assets/scene_document.c", "src/assets/physics_settings.c"];
+    }
+    if (target == "chibi_prototype_document") {
+        return ["src/assets/prototype.c"];
+    }
     return [];
 }
 
-// The directory below the source root whose files a target publishes as its
-// headers, keeping their paths below it.
+// The directory below the source root, or below the third-party archive for
+// `third-party/`, whose files a target publishes as its headers, keeping their
+// paths below it.
 pub HeaderSource :: (target: string) -> string {
     if (target == "chibi_json") {
         return "third_party/yyjson";
+    }
+    if (target == "chibi_math") {
+        return "third-party/source/cute_framework/include";
     }
     return "src";
 }
@@ -362,6 +454,68 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_input_map") {
         return ["assets/input_map.h"];
     }
+    if (target == "chibi_math") {
+        return ["cute_defines.h", "cute_user_config.h", "cute_math.h", "cute_math3d.h"];
+    }
+    if (target == "chibi_execution") {
+        return [
+            "execution/component_write.h", "execution/delay.h", "execution/ecs_reader.h",
+            "execution/function_builder.h", "execution/inspection.h", "execution/intrinsics.h",
+            "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
+            "execution/prepared.h", "execution/task.h", "execution/update.h"
+        ];
+    }
+    if (target == "chibi_core_capabilities") {
+        return ["runtime/core_definition.h"];
+    }
+    if (target == "chibi_behavior_runtime") {
+        return [
+            "runtime/behaviors/module_set.h", "runtime/behaviors/package.h", "runtime/behaviors/source.h",
+            "runtime/event_catalog.h"
+        ];
+    }
+    if (target == "chibi_native_prepared") {
+        return ["runtime/native_prepared.h"];
+    }
+    if (target == "chibi_scene_runtime") {
+        return [
+            "runtime/scenes/physics_settings.h", "runtime/scenes/prepared.h", "runtime/scenes/prototypes.h",
+            "runtime/scenes/scene.h"
+        ];
+    }
+    if (target == "chibi_vector_capabilities") {
+        return ["runtime/vectors.h", "runtime/vectors_definition.h"];
+    }
+    if (target == "chibi_math_capabilities") {
+        return ["runtime/math_definition.h", "runtime/math_native.h"];
+    }
+    if (target == "chibi_arithmetic_capabilities") {
+        return ["runtime/arithmetic.h", "runtime/arithmetic_definition.h"];
+    }
+    if (target == "chibi_tilemap_runtime") {
+        return ["runtime/tilemap.h"];
+    }
+    if (target == "chibi_ui_runtime") {
+        return ["runtime/ui.h", "runtime/ui_definition.h", "runtime/ui_native.h"];
+    }
+    if (target == "chibi_mesh_runtime") {
+        return [
+            "runtime/geometry/mesh_asset.h", "runtime/geometry/mesh_pick.h",
+            "runtime/geometry/mesh_prepared.h"
+        ];
+    }
+    if (target == "chibi_model_bake") {
+        return ["runtime/models/model_bake.h"];
+    }
+    if (target == "chibi_studio_capabilities") {
+        return ["authoring/studio_definition.h", "authoring/studio_schema.h"];
+    }
+    if (target == "chibi_scene_document") {
+        return ["assets/physics_settings.h", "assets/scene_document.h"];
+    }
+    if (target == "chibi_prototype_document") {
+        return ["assets/prototype.h"];
+    }
     return [];
 }
 
@@ -391,12 +545,28 @@ pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_asset_text") {
         return ["support/float_text.h"];
     }
+    if (target == "chibi_execution") {
+        // Every header beside its sources, as sdk/execution.cmake globs them.
+        return HeadersIn("execution");
+    }
     return [];
+}
+
+// The headers in src/DIRECTORY, as paths below src/.
+HeadersIn :: (directory: string) -> string[] {
+    headers: string[] = [];
+    for (name in build.list_directory(Join([build.root(), "/src/", directory]))) {
+        if (strings.HasSuffix(name, ".h")) {
+            headers = array_add(headers, Join([directory, "/", name]));
+        }
+    }
+    return headers;
 }
 
 // A target's include directories in CMake's order: public/NAME and
 // private/NAME are the staged headers of the library chibi_NAME; any other
-// path is below the source root.
+// path is below the source root, or below the third-party archive for
+// `third-party/`.
 pub Includes :: (target: string) -> string[] {
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
@@ -578,6 +748,115 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_text"
         ];
     }
+    if (target == "chibi_execution") {
+        return [
+            "public/execution", "private/execution", "private/types", "third-party/source/sljit/sljit_src",
+            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks"
+        ];
+    }
+    if (target == "chibi_core_capabilities") {
+        return [
+            "public/core_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
+            "public/support", "public/execution_contract", "public/execution", "public/ecs", "public/tasks"
+        ];
+    }
+    if (target == "chibi_behavior_runtime") {
+        return [
+            "public/behavior_runtime", "public/execution", "public/types", "public/support",
+            "public/execution_contract", "public/ecs", "public/tasks", "public/events"
+        ];
+    }
+    if (target == "chibi_native_prepared") {
+        return [
+            "public/native_prepared", "public/native_capabilities", "public/capabilities", "public/types",
+            "public/support", "public/execution_contract", "public/behavior_runtime", "public/execution",
+            "public/ecs", "public/tasks", "public/events", "public/input_action"
+        ];
+    }
+    if (target == "chibi_scene_runtime") {
+        return [
+            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/types",
+            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events"
+        ];
+    }
+    if (target == "chibi_vector_capabilities") {
+        return [
+            "public/vector_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
+            "public/support", "public/execution_contract"
+        ];
+    }
+    if (target == "chibi_math_capabilities") {
+        return [
+            "public/math_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
+            "public/support", "public/execution_contract", "public/execution", "public/ecs", "public/tasks"
+        ];
+    }
+    if (target == "chibi_arithmetic_capabilities") {
+        return [
+            "public/arithmetic_capabilities", "public/native_capabilities", "public/capabilities",
+            "public/types", "public/support", "public/execution_contract", "public/execution", "public/ecs",
+            "public/tasks"
+        ];
+    }
+    if (target == "chibi_tilemap_runtime") {
+        return ["public/tilemap_runtime", "public/support"];
+    }
+    if (target == "chibi_ui_runtime") {
+        return [
+            "public/ui_runtime", "public/asset_values", "public/support", "public/native_capabilities",
+            "public/capabilities", "public/types", "public/execution_contract", "public/value_document"
+        ];
+    }
+    if (target == "chibi_mesh_runtime") {
+        return ["public/mesh_runtime", "public/support", "public/types"];
+    }
+    if (target == "chibi_model_bake") {
+        return [
+            "public/model_bake", "public/model_runtime", "public/shader_runtime", "public/support",
+            "public/types", "public/mesh_runtime"
+        ];
+    }
+    if (target == "chibi_studio_capabilities") {
+        return [
+            "public/studio_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
+            "public/support", "public/execution_contract", "public/execution", "public/ecs", "public/tasks"
+        ];
+    }
+    if (target == "chibi_scene_document") {
+        return [
+            "public/scene_document", "public/ecs", "public/types", "public/support", "public/asset_values",
+            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
+            "public/tasks", "public/events", "public/asset_text"
+        ];
+    }
+    if (target == "chibi_prototype_document") {
+        return [
+            "public/prototype_document", "public/ecs", "public/types", "public/support", "public/asset_values",
+            "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/execution",
+            "public/execution_contract", "public/tasks", "public/events", "public/asset_text"
+        ];
+    }
+    return [];
+}
+
+// A target's system include directories, which CMake gives after its others as
+// -isystem: staged headers as Includes names them.
+pub SystemIncludes :: (target: string) -> string[] {
+    if (target == "chibi_vector_capabilities") {
+        return ["public/math"];
+    }
+    if (target == "chibi_tilemap_runtime") {
+        return ["public/math"];
+    }
+    if (target == "chibi_ui_runtime") {
+        return ["public/math"];
+    }
+    if (target == "chibi_mesh_runtime") {
+        return ["public/math"];
+    }
+    if (target == "chibi_model_bake") {
+        return ["public/math"];
+    }
     return [];
 }
 
@@ -589,13 +868,21 @@ pub Defines :: (target: string) -> string[] {
     if (target == "chibi_asset_text") {
         return ["KDL_STATIC_LIB=1"];
     }
+    if (target == "chibi_execution_sljit") {
+        return ["SLJIT_WX_EXECUTABLE_ALLOCATOR=1"];
+    }
+    if (target == "chibi_execution") {
+        return ["CHIBI_HAVE_SJLIT=1"];
+    }
     return [];
 }
 
 // Options a target adds after the profile's flags. The graph drives Clang
-// and GCC, which both take them: fields keeps floating-point contraction off
-// so its results match on every backend, and vendored C compiles without
-// warnings.
+// and GCC, which both take them: fields and math keep floating-point
+// contraction off so their results match on every backend, vendored C
+// compiles without warnings, and on Linux execution puts each function and
+// object in its own section, so the compiler host's link can discard the
+// prepared writer it does not call.
 pub Options :: (target: string) -> string[] {
     if (target == "chibi_fields") {
         return ["-ffp-contract=off"];
@@ -608,6 +895,15 @@ pub Options :: (target: string) -> string[] {
     }
     if (target == "chibi_asset_kdl") {
         return ["-w"];
+    }
+    if (target == "chibi_execution_sljit") {
+        return ["-w"];
+    }
+    if (target == "chibi_execution" && build.platform() == "Linux") {
+        return ["-ffunction-sections", "-fdata-sections"];
+    }
+    if (target == "chibi_math_capabilities") {
+        return ["-ffp-contract=off"];
     }
     return [];
 }

@@ -272,23 +272,30 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   unchanged headers keep their stamps, and a staged file no header names is
   removed, as `chibi_sdk_headers` does.
 - A compile's flags are its defines, then its include directories in CMake's
-  order (staged `public/NAME` and `private/NAME` directories, or source-tree
-  directories such as `third_party/fmt`), then the profile flags root
+  order (staged `public/NAME` and `private/NAME` directories, source-tree
+  directories such as `third_party/fmt`, or `third-party/` directories in the
+  third-party archive), then its system include directories as `-isystem`,
+  such as the staged Cute math headers, then the profile flags root
   `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
   type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
   sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
   target's own options, such as `-w` for vendored C.
 
-`graph:engine`'s `Targets.chibi` lists the 43 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 60 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
 over ckdl) and the libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
 `chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, and `chibi_save_runtime`: 122
-sources in 40 archives. For each it gives sources, the directory its public headers
-come from (`src`, or `third_party/yyjson` for `chibi_json`), public and private
+engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_execution` with SLJIT and the header-only `chibi_math` from the
+third-party archive, with the libraries that need only those (the behavior,
+scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
+Studio capabilities, the prepared native catalog, model baking and the scene
+and prototype documents): 211 sources in 56 archives. For each it gives sources, the directory its public headers
+come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
+headers for `chibi_math`), public and private
 headers, include directories, defines, options and embedded files. An
 `Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT (a
 `generated/` path, below `BUILD/sdk`) with `build.embed_file`, before any
@@ -297,8 +304,20 @@ a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
-owns is a manual check, about 140 s with sanitizers, and an unchanged build
-then takes about 5 s.
+owns is a manual check, about 280 s with sanitizers at a load average of 12;
+`build-graph-archive` compiles SLJIT and a math-header library from the
+archive.
+
+A `third-party/` path in the tables is below the unpacked third-party archive
+that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
+`third_party/archives.tsv`'s pin for the host's target and the profile's
+variant (the sanitized archive matching the profile's sanitizers, except with
+Apple clang) and finds it below `.git/chibi/third_party` in the clone's Git
+directory. The graph does not download it; `Build.chibi` or CMake's configure
+does, and a run that needs it stops and says so when nothing is pinned for the
+host or the archive is not unpacked.
+`--third-party DIR` names another. Objects of its sources sit below
+`objects/TARGET/third-party/`.
 The graph also links executables. `engine.Programs` lists them (now the
 reflection tool, `reflect`); `c.Link` runs CMake's executable link (the
 language and link flags, the sanitizers, the objects, `-o`, then the
@@ -319,7 +338,10 @@ through its versioned link, as `Build.chibi` resolves it) or `xcrun`. ccache,
 when found, launches compiles and, for a build below the source tree, sets the
 debug directory CMake sets. libclang comes from root `CMakeLists.txt`'s
 hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
-explicit option still overrides what it names.
+explicit option still overrides what it names. Writing the compile commands
+escapes an argument only when the host's `build.before` finds a backslash or
+quote in it, because `core:strings.ReplaceAll` scans byte by byte in the
+interpreter: with 218 commands it took 7 s, and now 2.4 s.
 
 Windows keeps CMake: the build host has no Windows process support yet.
 

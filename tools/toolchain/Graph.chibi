@@ -9,7 +9,8 @@ import strings "core:strings"
 //   Libraries -- --build DIR --compiler PATH --compiler-id ID --build-type TYPE
 //     [--architecture ARCH] [--sysroot DIR] [--warnings on|off] [--sanitizers LIST]
 //     [--debug-compilation-dir DIR] [--launcher PATH] --archiver PATH
-//     --ranlib PATH [--jobs N] [--target NAME]... [--commands-only on]
+//     --ranlib PATH [--libclang-include DIR --libclang-library PATH] [--jobs N]
+//     [--target NAME]... [--commands-only on]
 // Every path is absolute. Writes BUILD/compile_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
@@ -36,7 +37,8 @@ Count :: (text: string) -> int {
     return value;
 }
 
-// Whether a target was named with --target, or none were.
+// Whether a target was named with --target, or none were, or a named
+// executable links it.
 Selected :: (arguments: string[], target: string) -> bool {
     named := false;
     for (i in 0..<length(arguments) - 1) {
@@ -44,6 +46,11 @@ Selected :: (arguments: string[], target: string) -> bool {
             named = true;
             if (arguments[i + 1] == target) {
                 return true;
+            }
+            for (linked in engine.Links(arguments[i + 1])) {
+                if (linked == target) {
+                    return true;
+                }
             }
         }
     }
@@ -62,7 +69,10 @@ Libraries :: () -> int {
         sysroot: Option(arguments, "--sysroot", ""),
         warnings: Option(arguments, "--warnings", "on") == "on",
         sanitizers: Option(arguments, "--sanitizers", ""),
-        debug_compilation_dir: Option(arguments, "--debug-compilation-dir", "")
+        debug_compilation_dir: Option(arguments, "--debug-compilation-dir", ""),
+        libclang_include: Option(arguments, "--libclang-include", ""),
+        libclang_library: Option(arguments, "--libclang-library", ""),
+        clang_resource_include: engine.ClangResourceInclude(Option(arguments, "--libclang-library", ""))
     };
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", ""),

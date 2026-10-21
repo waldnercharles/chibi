@@ -16,7 +16,8 @@
 #include <unistd.h>
 
 #define GRAPH_PATH 4096
-#define GRAPH_RUN_SECONDS 30
+#define GRAPH_RUN_SECONDS 50
+#define GRAPH_TOKENS 128
 
 static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
@@ -143,6 +144,18 @@ static void read_profile()
     free(cache);
 }
 
+/* The libclang the configured build found, which reflect's commands name. */
+static void libclang(char include[GRAPH_PATH], char library[GRAPH_PATH])
+{
+    char path[GRAPH_PATH];
+    join(path, reference, "CMakeCache.txt");
+    char *cache = tool_read(path);
+    assert(cache);
+    cache_value(cache, "LIBCLANG_INCLUDE_DIR", include, GRAPH_PATH);
+    cache_value(cache, "LIBCLANG_LIBRARY", library, GRAPH_PATH);
+    free(cache);
+}
+
 /* Runs the graph's Libraries entry over root into build_dir with the options
  * after it; the number of sources it compiled, 0 when it only wrote commands,
  * or -1 when it failed. */
@@ -160,7 +173,7 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
                              "--entry",
                              "Libraries",
                              "--timeout-ms",
-                             "30000",
+                             "50000",
                              "--",
                              "--build",
                              build_dir,
@@ -177,7 +190,7 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
                              "--ranlib",
                              ranlib,
                              "--jobs",
-                             "4" };
+                             "8" };
     int count = 30;
     const char *optional[][2] = { { "--architecture", architecture },
                                   { "--sysroot", sysroot },
@@ -193,7 +206,7 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
         argv[count++] = extra[i];
     }
     argv[count] = NULL;
-    /* A run compiles up to five sources with the profile's sanitizers. */
+    /* A run compiles up to 27 sources with the profile's sanitizers. */
     int status = tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
     char *text = tool_read(log_path);
     if (status) {
@@ -226,6 +239,10 @@ static bool same_command(yyjson_val *ours, char *theirs)
         } else {
             snprintf(expected, sizeof expected, "%s", argument);
         }
+        /* CMake's command escapes quotes for the shell. */
+        for (char *quote; (quote = strstr(token, "\\\""));) {
+            memmove(quote, quote + 1, strlen(quote));
+        }
         if (strcmp(previous, "-o") && strcmp(expected, token)) {
             fprintf(stderr, "graph argument %zu: %s, CMake: %s\n", index, expected, token);
             return false;
@@ -238,7 +255,15 @@ static bool same_command(yyjson_val *ours, char *theirs)
 /* Every compile command the graph writes equals CMake's for the same source. */
 TEST_CASE(commands_match_cmake)
 {
-    const char *const commands_only[] = { "--commands-only", "on", NULL };
+    char include[GRAPH_PATH], library[GRAPH_PATH];
+    libclang(include, library);
+    const char *const commands_only[] = { "--commands-only",
+                                          "on",
+                                          "--libclang-include",
+                                          include,
+                                          "--libclang-library",
+                                          library,
+                                          NULL };
     REQUIRE(graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only) == 0);
     char path[GRAPH_PATH];
     join(path, built, "compile_commands.json");
@@ -419,6 +444,143 @@ TEST_CASE(support_archive_links)
     return true;
 }
 
+/* A variable of the `build NAME:` statement in CMake's build.ninja, as an
+ * owned copy the caller splits into tokens. */
+static char *ninja_variable(const char *ninja, const char *name, const char *variable)
+{
+    char head[256], key[128];
+    snprintf(head, sizeof head, "\nbuild %s: ", name);
+    snprintf(key, sizeof key, "\n  %s = ", variable);
+    const char *block = strstr(ninja, head);
+    assert(block);
+    const char *end = strstr(block + 1, "\n\n");
+    const char *at = strstr(block, key);
+    assert(at && (!end || at < end));
+    at += strlen(key);
+    return strndup(at, strcspn(at, "\n"));
+}
+static int split_into(char *text, char *tokens[GRAPH_TOKENS], int count)
+{
+    for (char *token = strtok(text, " "); token; token = strtok(NULL, " ")) {
+        assert(count < GRAPH_TOKENS);
+        tokens[count++] = token;
+    }
+    return count;
+}
+static const char *base(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+/* The graph links reflect with CMake's command, and the program it links
+ * writes the same reflected sources. */
+TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
+{
+    char path[GRAPH_PATH], include[GRAPH_PATH], library[GRAPH_PATH],
+        build_dir[GRAPH_PATH];
+    libclang(include, library);
+    join(build_dir, suite, "reflect");
+    const char *const reflect_only[] = { "--target",
+                                         "reflect",
+                                         "--libclang-include",
+                                         include,
+                                         "--libclang-library",
+                                         library,
+                                         NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, reflect_only) > 0);
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, reflect_only) == 0);
+    /* The link: CMake's FLAGS, LINK_FLAGS, objects, -o and LINK_LIBRARIES. */
+    join(path, reference, "build.ninja");
+    char *ninja = tool_read(path);
+    REQUIRE(ninja);
+    char *flags = ninja_variable(ninja, "reflect", "FLAGS"),
+         *link_flags = ninja_variable(ninja, "reflect", "LINK_FLAGS"),
+         *libraries = ninja_variable(ninja, "reflect", "LINK_LIBRARIES"),
+         *theirs[GRAPH_TOKENS];
+    int count = 0;
+    theirs[count++] = compiler;
+    count = split_into(flags, theirs, count);
+    count = split_into(link_flags, theirs, count);
+    int objects = count;
+    char *statement = strstr(ninja, "\nbuild reflect: ");
+    char *line = strndup(statement + 1, strcspn(statement + 1, "\n"));
+    for (char *token = strtok(line, " "); token && strcmp(token, "|");
+         token = strtok(NULL, " ")) {
+        if (strstr(token, ".o")) {
+            theirs[count++] = token;
+        }
+    }
+    theirs[count++] = "-o";
+    theirs[count++] = "reflect";
+    count = split_into(libraries, theirs, count);
+    join(path, build_dir, "reflect.chibi-record");
+    char *record = tool_read(path);
+    REQUIRE(record);
+    *strstr(record, "\n\n") = 0;
+    int ours_count = 0;
+    char *ours[GRAPH_TOKENS];
+    for (char *token = strtok(record, "\n"); token; token = strtok(NULL, "\n")) {
+        ours[ours_count++] = token;
+    }
+    bool same = ours_count == count;
+    for (int i = 0; same && i < count; i++) {
+        /* Objects, the output and archives sit in other directories. */
+        bool placed = (i >= objects && i < objects + 7) ||
+                      (i && !strcmp(theirs[i - 1], "-o")) || strstr(theirs[i], ".a");
+        same = placed ? !strcmp(base(ours[i]), base(theirs[i]))
+                      : !strcmp(ours[i], theirs[i]);
+        if (!same) {
+            fprintf(stderr, "graph link argument %d: %s, CMake: %s\n", i, ours[i], theirs[i]);
+        }
+    }
+    free(record);
+    free(line);
+    free(flags);
+    free(link_flags);
+    free(libraries);
+    free(ninja);
+    REQUIRE(same);
+    /* Run as CMake runs it, with CMake's staged math headers. */
+    char program[GRAPH_PATH], types[GRAPH_PATH], runtime[GRAPH_PATH],
+        nodes[GRAPH_PATH], source[GRAPH_PATH], math[GRAPH_PATH],
+        manifest[GRAPH_PATH];
+    join(program, build_dir, "reflect");
+    join(types, build_dir, "native_types.c");
+    join(runtime, build_dir, "native_capabilities.c");
+    join(nodes, CHIBI_SOURCE_ROOT, "src/runtime/native_nodes.c");
+    join(source, CHIBI_SOURCE_ROOT, "src");
+    join(math, reference, "sdk/public/math");
+    join(manifest, CHIBI_SOURCE_ROOT, "src/runtime/component_ids.tsv");
+    const char *argv[24] = {
+        program,          nodes,   "--prefix",         "",
+        "--types-output", types,   "--runtime-output", runtime,
+        "--include",      source,  "--include",        math,
+        "--manifest",     manifest
+    };
+    int argc = 14;
+    if (sysroot[0]) {
+        argv[argc++] = "--sysroot";
+        argv[argc++] = sysroot;
+    }
+    argv[argc] = NULL;
+    REQUIRE(!tool_run(argv, suite, log_path));
+    const char *const outputs[][2] = {
+        { "native_types.c", "generated/native_types.c" },
+        { "native_capabilities.c", "generated/native_capabilities.c" }
+    };
+    for (int i = 0; i < 2; i++) {
+        char ours_path[GRAPH_PATH], theirs_path[GRAPH_PATH];
+        join(ours_path, build_dir, outputs[i][0]);
+        join(theirs_path, reference, outputs[i][1]);
+        char *mine = tool_read(ours_path), *cmake = tool_read(theirs_path);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake));
+        free(mine);
+        free(cmake);
+    }
+    return true;
+}
+
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -441,7 +603,7 @@ static void make_clone()
     }
 }
 
-void test_build_graph(const char *host)
+static void set_up(const char *host)
 {
     /* The host sits in the configured build's sdk directory. */
     char *resolved = realpath(host, NULL);
@@ -457,10 +619,23 @@ void test_build_graph(const char *host)
     join(built, suite, "build");
     join(log_path, suite, "graph.log");
     read_profile();
+}
+
+void test_build_graph(const char *host)
+{
+    set_up(host);
     make_clone();
     RUN_TEST_CASE(commands_match_cmake);
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
     RUN_TEST_CASE(support_archive_links);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: reflect's compiles take most of a minute's ceiling. */
+void test_build_graph_reflect(const char *host)
+{
+    set_up(host);
+    RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
     tool_remove_tree(suite);
 }

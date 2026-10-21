@@ -630,7 +630,13 @@ which compiled and archived from the graph. Every other library now waits on
 one of three inputs: `chibi_execution` (51 libraries include it; it compiles
 SLJIT), Cute math (`public/math`, 46) and `chibi_native_types` (39), which the
 reflection host tool generates. The first two come from fetched sources.
-Next: the fetched
+Slice 8, 2026-10-21: executables. The graph links `reflect` with CMake's
+command, and the program it links writes the same reflected sources
+(`build-graph-reflect`). A failure inside a called function now reaches the
+build host's diagnostic, through the failure observer package tests use;
+before, it read as "instruction budget exhausted".
+Next: run `reflect` from the graph to generate `chibi_native_types`, once Cute
+math's headers come from the repository; the fetched
 dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
 which wait for vendoring (#569) so the graph builds them from the repository;
 then moving profile selection from `Build.chibi`'s CMake arguments into the

@@ -285,6 +285,12 @@ TOOLS = {
     'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                     '--build-graph',
                     str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: the graph builds and links reflect (about 27 C files with the
+    # profile's sanitizers), its link command matches CMake's build.ninja, and
+    # the program writes the same reflected sources as CMake's.
+    'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--build-graph-reflect',
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),

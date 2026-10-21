@@ -21,6 +21,99 @@ pub Profile :: struct {
     sanitizers: string;
     // The directory debug info names for a ccache build, or empty.
     debug_compilation_dir: string;
+    // libclang, which the reflection tool links: its headers, its library and
+    // the builtin headers of the clang it belongs to.
+    libclang_include: string;
+    libclang_library: string;
+    clang_resource_include: string;
+}
+
+// The builtin headers of the clang that a libclang belongs to, as
+// tools/reflect/resource.cmake finds them: that clang's resource directory.
+// Empty when it has none.
+pub ClangResourceInclude :: (libclang_library: string) -> string {
+    library_dir := strings.Slice(libclang_library, 0, strings.LastIndex(libclang_library, "/"));
+    clang := Join([library_dir, "/../bin/clang"]);
+    if (!build.file_exists(clang) || build.probe([clang, "-print-resource-dir"]) != 0) {
+        return "";
+    }
+    include := Join([strings.TrimSpace(build.last_stdout()), "/include"]);
+    if (!build.file_exists(Join([include, "/stdbool.h"]))) {
+        return "";
+    }
+    return include;
+}
+
+// Flags the profile gives a target's compiles, after its defines.
+ProfileFlags :: (target: string, profile: Profile) -> string[] {
+    if (target == "reflect") {
+        return [
+            Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""]),
+            Join(["-I", profile.libclang_include])
+        ];
+    }
+    return [];
+}
+
+// External libraries the profile gives an executable's link, first.
+ProfileLibraries :: (target: string, profile: Profile) -> string[] {
+    if (target == "reflect") {
+        library_dir := strings.Slice(profile.libclang_library, 0, strings.LastIndex(profile.libclang_library, "/"));
+        return [Join(["-Wl,-rpath,", library_dir]), profile.libclang_library];
+    }
+    return [];
+}
+
+pub Program :: (target: string) -> bool {
+    for (program in Programs()) {
+        if (program == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Where an executable is written: the build directory, as CMake writes the
+// root project's.
+pub Executable :: (build_dir: string, target: string) -> string {
+    return Join([build_dir, "/", target]);
+}
+
+// What CMake gives an executable's link before its objects: the language
+// flags, the platform's link flags and the sanitizers.
+LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
+    flags: string[] = [];
+    if (profile.debug_compilation_dir != "" &&
+        (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo") && Clang(profile)) {
+        flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
+    }
+    flags = append(flags, BuildTypeFlags(profile.build_type));
+    if (profile.architecture != "") {
+        flags = append(flags, ["-arch", profile.architecture]);
+    }
+    if (profile.sysroot != "") {
+        flags = append(flags, ["-isysroot", profile.sysroot]);
+    }
+    if (build.platform() == "Darwin") {
+        flags = append(flags, ["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
+    }
+    if (profile.sanitizers != "") {
+        flags = array_add(flags, Join(["-fsanitize=", profile.sanitizers]));
+    }
+    return flags;
+}
+
+// What an executable links after its output, in CMake's order: the profile's
+// external libraries, the graph's archives, then system libraries.
+LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
+    libraries := ProfileLibraries(target, profile);
+    for (linked in Links(target)) {
+        libraries = array_add(libraries, Library(source_root, build_dir, linked).output);
+    }
+    for (name in SystemLibraries(target)) {
+        libraries = array_add(libraries, Join(["-l", name]));
+    }
+    return libraries;
 }
 
 Join :: (parts: string[]) -> string {
@@ -84,6 +177,7 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
     for (define in Defines(target)) {
         flags = array_add(flags, Join(["-D", define]));
     }
+    flags = append(flags, ProfileFlags(target, profile));
     for (include in Includes(target)) {
         root := source_root;
         if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
@@ -216,7 +310,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         return -1;
     }
     for (target in targets) {
-        if (length(Files(target)) == 0) {
+        if (length(Files(target)) == 0 || Program(target)) {
             continue;
         }
         compiled := false;
@@ -225,6 +319,21 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         }
         if (!c.Archive(tools, Library(source_root, build_dir, target), Sources(source_root, build_dir, target), compiled)) {
             build.report(Join(["graph: archiving ", target, " failed"]));
+            return -1;
+        }
+    }
+    for (target in targets) {
+        if (!Program(target)) {
+            continue;
+        }
+        built := Library(source_root, build_dir, target);
+        objects: string[] = [];
+        for (source in Sources(source_root, build_dir, target)) {
+            objects = array_add(objects, c.Object(built, source));
+        }
+        if (c.Link(tools, Executable(build_dir, target), objects, LinkFlags(profile, build_dir),
+                   LinkLibraries(source_root, build_dir, target, profile)) < 0) {
+            build.report(Join(["graph: linking ", target, " failed"]));
             return -1;
         }
     }

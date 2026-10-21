@@ -301,6 +301,16 @@ everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
 owns is a manual check, about 140 s with sanitizers, and an unchanged build
 then takes about 5 s.
+The graph also links executables. `engine.Programs` lists them (now the
+reflection tool, `reflect`); `c.Link` runs CMake's executable link (the
+language and link flags, the sanitizers, the objects, `-o`, then the
+profile's external libraries, the graph's archives and system libraries) and
+records it as it records compiles. Naming a program with `--target` also
+builds the libraries it links. `reflect` takes libclang from the profile
+(`--libclang-include`, `--libclang-library`), and the graph finds clang's
+builtin headers as `tools/reflect/resource.cmake` does, by asking that
+libclang's `clang -print-resource-dir`.
+
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

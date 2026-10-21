@@ -52,9 +52,6 @@ size_t pin_array_element_stride(pin_type storage, const char *name, const pin_re
     if (name && !strncmp(name, "__collection_", 13)) {
         return 0;
     }
-    if (record && !pin_record_valid(record)) {
-        return 0;
-    }
     if ((storage >= PIN_BOOL && storage <= PIN_F64) || storage == PIN_HANDLE ||
         storage == PIN_ENUM) {
         return record ? 0 : behavior_scalar_size(storage);
@@ -432,7 +429,7 @@ int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
 }
 static int snapshot_record(arena *a, pin_value *dst, const pin_value *src, const type_desc *type)
 {
-    if (!type || !type->size) {
+    if (!type || !type->size || (dst->record && !pin_record_current(dst->record))) {
         return -1;
     }
     if (!src->ptr) {
@@ -466,8 +463,7 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
     }
     if (src->container >= PIN_CONTAINER_ARRAY) {
         const pin_array *array = src->ptr;
-        if (array && (!pin_record_same(src->record, array->record) ||
-                      (array->record && !pin_record_valid(array->record)))) {
+        if (array && !pin_record_same(src->record, array->record)) {
             return -1;
         }
         pin_array source;
@@ -647,7 +643,7 @@ int pin_array_snapshot_copy(arena *a, pin_array *out, int to, const pin_array *i
             return 0;
         }
     }
-    /* Boxed records copy as one run, which validates each distinct record once. */
+    /* Boxed records copy as one run, which matches each distinct record once. */
     if (count && out->record && !out->stride && !items->stride) {
         return pin_array_snapshot_items(a, out->record, out->items + to, items->items + from, count);
     }
@@ -659,17 +655,15 @@ int pin_array_snapshot_copy(arena *a, pin_array *out, int to, const pin_array *i
     }
     return 0;
 }
-/* Destination metadata is already validated/owned by the enclosing snapshot
- * or private construction proof. Still validate every original foreign row's
- * record, once per distinct record. */
+/* Destination metadata is already owned by the enclosing snapshot or private
+ * construction proof. Each original row's record must match it. */
 static int snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
 {
     const pin_record *checked = record;
     for (int i = 0; i < count; i++) {
         const pin_value *value = &items[i];
         if (value->record != checked) {
-            if ((value->record && !pin_record_valid(value->record)) ||
-                !pin_record_same(record, value->record)) {
+            if (!pin_record_same(record, value->record)) {
                 return -1;
             }
             checked = value->record;
@@ -699,7 +693,7 @@ static int snapshot_items(arena *a, const pin_record *record, pin_value *out, co
 int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
 {
     if (count < 0 || (count && (!out || !items)) ||
-        (record && (!pin_record_valid(record) || !arena_contains(a, record)))) {
+        (record && !arena_contains(a, record))) {
         return -1;
     }
     return snapshot_items(a, record, out, items, count);

@@ -6,9 +6,12 @@
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -22,6 +25,9 @@
 #define INSTRUCTION_BUDGET 100000
 #define EXPECTED_TOTAL 14950
 #define RUN_EVENT 10
+#define RECORD_FIELD_COUNT 24
+#define RECORD_ROW_COUNT 256
+#define RECORD_COPY_COUNT 200
 
 static const script_catalog_capability run_event = {
     .id = RUN_EVENT,
@@ -206,9 +212,66 @@ TEST_CASE(scalar_authored_call_benchmark)
     return true;
 }
 
+/* Copies rows of a compiler-sized record between arenas, as stage one does
+ * when it passes and returns its syntax rows. */
+TEST_CASE(record_row_snapshot_benchmark)
+{
+    arena source = { 0 }, copies = { 0 };
+    char names[RECORD_FIELD_COUNT][16];
+    type_field fields[RECORD_FIELD_COUNT];
+    for (int i = 0; i < RECORD_FIELD_COUNT; i++) {
+        snprintf(names[i], sizeof names[i], "field_%d", i);
+        const pin_type types[] = { PIN_STR, PIN_I64, PIN_BOOL };
+        fields[i] = (type_field){ .name = names[i], .type = types[i % 3] };
+    }
+    const pin_record *record = pin_record_create(&source, "Syntax.Row", 7, fields, RECORD_FIELD_COUNT);
+    REQUIRE(record);
+    pin_value *rows = arena_alloc(&source, RECORD_ROW_COUNT * sizeof *rows);
+    for (int i = 0; i < RECORD_ROW_COUNT; i++) {
+        rows[i] = (pin_value){ .type = PIN_STRUCT,
+                               .type_name = record->type.name,
+                               .record = record,
+                               .ptr = arena_alloc(&source, record->type.size) };
+        memset(rows[i].ptr, 0, record->type.size);
+        for (int f = 0; f < RECORD_FIELD_COUNT; f += 3) {
+            pin_value text = { .type = PIN_STR, .str = "identifier" };
+            pin_write_field(rows[i].ptr, &record->type.fields[f], text);
+        }
+    }
+    pin_value *out = xmalloc(RECORD_ROW_COUNT * sizeof *out);
+    for (int trial = 0; trial < TRIAL_COUNT; trial++) {
+        double start = monotonic_seconds();
+        for (int n = 0; n < RECORD_COPY_COUNT; n++) {
+            arena_free(&copies);
+            const pin_record *owned = pin_record_snapshot(&copies, record);
+            /* Rows holding strings are not packed, so they have no stride. */
+            REQUIRE(owned && !pin_array_element_stride(PIN_STRUCT, owned->type.name, owned));
+            REQUIRE(!pin_array_snapshot_items(&copies, owned, out, rows, RECORD_ROW_COUNT));
+            for (int i = 0; i < RECORD_ROW_COUNT; i++) {
+                REQUIRE(!pin_value_snapshot_to_arena(&copies, &out[i], &rows[i]));
+            }
+        }
+        double elapsed = monotonic_seconds() - start;
+        printf(
+            "BENCH record_rows fields=%d rows=%d copies=%d trial=%d "
+            "ns_per_row=%.3f\n",
+            RECORD_FIELD_COUNT,
+            RECORD_ROW_COUNT,
+            RECORD_COPY_COUNT,
+            trial,
+            elapsed * 1e9 / (2.0 * RECORD_ROW_COUNT * RECORD_COPY_COUNT)
+        );
+    }
+    free(out);
+    arena_free(&copies);
+    arena_free(&source);
+    return true;
+}
+
 void test_language_benchmark()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scalar_authored_call_benchmark);
+    RUN_TEST_CASE(record_row_snapshot_benchmark);
     pu_clear_setup();
 }

@@ -38,8 +38,7 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
     if (result.container == PIN_CONTAINER_MAP) {
         return "Map construction requires typed key/value pairs";
     }
-    if (result.record &&
-        (!pin_record_valid(result.record) || !pin_value_type(&result))) {
+    if (result.record && !pin_value_type(&result)) {
         return "Invalid authored constructor layout";
     }
     if (result.container != PIN_CONTAINER_SINGLE) {
@@ -144,7 +143,7 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     }
     for (int i = 0; i < 2; i++) {
         if (args[i].type != PIN_STRUCT || args[i].container != PIN_CONTAINER_SINGLE ||
-            !pin_record_valid(args[i].record) || !pin_value_type(&args[i])) {
+            !args[i].record || !pin_value_type(&args[i])) {
             return "Invalid authored record equality operand";
         }
     }

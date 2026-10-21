@@ -1107,8 +1107,17 @@ address, so 62 of the compiler's 63 functions share their tables. Compiling is
 still slow, about 0.9 s for a 50-line sample on SLJIT in a Debug + ASan build.
 Call retirement no longer re-measures every spare frame, a running stack reuses
 frames larger than the 64 KiB idle budget, and descriptor copies no longer
-re-derive layouts. The bytecode interpreter's dispatch and record validation
-remain the measured costs to remove before stage one compiles the compiler.
+re-derive layouts.
+
+Compiler speed, measured on 2026-10-20 in Release on macOS arm64 with SLJIT
+(`--package-compiler-chibi-bootstrap`): stage zero prepares the compiler in
+2.7 s. Stage one compiled the compiler in 23.7 s and stage two in 16.9 s, about
+70% of it re-validating immutable record descriptors on every value copy.
+Records are now validated where they enter (creation, prepared loading, value
+documents), so stage one takes about 7.6 s and stage two 6.5 s; a row copy in
+`--script-benchmark` fell from 1,050 to 110 ns. Copying values (memmove, string
+and field snapshots) is the next measured cost. LLVM AOT is evaluated only if
+SLJIT-path fixes cannot bring stage one close to stage zero.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

@@ -10,9 +10,10 @@ implemented before the ports that need them.
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.
 - Worktree: `/Users/cwaldner/Personal/chibi/.worktrees/odin-package-foundations/chibi`.
-- Integration base on 2026-10-21: `e20bd6af83b1dd4e3fa48dcd5d1c4769bb818a97`
+- Integration base on 2026-10-21: `efaafdcf4cdc31e6423ae20d49c97418ee375105`
   from fetched `origin/main`; includes the array-method/parameter-copy fixes,
-  third-party archive build changes and M6 native type libraries.
+  third-party archive build changes, M6 native type libraries and the graph's
+  tree-sitter/physics library targets.
 - Upstream comparison: Odin `779c8c0a4778f994389e2a681ffc7b3cbd6c1f65`.
 - Program and per-package decision process: approved.
 - String invariant approved on 2026-10-21: immutable, length-carrying,
@@ -389,3 +390,10 @@ remain in `.chibi/odin-package-foundations/string-*.log` and the group logs in
 the same directory. Generated seed closures and migration scripts are removed;
 ordinary native/Wasm build outputs remain. This branch is a review checkpoint;
 main integration and subsequent package semantics remain separate work.
+
+Main advanced during publication with the M6 syntax/physics build graph. Merge
+`fab81617931854de4041e7621c8c6069b1cd1a0f` integrates
+`efaafdcf4cdc31e6423ae20d49c97418ee375105`; its changes are graph recipes and
+documentation. Compiler source hashes and the bootstrap closure above remain
+unchanged. The combined branch retains `src/types/text.c` in the native type
+library and uses a fresh clean-candidate validation before updating the draft.

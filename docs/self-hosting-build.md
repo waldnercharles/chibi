@@ -266,7 +266,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   record differs. A failed compile leaves no record, so the next run retries
   it. Records are read with `build.lines`, because `core:strings` copies the
   rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 362
+  stamps are separate lines because build values are never freed: with 363
   sources an up-to-date run reads about 6 MB of records, and splitting each
   line in two exceeded the host's 32 MB of values.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,

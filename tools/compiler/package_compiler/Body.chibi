@@ -582,6 +582,19 @@ Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
 Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
     return Step.Failed(Diagnose(forest, node, document, message));
 }
+// Whether a record or array is new in the function's value storage, where a
+// copy would go, and nothing else reaches it: a literal, or an authored
+// function's result, which the call copies there. A native may return an
+// argument, so its result is not fresh.
+Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
+          node: int) -> bool {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "struct_expression") || Is(forest, value, "array_expression") ||
+        Is(forest, value, "map_expression")) {
+        return true;
+    }
+    return Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, names, package, value) >= 0;
+}
 // Records and arrays are pointers to their storage.
 Pointer :: (storage: int, container: int) -> bool {
     return container != 0 || storage == StructStorage;
@@ -1186,42 +1199,23 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     return -1;
 }
 
-EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
-             callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
-             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[], ops: Ops,
-             target: Target) -> Body {
-    callable := callables[function];
+// The tables a body starts from: its parameters, its record or array result's
+// symbol, its point and its named results, which are locals from `named` on.
+Start :: union {
+    Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], code: Code[], points: SourcePoint[], named: int)
+}
+Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
+             key: string, solid: int[], meaning: uint64, referenced: string[], ops: Ops) -> Start {
     declaration := forest[callable.node];
-    document_hash := DocumentHash(key);
-    slots: Slot[] = [];
-    // The storage of each locals-bank value; records and arrays never live there.
-    locals: Slot[] = [];
-    cells: Cell[] = [];
-    code: Code[] = [];
-    calls: Invocation[] = [];
-    hosts: Host[] = [];
-    roots: Root[] = [];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
-    work: Work[] = [];
-    values: Value[] = [];
-    loops: Loop[] = [];
-    breaks: int[] = [];
-    continues: int[] = [];
-    switches: Switch[] = [];
-    exits: int[] = [];
-    covered: int[] = [];
-    // Where each open scope's names start: blocks, if and while statements,
-    // and switch arms.
-    scopes: int[] = [];
-    work_top: int = 0;
-    value_top: int = 0;
+    slots: Slot[] = [];
+    locals: Slot[] = [];
+    code: Code[] = [];
     // Scalar and string parameters move to locals, so assigning one needs no
     // other form. Record and array parameters are read in place, unless the
     // body writes them: those get copies of their own, before the body runs.
-    work = array_add(work, Visit(Field(forest, callable.node, "body")));
+    work: Work[] = [Visit(Field(forest, callable.node, "body"))];
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
@@ -1262,7 +1256,6 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     }
     // The function's point; the body places the others as stage zero does.
     points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
-    watches: SourceWatch[] = [];
     code = array_add(code, PointCode(ops, 0, declaration));
     // Named results are locals from `named` on, zero until the body sets them.
     named := length(locals);
@@ -1279,6 +1272,53 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         names = array_add(names, bound);
         index += 1;
     }
+    return Start.Begun(work, names, slots, locals, code, points, named);
+}
+EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[], ops: Ops,
+             target: Target) -> Body {
+    callable := callables[function];
+    declaration := forest[callable.node];
+    document_hash := DocumentHash(key);
+    slots: Slot[] = [];
+    // The storage of each locals-bank value; records and arrays never live there.
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    code: Code[] = [];
+    calls: Invocation[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    names: Name[] = [];
+    work: Work[] = [];
+    points: SourcePoint[] = [];
+    named: int = 0;
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, ops);
+    switch begun {
+        case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_code, begun_points, begun_named):
+            work = begun_work;
+            names = begun_names;
+            slots = begun_slots;
+            locals = begun_locals;
+            code = begun_code;
+            points = begun_points;
+            named = begun_named;
+    }
+    values: Value[] = [];
+    loops: Loop[] = [];
+    breaks: int[] = [];
+    continues: int[] = [];
+    switches: Switch[] = [];
+    exits: int[] = [];
+    covered: int[] = [];
+    // Where each open scope's names start: blocks, if and while statements,
+    // and switch arms.
+    scopes: int[] = [];
+    work_top: int = 0;
+    value_top: int = 0;
+    watches: SourceWatch[] = [];
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
@@ -2059,15 +2099,27 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         code = WithoutDebug(ops, code);
         points = [];
     }
-    // The points the steps placed, each at its instruction's position. The
-    // runtime numbers each instruction that suspends, an invocation or a
-    // point, by its order, and a prepared module's bytes hold that number.
+    return NumberPoints(forest, solid, undeclared, meaning, document_hash, declaration, ops, slots, locals, cells,
+                        code, calls, hosts, roots, points, watches);
+}
+
+// A body's tables, with the points and watches the steps placed, each at its
+// instruction's position. The runtime numbers each instruction that suspends,
+// an invocation or a point, by its order, and a prepared module's bytes hold
+// that number.
+NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint64, meaning: uint64,
+                 document_hash: uint64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
+                 cells: Cell[], code: Code[], calls: Invocation[], hosts: Host[], roots: Root[],
+                 points: SourcePoint[], watches: SourceWatch[]) -> Body {
+    numbered_code := code;
+    numbered_points := points;
+    numbered_watches := watches;
     suspension: int = 0;
     at_point: int = 0;
-    while (at_point < length(code)) {
-        op := code[at_point].op;
-        if (op == ops.source_point && code[at_point].left < 0) {
-            placed := code[at_point];
+    while (at_point < length(numbered_code)) {
+        op := numbered_code[at_point].op;
+        if (op == ops.source_point && numbered_code[at_point].left < 0) {
+            placed := numbered_code[at_point];
             occurrence := OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
             point_meaning: uint64 = 0;
             point_kind := ExpressionRecord;
@@ -2086,19 +2138,19 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             point: SourcePoint = {occurrence: occurrence, meaning: point_meaning, start: placed.start, end: placed.end,
                                   line: placed.line, column: placed.column, kind: point_kind,
                                   completion: placed.left == CompletionPoint};
-            points = array_add(points, point);
-            code[at_point] = {op: ops.source_point, type: 0, output: 0, left: length(points) - 1, right: 0,
-                              target: suspension, offset: 0, value_storage: 0, value_container: 0, value_record: -1,
-                              payload: 0, text: "", has_text: false, message: "", has_message: false,
-                              start: placed.start, end: placed.end, line: placed.line, column: placed.column};
+            numbered_points = array_add(numbered_points, point);
+            numbered_code[at_point] = {op: ops.source_point, type: 0, output: 0, left: length(numbered_points) - 1, right: 0,
+                                       target: suspension, offset: 0, value_storage: 0, value_container: 0, value_record: -1,
+                                       payload: 0, text: "", has_text: false, message: "", has_message: false,
+                                       start: placed.start, end: placed.end, line: placed.line, column: placed.column};
             suspension += 1;
         } else if (op == ops.invoke || op == ops.source_point) {
-            numbered := code[at_point];
+            numbered := numbered_code[at_point];
             numbered.target = suspension;
-            code[at_point] = numbered;
+            numbered_code[at_point] = numbered;
             suspension += 1;
         } else if (op == ops.source_watch) {
-            placed := code[at_point];
+            placed := numbered_code[at_point];
             // A default of another document carries its occurrence.
             occurrence := placed.payload;
             if (occurrence == 0) {
@@ -2109,11 +2161,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                   storage: placed.value_storage, container: placed.value_container,
                                   record: placed.value_record, ordinal: placed.right, output: placed.output == 1,
                                   reference: placed.offset == 1};
-            watches = array_add(watches, watch);
-            code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0, length(watches) - 1,
-                                         Located(placed));
+            numbered_watches = array_add(numbered_watches, watch);
+            numbered_code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0, length(numbered_watches) - 1,
+                                                  Located(placed));
         }
         at_point += 1;
     }
-    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches);
+    return Body.Emitted(slots, locals, cells, numbered_code, calls, hosts, roots, numbered_points, numbered_watches);
 }

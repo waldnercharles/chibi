@@ -540,10 +540,9 @@ static bool generate(
     int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
     bool generated = status == FLOW_OK && context.returned;
     if (!generated) {
-        const char *reason = context.error_message ? context.error_message
-                           : context.failure == BEHAVIOR_FUNCTION_BUDGET
-                               ? "instruction budget exhausted"
-                               : "execution failed";
+        const char *reason = context.error_message
+                               ? context.error_message
+                               : behavior_function_failure_text(context.failure);
         snprintf(error, size, "the site generator failed on %s: %s", name, reason);
     }
     const pin_array *pieces = result.ptr;

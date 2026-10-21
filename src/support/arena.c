@@ -191,8 +191,23 @@ static void retire(arena *a, arena_allocation *value)
     value->next = a->unused;
     a->unused = value;
 }
+static void forget_copy(arena *a)
+{
+    a->copied_from = NULL;
+    a->copy = NULL;
+}
+const void *arena_copy_find(const arena *a, const void *source)
+{
+    return a->copied_from == source ? a->copy : NULL;
+}
+void arena_copy_remember(arena *a, const void *source, const void *copy)
+{
+    a->copied_from = source;
+    a->copy = copy;
+}
 void arena_reset(arena *a)
 {
+    forget_copy(a);
     clear_pages(a);
     while (a->allocations) {
         arena_allocation *value = a->allocations;
@@ -399,6 +414,7 @@ void arena_collect_end(arena_collection *c)
         }
     }
     for (int i = 0; i < c->count; i++) {
+        forget_copy(c->arenas[i]);
         sweep(c->arenas[i]);
     }
     afree(c->live);

@@ -54,6 +54,8 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #ifdef CHIBI_TEST_BUILD_PROCESS
 void test_tool_build_process(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
+void test_build_graph(const char *host);
+void test_build_graph_reflect(const char *host);
 #endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
@@ -522,6 +524,23 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
+                      !strcmp(argv[1], "--build-graph-reflect"))) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        if (!strcmp(argv[1], "--build-graph")) {
+            test_build_graph(argv[2]);
+        } else {
+            test_build_graph_reflect(argv[2]);
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 4 && !strcmp(argv[1], "--build-toolchain")) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();

@@ -403,6 +403,9 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
         "build.remove",
         "build.hash_file",
         "build.hash_text",
+        "build.start",
+        "build.wait",
+        "build.embed_file",
     };
     bool absent = true;
     for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
@@ -668,6 +671,125 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
     return true;
 }
 
+/* A program imports a named collection's packages as NAME:path. */
+TEST_CASE(private_programs_import_named_collections)
+{
+    char collection[256], directory[300], file[320];
+    snprintf(collection, sizeof collection, "%s/collection", root);
+    snprintf(directory, sizeof directory, "%s/greet", collection);
+    assert(!mkdir(collection, 0700) && !mkdir(directory, 0700));
+    snprintf(file, sizeof file, "%s/Greet.chibi", directory);
+    tool_write(file, "package greet\npub Answer :: () -> int { return 42; }\n");
+    static const char *source = "package uses\nimport greet \"lib:greet\"\n"
+                                "Build :: () -> int { return greet.Answer(); }";
+    const chibi_build_collection named[] = { { "lib", collection } };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        options.collections = named;
+        options.collection_count = 1;
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 42);
+    }
+    char program[320], log[256];
+    snprintf(program, sizeof program, "%s/UsesCollection.chibi", root);
+    snprintf(log, sizeof log, "%s/collection.log", root);
+    tool_write(program, source);
+    char option[300];
+    snprintf(option, sizeof option, "lib=%s", collection);
+    const char *argv[] = { host_path, "--root",       root,   "--source",
+                           program,   "--collection", option, "--entry",
+                           "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(argv, root, log) == 42);
+    const char *malformed[] = { host_path, "--root",       root,   "--source",
+                                program,   "--collection", "lib",  "--entry",
+                                "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(malformed, root, log) == 1);
+    char *text = tool_read(log);
+    bool usage = text && strstr(text, "usage:");
+    free(text);
+    REQUIRE(usage);
+    return true;
+}
+
+/* build.embed_file writes the C that cmake/embed_binary.cmake writes, and
+ * leaves an unchanged output alone. */
+TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
+{
+    char input[256], empty[256];
+    snprintf(input, sizeof input, "%s/bytes.bin", root);
+    snprintf(empty, sizeof empty, "%s/empty.bin", root);
+    unsigned char bytes[18];
+    for (int i = 0; i < 18; i++) {
+        bytes[i] = (unsigned char)(i * 15);
+    }
+    FILE *file = fopen(input, "wb");
+    REQUIRE(file && fwrite(bytes, 1, sizeof bytes, file) == sizeof bytes && !fclose(file));
+    tool_write(empty, "");
+    static const char
+        *source = "package embed\nBuild :: () -> int { "
+                  "if (!build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 1; } "
+                  "stamp := build.file_stamp(\"out/bytes.c\"); "
+                  "if (build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 2; } "
+                  "if (build.file_stamp(\"out/bytes.c\") != stamp) { return 3; "
+                  "} "
+                  "if (!build.embed_file(\"empty.bin\", \"out/empty.c\", "
+                  "\"_empty\")) { return 4; } "
+                  "return 0; }";
+    char directory[256];
+    snprintf(directory, sizeof directory, "%s/out", root);
+    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0);
+    char path[320];
+    snprintf(path, sizeof path, "%s/out/bytes.c", root);
+    char *text = tool_read(path);
+    REQUIRE(
+        text &&
+        !strcmp(
+            text,
+            "#include <stddef.h>\n\nconst unsigned char bytes_blob[] = {\n"
+            "    0x00, 0x0f, 0x1e, 0x2d, 0x3c, 0x4b, 0x5a, 0x69, 0x78, 0x87, "
+            "0x96, 0xa5, "
+            "0xb4, 0xc3, 0xd2, 0xe1,\n    0xf0, 0xff,\n};\n"
+            "const size_t bytes_blob_size = sizeof bytes_blob;\n"
+        )
+    );
+    free(text);
+    snprintf(path, sizeof path, "%s/out/empty.c", root);
+    text = tool_read(path);
+    REQUIRE(
+        text && !strcmp(
+                    text,
+                    "#include <stddef.h>\n\nconst unsigned char _empty[] = {\n "
+                    "   \n};\n"
+                    "const size_t _empty_size = sizeof _empty;\n"
+                )
+    );
+    free(text);
+    static const char *refused[] = {
+        "package embed\nBuild :: () -> int { build.embed_file(\"bytes.bin\", "
+        "\"out/x.c\", \"1st\"); return 0; }",
+        "package embed\nBuild :: () -> int { build.embed_file(\"out\", "
+        "\"out/x.c\", \"x\"); return 0; }",
+    };
+    static const char *diagnostics[] = {
+        "build embed symbol must be a C identifier",
+        "build embed input must be a regular file of at most 64 MiB",
+    };
+    for (int i = 0; i < 2; i++) {
+        options = primitive_options(refused[i], BEHAVIOR_BYTECODE);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+    }
+    return true;
+}
+
 /* Nothing resumes a build program, so waiting or starting a task fails it. */
 TEST_CASE(private_programs_cannot_wait_or_start_tasks)
 {
@@ -689,6 +811,137 @@ TEST_CASE(private_programs_cannot_wait_or_start_tasks)
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
         }
     }
+    return true;
+}
+
+/* A program that fails without a message of its own says why it stopped. */
+TEST_CASE(private_runtime_failures_name_their_cause)
+{
+    static const char *sources[] = {
+        "package fails\nBuild :: () -> int { n := 0; while (true) { n += 1; } "
+        "return n; }",
+        "package fails\nBuild :: () -> int { xs: int[] = []; return xs[1]; }",
+        /* A called function's failure reaches the program's diagnostic. */
+        "package fails\nInner :: () -> int { xs: int[] = []; return xs[1]; }\n"
+        "Build :: () -> int { return Inner(); }",
+        "package fails\nInner :: () -> int { return build.wait(99); }\n"
+        "Build :: () -> int { return Inner(); }",
+    };
+    static const char *diagnostics[] = {
+        "instruction budget exhausted",
+        "array index out of range",
+        "array index out of range",
+        "unknown build job",
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 4; i++) {
+            behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+            chibi_build_options options = primitive_options(sources[i], backend);
+            /* The default budget takes seconds to run out. */
+            options.instruction_budget = 100000;
+            chibi_build_result result;
+            REQUIRE(!chibi_build_invoke(&options, &result));
+            if (strcmp(result.diagnostic, diagnostics[i])) {
+            }
+            REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+        }
+    }
+    return true;
+}
+
+/* Started steps run at the same time; each wait gives its own step's status. */
+TEST_CASE(private_started_steps_run_together)
+{
+    static const char
+        *source = "package jobs\n"
+                  "Build :: () -> int { worker := "
+                  "build.environment(\"CHIBI_BUILD_WORKER\"); "
+                  "handles: int[] = []; "
+                  "for (i in 0..<4) { handles = array_add(handles, "
+                  "build.start([worker, \"sleep\", \"0.4\"])); } "
+                  "failed := 0; "
+                  "for (handle in handles) { if (build.wait(handle) != 0) { "
+                  "failed += 1; } } "
+                  "return failed; }";
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    double elapsed = now() - started;
+    /* One after another the four would take 1.6 s. */
+    REQUIRE(result.value == 0 && result.steps == 4 && elapsed < 1.2);
+    return true;
+}
+
+/* Waiting for one step drains the others, so a step that writes more than a
+ * pipe holds still finishes; output becomes the last output in wait order. */
+TEST_CASE(private_waits_take_output_in_wait_order)
+{
+    static const char *source =
+        "package jobs\n"
+        "Build :: () -> int { worker := "
+        "build.environment(\"CHIBI_BUILD_WORKER\"); "
+        "large := build.start([worker, \"build-output\", \"300000\"]); "
+        "argv := build.start([worker, \"build-argv\", \"first\"]); "
+        "code := build.start([worker, \"exit\", \"7\"]); "
+        "if (build.wait(code) != 7) { return 1; } "
+        "if (build.wait(large) != 0 || text_byte_length(build.last_stdout()) "
+        "!= 300000) { return 2; } "
+        "if (build.wait(argv) != 23 || build.after(build.last_stdout(), "
+        "\"arg=5:\") != \"first\\n\") { return 3; } "
+        "if (build.last_stderr() != \"worker-stderr\\n\") { return 4; } "
+        "return 0; }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 0 && result.steps == 3);
+        REQUIRE(strstr(result.stdout_text, "oooo") && result.stdout_truncated);
+    }
+    return true;
+}
+
+TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
+{
+    static const char *sources[] = {
+        "package jobs\nBuild :: () -> int { return build.wait(1); }",
+        "package jobs\nBuild :: () -> int { "
+        "step := build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+        "\"exit\", \"0\"]); "
+        "build.wait(step); return build.wait(step); }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, "unknown build job"));
+    }
+    return true;
+}
+
+/* A step the program never waits for stops when the program returns, and a
+ * wait past the deadline fails the program. */
+TEST_CASE(private_unwaited_and_late_steps_stop)
+{
+    static const char
+        *unwaited = "package jobs\nBuild :: () -> int { "
+                    "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                    "\"sleep\", \"30\"]); return 0; }";
+    chibi_build_options options = primitive_options(unwaited, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0 && now() - started < 2);
+    static const char
+        *late = "package jobs\nBuild :: () -> int { return build.wait("
+                "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                "\"sleep\", \"30\"])); }";
+    options = primitive_options(late, BEHAVIOR_BYTECODE);
+    options.deadline = now() + 0.5;
+    started = now();
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - started < 2);
     return true;
 }
 
@@ -1265,7 +1518,14 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+    RUN_TEST_CASE(private_programs_import_named_collections);
+    RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
     RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
+    RUN_TEST_CASE(private_runtime_failures_name_their_cause);
+    RUN_TEST_CASE(private_started_steps_run_together);
+    RUN_TEST_CASE(private_waits_take_output_in_wait_order);
+    RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
+    RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
     RUN_TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols);
     RUN_TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text);
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);

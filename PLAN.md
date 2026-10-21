@@ -210,8 +210,8 @@ Current integration constraints:
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
-| M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
-| M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
+| M5 | **Complete on macOS arm64 and Wasm** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. Open gate: the Linux x86_64 and Windows x64 runs. |
+| M6 | **In progress** | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
@@ -576,6 +576,76 @@ until the clean-checkout artifact recovery test passes.
 
 ### M6. Replace the internal build graph
 
+Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
+the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
+open gate that can run later from the checked-in bootstrap artifact or any
+commit's. Until each of those platforms passes its run, M6 must not remove
+stage zero, recovery, or a build path that platform uses, and Windows keeps
+its CMake and stage-zero path because the build host has no Windows process
+support yet.
+
+Approach (owner, 2026-10-21): the graph is Chibi code the build host runs
+itself, with no Ninja. `build.start` and `build.wait` run compiles in
+parallel (#612); `-MD` dependency files and recorded stamps decide rebuilds;
+targets are functions over typed records, as Jai's `BuildCpp` and `build.zig`
+are; each target's compile commands must equal CMake's
+`compile_commands.json` apart from output paths, and its result must link.
+Later slices that compile Chibi should call the compiler in process, as Jai's
+workspaces do, rather than start `chibi-compile`.
+
+Slice 1, 2026-10-21: the `graph:` collection (`tools/graph`, with
+`--collection` on the build host) builds `chibi_support` on macOS and Linux
+through `tools/toolchain/Graph.chibi`, beside CMake. `build-graph` checks its
+five compile commands against CMake's, links its archive, and checks rebuilds.
+Slice 2, 2026-10-21: the graph also owns the libraries that use only
+`chibi_support` (`chibi_types`, `chibi_asset_values`, `chibi_text_search`,
+`chibi_ui_document_values`), with private headers and stale-header removal.
+It compiles across libraries in one job window, writes
+`compile_commands.json` on every run, and builds a subset with `--target`.
+Slice 3, 2026-10-21: `chibi_value_document`, `chibi_capabilities`,
+`chibi_ecs` and `chibi_events`, which use `chibi_types`; 32 sources in nine
+libraries, all of which compiled and archived from the graph.
+Slice 4, 2026-10-21: the graph owns every library whose compiles include only
+staged headers of libraries it owns: 31 libraries, 82 sources, including
+`chibi_shader_runtime` (which, despite slice 3's note, needs no generated
+header: its artifact-format record goes into `engine.json`), the native
+capability tables, and three header-only libraries. Its target table,
+`tools/graph/engine/Targets.chibi`, was first read from what CMake staged and
+compiled; it is now the source of truth. The host's instruction budget rose
+to 100 million and its step limit to 4,096 for graphs of this size.
+Slice 5, 2026-10-21: the in-tree vendored C (`chibi_fmt`, `chibi_json`,
+`chibi_asset_kdl`) and the libraries over it (`chibi_asset_json`,
+`chibi_asset_text`, `chibi_text_capabilities`), plus `chibi_array_capabilities`,
+`chibi_field_capabilities` and `chibi_input_map`: 40 libraries, 100 sources.
+Each target now names its include directories, defines and options
+explicitly, as CMake orders them.
+Slice 6, 2026-10-21: generated sources. `build.embed_file` writes the byte
+arrays `cmake/embed_binary.cmake` wrote, and the graph embeds
+`chibi_builtin_fonts`' sixteen fonts before compiling: 41 libraries, 117
+sources. A `--target` build stages the headers of the libraries its includes
+name.
+Slice 7, 2026-10-21: `chibi_component_presentation`, whose engine component
+KDL is embedded, and `chibi_save_runtime`: 43 libraries, 122 sources, all of
+which compiled and archived from the graph. Every other library now waits on
+one of three inputs: `chibi_execution` (51 libraries include it; it compiles
+SLJIT), Cute math (`public/math`, 46) and `chibi_native_types` (39), which the
+reflection host tool generates. The first two come from fetched sources.
+Slice 8, 2026-10-21: executables. The graph links `reflect` with CMake's
+command, and the program it links writes the same reflected sources
+(`build-graph-reflect`). A failure inside a called function now reaches the
+build host's diagnostic, through the failure observer package tests use;
+before, it read as "instruction budget exhausted".
+Slice 9, 2026-10-21: profiles. The graph finds the Makefile's sanitizer,
+debug or release profile on the machine: compiler, its kind, architecture,
+SDK, ccache, libclang, `ar` and `ranlib`. From only the profile's name and
+CMake's compiler as `CC`, its 129 commands equal CMake's.
+Next: run `reflect` from the graph to generate `chibi_native_types`, once Cute
+math's headers come from the repository; the fetched
+dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
+which wait for vendoring (#569) so the graph builds them from the repository;
+then moving profile selection from `Build.chibi`'s CMake arguments into the
+graph.
+
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
 assembly into Chibi modules. Preserve installed CMake package files while Studio
@@ -820,9 +890,12 @@ On 2026-10-20 build programs became packages: one file with a `package`
 header that may import `core:`, with `format_text` and the array natives
 (host protocol 5). Their `build.` string natives go once the programs use
 `core:strings`.
+On 2026-10-21 the owner retired the mesh-to-SDF converter (`tools/mesh_sdf/`
+and its `box.obj` fixture) with no replacement, rather than port its Blender
+launcher; its worker required Blender 4.3.2 on Linux, and its tests and the
+example that used it were already gone.
 Everything else is blocked. Packaging still needs sizes, modification-time
-order, link reads and staging directories from the host, and the Blender
-launcher needs child resource limits.
+order, link reads and staging directories from the host.
 The build graph waits on M6, the executables and runtime on a native backend,
 and engine modules on M9.
 
@@ -896,6 +969,8 @@ Host status on 2026-10-20:
 - The bootstrap itself stays native: stage one compiling itself outgrows
   Wasm's 2 GiB linear memory.
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
+  On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
+  readied M6, with these runs as M5's open gate (see M6).
   - They run when CI is back (disabled since 2026-09-25 for billing) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero
@@ -1148,9 +1223,38 @@ Compiler speed, measured on 2026-10-20 in Release on macOS arm64 with SLJIT
 70% of it re-validating immutable record descriptors on every value copy.
 Records are now validated where they enter (creation, prepared loading, value
 documents), so stage one takes about 7.6 s and stage two 6.5 s; a row copy in
-`--script-benchmark` fell from 1,050 to 110 ns. Copying values (memmove, string
-and field snapshots) is the next measured cost. LLVM AOT is evaluated only if
-SLJIT-path fixes cannot bring stage one close to stage zero.
+`--script-benchmark` fell from 1,050 to 110 ns. Stage one then copied record
+descriptors 31 million times (33 GB), 92% of them into an arena that already
+held a copy; each arena now remembers its last copy, which removes half of
+them and about 3% of the bootstrap selector's CPU time. The remaining copy cost is
+emitted code: snapshots that retain locals and fields, and union constructors
+that copy every payload array (about a third of stage one's samples). Cutting
+it needs the emitter to move values at their last use rather than copy them,
+in `tools/compiler`. Resetting each call's data values costs about 10%: 16
+million calls reset 648 million values, of which 29% had changed, and zero
+4.7 GB of buffers. A static write set (addresses taken, host and call results)
+still covers 83% of those values, because programs fill argument banks through
+their addresses, and saved no time. Marking writes at run time (a byte per
+value, set by every address taken) restored half as many values but ran
+slightly slower than main, so the resets stay as they are. LLVM AOT would not help this workload: code SLJIT generates
+is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
+an LLVM backend would call too.
+
+Two later changes cut more (2026-10-21). The emitter moves a fresh literal or
+authored call result into a local or return instead of copying it (#613), and
+the compiler hashes and validates source text by reading `Bytes` once instead
+of a `ByteAt` per byte, which measured the whole text each time: 55 GB of
+`strlen` per self-compile (#617). Stage one now takes about 6.5 s and stage
+two about 4.6 s, against stage zero's 2.7 s. What remains, in the self-hosted
+compiler's own run:
+
+- Deep copies of rows: `Step.Emitted`'s 13 payload arrays per step (0.57 GB),
+  read-only element copies such as `node := forest[i]` and `for (item in
+  code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
+  need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
+  budget (36,292 instructions × 14,750 slots), so it must be split first.
+- `Text(forest, text, node)` still measures the source up to each node it
+  slices, because strings do not carry their length.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

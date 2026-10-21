@@ -2166,6 +2166,30 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
+`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
+build that configured the tests. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` (and the debug directory,
+which depends on where a build is), the graph finds the rest of its profile
+on the machine and writes the compile commands of every target it owns, and each of the 129
+must equal `compile_commands.json`'s for the same source, apart from the
+object path and with the temporary build directory standing for CMake's. In a
+copy of the sources, about ten runs that build only `chibi_support` then check
+that an unchanged build compiles nothing, that changing a source, a header or
+the flags or deleting an object recompiles exactly what depends on it, that a
+staged header nothing publishes is removed, and that a source that fails to
+compile keeps no record and is retried alone. The archive must link a program
+that runs. It compiles about fifteen C files with the profile's sanitizers,
+about 32 s at a load average of 8.
+
+`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`reflect` from the graph (27 C files with the profile's sanitizers), requires
+its link command to equal CMake's `build.ninja` statement apart from where
+objects, the output and archives sit, and runs it as CMake does: its
+`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
+About 42 s at a load average of 11.
+
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
 `version` and `doctor`, then `check`, `fmt`, `build` and a native `export` of one tiny project,

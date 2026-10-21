@@ -1147,10 +1147,9 @@ HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
 }
 HashText :: (hash: uint64, text: string) -> uint64 {
     out := hash;
-    index: int = 0;
-    while (index < strings.ByteLength(text)) {
-        out = HashBytes(out, uint64(strings.ByteAt(text, index)), 1);
-        index += 1;
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    for (byte in strings.Bytes(text)) {
+        out = HashBytes(out, uint64(byte), 1);
     }
     return HashBytes(out, 0, 1);
 }

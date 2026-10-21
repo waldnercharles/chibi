@@ -11,13 +11,23 @@
 #define CHIBI_BUILD_HOST_PROTOCOL 5
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
+/* A collection a program imports as name:path, as Odin's -collection names. */
+typedef struct
+{
+    const char *name, *root; /* root is an absolute directory. */
+} chibi_build_collection;
+#define CHIBI_BUILD_MAX_COLLECTIONS 8
+
 typedef struct
 {
     const char *root, *source_path, *source_text, *entry;
     const char *core; /* Absolute core collection directory, or NULL for none. */
+    const chibi_build_collection *collections; /* Besides core. */
+    int collection_count;
     const char *const *arguments;
     int argument_count;
     behavior_backend backend;
+    uintptr_t instruction_budget; /* Zero for the host's default. */
     double deadline; /* Absolute chibi_build_now() seconds; also bounded by inherited supervision. */
     const volatile sig_atomic_t *cancelled;
 } chibi_build_options;

@@ -1444,10 +1444,12 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             referenced = ReferencedNames(forest, documents[callable.document].text, callables, params, aliases, package,
                                          Field(forest, callable.node, "body"));
         }
+        mutated := MutatedNames(forest, documents[callable.document].text, Field(forest, callable.node, "body"),
+                                referenced);
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
-                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced, ops,
-                           target);
+                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced,
+                           mutated, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);

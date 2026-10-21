@@ -50,6 +50,7 @@ typedef enum
     EXECUTION_INTRINSIC_STRING_ITEM = 41,
     EXECUTION_INTRINSIC_STRING_NEXT = 42,
     EXECUTION_INTRINSIC_STRING_CURSOR = 43,
+    EXECUTION_INTRINSIC_UNION_MOVE = 44,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
@@ -66,6 +67,9 @@ extern const node_host_call EXECUTION_array_push_call,
     EXECUTION_array_store_call, EXECUTION_array_extend_call;
 extern const node_host_call EXECUTION_union_make_call,
     EXECUTION_union_test_call, EXECUTION_union_get_call;
+/* union_make for a returned union: its payload holds the values themselves,
+ * since nothing changes them before the return copies the union. */
+extern const node_host_call EXECUTION_union_move_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_key_call;

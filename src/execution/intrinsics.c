@@ -323,7 +323,9 @@ const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
 const node_access EXECUTION_value_access = { .flags = NODE_EFFECT_PURE };
-static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+/* Builds the union `args` name, copying its payload unless `moved`: then
+ * pin_union_moved keeps the values held in storage. */
+static const char *union_build(arena *storage, const pin_value *args, int count, pin_value *out, bool moved)
 {
     assert(count >= 1);
     if (!args[0].u64) {
@@ -333,9 +335,18 @@ static const char *union_make(arena *storage, const pin_value *args, int count, 
         pin_union_cancelled(out);
         return NULL;
     }
-    return pin_union_value(storage, args[0].u64, args + 1, count - 1, out)
-             ? "Cannot retain union payload"
-             : NULL;
+    int failed = moved
+                   ? pin_union_moved(storage, args[0].u64, args + 1, count - 1, out)
+                   : pin_union_value(storage, args[0].u64, args + 1, count - 1, out);
+    return failed ? "Cannot retain union payload" : NULL;
+}
+static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return union_build(storage, args, count, out, false);
+}
+static const char *union_move(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return union_build(storage, args, count, out, true);
 }
 static const char *union_test(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -382,6 +393,7 @@ static const char *union_get(arena *storage, const pin_value *args, int count, p
     return NULL;
 }
 const node_host_call EXECUTION_union_make_call = { .value = union_make };
+const node_host_call EXECUTION_union_move_call = { .value = union_move };
 const node_host_call EXECUTION_union_test_call = { .value = union_test };
 const node_host_call EXECUTION_union_get_call = { .value = union_get };
 typedef struct language_reference_path
@@ -1365,6 +1377,7 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             return &EXECUTION_array_extend_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
+        case EXECUTION_INTRINSIC_UNION_MOVE: return &EXECUTION_union_move_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -1429,6 +1442,9 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_union_make_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MAKE;
+    }
+    if (call == &EXECUTION_union_move_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MOVE;
     }
     if (call == &EXECUTION_union_test_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_TEST;

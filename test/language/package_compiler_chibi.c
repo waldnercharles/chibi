@@ -25,6 +25,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy.h"
+#include "types/map.h"
 #include "types/union.h"
 #include "types/value_document.h"
 
@@ -380,6 +381,71 @@ static const sample samples[] = {
                  { "Nested",
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
+    { .name = "maps",
+      .group = TYPE_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Ages :: () -> int {\n"
+          "    ages: [string: int] = [\"Ada\": 36, \"Bea\": 41];\n"
+          "    return ages[\"Ada\"] + ages[\"Cid\"] * 1000 + ages[\"Bea\"] * "
+          "100;\n}\n"
+          "Name :: (key: int) -> string {\n"
+          "    names: [int: string] = [1: \"one\", 2: \"two\"];\n    return "
+          "names[key];\n}\n"
+          "Y :: (key: string) -> int {\n"
+          "    ps: [string: Point] = [\"a\": {x: 1, y: 2}];\n    return "
+          "ps[key].y;\n}\n"
+          "Flag :: () -> bool { flags: [int: bool] = [:]; return flags[3]; }\n"
+          "Count :: (n: int) -> int {\n"
+          "    squares: [int: int] = [:];\n    i: int = 0;\n"
+          "    while (i < n) { squares[i] = i * i; i += 1; }\n"
+          "    delete squares[1];\n    squares.delete(2);\n    "
+          "squares.delete(99);\n"
+          "    found: int = 0;\n"
+          "    if (0 in squares) { found += 1; }\n"
+          "    if (1 not in squares) { found += 10; }\n"
+          "    if (squares.has(3)) { found += 100; }\n"
+          "    if (!squares.has(2)) { found += 1000; }\n"
+          "    return found * 100000 + squares[3] * 1000 + squares[1];\n}\n"
+          "Points :: () -> int {\n"
+          "    ps: [string: Point] = [:];\n    ps[\"a\"] = {x: 3, y: 4};\n"
+          "    p: Point = {x: 5, y: 6};\n    ps[\"b\"] = p;\n    p.x = 7;\n"
+          "    return ps[\"a\"].y * 100 + ps[\"b\"].x;\n}\n"
+          "Walk :: () -> string {\n"
+          "    ages: [string: int] = [\"Ada\": 3, \"Bea\": 1, \"Cid\": 2];\n"
+          "    ages[\"Ada\"] = 4;\n    delete ages[\"Bea\"];\n    "
+          "ages[\"Bea\"] = 5;\n"
+          "    out: string = \"\";\n    total: int = 0;\n"
+          "    for (name, age in ages) { out = format_text(\"{}{}{}\", out, "
+          "name, age); total += age; }\n"
+          "    for (age in ages) { if (age == 2) { continue; } total += age * "
+          "100; }\n"
+          "    ps: [int: Point] = [1: {x: 2, y: 3}, 4: {x: 5, y: 6}];\n"
+          "    for (key, p in ps) { total += key * 1000 + p.y * 10000; }\n"
+          "    return format_text(\"{} {}\", out, total);\n}\n"
+          "Make :: (n: int) -> [int: string] {\n"
+          "    made: [int: string] = [:];\n    i: int = 0;\n"
+          "    while (i < n) { made[i] = format_text(\"v{}\", i); i += 1; }\n  "
+          "  return made;\n}\n"
+          "Join :: (m: [int: string]) -> string {\n"
+          "    out: string = \"\";\n    for (k, v in m) { out = "
+          "format_text(\"{}{}={};\", out, k, v); }\n"
+          "    return out;\n}\n"
+          "Copies :: () -> string {\n"
+          "    a := Make(3);\n    b := a;\n    b[0] = \"changed\";\n    delete "
+          "b[2];\n"
+          "    return format_text(\"{}|{}\", Join(a), Join(b));\n}",
+      .calls = { { "Ages", "[]", "[4136]" },
+                 { "Name", "[2]", "[\"two\"]" },
+                 { "Name", "[3]", "[\"\"]" },
+                 { "Y", "[\"a\"]", "[2]" },
+                 { "Y", "[\"b\"]", NULL },
+                 { "Flag", "[]", "[false]" },
+                 { "Count", "[5]", "[111109000]" },
+                 { "Points", "[]", "[405]" },
+                 { "Walk", "[]", "[\"Ada4Cid2Bea5 95911\"]" },
+                 { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -833,6 +899,42 @@ static const sample samples[] = {
                 "    return length(xs);\n}",
       .updates = true,
       .calls = { { "Build", "[3]", "[6]" } } },
+    { .name = "map updates",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBuild :: (count: int) -> int {\n"
+                "    squares: [int: int] = [:];\n"
+                "    index: int = 0;\n"
+                "    while (index < count) { squares[index] = index; index += "
+                "1; }\n"
+                "    index = 0;\n"
+                "    while (index < count) { delete squares[index]; index += "
+                "2; }\n"
+                "    total: int = 0;\n"
+                "    for (value in squares) { total += 1; }\n"
+                "    return total;\n}",
+      .updates = true,
+      .calls = { { "Build", "[3]", "[1]" } } },
+    { .name = "inferred map literal",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nAnswer :: () -> int { m := [\"a\": 1]; return "
+                "0; }",
+      .message = "map literal needs a [K: V] type",
+      .line = 2,
+      .column = 28 },
+    { .name = "compound map assignment",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nAdd :: () -> int { m: [int: int] = [:]; m[1] "
+                "+= 2; return m[1]; }",
+      .message = "compound map assignment is not supported yet",
+      .line = 2,
+      .column = 41 },
+    { .name = "map parameter removal",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nDrop :: (m: [int: int]) -> int { delete m[1]; "
+                "return 0; }",
+      .message = "deleting a key needs a local map",
+      .line = 2,
+      .column = 41 },
     { .name = "bounds",
       .source = "package facts\nPick :: (xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -1520,6 +1622,7 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
     REQUIRE(put(&args[6], "items_offset", (int)offsetof(pin_array, items)));
     REQUIRE(put(&args[6], "data_offset", (int)offsetof(pin_array, data)));
     REQUIRE(put(&args[6], "stride_offset", (int)offsetof(pin_array, stride)));
+    REQUIRE(put(&args[6], "map_count_offset", (int)offsetof(pin_map, count)));
     REQUIRE(put(&args[6], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
     REQUIRE(put(&args[6], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
     args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };

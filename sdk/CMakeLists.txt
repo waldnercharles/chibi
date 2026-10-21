@@ -406,9 +406,7 @@ if(CHIBI_SDK_BUILD_DESKTOP)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py" "${CHIBI_SDK_ROOT}/tools/package_player.py"
-        "${CHIBI_SDK_ROOT}/tools/package_studio.py"
-        "${CHIBI_SDK_ROOT}/tools/install_game_runtime.py" DESTINATION share/chibi/tools)
-    install(FILES "${CHIBI_SDK_ROOT}/tools/kdl_asset.py" DESTINATION share/chibi/tools)
+        "${CHIBI_SDK_ROOT}/tools/package_studio.py" DESTINATION share/chibi/tools)
     add_library(chibi_asset_json STATIC "${CHIBI_SDK_ROOT}/src/support/asset_json.c")
     add_library(Chibi::asset_json ALIAS chibi_asset_json)
     set_target_properties(chibi_asset_json PROPERTIES EXPORT_NAME asset_json)

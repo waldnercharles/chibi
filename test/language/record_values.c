@@ -390,6 +390,18 @@ TEST_CASE(record_copy_rejects_changed_nested_layout)
     pin_value operands[] = { input, same }, result = { .type = PIN_I32, .i = 123 };
     REQUIRE(EXECUTION_value_equal_call.value(&owned, operands, 2, &result));
     REQUIRE(result.type == PIN_I32 && result.i == 123);
+    /* A field list fills the record's bytes under the new layout, so only the
+     * stale record itself can refuse it. */
+    const char *label = "label";
+    pin_value header = input;
+    header.ptr = NULL;
+    pin_value fields[] = {
+        header,
+        { .type = PIN_U64, .u64 = 0 },
+        { .type = PIN_STRUCT, .type_name = "Stats", .ptr = &label },
+    };
+    REQUIRE(EXECUTION_construct_call.value(&owned, fields, 3, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == 123);
     pin_value sentinel = { .type = PIN_I32, .i = 123 };
     output = sentinel;
     REQUIRE(pin_value_snapshot_to_arena(&other, &output, &input));

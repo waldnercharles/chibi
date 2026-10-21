@@ -597,8 +597,14 @@ Slice 1, 2026-10-21: the `graph:` collection (`tools/graph`, with
 `--collection` on the build host) builds `chibi_support` on macOS and Linux
 through `tools/toolchain/Graph.chibi`, beside CMake. `build-graph` checks its
 five compile commands against CMake's, links its archive, and checks rebuilds.
-Next: the leaf libraries that depend only on `chibi_support`, then moving
-profile selection from `Build.chibi`'s CMake arguments into the graph.
+Slice 2, 2026-10-21: the graph also owns the libraries that use only
+`chibi_support` (`chibi_types`, `chibi_asset_values`, `chibi_text_search`,
+`chibi_ui_document_values`), with private headers and stale-header removal.
+It compiles across libraries in one job window, writes
+`compile_commands.json` on every run, and builds a subset with `--target`.
+Next: the libraries above `chibi_types` (`chibi_events`, `chibi_ecs`,
+`chibi_capabilities`, `chibi_shader_runtime`), then moving profile selection
+from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

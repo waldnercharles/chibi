@@ -1,6 +1,7 @@
 /* The Chibi build graph (tools/graph, tools/toolchain/Graph.chibi) against the
- * CMake build that configured these tests: the same compile commands for
- * chibi_support, an archive that links, and rebuilds only of what changed. */
+ * CMake build that configured these tests: the same compile commands for every
+ * library it owns, and for chibi_support rebuilds of only what changed and an
+ * archive that links. */
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "yyjson.h"
@@ -15,7 +16,6 @@
 #include <unistd.h>
 
 #define GRAPH_PATH 4096
-#define GRAPH_TOKENS 128
 #define GRAPH_RUN_SECONDS 30
 
 static char host_path[4096];
@@ -26,8 +26,15 @@ static char compiler[GRAPH_PATH], compiler_id[64], build_type[64],
     architecture[64], sysroot[GRAPH_PATH], sanitizers[128],
     debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH];
 static bool warnings;
-static const char *const sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
-#define SOURCE_COUNT (int)(sizeof sources / sizeof *sources)
+/* The libraries the graph owns, as graph:engine's Targets lists them. */
+static const char *const targets[] = { "chibi_support",
+                                       "chibi_types",
+                                       "chibi_asset_values",
+                                       "chibi_text_search",
+                                       "chibi_ui_document_values" };
+#define TARGET_COUNT (int)(sizeof targets / sizeof *targets)
+static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
+#define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
 
 static void join(char out[GRAPH_PATH], const char *base, const char *name)
 {
@@ -143,9 +150,10 @@ static void read_profile()
     free(cache);
 }
 
-/* Runs the graph's Support entry over root into build_dir; the number of
- * sources it compiled, or -1 when it failed. */
-static int graph(const char *root, const char *build_dir, bool warn)
+/* Runs the graph's Libraries entry over root into build_dir with the options
+ * after it; the number of sources it compiled, 0 when it only wrote commands,
+ * or -1 when it failed. */
+static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
     const char *argv[64] = { host_path,
                              "--root",
@@ -157,7 +165,7 @@ static int graph(const char *root, const char *build_dir, bool warn)
                              "--collection",
                              "graph=tools/graph",
                              "--entry",
-                             "Support",
+                             "Libraries",
                              "--timeout-ms",
                              "30000",
                              "--",
@@ -188,6 +196,9 @@ static int graph(const char *root, const char *build_dir, bool warn)
             argv[count++] = optional[i][1];
         }
     }
+    for (int i = 0; extra[i]; i++) {
+        argv[count++] = extra[i];
+    }
     argv[count] = NULL;
     /* A run compiles up to five sources with the profile's sanitizers. */
     int status = tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
@@ -198,134 +209,81 @@ static int graph(const char *root, const char *build_dir, bool warn)
         return -1;
     }
     const char *at = text ? strstr(text, "compiled ") : NULL;
-    int compiled = at ? atoi(at + strlen("compiled ")) : -1;
+    int compiled = at ? atoi(at + strlen("compiled ")) : 0;
     free(text);
     return compiled;
 }
+static const char *const support_only[] = { "--target", "chibi_support", NULL };
 
-static int split(char *command, char *tokens[GRAPH_TOKENS])
+/* Whether the graph's arguments match CMake's command, except for -o's value,
+ * with the graph's build directory standing for CMake's. */
+static bool same_command(yyjson_val *ours, char *theirs)
 {
-    int count = 0;
-    for (char *token = strtok(command, " "); token; token = strtok(NULL, " ")) {
-        assert(count < GRAPH_TOKENS);
-        tokens[count++] = token;
-    }
-    return count;
-}
-/* The command a record says built its file, its arguments split at spaces. */
-static int record_command(const char *record, char *tokens[GRAPH_TOKENS], char **storage)
-{
-    char *text = tool_read(record);
-    if (!text) {
-        return -1;
-    }
-    char *end = strstr(text, "\n\n");
-    assert(end);
-    *end = 0;
-    for (char *c = text; *c; c++) {
-        if (*c == '\n') {
-            *c = ' ';
-        }
-    }
-    *storage = text;
-    return split(text, tokens);
-}
-static void object_record(char out[GRAPH_PATH], const char *build_dir, const char *source)
-{
-    snprintf(out, GRAPH_PATH, "%s/objects/chibi_support/src/support/%s.c.o.chibi-record", build_dir, source);
-}
-/* Whether two commands match except for -o's value; the graph's build directory
- * stands for CMake's. */
-static bool same_command(char **ours, int our_count, char **theirs, int their_count)
-{
-    if (our_count != their_count) {
-        return false;
-    }
-    size_t built_length = strlen(built);
-    for (int i = 0; i < our_count; i++) {
-        if (i && !strcmp(ours[i - 1], "-o")) {
-            continue;
-        }
-        char expected[GRAPH_PATH];
-        const char *at = strstr(ours[i], built);
-        if (at) {
-            snprintf(expected, sizeof expected, "%.*s%s%s", (int)(at - ours[i]), ours[i], reference, at + built_length);
-        } else {
-            snprintf(expected, sizeof expected, "%s", ours[i]);
-        }
-        if (strcmp(expected, theirs[i])) {
-            fprintf(stderr, "graph argument %d: %s, CMake: %s\n", i, expected, theirs[i]);
+    size_t built_length = strlen(built), index = 0;
+    const char *previous = "";
+    for (char *token = strtok(theirs, " "); token; token = strtok(NULL, " "), index++) {
+        const char *argument = yyjson_get_str(yyjson_arr_get(ours, index));
+        if (!argument) {
             return false;
         }
+        char expected[GRAPH_PATH];
+        const char *at = strstr(argument, built);
+        if (at) {
+            snprintf(expected, sizeof expected, "%.*s%s%s", (int)(at - argument), argument, reference, at + built_length);
+        } else {
+            snprintf(expected, sizeof expected, "%s", argument);
+        }
+        if (strcmp(previous, "-o") && strcmp(expected, token)) {
+            fprintf(stderr, "graph argument %zu: %s, CMake: %s\n", index, expected, token);
+            return false;
+        }
+        previous = token;
     }
-    return true;
+    return index == yyjson_arr_size(ours);
 }
 
-TEST_CASE(support_commands_match_cmake)
+/* Every compile command the graph writes equals CMake's for the same source. */
+TEST_CASE(commands_match_cmake)
 {
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, built, warnings) == SOURCE_COUNT);
+    const char *const commands_only[] = { "--commands-only", "on", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only) == 0);
     char path[GRAPH_PATH];
+    join(path, built, "compile_commands.json");
+    yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
     join(path, reference, "compile_commands.json");
-    yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
-    REQUIRE(doc);
-    int matched = 0;
-    for (int s = 0; s < SOURCE_COUNT; s++) {
-        char suffix[256];
-        snprintf(suffix, sizeof suffix, "chibi_support.dir/__/src/support/%s.c.o", sources[s]);
-        yyjson_val *entry;
-        yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
-        while ((entry = yyjson_arr_iter_next(&iter))) {
-            const char *command = yyjson_get_str(yyjson_obj_get(entry, "command"));
-            if (!command || !strstr(command, suffix)) {
+    yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
+    REQUIRE(graph_doc && cmake_doc);
+    yyjson_val *ours = yyjson_doc_get_root(graph_doc);
+    int matched = 0, expected = 0;
+    yyjson_val *entry;
+    yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(cmake_doc));
+    while ((entry = yyjson_arr_iter_next(&iter))) {
+        const char *command = yyjson_get_str(yyjson_obj_get(entry, "command"));
+        const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
+        bool owned = false;
+        for (int t = 0; t < TARGET_COUNT; t++) {
+            char owner[128];
+            snprintf(owner, sizeof owner, "/%s.dir/", targets[t]);
+            owned |= command && strstr(command, owner) != NULL;
+        }
+        if (!owned) {
+            continue;
+        }
+        expected++;
+        yyjson_val *mine;
+        yyjson_arr_iter ours_iter = yyjson_arr_iter_with(ours);
+        while ((mine = yyjson_arr_iter_next(&ours_iter))) {
+            if (strcmp(yyjson_get_str(yyjson_obj_get(mine, "file")), file)) {
                 continue;
             }
-            char *theirs[GRAPH_TOKENS], *ours[GRAPH_TOKENS], *storage = NULL;
             char *copy = strdup(command);
-            int their_count = split(copy, theirs);
-            char record[GRAPH_PATH];
-            object_record(record, built, sources[s]);
-            int our_count = record_command(record, ours, &storage);
-            matched += same_command(ours, our_count, theirs, their_count);
-            free(storage);
+            matched += same_command(yyjson_obj_get(mine, "arguments"), copy);
             free(copy);
         }
     }
-    yyjson_doc_free(doc);
-    REQUIRE(matched == SOURCE_COUNT);
-    return true;
-}
-
-/* A program that calls into the archive links and runs. */
-TEST_CASE(support_archive_links)
-{
-    char program[GRAPH_PATH], binary[GRAPH_PATH], include[GRAPH_PATH],
-        library[GRAPH_PATH];
-    join(program, suite, "main.c");
-    join(binary, suite, "main");
-    snprintf(include, sizeof include, "-I%s/sdk/public/support", built);
-    snprintf(library, sizeof library, "%s/lib/libchibi_support.a", built);
-    tool_write(
-        program,
-        "#include \"support/xalloc.h\"\n#include <stdlib.h>\n"
-        "int main(void) { char *p = xmalloc(8); p[0] = 0; free(p); return p == "
-        "NULL; }\n"
-    );
-    char sanitize[160];
-    snprintf(sanitize, sizeof sanitize, "-fsanitize=%s", sanitizers[0] ? sanitizers : "undefined");
-    const char *argv[16] = { compiler, "-std=gnu23", include, program,
-                             library,  "-o",         binary };
-    int count = 7;
-    if (sanitizers[0]) {
-        argv[count++] = sanitize;
-    }
-    if (sysroot[0]) {
-        argv[count++] = "-isysroot";
-        argv[count++] = sysroot;
-    }
-    argv[count] = NULL;
-    REQUIRE(!tool_run(argv, suite, log_path));
-    const char *run[] = { binary, NULL };
-    REQUIRE(!tool_run(run, suite, log_path));
+    REQUIRE(expected > 0 && matched == expected && (size_t)expected == yyjson_arr_size(ours));
+    yyjson_doc_free(graph_doc);
+    yyjson_doc_free(cmake_doc);
     return true;
 }
 
@@ -342,13 +300,17 @@ static void append(const char *root, const char *name, const char *text)
     free(changed);
     free(old);
 }
-/* How many objects the records say include a staged header. */
+static void object_record(char out[GRAPH_PATH], const char *build_dir, const char *source)
+{
+    snprintf(out, GRAPH_PATH, "%s/objects/chibi_support/src/support/%s.c.o.chibi-record", build_dir, source);
+}
+/* How many chibi_support objects the records say include a staged header. */
 static int including(const char *build_dir, const char *header)
 {
     int count = 0;
-    for (int s = 0; s < SOURCE_COUNT; s++) {
+    for (int s = 0; s < SUPPORT_COUNT; s++) {
         char record[GRAPH_PATH];
-        object_record(record, build_dir, sources[s]);
+        object_record(record, build_dir, support_sources[s]);
         char *text = tool_read(record);
         count += text && strstr(text, header);
         free(text);
@@ -358,22 +320,26 @@ static int including(const char *build_dir, const char *header)
 
 TEST_CASE(support_rebuilds_only_what_changed)
 {
-    char build_dir[GRAPH_PATH];
+    char build_dir[GRAPH_PATH], stale[GRAPH_PATH];
     join(build_dir, suite, "incremental");
-    REQUIRE(graph(clone, build_dir, warnings) == SOURCE_COUNT);
-    REQUIRE(graph(clone, build_dir, warnings) == 0);
+    REQUIRE(graph(clone, build_dir, warnings, support_only) == SUPPORT_COUNT);
+    REQUIRE(graph(clone, build_dir, warnings, support_only) == 0);
     append(clone, "src/support/xalloc.c", "/* changed */\n");
-    REQUIRE(graph(clone, build_dir, warnings) == 1);
+    REQUIRE(graph(clone, build_dir, warnings, support_only) == 1);
     int dependents = including(build_dir, "sdk/public/support/support/arena.h");
-    REQUIRE(dependents >= 1 && dependents < SOURCE_COUNT);
+    REQUIRE(dependents >= 1 && dependents < SUPPORT_COUNT);
     append(clone, "src/support/arena.h", "/* changed */\n");
-    REQUIRE(graph(clone, build_dir, warnings) == dependents);
+    REQUIRE(graph(clone, build_dir, warnings, support_only) == dependents);
     char object[GRAPH_PATH];
     snprintf(object, sizeof object, "%s/objects/chibi_support/src/support/text_edit.c.o", build_dir);
     REQUIRE(!unlink(object));
-    REQUIRE(graph(clone, build_dir, warnings) == 1);
+    /* A header nothing publishes leaves the staged include root. */
+    snprintf(stale, sizeof stale, "%s/sdk/public/support/support/moved.h", build_dir);
+    tool_write(stale, "#error moved\n");
+    REQUIRE(graph(clone, build_dir, warnings, support_only) == 1);
+    REQUIRE(access(stale, F_OK));
     /* Other flags make every command differ. */
-    REQUIRE(graph(clone, build_dir, !warnings) == SOURCE_COUNT);
+    REQUIRE(graph(clone, build_dir, !warnings, support_only) == SUPPORT_COUNT);
     return true;
 }
 
@@ -384,19 +350,53 @@ TEST_CASE(support_failed_compile_is_retried)
 {
     char build_dir[GRAPH_PATH], path[GRAPH_PATH], record[GRAPH_PATH];
     join(build_dir, suite, "incremental");
-    REQUIRE(graph(clone, build_dir, !warnings) == 0);
+    REQUIRE(graph(clone, build_dir, !warnings, support_only) == 0);
     join(path, clone, "src/support/xalloc.c");
     char *original = tool_read(path);
     REQUIRE(original);
     append(clone, "src/support/xalloc.c", "this is not C;\n");
-    REQUIRE(graph(clone, build_dir, !warnings) == -1);
+    REQUIRE(graph(clone, build_dir, !warnings, support_only) == -1);
     object_record(record, build_dir, "xalloc");
     REQUIRE(access(record, F_OK));
     object_record(record, build_dir, "arena");
     REQUIRE(!access(record, F_OK));
     tool_write(path, original);
     free(original);
-    REQUIRE(graph(clone, build_dir, !warnings) == 1);
+    REQUIRE(graph(clone, build_dir, !warnings, support_only) == 1);
+    return true;
+}
+
+/* A program that calls into the graph's archive links and runs. */
+TEST_CASE(support_archive_links)
+{
+    char program[GRAPH_PATH], binary[GRAPH_PATH], include[GRAPH_PATH],
+        library[GRAPH_PATH];
+    join(program, suite, "main.c");
+    join(binary, suite, "main");
+    snprintf(include, sizeof include, "-I%s/incremental/sdk/public/support", suite);
+    snprintf(library, sizeof library, "%s/incremental/lib/libchibi_support.a", suite);
+    tool_write(
+        program,
+        "#include \"support/xalloc.h\"\n#include <stdlib.h>\n"
+        "int main(void) { char *p = xmalloc(8); p[0] = 0; free(p); return p == "
+        "NULL; }\n"
+    );
+    char sanitize[160];
+    snprintf(sanitize, sizeof sanitize, "-fsanitize=%s", sanitizers);
+    const char *argv[16] = { compiler, "-std=gnu23", include, program,
+                             library,  "-o",         binary };
+    int count = 7;
+    if (sanitizers[0]) {
+        argv[count++] = sanitize;
+    }
+    if (sysroot[0]) {
+        argv[count++] = "-isysroot";
+        argv[count++] = sysroot;
+    }
+    argv[count] = NULL;
+    REQUIRE(!tool_run(argv, suite, log_path));
+    const char *run[] = { binary, NULL };
+    REQUIRE(!tool_run(run, suite, log_path));
     return true;
 }
 
@@ -439,9 +439,9 @@ void test_build_graph(const char *host)
     join(log_path, suite, "graph.log");
     read_profile();
     make_clone();
-    RUN_TEST_CASE(support_commands_match_cmake);
-    RUN_TEST_CASE(support_archive_links);
+    RUN_TEST_CASE(commands_match_cmake);
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
+    RUN_TEST_CASE(support_archive_links);
     tool_remove_tree(suite);
 }

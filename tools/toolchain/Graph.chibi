@@ -6,11 +6,13 @@ import strings "core:strings"
 
 // Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
-//   Support -- --build DIR --compiler PATH --compiler-id ID --build-type TYPE
+//   Libraries -- --build DIR --compiler PATH --compiler-id ID --build-type TYPE
 //     [--architecture ARCH] [--sysroot DIR] [--warnings on|off] [--sanitizers LIST]
 //     [--debug-compilation-dir DIR] [--launcher PATH] --archiver PATH
-//     --ranlib PATH [--jobs N]
-// Every path is absolute. Reports how many sources it compiled.
+//     --ranlib PATH [--jobs N] [--target NAME]... [--commands-only on]
+// Every path is absolute. Writes BUILD/compile_commands.json, then, unless
+// --commands-only is on, builds every target or those named, in dependency
+// order, and reports how many sources it compiled.
 
 // The value after `--name`, or fallback when the option is absent.
 Option :: (arguments: string[], name: string, fallback: string) -> string {
@@ -34,7 +36,21 @@ Count :: (text: string) -> int {
     return value;
 }
 
-Support :: () -> int {
+// Whether a target was named with --target, or none were.
+Selected :: (arguments: string[], target: string) -> bool {
+    named := false;
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == "--target") {
+            named = true;
+            if (arguments[i + 1] == target) {
+                return true;
+            }
+        }
+    }
+    return !named;
+}
+
+Libraries :: () -> int {
     arguments := build.arguments();
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
@@ -60,18 +76,26 @@ Support :: () -> int {
         build.report("graph: --build, --compiler, --archiver and --ranlib are required, and --jobs must be positive");
         return 2;
     }
-    source_root := build.root();
-    if (!c.StageHeaders(strings.Join([source_root, "/src"], ""), engine.SupportHeaders(),
-                        engine.PublicHeaders(build_dir, "support"))) {
-        build.report("graph: staging chibi_support's headers failed");
+    selected: string[] = [];
+    for (target in engine.Targets()) {
+        if (Selected(arguments, target)) {
+            selected = array_add(selected, target);
+        }
+    }
+    build.make_directory(build_dir);
+    commands := strings.Join([build_dir, "/compile_commands.json"], "");
+    if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, selected))) {
+        build.report("graph: writing compile_commands.json failed");
         return 1;
     }
-    compiled := c.StaticLibrary(tools, engine.Support(source_root, build_dir),
-                                engine.SupportSources(source_root), engine.SupportFlags(build_dir, profile));
-    if (compiled < 0) {
-        build.report("graph: chibi_support failed");
+    if (Option(arguments, "--commands-only", "") == "on") {
+        return 0;
+    }
+    total := engine.Build(tools, profile, build.root(), build_dir, selected);
+    if (total < 0) {
+        build.report("graph: the build failed");
         return 1;
     }
-    build.report(format_text("graph: chibi_support compiled {0} of 5 sources", compiled));
+    build.report(format_text("graph: compiled {0} sources", total));
     return 0;
 }

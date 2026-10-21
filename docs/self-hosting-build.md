@@ -233,7 +233,7 @@ The build graph replaces CMake's internal build graph one target at a time
 
 ```sh
 build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
-  --core packages/core --collection graph=tools/graph --entry Support \
+  --core packages/core --collection graph=tools/graph --entry Libraries \
   --timeout-ms 600000 -- --build "$PWD/build-graph" \
   --compiler /opt/homebrew/opt/llvm/bin/clang --compiler-id Clang \
   --build-type Debug --architecture arm64 --sysroot "$(xcrun --show-sdk-path)" \
@@ -242,13 +242,22 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 ```
 
 - `graph:c` compiles C sources into static libraries. Its functions read like
-  Jai's `BuildCpp` (`build_cpp_static_lib`) rather than a declarative target
-  language: `c.StaticLibrary(tools, library, sources, flags)` takes a `c.Tools`
-  record (compiler, optional launcher such as ccache, archiver, ranlib, jobs)
-  and a `c.Library` (root, object directory, archive). Sources and flags are
-  arrays beside the record, because records hold only scalar fields.
-- Up to `jobs` compiles run at once through `build.start` and `build.wait`;
-  the graph executes them itself, as Zig's build runner does, with no Ninja.
+  Jai's `BuildCpp` rather than a declarative target language: `c.Stale`,
+  `c.Start`, `c.Finish` and `c.Archive` take a `c.Tools` record (compiler,
+  optional launcher such as ccache, archiver, ranlib, jobs) and a `c.Library`
+  (root, object directory, archive). Sources and flags are arrays beside the
+  record, because records hold only scalar fields.
+- `graph:engine` lists the libraries it owns in dependency order (`Targets`)
+  and gives each one's sources, public and private headers and the libraries
+  whose headers it uses, by name. `engine.Build` stages every selected
+  library's headers, then starts the compiles that changed across all of them,
+  up to `jobs` at once, then archives each. A compile needs only staged
+  headers, so no library waits for another's archive. The graph executes the
+  compiles itself through `build.start` and `build.wait`, as Zig's build
+  runner does, with no Ninja.
+- Every run first writes `BUILD/compile_commands.json` in the `arguments` form,
+  as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
+  repeated, builds only the named libraries.
 - Each compile writes `-MD` dependencies. After it succeeds, the graph writes
   a record beside the object: the command, then the `build.file_stamp` and
   path of every input and of the object. A later run recompiles a source when
@@ -257,16 +266,21 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   failed compile leaves no record, so the next run retries it. Records are
   read with `build.lines`, because `core:strings` copies the rest of the text
   at each line and an up-to-date run took seconds.
-- Headers a target publishes are staged below `BUILD/sdk/public/COMPONENT` as
-  CMake stages them, copied only when their contents differ, so unchanged
-  headers keep their stamps.
-- `graph:engine` describes the engine's targets and the profile flags root
-  `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
-  type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
-  sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
+- Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
+  and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
+  CMake stages them. A header is copied only when its contents differ, so
+  unchanged headers keep their stamps, and a staged file no header names is
+  removed, as `chibi_sdk_headers` does.
+- A compile's flags are its own public then private include directory, those
+  of the libraries it uses, then the profile flags root `CMakeLists.txt` adds,
+  in its order: the ccache debug directory, the build type's flags,
+  `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the sanitizers and
+  Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
 
-Slice 1 owns `chibi_support` on macOS and Linux; CMake still builds it and
-everything else, and `build-graph` checks that their compile commands agree.
+The graph owns `chibi_support`, `chibi_types`, `chibi_asset_values`,
+`chibi_text_search` and `chibi_ui_document_values` on macOS and Linux. CMake
+still builds them and everything else, and `build-graph` checks that their
+compile commands agree.
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

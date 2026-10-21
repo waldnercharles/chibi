@@ -1199,6 +1199,22 @@ slightly slower than main, so the resets stay as they are. LLVM AOT would not he
 is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
 an LLVM backend would call too.
 
+Two later changes cut more (2026-10-21). The emitter moves a fresh literal or
+authored call result into a local or return instead of copying it (#613), and
+the compiler hashes and validates source text by reading `Bytes` once instead
+of a `ByteAt` per byte, which measured the whole text each time: 55 GB of
+`strlen` per self-compile (#617). Stage one now takes about 6.5 s and stage
+two about 4.6 s, against stage zero's 2.7 s. What remains, in the self-hosted
+compiler's own run:
+
+- Deep copies of rows: `Step.Emitted`'s 13 payload arrays per step (0.57 GB),
+  read-only element copies such as `node := forest[i]` and `for (item in
+  code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
+  need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
+  budget (36,292 instructions × 14,750 slots), so it must be split first.
+- `Text(forest, text, node)` still measures the source up to each node it
+  slices, because strings do not carry their length.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

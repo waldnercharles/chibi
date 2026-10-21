@@ -33,7 +33,12 @@ and single-file decoders the SDK compiles against.
 patches in its directory here in the listed order, builds one target and
 variant, and installs the archive tree. `.github/workflows/third-party.yml`
 runs it for every target and variant, uploads the archives to a new release
-and opens a pull request that updates `archives.tsv`. To change a library,
+and opens a pull request that updates `archives.tsv`. GitHub starts no
+workflow for a pull request the workflow's own token opens, so close and
+reopen that pull request to run its checks. Only the publishing job holds a
+token that can write; the jobs that compile upstream code check out without
+credentials. Archives can also be built locally the same way (the macOS and web
+archives of the first releases were) and uploaded with `gh release upload`. To change a library,
 change its commit or patches in `CMakeLists.txt` and run that workflow.
 
 ## Patches

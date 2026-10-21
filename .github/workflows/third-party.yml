@@ -10,13 +10,12 @@ on:
         description: Release tag for the new archives, such as third-party-2026-10-20
         required: true
 
+# Build jobs compile upstream code, so only the publish job can write.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 env:
   EMSDK_VERSION: 6.0.10
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
   native:
@@ -41,6 +40,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install the compilers the engine builds with
         shell: bash
         run: |
@@ -88,6 +89,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: mymindstorm/setup-emsdk@v14
         with:
           version: ${{ env.EMSDK_VERSION }}
@@ -111,8 +114,12 @@ jobs:
     needs: [native, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       RELEASE: ${{ inputs.release }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

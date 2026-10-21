@@ -29,8 +29,11 @@ else()
     endif()
 endif()
 # Sanitized builds link libraries instrumented the same way; others link release.
+# The instrumented archives are built with upstream LLVM, whose sanitizer
+# runtime Apple clang's does not provide, so Apple clang links release.
 set(third_party_variant release)
-if(CHIBI_ENABLE_SANITIZERS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(CHIBI_ENABLE_SANITIZERS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+   NOT CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
     if(CHIBI_SANITIZERS STREQUAL "address,undefined")
         set(third_party_variant address-undefined)
     elseif(CHIBI_SANITIZERS STREQUAL "thread")
@@ -76,10 +79,13 @@ if(NOT EXISTS "${CHIBI_THIRD_PARTY_DIR}/third-party.cmake")
     find_program(CHIBI_GH gh)
     if(NOT CHIBI_GH)
         message(FATAL_ERROR "The ${asset} third-party archive is not in ${CHIBI_THIRD_PARTY_CACHE}. "
-            "Install the GitHub CLI (gh) to download it, or build with make build.")
+            "Install and authenticate the GitHub CLI (gh) to download it.")
     endif()
-    string(RANDOM LENGTH 12 suffix)
+    # Named for this build directory, so an interrupted download is replaced by
+    # the next configure here instead of left behind, and never shared.
+    string(SHA256 suffix "${CMAKE_BINARY_DIR}")
     set(partial "${CHIBI_THIRD_PARTY_CACHE}/${third_party_sha256}.${suffix}.partial")
+    file(REMOVE_RECURSE "${partial}")
     file(MAKE_DIRECTORY "${partial}")
     message(STATUS "Downloading ${asset} from ${third_party_repository} ${third_party_release}")
     execute_process(COMMAND "${CHIBI_GH}" release download "${third_party_release}"

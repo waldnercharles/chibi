@@ -340,6 +340,12 @@ Signature :: (profile: string, buildDir: string, arguments: string[]) -> string 
     return build.trim(build.last_stdout());
 }
 Configure :: (profile: string, buildDir: string, arguments: string[]) -> int {
+    // The build directory names this configure's download scratch, so two
+    // configures never share one; it must exist to resolve.
+    if (!build.make_directory(buildDir)) {
+        build.report("cannot create the build directory");
+        return 1;
+    }
     cache := ThirdPartyCache();
     if (!build.make_directory(cache) || !ThirdParty(cache, buildDir) || !PruneThirdParty(cache)) {
         build.report("cannot prepare the third-party archives");
@@ -349,10 +355,6 @@ Configure :: (profile: string, buildDir: string, arguments: string[]) -> int {
     signature := Signature(profile, buildDir, arguments);
     if (signature != "" && signature == build.trim(build.read_file(stamp))) {
         return 0;
-    }
-    if (!build.make_directory(buildDir)) {
-        build.report("cannot create the build directory");
-        return 1;
     }
     selected := NativeArguments(buildDir, arguments);
     if (build.platform() == "Darwin") {

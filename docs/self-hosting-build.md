@@ -289,8 +289,13 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   `-isysroot`, `-fPIC` for position-independent targets, the warning set,
   the sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then
   the target's own options, such as `-w` for vendored C, and the source's.
+  A C++ source takes the target's C++ standard, or no `-std` when it declares
+  none. An Objective-C source starts with `-x objective-c`, takes CMake's
+  `gnu2x` for C23 and has no ccache debug directory: root `CMakeLists.txt`
+  adds that before `sdk/desktop.cmake` enables Objective-C, a CMake defect the
+  graph copies so their commands stay equal.
 
-`graph:engine`'s `Targets.chibi` lists the 103 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 110 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -313,8 +318,12 @@ scheduler with the task pool, material, physics, visibility, graph model,
 authoring and compilation, Studio catalog and graph, engine and default
 native catalog libraries over it, and image preparation, the language,
 compiler, authoring, asset authoring, graph catalog, model authoring, shader
-preparation, source catalog and presentation and player libraries: 572
-sources in 99 archives. A name that is no target, such as `chibi_physics` or
+preparation, source catalog and presentation and player libraries, and over
+the desktop Cute archive the platform, model import, UI host (C++17 over
+RmlUi) and renderer (with its Objective-C GPU clock on macOS) and the project
+compilation, format and preparation libraries: 685 sources in 106 archives.
+`ExportName` names the targets whose CMake `EXPORT_NAME` differs, as
+`chibi_ui_host` stages `public/ui` and `chibi_renderer` `public/render`. A name that is no target, such as `chibi_physics` or
 `chibi_graph`, lists the headers of a `private/NAME` directory several
 libraries include, as CMake stages it; `PrivateDirectory` stages a target's
 private headers elsewhere, as the language's sit below
@@ -343,9 +352,9 @@ reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
-everything else, and `build-graph` checks that their compile commands agree.
-That route compiles only `chibi_support`; building every library the graph
-owns is a manual check, about 280 s with sanitizers at a load average of 12;
+everything else, and `build-graph` checks that their compile commands agree;
+`build-graph-support` compiles only `chibi_support`. Building every library
+the graph owns is a manual check, about 280 s with sanitizers at a load average of 12;
 `build-graph-archive` compiles SLJIT and a math-header library from the
 archive, and `build-graph-generated` generates the native type sources and
 rewrites the codec headers.

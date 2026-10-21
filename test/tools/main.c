@@ -55,6 +55,7 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_tool_build_process(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host);
+void test_build_graph_support(const char *host);
 void test_build_graph_reflect(const char *host);
 void test_build_graph_archive(const char *host);
 void test_build_graph_generated(const char *host);
@@ -527,6 +528,7 @@ bool test_model_import_active()
 int main(int argc, char **argv)
 {
     if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
+                      !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
                       !strcmp(argv[1], "--build-graph-archive") ||
                       !strcmp(argv[1], "--build-graph-generated"))) {
@@ -535,6 +537,8 @@ int main(int argc, char **argv)
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-graph")) {
             test_build_graph(argv[2]);
+        } else if (!strcmp(argv[1], "--build-graph-support")) {
+            test_build_graph_support(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-reflect")) {
             test_build_graph_reflect(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-archive")) {

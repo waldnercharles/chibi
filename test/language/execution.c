@@ -1430,6 +1430,15 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         arena_contains(&storage, value->values[2].ptr)
     );
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
+    /* A plain update leaves another storage's array alone, so growing it
+     * cannot leave it pointing into this storage. */
+    pin_value header = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = foreign };
+    pin_value growth[] = { { .u64 = (uint64_t)(uintptr_t)&header },
+                           { .type = PIN_I32, .i = 3 } },
+              done = { .type = PIN_BOOL };
+    const char *error = EXECUTION_array_push_call.value(&storage, growth, 2, &done);
+    REQUIRE(error && strstr(error, "not the local's own") && foreign->count == 1);
+    REQUIRE(!EXECUTION_array_push_call.value(&other, growth, 2, &done) && foreign->count == 2);
     arena_free(&storage);
     arena_free(&other);
     return true;

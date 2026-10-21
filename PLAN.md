@@ -1317,9 +1317,15 @@ about 4.4 s of CPU. Two runtime and emitter changes followed:
 - Owned scalar arrays stay packed while they change in place (#635), so the
   prepared writer's byte arrays cost a byte per byte rather than a
   `pin_value`. This brought recovery to 3.6 s.
-- A returned variant is now a fresh value, and is built by `union_move`, which
-  keeps the payload values held in the call's storage (this PR). This brought
-  recovery to about 3.3 s, or 57 billion instructions.
+- A returned variant is now a fresh value (#637). This brought recovery to
+  about 3.3 s, or 57 billion instructions.
+- A function now builds what it returns in its caller's storage: returned
+  literals and variants, and the array locals it returns (result locations).
+  This brought recovery to about 55 billion instructions. 98% of results
+  already lay wholly in the callee's storage, but callees allocate about 13
+  times their result's size, so handing the callee's storage to the caller
+  instead was ruled out. Updates that grow an array check that it is the
+  storage's own, which costs about 1%.
 
 What remains, in that run's samples:
 - The call-result copy into the caller is about 12%.

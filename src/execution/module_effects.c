@@ -56,8 +56,12 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     switch (execution_intrinsic_kind(host->capability_id)) {
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_UNION_MAKE:
-        case EXECUTION_INTRINSIC_UNION_KEEP:
             if (count < 1 || host->result_count != 1) {
+                return 0;
+            }
+            break;
+        case EXECUTION_INTRINSIC_UNION_KEEP:
+            if (count < 2 || host->result_count != 1) {
                 return 0;
             }
             break;
@@ -1844,10 +1848,8 @@ static void share_host(share_flow *s, int pc)
                 break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
-            case EXECUTION_INTRINSIC_LOCAL_RELEASE:
-                output = false;
-                break;
-                /* A moved payload keeps what the inputs reach. */
+            case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
+            /* A kept payload keeps what the inputs reach. */
             case EXECUTION_INTRINSIC_UNION_KEEP:
             case EXECUTION_INTRINSIC_UNION_GET: break;
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:

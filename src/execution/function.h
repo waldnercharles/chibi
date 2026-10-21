@@ -145,6 +145,8 @@ typedef enum
     BEHAVIOR_FUNCTION_ARGUMENT,
     BEHAVIOR_FUNCTION_COMMAND,
 } behavior_function_failure;
+/* What a failure without its own message reports. */
+const char *behavior_function_failure_text(behavior_function_failure);
 typedef enum
 {
     BEHAVIOR_POINT_NODE,

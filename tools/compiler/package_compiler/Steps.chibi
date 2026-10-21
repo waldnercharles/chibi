@@ -191,10 +191,10 @@ MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item:
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[],
-                  names: Name[], scope: int, package: int, values: Value[], top: int, function: int, named: int,
-                  referenced: string[], mutated: string[], item: Work, ops: Ops, target: Target,
-                  at: Bases) -> Step {
+                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+                  identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
+                  function: int, named: int, referenced: string[], mutated: string[], item: Work, ops: Ops,
+                  target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
     kind := node.kind;
@@ -211,6 +211,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     popped: int = 0;
     produced := NoValue();
     retained := NoValue();
+    // `xs.append(x)` and the other methods that change an array assign the
+    // name its changed array, as `xs = array_add(xs, x)` does.
+    changing := ChangedArray(forest, text, names, natives, ports, item.node) >= 0;
     if (item.phase == 0) {
         code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
         value := Field(forest, item.node, "value");
@@ -233,8 +236,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
         } else if (kind == "return_statement") {
             expected = Expect(value, callable.result, callable.result_container, callable.result_record);
-        } else if (kind == "assignment") {
-            destination := Field(forest, item.node, "target");
+        } else if (kind == "assignment" || changing) {
+            destination := StatementTarget(forest, item.node);
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
             whole := SelfComponent(forest, text, types, names, destination);
             owned: int = -1;
@@ -250,8 +253,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     // local array update it in place.
                     update: int = -1;
                     if (operator == "") {
-                        update = InPlaceUpdate(forest, text, callables, natives, identities, names, package, found,
-                                               destination, value);
+                        update = InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package,
+                                               found, destination, value);
                     }
                     if (update >= 0) {
                         // Stage zero evaluates the target, the call and the
@@ -263,9 +266,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                             code = array_add(code, ExpressionCode(ops, forest[destination]));
                         }
                         code = array_add(code, ExpressionCode(ops, forest[value]));
-                        code = append(code, NamePoints(forest, text, names, ops,
-                                                       FirstMember(forest, Field(forest, value, "arguments"))));
-                        argument := NextMember(forest, FirstMember(forest, Field(forest, value, "arguments")));
+                        code = append(code, NamePoints(forest, text, names, ops, ArrayArgument(forest, value)));
+                        argument := ItemArgument(forest, value);
                         container: int = 0;
                         if (update == 1) {
                             container = ArrayContainer;
@@ -451,8 +453,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                  record: local.record, writable: true, node: Field(forest, item.node, "name")};
                 bound = array_add(bound, binding);
             }
-        } else if (kind == "assignment") {
-            destination := Field(forest, item.node, "target");
+        } else if (kind == "assignment" || changing) {
+            destination := StatementTarget(forest, item.node);
             found: int = -1;
             if (Is(forest, destination, "identifier")) {
                 found = Lookup(names, Text(forest, text, destination));
@@ -513,7 +515,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (binding.place == CellPlace) {
                 // A fresh value replaces the cell's payload without a copy.
-                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
+                if (Fresh(forest, text, callables, names, package, StatementValue(forest, item.node))) {
                     produced = stored;
                 } else {
                     retained = stored;
@@ -580,7 +582,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                              index: at.cell - 1, storage: kept.storage, container: kept.container, record: kept.record,
                              writable: true, node: Field(forest, item.node, "name")};
             bound = array_add(bound, binding);
-        } else if (kind == "assignment") {
+        } else if (kind == "assignment" || changing) {
             slots = array_add(slots, address);
             code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, item.a, 0, 0, node));
             write := Instruction(ops.write, target.pointer_storage, 0, kept.slot, at.slot, 0, node);
@@ -709,7 +711,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         sources[0] = header_slot;
         // A push watches the array it reads, as the array argument and the
         // call's first input, and the item as its second.
-        call := Field(forest, item.node, "value");
+        call := StatementValue(forest, item.node);
         if (item.phase == PushPhase && ops.debug) {
             slots = array_add(slots, address);
             read := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, header_slot, 0, 0, node);
@@ -717,7 +719,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             code = array_add(code, read);
             array_slot := at.slot + length(slots) - 1;
             code = array_add(code, WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, true,
-                                             forest[FirstMember(forest, Field(forest, call, "arguments"))], target));
+                                             forest[ArrayArgument(forest, call)], target));
             code = array_add(code, WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, false,
                                              forest[call], target));
             code = array_add(code, WatchCode(ops, item_value.slot, item_value.storage, item_value.container,
@@ -753,8 +755,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         }
         if (item.phase == PushPhase && !Parameter(forest, binding)) {
             code = append(code, NamePoints(forest, text, names, ops,
-                                           FirstMember(forest, Field(forest, Field(forest, item.node, "value"),
-                                                                     "arguments"))));
+                                           ArrayArgument(forest, StatementValue(forest, item.node))));
         }
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks);
@@ -1292,6 +1293,46 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             finish := Resume(item.node, 1, variant, count);
             finish.c = 2;
+            next = array_add(next, finish);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
+        }
+        // `xs.f(...)` calls the array function f with xs first. A method that
+        // changes its array is a statement on the array's name.
+        if (Is(forest, callee, "member_expression") &&
+            QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0 &&
+            ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member"))) >= 0) {
+            method := ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+            if (ArrayChanger(natives, method) &&
+                ChangedArray(forest, text, names, natives, ports, forest[item.node].parent) < 0) {
+                return Fail(forest, callee, document,
+                            format_text("{} changes the array; call it as a statement on a name",
+                                        Text(forest, text, Field(forest, callee, "member"))));
+            }
+            if (!Supported(ports, natives[method])) {
+                return Fail(forest, callee, document,
+                            format_text("native '{}' is not supported yet", natives[method].name));
+            }
+            count: int = 0;
+            argument := Field(forest, callee, "object");
+            while (argument >= 0) {
+                expected := Visit(argument);
+                if (count < natives[method].parameters && ports[NativePort(natives[method], count)].storage > 0) {
+                    port := ports[NativePort(natives[method], count)];
+                    expected = Expect(argument, port.storage, port.container, -1);
+                }
+                next = array_add(next, expected);
+                if (count == 0) {
+                    argument = FirstMember(forest, Field(forest, item.node, "arguments"));
+                } else {
+                    argument = NextMember(forest, argument);
+                }
+                count += 1;
+            }
+            if (count != natives[method].parameters) {
+                return Fail(forest, item.node, document, "call has the wrong number of arguments");
+            }
+            finish := Resume(item.node, 1, method, count);
+            finish.c = 1;
             next = array_add(next, finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }

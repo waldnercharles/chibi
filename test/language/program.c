@@ -3088,6 +3088,56 @@ TEST_CASE(program_local_array_store_checks_its_range)
     }
     return true;
 }
+/* Every array function is a method on its first argument. `append` adds an
+ * item and `extend` an array's items, and a method that changes its array
+ * does so in place as a statement on a name. */
+TEST_CASE(program_array_methods_change_their_array)
+{
+    const char *source = "Methods :: behavior {\n"
+                         "  total: double = 0;\n"
+                         "  count: int = 0;\n"
+                         "  on Impulse :: () {\n"
+                         "    xs: double[] = [];\n"
+                         "    i: double = 0;\n"
+                         "    while (i < 300) { xs.append(i); i += 1; }\n"
+                         "    ys: double[] = [1000, 2000];\n"
+                         "    xs.extend(ys);\n"
+                         "    xs.reverse();\n"
+                         "    count = xs.length();\n"
+                         "    total = xs[0] + xs[1] + xs[301];\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(int_state(instance, "count", PIN_I32, 302));
+        REQUIRE(number_state(instance, "total", 2000 + 1000 + 0));
+    }
+    const char *changed = "Changed :: behavior {\n"
+                          "  on Impulse :: () {\n"
+                          "    xs: double[] = [];\n"
+                          "    ys := xs.append(1);\n"
+                          "    xs.array_add(1);\n"
+                          "  }\n"
+                          "}";
+    prepare();
+    REQUIRE(!compile_pack(changed, BEHAVIOR_BYTECODE, &NATIVE_ARRAY_DEFINITION_PACK));
+    bool statement = false, unknown = false;
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        statement |= strstr(analysis->diagnostics[i].message, "append changes the array") !=
+                     NULL;
+        unknown |= strstr(analysis->diagnostics[i].message, "array_add") != NULL;
+    }
+    REQUIRE(statement && unknown);
+    return true;
+}
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
 {
     const char
@@ -9453,6 +9503,7 @@ void test_language_program()
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);
+    RUN_TEST_CASE(program_array_methods_change_their_array);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);

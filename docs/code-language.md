@@ -266,14 +266,21 @@ Example :: library {
         empty: int[] = []
         first := scores[0]
         scores[1] = 25
-        scores = array_add(scores, 40)
+        scores.append(40)
+        count := scores.length()
     }
 }
 ```
 
 Array indices start at zero. An index outside the array fails the invocation.
-Collection functions such as `array_add` return a value. Assign that value to
-keep the change.
+Every array function is also a method on its first argument: `xs.length()`,
+`xs.contains(x)`, `xs.slice(start, count)`. `xs.append(x)` adds an item and
+`xs.extend(ys)` adds another array's items. Methods that change their array
+(`append`, `extend`, `insert`, `remove_index`, `remove_item`, `add_unique`,
+`set_array_elem`, `clear`, `reverse`, `swap` and `resize`) are statements on
+the array's name and change it in place; using one in an expression is an
+error. The functions `array_add` and `append` still return a changed copy until
+a project migration replaces them with the methods.
 
 Arrays have value semantics. Changing a copy leaves the original unchanged.
 Appending to an owned local array and writing its elements update that local

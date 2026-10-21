@@ -281,24 +281,26 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
   target's own options, such as `-w` for vendored C.
 
-`graph:engine`'s `Targets.chibi` lists the 41 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 43 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
 over ckdl) and the libraries over them, and three header-only libraries
-(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`), and
-`chibi_builtin_fonts`, whose sixteen fonts are generated sources: 117 sources
-in 38 archives. For each it gives sources, the directory its public headers
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
+`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
+engine component KDL are generated sources, and `chibi_save_runtime`: 122
+sources in 40 archives. For each it gives sources, the directory its public headers
 come from (`src`, or `third_party/yyjson` for `chibi_json`), public and private
-headers, include directories, defines, options and embedded files. A
-`generated/NAME.c` source is written below `BUILD/sdk/generated` by
-`build.embed_file` from the file `Embeds` names, before any compile. Building
+headers, include directories, defines, options and embedded files. An
+`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT (a
+`generated/` path, below `BUILD/sdk`) with `build.embed_file`, before any
+compile. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
-owns is a manual check, about 130 s with sanitizers, and an unchanged build
-then takes about 4 s.
+owns is a manual check, about 140 s with sanitizers, and an unchanged build
+then takes about 5 s.
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

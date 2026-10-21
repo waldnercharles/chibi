@@ -624,8 +624,13 @@ arrays `cmake/embed_binary.cmake` wrote, and the graph embeds
 `chibi_builtin_fonts`' sixteen fonts before compiling: 41 libraries, 117
 sources. A `--target` build stages the headers of the libraries its includes
 name.
-Next: the other generated sources and headers (`chibi_component_presentation`,
-`chibi_language`'s parser) and the fetched
+Slice 7, 2026-10-21: `chibi_component_presentation`, whose engine component
+KDL is embedded, and `chibi_save_runtime`: 43 libraries, 122 sources, all of
+which compiled and archived from the graph. Every other library now waits on
+one of three inputs: `chibi_execution` (51 libraries include it; it compiles
+SLJIT), Cute math (`public/math`, 46) and `chibi_native_types` (39), which the
+reflection host tool generates. The first two come from fetched sources.
+Next: the fetched
 dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
 which wait for vendoring (#569) so the graph builds them from the repository;
 then moving profile selection from `Build.chibi`'s CMake arguments into the

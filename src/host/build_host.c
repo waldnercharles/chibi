@@ -1,16 +1,21 @@
 #include "host/build_host.h"
 
-#include "authoring/source_prepare.h"
+#include "authoring/native_bindings.h"
+#include "authoring/source_package_files.h"
+#include "authoring/source_package_prepare.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
 #include "host/build_values.h"
 #include "host/process.h"
+#include "runtime/arrays_definition.h"
+#include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -329,6 +334,76 @@ static void diagnose(chibi_build_result *result, const char *message)
 {
     snprintf(result->diagnostic, sizeof(result->diagnostic), "%s", message);
 }
+/* The program is the one file of the package at its directory; with a core
+ * collection, it may import core: packages. */
+static authoring_packages *prepare(
+    const build_host *host,
+    const native_capabilities *native,
+    const script_lower_bindings *bindings
+)
+{
+    const chibi_build_options *options = host->options;
+    source_package_input *files = NULL;
+    source_package_load_error load = { 0 };
+    if (options->core && !source_package_files_read(options->core, &files, &load)) {
+        diagnose(host->result, load.message);
+        return NULL;
+    }
+    const char *slash = strrchr(options->source_path, '/');
+    char *path = join(host->program_directory, slash ? slash + 1 : options->source_path);
+    apush(
+        files,
+        ((source_package_input){ path, options->source_text, strlen(options->source_text) })
+    );
+    const source_package_collection core = { "core", options->core };
+    const source_package_snapshot_options snapshot = {
+        .project_root = host->program_directory,
+        .files = files,
+        .file_count = acount(files),
+        .collections = &core,
+        .collection_count = options->core ? 1 : 0
+    };
+    authoring_packages *packages = authoring_packages_prepare(
+        source_package_snapshot_new(&snapshot),
+        native_capabilities_catalog(native),
+        bindings,
+        options->backend,
+        NULL
+    );
+    free(path);
+    asetlen(files, acount(files) - 1);
+    source_package_files_free(files);
+    return packages;
+}
+/* The first diagnostic of invalid packages. */
+static const char *invalid(const authoring_packages *packages)
+{
+    const source_package_snapshot_error *error = source_package_snapshot_error_at(
+        authoring_packages_snapshot(packages)
+    );
+    if (error) {
+        return error->diagnostic.message;
+    }
+    for (int i = 0; i < authoring_packages_count(packages); i++) {
+        const authoring_package *package = authoring_packages_at(packages, i);
+        if (package->diagnostic_count) {
+            return package->diagnostics[0].message;
+        }
+    }
+    const char *message = authoring_packages_error(packages);
+    return message ? message : "build source preparation failed";
+}
+/* A build program runs alone: nothing resumes a wait or runs a task. */
+static int refuse_wait(behavior_function_context *context, int)
+{
+    context->error_message = "a build program cannot wait";
+    return FLOW_ERR_INVALID_GRAPH;
+}
+static int refuse_task(behavior_function_context *context, int)
+{
+    context->error_message = "a build program cannot start a task";
+    return FLOW_ERR_INVALID_GRAPH;
+}
 bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *result)
 {
     *result = (chibi_build_result){ 0 };
@@ -404,7 +479,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
             host.deadline = deadline;
         }
     }
-    authoring_source *source = NULL;
+    native_capabilities *native = NULL;
+    authoring_packages *packages = NULL;
+    char error[256];
     behavior_function_context context = { 0 };
     behavior_function_activation activation = { 0 };
     arena storage = { 0 };
@@ -436,40 +513,51 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     if (failure) {
         goto done;
     }
-    const script_lower_bindings bindings = { .host = build_host_resolve };
-    source = authoring_source_prepare(
-        options->source_path,
-        options->source_text,
-        build_host_catalog(),
-        &bindings,
-        options->backend
-    );
-    if (!source || !source->valid) {
-        failure = source && source->diagnostic_count
-                    ? source->diagnostics[0].message
-                    : "build source preparation failed";
+    /* Text and arrays are the natives core: packages use, as in the compiler host. */
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
+    native = native_capabilities_from_definition_packs(build_host_natives(), 1, packs, 2, error, sizeof error);
+    if (!native) {
+        failure = error;
         goto done;
     }
+    const script_lower_bindings bindings = authoring_native_bindings(native);
+    packages = prepare(&host, native, &bindings);
+    if (!packages) {
+        goto done;
+    }
+    if (!authoring_packages_valid(packages)) {
+        failure = invalid(packages);
+        goto done;
+    }
+    const authoring_package *program = NULL;
+    for (int i = 0; i < authoring_packages_count(packages); i++) {
+        if (!strcmp(authoring_packages_at(packages, i)->identity, "project:")) {
+            program = authoring_packages_at(packages, i);
+        }
+    }
+    assert(program);
     uint64_t entry_id = 0;
-    for (int i = 0; i < source->analysis->function_count; i++) {
-        const script_function *function = &source->analysis->functions[i];
+    const script_analysis *analysis = program->analysis;
+    for (int i = 0; i < analysis->function_count; i++) {
+        const script_function *function = &analysis->functions[i];
         if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->symbol < 0 ||
-            strcmp(source->analysis->symbols[function->symbol].name, options->entry)) {
+            strcmp(analysis->symbols[function->symbol].name, options->entry)) {
             continue;
         }
         if (entry_id || function->parameter_count || function->result_count != 1 ||
-            source->analysis->symbols[function->results[0]].type.storage != PIN_I32 ||
-            source->analysis->symbols[function->results[0]].type.container !=
+            analysis->symbols[function->results[0]].type.storage != PIN_I32 ||
+            analysis->symbols[function->results[0]].type.container !=
                 PIN_CONTAINER_SINGLE) {
             failure = "build entry must be one zero-argument int function";
             goto done;
         }
-        entry_id = source->analysis->symbols[function->symbol].id;
+        entry_id = analysis->symbols[function->symbol].id;
     }
     const behavior_function *entry = NULL;
-    for (int i = 0; i < execution_module_function_count(source->module); i++) {
+    for (int i = 0; i < execution_module_function_count(program->module); i++) {
         execution_module_function_info
-            info = execution_module_function_at(source->module, i);
+            info = execution_module_function_at(program->module, i);
         if (info.kind == EXECUTION_FUNCTION_AUTHORED && info.id == entry_id) {
             entry = info.body;
         }
@@ -490,7 +578,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     pin_value value = { .type = PIN_I32 };
     context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
                                            .results = &value,
-                                           .budget = 100000 };
+                                           .budget = 100000,
+                                           .begin_command = refuse_wait,
+                                           .start_task = refuse_task };
     behavior_function_bind_storage(&context, &storage);
     if (!behavior_function_bind(entry, &context, services, 0)) {
         failure = "build host binding failed";
@@ -519,7 +609,8 @@ done:
     behavior_function_activation_free(&activation);
     arena_free(&storage);
     afree(services);
-    authoring_source_free(source);
+    authoring_packages_free(packages);
+    native_capabilities_free(native);
     for (int i = 0; i < count; i++) {
         free(host.environment[i]);
     }

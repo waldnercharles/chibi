@@ -804,6 +804,10 @@ runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py
 and `tools/kdl_asset.py`), which served the retired game repositories. Git
 history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
 `browser-sample.js` sampler followed the same day, also approved.
+On 2026-10-20 build programs became packages: one file with a `package`
+header that may import `core:`, with `format_text` and the array natives
+(host protocol 5). Their `build.` string natives go once the programs use
+`core:strings`.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.

@@ -8,12 +8,13 @@
 
 /* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
  * needs a capability or syntax that an older host lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 4
+#define CHIBI_BUILD_HOST_PROTOCOL 5
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 typedef struct
 {
     const char *root, *source_path, *source_text, *entry;
+    const char *core; /* Absolute core collection directory, or NULL for none. */
     const char *const *arguments;
     int argument_count;
     behavior_backend backend;

@@ -2,7 +2,7 @@
 #define CHIBI_HOST_BUILD_HOST_INTERNAL_H
 #include "host/build_host.h"
 #include "host/build_values.h"
-#include "language/lower.h"
+#include "runtime/native_capabilities.h"
 
 #define BUILD_ENVIRONMENT_CAPACITY 96
 /* A step's own output may fill one build text value. */
@@ -28,6 +28,6 @@ const char *build_host_run_step(void *, const pin_value *, pin_value *);
 const char *build_host_run_probe(void *, const pin_value *, pin_value *);
 const char *build_host_environment(void *, const pin_value *, pin_value *);
 const char *build_host_environment_names(void *, const pin_value *, pin_value *);
-const script_catalog *build_host_catalog();
-bool build_host_resolve(void *, uint64_t, script_lower_host *);
+/* The build.* natives, for the build host's catalog. */
+const native_capability_pack *build_host_natives();
 #endif

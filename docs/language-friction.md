@@ -508,6 +508,11 @@ cannot report how many lines it compared.
 Suggestion: one text library for every Chibi host, with `format_text` and
 `core:strings` in build programs as in games.
 
+Implemented (#PR_NUMBER): build programs have the text and array natives, so
+`format_text` and `length`, and import `core:strings` when the host is given
+the core collection. `GameEquivalence.chibi` still slices numbers out of
+trace lines until it moves to them.
+
 ## Build programs read files only as text
 
 Toolchain. `build.read_file` returns a NUL-terminated string, so a build program
@@ -548,6 +553,10 @@ source exceeded the 32 MB value limit; `chibi-compile` now writes the JSON.
 Suggestion: run build programs as ordinary Chibi packages that import the
 `core:` collections, with process and file access in one build-only
 capability package, instead of a separate string vocabulary.
+
+Partly implemented (#PR_NUMBER): a build program is now a package and may
+import `core:`. The `build.` string natives remain until `Build.chibi`,
+`StageOne.chibi` and `GameEquivalence.chibi` use `core:strings` instead.
 
 ## A host's natives can't form a package
 

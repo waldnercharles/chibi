@@ -189,6 +189,10 @@ int main(int argc, char **argv)
                                            !strcmp(argv[1], "--package-compiler-chibi-compiled");
     bool package_compiler_chibi_types_compiled = argc == 2 &&
                                                  !strcmp(argv[1], "--package-compiler-chibi-types-compiled");
+    bool package_compiler_chibi_collections = argc == 2 &&
+                                              !strcmp(argv[1], "--package-compiler-chibi-collections");
+    bool package_compiler_chibi_collections_compiled = argc == 2 &&
+                                                       !strcmp(argv[1], "--package-compiler-chibi-collections-compiled");
     bool package_compiler_chibi_imports_compiled = argc == 2 &&
                                                    !strcmp(argv[1], "--package-compiler-chibi-imports-compiled");
     bool package_compiler_chibi_bootstrap = argc == 2 &&
@@ -270,6 +274,7 @@ int main(int argc, char **argv)
          !package_compiler_chibi && !package_compiler_chibi_types &&
          !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
          !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
+         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
@@ -304,6 +309,8 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-bootstrap | "
             "--package-compiler-chibi-compiled | "
             "--package-compiler-chibi-types-compiled | "
+            "--package-compiler-chibi-collections | "
+            "--package-compiler-chibi-collections-compiled | "
             "--package-compiler-chibi-imports-compiled | "
             "--package-compiler-chibi-literals | "
             "--package-compiler-chibi-behaviors | "
@@ -490,6 +497,10 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_compiled();
     } else if (package_compiler_chibi_types_compiled) {
         test_language_package_compiler_chibi_types_compiled();
+    } else if (package_compiler_chibi_collections) {
+        test_language_package_compiler_chibi_collections();
+    } else if (package_compiler_chibi_collections_compiled) {
+        test_language_package_compiler_chibi_collections_compiled();
     } else if (package_compiler_chibi_imports_compiled) {
         test_language_package_compiler_chibi_imports_compiled();
     } else if (package_compiler_chibi_bootstrap) {

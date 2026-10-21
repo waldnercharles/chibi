@@ -67,12 +67,14 @@ typedef struct
  * within its time ceiling: unions, constants, patterns and integer types
  * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
  * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build). */
+ * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
+ * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
     TYPE_SAMPLES,
-    IMPORT_SAMPLES
+    IMPORT_SAMPLES,
+    COLLECTION_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings. A
@@ -139,6 +141,7 @@ static const sample samples[] = {
                  { "Both", "[2,4]", "[true]" },
                  { "Both", "[3,3]", "[true]" } } },
     { .name = "records",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; title: string; open: bool; "
                 "}\n"
@@ -289,6 +292,7 @@ static const sample samples[] = {
      * forward and reversed, ending at a bound without wrapping; `for x, i`
      * names an array's item and its index, and `for <` walks it backwards. */
     { .name = "ranges",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Sum :: (first: int, last: int) -> int {\n"
                 "    total: int = 0;\n    for i in first..last { total += i; "
@@ -333,6 +337,7 @@ static const sample samples[] = {
                  { "Keys", "[[5,6,7]]", "[20]" },
                  { "Back", "[[1,2,3]]", "[322110]" } } },
     { .name = "arrays",
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Squares :: (n: int) -> int[] {\n"
@@ -386,7 +391,7 @@ static const sample samples[] = {
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
     { .name = "maps",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source =
           "package facts\n"
           "Point :: struct { x: int; y: int; }\n"
@@ -451,7 +456,7 @@ static const sample samples[] = {
                  { "Walk", "[]", "[\"Ada4Cid2Bea5 95911\"]" },
                  { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Bump :: (v: ref int) { v += 1; }\n"
@@ -481,20 +486,20 @@ static const sample samples[] = {
                  { "Count", "[]", "[12]" },
                  { "Moved", "[]", "[1007]" } } },
     { .name = "reference literal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
                 "Bump(3); }",
       .message = "Reference argument requires a writable value",
       .line = 3,
       .column = 18 },
     { .name = "reference default",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
       .message = "a reference parameter takes no default",
       .line = 2,
       .column = 10 },
     { .name = "reference type",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
                 "n: int64 = 1; Bump(n); }",
       .message = "reference argument differs from the parameter's type",
@@ -972,7 +977,7 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[6]" } } },
     { .name = "map updates",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nBuild :: (count: int) -> int {\n"
                 "    squares: [int: int] = [:];\n"
                 "    index: int = 0;\n"
@@ -987,7 +992,7 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[1]" } } },
     { .name = "map loop names",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () -> int {\n"
                 "    m: [int: int] = [1: 2];\n    total: int = 0;\n"
                 "    for (k, v in m) { total += k * 10 + v; }\n"
@@ -995,28 +1000,28 @@ static const sample samples[] = {
                 "    return total * 100 + v + k;\n}",
       .calls = { { "Answer", "[]", "[1207]" } } },
     { .name = "duplicate map loop names",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () { m: [int: int] = [:]; for (x, x "
                 "in m) {} }",
       .message = "Duplicate declaration 'x'",
       .line = 2,
       .column = 45 },
     { .name = "inferred map literal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () -> int { m := [\"a\": 1]; return "
                 "0; }",
       .message = "map literal needs a [K: V] type",
       .line = 2,
       .column = 28 },
     { .name = "compound map assignment",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nAdd :: () -> int { m: [int: int] = [:]; m[1] "
                 "+= 2; return m[1]; }",
       .message = "compound map assignment is not supported yet",
       .line = 2,
       .column = 41 },
     { .name = "map parameter removal",
-      .group = TYPE_SAMPLES,
+      .group = COLLECTION_SAMPLES,
       .source = "package facts\nDrop :: (m: [int: int]) -> int { delete m[1]; "
                 "return 0; }",
       .message = "deleting a key needs a local map",
@@ -2509,6 +2514,14 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
 {
     return run_samples(TYPE_SAMPLES, 1);
 }
+TEST_CASE(package_compiler_builds_runnable_collection_packages)
+{
+    return run_samples(COLLECTION_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
+{
+    return run_samples(COLLECTION_SAMPLES, 1);
+}
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
     return run_samples(IMPORT_SAMPLES, 0);
@@ -3533,6 +3546,18 @@ void test_language_package_compiler_chibi_types_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_collections()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_collections_compiled()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports_compiled()

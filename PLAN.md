@@ -210,8 +210,8 @@ Current integration constraints:
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
-| M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
-| M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
+| M5 | **Complete on macOS arm64 and Wasm** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. Open gate: the Linux x86_64 and Windows x64 runs. |
+| M6 | **Ready** | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
@@ -576,6 +576,14 @@ until the clean-checkout artifact recovery test passes.
 
 ### M6. Replace the internal build graph
 
+Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
+the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
+open gate that can run later from the checked-in bootstrap artifact or any
+commit's. Until each of those platforms passes its run, M6 must not remove
+stage zero, recovery, or a build path that platform uses, and Windows keeps
+its CMake and stage-zero path because the build host has no Windows process
+support yet.
+
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
 assembly into Chibi modules. Preserve installed CMake package files while Studio
@@ -887,6 +895,8 @@ Host status on 2026-10-20:
 - The bootstrap itself stays native: stage one compiling itself outgrows
   Wasm's 2 GiB linear memory.
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
+  On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
+  readied M6, with these runs as M5's open gate (see M6).
   - They run when CI is back (disabled since 2026-09-25 for billing) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero

@@ -10,10 +10,11 @@
  * `error` set when the source declares one of those names itself, since its
  * calls would then mean something else.
  *
- * Text alone cannot tell a version 31 `append` from a migrated one, so a rerun
- * after a later step failed renames the calls of a source that only added
- * items again; the analyzer then rejects `extend(xs, x)` unless x is an
- * array. */
+ * Text alone cannot tell a version 31 `append` from a migrated one. The
+ * manifest records the finished steps, so a rerun after a later failure
+ * skips this one; only a step interrupted while replacing its sources reruns,
+ * and then renames again the calls of a source that only added items. The
+ * analyzer rejects that `extend(xs, x)` unless x is an array. */
 int chibi_migrate31_array_calls(const char *source, char **migrated, char *error, size_t size);
 
 #endif

@@ -8236,6 +8236,67 @@ TEST_CASE(program_version_31_array_calls_take_their_new_names)
     }
     return true;
 }
+static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
+{
+    int *calls = user;
+    if (!(*calls)++) {
+        snprintf(error, size, "finalization failed");
+        return -1;
+    }
+    return 0;
+}
+/* A rerun after finalization failed resumes after the steps that finished:
+ * a migrated `append(xs, 1)` that only adds an item stays as it is. */
+TEST_CASE(program_migration_retry_resumes_after_finished_steps)
+{
+    const char *source = "L :: library { F :: (xs: int[]) -> int[] { return "
+                         "array_add(xs, 1) } }",
+               *expected = "L :: library { F :: (xs: int[]) -> int[] { return "
+                           "append(xs, 1) } }";
+    char root[] = "/tmp/chibi-retry-XXXXXX", path[300], manifest[300],
+         error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/Adds.chibi", root);
+    write_whole(path, source);
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    char text[96];
+    snprintf(
+        text,
+        sizeof text,
+        "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n",
+        CHIBI_PROJECT_VERSION - 1
+    );
+    write_whole(manifest, text);
+    int calls = 0;
+    REQUIRE(
+        chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error) < 0
+    );
+    char marked[96];
+    snprintf(
+        marked,
+        sizeof marked,
+        "version %d\nmigrated %d\ncontent \"content\"\nstart_scene "
+        "\"Start.kdl\"\n",
+        CHIBI_PROJECT_VERSION - 1,
+        CHIBI_PROJECT_VERSION
+    );
+    REQUIRE(!strcmp(read_whole(manifest), marked));
+    REQUIRE(!strcmp(read_whole(path), expected));
+    int resumed = chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error);
+    if (resumed != 1) {
+        fprintf(stderr, "resumed %d: %s\n", resumed, error);
+    }
+    REQUIRE(resumed == 1);
+    REQUIRE(calls == 2 && !strcmp(read_whole(path), expected));
+    snprintf(text, sizeof text, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(!strcmp(read_whole(manifest), text));
+    REQUIRE(!unlink(path) && !unlink(manifest));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!rmdir(path) && !rmdir(root));
+    return true;
+}
 /* An upgrade that fails after its steps wrote, for example in finalization,
  * leaves scripts at the current version under an older manifest. Its rerun
  * starts at that version, and every step leaves those scripts alone. */
@@ -9626,6 +9687,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
+    RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);

@@ -281,7 +281,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
   target's own options, such as `-w` for vendored C.
 
-`graph:engine`'s `Targets.chibi` lists the 60 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 72 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -293,20 +293,32 @@ engine component KDL are generated sources, `chibi_save_runtime`, and
 third-party archive, with the libraries that need only those (the behavior,
 scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
 Studio capabilities, the prepared native catalog, model baking and the scene
-and prototype documents): 211 sources in 56 archives. For each it gives sources, the directory its public headers
+and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
+whose sources `reflect` writes, with the libraries over them (the spatial,
+entity, rhythm, particle, input and visual motion runtimes, declared
+components, the visual catalog, scene authoring and the scenario document):
+243 sources in 68 archives. For each it gives sources, the directory its public headers
 come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
 headers for `chibi_math`), public and private
-headers, include directories, defines, options and embedded files. An
-`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT (a
-`generated/` path, below `BUILD/sdk`) with `build.embed_file`, before any
-compile. Building
+headers, include directories, defines, options, options of single sources
+(CMake's `COMPILE_OPTIONS` source property, such as `-ffp-contract=off` for the
+transform and particle kernels) and embedded files. A generated source is a
+`build/` path, below the build directory where CMake writes it. An
+`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT with
+`build.embed_file`, before any compile. A target whose `Generator` is
+`reflect` first makes the graph build `reflect` and stage the math headers,
+then run it as root `CMakeLists.txt`'s `generate_runtime_registry` does, to
+write `BUILD/generated/native_types.c` and `native_capabilities.c`; `c.Step`
+records the run as a link is recorded, over the inputs CMake names, and
+reruns it only when one changed. `--reflect PATH` runs another reflect
+instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
 owns is a manual check, about 280 s with sanitizers at a load average of 12;
 `build-graph-archive` compiles SLJIT and a math-header library from the
-archive.
+archive and generates the native type sources.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -341,7 +353,8 @@ hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
 explicit option still overrides what it names. Writing the compile commands
 escapes an argument only when the host's `build.before` finds a backslash or
 quote in it, because `core:strings.ReplaceAll` scans byte by byte in the
-interpreter: with 218 commands it took 7 s, and now 2.4 s.
+interpreter: with 218 commands it took 7 s, and then 2.4 s; the 250 commands
+now take about 3 s.
 
 Windows keeps CMake: the build host has no Windows process support yet.
 

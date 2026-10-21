@@ -402,6 +402,44 @@ TEST_CASE(third_party_archives_download_once_and_refuse_another_hash)
     return true;
 }
 
+/* A configuration that starts from CMake alone loads cmake/third_party.cmake,
+ * which downloads a missing archive through gh into the clone's store, leaves
+ * no partial download behind and reuses the archive in another build. */
+TEST_CASE(cmake_loader_downloads_a_missing_archive_once)
+{
+    reset_fixture("CMake archive", 0);
+    char file[1024], gh[1100], sha256[65], target[32], log[1024];
+    fixture_archive(sha256);
+    host_target(target);
+    write_manifest(target, sha256);
+    path(file, tool_root(), "cmake/third_party.cmake");
+    char *loader = tool_read(file);
+    assert(loader);
+    path(file, root, "cmake");
+    assert(!mkdir(file, 0700));
+    write_file("cmake/third_party.cmake", loader);
+    free(loader);
+    path(file, root, "loader");
+    assert(!mkdir(file, 0700));
+    write_file("loader/CMakeLists.txt", "cmake_minimum_required(VERSION 3.25)\nproject(loader NONE)\ninclude(../cmake/third_party.cmake)\n");
+    /* The real CMake, from the original PATH; gh is the fixture's stand-in. */
+    assert(!setenv("PATH", saved_environment[0] ? saved_environment[0] : "/usr/bin:/bin", 1));
+    snprintf(gh, sizeof gh, "-DCHIBI_GH=%s/bin/gh", root);
+    path(log, root, "loader.log");
+    const char *first[] = { "cmake",        "-S", "loader", "-B",
+                            "loader build", gh,   NULL };
+    REQUIRE(!tool_run(first, root, log));
+    snprintf(file, sizeof file, ".git/chibi/third_party/%s/third-party.cmake", sha256);
+    REQUIRE(file_contains(file, "# fixture archive\n"));
+    const char *stored[] = { sha256 };
+    REQUIRE(store_holds(stored, 1));
+    const char *second[] = { "cmake",         "-S", "loader", "-B",
+                             "another build", gh,   NULL };
+    REQUIRE(!tool_run(second, root, log));
+    REQUIRE(count_in("gh.trace", "gh release download") == 1);
+    return true;
+}
+
 /* The archive store keeps what any worktree of the clone pins and a download
  * in progress, and removes the rest. */
 TEST_CASE(third_party_store_keeps_what_worktrees_pin)
@@ -640,6 +678,7 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(configuration_ignores_retired_dependency_switches);
     RUN_TEST_CASE(third_party_archives_download_once_and_refuse_another_hash);
+    RUN_TEST_CASE(cmake_loader_downloads_a_missing_archive_once);
     RUN_TEST_CASE(third_party_store_keeps_what_worktrees_pin);
 
 #ifdef __APPLE__

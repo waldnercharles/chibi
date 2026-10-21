@@ -2,3 +2,7 @@
 # target	variant	release	sha256
 macos-arm64	release	third-party-2026-10-20	5df43777601df361f332c11c035195f4d4e61f785424be525a577bb9a2536c3b
 macos-arm64	address-undefined	third-party-2026-10-20	644f6fe498713f628143f1dc0cfe38fdb592237a47a83b34e93b8a9dc85d74a1
+macos-arm64	thread	third-party-2026-10-21	ae3c3a0c89dbb55cbae4fad273bbfc510ec780e7d00a150477aa2172af243bf6
+web	release	third-party-2026-10-21	0b8ae0dca70003e367e37e749e89dc101a5642e7c56e5b0986be713636db6963
+web-threads	release	third-party-2026-10-21	e461cceb059b72899f67474bc3a3286335194291e686e88e3611d535c3d86b5c
+web-player	release	third-party-2026-10-21	0cd5ba31183bbaa6a682602aa88ff851a15317c99b5e96055dbe9c776ad7d2cb

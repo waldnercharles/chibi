@@ -101,8 +101,10 @@ if(NOT EXISTS "${CHIBI_THIRD_PARTY_DIR}/third-party.cmake")
         message(FATAL_ERROR "${asset} has SHA-256 ${actual}; third_party/archives.tsv pins ${third_party_sha256}")
     endif()
     file(ARCHIVE_EXTRACT INPUT "${partial}/${asset}" DESTINATION "${partial}/tree")
-    # Another configuration may have published the same archive first.
-    file(RENAME "${partial}/tree" "${CHIBI_THIRD_PARTY_DIR}" RESULT renamed NO_REPLACE)
+    # Another configuration may have published the same archive first; rename
+    # refuses to replace its tree, which is never empty. CMake 4.4's NO_REPLACE
+    # fails for every directory on macOS.
+    file(RENAME "${partial}/tree" "${CHIBI_THIRD_PARTY_DIR}" RESULT renamed)
     file(REMOVE_RECURSE "${partial}")
     if(NOT EXISTS "${CHIBI_THIRD_PARTY_DIR}/third-party.cmake")
         message(FATAL_ERROR "Could not unpack ${asset} into ${CHIBI_THIRD_PARTY_DIR}: ${renamed}")

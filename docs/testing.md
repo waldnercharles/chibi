@@ -2174,7 +2174,7 @@ that profile's name, with CMake's compiler as `CC` (and the debug directory,
 which depends on where a build is), the graph finds the rest of its profile
 on the machine and writes the compile commands of every target it owns, including
 the third-party archive's sources and include directories and the options of
-single sources, and each of the 362
+single sources, and each of the 482
 must equal `compile_commands.json`'s for the same source, apart from the
 object path and with the temporary build directory standing for CMake's. In a
 copy of the sources, about ten runs that build only `chibi_support` then check
@@ -2194,12 +2194,13 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT from the
-third-party archive CMake configured with, and `chibi_vector_capabilities`
-over the archive's Cute math headers, which the graph stages: three C files
-with the profile's sanitizers. A second run compiles nothing, the object sits
-below `objects/chibi_execution_sljit/third-party/`, and the staged
-`cute_math.h` equals CMake's; a run naming an archive that is not unpacked
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
+enkiTS's C++ scheduler from the third-party archive CMake configured with,
+`chibi_vector_capabilities` over the archive's Cute math headers, which the
+graph stages, and the task pool: four C and two C++ files with the profile's
+sanitizers. A second run compiles nothing, the objects sit below
+`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not unpacked
 fails before compiling and says so. A second case builds `chibi_native_types`
 with the configured build's `reflect` (`--reflect`): the graph stages the math
 headers, runs reflect as CMake does and compiles the one source; both written

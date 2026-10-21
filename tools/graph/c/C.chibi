@@ -8,11 +8,12 @@ import strings "core:strings"
 // command or an input changed. Paths are absolute, so steps behave the same
 // from any working directory.
 
-// The tools that build C, and how many compiles may run at once. A launcher,
-// such as ccache, runs the compiler when it is not empty.
+// The tools that build C and C++, and how many compiles may run at once. A
+// launcher, such as ccache, runs the compiler when it is not empty.
 pub Tools :: struct {
     launcher: string;
     compiler: string;
+    cxx_compiler: string;
     archiver: string;
     ranlib: string;
     jobs: int;
@@ -53,9 +54,17 @@ pub Object :: (target: Library, source: string) -> string {
     return Join([target.objects, "/", prefix, relative, ".o"]);
 }
 
+// The compiler for a source: the C++ compiler for a .cpp source.
+Compiler :: (tools: Tools, source: string) -> string {
+    if (strings.HasSuffix(source, ".cpp")) {
+        return tools.cxx_compiler;
+    }
+    return tools.compiler;
+}
+
 // The compile command of a source, as CMake writes it, without its launcher.
 pub Command :: (tools: Tools, target: Library, flags: string[], source: string) -> string[] {
-    command := append([tools.compiler], flags);
+    command := append([Compiler(tools, source)], flags);
     return append(command, ["-o", Object(target, source), "-c", source]);
 }
 

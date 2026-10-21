@@ -10,6 +10,8 @@ import strings "core:strings"
 // A build configuration: what root CMakeLists.txt reads from its cache.
 pub Profile :: struct {
     compiler: string;
+    // The C++ compiler of the same toolchain.
+    cxx_compiler: string;
     // Clang, AppleClang or GNU, as CMake identifies the compiler.
     compiler_id: string;
     // Debug, Release, RelWithDebInfo or MinSizeRel.
@@ -372,6 +374,18 @@ Staged :: (targets: string[]) -> string[] {
     }
     return staged;
 }
+// Whether the targets compile a C++ source.
+pub NeedsCxx :: (targets: string[]) -> bool {
+    for (target in targets) {
+        for (file in Files(target)) {
+            if (strings.HasSuffix(file, ".cpp")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // Whether building the targets reads the third-party archive: their sources
 // or include directories are in it, or a library whose headers they stage
 // publishes them from it.

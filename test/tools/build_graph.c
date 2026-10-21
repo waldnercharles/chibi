@@ -23,9 +23,10 @@ static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
     clone[GRAPH_PATH], log_path[GRAPH_PATH];
 /* The profile root CMakeLists.txt read from its cache, as graph options. */
-static char compiler[GRAPH_PATH], compiler_id[64], build_type[64],
-    architecture[64], sysroot[GRAPH_PATH], sanitizers[128], debug_dir[GRAPH_PATH],
-    archiver[GRAPH_PATH], ranlib[GRAPH_PATH], third_party[GRAPH_PATH];
+static char compiler[GRAPH_PATH], cxx_compiler[GRAPH_PATH], compiler_id[64],
+    build_type[64], architecture[64], sysroot[GRAPH_PATH], sanitizers[128],
+    debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH],
+    third_party[GRAPH_PATH];
 static bool warnings;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
@@ -69,7 +70,8 @@ static void compiler_value(const char *text, const char *name, char *out, size_t
     memcpy(out, at, count);
     out[count] = 0;
 }
-static char *compiler_file()
+/* The text of CMake's CMakeLANGCompiler.cmake for a language, C or CXX. */
+static char *compiler_file(const char *language)
 {
     char directory[GRAPH_PATH];
     join(directory, reference, "CMakeFiles");
@@ -81,9 +83,10 @@ static char *compiler_file()
         snprintf(
             file,
             sizeof file,
-            "%s/%s/CMakeCCompiler.cmake",
+            "%s/%s/CMake%sCompiler.cmake",
             directory,
-            entry->d_name
+            entry->d_name,
+            language
         );
         if (entry->d_name[0] != '.' && !access(file, R_OK)) {
             text = tool_read(file);
@@ -117,8 +120,11 @@ static void read_profile()
     join(path, reference, "CMakeCache.txt");
     char *cache = tool_read(path);
     assert(cache);
-    char *file = compiler_file();
+    char *file = compiler_file("C");
     compiler_value(file, "CMAKE_C_COMPILER", compiler, sizeof compiler);
+    char *cxx_file = compiler_file("CXX");
+    compiler_value(cxx_file, "CMAKE_CXX_COMPILER", cxx_compiler, sizeof cxx_compiler);
+    free(cxx_file);
     compiler_value(file, "CMAKE_C_COMPILER_ID", compiler_id, sizeof compiler_id);
     cache_value(cache, "CMAKE_BUILD_TYPE", build_type, sizeof build_type);
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
@@ -214,31 +220,15 @@ static int run_graph(
 static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
     const char *const options[] = {
-        "--compiler",
-        compiler,
-        "--compiler-id",
-        compiler_id,
-        "--build-type",
-        build_type,
-        "--warnings",
-        warn ? "on" : "off",
-        "--archiver",
-        archiver,
-        "--ranlib",
-        ranlib,
-        "--architecture",
-        architecture,
-        "--sysroot",
-        sysroot,
-        "--sanitizers",
-        sanitizers,
-        "--debug-compilation-dir",
-        debug_dir,
-        "--launcher",
-        "",
-        "--third-party",
-        third_party,
-        NULL,
+        "--compiler",        compiler,        "--cxx-compiler",
+        cxx_compiler,        "--compiler-id", compiler_id,
+        "--build-type",      build_type,      "--warnings",
+        warn ? "on" : "off", "--archiver",    archiver,
+        "--ranlib",          ranlib,          "--architecture",
+        architecture,        "--sysroot",     sysroot,
+        "--sanitizers",      sanitizers,      "--debug-compilation-dir",
+        debug_dir,           "--launcher",    "",
+        "--third-party",     third_party,     NULL,
     };
     return run_graph(root, build_dir, options, extra);
 }
@@ -255,8 +245,10 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
         debug_dir,   "--warnings", warnings ? "on" : "off",
         NULL
     };
+    /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
-    assert(!setenv("CC", compiler, 1));
+    char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
+    assert(!setenv("CC", compiler, 1) && !unsetenv("CXX"));
     int compiled = run_graph(root, build_dir, options, extra);
     if (saved) {
         assert(!setenv("CC", saved, 1));
@@ -264,6 +256,10 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
         assert(!unsetenv("CC"));
     }
     free(saved);
+    if (saved_cxx) {
+        assert(!setenv("CXX", saved_cxx, 1));
+    }
+    free(saved_cxx);
     return compiled;
 }
 static const char *const support_only[] = { "--target", "chibi_support", NULL };
@@ -627,18 +623,22 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
 }
 
 /* The graph compiles a third-party archive's sources and stages its headers:
- * SLJIT and the Cute math headers that chibi_vector_capabilities includes as
- * system headers. A second run compiles nothing, and a run whose archive is
- * not unpacked says so before it compiles. */
+ * SLJIT, enkiTS's C++ scheduler and the Cute math headers that
+ * chibi_vector_capabilities includes as system headers, with the task pool's
+ * shared private/physics headers. A second run compiles nothing, and a run
+ * whose archive is not unpacked or that has no C++ compiler says so before it
+ * compiles. */
 TEST_CASE(archive_sources_compile_and_stage)
 {
     char build_dir[GRAPH_PATH], path[GRAPH_PATH], theirs[GRAPH_PATH];
     join(build_dir, suite, "archive");
-    const char *const archive_targets[] = { "--target",
-                                            "chibi_execution_sljit",
-                                            "--target",
-                                            "chibi_vector_capabilities",
-                                            NULL };
+    const char *const archive_targets[] = {
+        "--target", "chibi_execution_sljit",
+        "--target", "chibi_vector_capabilities",
+        "--target", "chibi_task_scheduler",
+        "--target", "chibi_task_pool_runtime",
+        NULL
+    };
     char missing[GRAPH_PATH];
     join(missing, suite, "no archive");
     const char *const unpacked[] = { "--third-party", missing, NULL };
@@ -646,20 +646,34 @@ TEST_CASE(archive_sources_compile_and_stage)
     char *log = tool_read(log_path);
     REQUIRE(log && strstr(log, "the third-party archive is not unpacked"));
     free(log);
+    /* C++ sources need a C++ compiler. */
+    const char *const no_cxx[] = { "--cxx-compiler", "none", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, no_cxx, archive_targets) == -1);
+    log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "no C++ compiler was found"));
+    free(log);
     join(path, build_dir, "objects");
     REQUIRE(access(path, F_OK));
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 3);
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 6);
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 0);
     join(path, build_dir, "objects/chibi_execution_sljit/third-party/source/sljit/sljit_src/sljitLir.c.o");
     REQUIRE(!access(path, R_OK));
     join(path, build_dir, "lib/libchibi_execution_sljit.a");
     REQUIRE(!access(path, R_OK));
-    join(path, build_dir, "sdk/public/math/cute_math.h");
-    join(theirs, reference, "sdk/public/math/cute_math.h");
-    char *mine = tool_read(path), *cmake = tool_read(theirs);
-    REQUIRE(mine && cmake && !strcmp(mine, cmake));
-    free(mine);
-    free(cmake);
+    join(path, build_dir, "objects/chibi_task_scheduler/third-party/source/enkits/src/TaskScheduler.cpp.o");
+    REQUIRE(!access(path, R_OK));
+    /* The math headers and the private/physics directory the task pool shares
+     * with physics are staged as CMake stages them. */
+    const char *const staged[] = { "sdk/public/math/cute_math.h",
+                                   "sdk/private/physics/diagnostics/tracy.h" };
+    for (int i = 0; i < 2; i++) {
+        join(path, build_dir, staged[i]);
+        join(theirs, reference, staged[i]);
+        char *mine = tool_read(path), *cmake = tool_read(theirs);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake));
+        free(mine);
+        free(cmake);
+    }
     return true;
 }
 

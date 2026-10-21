@@ -34,7 +34,61 @@ targets.
   removes the old forms from the language. Declarations name-first, `Tick :: event (dt: s)`, may follow.
   See "One way to read the step".
 
-The remaining entries are proposals.
+## Decisions (owner, 2026-10-21)
+
+- **Strings carry their length.** A Chibi `string` becomes a pointer and a
+  byte length, as in Odin, Go, Rust and Zig, so indexing, length and slicing
+  cost O(1) and a slice may share its parent's bytes. Today `ByteAt`, `Slice`
+  and `ByteLength` measure the text with `strlen` on every call, and the
+  compiler's `Text(forest, text, node)` walks each source up to every node it
+  slices. See "Strings carry their length" below.
+- **One string type.** Chibi code sees a single `string`, with no `cstring`.
+  Native C components keep their NUL-terminated `const char *` fields, and the
+  runtime converts at that boundary.
+
+The remaining entries are proposals, except "Strings carry their length",
+which records how the decision above is carried out.
+
+## Strings carry their length
+
+Now: a string value is a `const char *` in `pin_value.str`, in VM slots, in
+data cells and in record fields. Every byte operation measures it, and every
+slice copies its bytes.
+
+Elsewhere: Odin's `string` is `struct { data: [^]u8, len: int }`, beside a
+NUL-terminated `cstring` for C. Go's string header and Rust's `&str` are the
+same pair. Zig's `[]const u8` is a slice, and string literals are also
+NUL-terminated for C. Each shares bytes when it slices.
+
+Representation: slots, data-cell payloads and record fields hold one pointer,
+and SLJIT writes only that payload. So the length cannot live beside the
+pointer in `pin_value`: a JIT write would leave it stale. The pointer instead
+addresses an immutable descriptor, `{const char *bytes; uint32_t length}`,
+whose bytes lie inside a NUL-terminated buffer:
+
+- Values, slots and record fields stay 8 bytes; only what the pointer means
+  changes.
+- `Slice` allocates a descriptor into its parent's bytes and copies none.
+- C needs a NUL-terminated string when it writes a native component field or
+  calls a host API. It gets the descriptor's bytes as they are when
+  `bytes[length]` is the buffer's terminator, which is always in bounds, and a
+  copy otherwise.
+- Reading a native component's `const char *` field measures it once and
+  makes a descriptor.
+- Interned strings, prepared string constants and the wire and document
+  formats carry the length.
+
+Phases, each its own PR:
+
+1. Route every C reader of `pin_value.str` (about 270 sites) and every
+   producer through accessors, `pin_text(value)` for bytes and length and
+   `pin_value_text(...)` to build one. The representation does not change, so
+   the accessor still measures.
+2. Switch the accessors and producers to descriptors, convert at the native
+   component boundary, and bump the prepared format and rebuild the bootstrap
+   artifact.
+3. Make `Slice` share bytes. Make `ByteAt` and `ByteLength` read the length.
+   Add `Bytes`-free compiler paths where they help.
 
 ## Should Terrain Lab be the compiler's checked game?
 

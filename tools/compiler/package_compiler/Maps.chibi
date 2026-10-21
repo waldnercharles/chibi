@@ -391,8 +391,8 @@ MapItemCells :: (types: TypeDecl[], map: int, key: bool) -> Cell[] {
     ordinal: Cell = {storage: IntStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     return [MapCell(map), ordinal, flag, result];
 }
-// A loop over the map copy in the last cell, as stage zero emits it: its
-// ordinal from 0 up to the copy's count, then the entry's value, saved in a
+// A loop over the map, or its copy, in the last cell, as stage zero emits it:
+// its ordinal from 0 up to the map's count, then the entry's value, saved in a
 // local or copied into a cell of its own for a record, and, when the loop
 // names it, its key, saved in a local. It binds the value's `name` and the
 // key's `key`, then schedules the body; its marks are the head and the exit

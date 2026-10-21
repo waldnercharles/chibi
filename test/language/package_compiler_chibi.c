@@ -74,7 +74,9 @@ typedef enum
     IMPORT_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
- * `library` is package lib when present, and `core` adds core:strings. An `updates` sample's `Build(count)` updates a
+ * `library` is package lib when present, and `core` adds core:strings. A
+ * `game` sample's target links the core pack a game links, which declares
+ * assert; preparing every sample with it would cost each selector seconds. An `updates` sample's `Build(count)` updates a
  * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. A
  * `boxed` sample's Boxed functions read only arrays that are never packed,
@@ -83,7 +85,7 @@ typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed;
+    bool core, updates, boxed, game;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -616,16 +618,19 @@ static const sample samples[] = {
      * catalog does. */
     { .name = "assertions",
       .group = TYPE_SAMPLES,
+      .game = true,
       .source = "package facts\n"
                 "Double :: (n: int) -> int {\n"
                 "    assert(n > 0, \"n is positive\");\n"
                 "    assert(n < 100);\n"
                 "    assert(condition: n != 7, message: \"\");\n"
+                "    assert((n != 8), (\"not eight\"));\n"
                 "    return n * 2;\n}",
       .calls = { { "Double", "[3]", "[6]" },
                  { "Double", "[-1]", NULL },
                  { "Double", "[200]", NULL },
-                 { "Double", "[7]", NULL } } },
+                 { "Double", "[7]", NULL },
+                 { "Double", "[8]", NULL } } },
     /* Package and imported constants. `lib.Scaled(2)` takes a default that
      * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
      * the package's other file declares, whose occurrence is that file's. */
@@ -1194,6 +1199,7 @@ static const sample samples[] = {
       .line = 3,
       .column = 25 },
     { .name = "assert message",
+      .game = true,
       .source = "package facts\nCheck :: (n: int, m: string) -> int {\n"
                 "    assert(n > 0, m);\n    return n;\n}",
       .message = "assert's message is a string constant",
@@ -1728,10 +1734,10 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
     REQUIRE(natives(b, game, &args[9]));
     return true;
 }
-static bool compile(int b, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
+static bool compile(int b, bool game, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
 {
     pin_value args[ARGUMENTS];
-    REQUIRE(arguments(b, true, inputs, count, args));
+    REQUIRE(arguments(b, game, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
     );
@@ -1958,7 +1964,7 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CORE_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, 3));
+    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 3 : 2));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -2371,7 +2377,7 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
+        REQUIRE(compile(b, s->game, inputs, count, COMPILE_BUDGET, &out));
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -2450,7 +2456,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, true, inputs, count, args));
+        REQUIRE(arguments(1, false, inputs, count, args));
         args[DEBUG_ARGUMENT].b = false;
         REQUIRE(
             compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
@@ -2613,7 +2619,7 @@ static bool stage_two_sample(const sample *s)
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, true, inputs, count, args));
+    REQUIRE(arguments(1, s->game, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
     );
@@ -3114,7 +3120,7 @@ static bool game_arguments(int b, pin_value *out)
 static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
 {
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
-    REQUIRE(arguments(b, true, NULL, 0, compile));
+    REQUIRE(arguments(b, false, NULL, 0, compile));
     args[0] = text(identity);
     args[1] = text(source);
     memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);

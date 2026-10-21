@@ -54,9 +54,10 @@ import:
 - `assert(condition, "message")`, where the target links the core pack's
   `assert`, as a game does: the call fails when the condition is false, with
   "Assertion failed: " and the message, or the condition's source when there
-  is none, as stage zero's `ASSERT` does. Its arguments may be named
-  `condition` and `message`; the message must be a string literal. `Target`'s
-  `assert_failure` is that failure's kind;
+  is none or it is empty, as stage zero's `ASSERT` does. Its arguments may be
+  named `condition` and `message`; the message must be a string literal.
+  `Target`'s `assert_failure` is that failure's kind. Stage zero compiles an
+  assert without a condition to one that always fails; stage one refuses it;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
   is a local, zero until the body sets it; `return (a, b)` gives each its
   value, and `return` or the body's end returns them. A call's `.name` reads

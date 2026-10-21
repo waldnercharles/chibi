@@ -1191,6 +1191,14 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
                         Typed(made, item.storage, item.container, record), NoValue(), marks);
 }
 
+// `node` without the parentheses around it.
+Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := node;
+    while (Is(forest, at, "parenthesized_expression")) {
+        at = Field(forest, at, "expression");
+    }
+    return at;
+}
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -1294,7 +1302,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // `assert(condition, "message")`, where the target links the core
         // native, fails the call when the condition is false, as stage
         // zero's intrinsic does.
-        if (qualifier < 0 && found < 0 && callee_name == "assert" && FindNative(natives, "assert") >= 0) {
+        if (qualifier < 0 && found < 0 && NameMatches("assert", callee_name) &&
+            FindNative(natives, callee_name) >= 0) {
             condition: int = -1;
             message: int = -1;
             index: int = 0;
@@ -1312,20 +1321,30 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                         position = 1;
                     }
                 }
-                if (position == 0 && condition < 0) {
+                if (position < 0) {
+                    return Fail(forest, argument, document,
+                                format_text("Unknown argument '{}'", Text(forest, text, Field(forest, argument, "name"))));
+                }
+                if (position > 1) {
+                    return Fail(forest, argument, document, "Too many arguments");
+                }
+                if ((position == 0 && condition >= 0) || (position == 1 && message >= 0)) {
+                    return Fail(forest, argument, document, "Argument supplied more than once");
+                }
+                if (position == 0) {
                     condition = value;
-                } else if (position == 1 && message < 0) {
-                    message = value;
                 } else {
-                    return Fail(forest, argument, document, "assert takes a condition and a message");
+                    message = value;
                 }
                 index += 1;
                 argument = NextMember(forest, argument);
             }
+            // Stage zero gives a missing condition false; stage one asks
+            // for one.
             if (condition < 0) {
-                return Fail(forest, item.node, document, "Missing argument 'Condition'");
+                return Fail(forest, item.node, document, "assert needs a condition");
             }
-            if (message >= 0 && !Is(forest, message, "string")) {
+            if (message >= 0 && !Is(forest, Unparenthesized(forest, message), "string")) {
                 return Fail(forest, message, document, "assert's message is a string constant");
             }
             next = array_add(next, Expect(condition, BoolStorage, 0, -1));
@@ -1421,9 +1440,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.c == 6) {
         // An assert fails with its message, or with its condition's source
         // when it gives none.
-        said := Text(forest, text, item.b);
+        said := Text(forest, text, Unparenthesized(forest, item.b));
         if (item.a >= 0) {
-            decoded := compiler_json_string(Text(forest, text, item.a));
+            decoded := compiler_json_string(Text(forest, text, Unparenthesized(forest, item.a)));
             if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
                 return Fail(forest, item.a, document, "Invalid string or embedded NUL");
             }

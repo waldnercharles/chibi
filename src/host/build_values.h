@@ -6,7 +6,11 @@
 
 #define BUILD_TEXT_LIMIT (1024 * 1024)
 #define BUILD_ARRAY_LIMIT 8192
-#define BUILD_STORAGE_LIMIT (32 * 1024 * 1024)
+/* Values are never freed. An up-to-date build graph holds every compile
+ * record it reads, about 15 MB for 362 sources with sanitizers. The limit
+ * counts the arena's doubling blocks, so it holds about half as many bytes of
+ * values: room for the whole engine, while still stopping a runaway program. */
+#define BUILD_STORAGE_LIMIT (256 * 1024 * 1024)
 
 typedef struct
 {

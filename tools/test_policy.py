@@ -291,9 +291,10 @@ TOOLS = {
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
-    # Two cases: the graph compiles SLJIT from the third-party archive and
-    # chibi_vector_capabilities over the archive's staged Cute math headers
-    # (three C files with the profile's sanitizers), then finds them current;
+    # Two cases: the graph compiles SLJIT and enkiTS's C++ from the third-party
+    # archive, chibi_vector_capabilities over the archive's staged Cute math
+    # headers and the task pool (four C and two C++ files with the profile's
+    # sanitizers), then finds them current;
     # it runs the configured build's reflect to write the native type sources
     # and compiles one of them.
     'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),

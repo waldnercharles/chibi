@@ -162,11 +162,15 @@ static bool inline_scalar(pin_type type)
 {
     return type >= PIN_BOOL && type <= PIN_F64;
 }
-/* Boxes a packed array's elements in place. In-place updates of records grow
- * boxed items; the packed records stay in their owned allocation. */
-static void box(arena *storage, pin_array *array)
+/* Boxes a packed array's elements in place; false when they cannot fit.
+ * In-place updates of records grow boxed items; the packed records stay in
+ * their owned allocation. */
+static bool box(arena *storage, pin_array *array)
 {
     int capacity = array->capacity > array->count ? array->capacity : array->count;
+    if ((size_t)capacity > SIZE_MAX / sizeof(pin_value)) {
+        return false;
+    }
     pin_value *items = arena_alloc(storage, (size_t)(capacity ? capacity : 1) * sizeof *items);
     for (int i = 0; i < array->count; i++) {
         items[i] = pin_array_get(array, i);
@@ -175,7 +179,10 @@ static void box(arena *storage, pin_array *array)
     array->capacity = capacity;
     array->data = NULL;
     array->stride = 0;
+    return true;
 }
+/* A local's array, owned by storage and ready to change in place; NULL when
+ * it cannot be boxed. */
 static pin_array *owned_array(arena *storage, pin_value *header)
 {
     assert(header && header->container == PIN_CONTAINER_ARRAY);
@@ -199,8 +206,8 @@ static pin_array *owned_array(arena *storage, pin_value *header)
     pin_array *array = header->ptr;
     /* A local's array and its layout live in this storage: every store into the
      * local snapshots there. The optional lookup index is rebuilt on demand. */
-    if (array->stride && !inline_scalar(array->element_type)) {
-        box(storage, array);
+    if (array->stride && !inline_scalar(array->element_type) && !box(storage, array)) {
+        return NULL;
     }
     array->buckets = NULL;
     array->bucket_mask = 0;
@@ -217,7 +224,9 @@ static const char *append_item(arena *storage, pin_array *array, const pin_value
             return NULL;
         }
         array->count--;
-        box(storage, array);
+        if (!box(storage, array)) {
+            return "Array exceeds its length limit";
+        }
     }
     if (pin_array_snapshot_owned_items(
             storage,
@@ -236,7 +245,7 @@ static const char *array_push(arena *storage, const pin_value *args, int count, 
     assert(count == 2);
     (void)count;
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
-    if (array->count == INT_MAX ||
+    if (!array || array->count == INT_MAX ||
         pin_array_reserve_owned(storage, array, array->count + 1)) {
         return "Array exceeds its length limit";
     }
@@ -256,6 +265,9 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     pin_array *array = owned_array(storage, header);
+    if (!array) {
+        return "Array exceeds its length limit";
+    }
     if (array->stride && !pin_array_set(array, index, &args[2])) {
         return NULL;
     }
@@ -263,8 +275,8 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     if (pin_array_snapshot_owned_items(storage, array->record, &item, &args[2], 1)) {
         return "Cannot retain array item";
     }
-    if (array->stride) {
-        box(storage, array);
+    if (array->stride && !box(storage, array)) {
+        return "Array exceeds its length limit";
     }
     array->items[index] = item;
     return NULL;
@@ -276,7 +288,7 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
     const pin_array *items = args[1].ptr;
     int added = items ? items->count : 0;
-    if (added > INT_MAX - array->count ||
+    if (!array || added > INT_MAX - array->count ||
         pin_array_reserve_owned(storage, array, array->count + added)) {
         return "Array exceeds its length limit";
     }
@@ -293,10 +305,12 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
         array->count += added;
         return NULL;
     }
+    int before = array->count;
     for (int i = 0; i < added; i++) {
         pin_value item = pin_array_get(items, i);
         const char *error = append_item(storage, array, &item);
         if (error) {
+            array->count = before;
             return error;
         }
     }

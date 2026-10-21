@@ -269,7 +269,8 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   rest of the text at each line and an up-to-date run took seconds. Paths and
   stamps are separate lines because build values are never freed: with 362
   sources an up-to-date run reads about 6 MB of records, and splitting each
-  line in two exceeded the host's 32 MB of values.
+  line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
+  arena blocks, about 128 MB of values.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
   and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
   CMake stages them. A header is copied only when its contents differ, so
@@ -287,7 +288,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   the sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then
   the target's own options, such as `-w` for vendored C, and the source's.
 
-`graph:engine`'s `Targets.chibi` lists the 79 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 92 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -305,8 +306,13 @@ entity, rhythm, particle, input and visual motion runtimes, declared
 components, the visual catalog, scene authoring and the scenario document),
 and from the archive tree-sitter's runtime (`chibi_syntax_runtime`), its CSS
 and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
-project syntax documents and UI authoring over them: 355 sources in 75
-archives. For each it gives sources, the directory its public headers
+project syntax documents and UI authoring over them, and enkiTS's C++ task
+scheduler with the task pool, material, physics, visibility, graph model,
+authoring and compilation, Studio catalog and graph, engine and default
+native catalog libraries over it: 477 sources in 88 archives. A name that is
+no target, such as `chibi_physics` or `chibi_graph`, lists the headers of a
+`private/NAME` directory several libraries include, as CMake stages it. For
+each it gives sources, the directory its public headers
 come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
 headers for `chibi_math`), public and private
 headers, include directories, defines, options, options of single sources
@@ -356,7 +362,10 @@ A run finds its profile on the machine unless told otherwise
 (`graph:engine`'s `Profile.chibi`). `--profile` names the Makefile's
 `sanitizer` (the default), `debug` or `release` profile. The compiler is `CC`,
 or Homebrew LLVM's clang as the Makefile prefers it, or `cc`, and its kind
-comes from its `--version` banner. On macOS the architecture comes from
+comes from its `--version` banner. The C++ compiler, which compiles `.cpp`
+sources with the same flags and the target's C++ standard, is `CXX` or the
+`clang++`, `g++` or `c++` beside the compiler, or the one on `PATH` for the
+compiler's kind; a run that compiles C++ without one stops and says so. On macOS the architecture comes from
 `uname -m` and the SDK from `SDKROOT`, the compiler's `-###` report (resolved
 through its versioned link, as `Build.chibi` resolves it) or `xcrun`. ccache,
 when found, launches compiles and, for a build below the source tree, sets the

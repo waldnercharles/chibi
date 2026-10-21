@@ -547,7 +547,9 @@ source exceeded the 32 MB value limit; `chibi-compile` now writes the JSON.
 The M6 graph met the same limit: an up-to-date build of 362 sources reads 6 MB
 of compile records, and splitting each `stamp path` line with `build.before`
 and `build.after` exceeded 32 MB, so records now keep the path and the stamp
-on separate lines.
+on separate lines, and the host allows 256 MB of arena blocks (about 128 MB of
+values), since the next slices about double the sources. Freeing values a program no longer reaches would remove
+the ceiling.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
   (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.

@@ -557,6 +557,12 @@ capability package, instead of a separate string vocabulary.
 Partly implemented (#606): a build program is now a package and may
 import `core:`. The `build.` string natives remain until `Build.chibi`,
 `StageOne.chibi` and `GameEquivalence.chibi` use `core:strings` instead.
+That waits on cheaper strings
+([Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length)).
+Splitting the 25 KB `build/CMakeCache.txt` into lines and testing each takes
+0.9 s with `strings.SplitLines` in a Debug host with sanitizers, against 0.2 s
+with `build.lines`. A 50 KB cache runs out of the host's 100,000-step budget,
+because each split copies the rest of the text.
 
 ## A host's natives can't form a package
 

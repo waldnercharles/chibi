@@ -692,6 +692,30 @@ TEST_CASE(private_programs_cannot_wait_or_start_tasks)
     return true;
 }
 
+/* A program that fails without a message of its own says why it stopped. */
+TEST_CASE(private_runtime_failures_name_their_cause)
+{
+    static const char *sources[] = {
+        "package fails\nBuild :: () -> int { n := 0; while (true) { n += 1; } "
+        "return n; }",
+        "package fails\nBuild :: () -> int { xs: int[] = []; return xs[1]; }",
+    };
+    static const char *diagnostics[] = {
+        "instruction budget exhausted",
+        "array index out of range",
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+            chibi_build_options options = primitive_options(sources[i], backend);
+            chibi_build_result result;
+            REQUIRE(!chibi_build_invoke(&options, &result));
+            REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+        }
+    }
+    return true;
+}
+
 TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols)
 {
     static const char *sources[] = {
@@ -1266,6 +1290,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
     RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
+    RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols);
     RUN_TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text);
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);

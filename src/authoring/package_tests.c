@@ -71,16 +71,6 @@ package_test *package_tests_find(const authoring_packages *packages)
     return tests;
 }
 
-static const char *failure_text(behavior_function_failure failure)
-{
-    switch (failure) {
-        case BEHAVIOR_FUNCTION_BUDGET: return "instruction budget exhausted";
-        case BEHAVIOR_FUNCTION_DEPTH: return "call depth exceeded";
-        case BEHAVIOR_FUNCTION_ARGUMENT: return "array index out of range";
-        default: return "execution failed";
-    }
-}
-
 /* The innermost failing call reports first; its callers report after it. */
 static void observe(const behavior_function *function, const behavior_function_context *context, int)
 {
@@ -100,7 +90,8 @@ static void observe(const behavior_function *function, const behavior_function_c
         failure->message,
         sizeof failure->message,
         "%s",
-        context->error_message ? context->error_message : failure_text(context->failure)
+        context->error_message ? context->error_message
+                               : behavior_function_failure_text(context->failure)
     );
 }
 
@@ -152,7 +143,7 @@ bool package_test_run(
             failure->message,
             sizeof failure->message,
             "%s",
-            failure_text(context.failure)
+            behavior_function_failure_text(context.failure)
         );
     }
     behavior_function_release_host(&context);

@@ -592,8 +592,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     behavior_run_scope_end(&scope);
     result->counts = scope.counts;
     if (result->flow_status != FLOW_OK) {
-        failure = context.error_message ? context.error_message
-                                        : "build source execution failed";
+        failure = context.error_message
+                    ? context.error_message
+                    : behavior_function_failure_text(context.failure);
         goto done;
     }
     failure = build_host_ready(&host);

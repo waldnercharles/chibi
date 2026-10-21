@@ -798,8 +798,8 @@ helpers in `.github/scripts/` with their `native-unit-dependencies.tsv` and
 `build-tools.txt`, which no workflow ran; the CUT61 `analyze.py`; and game
 runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py`
 and `tools/kdl_asset.py`), which served the retired game repositories. Git
-history keeps them. The CUT61 `run.py.txt` record still waits on review of the
-stale record.
+history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
+`browser-sample.js` sampler followed the same day, also approved.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.

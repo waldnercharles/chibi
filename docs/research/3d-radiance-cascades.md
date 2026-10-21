@@ -497,8 +497,8 @@ RC often improves noisy Monte Carlo GI by replacing random paths with structured
 
 The repository already contains two separate rendering concerns:
 
-- The desktop 2D path builds scene, emission, absorption, and albedo textures, then runs its RC passes and composite. See [src/render/material_raster.c](/Users/cwaldner/Personal/c-blueprints/src/render/material_raster.c) and [src/render/radiance.c](/Users/cwaldner/Personal/c-blueprints/src/render/radiance.c).
-- The 3D path collects ECS geometry, lights, particles, and trails and submits depth-tested meshes through [src/render/arena3d.c](/Users/cwaldner/Personal/c-blueprints/src/render/arena3d.c) and [src/render/shaders/arena3d.frag](/Users/cwaldner/Personal/c-blueprints/src/render/shaders/arena3d.frag). It does not yet expose a public 3D G-buffer or indirect-light target.
+- The desktop 2D path builds scene, emission, absorption, and albedo textures, then runs its RC passes and composite. See [src/render/material_raster.c](../../src/render/material_raster.c) and [src/render/radiance.c](../../src/render/radiance.c).
+- The 3D path collects ECS geometry, lights, particles, and trails and submits depth-tested meshes through src/render/arena3d.c (`src/render/arena3d.c`; historical repository reference) and src/render/shaders/arena3d.frag (`src/render/shaders/arena3d.frag`; historical repository reference). It does not yet expose a public 3D G-buffer or indirect-light target.
 
 The existing SDF code is primarily 2D coverage support, while 3D authored content is represented by analytic or canned meshes such as boxes, spheres, capsules, cones, and prisms. That makes a new 3D RC experiment a renderer subsystem, not a small extension of the current 2D radiance pass.
 
@@ -543,7 +543,7 @@ Only add a dense volume or Volumetric-HRC branch when a real authored scene need
 
 ### Measurement gates
 
-The repository's 3D rendering research sets a useful engineering bar in [docs/research/arena-3d-rendering.md](/Users/cwaldner/Personal/c-blueprints/docs/research/arena-3d-rendering.md): use an M4 Pro-class target at 1920×1080, aim for p95 at or below 16.7 ms and p99 at or below 20 ms, and admit GI only if it is useful within roughly a 2.5 ms GPU p95 budget. Treat those as project gates, not claims about RC implementations.
+The repository's 3D rendering research sets a useful engineering bar in [docs/research/arena-3d-rendering.md](arena-3d-rendering.md): use an M4 Pro-class target at 1920×1080, aim for p95 at or below 16.7 ms and p99 at or below 20 ms, and admit GI only if it is useful within roughly a 2.5 ms GPU p95 budget. Treat those as project gates, not claims about RC implementations.
 
 Measure:
 
@@ -639,6 +639,6 @@ Licenses in this table are a reading aid, not legal advice. Confirm the current 
 
 ### Repository-specific context
 
-- [c-blueprints 3D rendering research](/Users/cwaldner/Personal/c-blueprints/docs/research/arena-3d-rendering.md)
-- [c-blueprints radiance README](/Users/cwaldner/Personal/c-blueprints/src/render/README.md)
-- [c-blueprints 3D renderer](/Users/cwaldner/Personal/c-blueprints/src/render/arena3d.c)
+- [c-blueprints 3D rendering research](arena-3d-rendering.md)
+- [c-blueprints radiance README](../../src/render/README.md)
+- c-blueprints 3D renderer (`src/render/arena3d.c`; historical repository reference)

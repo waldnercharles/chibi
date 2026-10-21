@@ -272,22 +272,27 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   CMake stages them. A header is copied only when its contents differ, so
   unchanged headers keep their stamps, and a staged file no header names is
   removed, as `chibi_sdk_headers` does.
-- A compile's flags are its own public then private include directory, those
-  of the libraries it uses, then the profile flags root `CMakeLists.txt` adds,
-  in its order: the ccache debug directory, the build type's flags,
-  `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the sanitizers and
-  Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
+- A compile's flags are its defines, then its include directories in CMake's
+  order (staged `public/NAME` and `private/NAME` directories, or source-tree
+  directories such as `third_party/fmt`), then the profile flags root
+  `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
+  type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
+  sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
+  target's own options, such as `-w` for vendored C.
 
-`graph:engine`'s `Targets.chibi` lists the 31 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 40 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-and three header-only libraries (`chibi_execution_contract`, `chibi_tasks`,
-`chibi_input_action`): 82 sources in 28 archives. A target's `Options`, such
-as `chibi_fields`' `-ffp-contract=off`, follow the profile flags for Clang and
-GCC. CMake still builds them and everything else, and `build-graph` checks that
-their compile commands agree. That route compiles only `chibi_support`;
-building every library the graph owns is a manual check, about 100 s with
-sanitizers, and an unchanged build then takes about 3 s.
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
+over ckdl) and the libraries over them, and three header-only libraries
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`): 100 sources
+in 37 archives. For each it gives sources, the directory its public headers
+come from (`src`, or `third_party/yyjson` for `chibi_json`), public and private
+headers, include directories, defines and options. CMake still builds them and
+everything else, and `build-graph` checks that their compile commands agree.
+That route compiles only `chibi_support`; building every library the graph
+owns is a manual check, about 130 s with sanitizers, and an unchanged build
+then takes about 4 s.
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

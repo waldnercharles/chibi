@@ -676,11 +676,19 @@ visibility, graph model, authoring and compilation, Studio catalog and graph,
 engine and the default native catalog): 92 libraries and 484 compile
 commands, equal to CMake's. The host's value storage rose to 256 MB for
 up-to-date builds of graphs this size.
-Next: the image codecs generated from Cute's headers (image preparation, then
-model authoring and shader preparation); the platform library over the
-desktop Cute archive; the language, compiler and authoring libraries, whose
-private headers sit below `sdk/language/private`; then moving profile
-selection from `Build.chibi`'s CMake arguments into the graph.
+Slice 14, 2026-10-21: rewritten codecs and the language. The graph writes
+Cute's codec headers with private symbols through a new `build.replace`
+native (`core:strings.ReplaceAll` took 11 s), stages the language's private
+headers below `sdk/language/private`, and owns image preparation, the
+language, compiler, authoring, asset and model authoring, shader
+preparation, source catalog and presentation, graph catalog and player
+libraries: 103 libraries and 579 compile commands, equal to CMake's. A text
+value now holds 16 MB, since `compile_commands.json` passed 1 MB; a step's
+own output stays at 1 MB.
+Next: the platform and model import libraries over the desktop Cute archive,
+whose defines hold spaces the command comparison must quote; the UI, render
+and project preparation libraries; executables beyond `reflect`; then moving
+profile selection from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

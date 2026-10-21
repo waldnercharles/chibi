@@ -82,7 +82,7 @@ Missing allowed names read as empty strings; other names are capability errors.
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
 1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
 256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
-1 MiB, one build text value, for `build.last_stdout` and `build.last_stderr`. A
+1 MiB for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
 the result and CLI. A probe's output is data only: compiler reports and tool
@@ -184,8 +184,9 @@ graph.
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,
 last-process output, the file primitives below and string/array operations. File
-and text values are limited to 1 MiB, arrays to 8,192 entries and 1 MiB of text,
-and retained helper storage to 32 MiB per invocation. Last-output accessors
+and text values are limited to 16 MiB, enough for a build graph's
+`compile_commands.json`, arrays to 8,192 entries and 16 MiB of text, and
+retained helper storage to 256 MiB of arena blocks per invocation. Last-output accessors
 reject truncation and embedded NUL bytes, so authored protocol parsing cannot
 accept a partial result. Returned values remain owned by the invocation until it
 finishes; parent cwd and environment are never mutated.
@@ -208,12 +209,13 @@ interprocess lock they needed, went away rather than moved.
 | --- | --- |
 | `build.file_kind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
 | `build.file_stamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
-| `build.list_directory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
+| `build.list_directory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 16 MiB of names. |
 | `build.copy_file(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
 | `build.rename(source, destination) -> bool` | `rename(2)`. |
 | `build.remove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
 | `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
 | `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
+| `build.replace(text, find, with) -> string` | Text with every occurrence of a non-empty `find` replaced by `with`, left to right, in one native pass; `core:strings.ReplaceAll` scans byte by byte in the interpreter, and rewriting Cute's 96 KB of codec headers took it 11 s. A result past the text limit fails the program. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -288,7 +290,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   the sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then
   the target's own options, such as `-w` for vendored C, and the source's.
 
-`graph:engine`'s `Targets.chibi` lists the 92 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 103 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -309,9 +311,18 @@ and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
 project syntax documents and UI authoring over them, and enkiTS's C++ task
 scheduler with the task pool, material, physics, visibility, graph model,
 authoring and compilation, Studio catalog and graph, engine and default
-native catalog libraries over it: 477 sources in 88 archives. A name that is
-no target, such as `chibi_physics` or `chibi_graph`, lists the headers of a
-`private/NAME` directory several libraries include, as CMake stages it. For
+native catalog libraries over it, and image preparation, the language,
+compiler, authoring, asset authoring, graph catalog, model authoring, shader
+preparation, source catalog and presentation and player libraries: 572
+sources in 99 archives. A name that is no target, such as `chibi_physics` or
+`chibi_graph`, lists the headers of a `private/NAME` directory several
+libraries include, as CMake stages it; `PrivateDirectory` stages a target's
+private headers elsewhere, as the language's sit below
+`BUILD/sdk/language/private`. A `Rewrites` entry `HEADER=INPUT` writes a
+private header from INPUT with each `Renames` pair replaced
+(`build.replace`), as `sdk/images.cmake` gives Cute's codecs private symbols,
+only when its text changed, and staging keeps it; a missing input or a failed
+write fails the build. For
 each it gives sources, the directory its public headers
 come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
 headers for `chibi_math`), public and private
@@ -336,7 +347,8 @@ everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
 owns is a manual check, about 280 s with sanitizers at a load average of 12;
 `build-graph-archive` compiles SLJIT and a math-header library from the
-archive and generates the native type sources.
+archive, and `build-graph-generated` generates the native type sources and
+rewrites the codec headers.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads

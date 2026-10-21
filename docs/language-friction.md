@@ -576,7 +576,9 @@ because each split copies the rest of the text.
 The M6 graph's `compile_commands.json` writer escaped every argument with two
 `strings.ReplaceAll` calls: with 218 commands of about forty arguments the run
 took 7 s, and 2.4 s once it asks `build.before` whether the text holds a quote
-or backslash first and escapes only the rare argument that does.
+or backslash first and escapes only the rare argument that does. Rewriting
+Cute's 96 KB of codec headers with three `strings.ReplaceAll` calls took 11 s,
+so the build host gained `build.replace`.
 
 ## A host's natives can't form a package
 

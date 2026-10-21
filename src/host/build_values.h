@@ -4,7 +4,9 @@
 #include "support/arena.h"
 #include "types/array.h"
 
-#define BUILD_TEXT_LIMIT (1024 * 1024)
+/* One text value: room for a build graph's compile_commands.json, which
+ * passed 1 MB at about 580 sources. */
+#define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
 #define BUILD_ARRAY_LIMIT 8192
 /* Values are never freed. An up-to-date build graph holds every compile
  * record it reads, about 15 MB for 362 sources with sanitizers. The limit
@@ -24,6 +26,7 @@ bool build_values_string(const pin_value *);
 bool build_values_strings(const pin_value *);
 const char *build_values_join(build_values *, const pin_value *, pin_value *);
 const char *build_values_starts_with(build_values *, const pin_value *, pin_value *);
+const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results);
 const char *build_values_before(build_values *, const pin_value *, pin_value *);
 const char *build_values_after(build_values *, const pin_value *, pin_value *);
 const char *build_values_lines(build_values *, const pin_value *, pin_value *);

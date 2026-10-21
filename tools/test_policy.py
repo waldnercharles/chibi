@@ -291,15 +291,19 @@ TOOLS = {
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
-    # Two cases: the graph compiles SLJIT and enkiTS's C++ from the third-party
+    # One case: the graph compiles SLJIT and enkiTS's C++ from the third-party
     # archive, chibi_vector_capabilities over the archive's staged Cute math
     # headers and the task pool (four C and two C++ files with the profile's
-    # sanitizers), then finds them current;
-    # it runs the configured build's reflect to write the native type sources
-    # and compiles one of them.
+    # sanitizers), then finds them current.
     'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-archive',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Two cases: the graph runs the configured build's reflect to write the
+    # native type sources and compiles one of them, and rewrites Cute's codec
+    # headers with private symbols and compiles image preparation.
+    'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                              '--build-graph-generated',
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),

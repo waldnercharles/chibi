@@ -2174,7 +2174,7 @@ that profile's name, with CMake's compiler as `CC` (and the debug directory,
 which depends on where a build is), the graph finds the rest of its profile
 on the machine and writes the compile commands of every target it owns, including
 the third-party archive's sources and include directories and the options of
-single sources, and each of the 484
+single sources, and each of the 579
 must equal `compile_commands.json`'s for the same source, apart from the
 object path and with the temporary build directory standing for CMake's. In a
 copy of the sources, about ten runs that build only `chibi_support` then check
@@ -2200,12 +2200,20 @@ enkiTS's C++ scheduler from the third-party archive CMake configured with,
 graph stages, and the task pool: four C and two C++ files with the profile's
 sanitizers. A second run compiles nothing, the objects sit below
 `objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
-`private/physics` headers equal CMake's; a run naming an archive that is not unpacked
-fails before compiling and says so. A second case builds `chibi_native_types`
-with the configured build's `reflect` (`--reflect`): the graph stages the math
-headers, runs reflect as CMake does and compiles the one source; both written
-sources equal CMake's byte for byte, and an unchanged run neither reruns
-reflect nor compiles. About 23 s at a load average of 10.
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or with C++ sources and no C++ compiler, fails before compiling and
+says so. About 32 s at a load average of 10.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. About 19 s at a load
+average of 12.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

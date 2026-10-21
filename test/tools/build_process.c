@@ -1,5 +1,6 @@
 #include "authoring/source_prepare.h"
 #include "host/build_host.h"
+#include "host/build_values.h"
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 #include "host/native_default.h"
 #endif
@@ -599,6 +600,11 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
                   "if(!build.starts_with(\"abc\",\"ab\") || "
                   "build.starts_with(\"a\",\"ab\")) { return 6; } "
                   "if(build.report(\"authored diagnostic\")!=0) { return 7; } "
+                  "if(build.replace(\"cp_a "
+                  "cp_cp_\",\"cp_\",\"x_cp_\")!=\"x_cp_a x_cp_x_cp_\" || "
+                  "build.replace(\"aaa\",\"aa\",\"\")!=\"a\" || "
+                  "build.replace(\"none\",\"cp_\",\"x\")!=\"none\") { return "
+                  "8; } "
                   "return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -1000,7 +1006,7 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
     REQUIRE(!mkfifo(path, 0600));
     snprintf(path, sizeof path, "%s/primitive-large", root);
     FILE *file = fopen(path, "wb");
-    assert(file && !ftruncate(fileno(file), 1024 * 1024 + 1));
+    assert(file && !ftruncate(fileno(file), BUILD_TEXT_LIMIT + 1));
     assert(!fclose(file));
     static const char *sources[] = {
         "package read\nBuild :: () -> int { "
@@ -1024,10 +1030,10 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
     static const char *diagnostics[] = {
         NULL,
         NULL,
-        "build file must be regular text of at most 1 MiB",
+        "build file must be regular text of at most 16 MiB",
         "build file contains NUL bytes",
-        "build file must be regular text of at most 1 MiB",
-        "build file must be regular text of at most 1 MiB",
+        "build file must be regular text of at most 16 MiB",
+        "build file must be regular text of at most 16 MiB",
     };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -1049,7 +1055,7 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
 
 TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
 {
-    size_t limit = 1024 * 1024;
+    size_t limit = BUILD_TEXT_LIMIT;
     char *text = malloc(limit);
     assert(text);
     memset(text, 'r', limit);
@@ -1072,10 +1078,17 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
         "}",
         ("package limit\nBuild :: () -> int { "
          "build.lines(build.read_file(\"primitive-many-lines\")); return 0; }"),
+        ("package limit\nBuild :: () -> int { "
+         "build.replace(build.read_file(\"primitive-limit\"),\"r\",\"rr\"); "
+         "return 0; }"),
     };
+    static const char *const refusals[] = { "",
+                                            "invalid build string arguments",
+                                            "build array limit exceeded",
+                                            "build text limit exceeded" };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             chibi_build_options options = primitive_options(sources[i], backend);
             chibi_build_result result;
             REQUIRE(chibi_build_invoke(&options, &result) == (i == 0));
@@ -1092,9 +1105,7 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
                 assert(!fclose(file));
                 REQUIRE(last == 'r');
             } else {
-                REQUIRE(
-                    !strcmp(result.diagnostic, i == 1 ? "invalid build string arguments" : "build array limit exceeded")
-                );
+                REQUIRE(!strcmp(result.diagnostic, refusals[i]));
             }
         }
     }

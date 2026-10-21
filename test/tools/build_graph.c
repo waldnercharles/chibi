@@ -724,6 +724,53 @@ TEST_CASE(native_types_generate_as_cmake)
     return true;
 }
 
+/* A library whose private headers a step rewrites, as sdk/images.cmake gives
+ * Cute's codecs private symbols: the rewritten headers equal CMake's, staging
+ * keeps them, an unchanged run compiles nothing and leaves their stamps, and
+ * a missing input fails the build. */
+TEST_CASE(rewritten_codec_headers_match_cmake)
+{
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH];
+    join(build_dir, suite, "codecs");
+    const char *const codecs_only[] = { "--target", "chibi_image_preparation", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, codecs_only) == 1);
+    const char *const headers[] = {
+        "sdk/private/image_preparation/vendor/image_png.h",
+        "sdk/private/image_preparation/vendor/image_jpg.h"
+    };
+    struct stat before[2], after;
+    for (int i = 0; i < 2; i++) {
+        join(ours, build_dir, headers[i]);
+        join(theirs, reference, headers[i]);
+        char *mine = tool_read(ours), *cmake = tool_read(theirs);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake) && !stat(ours, &before[i]));
+        free(mine);
+        free(cmake);
+    }
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, codecs_only) == 0);
+    for (int i = 0; i < 2; i++) {
+        join(ours, build_dir, headers[i]);
+        REQUIRE(
+            !stat(ours, &after) && after.st_ino == before[i].st_ino &&
+            after.st_mtime == before[i].st_mtime
+        );
+    }
+    /* An archive without the codecs fails the build and leaves the headers. */
+    char archive[GRAPH_PATH], marker[GRAPH_PATH];
+    join(archive, suite, "codec-less archive");
+    assert(!mkdir(archive, 0700));
+    join(marker, archive, "third-party.cmake");
+    tool_write(marker, "# no codecs\n");
+    const char *const options[] = { "--third-party", archive, NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, codecs_only) == -1);
+    char *text = tool_read(log_path);
+    REQUIRE(text && strstr(text, "staging chibi_image_preparation's headers failed"));
+    free(text);
+    join(ours, build_dir, headers[0]);
+    REQUIRE(!stat(ours, &after) && after.st_ino == before[0].st_ino);
+    return true;
+}
+
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -783,12 +830,20 @@ void test_build_graph_reflect(const char *host)
     tool_remove_tree(suite);
 }
 
-/* A separate route: SLJIT's compile with sanitizers and reflect's run take
+/* A separate route: SLJIT's and enkiTS's compiles with sanitizers take
  * seconds. */
 void test_build_graph_archive(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(archive_sources_compile_and_stage);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: reflect's run and the codec compile take seconds. */
+void test_build_graph_generated(const char *host)
+{
+    set_up(host);
     RUN_TEST_CASE(native_types_generate_as_cmake);
+    RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     tool_remove_tree(suite);
 }

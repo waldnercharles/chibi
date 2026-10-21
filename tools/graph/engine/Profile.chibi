@@ -158,7 +158,7 @@ pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
     parts: string[] = [];
     for (part in strings.Split(strings.Slice(build_dir, strings.ByteLength(prefix), strings.ByteLength(build_dir)), "/")) {
         if (part != "") {
-            parts = array_add(parts, "build");
+            parts.append("build");
         }
     }
     return strings.Join(parts, "/");
@@ -172,7 +172,7 @@ DiscoverLibclang :: (part: string) -> string {
     versions: string[] = [];
     for (name in build.list_directory("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
-            versions = array_add(versions, name);
+            versions.append(name);
         }
     }
     // Newest first: a longer version number is newer, then the larger.
@@ -188,7 +188,7 @@ DiscoverLibclang :: (part: string) -> string {
         }
     }
     for (version in versions) {
-        prefixes = array_add(prefixes, Join(["/usr/lib/", version]));
+        prefixes.append(Join(["/usr/lib/", version]));
     }
     for (prefix in prefixes) {
         include := Join([prefix, "/include"]);

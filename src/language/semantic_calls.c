@@ -1157,18 +1157,12 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     result.effects = script_analyzer_expr_effects(a, result.left);
     return script_analyzer_expr_add(a, result);
 }
-/* `xs.f(...)` calls the array function f with xs first. `append` adds an
- * item and `extend` an array's items, which the functions array_add and
- * append do until they take those names. */
+/* `xs.f(...)` calls the array function f with xs first. */
 const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNode member)
 {
-    char *method = script_analyzer_name_copy(a, member);
-    const char *name = script_name_matches(method, "append")    ? "array_add"
-                     : script_name_matches(method, "extend")    ? "append"
-                     : script_name_matches(method, "array_add") ? ""
-                                                                : method;
+    char *name = script_analyzer_name_copy(a, member);
     const script_catalog_capability *found = NULL;
-    for (int i = 0; *name && !found && i < a->catalog->capability_count; i++) {
+    for (int i = 0; !found && i < a->catalog->capability_count; i++) {
         const script_catalog_capability *candidate = &a->catalog->capabilities[i];
         if (candidate->kind == SCRIPT_CAPABILITY_FUNCTION && candidate->parameter_count &&
             candidate->parameters[0].type.container == PIN_CONTAINER_ARRAY &&
@@ -1177,14 +1171,14 @@ const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNod
             found = candidate;
         }
     }
-    free(method);
+    free(name);
     return found;
 }
 /* The array functions that return their array changed; `slice` returns a new one. */
 static const char *const ARRAY_CHANGERS[] = {
-    "array_add", "add_unique",   "append",      "set_array_elem",
-    "insert",    "remove_index", "remove_item", "clear",
-    "reverse",   "swap",         "resize",
+    "append",  "add_unique",   "extend",      "set_array_elem",
+    "insert",  "remove_index", "remove_item", "clear",
+    "reverse", "swap",         "resize",
 };
 bool script_analyzer_array_changer(const script_catalog_capability *function)
 {

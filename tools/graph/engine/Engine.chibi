@@ -89,20 +89,20 @@ LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
     flags: string[] = [];
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo") && Clang(profile)) {
-        flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
+        flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
     }
-    flags = append(flags, BuildTypeFlags(profile.build_type));
+    flags.extend(BuildTypeFlags(profile.build_type));
     if (profile.architecture != "") {
-        flags = append(flags, ["-arch", profile.architecture]);
+        flags.extend(["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
-        flags = append(flags, ["-isysroot", profile.sysroot]);
+        flags.extend(["-isysroot", profile.sysroot]);
     }
     if (build.platform() == "Darwin") {
-        flags = append(flags, ["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
+        flags.extend(["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
     }
     if (profile.sanitizers != "") {
-        flags = array_add(flags, Join(["-fsanitize=", profile.sanitizers]));
+        flags.append(Join(["-fsanitize=", profile.sanitizers]));
     }
     return flags;
 }
@@ -112,10 +112,10 @@ LinkFlags :: (profile: Profile, build_dir: string) -> string[] {
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        libraries = array_add(libraries, Library(source_root, build_dir, profile.third_party, linked).output);
+        libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
     }
     for (name in SystemLibraries(target)) {
-        libraries = array_add(libraries, Join(["-l", name]));
+        libraries.append(Join(["-l", name]));
     }
     return libraries;
 }
@@ -165,9 +165,9 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
     sources: string[] = [];
     for (file in Files(target)) {
         if (strings.HasPrefix(file, "generated/")) {
-            sources = array_add(sources, Join([build_dir, "/sdk/", file]));
+            sources.append(Join([build_dir, "/sdk/", file]));
         } else {
-            sources = array_add(sources, Resolve(source_root, third_party, file));
+            sources.append(Resolve(source_root, third_party, file));
         }
     }
     return sources;
@@ -198,16 +198,18 @@ IncludeDirectory :: (source_root: string, build_dir: string, third_party: string
 pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
-        flags = array_add(flags, Join(["-D", define]));
+        flags.append(Join(["-D", define]));
     }
-    flags = append(flags, ProfileFlags(target, profile));
+    flags.extend(ProfileFlags(target, profile));
     for (include in Includes(target)) {
-        flags = array_add(flags, Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+        flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
-        flags = append(flags, ["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
+        flags.extend(["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
-    return append(append(flags, Flags(profile, build_dir)), Options(target));
+    flags.extend(Flags(profile, build_dir));
+    flags.extend(Options(target));
+    return flags;
 }
 
 Clang :: (profile: Profile) -> bool {
@@ -238,31 +240,31 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
         if (Clang(profile)) {
-            flags = array_add(flags, Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
+            flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
         } else if (profile.compiler_id == "GNU") {
-            flags = array_add(flags, Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
+            flags.append(Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
         }
     }
-    flags = append(flags, BuildTypeFlags(profile.build_type));
-    flags = array_add(flags, "-std=gnu23");
+    flags.extend(BuildTypeFlags(profile.build_type));
+    flags.append("-std=gnu23");
     if (profile.architecture != "") {
-        flags = append(flags, ["-arch", profile.architecture]);
+        flags.extend(["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
-        flags = append(flags, ["-isysroot", profile.sysroot]);
+        flags.extend(["-isysroot", profile.sysroot]);
     }
     if (profile.warnings) {
-        flags = append(flags, [
+        flags.extend([
             "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Wno-missing-field-initializers",
             "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-unused-variable",
             "-Wno-zero-length-array", "-Wno-string-concatenation"
         ]);
     }
     if (profile.sanitizers != "") {
-        flags = append(flags, [Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
+        flags.extend([Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
     }
     if (Clang(profile)) {
-        flags = array_add(flags, "-Wno-gnu-zero-variadic-macro-arguments");
+        flags.append("-Wno-gnu-zero-variadic-macro-arguments");
     }
     return flags;
 }
@@ -273,7 +275,9 @@ Staged :: (targets: string[]) -> string[] {
     staged: string[] = [];
     for (target in targets) {
         staged = Add(staged, target);
-        for (include in append(Includes(target), SystemIncludes(target))) {
+        includes := Includes(target);
+        includes.extend(SystemIncludes(target));
+        for (include in includes) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
                 staged = Add(staged, Join(["chibi_", build.after(include, "/")]));
             }
@@ -287,10 +291,12 @@ Staged :: (targets: string[]) -> string[] {
 pub NeedsThirdParty :: (targets: string[]) -> bool {
     paths: string[] = [];
     for (target in targets) {
-        paths = append(append(append(paths, Files(target)), Includes(target)), SystemIncludes(target));
+        paths.extend(Files(target));
+        paths.extend(Includes(target));
+        paths.extend(SystemIncludes(target));
     }
     for (target in Staged(targets)) {
-        paths = array_add(paths, HeaderSource(target));
+        paths.append(HeaderSource(target));
     }
     for (path in paths) {
         if (strings.HasPrefix(path, "third-party/")) {
@@ -305,7 +311,9 @@ Add :: (names: string[], name: string) -> string[] {
             return names;
         }
     }
-    return array_add(names, name);
+    added := names;
+    added.append(name);
+    return added;
 }
 
 // Builds the selected targets: stages every one's headers, compiles what
@@ -335,7 +343,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
-            running = array_add(running, c.Start(tools, built, flags, source));
+            running.append(c.Start(tools, built, flags, source));
             if (length(running) - waited >= tools.jobs) {
                 failed = !c.Finish(running[waited]) || failed;
                 waited += 1;
@@ -370,7 +378,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         built := Library(source_root, build_dir, profile.third_party, target);
         objects: string[] = [];
         for (source in Sources(source_root, build_dir, profile.third_party, target)) {
-            objects = array_add(objects, c.Object(built, source));
+            objects.append(c.Object(built, source));
         }
         if (c.Link(tools, Executable(build_dir, target), objects, LinkFlags(profile, build_dir),
                    LinkLibraries(source_root, build_dir, target, profile)) < 0) {
@@ -389,7 +397,7 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
         built := Library(source_root, build_dir, profile.third_party, target);
         flags := CompileFlags(source_root, build_dir, target, profile);
         for (source in Sources(source_root, build_dir, profile.third_party, target)) {
-            entries = array_add(entries, c.CompileEntry(tools, built, flags, source));
+            entries.append(c.CompileEntry(tools, built, flags, source));
         }
     }
     return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);

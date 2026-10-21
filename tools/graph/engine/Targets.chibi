@@ -557,7 +557,7 @@ HeadersIn :: (directory: string) -> string[] {
     headers: string[] = [];
     for (name in build.list_directory(Join([build.root(), "/src/", directory]))) {
         if (strings.HasSuffix(name, ".h")) {
-            headers = array_add(headers, Join([directory, "/", name]));
+            headers.append(Join([directory, "/", name]));
         }
     }
     return headers;

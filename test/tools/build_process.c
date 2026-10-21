@@ -857,7 +857,7 @@ TEST_CASE(private_started_steps_run_together)
                   "Build :: () -> int { worker := "
                   "build.environment(\"CHIBI_BUILD_WORKER\"); "
                   "handles: int[] = []; "
-                  "for (i in 0..<4) { handles = array_add(handles, "
+                  "for (i in 0..<4) { handles = append(handles, "
                   "build.start([worker, \"sleep\", \"0.4\"])); } "
                   "failed := 0; "
                   "for (handle in handles) { if (build.wait(handle) != 0) { "

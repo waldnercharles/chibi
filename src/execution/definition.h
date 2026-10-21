@@ -142,6 +142,8 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
+    /* Some host call builds a returned local in the caller's storage. */
+    bool builds_results;
     behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
@@ -262,6 +264,8 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_prepare_borrows(behavior_function *function);
+/* Sets builds_results from the frozen function's host calls. */
+void behavior_function_note_results(behavior_function *function);
 bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);

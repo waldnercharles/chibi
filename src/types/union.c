@@ -45,11 +45,12 @@ static bool held_by(const arena *storage, const pin_value *v)
                    v->type == PIN_STR || v->type == PIN_NAME || v->type == PIN_UNION;
     return !pointer || !v->ptr || arena_contains(storage, v->ptr);
 }
-int pin_union_moved(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+int pin_union_kept(arena *storage, uint64_t tag, uint64_t keep, const pin_value *values, int count, pin_value *out)
 {
     pin_union *value = allocate(storage, tag, values, count);
     for (int i = 0; i < count; i++) {
-        if (held_by(storage, &values[i])) {
+        bool kept = i < 64 && (keep >> i & 1) && held_by(storage, &values[i]);
+        if (kept) {
             value->values[i] = values[i];
         } else if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {
             return -1;
@@ -58,7 +59,6 @@ int pin_union_moved(arena *storage, uint64_t tag, const pin_value *values, int c
     *out = (pin_value){ .type = PIN_UNION, .ptr = value };
     return 0;
 }
-
 /* Heap-owned copies use one owner header and an arena for nested snapshots.
  * This follows pin_value_copy/destroy ownership, separate from arena values. */
 typedef struct

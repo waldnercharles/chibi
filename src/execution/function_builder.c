@@ -1096,7 +1096,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
     pin_value output = f->data_values[host->result_first].initial;
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return count == 1 && INPUT(0, PIN_STR) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1105,7 +1105,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_STRING_NEXT:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
                    OUTPUT(
-                       (id & UINT64_C(0xffffffff)) == EXECUTION_INTRINSIC_STRING_ITEM
+                       execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_STRING_ITEM
                            ? PIN_STR
                            : PIN_I32
                    );
@@ -1154,8 +1154,10 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_SNAPSHOT:
             return count == 1 && same_type(values[0].initial, output);
         case EXECUTION_INTRINSIC_UNION_MAKE:
-        case EXECUTION_INTRINSIC_UNION_MOVE:
             return count >= 1 && INPUT(0, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_UNION_KEEP:
+            return count >= 2 && INPUT(0, PIN_U64) && INPUT(1, PIN_U64) &&
+                   OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_UNION_TEST:
             if (count < 2 || !INPUT(0, PIN_UNION) || !OUTPUT(PIN_BOOL)) {
                 return false;
@@ -1337,6 +1339,7 @@ static bool context_address(size_t offset)
         FIELD(variable_storage)
         FIELD(value_owner)
         FIELD(value_storage)
+        FIELD(result_storage)
         FIELD(watches)
         FIELD(edges)
         FIELD(watch_storage)

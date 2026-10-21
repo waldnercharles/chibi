@@ -53,17 +53,17 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     }
     int count = host->result_first - host->first;
     int expected = -1;
-    switch ((execution_intrinsic)(host->capability_id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(host->capability_id)) {
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_UNION_MAKE:
-        case EXECUTION_INTRINSIC_UNION_MOVE:
+        case EXECUTION_INTRINSIC_UNION_KEEP:
             if (count < 1 || host->result_count != 1) {
                 return 0;
             }
             break;
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET: {
-            int minimum = (host->capability_id & UINT64_C(0xffffffff)) ==
+            int minimum = execution_intrinsic_kind(host->capability_id) ==
                                   EXECUTION_INTRINSIC_UNION_TEST
                             ? 2
                             : 4;
@@ -414,7 +414,7 @@ static bool predicate_host(const behavior_function *f, int pc)
                !(access->flags & ~allowed) && !host->call->action;
     }
     int steps = EFFECT_STEPS;
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
@@ -440,7 +440,7 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
         case EXECUTION_INTRINSIC_UNION_MAKE:
-        case EXECUTION_INTRINSIC_UNION_MOVE:
+        case EXECUTION_INTRINSIC_UNION_KEEP:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
@@ -1390,14 +1390,14 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         cost_add(c, f, pc, call->capability_id, 0, COST_ALL, "Native call has no verified allocation, copy, or escape contract");
         return;
     }
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
             cost_add(c, f, pc, id, allocate_copy, 0, "String iteration snapshots its cursor or one Unicode scalar");
             return;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_NEXT: return;
-        case EXECUTION_INTRINSIC_UNION_MOVE:
+        case EXECUTION_INTRINSIC_UNION_KEEP:
             cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Union construction allocates a payload for the values it keeps");
             return;
         case EXECUTION_INTRINSIC_UNION_MAKE: {
@@ -1833,7 +1833,7 @@ static void share_host(share_flow *s, int pc)
                      !(access->flags & (NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ)) ||
                      (access->flags & ~allowed) || host->call->action;
     } else {
-        switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        switch (execution_intrinsic_kind(id)) {
             /* Copies follow the copied headers; a rewritten one may keep the
              * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -1844,9 +1844,11 @@ static void share_host(share_flow *s, int pc)
                 break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
-            case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
-            /* A moved payload keeps what the inputs reach. */
-            case EXECUTION_INTRINSIC_UNION_MOVE:
+            case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+                output = false;
+                break;
+                /* A moved payload keeps what the inputs reach. */
+            case EXECUTION_INTRINSIC_UNION_KEEP:
             case EXECUTION_INTRINSIC_UNION_GET: break;
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 output = share_cell(s, host->first);

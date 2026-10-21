@@ -1,4 +1,5 @@
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/service.h"
 #include "execution/wasm_jit.h"
 #include "support/array.h"
@@ -290,11 +291,20 @@ bool behavior_function_own(behavior_function *f)
         }
     }
     afree(owner.records);
+    behavior_function_note_results(f);
     f->frozen = true;
     return true;
 invalid:
     afree(owner.records);
     return false;
+}
+
+void behavior_function_note_results(behavior_function *f)
+{
+    f->builds_results = false;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
+    }
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
@@ -588,6 +598,7 @@ static pin_array *copy_array(void *storage, const pin_array *array)
 void behavior_function_bind_storage(behavior_function_context *ctx, arena *storage)
 {
     ctx->value_storage = storage;
+    ctx->result_storage = storage;
     ctx->copy_string = copy_string;
     ctx->copy_array = copy_array;
 }

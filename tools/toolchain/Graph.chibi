@@ -13,7 +13,7 @@ import strings "core:strings"
 //   --compiler PATH --compiler-id ID --build-type TYPE --architecture ARCH
 //   --sysroot DIR --warnings on|off --sanitizers LIST --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
-//   --libclang-library PATH --third-party DIR
+//   --libclang-library PATH --third-party DIR --reflect PATH
 // Every path is absolute. Writes BUILD/compile_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
@@ -50,10 +50,8 @@ Selected :: (arguments: string[], target: string) -> bool {
             if (arguments[i + 1] == target) {
                 return true;
             }
-            for (linked in engine.Links(arguments[i + 1])) {
-                if (linked == target) {
-                    return true;
-                }
+            if (engine.Linked(arguments[i + 1], target)) {
+                return true;
             }
         }
     }
@@ -88,7 +86,8 @@ Libraries :: () -> int {
         libclang_library: libclang_library,
         clang_resource_include: engine.ClangResourceInclude(libclang_library),
         // The archive for the profile as overridden.
-        third_party: Option(arguments, "--third-party", engine.ThirdParty(build.root(), compiler_id, sanitizers))
+        third_party: Option(arguments, "--third-party", engine.ThirdParty(build.root(), compiler_id, sanitizers)),
+        reflect: Option(arguments, "--reflect", "")
     };
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", build.find_executable("ccache")),

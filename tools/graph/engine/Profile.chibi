@@ -24,7 +24,8 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         libclang_include: "",
         libclang_library: "",
         clang_resource_include: "",
-        third_party: ""
+        third_party: "",
+        reflect: ""
     };
     if (name == "sanitizer") {
         profile.sanitizers = "address,undefined";

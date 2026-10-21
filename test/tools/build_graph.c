@@ -663,6 +663,53 @@ TEST_CASE(archive_sources_compile_and_stage)
     return true;
 }
 
+/* A library that compiles reflect's output runs reflect first, as CMake's
+ * generate_runtime_registry does, over the math headers the graph staged from
+ * the third-party archive; here the configured build's reflect, as a cross
+ * build names one, since building reflect takes most of a minute's ceiling.
+ * The sources it writes equal CMake's byte for byte, and an unchanged run
+ * neither reruns reflect nor compiles; one that lost an output reruns it. */
+TEST_CASE(native_types_generate_as_cmake)
+{
+    char build_dir[GRAPH_PATH], program[GRAPH_PATH];
+    join(build_dir, suite, "native types");
+    join(program, reference, "reflect");
+    const char *const types_only[] = { "--target",
+                                       "chibi_native_types",
+                                       "--reflect",
+                                       program,
+                                       NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, types_only) == 1);
+    char *log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "reflect:"));
+    free(log);
+    const char *const outputs[] = { "generated/native_types.c",
+                                    "generated/native_capabilities.c" };
+    for (int i = 0; i < 2; i++) {
+        char ours_path[GRAPH_PATH], theirs_path[GRAPH_PATH];
+        join(ours_path, build_dir, outputs[i]);
+        join(theirs_path, reference, outputs[i]);
+        char *mine = tool_read(ours_path), *cmake = tool_read(theirs_path);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake));
+        free(mine);
+        free(cmake);
+    }
+    /* reflect lists what it reflects; an up-to-date run prints nothing of it,
+     * and losing the bindings reruns it without recompiling the types. */
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, types_only) == 0);
+    log = tool_read(log_path);
+    REQUIRE(log && !strstr(log, "reflect:"));
+    free(log);
+    char bindings[GRAPH_PATH];
+    join(bindings, build_dir, "generated/native_capabilities.c");
+    REQUIRE(!unlink(bindings));
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, types_only) == 0);
+    log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "reflect:") && !access(bindings, R_OK));
+    free(log);
+    return true;
+}
+
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -722,10 +769,12 @@ void test_build_graph_reflect(const char *host)
     tool_remove_tree(suite);
 }
 
-/* A separate route: SLJIT's compile with sanitizers takes seconds. */
+/* A separate route: SLJIT's compile with sanitizers and reflect's run take
+ * seconds. */
 void test_build_graph_archive(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(archive_sources_compile_and_stage);
+    RUN_TEST_CASE(native_types_generate_as_cmake);
     tool_remove_tree(suite);
 }

@@ -649,11 +649,30 @@ archived (or, for `reflect`, linked) from the graph.
 `build-graph-archive` builds SLJIT and a math-header library, and
 `build-graph-reflect` now reads the math headers the graph staged. Writing the
 commands quotes arguments through the host's split, 7 s down to 2.4 s.
-Next: run `reflect` from the graph to generate `chibi_native_types` (43
-libraries wait on it); Box2D/Box3D, which compile as C17; tree-sitter's
-runtime and grammars; per-source options (the project, UI and language
-syntax documents); then moving profile selection from `Build.chibi`'s CMake
-arguments into the graph.
+Slice 11, 2026-10-21: generated sources and per-source options. A target
+whose sources `reflect` writes makes the graph build reflect, stage the math
+headers and run it as `generate_runtime_registry` does, recorded like a link
+(`c.Step`); `--reflect` runs another, as cross builds do. Generated sources
+are `build/` paths, and a source can add options, as CMake's source property
+does. The graph owns `chibi_native_types`, `chibi_native_bindings` and ten
+libraries over them: 72 libraries and 250 compile commands, equal to CMake's,
+whose reflected sources equal CMake's byte for byte.
+Slice 12, 2026-10-21: tree-sitter and Box2D/Box3D from the archive. A target
+names its C standard and position-independent code, and a source its own
+include directories, which come before its target's. The graph owns
+tree-sitter's runtime, the CSS and HTML grammars, Box2D, Box3D, the language
+and project syntax documents and UI authoring: 79 libraries and 362 compile
+commands, equal to CMake's. An up-to-date build of all of them read 6 MB of
+records and ran out of the host's 32 MB of never-freed values; records now
+keep each path and stamp on separate lines, and it takes 7 s. That leaves
+about twice the headroom; the next slices about double the sources, so a
+host-side stamp check or freeable build values must come with them.
+Next: C++ (enkiTS's task scheduler, which the task pool and 24 libraries over
+it wait on); private header directories shared by several libraries
+(`private/physics`, `private/graph`, the language's); the image codecs
+generated from Cute's headers; the platform and engine libraries over Cute;
+then moving profile selection from `Build.chibi`'s CMake arguments into the
+graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

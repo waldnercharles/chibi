@@ -18,14 +18,15 @@ pub Tools :: struct {
     jobs: int;
 }
 
-// A static library: the root its sources are below, the directories generated
-// and third-party sources are below, the directory its objects go to and the
-// archive it becomes. Its sources and the flags each compile takes, in order,
-// are arrays beside it, since records hold only scalars.
+// A static library: the root its sources are below, the build directory
+// generated sources are below, the directory third-party sources are below,
+// the directory its objects go to and the archive it becomes. Its sources and
+// the flags each compile takes, in order, are arrays beside it, since records
+// hold only scalars.
 pub Library :: struct {
     name: string;
     root: string;
-    generated: string;
+    build_dir: string;
     third_party: string;
     objects: string;
     output: string;
@@ -36,14 +37,14 @@ Join :: (parts: string[]) -> string {
 }
 
 // The object a source compiles to: its path below the root, or below
-// `generated/` or `third-party/` for a generated or third-party source, below
-// the library's object directory.
+// `build/` or `third-party/` for a generated or third-party source, below the
+// library's object directory.
 pub Object :: (target: Library, source: string) -> string {
     base := target.root;
     prefix := "";
-    if (strings.HasPrefix(source, Join([target.generated, "/"]))) {
-        base = target.generated;
-        prefix = "generated/";
+    if (strings.HasPrefix(source, Join([target.build_dir, "/"]))) {
+        base = target.build_dir;
+        prefix = "build/";
     } else if (target.third_party != "" && strings.HasPrefix(source, Join([target.third_party, "/"]))) {
         base = target.third_party;
         prefix = "third-party/";
@@ -61,7 +62,8 @@ pub Command :: (tools: Tools, target: Library, flags: string[], source: string) 
 }
 
 // The record that says what built a file: its command, one argument per line,
-// an empty line, then a stamp and path for each input and for the output.
+// an empty line, then for each input and for the output its path and, on the
+// next line, its stamp.
 Record :: (output: string) -> string {
     return Join([output, ".chibi-record"]);
 }
@@ -70,14 +72,16 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
     recorded := inputs;
     recorded.append(output);
     for (input in recorded) {
-        lines.append(Join([build.file_stamp(input), " ", input]));
+        lines.extend([input, build.file_stamp(input)]);
     }
     return Join([strings.Join(lines, "\n"), "\n"]);
 }
 
 // Whether output was built by command from inputs that have not changed since.
 // Records are read with the host's line natives: core:strings copies the rest
-// of the text at each line, which costs seconds over a few records.
+// of the text at each line, which costs seconds over a few records. A path and
+// its stamp are separate lines, so reading one copies nothing more: build
+// values are never freed, and an up-to-date build reads every record.
 Current :: (command: string[], output: string) -> bool {
     record := Record(output);
     if (!build.file_exists(record) || !build.file_exists(output)) {
@@ -93,9 +97,12 @@ Current :: (command: string[], output: string) -> bool {
             return false;
         }
     }
-    for (i in count + 1..<length(lines)) {
-        line := lines[i];
-        if (build.file_stamp(build.after(line, " ")) != build.before(line, " ")) {
+    if ((length(lines) - count - 1) % 2 != 0) {
+        return false;
+    }
+    for (i in 0..<(length(lines) - count - 1) / 2) {
+        at := count + 1 + 2 * i;
+        if (build.file_stamp(lines[at]) != lines[at + 1]) {
             return false;
         }
     }
@@ -284,6 +291,14 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
             inputs.append(linked);
         }
     }
+    return Step(command, inputs, output);
+}
+
+// Runs a command that writes output, unless output was written by the same
+// command from inputs that have not changed since, and records it as a
+// compile is recorded. 1 when it ran, 0 when output was current, -1 on
+// failure.
+pub Step :: (command: string[], inputs: string[], output: string) -> int {
     if (Current(command, output)) {
         return 0;
     }

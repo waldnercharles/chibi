@@ -30,6 +30,9 @@ pub Profile :: struct {
     // cmake/third_party.cmake picks it (ThirdParty); `third-party/` paths are
     // below it.
     third_party: string;
+    // A reflect program to run instead of the one the graph builds, as a
+    // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
+    reflect: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as
@@ -48,13 +51,18 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     return include;
 }
 
-// Flags the profile gives a target's compiles, after its defines.
-ProfileFlags :: (target: string, profile: Profile) -> string[] {
+// Defines the profile gives a target's compiles, after its own.
+ProfileDefines :: (target: string, profile: Profile) -> string[] {
     if (target == "reflect") {
-        return [
-            Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""]),
-            Join(["-I", profile.libclang_include])
-        ];
+        return [Join(["-DCHIBI_REFLECT_RESOURCE_INCLUDE_DIR=\"", profile.clang_resource_include, "\""])];
+    }
+    return [];
+}
+
+// Include directories the profile gives a target, before its others.
+ProfileIncludes :: (target: string, profile: Profile) -> string[] {
+    if (target == "reflect") {
+        return [profile.libclang_include];
     }
     return [];
 }
@@ -138,37 +146,31 @@ pub Library :: (source_root: string, build_dir: string, third_party: string, tar
     return {
         name: target,
         root: source_root,
-        generated: Generated(build_dir),
+        build_dir: build_dir,
         third_party: third_party,
         objects: Join([build_dir, "/objects/", target]),
         output: Join([build_dir, "/lib/lib", target, ".a"])
     };
 }
 
-// Where generated sources are written, as CMake writes them below sdk/.
-pub Generated :: (build_dir: string) -> string {
-    return Join([build_dir, "/sdk/generated"]);
-}
-
-// A path the tables name: below the third-party archive for a `third-party/`
-// path, otherwise below the source root.
-Resolve :: (source_root: string, third_party: string, path: string) -> string {
+// A path the tables name: below the build directory for a `build/` path, as
+// CMake writes generated sources; below the third-party archive for a
+// `third-party/` path; otherwise below the source root.
+Resolve :: (source_root: string, build_dir: string, third_party: string, path: string) -> string {
+    if (strings.HasPrefix(path, "build/")) {
+        return Join([build_dir, "/", build.after(path, "/")]);
+    }
     if (strings.HasPrefix(path, "third-party/")) {
         return Join([third_party, "/", build.after(path, "/")]);
     }
     return Join([source_root, "/", path]);
 }
 
-// A target's sources: below the build's generated directory for a
-// `generated/` entry, otherwise where Resolve finds them.
+// A target's sources, where Resolve finds them.
 pub Sources :: (source_root: string, build_dir: string, third_party: string, target: string) -> string[] {
     sources: string[] = [];
     for (file in Files(target)) {
-        if (strings.HasPrefix(file, "generated/")) {
-            sources.append(Join([build_dir, "/sdk/", file]));
-        } else {
-            sources.append(Resolve(source_root, third_party, file));
-        }
+        sources.append(Resolve(source_root, build_dir, third_party, file));
     }
     return sources;
 }
@@ -177,11 +179,75 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
 // failure fails the program.
 Embed :: (source_root: string, build_dir: string, target: string) {
     for (embed in Embeds(target)) {
-        output := Join([build_dir, "/sdk/", build.before(embed, "=")]);
+        output := Resolve(source_root, build_dir, "", build.before(embed, "="));
         rest := build.after(embed, "=");
         build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
         build.embed_file(Join([source_root, "/", build.after(rest, "=")]), output, build.before(rest, "="));
     }
+}
+
+// Whether building the targets runs reflect first: one compiles a source it
+// writes.
+Reflects :: (targets: string[]) -> bool {
+    for (target in targets) {
+        if (Generator(target) == "reflect") {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Builds reflect, unless the profile names one, and stages the math headers
+// it reads, then writes the native type and binding sources with it, as root
+// CMakeLists.txt's generate_runtime_registry does, when reflect or an input
+// CMake names changed. The other output counts as an input, so losing it
+// reruns reflect. The number of sources compiled, or -1 on failure.
+Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string) -> int {
+    program := profile.reflect;
+    if (program == "") {
+        program = Executable(build_dir, "reflect");
+    }
+    prerequisites: string[] = [];
+    for (target in Targets()) {
+        built := profile.reflect == "" && (target == "reflect" || Linked("reflect", target));
+        if (built || target == "chibi_math") {
+            prerequisites.append(target);
+        }
+    }
+    compiled := Build(tools, profile, source_root, build_dir, prerequisites);
+    if (compiled < 0) {
+        return -1;
+    }
+    types := Resolve(source_root, build_dir, "", Files("chibi_native_types")[0]);
+    bindings := Resolve(source_root, build_dir, "", Files("chibi_native_bindings")[0]);
+    command := [
+        program, Join([source_root, "/src/runtime/native_nodes.c"]), "--prefix", "", "--types-output", types,
+        "--runtime-output", bindings, "--include", Join([source_root, "/src"]), "--include",
+        Join([build_dir, "/sdk/public/math"]), "--manifest", Join([source_root, "/src/runtime/component_ids.tsv"])
+    ];
+    if (profile.sysroot != "") {
+        command.extend(["--sysroot", profile.sysroot]);
+    }
+    inputs := [program, bindings];
+    for (input in ["src/runtime/component_ids.tsv", "src/runtime/native_nodes.c", "src/runtime/interface.h",
+                   "src/runtime/components.h", "src/types/annotate.h"]) {
+        inputs.append(Join([source_root, "/", input]));
+    }
+    if (c.Step(command, inputs, types) < 0) {
+        build.report("graph: reflect failed");
+        return -1;
+    }
+    return compiled;
+}
+
+// Whether an executable links a library.
+pub Linked :: (program: string, target: string) -> bool {
+    for (linked in Links(program)) {
+        if (linked == target) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Where an include directory the tables name is: staged headers below the
@@ -190,25 +256,47 @@ IncludeDirectory :: (source_root: string, build_dir: string, third_party: string
     if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
         return Join([build_dir, "/sdk/", include]);
     }
-    return Resolve(source_root, third_party, include);
+    return Resolve(source_root, build_dir, third_party, include);
 }
 
-// Its defines, its include directories, then its system ones, the profile's
-// flags, then its own options: the order CMake writes them.
-pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
+// Its defines, a source's own include directories (SourceIncludes) and then
+// its own, its system ones, the profile's flags, then its own options: the
+// order CMake writes them. SourceFlags adds a source's own.
+pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile,
+                     source_includes: string[]) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
         flags.append(Join(["-D", define]));
     }
-    flags.extend(ProfileFlags(target, profile));
+    flags.extend(ProfileDefines(target, profile));
+    for (include in source_includes) {
+        flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
+    }
+    for (include in ProfileIncludes(target, profile)) {
+        flags.append(Join(["-I", include]));
+    }
     for (include in Includes(target)) {
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
         flags.extend(["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
-    flags.extend(Flags(profile, build_dir));
+    flags.extend(Flags(profile, build_dir, target));
     flags.extend(Options(target));
+    return flags;
+}
+
+// The flags a source compiles with: its target's, which target_flags holds
+// unless the source has its own include directories, then its own options,
+// last, where CMake puts source properties.
+SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
+                target_flags: string[]) -> string[] {
+    includes := SourceIncludes(target, file);
+    flags := target_flags;
+    if (length(includes) > 0) {
+        flags = CompileFlags(source_root, build_dir, target, profile, includes);
+    }
+    flags.extend(SourceOptions(target, file));
     return flags;
 }
 
@@ -234,8 +322,9 @@ BuildTypeFlags :: (build_type: string) -> string[] {
 }
 
 // The flags every C compile takes after its include directories, in the order
-// root CMakeLists.txt and CMake's platform files give them.
-pub Flags :: (profile: Profile, build_dir: string) -> string[] {
+// root CMakeLists.txt and CMake's platform files give them, with the target's
+// C standard and position-independent code.
+pub Flags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     flags: string[] = [];
     if (profile.debug_compilation_dir != "" &&
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
@@ -246,12 +335,15 @@ pub Flags :: (profile: Profile, build_dir: string) -> string[] {
         }
     }
     flags.extend(BuildTypeFlags(profile.build_type));
-    flags.append("-std=gnu23");
+    flags.append(Join(["-std=", Standard(target)]));
     if (profile.architecture != "") {
         flags.extend(["-arch", profile.architecture]);
     }
     if (profile.sysroot != "") {
         flags.extend(["-isysroot", profile.sysroot]);
+    }
+    if (PositionIndependent(target)) {
+        flags.append("-fPIC");
     }
     if (profile.warnings) {
         flags.extend([
@@ -322,11 +414,18 @@ Add :: (names: string[], name: string) -> string[] {
 // wait for another's archive. The number of sources compiled, or -1 on failure.
 pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> int {
     source_dir := Join([source_root, "/src"]);
+    generated := 0;
+    if (Reflects(targets)) {
+        generated = Reflect(tools, profile, source_root, build_dir);
+        if (generated < 0) {
+            return -1;
+        }
+    }
     for (target in targets) {
         Embed(source_root, build_dir, target);
     }
     for (target in Staged(targets)) {
-        published := Resolve(source_root, profile.third_party, HeaderSource(target));
+        published := Resolve(source_root, build_dir, profile.third_party, HeaderSource(target));
         if (!c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public")) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"))) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
@@ -338,8 +437,10 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     failed := false;
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, build_dir, profile.third_party, target)) {
+        target_flags := CompileFlags(source_root, build_dir, target, profile, []);
+        for (file in Files(target)) {
+            source := Resolve(source_root, build_dir, profile.third_party, file);
+            flags := SourceFlags(source_root, build_dir, target, file, profile, target_flags);
             if (failed || !c.Stale(tools, built, flags, source)) {
                 continue;
             }
@@ -386,7 +487,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
     }
-    return length(running);
+    return length(running) + generated;
 }
 
 // The compile commands of the selected targets as a compile_commands.json, as
@@ -395,9 +496,10 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
     entries: string[] = [];
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        flags := CompileFlags(source_root, build_dir, target, profile);
-        for (source in Sources(source_root, build_dir, profile.third_party, target)) {
-            entries.append(c.CompileEntry(tools, built, flags, source));
+        flags := CompileFlags(source_root, build_dir, target, profile, []);
+        for (file in Files(target)) {
+            source := Resolve(source_root, build_dir, profile.third_party, file);
+            entries.append(c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
         }
     }
     return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);

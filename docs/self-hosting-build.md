@@ -260,29 +260,34 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
   repeated, builds only the named libraries.
 - Each compile writes `-MD` dependencies. After it succeeds, the graph writes
-  a record beside the object: the command, then the `build.file_stamp` and
-  path of every input and of the object. A later run recompiles a source when
-  its record is missing, its command differs, or any recorded stamp changed;
-  the archive is rebuilt when an object was or its own record differs. A
-  failed compile leaves no record, so the next run retries it. Records are
-  read with `build.lines`, because `core:strings` copies the rest of the text
-  at each line and an up-to-date run took seconds.
+  a record beside the object: the command, then the path and, on its own
+  line, the `build.file_stamp` of every input and of the object. A later run
+  recompiles a source when its record is missing, its command differs, or any
+  recorded stamp changed; the archive is rebuilt when an object was or its own
+  record differs. A failed compile leaves no record, so the next run retries
+  it. Records are read with `build.lines`, because `core:strings` copies the
+  rest of the text at each line and an up-to-date run took seconds. Paths and
+  stamps are separate lines because build values are never freed: with 362
+  sources an up-to-date run reads about 6 MB of records, and splitting each
+  line in two exceeded the host's 32 MB of values.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
   and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
   CMake stages them. A header is copied only when its contents differ, so
   unchanged headers keep their stamps, and a staged file no header names is
   removed, as `chibi_sdk_headers` does.
-- A compile's flags are its defines, then its include directories in CMake's
-  order (staged `public/NAME` and `private/NAME` directories, source-tree
-  directories such as `third_party/fmt`, or `third-party/` directories in the
-  third-party archive), then its system include directories as `-isystem`,
-  such as the staged Cute math headers, then the profile flags root
-  `CMakeLists.txt` adds, in its order: the ccache debug directory, the build
-  type's flags, `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the
-  sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then the
-  target's own options, such as `-w` for vendored C.
+- A compile's flags are its defines, then the source's own include
+  directories, then the target's in CMake's order (staged `public/NAME` and
+  `private/NAME` directories, source-tree directories such as
+  `third_party/fmt`, or `third-party/` directories in the third-party
+  archive), then its system include directories as `-isystem`, such as the
+  staged Cute math headers, then the profile flags root `CMakeLists.txt`
+  adds, in its order: the ccache debug directory, the build type's flags,
+  the target's `-std` (`gnu23` unless it declares another), `-arch` and
+  `-isysroot`, `-fPIC` for position-independent targets, the warning set,
+  the sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then
+  the target's own options, such as `-w` for vendored C, and the source's.
 
-`graph:engine`'s `Targets.chibi` lists the 60 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 79 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -294,20 +299,38 @@ engine component KDL are generated sources, `chibi_save_runtime`, and
 third-party archive, with the libraries that need only those (the behavior,
 scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
 Studio capabilities, the prepared native catalog, model baking and the scene
-and prototype documents): 211 sources in 56 archives. For each it gives sources, the directory its public headers
+and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
+whose sources `reflect` writes, with the libraries over them (the spatial,
+entity, rhythm, particle, input and visual motion runtimes, declared
+components, the visual catalog, scene authoring and the scenario document),
+and from the archive tree-sitter's runtime (`chibi_syntax_runtime`), its CSS
+and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
+project syntax documents and UI authoring over them: 355 sources in 75
+archives. For each it gives sources, the directory its public headers
 come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
 headers for `chibi_math`), public and private
-headers, include directories, defines, options and embedded files. An
-`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT (a
-`generated/` path, below `BUILD/sdk`) with `build.embed_file`, before any
-compile. Building
+headers, include directories, defines, options, options of single sources
+(CMake's `COMPILE_OPTIONS` source property, such as `-ffp-contract=off` for the
+transform and particle kernels), include directories of single sources, which
+come first (`INCLUDE_DIRECTORIES`, each grammar's parser headers), the C
+standard (`gnu23`, or `gnu17` for Box2D and Box3D's `C_STANDARD 17`), whether it
+is position-independent (`-fPIC`) and embedded files. A generated source is a
+`build/` path, below the build directory where CMake writes it. An
+`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT with
+`build.embed_file`, before any compile. A target whose `Generator` is
+`reflect` first makes the graph build `reflect` and stage the math headers,
+then run it as root `CMakeLists.txt`'s `generate_runtime_registry` does, to
+write `BUILD/generated/native_types.c` and `native_capabilities.c`; `c.Step`
+records the run as a link is recorded, over the inputs CMake names, and
+reruns it only when one changed. `--reflect PATH` runs another reflect
+instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree.
 That route compiles only `chibi_support`; building every library the graph
 owns is a manual check, about 280 s with sanitizers at a load average of 12;
 `build-graph-archive` compiles SLJIT and a math-header library from the
-archive.
+archive and generates the native type sources.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -342,7 +365,7 @@ hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
 explicit option still overrides what it names. Writing the compile commands
 escapes an argument only when the host's `build.before` finds a backslash or
 quote in it, because `core:strings.ReplaceAll` scans byte by byte in the
-interpreter: with 218 commands it took 7 s, and now 2.4 s.
+interpreter: with 218 commands it took 7 s, and then 2.4 s.
 
 Windows keeps CMake: the build host has no Windows process support yet.
 

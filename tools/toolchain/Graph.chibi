@@ -6,11 +6,14 @@ import strings "core:strings"
 
 // Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
-//   Libraries -- --build DIR --compiler PATH --compiler-id ID --build-type TYPE
-//     [--architecture ARCH] [--sysroot DIR] [--warnings on|off] [--sanitizers LIST]
-//     [--debug-compilation-dir DIR] [--launcher PATH] --archiver PATH
-//     --ranlib PATH [--libclang-include DIR --libclang-library PATH] [--jobs N]
+//   Libraries -- --build DIR [--profile sanitizer|debug|release] [--jobs N]
 //     [--target NAME]... [--commands-only on]
+// The profile, the Makefile's sanitizer profile unless named, is found on
+// this machine (engine.Discover); these options override what they name:
+//   --compiler PATH --compiler-id ID --build-type TYPE --architecture ARCH
+//   --sysroot DIR --warnings on|off --sanitizers LIST --debug-compilation-dir DIR
+//   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
+//   --libclang-library PATH
 // Every path is absolute. Writes BUILD/compile_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
@@ -61,29 +64,38 @@ Libraries :: () -> int {
     arguments := build.arguments();
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
+    // The named profile as this machine provides it; each option overrides
+    // what it names.
+    found := engine.Discover(Option(arguments, "--profile", "sanitizer"), build.root(), build_dir);
+    compiler := Option(arguments, "--compiler", found.compiler);
+    warnings := "off";
+    if (found.warnings) {
+        warnings = "on";
+    }
+    libclang_library := Option(arguments, "--libclang-library", found.libclang_library);
     profile: engine.Profile = {
-        compiler: Option(arguments, "--compiler", ""),
-        compiler_id: Option(arguments, "--compiler-id", ""),
-        build_type: Option(arguments, "--build-type", ""),
-        architecture: Option(arguments, "--architecture", ""),
-        sysroot: Option(arguments, "--sysroot", ""),
-        warnings: Option(arguments, "--warnings", "on") == "on",
-        sanitizers: Option(arguments, "--sanitizers", ""),
-        debug_compilation_dir: Option(arguments, "--debug-compilation-dir", ""),
-        libclang_include: Option(arguments, "--libclang-include", ""),
-        libclang_library: Option(arguments, "--libclang-library", ""),
-        clang_resource_include: engine.ClangResourceInclude(Option(arguments, "--libclang-library", ""))
+        compiler: compiler,
+        compiler_id: Option(arguments, "--compiler-id", engine.CompilerId(compiler)),
+        build_type: Option(arguments, "--build-type", found.build_type),
+        architecture: Option(arguments, "--architecture", found.architecture),
+        sysroot: Option(arguments, "--sysroot", found.sysroot),
+        warnings: Option(arguments, "--warnings", warnings) == "on",
+        sanitizers: Option(arguments, "--sanitizers", found.sanitizers),
+        debug_compilation_dir: Option(arguments, "--debug-compilation-dir", found.debug_compilation_dir),
+        libclang_include: Option(arguments, "--libclang-include", found.libclang_include),
+        libclang_library: libclang_library,
+        clang_resource_include: engine.ClangResourceInclude(libclang_library)
     };
     tools: c.Tools = {
-        launcher: Option(arguments, "--launcher", ""),
+        launcher: Option(arguments, "--launcher", build.find_executable("ccache")),
         compiler: profile.compiler,
-        archiver: Option(arguments, "--archiver", ""),
-        ranlib: Option(arguments, "--ranlib", ""),
+        archiver: Option(arguments, "--archiver", build.find_executable("ar")),
+        ranlib: Option(arguments, "--ranlib", engine.DiscoverTool(compiler, "llvm-ranlib", "ranlib")),
         jobs: jobs
     };
     if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(profile.compiler, "/") ||
         tools.archiver == "" || tools.ranlib == "" || jobs < 1) {
-        build.report("graph: --build, --compiler, --archiver and --ranlib are required, and --jobs must be positive");
+        build.report("graph: --build must be absolute, a compiler, archiver and ranlib must be found, and --jobs must be positive");
         return 2;
     }
     selected: string[] = [];

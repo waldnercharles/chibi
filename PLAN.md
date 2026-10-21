@@ -635,6 +635,10 @@ command, and the program it links writes the same reflected sources
 (`build-graph-reflect`). A failure inside a called function now reaches the
 build host's diagnostic, through the failure observer package tests use;
 before, it read as "instruction budget exhausted".
+Slice 9, 2026-10-21: profiles. The graph finds the Makefile's sanitizer,
+debug or release profile on the machine: compiler, its kind, architecture,
+SDK, ccache, libclang, `ar` and `ranlib`. From only the profile's name and
+CMake's compiler as `CC`, its 129 commands equal CMake's.
 Next: run `reflect` from the graph to generate `chibi_native_types`, once Cute
 math's headers come from the repository; the fetched
 dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),

@@ -159,9 +159,17 @@ static void libclang(char include[GRAPH_PATH], char library[GRAPH_PATH])
 /* Runs the graph's Libraries entry over root into build_dir with the options
  * after it; the number of sources it compiled, 0 when it only wrote commands,
  * or -1 when it failed. */
-static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
+/* Runs the graph's Libraries entry over root into build_dir with the options
+ * in options and then extra; the number of sources it compiled, 0 when it
+ * only wrote commands, or -1 when it failed. */
+static int run_graph(
+    const char *root,
+    const char *build_dir,
+    const char *const *options,
+    const char *const *extra
+)
 {
-    const char *argv[64] = { host_path,
+    const char *argv[80] = { host_path,
                              "--root",
                              root,
                              "--source",
@@ -177,30 +185,11 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
                              "--",
                              "--build",
                              build_dir,
-                             "--compiler",
-                             compiler,
-                             "--compiler-id",
-                             compiler_id,
-                             "--build-type",
-                             build_type,
-                             "--warnings",
-                             warn ? "on" : "off",
-                             "--archiver",
-                             archiver,
-                             "--ranlib",
-                             ranlib,
                              "--jobs",
                              "8" };
-    int count = 30;
-    const char *optional[][2] = { { "--architecture", architecture },
-                                  { "--sysroot", sysroot },
-                                  { "--sanitizers", sanitizers },
-                                  { "--debug-compilation-dir", debug_dir } };
-    for (int i = 0; i < 4; i++) {
-        if (optional[i][1][0]) {
-            argv[count++] = optional[i][0];
-            argv[count++] = optional[i][1];
-        }
+    int count = 18;
+    for (int i = 0; options[i]; i++) {
+        argv[count++] = options[i];
     }
     for (int i = 0; extra[i]; i++) {
         argv[count++] = extra[i];
@@ -217,6 +206,61 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
     const char *at = text ? strstr(text, "compiled ") : NULL;
     int compiled = at ? atoi(at + strlen("compiled ")) : 0;
     free(text);
+    return compiled;
+}
+/* A run with every profile value given, so nothing is discovered, and no
+ * launcher. */
+static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
+{
+    const char *const options[] = {
+        "--compiler",
+        compiler,
+        "--compiler-id",
+        compiler_id,
+        "--build-type",
+        build_type,
+        "--warnings",
+        warn ? "on" : "off",
+        "--archiver",
+        archiver,
+        "--ranlib",
+        ranlib,
+        "--architecture",
+        architecture,
+        "--sysroot",
+        sysroot,
+        "--sanitizers",
+        sanitizers,
+        "--debug-compilation-dir",
+        debug_dir,
+        "--launcher",
+        "",
+        NULL,
+    };
+    return run_graph(root, build_dir, options, extra);
+}
+/* A run that names only the Makefile profile the configured build used, with
+ * its compiler as CC, so the graph finds the rest. The debug directory depends
+ * on where the build is, so it is given. */
+static int discovered_graph(const char *root, const char *build_dir, const char *const *extra)
+{
+    const char *profile = sanitizers[0]                  ? "sanitizer"
+                        : !strcmp(build_type, "Release") ? "release"
+                                                         : "debug";
+    const char *const options[] = {
+        "--profile", profile,      "--debug-compilation-dir",
+        debug_dir,   "--warnings", warnings ? "on" : "off",
+        NULL
+    };
+    char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
+    assert(!setenv("CC", compiler, 1));
+    int compiled = run_graph(root, build_dir, options, extra);
+    if (saved) {
+        assert(!setenv("CC", saved, 1));
+    } else {
+        assert(!unsetenv("CC"));
+    }
+    free(saved);
     return compiled;
 }
 static const char *const support_only[] = { "--target", "chibi_support", NULL };
@@ -252,19 +296,14 @@ static bool same_command(yyjson_val *ours, char *theirs)
     return index == yyjson_arr_size(ours);
 }
 
-/* Every compile command the graph writes equals CMake's for the same source. */
+/* Every compile command the graph writes, from the profile it finds, equals
+ * CMake's for the same source. */
 TEST_CASE(commands_match_cmake)
 {
-    char include[GRAPH_PATH], library[GRAPH_PATH];
-    libclang(include, library);
-    const char *const commands_only[] = { "--commands-only",
-                                          "on",
-                                          "--libclang-include",
-                                          include,
-                                          "--libclang-library",
-                                          library,
-                                          NULL };
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only) == 0);
+    /* Only the profile's name: the graph finds its compiler, SDK, libclang and
+     * flags as CMake did. */
+    const char *const commands_only[] = { "--commands-only", "on", NULL };
+    REQUIRE(discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only) == 0);
     char path[GRAPH_PATH];
     join(path, built, "compile_commands.json");
     yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);

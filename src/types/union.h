@@ -18,6 +18,10 @@ typedef struct
 #define PIN_UNION_CANCELLED_TAG UINT64_C(0x63616e63656c6c65)
 
 int pin_union_value(arena *, uint64_t tag, const pin_value *, int count, pin_value *out);
+/* A union that holds the given values themselves, which must live in the
+ * arena and stay unchanged while the union does, as a returned value's do
+ * until the return copies it. */
+void pin_union_moved(arena *, uint64_t tag, const pin_value *, int count, pin_value *out);
 void pin_union_cancelled(pin_value *out);
 /* Owned copies for pin_value_copy/destroy; never destroy an arena value. */
 int pin_union_copy(pin_value *out, const pin_value *source);

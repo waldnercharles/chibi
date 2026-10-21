@@ -56,6 +56,7 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     switch ((execution_intrinsic)(host->capability_id & UINT64_C(0xffffffff))) {
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_UNION_MAKE:
+        case EXECUTION_INTRINSIC_UNION_MOVE:
             if (count < 1 || host->result_count != 1) {
                 return 0;
             }
@@ -439,6 +440,7 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
         case EXECUTION_INTRINSIC_UNION_MAKE:
+        case EXECUTION_INTRINSIC_UNION_MOVE:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
@@ -1395,6 +1397,9 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             return;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_NEXT: return;
+        case EXECUTION_INTRINSIC_UNION_MOVE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Union construction allocates a payload for the values it keeps");
+            return;
         case EXECUTION_INTRINSIC_UNION_MAKE: {
             int count = call->result_first - call->first;
             if (count > 1) {
@@ -1834,6 +1839,7 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
             case EXECUTION_INTRINSIC_UNION_MAKE:
+            case EXECUTION_INTRINSIC_UNION_MOVE:
             case EXECUTION_INTRINSIC_REFERENCE_READ:
                 output = s->retyped && inputs;
                 break;

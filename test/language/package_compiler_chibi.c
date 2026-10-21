@@ -81,20 +81,23 @@ typedef enum
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings. A
  * `game` sample's target links the core pack a game links, which declares
- * assert; preparing every sample with it would cost each selector seconds. An `updates` sample's `Build(count)` updates a
- * local array in place: doubling its count at most doubles the values it
- * copies, where copying the array on each update would quadruple them. A
- * `boxed` sample's Boxed functions read only arrays that are never packed,
- * and its Packed functions arrays that may be. A `moves` sample calls no
- * native: its Moved functions take fresh values into locals and returns
- * without copying them, and its Copied function copies an array's element.
- * An `aliases` sample's Aliased functions read records and arrays nothing
- * changes in place, and its CopiedWalk copies the array its loop changes. */
+ * assert; preparing every sample with it would cost each selector seconds. An
+ * `updates` sample's `Build(count)` updates a local array in place: doubling
+ * its count at most doubles the values it copies, where copying the array on
+ * each update would quadruple them. A `boxed` sample's Boxed functions read
+ * only arrays that are never packed, and its Packed functions arrays that may
+ * be. A `moves` sample calls no native: its Moved functions take fresh values
+ * into locals and returns without copying them, and its Copied function copies
+ * an array's element. An `aliases` sample's Aliased functions read records and
+ * arrays nothing changes in place, and its CopiedWalk copies the array its loop
+ * changes. A `variants` sample calls no native: its Kept functions return
+ * variants that keep their payload values, and its Copied function builds one
+ * it keeps after a change. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases;
+    bool core, updates, boxed, game, moves, aliases, variants;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -190,6 +193,32 @@ static const sample samples[] = {
                  { "MovedResults", "[]", "[12]" },
                  { "MovedSecond", "[4]", "[5]" },
                  { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+    { .name = "returned variants",
+      .group = IMPORT_SAMPLES,
+      .variants = true,
+      .source = "package facts\n"
+                "Holder :: union { Some(items: int[], name: string) }\n"
+                "KeptMake :: (n: int) -> Holder {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    return (Holder.Some(xs, \"made\"));\n}\n"
+                "KeptAgain :: (h: Holder) -> Holder {\n"
+                "    switch h { case .Some(items, name): return "
+                "Holder.Some(items, name); }\n}\n"
+                "Total :: () -> int {\n"
+                "    a := KeptMake(3);\n    b := KeptMake(5);\n    c := "
+                "KeptAgain(a);\n"
+                "    total: int = 0;\n"
+                "    switch a { case .Some(items, name): total += items[2] * "
+                "100; }\n"
+                "    switch b { case .Some(items, name): total += items[4] * "
+                "10; }\n"
+                "    switch c { case .Some(items, name): total += items[1]; }\n"
+                "    return total;\n}\n"
+                "CopiedHold :: (xs: int[]) -> int {\n"
+                "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
+                "    switch h { case .Some(items, name): return items[0]; }\n}",
+      .calls = { { "Total", "[]", "[241]" }, { "CopiedHold", "[[5,6]]", "[5]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -2247,6 +2276,59 @@ static bool moves_fresh_values(const unsigned char *bytes, size_t length)
     REQUIRE(moved == 4 && copied == 1 && !wrong);
     return true;
 }
+static int union_calls(const behavior_function *f, const node_host_call *call)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id == execution_intrinsic_id(call);
+    }
+    return count;
+}
+/* A returned variant keeps its payload values, which the return copies to the
+ * caller; one kept in a local copies them, since the local's array changes. */
+static bool moves_returned_variants(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler variants load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int kept = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool keep = !strncmp(f.entry, "Kept", 4),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            int moves = union_calls(f.body, &EXECUTION_union_move_call),
+                makes = union_calls(f.body, &EXECUTION_union_make_call);
+            kept += keep;
+            copied += copy;
+            if ((keep && (moves != 1 || makes || snapshots(f.body))) ||
+                (copy && (moves || makes != 1))) {
+                fprintf(stderr, "package compiler %s moves %d and makes %d variants\n", f.entry, moves, makes);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(kept == 2 && copied == 1 && !wrong);
+    return true;
+}
 /* A loop over an array nothing changes, and a local that reads an element of
  * it, read in place; a loop whose body changes its array walks a copy. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
@@ -2611,6 +2693,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->boxed || reads_boxed(bytes, length)) &&
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
+                   (!s->variants || moves_returned_variants(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

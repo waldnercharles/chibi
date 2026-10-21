@@ -582,6 +582,29 @@ Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
 Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
     return Step.Failed(Diagnose(forest, node, document, message));
 }
+// Whether a value is new in the function's value storage, where a copy
+// would go, and nothing else reaches it: a literal, a union's variant, or an
+// authored function's result, which the call copies there. A native may
+// return an argument, so its result is not fresh.
+Fresh :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], callables: Callable[], names: Name[],
+          package: int, node: int) -> bool {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "struct_expression") || Is(forest, value, "array_expression") ||
+        Is(forest, value, "map_expression")) {
+        return true;
+    }
+    if (Is(forest, value, "member_expression")) {
+        return UnionOf(forest, text, types, names, package, value) >= 0;
+    }
+    if (!Is(forest, value, "call_expression")) {
+        return false;
+    }
+    callee := Field(forest, value, "function");
+    if (Is(forest, callee, "member_expression") && UnionOf(forest, text, types, names, package, callee) >= 0) {
+        return true;
+    }
+    return CalledFunction(forest, text, callables, names, package, value) >= 0;
+}
 // Records and arrays are pointers to their storage.
 Pointer :: (storage: int, container: int) -> bool {
     return container != 0 || storage == StructStorage;

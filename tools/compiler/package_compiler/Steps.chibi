@@ -172,6 +172,21 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
                         Typed(at.slot + 2, kept.storage, kept.container, kept.record), NoValue(), marks);
 }
 
+// The cell a fresh value moves into instead of a copy, and the code that
+// gives the cell's header its payload as it stands.
+MovedCell :: (value: Value) -> Cell {
+    return {storage: value.storage, container: value.container, record: value.record, constant: 0, variant: -1,
+            kind: ValueKind};
+}
+AddressSlot :: (target: Target) -> Slot {
+    return {storage: target.pointer_storage, kind: AddressKind};
+}
+MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item: snapshot.SnapshotNode) -> Code[] {
+    write := Instruction(ops.write, target.pointer_storage, 0, value.slot, slot, 0, item);
+    write.offset = target.payload_offset;
+    return [Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, item), write];
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -193,6 +208,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     next: Work[] = [];
     marks: int[] = [];
     popped: int = 0;
+    produced := NoValue();
     retained := NoValue();
     if (item.phase == 0) {
         code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
@@ -407,9 +423,18 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                  node: Field(forest, item.node, "name")};
                 bound = array_add(bound, binding);
             } else if (Pointer(local.storage, local.container)) {
-                // The local is the cell that holds its own copy.
+                // The local is the cell that holds its own copy, or the fresh
+                // value itself.
                 code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
-                retained = result;
+                if (Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                    cells = array_add(cells, MovedCell(result));
+                    slots = array_add(slots, AddressSlot(target));
+                    code = append(code, MoveCode(result, ops, target, at.slot + length(slots) - 1,
+                                                 at.cell + length(cells) - 1, node));
+                    produced = result;
+                } else {
+                    retained = result;
+                }
                 next = array_add(next, Resume(item.node, RetainedPhase, 0, 0));
             } else if (Holds(referenced, name)) {
                 // A ref argument reaches it, so it lives in a data cell.
@@ -483,7 +508,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "assigned value differs from its local");
             }
             if (binding.place == CellPlace) {
-                retained = stored;
+                // A fresh value replaces the cell's payload without a copy.
+                if (Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                    produced = stored;
+                } else {
+                    retained = stored;
+                }
                 next = array_add(next, Resume(item.node, RetainedPhase, binding.index, 0));
             } else if (binding.place == StatePlace) {
                 code = array_add(code, Instruction(ops.store, binding.storage, 0, stored.slot, 0, binding.index, node));
@@ -503,7 +533,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (!SameType(callable.result, callable.result_container, callable.result_record, result)) {
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
-            if (Pointer(result.storage, result.container)) {
+            if (Pointer(result.storage, result.container) &&
+                Fresh(forest, text, types, callables, names, package, Field(forest, item.node, "value"))) {
+                // A fresh value is already the copy a return would make.
+                cells = array_add(cells, MovedCell(result));
+                slots = array_add(slots, AddressSlot(target));
+                code = append(code, MoveCode(result, ops, target, at.slot + length(slots) - 1,
+                                             at.cell + length(cells) - 1, node));
+                produced = result;
+                next = array_add(next, Resume(item.node, RetainedPhase, -1, 0));
+            } else if (Pointer(result.storage, result.container)) {
                 retained = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, -1, 0));
             } else {
@@ -714,7 +753,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                                                      "arguments"))));
         }
     }
-    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, NoValue(), retained, marks);
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks);
 }
 
 // Literals, names, parentheses, field reads and element reads.

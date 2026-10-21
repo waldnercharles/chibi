@@ -224,7 +224,11 @@ or a native tree operation. Add each with the move that first calls it.
    used from the existing C compiler; self-hosting is not a prerequisite. Compare
    complete workloads against bytecode/SLJIT, including compile/startup/reload
    cost, steady-state/tail latency, memory, artifact size, diagnostics and ABI.
-   Require matching semantics, not assumed speedups.
+   Require matching semantics, not assumed speedups. On 2026-10-20 the
+   compiler's own workload ruled it out for now: SLJIT's generated code was
+   6.2% of stage one's samples while it compiled the compiler, and the rest
+   was C runtime value copies and per-call resets that an LLVM backend would
+   still call (`PLAN.md` M5).
 
 ## Testing and library replacement
 

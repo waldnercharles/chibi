@@ -1136,9 +1136,18 @@ Compiler speed, measured on 2026-10-20 in Release on macOS arm64 with SLJIT
 70% of it re-validating immutable record descriptors on every value copy.
 Records are now validated where they enter (creation, prepared loading, value
 documents), so stage one takes about 7.6 s and stage two 6.5 s; a row copy in
-`--script-benchmark` fell from 1,050 to 110 ns. Copying values (memmove, string
-and field snapshots) is the next measured cost. LLVM AOT is evaluated only if
-SLJIT-path fixes cannot bring stage one close to stage zero.
+`--script-benchmark` fell from 1,050 to 110 ns. Stage one then copied record
+descriptors 31 million times (33 GB), 92% of them into an arena that already
+held a copy; each arena now remembers its last copy, which removes half of
+them and about 3% of the bootstrap selector's CPU time. The remaining copy cost is
+emitted code: snapshots that retain locals and fields, and union constructors
+that copy every payload array (about a third of stage one's samples). Cutting
+it needs the emitter to move values at their last use rather than copy them,
+in `tools/compiler`. Resetting each call's data values is next (about 10%):
+16 million calls reset 648 million values, of which 29% had changed, and zero
+4.7 GB of buffers. LLVM AOT would not help this workload: code SLJIT generates
+is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
+an LLVM backend would call too.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

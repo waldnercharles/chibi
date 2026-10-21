@@ -260,6 +260,8 @@ ReferenceFieldIntrinsic: int : 4;
 ReferenceReadIntrinsic: int : 5;
 ReferenceWriteIntrinsic: int : 6;
 UnionMakeIntrinsic: int : 20;
+// union_make for a returned union, whose payload keeps the values themselves.
+UnionMoveIntrinsic: int : 44;
 UnionTestIntrinsic: int : 21;
 UnionGetIntrinsic: int : 22;
 // Statement phases after the value is ready.
@@ -582,18 +584,33 @@ Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
 Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
     return Step.Failed(Diagnose(forest, node, document, message));
 }
-// Whether a record or array is new in the function's value storage, where a
-// copy would go, and nothing else reaches it: a literal, or an authored
-// function's result, which the call copies there. A native may return an
-// argument, so its result is not fresh.
-Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
-          node: int) -> bool {
+// Whether a record, array or union is new in the function's value storage,
+// where a copy would go, and nothing else reaches it: a literal, a variant
+// built with its payload, or an authored function's result, which the call
+// copies there. A native may return an argument, so its result is not fresh.
+Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], types: TypeDecl[], names: Name[],
+          package: int, node: int) -> bool {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "struct_expression") || Is(forest, value, "array_expression") ||
         Is(forest, value, "map_expression")) {
         return true;
     }
-    return Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, names, package, value) >= 0;
+    if (!Is(forest, value, "call_expression")) {
+        return false;
+    }
+    callee := Field(forest, value, "function");
+    return CalledFunction(forest, text, callables, names, package, value) >= 0 ||
+           (Is(forest, callee, "member_expression") && UnionOf(forest, text, types, names, package, callee) >= 0);
+}
+// Whether a value is the one a return statement returns, so nothing reads or
+// changes what it is made of before the return copies it to the caller.
+Returned :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    while (Is(forest, forest[at].parent, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
+    parent := forest[at].parent;
+    return Is(forest, parent, "return_statement") && Field(forest, parent, "value") == at;
 }
 // The name a place reads or writes, through its fields and elements.
 RootOf :: (forest: snapshot.SnapshotNode[], node: int) -> int {
@@ -651,9 +668,9 @@ ChangingMethod :: (name: string) -> bool {
 // Whether a record or array stays as it is while its function runs, so a
 // name may read it in place rather than copy it: a fresh value, or part of a
 // local or parameter the body never changes.
-Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
-               mutated: string[], node: int) -> bool {
-    if (Fresh(forest, text, callables, names, package, node)) {
+Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], types: TypeDecl[],
+               names: Name[], package: int, mutated: string[], node: int) -> bool {
+    if (Fresh(forest, text, callables, types, names, package, node)) {
         return true;
     }
     root := RootOf(forest, node);
@@ -1694,7 +1711,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (array.container != ArrayContainer && !IsMap(array)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
                 }
-                if (Unchanging(forest, text, callables, names, callable.package, mutated,
+                if (Unchanging(forest, text, callables, types, names, callable.package, mutated,
                                Field(forest, item.node, "value"))) {
                     cells.append(MovedCell(array));
                     slots.append(AddressSlot(target));
@@ -2125,7 +2142,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             element := produced;
                             produced = NoValue();
                             if (element.storage == StructStorage &&
-                                Unchanging(forest, text, callables, names, callable.package, mutated,
+                                Unchanging(forest, text, callables, types, names, callable.package, mutated,
                                            Field(forest, item.node, "value"))) {
                                 // The array cannot change, so the element is read in place.
                                 cells.append(MovedCell(element));

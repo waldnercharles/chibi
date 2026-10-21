@@ -433,9 +433,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // itself when it is fresh, or when neither it nor what it
                 // reads ever changes.
                 code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
-                if (Fresh(forest, text, callables, names, package, Field(forest, item.node, "value")) ||
+                if (Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value")) ||
                     (!Holds(mutated, name) &&
-                     Unchanging(forest, text, callables, names, package, mutated, Field(forest, item.node, "value")))) {
+                     Unchanging(forest, text, callables, types, names, package, mutated, Field(forest, item.node, "value")))) {
                     cells.append(MovedCell(result));
                     slots.append(AddressSlot(target));
                     code.extend(MoveCode(result, ops, target, at.slot + length(slots) - 1,
@@ -518,7 +518,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (binding.place == CellPlace) {
                 // A fresh value replaces the cell's payload without a copy.
-                if (Fresh(forest, text, callables, names, package, StatementValue(forest, item.node))) {
+                if (Fresh(forest, text, callables, types, names, package, StatementValue(forest, item.node))) {
                     produced = stored;
                 } else {
                     retained = stored;
@@ -543,7 +543,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
             if (Pointer(result.storage, result.container) &&
-                Fresh(forest, text, callables, names, package, Field(forest, item.node, "value"))) {
+                Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value"))) {
                 // A fresh value is already the copy a return would make.
                 cells.append(MovedCell(result));
                 slots.append(AddressSlot(target));
@@ -1638,7 +1638,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         made: Cell = {storage: UnionStorage, container: 0, record: variant.parent, constant: 0, variant: -1,
                       kind: ValueKind};
         cells.append(made);
-        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + count,
+        // A returned variant keeps its payload values: the return copies it.
+        intrinsic := UnionMakeIntrinsic;
+        if (Returned(forest, item.node)) {
+            intrinsic = UnionMoveIntrinsic;
+        }
+        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + count,
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));

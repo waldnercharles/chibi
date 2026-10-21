@@ -65,9 +65,8 @@ The new C fixtures check unrelated-model isolation, the subsequent normal
 binding update, copied styles/classes, relative image resolution, same-frame
 growth and repeated shrink, geometry/hit testing and callback-driven lifetime
 changes. The graphics-free lifecycle selector checks used the existing C
-pico_unit driver at the recorded revision; the duplicate selector is now retired. Python test launchers were removed; `analyze.py` reads saved
-logs only. The original Python profiling runner is retained as historical text
-in `../run.py.txt`.
+pico_unit driver at the recorded revision; the duplicate selector is now retired. Python test launchers were removed. The analysis script and the original
+profiling runner (`../run.py.txt`) were removed on 2026-10-20; Git keeps them.
 
 ## Historical focused validation
 

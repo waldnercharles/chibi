@@ -794,8 +794,8 @@ decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
 `dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
 than ported, and the configuration signature shrinks before it moves. On 2026-10-20 the owner approved
 three deletions with no replacement, now done: the hosted M5 validation
-helpers in `.github/scripts/` with their `native-unit-dependencies.tsv` and
-`build-tools.txt`, which no workflow ran; the CUT61 `analyze.py`; and game
+helpers in `.github/scripts/` with their `native-unit-dependencies.tsv`,
+which no workflow ran; the CUT61 `analyze.py`; and game
 runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py`
 and `tools/kdl_asset.py`), which served the retired game repositories. Git
 history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's

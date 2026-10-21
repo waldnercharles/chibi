@@ -283,7 +283,15 @@ TEST_CASE(commands_match_cmake)
         yyjson_val *mine;
         yyjson_arr_iter ours_iter = yyjson_arr_iter_with(ours);
         while ((mine = yyjson_arr_iter_next(&ours_iter))) {
-            if (strcmp(yyjson_get_str(yyjson_obj_get(mine, "file")), file)) {
+            /* A generated source is below the graph's build directory. */
+            const char *source = yyjson_get_str(yyjson_obj_get(mine, "file"));
+            char expected_file[GRAPH_PATH];
+            if (!strncmp(source, built, strlen(built))) {
+                snprintf(expected_file, sizeof expected_file, "%s%s", reference, source + strlen(built));
+            } else {
+                snprintf(expected_file, sizeof expected_file, "%s", source);
+            }
+            if (strcmp(expected_file, file)) {
                 continue;
             }
             char *copy = strdup(command);

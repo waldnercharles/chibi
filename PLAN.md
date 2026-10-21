@@ -619,8 +619,13 @@ Slice 5, 2026-10-21: the in-tree vendored C (`chibi_fmt`, `chibi_json`,
 `chibi_field_capabilities` and `chibi_input_map`: 40 libraries, 100 sources.
 Each target now names its include directories, defines and options
 explicitly, as CMake orders them.
-Next: generated sources and headers (`chibi_builtin_fonts`' fonts,
-`chibi_component_presentation`, `chibi_language`'s parser) and the fetched
+Slice 6, 2026-10-21: generated sources. `build.embed_file` writes the byte
+arrays `cmake/embed_binary.cmake` wrote, and the graph embeds
+`chibi_builtin_fonts`' sixteen fonts before compiling: 41 libraries, 117
+sources. A `--target` build stages the headers of the libraries its includes
+name.
+Next: the other generated sources and headers (`chibi_component_presentation`,
+`chibi_language`'s parser) and the fetched
 dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
 which wait for vendoring (#569) so the graph builds them from the repository;
 then moving profile selection from `Build.chibi`'s CMake arguments into the

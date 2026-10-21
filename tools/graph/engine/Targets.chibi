@@ -17,12 +17,34 @@ pub Targets :: () -> string[] {
         "chibi_host_native_catalog", "chibi_ui_documents", "chibi_fields", "chibi_field_catalog",
         "chibi_scheduling", "chibi_text_source", "chibi_ui_document", "chibi_reference_index", "chibi_fmt",
         "chibi_json", "chibi_asset_json", "chibi_asset_kdl", "chibi_asset_text", "chibi_text_capabilities",
-        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map"
+        "chibi_array_capabilities", "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts"
     ];
 }
 
-// A target's sources.
+// A target's sources: below the source root, or below the build's generated
+// directory for a `generated/` entry.
 Files :: (target: string) -> string[] {
+    if (target == "chibi_builtin_fonts") {
+        return [
+            "src/runtime/ui/builtin_fonts.c",
+            "generated/fonts/editor_nerd_symbols_font.c",
+            "generated/fonts/editor_ui_font.c",
+            "generated/fonts/editor_ui_bold_font.c",
+            "generated/fonts/editor_ui_medium_font.c",
+            "generated/fonts/editor_ui_semibold_font.c",
+            "generated/fonts/editor_ui_numeric_font.c",
+            "generated/fonts/studio_regular_font.c",
+            "generated/fonts/studio_medium_font.c",
+            "generated/fonts/studio_semibold_font.c",
+            "generated/fonts/studio_bold_font.c",
+            "generated/fonts/studio_numeric_font.c",
+            "generated/fonts/editor_noto_sans_font.c",
+            "generated/fonts/editor_noto_sans_semibold_font.c",
+            "generated/fonts/editor_noto_sans_bold_font.c",
+            "generated/fonts/editor_inconsolata_font.c",
+            "generated/fonts/editor_code_font.c"
+        ];
+    }
     if (target == "chibi_support") {
         return [
             "src/support/arena.c", "src/support/file_io.c", "src/support/text_edit.c", "src/support/xalloc.c",
@@ -181,6 +203,9 @@ pub HeaderSource :: (target: string) -> string {
 // The headers a target publishes, below its HeaderSource. Windows adds posix
 // shims to chibi_support; this graph does not build Windows yet.
 pub PublicHeaders :: (target: string) -> string[] {
+    if (target == "chibi_builtin_fonts") {
+        return ["runtime/ui/builtin_fonts.h"];
+    }
     if (target == "chibi_support") {
         return [
             "support/arena.h", "support/array.h", "support/cos_sin.h", "support/enum.h", "support/file_io.h",
@@ -354,6 +379,9 @@ pub PrivateHeaders :: (target: string) -> string[] {
 // private/NAME are the staged headers of the library chibi_NAME; any other
 // path is below the source root.
 pub Includes :: (target: string) -> string[] {
+    if (target == "chibi_builtin_fonts") {
+        return ["public/builtin_fonts", "public/ui_documents"];
+    }
     if (target == "chibi_support") {
         return ["public/support"];
     }
@@ -546,6 +574,32 @@ pub Options :: (target: string) -> string[] {
     }
     if (target == "chibi_asset_kdl") {
         return ["-w"];
+    }
+    return [];
+}
+
+// Files a target embeds as byte arrays: `NAME=PATH` writes generated/NAME.c
+// from PATH below the source root, as cmake/embed_binary.cmake does.
+pub Embeds :: (target: string) -> string[] {
+    if (target == "chibi_builtin_fonts") {
+        return [
+            "fonts/editor_nerd_symbols_font=third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf",
+            "fonts/editor_ui_font=third_party/fonts/inter/Inter.ttf",
+            "fonts/editor_ui_bold_font=third_party/fonts/inter/Inter-Bold.ttf",
+            "fonts/editor_ui_medium_font=third_party/fonts/inter/Inter-Medium.ttf",
+            "fonts/editor_ui_semibold_font=third_party/fonts/inter/Inter-SemiBold.ttf",
+            "fonts/editor_ui_numeric_font=third_party/fonts/inter/Inter-Numeric.ttf",
+            "fonts/studio_regular_font=third_party/fonts/geist/Geist-Regular.ttf",
+            "fonts/studio_medium_font=third_party/fonts/geist/Geist-Medium.ttf",
+            "fonts/studio_semibold_font=third_party/fonts/geist/Geist-SemiBold.ttf",
+            "fonts/studio_bold_font=third_party/fonts/geist/Geist-Bold.ttf",
+            "fonts/studio_numeric_font=third_party/fonts/geist/Geist-Numeric.ttf",
+            "fonts/editor_noto_sans_font=third_party/fonts/noto-sans/NotoSans-Regular.ttf",
+            "fonts/editor_noto_sans_semibold_font=third_party/fonts/noto-sans/NotoSans-SemiBold.ttf",
+            "fonts/editor_noto_sans_bold_font=third_party/fonts/noto-sans/NotoSans-Bold.ttf",
+            "fonts/editor_inconsolata_font=third_party/fonts/inconsolata/Inconsolata-Regular.ttf",
+            "fonts/editor_code_font=third_party/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
+        ];
     }
     return [];
 }

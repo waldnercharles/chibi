@@ -437,6 +437,17 @@ TEST_CASE(record_snapshot_reuses_copy_in_arena)
     REQUIRE(other_record == record); /* The reset arena hands out the same address. */
     const pin_record *other_copy = pin_record_snapshot(&owned, other_record);
     REQUIRE(other_copy != again && other_copy->id == 92);
+    /* One identity with a unit of the same length is still another record. */
+    const type_field speed[] = { { .name = "speed", .type = PIN_F32, .unit = "m/s" } };
+    const type_field rate[] = { { .name = "speed", .type = PIN_F32, .unit = "mps" } };
+    arena_reset(&source);
+    const pin_record *metres = pin_record_create(&source, "Rows.Speed", 93, speed, 1);
+    const pin_record *first_speed = pin_record_snapshot(&owned, metres);
+    arena_reset(&source);
+    const pin_record *rated = pin_record_create(&source, "Rows.Speed", 93, rate, 1);
+    REQUIRE(rated == metres && pin_record_same(rated, first_speed));
+    const pin_record *rated_copy = pin_record_snapshot(&owned, rated);
+    REQUIRE(rated_copy != first_speed && !strcmp(rated_copy->type.fields[0].unit, "mps"));
     return true;
 }
 TEST_CASE(record_array_checked_changes)

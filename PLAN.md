@@ -1147,7 +1147,9 @@ in `tools/compiler`. Resetting each call's data values costs about 10%: 16
 million calls reset 648 million values, of which 29% had changed, and zero
 4.7 GB of buffers. A static write set (addresses taken, host and call results)
 still covers 83% of those values, because programs fill argument banks through
-their addresses, and saved no time; only tracking writes at run time could. LLVM AOT would not help this workload: code SLJIT generates
+their addresses, and saved no time. Marking writes at run time (a byte per
+value, set by every address taken) restored half as many values but ran
+slightly slower than main, so the resets stay as they are. LLVM AOT would not help this workload: code SLJIT generates
 is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
 an LLVM backend would call too.
 

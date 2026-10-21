@@ -294,6 +294,8 @@ static const script_catalog_parameter concat_parameters[] = {
     { .name = "left", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
     { .name = "right", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
 };
+static const script_catalog_parameter handle_parameter = { .name = "handle",
+                                                           .type = { .storage = PIN_I32 } };
 static const script_catalog_parameter path_parameter = { .name = "path",
                                                          .type = { .storage = PIN_STR } };
 static const script_catalog_parameter move_parameters[] = {
@@ -343,7 +345,9 @@ static const script_catalog_parameter array_result = {
     X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                   \
     X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                   \
     X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)             \
-    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)
+    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)             \
+    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                \
+    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

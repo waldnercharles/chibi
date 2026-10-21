@@ -85,6 +85,19 @@ most 4,095 bytes of each across reported steps; truncation remains visible in
 the result and CLI. A probe's output is data only: compiler reports and tool
 queries stay out of the build's output and leave room for its diagnostics.
 
+`build.start(arguments: string[]) -> int` begins a reported step and returns
+its handle at once; `build.wait(handle: int) -> int` waits for that step and
+gives its status as `build.run` would. While a program waits for one step, the
+host drains every other started step's output, so steps that write more than a
+pipe holds still finish. Up to 64 started steps run at once, and each counts
+toward the invocation's steps. A wait makes its step's output the last output
+and reports it, so the result holds output in wait order. A handle can be
+waited for once. Steps the program never waits for are killed with their
+process groups when it returns, and a wait past the deadline fails the
+program. Like Zig's `std.process.Child` `spawn` and `wait`, this is how a build
+graph runs independent compiles in parallel; the compiles are ordinary steps,
+not a separate executor such as Ninja.
+
 Child exits return `0..255`; signal termination returns the negative signal
 number. Invalid input, spawn failure, timeout, cancellation and host failure
 are capability errors with stable diagnostics. The CLI maps a returned negative

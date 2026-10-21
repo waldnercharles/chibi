@@ -593,8 +593,9 @@ Status: in progress. Every command is implemented and covered; only moving
 `export` behind Chibi modules remains, and that is M6's build-graph work.
 `check` runs the build's compiler with `--check`, which prepares the project
 read-only: it neither migrates an older project nor writes an artifact. The `chibi-cli` fixture covers it in the build tree, through the
-launcher with a fake compiler and through the real `chibi-compile`; its
-installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
+launcher with a fake compiler and through the real `chibi-compile`;
+`chibi-cli-installed` covers the installed SDK and
+`commands_fail_without_the_compiler` a missing compiler. `version` prints the SDK,
 build, compiler and artifact-format identity from one generated document,
 `share/chibi/engine.json`: configuring writes it, build trees keep it beside
 their shaders, and SDK packaging installs it with the build ID. The document
@@ -616,8 +617,9 @@ stopped and a count. A test that waits or starts a task fails. ROOT holds only
 package files, so a game project's behaviors are not tests yet.
 `src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
 the launcher, the real compiler and a compiler without the core collection.
-The compiler's own packages cannot run under it yet, because their raw-syntax
-bridge is not among those natives. `chibi fmt [--check] [PATH...]` hands
+Since 2026-10-20 it also links the compiler's raw-syntax and JSON bridges, so
+the compiler's own packages can hold tests (`chibi-cli`'s
+`compiler_test_links_the_compiler_bridges`). `chibi fmt [--check] [PATH...]` hands
 each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. A PATH that is a folder

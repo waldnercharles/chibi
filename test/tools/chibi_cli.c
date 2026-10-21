@@ -579,6 +579,45 @@ TEST_CASE(compiler_test_reports_each_test)
 }
 
 /* A compiler whose SDK lacks the core collection says so and fails. */
+/* The compiler's own packages read raw syntax and JSON strings through the
+ * compiler's bridges, so --test links both. */
+static const char COMPILER_FACTS
+    [] = "package words\n"
+         "\n"
+         "@test\n"
+         "Decodes :: () {\n"
+         "    decoded := compiler_json_string(\"\\\"hi\\\"\");\n"
+         "    assert(decoded.valid && decoded.value == \"hi\", \"decodes\");\n"
+         "}\n"
+         "\n"
+         "@test\n"
+         "Parses :: () {\n"
+         "    tree := compiler_syntax_parse(\"package words\\n\");\n"
+         "    assert(tree.root >= 0, \"parses\");\n"
+         "}\n";
+TEST_CASE(compiler_test_links_the_compiler_bridges)
+{
+    const char *directories[] = { "bridged", "bridged/words" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, directories[i]);
+        REQUIRE(!mkdir(directory, 0700));
+    }
+    write_file("bridged/words/Words.chibi", COMPILER_FACTS);
+    char tests[256], output[256];
+    path(tests, "bridged");
+    path(output, "bridged.log");
+    const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
+    int status = tool_run(run, root, output);
+    if (status) {
+        char *log = contents("bridged.log");
+        fprintf(stderr, "compiler bridges: %s\n", log);
+        free(log);
+    }
+    REQUIRE(status == 0);
+    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
+    return true;
+}
 TEST_CASE(compiler_test_needs_the_core_collection)
 {
     const char *directories[] = { "sdk", "sdk/bin" };
@@ -1512,6 +1551,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(doctor_of_the_built_launcher);
     RUN_TEST_CASE(test_runs_the_compiler_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
+    RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);

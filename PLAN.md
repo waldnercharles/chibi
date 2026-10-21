@@ -570,7 +570,8 @@ compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
-supported host configuration. Keep an explicit stage-zero recovery invocation
+supported host configuration. The Linux x86_64 and Windows x64 runs wait for
+CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
 ### M6. Replace the internal build graph
@@ -875,8 +876,20 @@ Host status on 2026-10-20:
   (`wasm-package-compiler-chibi*`, `docs/package-compiler.md#hosts`).
 - The bootstrap itself stays native: stage one compiling itself outgrows
   Wasm's 2 GiB linear memory.
-- Linux x86_64 and Windows x64 wait for a host, since CI has been disabled
-  since 2026-09-25 and a local container needs the owner's approval.
+- Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
+  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+    a bigger host is available.
+  - Until then, stage one stays off as the normal compiler, and stage zero
+    remains the normal compiler.
+- Local attempt on 2026-10-20, an Ubuntu 24.04 container under Rancher
+  Desktop:
+  - Linux x86_64 under Rosetta built the Release `test_language` and
+    `chibi-compiler-host` from main in 13.5 min.
+  - The bootstrap check and the Debug build were killed for memory. The 6 GB
+    VM is shared with other containers, and the check peaks at about 5 GB.
+  - Linux aarch64 doesn't build, because Cute's build passes `-msse4.1`.
+  - CMake 4 also needs `clang-scan-deps` (`clang-tools-18`), which CI's
+    package list lacks.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1095,7 +1108,8 @@ recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
 the exported input, and assembles the artifact with `chibi-compile
 --modules` (`make test-stage-one`). Stage one passes step 4's gate since
 2026-10-20, and its functions have all of stage zero's debugger points and
-watches. Next: the sequence on every supported host configuration before
+watches. Next: the sequence on Linux x86_64 and Windows x64, deferred until
+CI is back or a bigger host is available (2026-10-20), before
 stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function

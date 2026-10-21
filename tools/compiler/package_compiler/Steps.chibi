@@ -200,6 +200,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (kind == "expression_statement") {
             value = FirstMember(forest, item.node);
         }
+        if (kind == "delete_statement" ||
+            (kind == "expression_statement" && MapMethod(forest, text, names, value, "delete"))) {
+            return MapDeleteStep(forest, text, document, types, names, item, ops, node);
+        }
         expected := Visit(value);
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
@@ -325,6 +329,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 found: int = -1;
                 if (Is(forest, object, "identifier")) {
                     found = Lookup(names, Text(forest, text, object));
+                }
+                if (found >= 0 && names[found].container == MapContainer) {
+                    return MapStoreStep(forest, text, document, types, names, found, item, ops, node);
                 }
                 if (found < 0 || names[found].place != CellPlace || names[found].container != ArrayContainer ||
                     !names[found].writable) {
@@ -511,6 +518,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         return ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node);
     } else if (item.phase == ReturnsPhase) {
         return ResultsStep(forest, document, params, callable, values, top, item, ops, at, node);
+    } else if (item.phase == MapStorePhase || item.phase == MapDeletePhase) {
+        return MapUpdateStep(forest, text, document, types, names, values, top, item, ops, target, at, node);
     } else if (item.phase == RetainedPhase) {
         // A retained copy, in the last cell: bind it, store it in a local's
         // cell, or publish its header.
@@ -889,8 +898,20 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                  ops, target, at, node);
     } else if (item.phase == 0) {
         next = array_add(next, Visit(Field(forest, item.node, "object")));
+        // An index's type is a map's key type or an array's int.
         if (kind == "index_expression") {
-            next = array_add(next, Expect(Field(forest, item.node, "index"), IntStorage, 0, -1));
+            next = array_add(next, Resume(item.node, KeyPhase, 0, 0));
+        } else {
+            next = array_add(next, Resume(item.node, 1, 0, 0));
+        }
+    } else if (item.phase == KeyPhase) {
+        // The object is ready, so the index takes a map's key type or an
+        // array's int.
+        index := Field(forest, item.node, "index");
+        if (IsMap(values[top - 1])) {
+            next = array_add(next, Expect(index, types[values[top - 1].record].key, 0, -1));
+        } else {
+            next = array_add(next, Expect(index, IntStorage, 0, -1));
         }
         next = array_add(next, Resume(item.node, 1, 0, 0));
     } else if (kind == "member_expression") {
@@ -983,6 +1004,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         popped = 2;
         array := values[top - 2];
         position := values[top - 1];
+        if (IsMap(array)) {
+            return MapReadStep(forest, document, types, array, position, ops, target, at, item.node);
+        }
         if (array.container != ArrayContainer) {
             return Fail(forest, Field(forest, item.node, "object"), document, "indexing needs an array");
         }

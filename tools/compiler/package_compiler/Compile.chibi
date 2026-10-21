@@ -29,6 +29,7 @@ pub Target :: struct {
     items_offset: int;
     data_offset: int;
     stride_offset: int;
+    map_count_offset: int;
     data_failure: int;
     argument_failure: int;
 }
@@ -151,7 +152,9 @@ UnsupportedPort: int : -1;
 // members[first, first + count); a union's variants are types[first, first +
 // count), and each variant names its union as `parent`. A native type, one the
 // game links, also has its storage, ID and layout, and a component its
-// component ID.
+// component ID, and a record or union its package-symbol ID. A map type
+// `[K: V]` that a package spells has its key's storage and its value's type,
+// and is named as stage zero names it.
 TypeDecl :: struct {
     name: string;
     type_name: string;
@@ -165,6 +168,10 @@ TypeDecl :: struct {
     id: uint64;
     layout: uint64;
     component: uint64;
+    key: int;
+    value_storage: int;
+    value_container: int;
+    value_record: int;
 }
 // A record field, with its byte offset, or a variant's payload field. A
 // native type's field may be read-only, a constant whose value is its name,
@@ -219,6 +226,7 @@ VariantDecl: int : 2;
 NativeDecl: int : 3;
 // A game namespace, such as SceneGlobals: a native type no module requires.
 NamespaceDecl: int : 4;
+MapDecl: int : 5;
 // Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
 TypeKind: int : 13;
@@ -397,6 +405,15 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
     if (container > 1) {
         return none;
     }
+    map := Field(forest, node, "map");
+    if (map >= 0) {
+        declared := FindMap(types, ReadType(forest, text, types, names, package, Field(forest, map, "key")),
+                            ReadType(forest, text, types, names, package, Field(forest, map, "value")));
+        if (container != 0 || declared < 0) {
+            return none;
+        }
+        return {storage: UnionStorage, container: MapContainer, record: declared};
+    }
     first := FirstMember(forest, Field(forest, node, "name"));
     name := Text(forest, text, first);
     home := package;
@@ -418,6 +435,81 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
         return {storage: UnionStorage, container: container, record: declared};
     }
     return {storage: StructStorage, container: container, record: declared};
+}
+// The map type keyed by `key` holding `value`, -1 when none is declared.
+FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.kind == MapDecl && declared.key == key.storage && declared.value_storage == value.storage &&
+            declared.value_container == value.container && declared.value_record == value.record) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The ID stage zero gives a single key or value type: its storage and the
+// ID of the record, union or native type it names.
+TypeTag :: (types: TypeDecl[], storage: int, record: int) -> uint64 {
+    nominal: uint64 = 0;
+    if (record >= 0) {
+        nominal = types[record].id;
+    }
+    return binding.ID("union-type", format_text("{}:0:{}:0:0", storage, nominal));
+}
+// Declares each map type that file `root` spells, inner ones first, when its
+// key is a number, bool or string and its value a single value of a type
+// this compiler supports. Stage zero names the map's collection type from
+// both types.
+DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                root: int) -> TypeDecl[] {
+    // A depth-first walk that skips expressions, where no type is spelled,
+    // so it visits a small part of the file.
+    found: int[] = [];
+    pending: int[] = [root];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        node := pending[top];
+        kind := forest[node].kind;
+        if (kind == "map_type") {
+            found = array_add(found, node);
+        }
+        child := forest[node].first_child;
+        while (child >= 0 && !Expression(kind)) {
+            if (forest[child].is_named && !forest[child].is_extra) {
+                if (top < length(pending)) {
+                    pending[top] = child;
+                } else {
+                    pending = array_add(pending, child);
+                }
+                top += 1;
+            }
+            child = forest[child].next_sibling;
+        }
+    }
+    // The caller's `types` stays unwritten, so its appends stay in place.
+    known := types;
+    at := length(found) - 1;
+    while (at >= 0) {
+        map := found[at];
+        at -= 1;
+        key := ReadType(forest, text, known, aliases, package, Field(forest, map, "key"));
+        value := ReadType(forest, text, known, aliases, package, Field(forest, map, "value"));
+        if (key.storage == 0 || key.container != 0 || key.record >= 0 || value.storage == 0 || value.container != 0 ||
+            value.storage == UnionStorage || FindMap(known, key, value) >= 0) {
+            continue;
+        }
+        id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, TypeTag(known, key.storage, -1),
+                                                        TypeTag(known, value.storage, value.record)));
+        declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, kind: MapDecl,
+                              first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
+                              key: key.storage, value_storage: value.storage, value_container: value.container,
+                              value_record: value.record};
+        known = array_add(known, declared);
+    }
+    return known;
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: (storage: int, target: Target) -> int {
@@ -504,7 +596,11 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
                                       kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1,
-                                      storage: 0, id: 0, layout: 0, component: 0};
+                                      storage: 0,
+                                      id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
+                                                                                   TypeKind, name)),
+                                      layout: 0, component: 0, key: 0, value_storage: 0,
+                                      value_container: 0, value_record: -1};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -525,7 +621,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
-                                                     storage: 0, id: 0, layout: 0, component: 0};
+                                                     storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
+                                                     value_container: 0, value_record: -1};
                             types = array_add(types, alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -576,6 +673,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             }
             member = NextMember(forest, member);
         }
+    }
+    for (file in files) {
+        types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
     }
     // Payloads may name any type, so they resolve once every type is known.
     for (file in files) {
@@ -959,7 +1059,10 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     if (container != 0) {
         value := ScalarValue(storage, 0);
         value.container = container;
-        if (storage == StructStorage) {
+        if (container == MapContainer) {
+            value.type_name = types[record].type_name;
+            value.has_type_name = true;
+        } else if (storage == StructStorage) {
             value.type_name = types[record].type_name;
             value.has_type_name = true;
             value.authored = types[record].kind != NativeDecl;

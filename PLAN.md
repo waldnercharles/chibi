@@ -808,9 +808,12 @@ On 2026-10-20 build programs became packages: one file with a `package`
 header that may import `core:`, with `format_text` and the array natives
 (host protocol 5). Their `build.` string natives go once the programs use
 `core:strings`.
+On 2026-10-21 the owner retired the mesh-to-SDF converter (`tools/mesh_sdf/`
+and its `box.obj` fixture) with no replacement, rather than port its Blender
+launcher; its worker required Blender 4.3.2 on Linux, and its tests and the
+example that used it were already gone.
 Everything else is blocked. Packaging still needs sizes, modification-time
-order, link reads and staging directories from the host, and the Blender
-launcher needs child resource limits.
+order, link reads and staging directories from the host.
 The build graph waits on M6, the executables and runtime on a native backend,
 and engine modules on M9.
 

@@ -705,6 +705,16 @@ TEST_CASE(row_array_owned_scalars_stay_packed)
                          { .type = PIN_I32, .i = 1000 } };
     REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, wide, 2));
     REQUIRE(!array->stride && array->count == 43 && array->items);
+    /* So does a store of one. */
+    pin_value other = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY };
+    pin_value seed[] = { { .u64 = (uint64_t)(uintptr_t)&other },
+                         { .type = PIN_U8, .u8 = 1 } };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, seed, 2));
+    pin_value replace[] = { { .u64 = (uint64_t)(uintptr_t)&other },
+                            { .type = PIN_I32, .i = 0 },
+                            { .type = PIN_I32, .i = 9 } };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_store_call, &storage, replace, 3));
+    REQUIRE(!((pin_array *)other.ptr)->stride && pin_array_get(other.ptr, 0).i == 9);
     REQUIRE(
         pin_array_get(array, 3).u8 == 200 && pin_array_get(array, 41).u8 == 8 &&
         pin_array_get(array, 42).i == 1000

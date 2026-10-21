@@ -421,6 +421,24 @@ TEST_CASE(record_copy_rejects_changed_nested_layout)
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     return true;
 }
+/* Snapshots of one record into one arena share a copy until the arena resets;
+ * another record at the source's address with another identity is copied. */
+TEST_CASE(record_snapshot_reuses_copy_in_arena)
+{
+    const pin_record *record = row_layout(&source, 91);
+    const pin_record *first = pin_record_snapshot(&owned, record);
+    REQUIRE(first && first != record && arena_contains(&owned, first));
+    REQUIRE(pin_record_snapshot(&owned, record) == first);
+    arena_reset(&owned);
+    const pin_record *again = pin_record_snapshot(&owned, record);
+    REQUIRE(again && arena_contains(&owned, again) && pin_record_same(again, record));
+    arena_reset(&source);
+    const pin_record *other_record = row_layout(&source, 92);
+    REQUIRE(other_record == record); /* The reset arena hands out the same address. */
+    const pin_record *other_copy = pin_record_snapshot(&owned, other_record);
+    REQUIRE(other_copy != again && other_copy->id == 92);
+    return true;
+}
 TEST_CASE(record_array_checked_changes)
 {
     const pin_record *record = row_layout(&source, 91);
@@ -518,6 +536,7 @@ void test_language_record_values()
     RUN_TEST_CASE(record_copy_owns_field_type_names_and_units);
     RUN_TEST_CASE(record_identity_and_borrow);
     RUN_TEST_CASE(record_copy_rejects_changed_nested_layout);
+    RUN_TEST_CASE(record_snapshot_reuses_copy_in_arena);
     RUN_TEST_CASE(record_array_checked_changes);
     RUN_TEST_CASE(record_projection_and_codec_guard);
     pu_clear_setup();

@@ -221,10 +221,18 @@ const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
     if (!storage) {
         return NULL;
     }
+    /* Copies of one record into one arena repeat, so the arena remembers its
+     * last copy. */
+    const pin_record *copy = arena_copy_find(storage, record);
+    if (copy && copy->bytes == record->bytes && pin_record_same(copy, record)) {
+        return copy;
+    }
     if (arena_contains(storage, record)) {
         return record;
     }
-    return copy_record(storage, record);
+    copy = copy_record(storage, record);
+    arena_copy_remember(storage, record, copy);
+    return copy;
 }
 bool pin_record_valid(const pin_record *record)
 {

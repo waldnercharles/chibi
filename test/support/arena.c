@@ -139,10 +139,44 @@ TEST_CASE(collectable_arena_finds_values_by_address)
     arena_free(&other);
     return true;
 }
+/* An arena remembers its last copy by source until a reset, free or
+ * collection, and a later copy replaces it. */
+TEST_CASE(arena_remembers_last_copy_until_reset_or_collection)
+{
+    static int sources[2];
+    arena storage = { 0 };
+    void *copy = arena_alloc(&storage, 8), *later = arena_alloc(&storage, 8);
+    REQUIRE(!arena_copy_find(&storage, &sources[0]));
+    arena_copy_remember(&storage, &sources[0], copy);
+    REQUIRE(arena_copy_find(&storage, &sources[0]) == copy);
+    REQUIRE(!arena_copy_find(&storage, &sources[1]));
+    arena_copy_remember(&storage, &sources[1], later);
+    REQUIRE(arena_copy_find(&storage, &sources[1]) == later);
+    REQUIRE(!arena_copy_find(&storage, &sources[0]));
+    arena_reset(&storage);
+    REQUIRE(!arena_copy_find(&storage, &sources[1]));
+    arena_copy_remember(&storage, &sources[0], arena_alloc(&storage, 8));
+    arena_free(&storage);
+    REQUIRE(!arena_copy_find(&storage, &sources[0]));
+    arena collectable;
+    arena_init_collectable(&collectable);
+    void *kept = arena_alloc(&collectable, 8);
+    arena_copy_remember(&collectable, &sources[0], kept);
+    REQUIRE(arena_copy_find(&collectable, &sources[0]) == kept);
+    arena *arenas[] = { &collectable };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    arena_collect_mark(&collection, kept);
+    arena_collect_end(&collection);
+    REQUIRE(!arena_copy_find(&collectable, &sources[0]));
+    arena_free(&collectable);
+    return true;
+}
 
 void test_arena()
 {
     RUN_TEST_CASE(arena_growth_keeps_allocations_and_reset_reuses_blocks);
     RUN_TEST_CASE(zero_arena_allocates_on_first_use);
     RUN_TEST_CASE(collectable_arena_finds_values_by_address);
+    RUN_TEST_CASE(arena_remembers_last_copy_until_reset_or_collection);
 }

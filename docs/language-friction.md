@@ -687,7 +687,10 @@ record is validated where it enters (creation, prepared loading, value
 documents), and copies check only that rows share their array's layout and
 that nested catalog types are still plain. Stage one then compiled the
 compiler in 7.6 s instead of 23.7 s on Release SLJIT. Deep copies of the rows
-and strings passed between passes are the largest cost left.
+and strings passed between passes are the largest cost left: about a third of
+stage one's samples are snapshots its code makes to retain a local or field,
+and union constructors copying every payload array, even when the source is
+a temporary that is never read again.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none

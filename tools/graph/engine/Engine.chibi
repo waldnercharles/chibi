@@ -66,16 +66,14 @@ pub Sources :: (source_root: string, build_dir: string, target: string) -> strin
     return sources;
 }
 
-// Writes each file a target embeds, as `generated/NAME.c` defining the symbol
-// NAME's last part names, with the bytes of a file below the source root. An
-// unchanged output keeps its stamp; a failure fails the program.
+// Writes each file a target embeds. An unchanged output keeps its stamp; a
+// failure fails the program.
 Embed :: (source_root: string, build_dir: string, target: string) {
     for (embed in Embeds(target)) {
-        name := build.before(embed, "=");
-        output := Join([Generated(build_dir), "/", name, ".c"]);
-        symbol := strings.Slice(name, strings.LastIndex(name, "/") + 1, strings.ByteLength(name));
+        output := Join([build_dir, "/sdk/", build.before(embed, "=")]);
+        rest := build.after(embed, "=");
         build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-        build.embed_file(Join([source_root, "/", build.after(embed, "=")]), output, symbol);
+        build.embed_file(Join([source_root, "/", build.after(rest, "=")]), output, build.before(rest, "="));
     }
 }
 

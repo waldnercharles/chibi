@@ -2168,7 +2168,7 @@ configuration and compilation are separate build evidence.
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
 build that configured the tests. It reads that build's profile from
 `CMakeCache.txt` and CMake's compiler file. With `--commands-only`, the graph
-writes the compile commands of every library it owns, and each of the 117
+writes the compile commands of every library it owns, and each of the 122
 must equal `compile_commands.json`'s for the same source, apart from the
 object path and with the temporary build directory standing for CMake's. In a
 copy of the sources, about ten runs that build only `chibi_support` then check

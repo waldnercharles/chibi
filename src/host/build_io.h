@@ -78,4 +78,18 @@ const char *build_io_hash(
     char digest[65]
 );
 
+/* Writes a C file defining `const unsigned char SYMBOL[]` with the bytes of a
+ * regular input file of at most 64 MiB, and `SYMBOL_size`, in the form
+ * cmake/embed_binary.cmake writes. An output that already holds that text is
+ * left alone, keeping its stamp; written says whether it changed. */
+const char *build_io_embed(
+    const char *root,
+    const char *input,
+    const char *output,
+    const char *symbol,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    bool *written
+);
+
 #endif

@@ -2,8 +2,12 @@
 
 Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. The owner selected
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
+The merged string design specifies one public `string` type and a descriptor behind the existing
+pointer, followed by shared slices. The general descriptor migration is not implemented yet.
 Other semantics and fidelity remain decisions for the user, separately per package. Helpful language prerequisites precede dependent
 implementations. This record covers bytes, strings and UTF-8; it is not an exhaustive Odin API review.
+Discuss each new semantic step with the owner before implementing it. The approved invariant and migration
+direction do not approve the pending API and edge-case proposals below.
 
 ## Baseline and ownership
 
@@ -21,6 +25,12 @@ byte boundaries. Existing `char` represents a Unicode scalar, including U+0000. 
 not fresh test results. Friction suggestions remain proposals; implementation must verify gaps in both
 compiler stages.
 
+The later [merged string design](https://github.com/waldnercharles/chibi/blob/a9d87eaf1a28ff15c710d8475af1a8b722d98bfa/docs/design-notes.md#strings-carry-their-length)
+records the representation and implementation phases. Existing byte operations and compiler scans that read
+bytes once are already present; they reduce repeated scans but do not establish length-carrying runtime
+strings. The current audit found no general descriptor implementation. Check overlapping string work before
+assigning these phases; neither a design commit nor the existing scan optimizations completes the migration.
+
 | Responsibility | Proposed owner |
 | --- | --- |
 | Value layout, string length/storage/lifetime, checked scalar conversion, allocation failure and intrinsics | Language/runtime, with private implementation modules |
@@ -35,25 +45,25 @@ compiler-required runtime declarations. Copying that API would promise a compile
 Chibi consumer needs it. An expert public base collection is an alternative requiring an explicit
 stability/access policy. Generic core must work without a world, renderer or gameplay catalog.
 
-## Two concrete string models
+## Approved string model and considered alternative
 
 Approved on 2026-10-21: immutable, length-carrying, byte-preserving `string`, with explicit UTF-8 operations.
 Arbitrary binary buffers use `byte[]`. Both admit NUL. This follows existing byte-oriented compiler/string
 algorithms and avoids making all native inputs, source files and filesystem names valid Unicode as a global
 precondition. Exact encoded equality is not Unicode normalization.
 
-The alternative is immutable valid-UTF8 `string`, also length carrying and allowing U+0000. It gives text APIs
-an invariant, prevents byte slicing from creating malformed text and aligns with scalar `char`. It requires
+The considered alternative was immutable valid-UTF8 `string`, also length carrying and allowing U+0000. It
+gives text APIs an invariant, prevents byte slicing from creating malformed text and aligns with scalar `char`. It requires
 validating all literals, native callbacks, deserialization and foreign/host inputs; strict scalar-boundary
 slicing; changing empty-separator and cutset operations; and a separate representation for invalid external
 names/source. Validating just a `FromBytes` function cannot establish that invariant. Neither model makes a
 Unicode scalar equal to a displayed grapheme or implies normalization.
 
-The byte-preserving recommendation is about a useful compiler/tool workflow, not just patch size: parsers and
+The approved byte-preserving model supports compiler/tool workflows: parsers and
 diagnostics need exact byte preservation even when input is malformed, and binary formats need lossless round
-trips. The valid-text alternative is preferable if the user wants every ordinary string consumer to rely on
-Unicode validity and accepts that broader boundary audit. Package fidelity remains per package under either
-model.
+trips. The valid-text alternative would require every ordinary string consumer to rely on Unicode validity
+and the broader boundary audit above. That alternative was not selected. Package fidelity remains a separate
+decision for each package.
 
 ## Proposed first-wave operations
 
@@ -82,8 +92,10 @@ values may share backing storage only when the runtime retains its owner. Copyin
 borrowed views, pointers into temporary storage and mutable aliases wait for lifetime rules. Length-carrying
 storage alone does not supply ownership.
 
-Foreign C-string conversion must reject interior NUL and allocate/provide an owned terminator for an
-explicitly documented lifetime. Converting a raw C pointer requires a trusted bound or a deliberate bounded
+The owner decision on interior NUL at a native C-string boundary is pending. Recommend rejecting it through
+the adapter's failure path, without a partial write, and allocating/providing a terminator for an
+explicitly documented lifetime when conversion succeeds. This is a proposal, not approval of a new failure
+policy. Converting a raw C pointer requires a trusted bound or a deliberate bounded
 terminator scan. Filesystem/OS adapters separately specify their native encoding and errors; no generic string
 conversion may silently truncate, normalize or replace bytes.
 
@@ -106,10 +118,10 @@ record; verify status enum support in both compilers. Generic Result types, prop
 machinery are not prerequisites. OOM remains runtime allocation failure, not a newly invented optional result
 for every helper.
 
-Current valid-string iteration yields a one-scalar string. Preserve that result type initially.
-Malformed-string iteration needs an explicit decision and audit of the current decoder: recommend U+FFFD and
-one-byte advance on invalid input so iteration progresses; strict failure is the alternative. This proposed
-rule must not silently replace a different existing contract. Explicit Decode stays strict. A future loop
+Current valid-string iteration yields a one-scalar string. The current decoder rejects malformed UTF-8 with
+`String iterator requires valid UTF-8`. Recommend preserving that strict behavior and result type during the
+storage migration. Replacement with U+FFFD and one-byte advance remains an unapproved alternative requiring
+discussion before implementation. The explicit Decode proposal stays strict. A future loop
 yielding `char` plus byte offset is separate ergonomics.
 
 ## Builders and compatibility
@@ -156,11 +168,13 @@ new text helpers. UTF-8 validity is a separate semantic choice.
 | Compiler host and bootstrap | [compiler_host.c](../src/toolchain/compiler_host.c) measures string quotas with `strnlen`; [compiler_target.c](../src/toolchain/compiler_target.c) exports layout facts. Update host adapters, explicit semantic ABI invalidation and [bootstrap recovery](package-compiler.md) together. Unchanged struct sizes alone cannot prove compatibility. |
 
 A two-word pointer/length value would change execution cells, calls and record
-layouts. Use a pointer to an immutable descriptor for the first implementation,
-with its length and copied bytes owned together. Keep the existing execution-cell
-width and copying at ownership boundaries; shared slices can follow measured
-need. This still changes the semantic ABI. A trailing zero may serve explicit
-C adapters, but must never determine value length. Do not assume a hidden length
+layouts. The merged design uses one pointer to an immutable descriptor,
+`{const char *bytes; uint32_t length}`, over an owned backing buffer. Keep the
+existing execution-cell width. Its third phase makes slices share the parent's
+bytes, retaining that backing for the slice's lifetime. Initial copying at
+ownership boundaries is migration staging, not a replacement for the recorded
+shared-slice direction. This still changes the semantic ABI. A trailing zero may
+serve explicit C adapters, but must never determine value length. Do not assume a hidden length
 header exists before arbitrary C pointers: literals, native fields and foreign
 pointers do not have one.
 
@@ -190,8 +204,9 @@ The storage cutover must include ownership, native fields, literals, all executi
 backends, equality/hash, formatting, prepared values, document transport and host
 quotas together. Acceptance must retain `A\0B` after its source owner is freed,
 distinguish it from `A` and `A\0C` as map keys, preserve malformed UTF-8 in byte
-operations and binary persistence, and exercise each C-string adapter's NUL
-failure. Current runtime strings still use the old representation.
+operations and binary persistence, and exercise each C-string adapter's approved
+NUL outcome once that pending policy is settled. Current runtime strings still
+use the old representation.
 
 [compiler_json.c](../src/toolchain/compiler_json.c) can already decode a JSON
 string with NUL and return its byte length; downstream C-string users can lose
@@ -203,17 +218,29 @@ silently change the source contract.
 
 ### Implementation sequence
 
-1. Agree on relevant decisions below and the initial API subset per package.
-2. Verify byte arrays, multiple results, ref writes and scalar conversions in
-   both stages/backends. Fix demonstrated gaps before dependent functions.
-3. Add length-carrying owned strings and NUL-safe creation/host/serialization
-   paths. Preserve byte algorithms and migrate the Bytes result type together.
-4. Implement strict UTF-8 policy in Chibi with narrow runtime conversion hooks.
-5. Add container record fields if needed, then the value-semantics builder.
-6. Complete the approved strings subset and bounded complexity checks.
+The merged design records three phases, each intended for its own PR:
 
-These are dependencies, not mandatory separate PRs. Bytes and codecs can run in parallel once their shared
-contracts are fixed. No public allocator/context, borrow checker, generic constraints, callable values or
+1. Route C value-string readers and producers through accessors. Preserve the
+   current representation and behavior; accessors still measure C strings.
+   This preparation does not expose embedded-NUL support.
+2. Switch accessors and producers to descriptors, migrate native C-field
+   adapters, and update ownership, literals, prepared/document formats and
+   host boundaries together. Bump the prepared format and rebuild the
+   bootstrap through the documented procedure. Resolve the pending C-NUL
+   boundary policy before changing that behavior.
+3. Make Slice share retained backing bytes; make ByteAt and ByteLength use
+   the stored length in constant time. Add direct compiler byte paths where
+   useful. Existing byte-reading scan optimizations do not complete this phase.
+
+New package operations follow their own semantic reviews. In particular,
+changing `strings.Bytes` from `int[]` to `byte[]`, adding `FromBytes`, and
+choosing UTF-8 decoder result signatures remain proposed. They are not implicit
+parts of the representation approval. Builders need their own approved API
+and container-valued record fields before implementation.
+
+The descriptor phases follow the merged design's PR sequence; later package dependencies do not require one
+PR per operation. Bytes and codecs can run in parallel once their shared contracts are fixed. No public
+allocator/context, borrow checker, generic constraints, callable values or
 Unicode tables are required for this selected subset. New syntax is optional unless a reproducer shows a
 correctness or performance blocker. Track each discovered limitation in the existing friction log with
 workaround, affected package and cost.
@@ -239,8 +266,10 @@ strings.Reset(builder)                   // label remains stable
 | String invariant — approved 2026-10-21 | Byte preserving, immutable, length carrying, NUL allowed; explicit UTF-8 operations | Valid UTF-8 globally was considered and not selected |
 | Length/offsets | Byte units; explicitly named scalar operations | Scalar indexing with traversal cost and separate byte-offset API |
 | Access failures | Preserve ByteAt sentinel and Slice clamping; strict future syntax | Change existing helpers to checked failure/try variants and migrate callers |
-| Ownership | Independent values; implementation copying allowed | Public retained-owner views after lifetime contract |
-| Malformed iteration | Explicit strict codec; replacement in ordinary iteration after audit | Strict iteration failure |
+| Ownership — shared-slice direction recorded in merged design | Immutable values; slices retain backing ownership; copying can stage the migration | Public borrowed views still need a separate lifetime contract |
+| Native C-string interior NUL — pending owner decision | Reject through an explicit adapter failure, without a partial write | Another explicit boundary policy approved for the consumer |
+| Malformed iteration — no replacement approved | Preserve current strict failure; explicit Decode proposal is also strict | U+FFFD and one-byte advance after a separate decision |
+| Byte/string conversion signatures — proposed | Review `Bytes -> byte[]` and `FromBytes` with package consumers | Retain current `Bytes -> int[]` until that review |
 | Characters | Existing char; preserve one-scalar-string loop result initially | Change loop yield to char with byte offset after caller audit |
 | Builder | Value record, ref mutation, Build copy; container fields first | Byte-array append helpers until builder record support |
 | Base/allocators | Private runtime hooks, runtime-managed values | Public expert base and explicit allocation policy with concrete consumers |

@@ -1,0 +1,287 @@
+package c
+
+import strings "core:strings"
+
+// Compiles C sources into static libraries. A caller starts the compiles of
+// every library that needs them, at most `jobs` at once, finishes them in the
+// order started, then archives each library; an object is rebuilt only when its
+// command or an input changed. Paths are absolute, so steps behave the same
+// from any working directory.
+
+// The tools that build C, and how many compiles may run at once. A launcher,
+// such as ccache, runs the compiler when it is not empty.
+pub Tools :: struct {
+    launcher: string;
+    compiler: string;
+    archiver: string;
+    ranlib: string;
+    jobs: int;
+}
+
+// A static library: the root its sources are below, the directories generated
+// and third-party sources are below, the directory its objects go to and the
+// archive it becomes. Its sources and the flags each compile takes, in order,
+// are arrays beside it, since records hold only scalars.
+pub Library :: struct {
+    name: string;
+    root: string;
+    generated: string;
+    third_party: string;
+    objects: string;
+    output: string;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+// The object a source compiles to: its path below the root, or below
+// `generated/` or `third-party/` for a generated or third-party source, below
+// the library's object directory.
+pub Object :: (target: Library, source: string) -> string {
+    base := target.root;
+    prefix := "";
+    if (strings.HasPrefix(source, Join([target.generated, "/"]))) {
+        base = target.generated;
+        prefix = "generated/";
+    } else if (target.third_party != "" && strings.HasPrefix(source, Join([target.third_party, "/"]))) {
+        base = target.third_party;
+        prefix = "third-party/";
+    }
+    relative := strings.Slice(source, strings.ByteLength(base) + 1, strings.ByteLength(source));
+    return Join([target.objects, "/", prefix, relative, ".o"]);
+}
+
+// The compile command of a source, as CMake writes it, without its launcher.
+pub Command :: (tools: Tools, target: Library, flags: string[], source: string) -> string[] {
+    command := append([tools.compiler], flags);
+    return append(command, ["-o", Object(target, source), "-c", source]);
+}
+
+// The record that says what built a file: its command, one argument per line,
+// an empty line, then a stamp and path for each input and for the output.
+Record :: (output: string) -> string {
+    return Join([output, ".chibi-record"]);
+}
+RecordText :: (command: string, inputs: string[], output: string) -> string {
+    lines := [command, ""];
+    for (input in array_add(inputs, output)) {
+        lines = array_add(lines, Join([build.file_stamp(input), " ", input]));
+    }
+    return Join([strings.Join(lines, "\n"), "\n"]);
+}
+
+// Whether output was built by command from inputs that have not changed since.
+// Records are read with the host's line natives: core:strings copies the rest
+// of the text at each line, which costs seconds over a few records.
+Current :: (command: string[], output: string) -> bool {
+    record := Record(output);
+    if (!build.file_exists(record) || !build.file_exists(output)) {
+        return false;
+    }
+    lines := build.lines(build.read_file(record));
+    count := length(command);
+    if (length(lines) < count + 2 || lines[count] != "") {
+        return false;
+    }
+    for (i in 0..<count) {
+        if (lines[i] != command[i]) {
+            return false;
+        }
+    }
+    for (i in count + 1..<length(lines)) {
+        line := lines[i];
+        if (build.file_stamp(build.after(line, " ")) != build.before(line, " ")) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The prerequisites a compiler's -MD file lists: everything after the target,
+// with line continuations joined and escaped spaces, `#` and `$` restored.
+pub Dependencies :: (text: string) -> string[] {
+    joined := strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", " "), "\\\n", " ");
+    colon := strings.Index(joined, ": ");
+    if (colon < 0) {
+        return [];
+    }
+    rest := strings.Slice(joined, colon + 2, strings.ByteLength(joined));
+    bytes := strings.Bytes(rest);
+    paths: string[] = [];
+    start := -1;
+    escaped := false;
+    for (i in 0..<length(bytes)) {
+        byte := bytes[i];
+        space := byte == 32 || byte == 9 || byte == 10 || byte == 13;
+        if (space && !escaped) {
+            if (start >= 0) {
+                paths = array_add(paths, Unescape(strings.Slice(rest, start, i - start)));
+                start = -1;
+            }
+        } else if (start < 0) {
+            start = i;
+        }
+        escaped = byte == 92 && !escaped;
+    }
+    if (start >= 0) {
+        paths = array_add(paths, Unescape(strings.Slice(rest, start, length(bytes) - start)));
+    }
+    return paths;
+}
+Unescape :: (path: string) -> string {
+    return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(path, "\\ ", " "), "\\#", "#"), "$$", "$");
+}
+
+// Whether a source must compile: its object is missing, or was built by
+// another command or from inputs that changed since.
+pub Stale :: (tools: Tools, target: Library, flags: string[], source: string) -> bool {
+    return !Current(Command(tools, target, flags, source), Object(target, source));
+}
+
+// A compile that was started: the library that owns it, its object, its
+// command with one argument per line, and the handle to wait for.
+pub Running :: struct {
+    owner: string;
+    object: string;
+    command: string;
+    handle: int;
+}
+
+// Starts compiling a source, writing its -MD dependencies beside the object.
+pub Start :: (tools: Tools, target: Library, flags: string[], source: string) -> Running {
+    object := Object(target, source);
+    build.make_directory(strings.Slice(object, 0, strings.LastIndex(object, "/")));
+    command := Command(tools, target, flags, source);
+    started := command;
+    if (tools.launcher != "") {
+        started = append([tools.launcher], started);
+    }
+    started = append(started, ["-MD", "-MF", Join([object, ".d"])]);
+    return {
+        owner: target.name,
+        object: object,
+        command: strings.Join(command, "\n"),
+        handle: build.start(started)
+    };
+}
+
+// Waits for a compile and records what built its object; false when it failed,
+// leaving no record so the next run compiles it again.
+pub Finish :: (compile: Running) -> bool {
+    if (build.wait(compile.handle) != 0) {
+        build.remove(Record(compile.object));
+        return false;
+    }
+    inputs := Dependencies(build.read_file(Join([compile.object, ".d"])));
+    return build.write_file(Record(compile.object), RecordText(compile.command, inputs, compile.object));
+}
+
+// Archives a library's objects when any compiled, or the archive is missing or
+// was archived from other objects.
+pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool) -> bool {
+    objects: string[] = [];
+    for (source in sources) {
+        objects = array_add(objects, Object(target, source));
+    }
+    archive := append([tools.archiver, "qc", target.output], objects);
+    if (!compiled && Current(archive, target.output)) {
+        return true;
+    }
+    build.make_directory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/")));
+    build.remove(target.output);
+    return build.run(archive) == 0 && build.run([tools.ranlib, target.output]) == 0 &&
+           build.write_file(Record(target.output), RecordText(strings.Join(archive, "\n"), objects, target.output));
+}
+
+// Copies each header that differs to its place below a staged include root,
+// and removes files there that no header names, as CMake's chibi_sdk_headers
+// does, so a moved header cannot still be included.
+pub StageHeaders :: (root: string, headers: string[], destination: string) -> bool {
+    for (header in headers) {
+        from := Join([root, "/", header]);
+        to := Join([destination, "/", header]);
+        if (build.file_exists(to) && build.hash_file(to) == build.hash_file(from)) {
+            continue;
+        }
+        build.make_directory(strings.Slice(to, 0, strings.LastIndex(to, "/")));
+        if (!build.copy_file(from, to)) {
+            return false;
+        }
+    }
+    return !build.file_exists(destination) || RemoveUnlisted(destination, "", headers);
+}
+
+// Removes the files below directory whose path from the staged root, under
+// prefix, no header names.
+RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool {
+    for (name in build.list_directory(directory)) {
+        path := Join([directory, "/", name]);
+        relative := name;
+        if (prefix != "") {
+            relative = Join([prefix, "/", name]);
+        }
+        if (build.file_kind(path) == "directory") {
+            if (!RemoveUnlisted(path, relative, headers)) {
+                return false;
+            }
+            continue;
+        }
+        listed := false;
+        for (header in headers) {
+            listed = listed || header == relative;
+        }
+        if (!listed && !build.remove(path)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A JSON string holding text; build arguments hold no control characters.
+Quote :: (text: string) -> string {
+    // core:strings replaces byte by byte in the interpreter, and few arguments
+    // hold a backslash or quote; the host's split finds one natively.
+    if (build.before(text, "\\") == text && build.before(text, "\"") == text) {
+        return Join(["\"", text, "\""]);
+    }
+    return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
+}
+
+// A compile_commands.json entry for a source, in the `arguments` form clangd
+// and other tools read.
+pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: string) -> string {
+    arguments: string[] = [];
+    for (argument in Command(tools, target, flags, source)) {
+        arguments = array_add(arguments, Quote(argument));
+    }
+    return Join([
+        "{\"directory\": ", Quote(target.root), ", \"file\": ", Quote(source), ", \"output\": ",
+        Quote(Object(target, source)), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"
+    ]);
+}
+
+// Links an executable from objects when one changed, or the executable is
+// missing or was linked by another command. `flags` come before the objects
+// and `libraries` after the output, as CMake orders a link; those that are
+// absolute paths are inputs too. 1 when it linked, 0 when it was current, -1
+// on failure.
+pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
+    command := append(append(append([tools.compiler], flags), objects), ["-o", output]);
+    command = append(command, libraries);
+    inputs := objects;
+    for (linked in libraries) {
+        if (strings.HasPrefix(linked, "/")) {
+            inputs = array_add(inputs, linked);
+        }
+    }
+    if (Current(command, output)) {
+        return 0;
+    }
+    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+    if (build.run(command) != 0 ||
+        !build.write_file(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
+}

@@ -2169,14 +2169,16 @@ vectors, and environment names. Their fixed file workload is about 10 MiB and 8,
 files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
-installed authored build program, and an eighth on macOS. Five cases make 50 API
+`python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
+installed authored build program, and a ninth on macOS. Six cases make 44 API
 invocations across bytecode and SLJIT, and the macOS case seven more that
-alternate them; one runs the host CLI with exact tail arguments. Twelve tiny Git
-roots, thirteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+alternate them; one runs the host CLI with exact tail arguments. Fourteen tiny Git
+roots, fifteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
 cover compiler/environment/cache precedence, explicit typed and split
-definitions, loaded inputs, compiler identity, private dependency overrides and
-their precedence over the cache, failure/retry and exact argument forwarding.
+definitions, loaded inputs, compiler identity, retired dependency switches, a
+third-party archive downloaded once through a `gh` stand-in, reused, refused
+for another SHA-256 and pruned unless a worktree pins it, failure/retry and
+exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
@@ -2186,6 +2188,40 @@ four outer and four recursive Make calls run marker recipes only. The process ro
 transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
+
+`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
+build that configured the tests. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` (and the debug directory,
+which depends on where a build is), the graph finds the rest of its profile
+on the machine and writes the compile commands of every target it owns, including
+the third-party archive's sources and include directories, and each of the 218
+must equal `compile_commands.json`'s for the same source, apart from the
+object path and with the temporary build directory standing for CMake's. In a
+copy of the sources, about ten runs that build only `chibi_support` then check
+that an unchanged build compiles nothing, that changing a source, a header or
+the flags or deleting an object recompiles exactly what depends on it, that a
+staged header nothing publishes is removed, and that a source that fails to
+compile keeps no record and is retried alone. The archive must link a program
+that runs. It compiles about fifteen C files with the profile's sanitizers,
+about 32 s at a load average of 8.
+
+`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`reflect` from the graph (27 C files with the profile's sanitizers), requires
+its link command to equal CMake's `build.ninja` statement apart from where
+objects, the output and archives sit, and runs it as CMake does, over the Cute
+math headers the graph staged from the third-party archive: its
+`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
+About 42 s at a load average of 11.
+
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT from the
+third-party archive CMake configured with, and `chibi_vector_capabilities`
+over the archive's Cute math headers, which the graph stages: three C files
+with the profile's sanitizers. A second run compiles nothing, the object sits
+below `objects/chibi_execution_sljit/third-party/`, and the staged
+`cute_math.h` equals CMake's; a run naming an archive that is not unpacked
+fails before compiling and says so. About 10 s at a load average of 12.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
@@ -2917,8 +2953,9 @@ the fixture targets, fetch dependencies, execute fixture code or use a GPU.
 CMake's compiler identification/try-compile subprocesses remain part of each
 bounded configuration child.
 
-The whole existing selector now has eight C cases and twenty direct children
-(previously seven/sixteen). Its existing ten-second child limits and one shared
+The whole selector has five C cases and fifteen direct children on Linux
+(eight and twenty before the dependency package, its s2n pin and enkiTS
+acquisition cases were removed, 2026-10-20). Its existing ten-second child limits and one shared
 production 60-second route deadline remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
 Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK

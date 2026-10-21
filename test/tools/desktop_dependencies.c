@@ -84,32 +84,6 @@ TEST_CASE(mismatched_crypto_metadata_is_rejected)
     return true;
 }
 
-TEST_CASE(s2n_fetch_omits_unused_verification_submodules)
-{
-    /* This imports only the production parser/key functions. It never prepares
-     * a cache, retrieves a source, or invokes a dependency build. */
-    const char *
-        script = "import sys\n"
-                 "from pathlib import Path\n"
-                 "sys.path.insert(0, str(Path(sys.argv[1]) / 'tools'))\n"
-                 "import fetchcontent_cache as cache\n"
-                 "pin = cache.source_pins(Path(sys.argv[1]))['s2n']\n"
-                 "old = dict(pin); old.pop('GIT_SUBMODULES', None)\n"
-                 "print(int(pin.get('GIT_SUBMODULES') == ''), "
-                 "int(cache.dependency_key(pin) != cache.dependency_key(old)), "
-                 "int(pin['GIT_REPOSITORY'] == "
-                 "'https://github.com/aws/s2n-tls.git' "
-                 "and pin['GIT_TAG'] == 'v1.6.3'))\n";
-    const char *args[] = { "python3", "-B", "-c", script, tool_root(), NULL };
-    int status = tool_run(args, directory, log_path);
-    char *text = tool_read(log_path);
-    bool exact = text && !strcmp(text, "1 1 1\n");
-    free(text);
-    REQUIRE(status == 0);
-    REQUIRE(exact);
-    return true;
-}
-
 TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
 {
 #ifdef __linux__
@@ -120,62 +94,6 @@ TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
     REQUIRE(rejected("opengl", "unowned absolute link"));
 #endif
     REQUIRE(rejected("unowned", "unowned absolute link"));
-    return true;
-}
-
-TEST_CASE(cached_crypto_imports_preserve_provider_on_reconfigure)
-{
-    char producer[1024], build[1024], consumer[1024], consumer_build[1024];
-    path(producer, fixture, "cache-producer");
-    path(build, directory, "cache");
-    const char *generate[] = { "cmake", "-S",    producer, "-B", build,
-                               "-G",    "Ninja", root,     NULL };
-    REQUIRE(tool_run(generate, directory, log_path) == 0);
-    char package[1200], provider[1200];
-    int n = snprintf(package, sizeof package, "-DPACKAGE=%s/package", build);
-    assert(n > 0 && (size_t)n < sizeof package);
-    n = snprintf(provider, sizeof provider, "-DPROVIDER=%s/provider", build);
-    assert(n > 0 && (size_t)n < sizeof provider);
-    path(consumer, fixture, "cache-consumer");
-    path(consumer_build, build, "consumer");
-    const char *args[] = { "cmake", "-S",    consumer, "-B",     consumer_build,
-                           "-G",    "Ninja", package,  provider, NULL };
-    const char *names[] = { "package/chibi-dependencies.cmake",
-                            "package/chibi-crypto.cmake",
-                            "package/chibi-dependency-targets.cmake" };
-    char *before[3] = { 0 };
-    bool present = true, stable = true;
-    for (int i = 0; i < 3; i++) {
-        char filename[1024];
-        path(filename, build, names[i]);
-        before[i] = tool_read(filename);
-        present &= before[i] != NULL;
-    }
-    int first = tool_run(args, directory, log_path);
-    int second = first == 0 ? tool_run(args, directory, log_path) : -1;
-    for (int i = 0; i < 3; i++) {
-        char filename[1024];
-        path(filename, build, names[i]);
-        char *after = tool_read(filename);
-        stable &= before[i] && after && !strcmp(before[i], after);
-        free(before[i]);
-        free(after);
-    }
-    REQUIRE(present);
-    REQUIRE(first == 0);
-    REQUIRE(second == 0);
-    REQUIRE(stable);
-    return true;
-}
-
-TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition)
-{
-    char producer[1024], build[1024];
-    path(producer, fixture, "enkits");
-    path(build, directory, "enkits");
-    const char *args[] = { "cmake", "-S",    producer, "-B", build,
-                           "-G",    "Ninja", root,     NULL };
-    REQUIRE(tool_run(args, directory, log_path) == 0);
     return true;
 }
 
@@ -207,10 +125,7 @@ void test_tool_desktop_dependencies()
     RUN_TEST_CASE(discovered_crypto_has_relocatable_owners);
     RUN_TEST_CASE(supplied_crypto_keeps_its_provider_contract);
     RUN_TEST_CASE(mismatched_crypto_metadata_is_rejected);
-    RUN_TEST_CASE(s2n_fetch_omits_unused_verification_submodules);
     RUN_TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail);
-    RUN_TEST_CASE(cached_crypto_imports_preserve_provider_on_reconfigure);
-    RUN_TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition);
     RUN_TEST_CASE(tooling_languages_follow_native_packages);
     tool_remove_tree(directory);
 }

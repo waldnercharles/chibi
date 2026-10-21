@@ -31,6 +31,8 @@ option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
+# Prebuilt libraries and the third-party sources the SDK compiles.
+include("${CHIBI_SDK_ROOT}/cmake/third_party.cmake")
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
 if(CHIBI_WEB_THREADS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -225,7 +227,6 @@ chibi_sdk_headers(chibi_input_action INTERFACE runtime/input_action.h)
 
 # The language requires only Tree-sitter's C runtime, independently of the
 # HTML/CSS grammars and UI dependencies in the Studio build.
-include(FetchContent)
 include(execution.cmake)
 add_library(chibi_core_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/core_definition.c")
 add_library(Chibi::core_capabilities ALIAS chibi_core_capabilities)
@@ -512,23 +513,20 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_link_libraries(chibi_scene_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_runtime
         PRIVATE chibi_asset_text chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_scene_document)
-    FetchContent_Declare(chibi_language_tree_sitter
-        GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-        GIT_TAG v0.25.10 GIT_SHALLOW TRUE SOURCE_SUBDIR chibi-sources-only)
-    FetchContent_MakeAvailable(chibi_language_tree_sitter)
-    configure_file("${chibi_language_tree_sitter_SOURCE_DIR}/lib/include/tree_sitter/api.h"
+    set(tree_sitter_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter")
+    configure_file("${tree_sitter_root}/lib/include/tree_sitter/api.h"
         "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h" COPYONLY)
     install(FILES "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h"
         DESTINATION include/chibi/syntax_runtime/tree_sitter)
-    install(FILES "${chibi_language_tree_sitter_SOURCE_DIR}/LICENSE"
+    install(FILES "${tree_sitter_root}/LICENSE"
         DESTINATION share/chibi/licenses/tree-sitter)
-    add_library(chibi_syntax_runtime STATIC "${chibi_language_tree_sitter_SOURCE_DIR}/lib/src/lib.c")
+    add_library(chibi_syntax_runtime STATIC "${tree_sitter_root}/lib/src/lib.c")
     set_target_properties(chibi_syntax_runtime PROPERTIES EXPORT_NAME syntax_runtime)
     target_include_directories(chibi_syntax_runtime PUBLIC
         $<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/syntax_runtime>
         $<INSTALL_INTERFACE:include/chibi/syntax_runtime>)
-    target_include_directories(chibi_syntax_runtime PRIVATE "${chibi_language_tree_sitter_SOURCE_DIR}/lib/src"
-        "${chibi_language_tree_sitter_SOURCE_DIR}/lib/include")
+    target_include_directories(chibi_syntax_runtime PRIVATE "${tree_sitter_root}/lib/src"
+        "${tree_sitter_root}/lib/include")
     target_compile_definitions(chibi_syntax_runtime PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
     target_compile_options(chibi_syntax_runtime PRIVATE -w)
     include(ui.cmake)
@@ -587,7 +585,8 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
-    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
+    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_source_catalog
+        chibi_text_capabilities chibi_array_capabilities chibi_support)
     target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
     add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c"
         "${CHIBI_SDK_ROOT}/src/host/process.c")
@@ -596,9 +595,7 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     install(TARGETS chibi-build-host RUNTIME DESTINATION libexec/chibi)
     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
         DESTINATION share/chibi/tools/toolchain)
-    install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py"
-        "${CHIBI_SDK_ROOT}/tools/dependency_package.py"
-        "${CHIBI_SDK_ROOT}/tools/fetchcontent_cache.py" DESTINATION share/chibi/tools)
+    install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)
 endif()
 # Private prepared-compiler runtime. Its link closure excludes source authoring,
 # semantic analysis and lowering; Tree-sitter supplies raw syntax facts only.

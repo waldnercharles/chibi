@@ -88,6 +88,7 @@ typedef struct
     int requested_count;
     int pending_specializations;
     TSNode awaited; /* The call an enclosing await applies to. */
+    TSNode changing; /* The array method call a statement makes, which may change its array. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
     bool query; /* Analyzing a system's `where`, which reports its own reads. */
@@ -203,6 +204,11 @@ int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_map_operation(analyzer *, TSNode, script_expression_kind, int map, TSNode key);
 bool script_analyzer_map_method(analyzer *, TSNode function, const char *name);
+/* The array function method `member` calls on an array, or NULL. */
+const script_catalog_capability *script_analyzer_array_method(analyzer *, TSNode member);
+/* Whether an array function returns its array changed, so its method changes
+ * the array in place, as `append` does and `slice` does not. */
+bool script_analyzer_array_changer(const script_catalog_capability *);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);

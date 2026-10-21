@@ -1182,10 +1182,9 @@ HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
 }
 HashText :: (hash: uint64, text: string) -> uint64 {
     out := hash;
-    index: int = 0;
-    while (index < strings.ByteLength(text)) {
-        out = HashBytes(out, uint64(strings.ByteAt(text, index)), 1);
-        index += 1;
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    for (byte in strings.Bytes(text)) {
+        out = HashBytes(out, uint64(byte), 1);
     }
     return HashBytes(out, 0, 1);
 }
@@ -1480,10 +1479,12 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             referenced = ReferencedNames(forest, documents[callable.document].text, callables, params, aliases, package,
                                          Field(forest, callable.node, "body"));
         }
+        mutated := MutatedNames(forest, documents[callable.document].text, Field(forest, callable.node, "body"),
+                                referenced);
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
-                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced, ops,
-                           target);
+                           aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced,
+                           mutated, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);

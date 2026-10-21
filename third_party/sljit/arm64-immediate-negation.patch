@@ -1,6 +1,6 @@
-diff --git a/sljitNativeARM_64.c b/sljitNativeARM_64.c
---- a/sljitNativeARM_64.c
-+++ b/sljitNativeARM_64.c
+diff --git a/sljit_src/sljitNativeARM_64.c b/sljit_src/sljitNativeARM_64.c
+--- a/sljit_src/sljitNativeARM_64.c
++++ b/sljit_src/sljitNativeARM_64.c
 @@ -904,7 +904,7 @@
  			compiler->status_flags_state = SLJIT_CURRENT_FLAGS_SUB;
  			if (flags & ARG1_IMM)

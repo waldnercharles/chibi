@@ -10,6 +10,9 @@ implemented before the ports that need them.
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.
 - Worktree: `/Users/cwaldner/Personal/chibi/.worktrees/odin-package-foundations/chibi`.
+- Integration base on 2026-10-21: `72cfa7903e54294a196e18ccd563b77087477657`
+  from fetched `origin/main`; includes the array-method/parameter-copy fixes
+  and third-party archive build changes.
 - Upstream comparison: Odin `779c8c0a4778f994389e2a681ffc7b3cbd6c1f65`.
 - Program and per-package decision process: approved.
 - String invariant approved on 2026-10-21: immutable, length-carrying,
@@ -34,8 +37,8 @@ implemented before the ports that need them.
 | P3 | First portable package batch | Each approved subset imports, compiles, runs, documents and installs through the SDK; fidelity gaps and friction are recorded. | Waiting on P1/P2 |
 | P4 | Further package batches | Repeat P1-P3 for data structures, data formats, host services and selected vendor bindings. | Queued |
 
-The next action is to checkpoint this work and integrate freshly fetched main
-in the isolated worktree. Discuss each subsequent step's semantics before its
+The current integration preserves the existing work in the isolated worktree.
+Discuss each subsequent step's semantics before its
 implementation, and reuse completed work from other branches. Settle the
 remaining foundation choices before dependent packages. Reviewing
 a package family does not approve every declaration in it. A decision can
@@ -123,10 +126,20 @@ main, branch ancestry and dirty state before every implementation batch.
 - `.claude/worktrees/trusting-davinci-8d48d9` contains an uncommitted
   `src/execution/module_effects.c` reference-sharing change; preserve it and
   inspect it before changing argument-sharing rules.
+- `.claude/worktrees/upbeat-spence-90ef8b` was clean on `cwaldner/array-rename`
+  at `72cfa7903` when inspected on 2026-10-21, equal to remote main. Its merged
+  [string design](design-notes.md#strings-carry-their-length) and bounded byte
+  scans are existing work. `src/types/value.h` still stores `const char *str`,
+  `src/runtime/text_format.c` still copies slices, and string literals and
+  wire decoding still reject embedded NUL. General length-carrying descriptors,
+  accessors and shared slices are not implemented at that revision. Recheck
+  this worktree before assigning string work; its active owner may advance it.
 - [PR 569](https://github.com/waldnercharles/chibi/pull/569) and
-  [PR 571](https://github.com/waldnercharles/chibi/pull/571) concern prebuilt
-  third-party archives and SDK distribution. They do not establish public
-  `vendor:` language bindings. Coordinate acquisition/install changes with them.
+  [PR 629](https://github.com/waldnercharles/chibi/pull/629) are merged in the
+  integration base and supply third-party archives/build support.
+  [PR 571](https://github.com/waldnercharles/chibi/pull/571) remains the SDK
+  distribution draft at this audit. These do not establish public `vendor:`
+  language bindings. Coordinate acquisition/install changes with them.
 - [PR 600](https://github.com/waldnercharles/chibi/pull/600) is merged in the
   planning base. Measure performance against that implementation.
 - `cwaldner/m5-package-imports` at `8cb2911ec` is an older unmerged alternative.

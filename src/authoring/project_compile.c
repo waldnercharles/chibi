@@ -19,6 +19,7 @@
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 
@@ -314,11 +315,15 @@ static int run_tests(const authoring_packages *packages, behavior_backend backen
     afree(tests);
     return failed;
 }
-/* Tests run without a game, so they get the natives that need none of it. */
+/* Tests run without a game, so they get the natives that need none of it, and
+ * the compiler's raw-syntax and JSON bridges, so the compiler's own packages
+ * can hold tests. */
 int authoring_project_test(const char *root, const char *core)
 {
     char error[512] = { 0 };
-    native_capabilities *native = host_native_standalone_catalog_new(error, sizeof error);
+    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
+                                                COMPILER_JSON_DEFINITION_PACK };
+    native_capabilities *native = host_native_standalone_catalog_new(compiler, 2, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
@@ -535,10 +540,9 @@ static bool generate(
     int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
     bool generated = status == FLOW_OK && context.returned;
     if (!generated) {
-        const char *reason = context.error_message ? context.error_message
-                           : context.failure == BEHAVIOR_FUNCTION_BUDGET
-                               ? "instruction budget exhausted"
-                               : "execution failed";
+        const char *reason = context.error_message
+                               ? context.error_message
+                               : behavior_function_failure_text(context.failure);
         snprintf(error, size, "the site generator failed on %s: %s", name, reason);
     }
     const pin_array *pieces = result.ptr;
@@ -1218,7 +1222,7 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         fprintf(stderr, "%s: %s\n", manifest, error);
     }
     native_capabilities *native = valid
-                                    ? host_native_standalone_catalog_new(error, sizeof error)
+                                    ? host_native_standalone_catalog_new(NULL, 0, error, sizeof error)
                                     : NULL;
     /* The private parser belongs to the generator, never to validated examples. */
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,

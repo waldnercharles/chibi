@@ -4,6 +4,7 @@
 #include "compiler_fixture.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
@@ -67,7 +68,8 @@ typedef struct
  * within its time ceiling: unions, constants, patterns and integer types
  * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
  * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
+ * to prepare, and the moves, reads in place and array methods
+ * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
  * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
@@ -83,12 +85,16 @@ typedef enum
  * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. A
  * `boxed` sample's Boxed functions read only arrays that are never packed,
- * and its Packed functions arrays that may be. */
+ * and its Packed functions arrays that may be. A `moves` sample calls no
+ * native: its Moved functions take fresh values into locals and returns
+ * without copying them, and its Copied function copies an array's element.
+ * An `aliases` sample's Aliased functions read records and arrays nothing
+ * changes in place, and its CopiedWalk copies the array its loop changes. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, same_rejection;
+    bool core, updates, boxed, game, moves, aliases, same_rejection;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -298,6 +304,76 @@ static const sample samples[] = {
                    "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]",
                    "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { "Total", "[5]", "[123]" } } },
+    { .name = "moved values",
+      .group = IMPORT_SAMPLES,
+      .moves = true,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "MovedNote :: (n: int) -> Note { return {text: \"a\", count: "
+                "n}; }\n"
+                "MovedResults :: () -> int {\n"
+                "    a := MovedNote(1);\n    b := MovedNote(1);\n"
+                "    a.count = 10;\n    b = MovedNote(2);\n"
+                "    return a.count + b.count;\n}\n"
+                "MovedList :: (n: int) -> int[] { return [n, n + 1]; }\n"
+                "MovedSecond :: (n: int) -> int { xs := MovedList(n); return "
+                "xs[1]; }\n"
+                "Copied :: (notes: Note[]) -> int {\n"
+                "    note := notes[0];\n    note.count += 5;\n"
+                "    return note.count + notes[0].count;\n}",
+      .calls = { { "MovedNote", "[3]", "[{\"text\":\"a\",\"count\":3}]" },
+                 { "MovedResults", "[]", "[12]" },
+                 { "MovedSecond", "[4]", "[5]" },
+                 { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+    { .name = "read in place",
+      .group = IMPORT_SAMPLES,
+      .aliases = true,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "AliasedSum :: (notes: Note[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for (note in notes) { total += note.count; }\n"
+                "    first := notes[0];\n    return total + first.count * "
+                "100;\n}\n"
+                "CopiedWalk :: (notes: Note[]) -> int {\n"
+                "    xs := notes;\n    total: int = 0;\n"
+                "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
+                "total += note.count; }\n"
+                "    return total;\n}",
+      .calls = { { "AliasedSum", "[[{\"text\":\"a\",\"count\":1},{\"text\":\"b\",\"count\":2}]]", "[103]" },
+                 { "CopiedWalk", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}]]", "[3]" } } },
+    { .name = "array methods",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Build :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    ys: int[] = [100, 200];\n"
+                "    xs.extend(ys);\n    seven: int = 7;\n    xs.insert(0, "
+                "seven);\n    xs.reverse();\n"
+                "    return xs;\n}\n"
+                "Count :: (xs: int[]) -> int { return xs.length() * 10 + "
+                "Build(2).length(); }\n"
+                "Has :: (xs: int[], x: int) -> bool { return xs.contains(x); "
+                "}\n"
+                "Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); "
+                "return part; }\n"
+                "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
+                "ys.append(3); return xs.length(); }\n"
+                "Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }",
+      .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
+                 { "Count", "[[1,2,3]]", "[35]" },
+                 { "Has", "[[1,2],2]", "[true]" },
+                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
+                 { "Separate", "[]", "[2]" },
+                 { "Grow", "[[5]]", "[[5,1]]" } } },
+    { .name = "array method in an expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "
+                "xs.append(1); return xs; }",
+      .message = "append changes the array; call it as a statement on a name",
+      .line = 2,
+      .column = 45 },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"
@@ -2251,6 +2327,104 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
     REQUIRE(boxed == 4 && packed == 1 && !wrong);
     return true;
 }
+/* An intrinsic's capability ID is "CHII" and its number. */
+static const uint64_t SNAPSHOT_CAPABILITY = UINT64_C(0x4348494900000000) |
+                                            EXECUTION_INTRINSIC_SNAPSHOT;
+static int snapshots(const behavior_function *f)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id == SNAPSHOT_CAPABILITY;
+    }
+    return count;
+}
+/* A literal or an authored function's result is new in the function's
+ * storage, so stage one moves it into a local or a return without a snapshot;
+ * an element read from an array is still copied. */
+static bool moves_fresh_values(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler moves load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int moved = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool move = !strncmp(f.entry, "Moved", 5),
+                 copy = !strcmp(f.entry, "Copied");
+            int count = snapshots(f.body);
+            moved += move;
+            copied += copy;
+            if ((move && count) || (copy && !count)) {
+                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(moved == 4 && copied == 1 && !wrong);
+    return true;
+}
+/* A loop over an array nothing changes, and a local that reads an element of
+ * it, read in place; a loop whose body changes its array walks a copy. */
+static bool reads_in_place(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler aliases load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int aliased = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool alias = !strncmp(f.entry, "Aliased", 7),
+                 copy = !strcmp(f.entry, "CopiedWalk");
+            int count = snapshots(f.body);
+            aliased += alias;
+            copied += copy;
+            if ((alias && count) || (copy && !count)) {
+                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(aliased == 1 && copied == 1 && !wrong);
+    return true;
+}
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
  * exact and halfway values, the ends of both ranges, long and hexadecimal
  * spellings. */
@@ -2619,6 +2793,8 @@ static bool run_samples(sample_group group, int b)
         size_t expected_length = 0;
         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
                    (!s->boxed || reads_boxed(bytes, length)) &&
+                   (!s->moves || moves_fresh_values(bytes, length)) &&
+                   (!s->aliases || reads_in_place(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

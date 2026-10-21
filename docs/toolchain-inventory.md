@@ -50,8 +50,8 @@ make the compiler self-hosted.
 | --- | --- | --- | --- |
 | Project prepare and run | `src/host/chibi_main.c`, `src/host/compile_main.c`, `src/authoring/project_compile.c` | Expose stable commands first, then move orchestration into installed `.chibi` modules through the build-only host. | `test/tools/chibi_cli.c`, installed-SDK build/run, cache hit and invalidation, exact player arguments, failure status. |
 | Build-host process execution | `src/host/process.c`, `src/host/build_host.c`, `src/host/build_main.c`, `test/language/BuildWorkflow.chibi` | Private stage-zero host supplies direct argv, cwd, allowlisted environment, bounded output and deadline, error mapping, cancellation, and process-group cleanup, plus the narrow file primitives in `docs/self-hosting-build.md`. Keep it out of game catalogs; retain native bindings as Chibi takes ownership of orchestration. | `build-process` real-child cases on Linux/macOS and `language-build-workflow` recording parity; Windows retains stage zero pending equivalent process-tree support. |
-| Native configuration | `tools/toolchain/Build.chibi`, `tools/configure_inputs.py`, `tools/configure.sh`, `tools/configure_native.sh` | Installed Chibi program owns native orchestration and compiler SDK discovery; the read-only Python signature and dependency-override probes and shell recovery remain until their replacement gates. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `build-toolchain` authored cases plus `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
-| Dependency acquisition and cache | `tools/dependency_package.py`, `tools/fetchcontent_cache.py`, `cmake/dependencies.cmake`, `cmake/dependency_package/` | Vendor dependency sources in the repository, as Odin vendors its libraries (owner decision, 2026-10-19), then delete the fetch, the source and package caches and their callers rather than port them. Record each upstream revision and applied patch beside its sources and keep its license. | Offline clean configuration and build from the vendored sources on each supported platform, matching dependency revisions and patches, retained licenses, and current package/configuration cases. |
+| Native configuration | `tools/toolchain/Build.chibi`, `tools/configure_inputs.py`, `tools/configure.sh`, `tools/configure_native.sh` | Installed Chibi program owns native orchestration, compiler SDK discovery and third-party archive downloads; the read-only Python signature probe and shell recovery remain until their replacement gates. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `build-toolchain` authored cases plus `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
+| Dependency acquisition and cache | Done (2026-10-20). `third_party/archives.tsv` pins one prebuilt archive per target and variant, published as a GitHub release; `Build.chibi` downloads it into the clone's `.git/chibi/third_party`, shared by its worktrees, and `cmake/third_party.cmake` loads it (`third_party/README.md`). | The FetchContent declarations, configure-time patching, `dependency_package.py`, `fetchcontent_cache.py`, `cmake/dependency_package/`, the `CHIBI_DEPENDENCY_*` and `CHIBI_FETCHCONTENT_*` switches, their tests and CI cache keys are deleted. The temporary archive builder (`third_party/CMakeLists.txt`) and `cmake/third_party.cmake`'s own download leave with CMake (M6). | Offline clean `make build` from the cached archives and the admitted aggregates on macOS arm64; `build-toolchain` downloads, verifies, reuses and prunes archives through a `gh` stand-in. Web and macOS ThreadSanitizer archives are built locally (release third-party-2026-10-21); Linux and Windows archives wait for `.github/workflows/third-party.yml`. |
 | Build logs and command display | `tools/quiet.py`, Makefile `QUIET` | Build host owns bounded capture, full failure diagnostics, log retention, pruning, concurrent writers, and signal cleanup. | Focused native fixtures for success, large output, failure, interruption, pruning, and concurrent commands. |
 | SDK and runtime packaging | `tools/package_sdk.py`, `sdk/CMakeLists.txt`, `sdk/*.cmake` | Chibi modules assemble installed outputs, enforce target/header/object ownership, retain licenses and identity, and work without source checkout. | Admitted `package`, `package-ownership`, and `desktop-dependencies`; source-free and relocated installed SDK consumers. |
 | Player and Studio packaging | `tools/package_player.py`, `tools/package_studio.py` | Preserve package-kind checks, checksums, relocatable resources and RPATHs, platform executables, and atomic staging. | Existing package cases plus installed player startup and affected Studio startup/interaction checks. |
@@ -62,8 +62,6 @@ make the compiler self-hosted.
 | Release publication | `.github/workflows/publish.yml`, `.github/workflows/ci.yml`, package helpers | Keep workflow scheduling and credentials in hosted YAML. Move reusable validation and assembly policy into `.chibi` programs runnable on clean workers. | Immutable-release rejection, exact assets, build identity, checksums, engine revision, and matching native/web SDK generations. |
 | Browser compiler isolation | `tools/web_env.sh`, Emscripten configuration | Preserve isolation between native host generators and target compiler environments, and matching compiler/player output. | Native contamination rejection plus serial/threaded browser output ownership and browser compiler/player matching. |
 | C source formatting | `tools/clang-format.sh`, `.githooks/pre-commit`, CI | Keep external clang-format 22 while maintained C exists. `chibi fmt` replaces authored-source and asset formatting, not C formatting during migration. | Existing C format check and a separate canonical authored-format corpus. |
-| Blender worker | `tools/mesh_sdf/worker.py`, Blender-only `bpy` calls, and the worker's imported encoding support | Python may remain only for code that executes inside Blender because Blender requires its Python API. | Deterministic conversion, malformed geometry, metadata, work limits, and source provenance cases. |
-| Blender launcher and publication | `tools/mesh_sdf/convert.py` and ordinary-Python support in `tools/mesh_sdf/atlas.py` | Move subprocess, deadline, resource-limit, staging, hashing, validation, and publication policy to Chibi. Keep only the thin Blender worker and support it must import. | Timeout and process cleanup, memory/work limits, atomic destination publication, provenance, deterministic atlas bytes, and corrupt/partial output rejection. |
 | Stage-zero compiler | `src/language/` (including the generated Tree-sitter parser), the compiler parts of `src/authoring/`, `src/types/` and `src/execution/` | Stage one and stage two reproduce each other (M5) and the checksummed bootstrap artifact recovers the compiler from a clean checkout. Then the C compiler leaves the normal path and, after the recovery proof, the active tree. | `make test-bootstrap`, `make test-recovery`, the semantic fixture set on both stages, and a clean-checkout recovery with `cmake`, `clang` and `gcc` unavailable. |
 | Native executables and runtime | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/`, `tools/chibi_ctl/` | Executables stay C until Chibi has a native backend that emits them (LLVM AOT, backend milestone 4 in `docs/self-hosting-build.md`). Their orchestration and policy (command dispatch, export assembly, migration, validation) move to installed `.chibi` modules first. | `test/tools/chibi_cli.c`, installed-SDK and relocated-SDK command runs, and matching bytecode/SLJIT/native semantics. |
 | First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/graph/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
@@ -79,8 +77,6 @@ tools/package_sdk.py
 tools/package_player.py
 tools/package_studio.py
 tools/configure_inputs.py
-tools/dependency_package.py
-tools/fetchcontent_cache.py
 ```
 
 Remove an installed script only when the replacement is present in the installed
@@ -97,10 +93,9 @@ lacks:
 
 | Responsibility | Unblocked by the primitives | Still missing |
 | --- | --- | --- |
-| Configuration signature (`configure_inputs.py signature`) | Metadata, directory walks, environment names and text hashing. | Nothing in the host. Once dependencies are vendored it shrinks to caller arguments, the allowed environment and tool identities; `cmake --build` already reruns configuration when CMake's own inputs change. Port it after vendoring, not before. |
-| Dependency acquisition and cache | Nothing: vendoring replaces it. | No host primitives. |
+| Configuration signature (`configure_inputs.py signature`) | Metadata, directory walks, environment names and text hashing. | Nothing in the host. Without dependency packages it covers caller arguments, the allowed environment and tool identities; `cmake --build` already reruns configuration when CMake's own inputs change. |
+| Dependency acquisition and cache | Done: `Build.chibi` downloads prebuilt archives with `gh`, then hashes, unpacks with `tar`, renames them into the clone's Git directory and prunes unpinned ones. | Nothing. |
 | SDK, player and Studio packaging | Kinds, walks, copies, renames, removals and file hashing. | Sizes, modification-time order, symbolic-link reads, unique staging directories, the same budget, and M6. |
-| Blender launcher and publication | Hashing, copies and renames. | Child resource limits. |
 
 ## Removal inventory
 
@@ -120,8 +115,8 @@ The **host file primitives** below are those in the "Host file primitives"
 section: file kinds, change stamps, directory listing, copy, rename, remove,
 SHA-256 and environment names, with 1 MiB of output per step. The host still
 cannot read sizes, modification-time order or link targets, create unique
-staging directories, or limit a child's resources. Its 100,000-step budget
-also bounds authored walks over large trees.
+staging directories, or limit a child's resources. Its instruction budget,
+100 million since the build graph, also bounds authored walks over large trees.
 
 ### Python
 
@@ -129,12 +124,9 @@ also bounds authored walks over large trees.
 | --- | --- | --- |
 | `tools/test_policy.py` | Test policy. Every `make test*` target, root `CMakeLists.txt`, `AGENTS.md`, CI through Make. | **Blocked**: a Chibi supervisor must match its inherited shared deadline, signal forwarding, descendant cleanup, quarantine and admission tables, and must run before the first build. Explicitly retained until then. |
 | `tools/agent.py`, `tools/validation_plan.py`, `tools/gpu_capabilities.py` | Agent supervision. Makefile `agent-*` targets, `AGENTS.md`, `docs/agent-execution.md`, `test/tools/validation_plan.c`. | **Blocked** behind `test_policy.py`, whose admission tables they import. `gpu_capabilities.py` also needs a dynamic-library binding to probe Vulkan. |
-| `tools/configure_inputs.py` | Native configuration probes. `tools/toolchain/Build.chibi`, SDK install. | `signature`: **Blocked** on vendoring, which removes the dependency inputs it tracks; the host primitives already cover the rest. `Build.chibi` now owns the former `compiler-sdk` and `package-enabled` probes. |
-| `tools/dependency_package.py`, `tools/fetchcontent_cache.py` | Dependency acquisition and cache. `Build.chibi`, `tools/configure.sh`, `cmake/dependency_package/`, `cmake/tests/desktop_dependencies/`, CI cache keys in `ci.yml`, `docs.yml` and `publish.yml`, `test/tools/build_toolchain.c`, `desktop_dependencies.c` and `package.c`, SDK install. | **Replace now** by vendoring the sources (owner decision, 2026-10-19), then delete them with their callers. `chibi-studio`'s CI also runs `fetchcontent_cache.py` and must stop first. |
+| `tools/configure_inputs.py` | Native configuration probe. `tools/toolchain/Build.chibi`, SDK install. | `signature`: **Replace now**: prebuilt archives removed the dependency inputs it tracked, and the host primitives cover the rest. `Build.chibi` owns the former `compiler-sdk` probe; `package-enabled` went with the dependency packages. |
 | `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
 | `tools/quiet.py` | Build logs for every Makefile recipe (`QUIET`). | **Blocked**: it wraps configuration before any build host exists. Needs a prebuilt host or Make's retirement (M6). |
-| `tools/mesh_sdf/convert.py`, `tools/mesh_sdf/atlas.py` | Blender launcher and publication. Run by hand (`tools/mesh_sdf/README.md`). | **Blocked** on child resource limits; the host file primitives cover hashing, copies and renames. |
-| `tools/mesh_sdf/worker.py` | Blender worker. `convert.py`. | **Keep**: runs inside Blender. |
 | `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
 | `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
 
@@ -173,9 +165,12 @@ also bounds authored walks over large trees.
 | --- | --- | --- |
 | `tools/collab/server/` | Collaboration room service. `test/tools/collab.c`, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
 
-Only Python that Blender imports through `bpy` belongs to the Blender exception.
-`convert.py` runs under ordinary Python and is part of the migration set. Split
-shared support so the Blender worker retains only what its required API needs.
+Only Python that an external application imports, such as Blender through
+`bpy`, belongs to that exception; a launcher around it runs under ordinary
+Python and is part of the migration set. The mesh-to-SDF converter in
+`tools/mesh_sdf/` was retired on 2026-10-21 with no replacement (owner
+decision): its worker required Blender 4.3.2 on Linux, and its tests and the
+example that used it were already gone. Git history keeps it.
 Re-run the caller inventory before each deletion because open branches, CI,
 Studio, or installed SDK consumers may have changed since this document was
 written.

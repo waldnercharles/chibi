@@ -140,10 +140,12 @@ TotalSize :: (size: uint64) -> bool {
            size == 8388608;
 }
 ValidUTF8 :: (text: string) -> bool {
-    size := strings.ByteLength(text);
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    bytes := strings.Bytes(text);
+    size := length(bytes);
     index: int = 0;
     while (index < size) {
-        byte := strings.ByteAt(text, index);
+        byte := bytes[index];
         index += 1;
         if (byte < 128) {
             continue;
@@ -171,7 +173,7 @@ ValidUTF8 :: (text: string) -> bool {
         }
         part: int = 0;
         while (part < count) {
-            next := strings.ByteAt(text, index);
+            next := bytes[index];
             index += 1;
             if ((next & 192) != 128) {
                 return false;

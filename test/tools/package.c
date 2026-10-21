@@ -116,10 +116,10 @@ static int package()
 
 static int configure_fixture(const char *source, const char *search, const char *option, const char *environment)
 {
-    const char *argv[] = { "env",       search,  "CHIBI_DEPENDENCY_PACKAGES=0",
-                           environment, "sh",    "tools/configure.sh",
-                           "native",    "build", option,
-                           NULL };
+    const char *argv[] = {
+        "env",    search,  environment, "sh", "tools/configure.sh",
+        "native", "build", option,      NULL
+    };
     return tool_run(argv, source, log_path);
 }
 
@@ -167,9 +167,6 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
     path(original, tool_root(), "tools/configure.sh");
     path(filename, source, "tools/configure.sh");
     const char *copy[] = { "cp", original, filename, NULL };
-    REQUIRE(tool_run(copy, source, log_path) == 0);
-    path(original, tool_root(), "tools/fetchcontent_cache.py");
-    path(filename, source, "tools/fetchcontent_cache.py");
     REQUIRE(tool_run(copy, source, log_path) == 0);
     const char *git[] = { "git", "init", "-q", NULL };
     REQUIRE(tool_run(git, source, log_path) == 0);

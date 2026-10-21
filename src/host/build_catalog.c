@@ -249,6 +249,23 @@ static const char *build_hash_file(void *service, const pin_value *arguments, pi
     );
     return failure ? failure : string_result(host, results, digest);
 }
+static const char *build_embed_file(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(3);
+    bool written;
+    const char *failure = build_io_embed(
+        host->root,
+        arguments[0].str,
+        arguments[1].str,
+        arguments[2].str,
+        host->deadline,
+        host->options->cancelled,
+        &written
+    );
+    results[0].b = written;
+    return failure;
+}
 static const char *build_hash_text(void *service, const pin_value *arguments, pin_value *results)
 {
     READY_HOST();
@@ -294,6 +311,13 @@ static const script_catalog_parameter concat_parameters[] = {
     { .name = "left", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
     { .name = "right", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
 };
+static const script_catalog_parameter embed_parameters[] = {
+    { .name = "input", .type = { .storage = PIN_STR } },
+    { .name = "output", .type = { .storage = PIN_STR } },
+    { .name = "symbol", .type = { .storage = PIN_STR } },
+};
+static const script_catalog_parameter handle_parameter = { .name = "handle",
+                                                           .type = { .storage = PIN_I32 } };
 static const script_catalog_parameter path_parameter = { .name = "path",
                                                          .type = { .storage = PIN_STR } };
 static const script_catalog_parameter move_parameters[] = {
@@ -310,7 +334,44 @@ static const script_catalog_parameter array_result = {
     .name = "value",
     .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY }
 };
-#define BUILD_CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT)                  \
+#define BUILD_NATIVES(X)                                                                    \
+    X(901, "build.run", &array_parameter, 1, int_result, build_host_run_step)               \
+    X(902, "build.environment", &text_parameter, 1, text_result, build_host_environment)    \
+    X(903, "build.arguments", NULL, 0, array_result, build_arguments)                       \
+    X(904, "build.platform", NULL, 0, text_result, build_platform)                          \
+    X(905, "build.root", NULL, 0, text_result, build_root)                                  \
+    X(906, "build.program_directory", NULL, 0, text_result, build_program_directory)        \
+    X(907, "build.find_executable", &text_parameter, 1, text_result, build_find_executable) \
+    X(908, "build.read_file", &text_parameter, 1, text_result, build_read_file)             \
+    X(909, "build.file_exists", &text_parameter, 1, bool_result, build_file_exists)         \
+    X(910, "build.make_directory", &text_parameter, 1, bool_result, build_make_directory)   \
+    X(911, "build.resolve_path", &text_parameter, 1, text_result, build_resolve_path)       \
+    X(912, "build.write_file", two_text_parameters, 2, bool_result, build_write_file)       \
+    X(913, "build.last_stdout", NULL, 0, text_result, build_last_stdout)                    \
+    X(914, "build.last_stderr", NULL, 0, text_result, build_last_stderr)                    \
+    X(915, "build.report", &text_parameter, 1, int_result, build_report)                    \
+    X(916, "build.join", join_parameters, 2, text_result, value_join)                       \
+    X(917, "build.starts_with", two_text_parameters, 2, bool_result, value_starts_with)     \
+    X(918, "build.before", two_text_parameters, 2, text_result, value_before)               \
+    X(919, "build.after", two_text_parameters, 2, text_result, value_after)                 \
+    X(920, "build.lines", &text_parameter, 1, array_result, value_lines)                    \
+    X(921, "build.trim", &text_parameter, 1, text_result, value_trim)                       \
+    X(922, "build.concat", concat_parameters, 2, array_result, value_concat)                \
+    X(923, "build.length", &array_parameter, 1, int_result, value_length)                   \
+    X(924, "build.probe", &array_parameter, 1, int_result, build_host_run_probe)            \
+    X(925, "build.environment_names", NULL, 0, array_result, build_host_environment_names)  \
+    X(926, "build.file_kind", &path_parameter, 1, text_result, build_file_kind)             \
+    X(927, "build.file_stamp", &path_parameter, 1, text_result, build_file_stamp)           \
+    X(928, "build.list_directory", &path_parameter, 1, array_result, build_list_directory)  \
+    X(929, "build.copy_file", move_parameters, 2, bool_result, build_copy_file)             \
+    X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                   \
+    X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                   \
+    X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)             \
+    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)             \
+    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                \
+    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                 \
+    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)
+#define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
@@ -318,97 +379,32 @@ static const script_catalog_parameter array_result = {
       .parameter_count = COUNT,                                                \
       .results = &RESULT,                                                      \
       .result_count = 1,                                                       \
-      .effects = SCRIPT_EFFECT_HOST }
-static const script_catalog_capability capabilities[] = {
-    BUILD_CAPABILITY(901, "build.run", &array_parameter, 1, int_result),
-    BUILD_CAPABILITY(902, "build.environment", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(903, "build.arguments", NULL, 0, array_result),
-    BUILD_CAPABILITY(904, "build.platform", NULL, 0, text_result),
-    BUILD_CAPABILITY(905, "build.root", NULL, 0, text_result),
-    BUILD_CAPABILITY(906, "build.program_directory", NULL, 0, text_result),
-    BUILD_CAPABILITY(907, "build.find_executable", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(908, "build.read_file", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(909, "build.file_exists", &text_parameter, 1, bool_result),
-    BUILD_CAPABILITY(910, "build.make_directory", &text_parameter, 1, bool_result),
-    BUILD_CAPABILITY(911, "build.resolve_path", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(912, "build.write_file", two_text_parameters, 2, bool_result),
-    BUILD_CAPABILITY(913, "build.last_stdout", NULL, 0, text_result),
-    BUILD_CAPABILITY(914, "build.last_stderr", NULL, 0, text_result),
-    BUILD_CAPABILITY(915, "build.report", &text_parameter, 1, int_result),
-    BUILD_CAPABILITY(916, "build.join", join_parameters, 2, text_result),
-    BUILD_CAPABILITY(917, "build.starts_with", two_text_parameters, 2, bool_result),
-    BUILD_CAPABILITY(918, "build.before", two_text_parameters, 2, text_result),
-    BUILD_CAPABILITY(919, "build.after", two_text_parameters, 2, text_result),
-    BUILD_CAPABILITY(920, "build.lines", &text_parameter, 1, array_result),
-    BUILD_CAPABILITY(921, "build.trim", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(922, "build.concat", concat_parameters, 2, array_result),
-    BUILD_CAPABILITY(923, "build.length", &array_parameter, 1, int_result),
-    BUILD_CAPABILITY(924, "build.probe", &array_parameter, 1, int_result),
-    BUILD_CAPABILITY(925, "build.environment_names", NULL, 0, array_result),
-    BUILD_CAPABILITY(926, "build.file_kind", &path_parameter, 1, text_result),
-    BUILD_CAPABILITY(927, "build.file_stamp", &path_parameter, 1, text_result),
-    BUILD_CAPABILITY(928, "build.list_directory", &path_parameter, 1, array_result),
-    BUILD_CAPABILITY(929, "build.copy_file", move_parameters, 2, bool_result),
-    BUILD_CAPABILITY(930, "build.rename", move_parameters, 2, bool_result),
-    BUILD_CAPABILITY(931, "build.remove", &path_parameter, 1, bool_result),
-    BUILD_CAPABILITY(932, "build.hash_file", &path_parameter, 1, text_result),
-    BUILD_CAPABILITY(933, "build.hash_text", &text_parameter, 1, text_result),
-};
-#undef BUILD_CAPABILITY
+      .effects = SCRIPT_EFFECT_HOST },
+static const script_catalog_capability capabilities[] = { BUILD_NATIVES(CAPABILITY) };
+#undef CAPABILITY
 static const script_catalog catalog = { .capabilities = capabilities,
                                         .capability_count = sizeof(capabilities) /
                                                             sizeof(*capabilities) };
-#define BUILD_CALL(FUNCTION)                                                   \
-    { .service = "tool.build",                                                 \
-      .invoke = FUNCTION,                                                      \
-      .missing_service = "build host service is unavailable" }
-static const node_host_call calls[] = {
-    BUILD_CALL(build_host_run_step),
-    BUILD_CALL(build_host_environment),
-    BUILD_CALL(build_arguments),
-    BUILD_CALL(build_platform),
-    BUILD_CALL(build_root),
-    BUILD_CALL(build_program_directory),
-    BUILD_CALL(build_find_executable),
-    BUILD_CALL(build_read_file),
-    BUILD_CALL(build_file_exists),
-    BUILD_CALL(build_make_directory),
-    BUILD_CALL(build_resolve_path),
-    BUILD_CALL(build_write_file),
-    BUILD_CALL(build_last_stdout),
-    BUILD_CALL(build_last_stderr),
-    BUILD_CALL(build_report),
-    BUILD_CALL(value_join),
-    BUILD_CALL(value_starts_with),
-    BUILD_CALL(value_before),
-    BUILD_CALL(value_after),
-    BUILD_CALL(value_lines),
-    BUILD_CALL(value_trim),
-    BUILD_CALL(value_concat),
-    BUILD_CALL(value_length),
-    BUILD_CALL(build_host_run_probe),
-    BUILD_CALL(build_host_environment_names),
-    BUILD_CALL(build_file_kind),
-    BUILD_CALL(build_file_stamp),
-    BUILD_CALL(build_list_directory),
-    BUILD_CALL(build_copy_file),
-    BUILD_CALL(build_rename),
-    BUILD_CALL(build_remove),
-    BUILD_CALL(build_hash_file),
-    BUILD_CALL(build_hash_text),
-};
-#undef BUILD_CALL
-bool build_host_resolve(void *, uint64_t id, script_lower_host *out)
-{
-    if (id < 901 || id >= 901 + sizeof(calls) / sizeof(*calls)) {
-        return false;
-    }
-    static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
-    *out = (script_lower_host){ .call = &calls[id - 901], .access = &access };
-    return true;
-}
+#define CALL(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)                    \
+    static const node_host_call call_##ID = {                                  \
+        .service = "tool.build",                                               \
+        .invoke = FUNCTION,                                                    \
+        .missing_service = "build host service is unavailable"                 \
+    };
+BUILD_NATIVES(CALL)
+#undef CALL
+static const node_access host_sink = { .flags = NODE_EFFECT_HOST_SINK };
+#define BINDING(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)                 \
+    { .id = ID, .call = &call_##ID, .access = &host_sink },
+static const native_capability_binding bindings[] = { BUILD_NATIVES(BINDING) };
+#undef BINDING
+#undef BUILD_NATIVES
 
-const script_catalog *build_host_catalog()
+const native_capability_pack *build_host_natives()
 {
-    return &catalog;
+    static const native_capability_pack pack = { .catalog = &catalog,
+                                                 .bindings = bindings,
+                                                 .binding_count = sizeof bindings /
+                                                                  sizeof *bindings };
+    return &pack;
 }

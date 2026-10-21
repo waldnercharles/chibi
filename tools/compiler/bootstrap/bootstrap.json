@@ -2,35 +2,35 @@
   "format": 1,
   "version": 4,
   "minimum": 2,
-  "revision": "4a751bd5fb2bb414ec867f089acae9b9736e1d9e-dirty",
+  "revision": "9de30764f1d608fbfeb1176bb484df2a6bbb3bd1-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 11383423,
-    "sha256": "2f0a3d0007e528a43d735287998738566fa6941efe373b389db484ad195d3d54"
+    "bytes": 11262184,
+    "sha256": "c40689a0a5c3572f1d2d2cc24c077328748013205709cec3230867eff767cd21"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 92733,
-      "sha256": "335979bdc76ba5cf7fadaff8c025dfd9a9e4a4bc128be7140f7d26a385917971"
+      "bytes": 92902,
+      "sha256": "a18a96d53ae45233ba617278b1e804c3aab04b3ce3c86206559871f1e88490f3"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 104161,
-      "sha256": "4d6a7f92a83a596e7e8bfcde57b41038ef948c5624d17a5805e65175c4987845"
+      "bytes": 114270,
+      "sha256": "36e5f2e0701f58a942aaf5338d78d3af3f6789d25ee2fcaa27454067d87e0ae7"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 179497,
-      "sha256": "6ac34c3c2cc4e93c8e4f35d52b167627c69afea364f715dc76158f862512cb2e"
+      "bytes": 184672,
+      "sha256": "adfad0c560ad96f28614def4e80e336b51b8aad1ad9f571041a0753553774bf5"
     },
     {
       "path": "package_compiler/Maps.chibi",
-      "bytes": 27298,
-      "sha256": "3f4bbd30b5152f290121c45d7c55d29d1d789bd316a1707da817bd73600b8d03"
+      "bytes": 27306,
+      "sha256": "459f90f79d726cc6e3c9c7fefb6d39b579dbf85056b2a57396d2b60a9ed19134"
     },
     {
       "path": "package_compiler/References.chibi",
@@ -64,8 +64,8 @@
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
-      "bytes": 15946,
-      "sha256": "7bc66c7c6cdf2cc82791961ee6848374d3c82da7fdb47edf4926b04d65643ad9"
+      "bytes": 16011,
+      "sha256": "8e24b18188f4fc7b23d949333e210ad8f1e94b164d199cbe2c2f33e2f7ee46fe"
     },
     {
       "path": "compiler_syntax/Syntax.chibi",

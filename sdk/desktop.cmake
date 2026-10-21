@@ -4,43 +4,21 @@ enable_language(CXX)
 if(APPLE)
     enable_language(OBJC)
 endif()
-if(NOT CHIBI_DEPENDENCY_SOURCE_ROOT)
-    set(CHIBI_DEPENDENCY_SOURCE_ROOT "${CHIBI_SDK_ROOT}")
-endif()
-# On Windows, dependencies build without the project's strict warnings, as
-# their package does; SDL's Windows sources do not compile under them.
-get_directory_property(project_options COMPILE_OPTIONS)
-if(WIN32)
-    set(dependency_options ${project_options})
-    list(FILTER dependency_options EXCLUDE REGEX "^-W")
-    set_directory_properties(PROPERTIES COMPILE_OPTIONS "${dependency_options}")
-endif()
-if(NOT TARGET cute)
-    if(CHIBI_DEPENDENCY_PACKAGE)
-        include("${CHIBI_DEPENDENCY_PACKAGE}")
-    else()
-        # Preserve the product's exact Cute/SDL/physics pins and patch set.
-        set(saved_sljit "${CHIBI_ENABLE_SJLIT}")
-        set(CHIBI_ENABLE_SJLIT OFF)
-        include("${CHIBI_SDK_ROOT}/cmake/dependencies.cmake")
-        set(CHIBI_ENABLE_SJLIT "${saved_sljit}")
-    endif()
-endif()
-if(NOT TARGET RmlUi::Core)
-    include("${CHIBI_SDK_ROOT}/cmake/rmlui_dependencies.cmake")
-endif()
-set_directory_properties(PROPERTIES COMPILE_OPTIONS "${project_options}")
+# Cute (with SDL) and RmlUi (with FreeType) come prebuilt from the third-party
+# archive (cmake/third_party.cmake); the SDK installs copies of their archives.
 include("${CMAKE_CURRENT_LIST_DIR}/desktop_dependencies.cmake")
-chibi_desktop_dependency(cute CHIBI_DESKTOP_CUTE)
-chibi_desktop_dependency(RmlUi::Core CHIBI_DESKTOP_RMLUI)
+chibi_desktop_dependency(Chibi::desktop_cute CHIBI_DESKTOP_CUTE)
+chibi_desktop_dependency(Chibi::desktop_rmlui_core CHIBI_DESKTOP_RMLUI)
 install(FILES "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" DESTINATION lib/cmake/Chibi)
+install(DIRECTORY "${CHIBI_THIRD_PARTY_DIR}/share/chibi/licenses/desktop/"
+    DESTINATION share/chibi/licenses/desktop)
 
 add_library(chibi_platform STATIC "${CHIBI_SDK_ROOT}/src/support/resources.c")
 add_library(Chibi::platform ALIAS chibi_platform)
 set_target_properties(chibi_platform PROPERTIES EXPORT_NAME platform)
 chibi_sdk_headers(chibi_platform PUBLIC platform/cute.h support/resources.h)
 target_link_libraries(chibi_platform PUBLIC
-    $<BUILD_INTERFACE:cute> $<INSTALL_INTERFACE:${CHIBI_DESKTOP_CUTE}>)
+    ${CHIBI_DESKTOP_CUTE})
 
 configure_file("${CHIBI_SDK_ROOT}/src/assets/project.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/platform/assets/project.h" COPYONLY)
@@ -75,7 +53,7 @@ foreach(header ui/controls/controls_internal.h support/math.h diagnostics/tracy.
 endforeach()
 target_include_directories(chibi_ui_host PRIVATE "${ui_private}")
 target_link_libraries(chibi_ui_host PUBLIC chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_text_search
-    PRIVATE chibi_builtin_fonts chibi_support $<BUILD_INTERFACE:RmlUi::Core> $<INSTALL_INTERFACE:${CHIBI_DESKTOP_RMLUI}>)
+    PRIVATE chibi_builtin_fonts chibi_support ${CHIBI_DESKTOP_RMLUI})
 if(APPLE)
     target_link_libraries(chibi_ui_host PRIVATE c++)
 elseif(UNIX AND NOT EMSCRIPTEN)

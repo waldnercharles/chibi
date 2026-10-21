@@ -1,0 +1,219 @@
+package engine
+
+import strings "core:strings"
+
+// Finds a build profile's toolchain, as the Makefile and root CMakeLists.txt
+// find it when nothing is chosen: the named profiles are the Makefile's
+// SANITIZER_, DEBUG_ and RELEASE_CMAKE_FLAGS, its default the first.
+
+// The profile `name` names on this machine, or a profile whose compiler is
+// empty when the name is unknown or no compiler is found. Its archive depends
+// on the compiler and sanitizers a caller may override, so ThirdParty finds
+// it once they are final.
+pub Discover :: (name: string, source_root: string, build_dir: string) -> Profile {
+    compiler := DiscoverCompiler();
+    profile: Profile = {
+        compiler: compiler,
+        compiler_id: CompilerId(compiler),
+        build_type: "Debug",
+        architecture: "",
+        sysroot: "",
+        warnings: true,
+        sanitizers: "",
+        debug_compilation_dir: "",
+        libclang_include: "",
+        libclang_library: "",
+        clang_resource_include: "",
+        third_party: ""
+    };
+    if (name == "sanitizer") {
+        profile.sanitizers = "address,undefined";
+    } else if (name == "release") {
+        profile.build_type = "Release";
+    } else if (name != "debug") {
+        profile.compiler = "";
+    }
+    if (build.platform() == "Darwin") {
+        if (build.probe(["uname", "-m"]) == 0) {
+            profile.architecture = strings.TrimSpace(build.last_stdout());
+        }
+        profile.sysroot = DiscoverSysroot(compiler);
+    }
+    profile.debug_compilation_dir = CcacheDebugDirectory(source_root, build_dir);
+    profile.libclang_include = DiscoverLibclang("include");
+    profile.libclang_library = DiscoverLibclang("library");
+    profile.clang_resource_include = ClangResourceInclude(profile.libclang_library);
+    return profile;
+}
+
+// The unpacked third-party archive cmake/third_party.cmake loads for a
+// profile: third_party/archives.tsv's pin for this host's target and the
+// profile's variant, below .git/chibi/third_party in the clone's Git
+// directory, where tools/toolchain/Build.chibi unpacks it. Sanitized builds
+// use the archive instrumented the same way, except with Apple clang, whose
+// sanitizer runtime the instrumented archives do not link with. Empty when
+// nothing is pinned for this host; the directory is missing until something
+// unpacks it. Build.chibi's ThirdPartyTarget and ThirdPartyCache name the
+// target and cache the same way; that program parses with older hosts, so it
+// keeps its own copy.
+pub ThirdParty :: (source_root: string, compiler_id: string, sanitizers: string) -> string {
+    if (build.probe(["uname", "-m"]) != 0) {
+        return "";
+    }
+    machine := strings.TrimSpace(build.last_stdout());
+    os := "linux";
+    if (build.platform() == "Darwin") {
+        os = "macos";
+    }
+    architecture := "x64";
+    if (machine == "arm64" || machine == "aarch64") {
+        architecture = "arm64";
+    }
+    variant := "release";
+    if (compiler_id != "AppleClang" && sanitizers == "address,undefined") {
+        variant = "address-undefined";
+    } else if (compiler_id != "AppleClang" && sanitizers == "thread") {
+        variant = "thread";
+    }
+    cache := Join([source_root, "/.chibi/third_party"]);
+    if (build.probe(["git", "-C", source_root, "rev-parse", "--path-format=absolute", "--git-common-dir"]) == 0) {
+        cache = Join([strings.TrimSpace(build.last_stdout()), "/chibi/third_party"]);
+    }
+    pin := Join([os, "-", architecture, "\t", variant, "\t"]);
+    for (line in build.lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
+        if (strings.HasPrefix(line, pin)) {
+            return Join([cache, "/", build.after(build.after(build.after(line, "\t"), "\t"), "\t")]);
+        }
+    }
+    return "";
+}
+
+// CC, or Homebrew LLVM's clang as the Makefile prefers it, or cc.
+DiscoverCompiler :: () -> string {
+    chosen := build.environment("CC");
+    if (chosen == "" && build.file_exists("/opt/homebrew/opt/llvm/bin/clang")) {
+        return "/opt/homebrew/opt/llvm/bin/clang";
+    }
+    if (chosen == "") {
+        chosen = "cc";
+    }
+    return build.find_executable(chosen);
+}
+
+// AppleClang, Clang or GNU, from the compiler's version banner, as CMake
+// names them; empty for another compiler.
+pub CompilerId :: (compiler: string) -> string {
+    if (compiler == "" || build.probe([compiler, "--version"]) != 0) {
+        return "";
+    }
+    banner := build.last_stdout();
+    if (strings.Contains(banner, "Apple clang")) {
+        return "AppleClang";
+    }
+    if (strings.Contains(banner, "clang version")) {
+        return "Clang";
+    }
+    if (strings.Contains(banner, "Free Software Foundation") || strings.HasPrefix(banner, "gcc")) {
+        return "GNU";
+    }
+    return "";
+}
+
+// SDKROOT, or the SDK the compiler passes its cc1 with -isysroot, or the one
+// xcrun names, as tools/toolchain/Build.chibi finds it for CMake.
+DiscoverSysroot :: (compiler: string) -> string {
+    chosen := build.environment("SDKROOT");
+    if (chosen != "") {
+        return chosen;
+    }
+    if (build.probe([compiler, "-###", "-x", "c", "-fsyntax-only", "/dev/null"]) == 0) {
+        report := build.last_stderr();
+        flag := "\"-isysroot\" \"";
+        at := strings.Index(report, flag);
+        if (at >= 0) {
+            rest := strings.Slice(report, at + strings.ByteLength(flag), strings.ByteLength(report));
+            // The SDK is often a versioned link, as MacOSX26.sdk is; CMake's
+            // cache holds the directory it names.
+            sdk := build.resolve_path(strings.Slice(rest, 0, strings.Index(rest, "\"")));
+            if (build.file_kind(sdk) == "directory") {
+                return sdk;
+            }
+        }
+    }
+    if (build.probe(["xcrun", "--show-sdk-path"]) == 0) {
+        return strings.TrimSpace(build.last_stdout());
+    }
+    return "";
+}
+
+// What CMake names debug info's directory when ccache compiles a build below
+// the source tree: the build's path there with every component `build`, so
+// differently named builds share ccache objects. Empty without ccache or for
+// a build elsewhere.
+pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
+    prefix := Join([source_root, "/"]);
+    if (build.find_executable("ccache") == "" || !strings.HasPrefix(build_dir, prefix)) {
+        return "";
+    }
+    parts: string[] = [];
+    for (part in strings.Split(strings.Slice(build_dir, strings.ByteLength(prefix), strings.ByteLength(build_dir)), "/")) {
+        if (part != "") {
+            parts = array_add(parts, "build");
+        }
+    }
+    return strings.Join(parts, "/");
+}
+
+// libclang's headers or library below the first LLVM prefix that has both,
+// in root CMakeLists.txt's order of hints: Homebrew's, then the newest of
+// Debian's /usr/lib/llvm-N.
+DiscoverLibclang :: (part: string) -> string {
+    prefixes := ["/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"];
+    versions: string[] = [];
+    for (name in build.list_directory("/usr/lib")) {
+        if (strings.HasPrefix(name, "llvm-")) {
+            versions = array_add(versions, name);
+        }
+    }
+    // Newest first: a longer version number is newer, then the larger.
+    for (i in 0..<length(versions)) {
+        for (j in i + 1..<length(versions)) {
+            a := versions[i];
+            b := versions[j];
+            if (strings.ByteLength(b) > strings.ByteLength(a) ||
+                (strings.ByteLength(b) == strings.ByteLength(a) && strings.Compare(b, a) > 0)) {
+                versions[i] = b;
+                versions[j] = a;
+            }
+        }
+    }
+    for (version in versions) {
+        prefixes = array_add(prefixes, Join(["/usr/lib/", version]));
+    }
+    for (prefix in prefixes) {
+        include := Join([prefix, "/include"]);
+        shared := "";
+        for (name in ["libclang.dylib", "libclang.so"]) {
+            if (shared == "" && build.file_exists(Join([prefix, "/lib/", name]))) {
+                shared = Join([prefix, "/lib/", name]);
+            }
+        }
+        if (shared != "" && build.file_exists(Join([include, "/clang-c/Index.h"]))) {
+            if (part == "include") {
+                return include;
+            }
+            return shared;
+        }
+    }
+    return "";
+}
+
+// The archiver and indexer beside the compiler, as LLVM ships them, or those
+// on PATH.
+pub DiscoverTool :: (compiler: string, llvm: string, name: string) -> string {
+    beside := Join([strings.Slice(compiler, 0, strings.LastIndex(compiler, "/")), "/", llvm]);
+    if (build.file_exists(beside)) {
+        return beside;
+    }
+    return build.find_executable(name);
+}

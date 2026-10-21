@@ -76,6 +76,10 @@ from when stage one's records held only `int`, `bool` and `string` fields.
 A map type's declaration in stage one keeps its value type in three fields,
 `value_storage`, `value_container` and `value_record`, because `TypeDecl`
 cannot hold a `ValueType`.
+The build graph's `c.Library` (M6) cannot hold its sources or flags, so every
+graph function takes them as two arrays beside the record, and a library's
+description is three functions (`Support`, `SupportSources`, `SupportFlags`)
+instead of one value.
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
@@ -554,6 +558,11 @@ cannot report how many lines it compared.
 Suggestion: one text library for every Chibi host, with `format_text` and
 `core:strings` in build programs as in games.
 
+Implemented (#606): build programs have the text and array natives, so
+`format_text` and `length`, and import `core:strings` when the host is given
+the core collection. `GameEquivalence.chibi` still slices numbers out of
+trace lines until it moves to them.
+
 ## Build programs read files only as text
 
 Toolchain. `build.read_file` returns a NUL-terminated string, so a build program
@@ -595,6 +604,20 @@ Suggestion: run build programs as ordinary Chibi packages that import the
 `core:` collections, with process and file access in one build-only
 capability package, instead of a separate string vocabulary.
 
+Partly implemented (#606): a build program is now a package and may
+import `core:`. The `build.` string natives remain until `Build.chibi`,
+`StageOne.chibi` and `GameEquivalence.chibi` use `core:strings` instead.
+That waits on cheaper strings
+([Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length)).
+Splitting the 25 KB `build/CMakeCache.txt` into lines and testing each takes
+0.9 s with `strings.SplitLines` in a Debug host with sanitizers, against 0.2 s
+with `build.lines`. A 50 KB cache ran out of the host's then 100,000-step budget,
+because each split copies the rest of the text.
+The M6 graph's `compile_commands.json` writer escaped every argument with two
+`strings.ReplaceAll` calls: with 218 commands of about forty arguments the run
+took 7 s, and 2.4 s once it asks `build.before` whether the text holds a quote
+or backslash first and escapes only the rare argument that does.
+
 ## A host's natives can't form a package
 
 Language and toolchain. Moving the build host's natives under `build.` (#523)
@@ -634,6 +657,10 @@ states could not be named `events`, `event` or `state`, nor a loop variable
 `state`; they became `event_declarations`, `event_id` and `retained`.
 A map literal step's loop variable named `entry` failed the same way, as the
 whole file's "Unexpected syntax" at 1:1; it became `pair`.
+The build graph's `c` package (M6) named a parameter `library`, the legacy
+declaration keyword; four functions failed with only "Unexpected syntax"
+until bisecting found it, and it became `target`. Its next slice hit it twice
+more, as a record field and as a local, which became `owner` and `built`.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,
@@ -644,6 +671,20 @@ whole file's "Unexpected syntax" at 1:1; it became `pair`.
 
 Suggestion: make declaration-only words contextual, and give build-host
 syntax errors the parser's position and token.
+
+## A struct literal takes its type only from a declaration
+
+Language. In the build graph's `c` package, `array_add(running, {source: s,
+handle: h})` fails with "Struct literal needs an explicit record or reflected
+type", although `running` is a `Running[]`. The literal needs a typed local
+first: `compile: Running = {source: s, handle: h};`.
+
+- Odin infers a compound literal's type from its parameter or element type;
+  Zig's `.{ ... }` coerces to the parameter's type; C# 9 has target-typed
+  `new()`; Swift infers enum cases and literals from context.
+
+Suggestion: type a struct literal from the parameter, element or return type it
+fills, as Odin does.
 
 ## A build host reads `Build.chibi` with the syntax it was built with
 
@@ -733,7 +774,10 @@ record is validated where it enters (creation, prepared loading, value
 documents), and copies check only that rows share their array's layout and
 that nested catalog types are still plain. Stage one then compiled the
 compiler in 7.6 s instead of 23.7 s on Release SLJIT. Deep copies of the rows
-and strings passed between passes are the largest cost left.
+and strings passed between passes are the largest cost left: about a third of
+stage one's samples are snapshots its code makes to retain a local or field,
+and union constructors copying every payload array, even when the source is
+a temporary that is never read again.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none

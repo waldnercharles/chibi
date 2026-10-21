@@ -232,6 +232,38 @@ static int toolchain_cmake(int argc, char **argv)
     return 0;
 }
 
+/* A stand-in for `gh release download TAG --repo R --pattern ASSET --dir D`:
+ * records the command and its GH_TOKEN in gh.trace and copies gh-asset from the working
+ * directory to D/ASSET; without gh-asset the download fails. */
+static int release_download(int argc, char **argv)
+{
+    assert(
+        argc == 10 && !strcmp(argv[4], "--repo") &&
+        !strcmp(argv[6], "--pattern") && !strcmp(argv[8], "--dir")
+    );
+    FILE *trace = fopen("gh.trace", "a");
+    assert(trace);
+    for (int i = 0; i < argc; i++) {
+        fprintf(trace, "%s%s", i ? " " : "gh", i ? argv[i] : "");
+    }
+    fprintf(trace, " token=%s\n", getenv("GH_TOKEN") ? getenv("GH_TOKEN") : "");
+    assert(!fclose(trace));
+    FILE *source = fopen("gh-asset", "rb");
+    if (!source) {
+        return 1;
+    }
+    char path[4096];
+    worker_path(path, argv[9], argv[7]);
+    FILE *target = fopen(path, "wb");
+    assert(target);
+    char buffer[4096];
+    for (size_t n; (n = fread(buffer, 1, sizeof buffer, source)) > 0;) {
+        assert(fwrite(buffer, 1, n, target) == n);
+    }
+    assert(!fclose(source) && !fclose(target));
+    return 0;
+}
+
 /* Prints a working-directory file to stream, escaped as -### quotes it when
  * asked; a missing file prints nothing. */
 static void print_file(const char *name, FILE *stream, bool escape)
@@ -303,6 +335,9 @@ int main(int argc, char **argv)
         }
     }
     assert(argc >= 3);
+    if (!strcmp(argv[1], "release") && !strcmp(argv[2], "download")) {
+        return release_download(argc, argv);
+    }
     if (!strcmp(argv[1], "-S") &&
         !(argc == 6 && !strcmp(argv[4], "build self-hosting"))) {
         return toolchain_cmake(argc, argv);

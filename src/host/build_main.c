@@ -32,7 +32,7 @@ static void cancel(int signal)
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
+    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
     return 1;
 }
 #define BUILD_SOURCE_LIMIT (1024 * 1024)
@@ -73,15 +73,29 @@ static char *read_source(const char *path, double deadline)
         size += (size_t)count;
     }
 }
+/* path, from root unless it is absolute. */
+static char *from_root(const char *root, const char *path)
+{
+    size_t size = strlen(root) + strlen(path) + 2;
+    char *out = xmalloc(size);
+    if (path[0] == '/') {
+        snprintf(out, size, "%s", path);
+    } else {
+        snprintf(out, size, "%s/%s", root, path);
+    }
+    return out;
+}
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
         printf("%d\n", CHIBI_BUILD_HOST_PROTOCOL);
         return 0;
     }
-    const char *root = NULL, *path = NULL, *entry = NULL;
+    const char *root = NULL, *path = NULL, *core = NULL, *entry = NULL;
     long timeout = 0;
     int arguments_start = argc;
+    const char *collections[CHIBI_BUILD_MAX_COLLECTIONS];
+    int collection_count = 0;
     for (int i = 1; i < argc; i += 2) {
         if (!strcmp(argv[i], "--")) {
             arguments_start = i + 1;
@@ -94,6 +108,14 @@ int main(int argc, char **argv)
             root = argv[i + 1];
         } else if (!strcmp(argv[i], "--source") && !path) {
             path = argv[i + 1];
+        } else if (!strcmp(argv[i], "--core") && !core) {
+            core = argv[i + 1];
+        } else if (!strcmp(argv[i], "--collection") && collection_count < CHIBI_BUILD_MAX_COLLECTIONS) {
+            const char *equals = strchr(argv[i + 1], '=');
+            if (!equals || equals == argv[i + 1] || !equals[1]) {
+                return usage();
+            }
+            collections[collection_count++] = argv[i + 1];
         } else if (!strcmp(argv[i], "--entry") && !entry) {
             entry = argv[i + 1];
         } else if (!strcmp(argv[i], "--timeout-ms") && !timeout) {
@@ -137,23 +159,51 @@ int main(int argc, char **argv)
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
-    size_t size = strlen(root) + strlen(path) + 2;
-    char *source_path = xmalloc(size);
-    if (path[0] == '/') {
-        snprintf(source_path, size, "%s", path);
-    } else {
-        snprintf(source_path, size, "%s/%s", root, path);
+    char *source_path = from_root(root, path);
+    char *core_path = NULL;
+    if (core) {
+        char *joined = from_root(root, core);
+        core_path = realpath(joined, NULL);
+        free(joined);
+        if (!core_path) {
+            fprintf(stderr, "build core collection could not be found\n");
+            free(source_path);
+            return 1;
+        }
     }
-    char *text = read_source(source_path, deadline);
+    chibi_build_collection named[CHIBI_BUILD_MAX_COLLECTIONS];
+    char *roots[CHIBI_BUILD_MAX_COLLECTIONS] = { 0 };
+    bool found = true;
+    for (int i = 0; i < collection_count; i++) {
+        const char *equals = strchr(collections[i], '=');
+        char *joined = from_root(root, equals + 1);
+        roots[i] = realpath(joined, NULL);
+        free(joined);
+        found &= roots[i] != NULL;
+        size_t length = (size_t)(equals - collections[i]);
+        char *name = xmalloc(length + 1);
+        memcpy(name, collections[i], length);
+        name[length] = 0;
+        named[i] = (chibi_build_collection){ name, roots[i] };
+    }
+    char *text = found ? read_source(source_path, deadline) : NULL;
     if (!text) {
-        fprintf(stderr, "build source could not be read\n");
+        fprintf(stderr, found ? "build source could not be read\n" : "build collection could not be found\n");
         free(source_path);
+        free(core_path);
+        for (int i = 0; i < collection_count; i++) {
+            free((char *)named[i].name);
+            free(roots[i]);
+        }
         return 1;
     }
     chibi_build_options options = {
         .root = root,
         .source_path = source_path,
         .source_text = text,
+        .core = core_path,
+        .collections = named,
+        .collection_count = collection_count,
         .entry = entry,
         .arguments = (const char *const *)&argv[arguments_start],
         .argument_count = argc - arguments_start,
@@ -176,6 +226,11 @@ int main(int argc, char **argv)
     }
     free(text);
     free(source_path);
+    free(core_path);
+    for (int i = 0; i < collection_count; i++) {
+        free((char *)named[i].name);
+        free(roots[i]);
+    }
     /* Authored negative signal results retain their conventional CLI encoding. */
     return success ? (result.value < 0 && result.value >= -127 ? 128 - result.value
                                                                : result.value)

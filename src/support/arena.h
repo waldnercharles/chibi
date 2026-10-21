@@ -21,6 +21,8 @@ typedef struct arena
     size_t page_count;             /* Occupied index slots. */
     size_t allocated;              /* Collectable bytes since the last sweep. */
     size_t kept;                   /* Collectable bytes the last sweep kept. */
+    const void *copied_from;       /* Source of the last copy remembered. */
+    const void *copy;              /* That copy, which this arena holds. */
     bool collectable;
 } arena;
 
@@ -57,6 +59,11 @@ void arena_collect_mark(void *collection, const void *address);
 uint64_t arena_collect_marks();
 /* Traces what the marks reach and sweeps the rest. */
 void arena_collect_end(arena_collection *);
+/* The copy of source that a remembers, or NULL. An arena remembers its last
+ * copy until a reset, free or collection. Source's address may since hold
+ * another object, so the caller checks that the copy still matches it. */
+const void *arena_copy_find(const arena *a, const void *source);
+void arena_copy_remember(arena *a, const void *source, const void *copy);
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity);
 /* Backing allocations, including block and tracked-allocation headers. */
 size_t arena_storage_bytes(const arena *);

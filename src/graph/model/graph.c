@@ -908,7 +908,6 @@ int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_bi
     }
     if (binding->kind != PIN_BINDING_VARIABLE &&
         binding->kind != PIN_BINDING_COMPONENT_FIELD &&
-        binding->kind != PIN_BINDING_DELTA_TIME &&
         binding->kind != PIN_BINDING_COMPONENT && binding->kind != PIN_BINDING_LOCAL &&
         binding->kind != PIN_BINDING_EVENT_OUTPUT) {
         return -1;

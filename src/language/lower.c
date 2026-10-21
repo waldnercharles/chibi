@@ -280,6 +280,8 @@ static int expression(lower *, int);
 static void debug_input(lower *, const script_expression *, int ordinal, int value, script_type);
 static void debug_point(lower *, script_record_kind, int record, script_range);
 static int condition_value(lower *, int);
+static int coalesce(lower *, const script_expression *);
+static int present(lower *, int, script_type, script_range);
 static uint64_t function_id(const script_analysis *, int);
 static const script_symbol *action_symbol(lower *l, const script_expression *expression)
 {
@@ -937,6 +939,16 @@ static int union_get(lower *l, int value, uint64_t tag, int field, bool whole, s
                             { .type = PIN_BOOL, .b = whole } };
     int slots[] = { value, -1, -1, -1 };
     return primitive(l, &EXECUTION_union_get_call, &EXECUTION_value_access, headers, slots, 4, result, range);
+}
+/* The value an optional or a union of source type holds as type. */
+static int unwrap(lower *l, int value, script_type source, script_type type, uint64_t tag, int field, script_range range)
+{
+    bool nested_optional = (source.flags & SCRIPT_TYPE_UNION) &&
+                           !(source.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+                           (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL);
+    bool whole = type.storage == PIN_UNION &&
+                 type.container == PIN_CONTAINER_SINGLE && !nested_optional;
+    return union_get(l, value, tag, field, whole, type, range);
 }
 static int union_construct(lower *l, const script_expression *e)
 {
@@ -2631,6 +2643,51 @@ static int local_slot(lower *l, int local, pin_type type, script_range range)
 {
     return value_op(l, (behavior_function_instruction){ .op = BF_LOCAL, .type = type, .left = local }, range);
 }
+/* `a ?? b` keeps a's value when a holds one and evaluates b only when it is
+ * nil; both branches save into one local. */
+static int coalesce(lower *l, const script_expression *e)
+{
+    script_type source = l->a->expressions[e->left].type;
+    pin_type slot = slot_type(e->type);
+    int optional = expression(l, e->left);
+    int local = behavior_function_builder_local(l->builder, (pin_value){ .type = slot });
+    value_root(l, BEHAVIOR_BANK_LOCAL, local, e->type);
+    int branch = emit(
+        l,
+        (behavior_function_instruction){ .op = BF_BRANCH,
+                                         .left = present(l, optional, source, e->range),
+                                         .target = -1 },
+        e->range
+    );
+    int fallback = convert(
+        l,
+        expression(l, e->right),
+        l->a->expressions[e->right].type,
+        e->type,
+        e->range
+    );
+    emit(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SAVE, .type = slot, .left = fallback, .target = local },
+        e->range
+    );
+    int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, e->range);
+    behavior_function_builder_patch_target(l->builder, branch, l->pc);
+    int value = e->type.flags & SCRIPT_TYPE_OPTIONAL
+                  ? optional
+                  : unwrap(l, optional, source, e->type, 0, 0, e->range);
+    emit(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SAVE, .type = slot, .left = value, .target = local },
+        e->range
+    );
+    behavior_function_builder_patch_target(l->builder, end, l->pc);
+    return local_slot(l, local, slot, e->range);
+}
 static void flow_result(
     lower *l,
     const script_expression *e,
@@ -3099,9 +3156,9 @@ static int call(lower *l, const script_expression *e)
             linked = l->bindings->host(l->bindings->user, e->capability, &host);
         }
     }
-    if (!linked || (!host.call && !host.function && !host.command && !host.query &&
-                    host.intrinsic != BF_DELAY && host.intrinsic != BF_OWNER &&
-                    host.intrinsic != BF_DELTA && host.intrinsic != BF_ASSERT)) {
+    if (!linked || (!host.call && !host.function && !host.command &&
+                    !host.query && host.intrinsic != BF_DELAY &&
+                    host.intrinsic != BF_OWNER && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
         return -1;
     }
@@ -3111,13 +3168,13 @@ static int call(lower *l, const script_expression *e)
     if (host.intrinsic == BF_ASSERT) {
         return assertion(l, e);
     }
-    if (host.intrinsic == BF_OWNER || host.intrinsic == BF_DELTA) {
+    if (host.intrinsic == BF_OWNER) {
         if (l->initializing || e->argument_count || cap->parameter_count ||
             cap->result_count != 1) {
             error(l, e->range, "Context intrinsic requires one result and no arguments");
             return -1;
         }
-        pin_type storage = host.intrinsic == BF_OWNER ? PIN_HANDLE : PIN_F32;
+        pin_type storage = PIN_HANDLE;
         int slot = value_op(
             l,
             (behavior_function_instruction){ .op = host.intrinsic, .type = storage },
@@ -3446,6 +3503,26 @@ static int component_value(lower *l, const script_expression *e, bool presence)
     );
     return pointer;
 }
+/* Whether an optional value holds one: a nil optional is all zero. */
+static int present(lower *l, int value, script_type type, script_range range)
+{
+    pin_type slot = slot_type(type);
+    int zero = kind_op(
+        l,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = slot,
+                                         .value = { .type = slot } },
+        range,
+        bank_kind(l, BEHAVIOR_BANK_SLOT, value)
+    );
+    return value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_NE, .type = slot, .left = value, .right = zero },
+        range
+    );
+}
 static int condition_value(lower *l, int index)
 {
     const script_expression *e = &l->a->expressions[index];
@@ -3472,23 +3549,7 @@ static int condition_value(lower *l, int index)
             true
         );
     }
-    int value = expression(l, index);
-    pin_type type = slot_type(e->type);
-    int zero = kind_op(
-        l,
-        (behavior_function_instruction){ .op = BF_CONSTANT,
-                                         .type = type,
-                                         .value = { .type = type } },
-        e->range,
-        bank_kind(l, BEHAVIOR_BANK_SLOT, value)
-    );
-    return value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_NE, .type = type, .left = value, .right = zero },
-        e->range
-    );
+    return present(l, expression(l, index), e->type, e->range);
 }
 static const script_expression *tuple_signature(lower *l, int source)
 {
@@ -4312,17 +4373,16 @@ static int expression_value(lower *l, int index)
         case SCRIPT_EXPR_UNION: return union_construct(l, e);
         case SCRIPT_EXPR_IS:
         case SCRIPT_EXPR_AS: return union_pattern(l, e);
-        case SCRIPT_EXPR_UNWRAP: {
-            int value = expression(l, e->left);
-            script_type source = l->a->expressions[e->left].type;
-            bool nested_optional = (source.flags & SCRIPT_TYPE_UNION) &&
-                                   !(source.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
-                                   (e->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL);
-            bool whole = e->type.storage == PIN_UNION &&
-                         e->type.container == PIN_CONTAINER_SINGLE &&
-                         !nested_optional;
-            return union_get(l, value, e->tag, (int)e->offset, whole, e->type, e->range);
-        }
+        case SCRIPT_EXPR_UNWRAP:
+            return unwrap(
+                l,
+                expression(l, e->left),
+                l->a->expressions[e->left].type,
+                e->type,
+                e->tag,
+                (int)e->offset,
+                e->range
+            );
         case SCRIPT_EXPR_STORE: {
             const script_symbol *action = action_symbol(l, e);
             if (action && action->disabled) {
@@ -4481,6 +4541,9 @@ static int expression_value(lower *l, int index)
         case SCRIPT_EXPR_BINARY: {
             if (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR) {
                 return short_circuit(l, e);
+            }
+            if (e->op == SCRIPT_OP_COALESCE) {
+                return coalesce(l, e);
             }
             if (e->op == SCRIPT_OP_EQ || e->op == SCRIPT_OP_NE) {
                 int optional = l->a->expressions[e->left].kind == SCRIPT_EXPR_NIL
@@ -5262,6 +5325,13 @@ static bool in_place_map(lower *l, const script_statement *s)
         (script_type){ .storage = PIN_BOOL },
         s->range
     );
+    /* The debugger watches the removal's result, as it watches an in-place
+     * array append's. */
+    if (remove) {
+        int result = expression_value(l, rhs->left);
+        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
+        debug_watch(l, s->second, result, rhs->type, true, 0);
+    }
     return true;
 }
 static void assign(lower *l, const script_statement *s)

@@ -165,10 +165,8 @@ Run it through `python3 tools/test_policy.py tool language-headless`, setting
 `SDK_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF"`
 for a release configuration. The iteration default is Debug with sanitizers off.
 
-The compiler SDK installs packaging tools and `install_game_runtime.py` under
-`share/chibi/tools`. The installer includes its project-manifest reader and runs
-without an engine checkout. Supply `--package` and an explicit `--config` containing
-absolute game paths. Installed tools leave the SDK file inventory unchanged.
+The compiler SDK installs its packaging tools under `share/chibi/tools`. Installed
+tools leave the SDK file inventory unchanged.
 
 For browser Studio, `make package-web-sdk` configures the same packages with
 Emscripten and SLJIT disabled. Browser behavior execution defaults to the Wasm

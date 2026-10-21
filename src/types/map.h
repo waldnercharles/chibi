@@ -47,8 +47,12 @@ pin_map *pin_map_remove(arena *, const pin_map *, const pin_value *key);
  * so no other value shares it. Storing grows the map, which may move it. */
 int pin_map_store_owned(arena *, pin_map **, const pin_value *key, const pin_value *value);
 int pin_map_delete_owned(arena *, pin_map *, const pin_value *key);
-/* Builds the index of an arena map read without one. */
-void pin_map_index(arena *, pin_map *);
+/* The bytes of the index a map read with `count` entries needs, 0 for a small
+ * map, so a reader can charge them to its budget. */
+size_t pin_map_index_bytes(int count);
+/* Builds the index of a map read without one in `slots`, which holds
+ * pin_map_index_bytes(map->count) bytes. */
+void pin_map_index(pin_map *, pin_map_slot *slots);
 void pin_map_free(pin_map *);
 int pin_map_equal(const pin_map *, const pin_map *);
 

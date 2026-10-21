@@ -912,9 +912,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         ecs_entity moving = positioned(1, true);
-        REQUIRE(
-            compile("Motion :: system( position: Position, velocity: Velocity) { position.x += velocity.x * dt; position.y = position.x + velocity.x; }", backends[backend])
-        );
+        REQUIRE(compile(
+            "Motion :: system( position: Position, velocity: Velocity) on Tick "
+            ":: (dt: float s) { position.x += velocity.x * dt; position.y = "
+            "position.x + velocity.x; }",
+            backends[backend]
+        ));
         execution_effect_summary effects = execution_module_effects(module);
         REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
         REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
@@ -937,12 +940,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
 
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    const char
-        *source = "Motion :: system(position: Position, velocity: Velocity) {\n"
-                  "    position.x += velocity.x * dt;\n"
-                  "    await Delay(10);\n"
-                  "    position.y = 99;\n"
-                  "}\n";
+    const char *source = "Motion :: system(position: Position, velocity: "
+                         "Velocity) on Tick :: (dt: float s) {\n"
+                         "    position.x += velocity.x * dt;\n"
+                         "    await Delay(10);\n"
+                         "    position.y = 99;\n"
+                         "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -8034,6 +8037,96 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
     REQUIRE(!rmdir(root));
     return true;
 }
+/* Version 31 reads the frame step only through a Tick handler's list or a
+ * system's step clause. */
+TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += delta + "
+          "delta_time() } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } "
+          "}",
+          NULL },
+        { "S :: system(p: Position) { p.x += dt }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        { "S :: system(p: Position) on Tick :: () { p.x += delta }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        /* The catalog's spellings name the capability; a local declared later
+         * or in an inner block hides only the reads in its scope. */
+        { "B :: behavior { x: float = 0; on Tick :: () { x += DeltaTime() } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt; if x > 1 { "
+          "dt := 1; x += dt } } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt; "
+          "if x > 1 { dt := 1; x += dt } } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "delta } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "S :: system(t: Transform) { delta: retain float = 0; delta += 1; "
+          "t.x = delta }",
+          NULL },
+        /* A parameter, local or state of that name reads no global. */
+        { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
+        { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },
+        { "B :: behavior { dt: float = 0; on Begin :: () { dt = 1 } }", NULL },
+        { "B :: behavior { x: float = 0; on Tick :: () { other.dt = 1; F(dt: "
+          "1) } }",
+          NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_step_globals(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "B :: behavior { x: float = 0; F :: () { x += dt } }", "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () "
+          "{ "
+          "go() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
+          "outside a Tick" },
+        { "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { "
+          "go() "
+          "} after go { x += dt } }",
+          "outside a Tick" },
+        /* Renaming a read to `dt` must not capture another `dt`. */
+        { "B :: behavior { x: float = 0; on Tick :: () { dt := 2.0; x += delta "
+          "* "
+          "dt } }",
+          "another dt" },
+        { "B :: behavior { x: float = 0; on Tick :: () { for dt in 0..3 { x += "
+          "delta_time() } } }",
+          "another dt" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_step_globals(refused[i].source, &migrated, error, sizeof error) < 0);
+        if (!strstr(error, refused[i].message)) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, refused[i].message));
+    }
+    return true;
+}
 /* An upgrade that fails after its steps wrote, for example in finalization,
  * leaves scripts at the current version under an older manifest. Its rerun
  * starts at that version, and every step leaves those scripts alone. */
@@ -9421,6 +9514,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
+    RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);

@@ -185,7 +185,8 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         }
         row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
-                         storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component};
+                         storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
+                         key: 0, value_storage: 0, value_container: 0, value_record: -1};
         declared = array_add(declared, row);
     }
     return declared;
@@ -235,6 +236,54 @@ ScalarPayload :: (declared: GameEvent, event_fields: GameEventField[]) -> bool {
     }
     return true;
 }
+// A handler's payload parameters, or why the handler cannot take them.
+Payload :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Bound(params: Param[])
+}
+// The handler's parameters, one per payload field in payload order. The
+// handler names fields in any order; each it leaves out gets an unnamed
+// parameter, as stage zero gives it.
+PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int, event_name: string,
+                  declared: GameEvent, event_fields: GameEventField[]) -> Payload {
+    listed: int[] = [];
+    at: int = 0;
+    while (at < declared.count) {
+        listed = array_add(listed, int(-1));
+        at += 1;
+    }
+    parameter := FirstMember(forest, Field(forest, handler, "parameters"));
+    while (parameter >= 0) {
+        name := Field(forest, parameter, "name");
+        spelled := Text(forest, source, name);
+        at = 0;
+        while (at < declared.count && !NameMatches(event_fields[declared.first + at].name, spelled)) {
+            at += 1;
+        }
+        if (at == declared.count) {
+            return Payload.Failed(Diagnose(forest, name, 0,
+                                           format_text("{} has no payload field '{}'", event_name, spelled)));
+        }
+        if (listed[at] >= 0) {
+            return Payload.Failed(Diagnose(forest, name, 0, format_text("Payload field '{}' is listed twice",
+                                                                        event_fields[declared.first + at].name)));
+        }
+        listed[at] = name;
+        parameter = NextMember(forest, parameter);
+    }
+    params: Param[] = [];
+    at = 0;
+    while (at < declared.count) {
+        param: Param = {name: "", storage: event_fields[declared.first + at].storage, container: 0, record: -1,
+                        has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
+                        reference: false, node: listed[at]};
+        if (listed[at] >= 0) {
+            param.name = Text(forest, source, listed[at]);
+        }
+        params = array_add(params, param);
+        at += 1;
+    }
+    return Payload.Bound(params);
+}
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
 // from it. The target, natives, events, types, entity, operators, globals and
@@ -245,7 +294,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                         make_fields: int[]) -> Result {
-    ops := ResolveOps(names);
+    ops := ResolveOps(names, true);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
     }
@@ -272,6 +321,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     declared_types := NativeTypes(types);
     members := NativeFields(type_fields);
     no_names: Name[] = [];
+    solid := SolidOffsets(source);
     kept_states: StateDecl[] = [];
     callables: Callable[] = [];
     params: Param[] = [];
@@ -328,26 +378,12 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             if (!ScalarPayload(game_events[found], event_fields)) {
                 return Result.Rejected(Diagnose(forest, member, 0, "events with record payloads are not supported yet"));
             }
-            // The handler takes the event's payload; a parameter names the
-            // field in its position.
-            parameter := FirstMember(forest, Field(forest, member, "parameters"));
             first := length(params);
-            at: int = 0;
-            while (at < game_events[found].count) {
-                payload := event_fields[game_events[found].first + at];
-                param: Param = {name: payload.name, storage: payload.storage, container: 0, record: -1,
-                                has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                                node: -1};
-                if (parameter >= 0) {
-                    param.name = Text(forest, source, Field(forest, parameter, "name"));
-                    param.node = Field(forest, parameter, "name");
-                    parameter = NextMember(forest, parameter);
-                }
-                params = array_add(params, param);
-                at += 1;
-            }
-            if (parameter >= 0) {
-                return Result.Rejected(Diagnose(forest, parameter, 0, "the event has no such parameter"));
+            switch PayloadParams(forest, source, member, handled_name, game_events[found], event_fields) {
+                case .Failed(diagnostic):
+                    return Result.Rejected(diagnostic);
+                case .Bound(added):
+                    params = append(params, added);
             }
             callable: Callable = {name: handled_name, package: 0, document: 0, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
@@ -357,7 +393,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         } else if (Is(forest, member, "function_declaration")) {
             // A member procedure, which the behavior's handlers call.
             name := Text(forest, source, Field(forest, member, "name"));
-            switch FunctionSignature(forest, source, identity, declared_types, no_names, 0, 0, member, name,
+            switch FunctionSignature(forest, source, identity, solid, declared_types, no_names, 0, 0, member, name,
                                      length(params)) {
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);
@@ -378,7 +414,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    return Assemble(forest, [document], 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+    return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
                                   make_fields));

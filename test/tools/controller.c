@@ -186,7 +186,7 @@ static void setup()
     );
     write_file(
         paths[DRIFT],
-        "Drift :: system(position: Transform) {\n"
+        "Drift :: system(position: Transform) on Tick :: (dt: float s) {\n"
         "    position.x += dt\n"
         "}\n"
     );

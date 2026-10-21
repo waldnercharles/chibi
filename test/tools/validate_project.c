@@ -1479,7 +1479,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     );
     write_file(
         "game/content/systems/Recharge.chibi",
-        "Recharge :: system(charge: Charge) {\n"
+        "Recharge :: system(charge: Charge) on Tick :: (dt: float s) {\n"
         "    charge.level += charge.rate * dt\n"
         "}\n"
     );
@@ -1564,11 +1564,11 @@ TEST_CASE(unit_mismatches_are_errors)
     write_file(
         "game/content/systems/Measure.chibi",
         "Measure :: system(charge: Charge, movement: Movement, collider: "
-        "Collider) {\n"
+        "Collider) on Tick :: (dt: float s) {\n"
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
         "    collider.radius = movement.speed\n"
-        "    collider.radius += delta\n"
+        "    collider.radius += dt\n"
         "}\n"
     );
     /* Proven unit mismatches prevent the project from running. */

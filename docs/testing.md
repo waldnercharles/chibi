@@ -64,10 +64,11 @@ package trees. Its `doc` case checks forwarding to the compiler; the real
 compiler's documentation cases run under `published-docs`.
 
 `python3 tools/test_policy.py tool language-docs-markdown` checks the authored
-renderer on both bytecode and the compiled backend, including highlighted source
-slices, lexical
-error fallback, escaping, whitespace, UTF-8, and light/dark token colors. Those
-presentation checks are separate from the original-snippet validation above.
+renderer on both bytecode and the compiled backend, including grammar-derived
+highlighting, incomplete-fragment recovery, exact source slices, escaping,
+whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
+Those presentation checks are separate from the original-snippet validation
+above, which cannot access the generator's private parser native.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and those Release tools, except
@@ -270,7 +271,10 @@ frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
 
-Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. `make
+test-wasm` also runs the package compiler's base samples on both backends
+(`wasm-package-compiler-chibi` and `-compiled`); every other package-compiler
+selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples, and run under the production 60-second deadline. Configuration and
@@ -1273,12 +1277,16 @@ This focused route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
-`markdown`, `site`, `reference`, `grammar` and shared `source_tokenizer` packages
-with `core:strings` per case. They render blocks, tables and site links, lay out
-navigation, generate a package reference and a grammar page, and check highlighted
-source slices and lexical-error fallback on bytecode and SLJIT. Each call stays
-under a 2,000,000-instruction budget. There is no filesystem, process, service or
-GPU work. This focused route is outside the language aggregate.
+`markdown`, `site`, `reference`, `grammar`, `compiler_syntax` and
+`syntax_diagnostics` packages with `core:strings` per case. The fixture opts into
+the existing private Tree-sitter bridge. Cases render blocks, tables and site
+links, lay out navigation, generate a package reference and a grammar page, and
+check grammar roles, exact escaped source bytes, recovery and GitHub theme colors
+on bytecode and SLJIT. A fence uses at most three parses: its original source,
+then declaration/signature contexts only when needed; synthetic context never
+reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
+There is no filesystem, process, service or GPU work. This focused route is
+outside the language aggregate and retains the shared 60-second ceiling.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C
 cases for the shared runner behind `chibi test`. One preparation per backend has

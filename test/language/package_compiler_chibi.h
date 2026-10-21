@@ -12,5 +12,6 @@ void test_language_package_compiler_chibi_literals();
 void test_language_package_compiler_chibi_behaviors();
 void test_language_package_compiler_chibi_behaviors_rest();
 void test_language_package_compiler_chibi_sharing();
+void test_language_package_compiler_chibi_debug_free();
 
 #endif

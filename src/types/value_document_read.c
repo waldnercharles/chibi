@@ -687,7 +687,12 @@ static int read_map(pin_value declaration, const av_value *document, pin_value *
         key_bytes += width;
         map->count++;
     }
-    pin_map_index(reader->storage, map);
+    size_t bytes = pin_map_index_bytes(count);
+    pin_map_slot *slots = bytes ? allocate(reader, bytes) : NULL;
+    if (bytes && !slots) {
+        return -1;
+    }
+    pin_map_index(map, slots);
     *out = declaration;
     out->ptr = map;
     return 0;

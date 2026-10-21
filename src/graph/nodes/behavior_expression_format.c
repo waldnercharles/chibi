@@ -116,7 +116,6 @@ static void put_binding(text *t, const graph *g, const pin_binding *binding)
                 put(t, binding->field_name);
             }
             return;
-        case PIN_BINDING_DELTA_TIME: put(t, "delta_time"); return;
         case PIN_BINDING_LOCAL: {
             const graph_local *local = graph_local_by_id(g, binding->local_id);
             put(t, local ? local->name : "local");
@@ -347,10 +346,6 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         } else {
             put(t, n->reference_name ? n->reference_name : "variable");
         }
-        return;
-    }
-    if (desc->pure_kind == NODE_PURE_DELTA) {
-        put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
     if (literal_node(desc)) {

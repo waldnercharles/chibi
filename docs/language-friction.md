@@ -69,6 +69,9 @@ scalar fields. The compiler uses one-variant unions as
 records with arrays (`Step`, `Decimal`) and keeps parallel arrays. The
 prepared writer also pools 64-bit IDs in a `wide` array its records index,
 from when stage one's records held only `int`, `bool` and `string` fields.
+A map type's declaration in stage one keeps its value type in three fields,
+`value_storage`, `value_container` and `value_record`, because `TypeDecl`
+cannot hold a `ValueType`.
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
@@ -90,7 +93,9 @@ ordinary writes defeat that proof:
 Such a function, and every function that calls it, then copies every
 argument on each call. One store in `ConstantCode` and one push in
 `ComponentReferenceStep` each took stage one compiling itself from 25 to over
-60 seconds. Building the record in one literal, and appending to a fresh
+60 seconds. In the stage-one maps PR, `StatementStep` passed its `code`
+to a map step that appended to it, which took the same compile from 28 to
+117 seconds; the step now starts its own code. Building the record in one literal, and appending to a fresh
 local array, keep the calls free. `tool language-package-compiler-chibi-sharing`
 now fails when any function but those that run once per compile copies its
 arguments.
@@ -208,21 +213,47 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
-## Stage one has no maps
+## Stage one has no optionals
 
-Stage one. Stage zero has `[K: V]` maps with `["k": v]` and `[:]` literals,
-`m[k]` reading a missing key's zero value, `k in m`, `m.has(k)`, `delete m[k]`,
-`m.delete(k)` and insertion-ordered iteration, but stage one compiles none of
-it. The tokenizer therefore builds Odin's keyword hash table by hand from an
-`int[]` with linear probing (#518), and lookups by name elsewhere in the
-compiler scan parallel arrays.
+Stage one. Stage zero has `T?`, `nil`, presence tests that narrow, `as T`
+and, since the nil-coalescing PR, `a ?? b`, but stage one's `ReadType`
+rejects any type with `?`. The compiler marks absence with sentinels instead:
+`-1` for a missing node, field or record, and `{storage: 0}` for no type.
+
+- Odin has `Maybe(T)` with `or_else`; Zig `?T` with `orelse` and `if (x) |v|`;
+  Swift `T?` with `??` and `if let`; Rust `Option<T>` with `unwrap_or`;
+  C# and TypeScript `T?` with `??`.
+
+Suggestion: stage one compiles `T?`, `nil`, presence narrowing and `??`, then
+the compiler replaces its `-1` sentinels where a value may be absent.
+
+## Stage one's maps stop at single values and local writes
+
+Stage one. Since the stage-one maps PR, stage one compiles `[K: V]` locals,
+parameters and results with a number, bool or string key and a number, bool,
+string or record value. It also compiles `["k": v]` and `[:]` of a declared
+type, `m[k]` with stage zero's zero-value fallback, `m[k] = v`, `delete m[k]`
+and `m.delete(k)` on a local map, `k in m`, `k not in m`, `m.has(k)`, and
+`for k, v in m`. It does not compile:
+
+- an inferred map literal, such as `m := ["a": 1]` ("map literal needs a
+  [K: V] type"); stage one declares map types before bodies, from the types a
+  package spells;
+- maps of arrays, unions or maps;
+- `m[k] op= v`;
+- a store or removal through a parameter, a record field or a state.
+
+The compiler's own name lookups still scan parallel arrays, and the tokenizer
+builds Odin's keyword table by hand from an `int[]` (#518).
 
 - Odin has `map[K]V`; Go `map[K]V`; Rust `HashMap`; Zig `std.HashMap`;
   C# `Dictionary`; Python `dict`.
 
-Suggestion: stage one compiles the maps stage zero accepts, then the
-compiler's name lookups use them. Dispatch on a byte or an operator stays a
-`switch`, as in Odin, since a map would hash on every lookup.
+Suggestion: stage one declares a map type a literal infers when it meets one,
+and compiles the remaining forms. Then the compiler's name lookups use maps,
+once a regenerated bootstrap artifact can compile them. Dispatch on a byte or
+an operator stays a `switch`, as in Odin, since a map would hash on every
+lookup.
 
 ## The compiler counts with `while`
 
@@ -270,7 +301,19 @@ Its examples of needs covered above are listed with those entries.
 Runtime. In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
 quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
 `_split` and `replace` copies the rest of the string on each match. A string
-cannot hold a NUL byte, so Odin's `trim_null` has no use.
+cannot hold a NUL byte, so Odin's `trim_null` has no use. On 2026-10-20 the
+package compiler's debugger occurrences counted whitespace with `ByteAt` from
+each document's start; compiling the compiler, whose largest file is 165 KB,
+`strlen` under `ByteAt` took about a fifth of a profile, and reading
+`strings.Bytes` once per document cut stage two's compile of itself from about
+18 to 14 s.
+
+Slicing runs `strlen` over the whole source string too, so the compiler's
+`Text` of a node costs time in proportion to its document's length, and
+compiling a file grows quadratically with its size. Appending the map steps
+(about 450 lines) to `Steps.chibi`, already 3,000 lines, took stage one
+compiling itself from 28 to 41 seconds; the same steps in their own
+`Maps.chibi` took 30.
 
 - Odin, Go, Zig and Jai strings are a pointer and a length; `len(s)` and
   `s[i]` are O(1) and `s[a:b]` is a view. Rust's `&str` and C++'s
@@ -358,12 +401,22 @@ each loop instead and leaves the `_proc` API out.
 
 Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 
-### Stage one has no reference parameters
+### Stage one's reference parameters reach locals and fields only
 
 Stage one. Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator`
 and `fields_iterator` advance the caller's string. The language has `ref`
-parameters since #420, but stage one rejects them, and `core:strings`, which
-stage one compiles, has no iterators.
+parameters since #420, and since the stage-one ref parameters PR stage one
+compiles them: a callee reads, assigns and compound-assigns a `ref`
+parameter, reads and writes its record's fields, and passes it on. A caller
+passes a local or parameter, a field of a local record, or its own `ref`
+parameter. A number, bool or string that a `ref` argument reaches lives in a
+data cell, as stage zero keeps every local. Stage one still refuses:
+
+- a reference to an array element or a map entry;
+- `v[i] = x` and `m[k] = x` through a reference;
+- a `ref` parameter with a default.
+
+`core:strings`, which stage one compiles, has no iterators yet.
 
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
@@ -375,9 +428,9 @@ call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
 Odin and Zig (`&v`) all mark the call site, so readers and tools see the
 write.
 
-Suggestion: stage one compiles `ref` parameters of locals, then
-`core:strings` gains Odin's iterators. Consider marking reference
-arguments at the call site.
+Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
+references to elements and entries. Consider marking reference arguments at
+the call site.
 
 ### Library growth spends the compiler tests' budgets
 
@@ -528,6 +581,8 @@ failed the same way, since #420 made `prototype` a reserved word; the flag
 became `prototyping` (#518). The prepared writer's tables of events and
 states could not be named `events`, `event` or `state`, nor a loop variable
 `state`; they became `event_declarations`, `event_id` and `retained`.
+A map literal step's loop variable named `entry` failed the same way, as the
+whole file's "Unexpected syntax" at 1:1; it became `pair`.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,
@@ -615,7 +670,14 @@ rehashing its type's layout (`pin_record_valid`, `type_layout_hash`); each
 call also prepares an activation. Inlining the hot loops, reading byte classes
 from a table and returning records only for rare tokens took the corpus run
 from 28 to 4 seconds on SLJIT in a sanitizer build. The bytecode backend is
-about eight times slower still.
+about eight times slower still. On 2026-10-20 a profile of stage one compiling
+the compiler put over half of its time in `pin_record_valid` and
+`type_layout_hash`, mostly under value snapshots. A per-thread memo of
+validated descriptors, keyed by address and a checksum of their bytes, answered
+94% of the bootstrap's 63 million checks, yet saved no time on Release or
+Debug: checksumming a descriptor costs about as much as validating it. A hit
+that costs O(1) would have to trust a stamp of the header alone and stop
+catching a field changed in place.
 
 - Odin, C, Zig and Rust return small structs in registers or a result
   location and inline small procedures; C# returns structs by value; none

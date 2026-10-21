@@ -344,7 +344,9 @@ folder). It runs in two steps:
    stage zero, compiles the compiler sources to stage two and has the compiler
    host compile them again with stage two, to the same bytes. With
    `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The target
+   arguments there as `compiler.chibip` and `compile.json`. The compiler is
+   compiled without debugger points and watches: its `debug` argument is
+   false, and the seed must say so. The target
    leaves the seed in `build-release/bootstrap.seed` and removes it after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the

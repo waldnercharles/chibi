@@ -55,7 +55,6 @@ make the compiler self-hosted.
 | Build logs and command display | `tools/quiet.py`, Makefile `QUIET` | Build host owns bounded capture, full failure diagnostics, log retention, pruning, concurrent writers, and signal cleanup. | Focused native fixtures for success, large output, failure, interruption, pruning, and concurrent commands. |
 | SDK and runtime packaging | `tools/package_sdk.py`, `sdk/CMakeLists.txt`, `sdk/*.cmake` | Chibi modules assemble installed outputs, enforce target/header/object ownership, retain licenses and identity, and work without source checkout. | Admitted `package`, `package-ownership`, and `desktop-dependencies`; source-free and relocated installed SDK consumers. |
 | Player and Studio packaging | `tools/package_player.py`, `tools/package_studio.py` | Preserve package-kind checks, checksums, relocatable resources and RPATHs, platform executables, and atomic staging. | Existing package cases plus installed player startup and affected Studio startup/interaction checks. |
-| Game runtime installation | `tools/install_game_runtime.py`, `tools/kdl_asset.py` | Shared Chibi document code preserves unrelated content, rejects corrupt or foreign ownership, and updates only registered managed files. | Existing package installation preservation and corruption cases from `test/tools/package.c`. |
 | Native reflection and generated code | `tools/reflect/`, `sdk/native.cmake`, `src/runtime/component_ids.tsv`, `cmake/tests/generation*.cmake` | Keep the native host generator until a Chibi replacement reproduces IDs, layouts, bindings, and transactional failure, including native-host generation for Emscripten targets. | Reflection range cases, generation identity/unchanged/failure fixtures, handle pins, JIT identity, native and cross-build use. |
 | Internal build graph | root `CMakeLists.txt`, `cmake/`, `sdk/`, and component/test `CMakeLists.txt` files | Chibi build graph reproduces profiles, generated prerequisites, native/cross compile, include/link ownership, optional modules, and install layouts. | Native compiler, runtime-only, browser, test-driver, installed SDK, relocated SDK, and manifest comparisons. |
 | CMake consumer interface | installed `ChibiConfig.cmake`, `ChibiTargets.cmake`, and related files | Treat this separately from the internal graph. Generate and retain it while Studio or another supported CMake consumer needs it. | Build Studio and representative consumers against only a relocated installed SDK. |
@@ -79,8 +78,6 @@ make the compiler self-hosted.
 tools/package_sdk.py
 tools/package_player.py
 tools/package_studio.py
-tools/install_game_runtime.py
-tools/kdl_asset.py
 tools/configure_inputs.py
 ```
 
@@ -128,18 +125,16 @@ also bounds authored walks over large trees.
 
 | Files | Responsibility and callers | Decision |
 | --- | --- | --- |
-| `tools/test_policy.py` | Test policy. Every `make test*` target, root `CMakeLists.txt`, `AGENTS.md`, CI through Make, `.github/scripts/*.sh`. | **Blocked**: a Chibi supervisor must match its inherited shared deadline, signal forwarding, descendant cleanup, quarantine and admission tables, and must run before the first build. Explicitly retained until then. |
+| `tools/test_policy.py` | Test policy. Every `make test*` target, root `CMakeLists.txt`, `AGENTS.md`, CI through Make. | **Blocked**: a Chibi supervisor must match its inherited shared deadline, signal forwarding, descendant cleanup, quarantine and admission tables, and must run before the first build. Explicitly retained until then. |
 | `tools/agent.py`, `tools/validation_plan.py`, `tools/gpu_capabilities.py` | Agent supervision. Makefile `agent-*` targets, `AGENTS.md`, `docs/agent-execution.md`, `test/tools/validation_plan.c`. | **Blocked** behind `test_policy.py`, whose admission tables they import. `gpu_capabilities.py` also needs a dynamic-library binding to probe Vulkan. |
 | `tools/configure_inputs.py` | Native configuration probe. `tools/toolchain/Build.chibi`, SDK install. | `signature`: **Replace now**: prebuilt archives removed the dependency inputs it tracked, and the host primitives cover the rest. `Build.chibi` owns the former `compiler-sdk` probe; `package-enabled` went with the dependency packages. |
-| `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `install_game_runtime.py`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
-| `tools/install_game_runtime.py`, `tools/kdl_asset.py` | Game runtime installation into games registered in `.chibi/game-runtime.json`. Makefile `update-game-runtime`, `docs/native-package.md`, `sdk/README.md`, `docs/declarative-sdf-modeling.md`, `test/tools/package.c`, SDK install. | **Owner decision**: the standalone game repositories it served were retired on 2026-10-17 and `chibi export` is the distribution command. If the workflow is retired, delete it. Otherwise **Blocked** on Chibi KDL editing that preserves unrelated content, and on the host file primitives. |
+| `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
 | `tools/quiet.py` | Build logs for every Makefile recipe (`QUIET`). | **Blocked**: it wraps configuration before any build host exists. Needs a prebuilt host or Make's retirement (M6). |
 | `tools/mesh_sdf/convert.py`, `tools/mesh_sdf/atlas.py` | Blender launcher and publication. Run by hand (`tools/mesh_sdf/README.md`). | **Blocked** on child resource limits; the host file primitives cover hashing, copies and renames. |
 | `tools/mesh_sdf/worker.py` | Blender worker. `convert.py`. | **Keep**: runs inside Blender. |
-| `.github/scripts/transport-boundary-audit.py` | Hosted M5 ELF audit. The `.github/scripts/*.sh` helpers; cited as not run in the PLAN checkpoint. | **Owner decision**: no workflow in this repository runs it; delete once the M5 owner confirms its hosted runs are finished. |
 | `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
 | `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
-| `docs/research/cut61-iframe-profile/finish/analyze.py`, `docs/research/cut61-iframe-profile/run.py.txt` | Analysis of CUT61's historical capture, which policy forbids rerunning. Only their own record; nothing cites the record. | **Owner decision**: delete with the stale record; Git keeps the history. |
+| `docs/research/cut61-iframe-profile/run.py.txt` | Runner of CUT61's historical capture, which policy forbids rerunning. Only its own record; nothing cites the record. | **Owner decision**: delete with the stale record; Git keeps the history. |
 
 ### Shell
 
@@ -149,7 +144,6 @@ also bounds authored walks over large trees.
 | `tools/configure_native.sh` | Cold-build recovery. Makefile `stage-zero-build`, used when no protocol-4 build host exists. | **Blocked**: the first build has no host. Needs a prebuilt host from the bootstrap artifact; stays as stage-zero recovery. |
 | `tools/web_env.sh` | Browser compiler isolation. Makefile web SDK, web player, Studio web and wasm-language configuration; `test/tools/package.c`. | **Blocked**: moves into `Build.chibi` with the web profile (M6). |
 | `tools/clang-format.sh`, `.githooks/pre-commit` | C formatting. Makefile `format` and `check-format`, CI, the pre-commit hook. | **Keep** while project C exists. |
-| `.github/scripts/*.sh` (five) | Hosted M5 validation helpers. No workflow in this repository; they expect a separate validation checkout. | **Owner decision**: delete once the M5 owner confirms. |
 
 ### Make and CMake
 

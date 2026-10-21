@@ -31,8 +31,6 @@
 #define CORE_SET_SOURCE "set_variable"
 #define CORE_SELF_NAME "Self"
 #define CORE_SELF_SOURCE "self"
-#define CORE_DELTA_NAME "Delta Time"
-#define CORE_DELTA_SOURCE "delta_time"
 
 #define CORE_EXEC_PORT(X, NAME)                                                \
     X(NAME,                                                                    \
@@ -114,7 +112,6 @@
 #define CORE_SET_INPUTS(X) CORE_EXEC_INPUTS(X) CORE_VARIABLE_DATA(X)
 #define CORE_SET_OUTPUTS(X) CORE_THEN_OUTPUTS(X) CORE_VARIABLE_DATA(X)
 #define CORE_SELF_OUTPUTS(X) CORE_DATA_PORT(X, "Self", PIN_HANDLE, "ecs.entity")
-#define CORE_DELTA_OUTPUTS(X) CORE_DATA_PORT(X, "Seconds", PIN_F32, "float")
 
 /* Generic component selectors share their declaration with graph presentation.
  * Entity/value ordinals below refer only to DATA inputs. */

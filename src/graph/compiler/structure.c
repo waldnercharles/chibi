@@ -503,11 +503,6 @@ static void pass_references(compile_report *out, const behavior_asset *asset)
                             );
                         }
                     }
-                } else if (binding->kind == PIN_BINDING_DELTA_TIME) {
-                    if (pin->container != PIN_CONTAINER_SINGLE ||
-                        (pin->type != PIN_F32 && pin->type != PIN_F64)) {
-                        emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "Delta Time requires a scalar real input");
-                    }
                 } else if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
                     const type_desc *type = component_type_by_key(binding->component_key);
                     const type_field

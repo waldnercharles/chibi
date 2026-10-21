@@ -5,6 +5,7 @@
 #include "types/record.h"
 #include "types/trace.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,8 @@ enum
     MAP_INDEX_MIN_COUNT = 8,
     MAP_LOAD_PERCENT = 75
 };
+/* A slot mask is 32 bits wide. */
+static const uint64_t MAP_MAX_SLOTS = UINT64_C(1) << 31;
 /* Equal keys hash equally: 0.0 and -0.0 share a hash, and a string hashes its
  * bytes. The finalizer is splitmix64's. */
 static uint32_t key_hash(const pin_value *key)
@@ -110,40 +113,56 @@ static void index_insert(pin_map *map, uint32_t hash, int32_t entry)
         distance++;
     }
 }
-/* An index sized for `capacity` entries at most 75% full, or none for a small
- * map. */
-static bool index_build(arena *storage, pin_map *map, int capacity)
+/* The slots of an index for `capacity` entries at most 75% full: a power of
+ * two, 0 for a small map, or more than MAP_MAX_SLOTS when too many. */
+static uint64_t slot_count(int capacity)
 {
-    map->slots = NULL;
-    map->slot_mask = 0;
-    if (!storage || capacity < MAP_INDEX_MIN_COUNT) {
-        return true;
+    if (capacity < MAP_INDEX_MIN_COUNT) {
+        return 0;
     }
-    uint32_t slots = MAP_INDEX_MIN_COUNT;
-    while ((uint64_t)slots * MAP_LOAD_PERCENT < (uint64_t)capacity * 100) {
-        if (slots > UINT32_MAX / 2) {
-            return false;
-        }
+    uint64_t slots = MAP_INDEX_MIN_COUNT;
+    while (slots <= MAP_MAX_SLOTS &&
+           slots * MAP_LOAD_PERCENT < (uint64_t)capacity * 100) {
         slots *= 2;
     }
-    map->slots = arena_alloc(storage, (size_t)slots * sizeof *map->slots);
-    if (!map->slots) {
-        return false;
+    return slots;
+}
+/* Indexes the map's entries in `slots`, which holds `count` slots. */
+static void index_fill(pin_map *map, pin_map_slot *slots, uint64_t count)
+{
+    map->slots = slots;
+    map->slot_mask = count ? (uint32_t)(count - 1) : 0;
+    for (uint64_t i = 0; i < count; i++) {
+        slots[i] = (pin_map_slot){ 0, -1 };
     }
-    for (uint32_t i = 0; i < slots; i++) {
-        map->slots[i] = (pin_map_slot){ 0, -1 };
-    }
-    map->slot_mask = slots - 1;
-    for (int i = 0; i < map->count; i++) {
+    for (int i = 0; slots && i < map->count; i++) {
         index_insert(map, key_hash(&map->entries[i].key), i);
     }
+}
+/* An index sized for `capacity` entries, or none for a small map. */
+static bool index_build(arena *storage, pin_map *map, int capacity)
+{
+    uint64_t count = storage ? slot_count(capacity) : 0;
+    if (count > MAP_MAX_SLOTS) {
+        return false;
+    }
+    pin_map_slot *slots = count ? arena_alloc(storage, (size_t)count * sizeof *slots)
+                                : NULL;
+    if (count && !slots) {
+        return false;
+    }
+    index_fill(map, slots, count);
     return true;
 }
-void pin_map_index(arena *storage, pin_map *map)
+size_t pin_map_index_bytes(int count)
 {
-    if (map && !map->slots) {
-        index_build(storage, map, map->count);
-    }
+    uint64_t slots = slot_count(count);
+    return slots > MAP_MAX_SLOTS ? SIZE_MAX : (size_t)slots * sizeof(pin_map_slot);
+}
+void pin_map_index(pin_map *map, pin_map_slot *slots)
+{
+    assert(!map->slots && (slots != NULL) == (pin_map_index_bytes(map->count) > 0));
+    index_fill(map, slots, slot_count(map->count));
 }
 
 int pin_map_find(const pin_map *map, const pin_value *key)

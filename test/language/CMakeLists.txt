@@ -247,7 +247,7 @@ set_source_files_properties(source_tokenizer_chibi.c
 target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c")
-set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c package_snapshot_chibi.c
+set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c package_snapshot_chibi.c docs_markdown.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

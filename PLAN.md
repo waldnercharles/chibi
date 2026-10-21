@@ -804,11 +804,14 @@ and its never-linked Tracy option. `third_party/CMakeLists.txt` builds the
 archives in CI and `cmake/third_party.cmake` can download one on the CMake-only
 recovery path; both are temporary and leave with CMake. Windows CI is paused
 until the build host runs there. The configuration signature can move next.
-Waiting
-on a decision: `.github/scripts/` (the M5 owner
-confirms its hosted runs are finished), the CUT61 analysis scripts (owner
-review of the stale record), and game runtime installation (whether the
-`update-game-runtime` workflow outlived the retired game repositories).
+On 2026-10-20 the owner approved three deletions with no replacement, now
+done: the hosted M5 validation
+helpers in `.github/scripts/` with their `native-unit-dependencies.tsv` and
+`build-tools.txt`, which no workflow ran; the CUT61 `analyze.py`; and game
+runtime installation (`make update-game-runtime`, `tools/install_game_runtime.py`
+and `tools/kdl_asset.py`), which served the retired game repositories. Git
+history keeps them. The CUT61 `run.py.txt` record still waits on review of the
+stale record.
 Everything else is blocked. Packaging still needs sizes, modification-time
 order, link reads and staging directories from the host, and the Blender
 launcher needs child resource limits.
@@ -856,9 +859,34 @@ The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
 `docs/design-notes.md`, gating each stage-one feature on a purpose-made
 story; stage one rebuilds all five as stage zero does since 2026-10-20.
 Since 2026-10-20 stage one's functions also have all of stage zero's
-debugger points: function, statement, completion, expression and symbol
-(`docs/package-compiler.md#output`). Next action: watches in stage one's
-modules.
+debugger points (function, statement, completion, expression and symbol) and
+watches (`docs/package-compiler.md#output`). The bootstrap compiles the
+compiler without them, since with watches stage two outgrew the compiler
+host's bounds. Also on 2026-10-20:
+- #586: stage one binds handler parameters to payload fields by name, in any
+  order or subset, as format 30 does.
+- #588 and #592: stage one compiles maps.
+- #591: stage one compiles `ref` parameters of locals.
+
+All three were checked on the Wasm host too.
+
+Still open:
+- Stage one doesn't check a handler parameter's written type or unit against
+  its field. Its game input carries no field units.
+- Stage one doesn't compile `assert`. It needs a failure kind in `Target` for
+  stage zero's `BEHAVIOR_FUNCTION_DATA`.
+
+Next action: the bootstrap sequence on every supported host configuration.
+
+Host status on 2026-10-20:
+- macOS arm64 runs the whole sequence locally.
+- On the 32-bit Wasm host, stage one compiles every sample and behavior, and
+  the closures run there and match stage zero's points and watches
+  (`wasm-package-compiler-chibi*`, `docs/package-compiler.md#hosts`).
+- The bootstrap itself stays native: stage one compiling itself outgrows
+  Wasm's 2 GiB linear memory.
+- Linux x86_64 and Windows x64 wait for a host, since CI has been disabled
+  since 2026-09-25 and a local container needs the owner's approval.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1076,10 +1104,9 @@ zero's identities and play as stage zero's do
 recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
 the exported input, and assembles the artifact with `chibi-compile
 --modules` (`make test-stage-one`). Stage one passes step 4's gate since
-2026-10-20, and its functions have all of stage zero's debugger points.
-Next: watches, then the sequence on every
-supported host configuration before stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
-Watches are deferred until before stage one becomes the normal compiler.
+2026-10-20, and its functions have all of stage zero's debugger points and
+watches. Next: the sequence on every supported host configuration before
+stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the

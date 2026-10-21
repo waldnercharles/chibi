@@ -76,11 +76,13 @@ const P = {
   bit_and: 5,
   equality: 6,
   comparison: 7,
-  shift: 8,
-  sum: 9,
-  product: 10,
-  unary: 11,
-  member: 12,
+  // `??` binds below arithmetic and above comparison, as in Swift and Kotlin.
+  coalesce: 8,
+  shift: 9,
+  sum: 10,
+  product: 11,
+  unary: 12,
+  member: 13,
 };
 
 function comma(rule) {
@@ -698,6 +700,12 @@ module.exports = grammar({
         prec.left(P.comparison, seq(
           field("left", $._expression),
           field("operator", $.not_in),
+          field("right", $._expression),
+        )),
+        // `a ?? b ?? c` groups as `a ?? (b ?? c)`.
+        prec.right(P.coalesce, seq(
+          field("left", $._expression),
+          field("operator", "??"),
           field("right", $._expression),
         )),
       ),

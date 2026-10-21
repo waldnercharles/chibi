@@ -179,6 +179,8 @@ int main(int argc, char **argv)
                                             !strcmp(argv[1], "--package-compiler-chibi-behaviors");
     bool package_compiler_chibi_sharing = argc == 2 &&
                                           !strcmp(argv[1], "--package-compiler-chibi-sharing");
+    bool package_compiler_chibi_debug_free = argc == 2 &&
+                                             !strcmp(argv[1], "--package-compiler-chibi-debug-free");
     bool package_compiler_chibi_behaviors_rest = argc == 2 &&
                                                  !strcmp(argv[1], "--package-compiler-chibi-behaviors-rest");
     bool package_compiler_chibi_imports = argc == 2 &&
@@ -268,9 +270,9 @@ int main(int argc, char **argv)
          !package_compiler_chibi && !package_compiler_chibi_types &&
          !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
          !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
-         !package_compiler_chibi_imports_compiled &&
-         !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
-         !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_sharing &&
+         !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
+         !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
+         !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
          !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
          !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
@@ -307,6 +309,7 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-behaviors | "
             "--package-compiler-chibi-behaviors-rest | "
             "--package-compiler-chibi-sharing | "
+            "--package-compiler-chibi-debug-free | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -499,6 +502,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_behaviors_rest();
     } else if (package_compiler_chibi_sharing) {
         test_language_package_compiler_chibi_sharing();
+    } else if (package_compiler_chibi_debug_free) {
+        test_language_package_compiler_chibi_debug_free();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

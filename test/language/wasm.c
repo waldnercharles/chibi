@@ -5,6 +5,7 @@
 #include "language/lower.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -123,6 +124,39 @@ TEST_CASE(wasm_default_executes_emitted_code_with_numeric_and_array_helpers)
     REQUIRE(instance);
     REQUIRE(execution_instance_dispatch(instance, 10, NULL, 0, 0, 0, 10000) == FLOW_OK);
     REQUIRE(total(instance, 48));
+    return true;
+}
+
+/* A definition whose generated module would pass the size budget runs on
+ * bytecode, with the same result, and its runs count as size fallbacks. */
+TEST_CASE(wasm_oversized_definition_runs_on_bytecode)
+{
+    enum
+    {
+        STEPS = 3000
+    };
+    static const char
+        head[] = "B :: behavior { total: double = 0;on Run :: () { total = 0;";
+    static const char step[] = "total += 1;";
+    char *source = xmalloc(sizeof head + STEPS * (sizeof step - 1) + 3);
+    char *at = source + sprintf(source, "%s", head);
+    for (int i = 0; i < STEPS; i++) {
+        at += sprintf(at, "%s", step);
+    }
+    sprintf(at, "} }");
+    bool compiled = compile(source, BEHAVIOR_WASM);
+    free(source);
+    REQUIRE(compiled);
+    execution_instance *instance = attach();
+    REQUIRE(instance);
+    behavior_run_scope scope = { 0 };
+    behavior_run_scope_begin(&scope);
+    int status = execution_instance_dispatch(instance, 10, NULL, 0, 0, 0, 1000000);
+    behavior_run_scope_end(&scope);
+    REQUIRE(status == FLOW_OK);
+    REQUIRE(total(instance, STEPS));
+    REQUIRE(scope.counts.size_bytecode_fallbacks > 0 && !scope.counts.wasm_entries);
+    REQUIRE(scope.counts.bytecode_entries == scope.counts.size_bytecode_fallbacks);
     return true;
 }
 
@@ -452,6 +486,7 @@ void test_language_wasm()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(wasm_default_executes_emitted_code_with_numeric_and_array_helpers);
+    RUN_TEST_CASE(wasm_oversized_definition_runs_on_bytecode);
     RUN_TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported);
     RUN_TEST_CASE(wasm_integer_operations_preserve_width_and_exact_bits);
     RUN_TEST_CASE(wasm_canonical_body_reuses_storage_after_smaller_vm_body);

@@ -69,6 +69,9 @@ void behavior_run_record(execution_run_event event)
         case EXECUTION_RUN_INSPECTION_BYTECODE_FALLBACK:
             increment(counts, &counts->inspection_bytecode_fallbacks);
             return;
+        case EXECUTION_RUN_SIZE_BYTECODE_FALLBACK:
+            increment(counts, &counts->size_bytecode_fallbacks);
+            return;
     }
     assert(false);
 }
@@ -76,6 +79,10 @@ void behavior_run_record(execution_run_event event)
 static int run_compiled(const behavior_function *f, behavior_function_context *ctx)
 {
 #ifdef __EMSCRIPTEN__
+    if (f->artifact->interpreted) {
+        behavior_run_record(EXECUTION_RUN_SIZE_BYTECODE_FALLBACK);
+        return behavior_function_run_interpreted(f, ctx);
+    }
     return behavior_function_run_wasm(f, ctx);
 #else
     bool inspected = behavior_function_inspection_required(f, ctx);

@@ -401,12 +401,22 @@ each loop instead and leaves the `_proc` API out.
 
 Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 
-### Stage one has no reference parameters
+### Stage one's reference parameters reach locals and fields only
 
 Stage one. Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator`
 and `fields_iterator` advance the caller's string. The language has `ref`
-parameters since #420, but stage one rejects them, and `core:strings`, which
-stage one compiles, has no iterators.
+parameters since #420, and since the stage-one ref parameters PR stage one
+compiles them: a callee reads, assigns and compound-assigns a `ref`
+parameter, reads and writes its record's fields, and passes it on. A caller
+passes a local or parameter, a field of a local record, or its own `ref`
+parameter. A number, bool or string that a `ref` argument reaches lives in a
+data cell, as stage zero keeps every local. Stage one still refuses:
+
+- a reference to an array element or a map entry;
+- `v[i] = x` and `m[k] = x` through a reference;
+- a `ref` parameter with a default.
+
+`core:strings`, which stage one compiles, has no iterators yet.
 
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
@@ -418,9 +428,9 @@ call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
 Odin and Zig (`&v`) all mark the call site, so readers and tools see the
 write.
 
-Suggestion: stage one compiles `ref` parameters of locals, then
-`core:strings` gains Odin's iterators. Consider marking reference
-arguments at the call site.
+Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
+references to elements and entries. Consider marking reference arguments at
+the call site.
 
 ### Library growth spends the compiler tests' budgets
 

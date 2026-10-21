@@ -446,6 +446,56 @@ static const sample samples[] = {
                  { "Points", "[]", "[405]" },
                  { "Walk", "[]", "[\"Ada4Cid2Bea5 95911\"]" },
                  { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
+    { .name = "references",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Bump :: (v: ref int) { v += 1; }\n"
+                "Set :: (v: ref int, to: int) { v = to; }\n"
+                "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
+                "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
+                "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
+                "Grow :: (xs: ref int[]) { xs = array_add(xs, int(7)); }\n"
+                "Inc :: (k: int) -> int { Bump(k); return k; }\n"
+                "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
+                "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
+                "return c; }\n"
+                "Run :: () -> int {\n"
+                "    n: int = 1;\n    Bump(n);\n    Twice(n);\n    Set(n, n * "
+                "10);\n"
+                "    name: string = \"a\";\n    Rename(name);\n"
+                "    p: Point = {x: 1, y: 2};\n    Swap(p);\n    Bump(p.x);\n"
+                "    xs: int[] = [1];\n    Grow(xs);\n"
+                "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
+                "+ Inc(5) * 1000000;\n"
+                "    if (name == \"a!\") { total += 100000; }\n"
+                "    return total;\n}\n"
+                "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(p); "
+                "return p.x * 100 + p.y; }",
+      .calls = { { "Run", "[]", "[6121340]" },
+                 { "Inc", "[1]", "[2]" },
+                 { "Count", "[]", "[12]" },
+                 { "Moved", "[]", "[1007]" } } },
+    { .name = "reference literal",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
+                "Bump(3); }",
+      .message = "Reference argument requires a writable value",
+      .line = 3,
+      .column = 18 },
+    { .name = "reference default",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
+      .message = "a reference parameter takes no default",
+      .line = 2,
+      .column = 10 },
+    { .name = "reference type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
+                "n: int64 = 1; Bump(n); }",
+      .message = "reference argument differs from the parameter's type",
+      .line = 3,
+      .column = 32 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"

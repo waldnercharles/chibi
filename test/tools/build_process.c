@@ -1101,6 +1101,35 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     return true;
 }
 
+/* Build values are never freed, so a program's values only grow: a build
+ * graph that reads a record per source holds tens of megabytes, and a
+ * program past the storage limit fails with its cause. */
+TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
+{
+    size_t size = 1024 * 1024;
+    char *text = malloc(size);
+    assert(text);
+    memset(text, 's', size);
+    primitive_file("primitive-storage", text, size);
+    free(text);
+    static const char *sources[] = {
+        "package storage\nBuild :: () -> int { for (i in 0..<64) { "
+        "build.read_file(\"primitive-storage\"); } return 0; }",
+        "package storage\nBuild :: () -> int { for (i in 0..<300) { "
+        "build.read_file(\"primitive-storage\"); } return 0; }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result) == !i);
+        REQUIRE(
+            i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
+              : !result.value
+        );
+    }
+    return true;
+}
+
 static bool no_write_temporary(const char *prefix)
 {
     DIR *directory = opendir(root);
@@ -1530,6 +1559,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text);
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
+    RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);

@@ -667,12 +667,20 @@ records and ran out of the host's 32 MB of never-freed values; records now
 keep each path and stamp on separate lines, and it takes 7 s. That leaves
 about twice the headroom; the next slices about double the sources, so a
 host-side stamp check or freeable build values must come with them.
-Next: C++ (enkiTS's task scheduler, which the task pool and 24 libraries over
-it wait on); private header directories shared by several libraries
-(`private/physics`, `private/graph`, the language's); the image codecs
-generated from Cute's headers; the platform and engine libraries over Cute;
-then moving profile selection from `Build.chibi`'s CMake arguments into the
-graph.
+Slice 13, 2026-10-21: C++ and shared private headers. The graph compiles
+`.cpp` sources with the profile's C++ compiler (`CXX`, or the driver beside
+the C compiler) and the target's C++ standard, and stages `private/NAME`
+directories several libraries share. It owns enkiTS's task scheduler and the
+twelve libraries it unblocks (task pool, material, physics, physics3d,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and the default native catalog): 92 libraries and 484 compile
+commands, equal to CMake's. The host's value storage rose to 256 MB for
+up-to-date builds of graphs this size.
+Next: the image codecs generated from Cute's headers (image preparation, then
+model authoring and shader preparation); the platform library over the
+desktop Cute archive; the language, compiler and authoring libraries, whose
+private headers sit below `sdk/language/private`; then moving profile
+selection from `Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

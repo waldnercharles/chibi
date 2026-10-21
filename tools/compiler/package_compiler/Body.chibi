@@ -973,6 +973,72 @@ QualifierOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], pa
     }
     return names[found].index;
 }
+// Package privacy governs source names, not the runtime functions retained in
+// a module. A native or synthesized declaration has no source node.
+PrivateDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    return node >= 0 && Field(forest, node, "visibility") < 0;
+}
+PrivateMessage :: (name: string) -> string {
+    return format_text("'{}' is private: declare it pub to use it from another package", name);
+}
+// The qualified type name a type spells privately, including a map's key or
+// value and an array's element type. Returns its name node for the diagnostic.
+PrivateType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                node: int) -> int {
+    if (node < 0) {
+        return -1;
+    }
+    if (Is(forest, node, "type")) {
+        named := Field(forest, node, "name");
+        first := FirstMember(forest, named);
+        part: int = -1;
+        if (first >= 0) {
+            part = NextMember(forest, first);
+        }
+        if (part >= 0) {
+            home := QualifierOf(forest, text, names, package, first);
+            declared := FindType(types, home, Text(forest, text, part));
+            if (home >= 0 && home != package && declared >= 0 && PrivateDeclaration(forest, types[declared].node)) {
+                return named;
+            }
+        }
+    }
+    child := FirstMember(forest, node);
+    while (child >= 0) {
+        hidden := PrivateType(forest, text, types, names, package, child);
+        if (hidden >= 0) {
+            return hidden;
+        }
+        child = NextMember(forest, child);
+    }
+    return -1;
+}
+// A qualified source access, with an import alias no local hides. For a
+// variant `alias.Union.Variant`, privacy applies to `alias.Union`.
+PrivateAccess :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], types: TypeDecl[],
+                  constants: ConstDecl[], names: Name[], package: int, node: int) -> int {
+    if (!Is(forest, node, "member_expression")) {
+        return -1;
+    }
+    object := Field(forest, node, "object");
+    if (Is(forest, object, "member_expression")) {
+        return PrivateAccess(forest, text, callables, types, constants, names, package, object);
+    }
+    home := QualifierOf(forest, text, names, package, object);
+    if (home < 0 || home == package) {
+        return -1;
+    }
+    name := Text(forest, text, Field(forest, node, "member"));
+    callable := FindCallable(callables, home, name);
+    declared := FindType(types, home, name);
+    constant := FindConstant(constants, home, name);
+    if ((callable >= 0 && PrivateDeclaration(forest, callables[callable].node)) ||
+        (declared >= 0 && PrivateDeclaration(forest, types[declared].node)) ||
+        (constant >= 0 && PrivateDeclaration(forest, forest[constants[constant].node].parent))) {
+        return node;
+    }
+    return -1;
+}
 // The package constant `node` names: `Name` when no local hides it, or
 // `alias.Name`; -1 otherwise.
 ConstantOf :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
@@ -1873,7 +1939,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
             step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
+            step = CallStep(forest, text, document, callables, params, types, members, constants, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);

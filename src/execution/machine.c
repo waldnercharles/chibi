@@ -798,6 +798,11 @@ int execution_machine_step(execution_machine *m, int pc)
             goto done;
         default: {
             if (behavior_function_bitwise(i->op)) {
+                if ((i->op == BF_SHL || i->op == BF_SHR) &&
+                    !behavior_scalar_shift_count_valid(i->type, behavior_scalar_bits(b))) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                    goto done;
+                }
                 *out = behavior_scalar_from_bits(
                     i->type,
                     behavior_scalar_bitwise_bits(

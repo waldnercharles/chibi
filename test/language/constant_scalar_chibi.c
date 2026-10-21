@@ -14,14 +14,14 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Three cases, one 70-request table, 70 C proof/evaluation oracle calls and
- * 140 authored calls. At most seven expressions and one symbol per request;
+/* Three cases, one 91-request table, 91 C proof/evaluation oracle calls and
+ * 182 authored calls. At most seven expressions and one symbol per request;
  * every call has a two-million-instruction ceiling. Four authored sources are
  * prepared once per backend (eight source parses). The 65536-visit exhaustion
  * workload is deliberately absent. No IO, services, workers or timing loops. */
 enum
 {
-    CASE_COUNT = 78,
+    CASE_COUNT = 91,
     MAX_EXPRESSIONS = 7
 };
 typedef enum
@@ -91,8 +91,51 @@ static const scalar_case cases[] = {
     { "name-text-different", BINARY, SCRIPT_OP_NE, NAME("same"), TEXT("other"), PIN_BOOL, PIN_BOOL },
     { "null-empty-equal", BINARY, SCRIPT_OP_EQ, TEXT(NULL), TEXT(""), PIN_BOOL, PIN_BOOL },
     { "nan-not-equal", BINARY, SCRIPT_OP_EQ, F64(NAN), F64(NAN), PIN_BOOL, PIN_BOOL },
-    { "negative-shift-count", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
-    { "shift-width-masked", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
+    { "invalid-shift-negative", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
+    { "invalid-shift-width-int", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
+    { "invalid-shift-width-int8",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_I8, .i8 = 1 },
+      { .type = PIN_I8, .i8 = 8 },
+      PIN_I8,
+      PIN_I8 },
+    { "invalid-shift-width-byte",
+      BINARY,
+      SCRIPT_OP_SHIFT_RIGHT,
+      { .type = PIN_U8, .u8 = 1 },
+      { .type = PIN_U8, .u8 = 8 },
+      PIN_U8,
+      PIN_U8 },
+    { "invalid-shift-width-int16",
+      BINARY,
+      SCRIPT_OP_SHIFT_RIGHT,
+      { .type = PIN_I16, .i16 = -1 },
+      { .type = PIN_I16, .i16 = 16 },
+      PIN_I16,
+      PIN_I16 },
+    { "invalid-shift-width-uint16",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_U16, .u16 = 1 },
+      { .type = PIN_U16, .u16 = 16 },
+      PIN_U16,
+      PIN_U16 },
+    { "invalid-shift-width-uint", BINARY, SCRIPT_OP_SHIFT_RIGHT, U32(1), U32(32), PIN_U32, PIN_U32 },
+    { "invalid-shift-width-int64", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(64), PIN_I64, PIN_I64 },
+    { "invalid-shift-width-uint64", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(1), U64(64), PIN_U64, PIN_U64 },
+    { "invalid-shift-huge-uint64", BINARY, SCRIPT_OP_SHIFT_LEFT, U64(1), U64(UINT64_MAX), PIN_U64, PIN_U64 },
+    { "invalid-shift-before-result-widening", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I64 },
+    { "byte-shift-discards-before-result-widening",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_U8, .u8 = 128 },
+      { .type = PIN_U8, .u8 = 1 },
+      PIN_U8,
+      PIN_I64 },
+    { "signed-right-shift-rounds-down", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-3), I32(1), PIN_I32, PIN_I32 },
+    { "left-shift-enters-sign-bit", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(63), PIN_I64, PIN_I64 },
+    { "zero-shift-preserves-value", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(-3), I32(0), PIN_I32, PIN_I32 },
     { "unsigned-right-shift", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(UINT64_MAX), U64(63), PIN_U64, PIN_U64 },
     { "byte-not", UNARY, SCRIPT_OP_BIT_NOT, { .type = PIN_U8, .u8 = UINT8_MAX }, I32(0), PIN_U8, PIN_U8 },
     { "int16-and",
@@ -460,6 +503,20 @@ static bool compare(int index)
     const char *error = !script_constant_prove(&analysis, proofs, 1, 0, &steps, true)
                           ? "requires bounded compile-time values and operators"
                           : script_scalar_evaluate(&analysis, 0, item->expected, &expected);
+    if (!strncmp(item->name, "invalid-shift-", strlen("invalid-shift-"))) {
+        REQUIRE(error && !strcmp(error, "Integer shift count is outside the type width"));
+    }
+    if (!strcmp(item->name, "byte-shift-discards-before-result-widening")) {
+        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == 0);
+    }
+    if (!strcmp(item->name, "signed-right-shift-rounds-down") ||
+        !strcmp(item->name, "zero-shift-preserves-value")) {
+        REQUIRE(!error && expected.type == PIN_I32);
+        REQUIRE(expected.i == (!strcmp(item->name, "zero-shift-preserves-value") ? -3 : -2));
+    }
+    if (!strcmp(item->name, "left-shift-enters-sign-bit")) {
+        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == INT64_MIN);
+    }
     if (!strcmp(item->name, "widened-add-result") ||
         !strcmp(item->name, "widened-neg-result")) {
         REQUIRE(!error && expected.type == PIN_I64);

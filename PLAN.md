@@ -132,6 +132,13 @@ A bounded disk adapter supplies explicit package roots on Linux and macOS. The
 installed `core:strings` collection and pure native arrays support the first
 compiler component; Windows disk loading remains unsupported.
 
+The owner approved the Odin-inspired package library program on 2026-10-20,
+with fidelity decided per package and useful language prerequisites implemented
+before affected ports. [Package library plan](docs/package-library-plan.md)
+owns that program's sequence, semantic decisions and implementation status.
+Read it before expanding `core:` or adding public collections. The toolchain
+milestones below retain their existing order and acceptance conditions.
+
 ### Bootstrap terms
 
 - **Stage zero** is the existing C compiler and native build used to create the
@@ -163,8 +170,9 @@ compiler component; Windows disk loading remains unsupported.
   [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
   sources under `src/language/`.
 
-These documents explain existing contracts. This file alone owns milestone
-order, current status, and the next action.
+These documents explain existing contracts. This file owns toolchain milestone
+order, current status, and the next action; the package library program linked
+above has its own ledger.
 
 ## Integration rules
 

@@ -1,31 +1,31 @@
 {
   "format": 1,
-  "version": 3,
+  "version": 4,
   "minimum": 2,
-  "revision": "52ec45cfbe8d297747a7dd3052cff9dcc07a53d3",
+  "revision": "4a751bd5fb2bb414ec867f089acae9b9736e1d9e-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 11268892,
-    "sha256": "8c662871c9e04415253c4f35619a7d30dfb3a88c18dc400d40147119b3552611"
+    "bytes": 11383423,
+    "sha256": "2f0a3d0007e528a43d735287998738566fa6941efe373b389db484ad195d3d54"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 90558,
-      "sha256": "8a492681909164db0cacb7d20577877b330f14382a3e18c805364a6ba4585e87"
+      "bytes": 92733,
+      "sha256": "335979bdc76ba5cf7fadaff8c025dfd9a9e4a4bc128be7140f7d26a385917971"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 101262,
-      "sha256": "8adc1073fb708121da7673fec91eeee508def130a7b7146d1489bbd3d6d58192"
+      "bytes": 104161,
+      "sha256": "4d6a7f92a83a596e7e8bfcde57b41038ef948c5624d17a5805e65175c4987845"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 178700,
-      "sha256": "754e7a0eab8a6c1c300dec6f03e9e0ba6951d290b279cd2af8e16fb2ac845af4"
+      "bytes": 179497,
+      "sha256": "6ac34c3c2cc4e93c8e4f35d52b167627c69afea364f715dc76158f862512cb2e"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -49,8 +49,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 22022,
-      "sha256": "00de6adf4904a5e8505f98ab9a55a8efa850e85f28cf93879104d0121fc33ba5"
+      "bytes": 22032,
+      "sha256": "3c13d47cf6071da1209c34fd94f73343e3bdd7e2565e2dab5b7b7ca2eaa93657"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -100,7 +100,7 @@
     {
       "path": "prepared_writer/Writer.chibi",
       "bytes": 26864,
-      "sha256": "d28a54e6873a83462e0f370de77f7ce0516c38ff1d2edb7f94e393a232ed7753"
+      "sha256": "ec8ae462daa206c50e6b9e700a229580d0cd76e3044c209f3788222b20d25b6c"
     }
   ],
   "target": [

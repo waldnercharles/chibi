@@ -104,6 +104,12 @@ Example :: library {
 Integer arithmetic wraps on overflow. Floating-to-integer conversions truncate
 toward zero, clamp at the bounds, and map NaN to zero.
 
+Integer shifts require a count from zero through one less than the operand's
+bit width. A negative or larger count fails, including inside `T(wrap: value)`.
+Left shifts discard outgoing bits. Signed right shifts extend the sign bit;
+unsigned right shifts insert zeros. The operation uses its resolved operand
+type, even when its result is then converted to a wider type.
+
 A character literal contains one Unicode scalar. A string contains text.
 Runtime strings cannot contain embedded NUL bytes.
 
@@ -824,9 +830,11 @@ Some language features remain unavailable:
 
 These examples describe the language accepted by the native frontend. The
 authored stage-one package compiler supports a smaller subset. It still needs
-explicit local types and does not compile maps or reference iteration. It
-supports integer switches, range loops, indexed loops, reverse loops and
-literal parameter defaults.
+explicit local types and does not compile reference iteration. It supports a
+restricted set of maps, integer switches, range loops, indexed loops, reverse
+loops and literal parameter defaults. Package imports enforce `pub` visibility.
+See [the package compiler](package-compiler.md) for its supported subset and
+[language friction](language-friction.md) for remaining stage-one gaps.
 
 See the generated [Grammar](grammar.html) for syntax and
 [Examples](examples.md) for gameplay recipes.

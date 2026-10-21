@@ -234,6 +234,20 @@ to these small functions; there are no files, processes, frames or GPU work.
 Debug Clang 23.1.1 with ASan/UBSan passed 10 cases and 726 assertions in 0.577
 seconds on 2026-10-07, including actual VM and SLJIT execution.
 
+The 2026-10-21 shift-contract regression adds sixteen tiny functions (eight
+integer types, two directions), each run on VM and the compiled backend with
+three invalid counts: width, width plus one, and all bits set. These 96 calls
+check DATA failure and source metadata. Existing valid-shift cases cover zero,
+one and width minus one, sign extension and discarded bits. This bounded
+extension was independently reviewed before execution; the shared deadline
+and no-IO/no-process constraints are unchanged.
+
+The same dispatcher adds six two-frame, ten-instruction definitions to check
+the optimizer's treatment of failing shifts. Twenty invocations, each capped at
+100 instructions, cover both directions, variable counts and valid/invalid
+constant counts on both backends. An unused invalid shift must still fail and
+preserve a prior persistent write; a valid shift reaches the subsequent write.
+
 `python3 tools/test_policy.py tool language-program` selects twelve independently
 reviewed source/runtime cases on VM and SLJIT. Besides typed events, systems,
 bindings, imports, cancellation and failure records, it exercises eager tuple
@@ -1027,6 +1041,14 @@ The language follow-up admits these focused C checks under the same supervisor:
   columns. These coexist with the two query-variable definitions and sixteen
   query calls below, sharing the same compiler child and source-size bound.
   The combined generated source requires independent admission before execution.
+  The 2026-10-21 checked-shift extension is a second pico case in the same
+  dispatcher. It adds eight nine-instruction functions (eight integer types,
+  a direction argument), with six counts per direction and 192 paired
+  VM/generated-C calls. It checks valid values and invalid-count DATA metadata.
+  Its source is capped at 64 KiB; the original case retains its 128 KiB bound.
+  Each case has one compiler child with the existing 10-second limit, and both
+  share the selector's 60-second deadline. Cleanup runs between cases. The
+  combined workload requires independent review before execution.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -1468,7 +1490,7 @@ first run, build separately and use one shared 60-second ceiling outside the
 language aggregate.
 
 `python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
-scalar folding using 70 fixed requests and 140 authored calls across bytecode and
+scalar folding using 91 fixed requests and 182 authored calls across bytecode and
 SLJIT. Three pico cases prepare the four actual compiler packages once per
 backend (eight source parses, each below 64 KiB). Each call permits two million
 instructions and contains at most seven expressions, one symbol and no aggregate
@@ -1477,7 +1499,8 @@ evaluator; the authored implementation uses separate proof and evaluation
 budgets, preserving the production limit of 65,536 for each.
 
 The corpus covers all thirteen physical scalar variants, exact floating-point
-bits, numeric conversions, integer wrap and division failures, masked shifts,
+bits, numeric conversions, integer wrap and division failures, checked shift
+counts and discarded shift bits at fixed operand widths,
 result storage and float rounding, string presence, symbols, promotion and
 Boolean short-circuiting after full admissibility. Inputs retire before result
 inspection. Explicit arena checks verify detached union and string ownership;

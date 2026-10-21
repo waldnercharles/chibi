@@ -183,7 +183,7 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         if (!linked.required) {
             kind = NamespaceDecl;
         }
-        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, kind: kind,
+        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, node: -1, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
                          key: 0, value_storage: 0, value_container: 0, value_record: -1};

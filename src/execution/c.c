@@ -1067,6 +1067,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_BIT_NOT:
             case BF_SHL:
             case BF_SHR:
+                if (i->op == BF_SHL || i->op == BF_SHR) {
+                    fprintf(out, "if(!behavior_scalar_shift_count_valid(%d,(uint64_t)v%d)){", i->type, i->right);
+                    failure(out, i, BEHAVIOR_FUNCTION_DATA);
+                    fputs("}\n", out);
+                }
                 fprintf(
                     out,
                     "v%d=behavior_scalar_from_bits(%d,behavior_scalar_bitwise_"

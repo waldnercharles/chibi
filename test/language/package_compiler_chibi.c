@@ -88,12 +88,147 @@ typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game;
+    bool core, updates, boxed, game, same_rejection;
     sample_call calls[CALLS];
     const char *message;
+    const char *oracle_message;
     int line, column;
 } sample;
 static const sample samples[] = {
+    { .name = "typed constant shifts discard bits",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Sign: int : 1 << 31;\n"
+                "Zero: byte : 128 << 1;\n"
+                "Small: int8 : 64 << 1;\n"
+                "Unsigned: uint : 4294967295 << 1;\n"
+                "Floor: int : -3 >> 1;\n"
+                "Wide: int64 : 1 << 63;\n"
+                "ReadSign :: () -> int { return Sign; }\n"
+                "ReadZero :: () -> byte { return Zero; }\n"
+                "ReadSmall :: () -> int8 { return Small; }\n"
+                "ReadUnsigned :: () -> uint { return Unsigned; }\n"
+                "ReadFloor :: () -> int { return Floor; }\n"
+                "ReadWide :: () -> int64 { return Wide; }",
+      .calls = { { "ReadSign", "[]", "[-2147483648]" },
+                 { "ReadZero", "[]", "[0]" },
+                 { "ReadSmall", "[]", "[-128]" },
+                 { "ReadUnsigned", "[]", "[4294967294]" },
+                 { "ReadFloor", "[]", "[-2]" },
+                 { "ReadWide", "[]", "[-9223372036854775808]" } } },
+    { .name = "constant negative shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 << -1;",
+      .message = "Constant shift count is outside the type",
+      .line = 2,
+      .column = 12 },
+    { .name = "constant shift count at width",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 >> 32;",
+      .message = "Constant shift count is outside the type",
+      .line = 2,
+      .column = 12 },
+    { .name = "private imported function",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return lib.Hidden(); }",
+      .library = "package lib\nHidden :: () -> int { return 7; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported constant",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return lib.Hidden; }",
+      .library = "package lib\nHidden :: 7;",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported constant expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\nValue :: "
+                "lib.Hidden + 1;",
+      .library = "package lib\nHidden :: 7;",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value: lib.Hidden = lib.Make(); return "
+                "value.x; }",
+      .library = "package lib\nHidden :: struct { x: int; }\n"
+                 "pub Make :: () -> Hidden { return {x: 7}; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: (value: lib.Hidden) -> int { return value.x; }",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record result",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> lib.Hidden { return lib.Make(); }",
+      .library = "package lib\nHidden :: struct { x: int; }\n"
+                 "pub Make :: () -> Hidden { return {x: 7}; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported union payload type",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Wrapper :: union { Some(value: lib.Hidden) }",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported map value type",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { values: [int: lib.Hidden] = [:]; return 0; "
+                "}",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported union constructor",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value := lib.Hidden.Some(7); return 0; }",
+      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .oracle_message = "Unknown callable 'lib.Hidden.Some'",
+      .same_rejection = true },
+    { .name = "private imported union value",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value := lib.Hidden.None; return 0; }",
+      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private package implementation",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return Helper(3) + lib.Value(3) + "
+                "lib.Make(3).x; }\n"
+                "Shadow :: (lib: Local) -> int { return lib.Hidden; }\n"
+                "Local :: struct { Hidden: int; }",
+      .more = "package facts\nHelper :: (value: int) -> int { return value + "
+              "1; }",
+      .library = "package lib\nHidden :: 7;\n"
+                 "Secret :: struct { x: int; }\n"
+                 "Twice :: (value: int) -> int { return value * 2; }\n"
+                 "pub Value :: (value: int) -> int { return Twice(value) + "
+                 "Hidden; }\n"
+                 "pub Make :: (value: int) -> Secret { return {x: value}; }",
+      .calls = { { "One", "[]", "[20]" }, { "Shadow", "[{\"Hidden\":11}]", "[11]" } } },
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
@@ -2373,6 +2508,51 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
 /* The samples of `group` compiled by stage one on compiler backend `b`.
  * Stage one compiles slowest on the bytecode backend, so each backend has a
  * selector of its own; only it compares with stage zero's closure. */
+static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+{
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(s, inputs);
+    source_package_snapshot_options options = { .project_root = "/compiler",
+                                                .files = inputs,
+                                                .file_count = count };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    script_lower_bindings bindings = authoring_native_bindings(fixture.native);
+    authoring_packages *packages = authoring_packages_prepare(
+        snapshot,
+        native_capabilities_catalog(fixture.native),
+        &bindings,
+        BEHAVIOR_BYTECODE,
+        NULL
+    );
+    REQUIRE(packages && !authoring_packages_valid(packages));
+    const authoring_package *root = NULL;
+    for (int p = 0; p < authoring_packages_count(packages); p++) {
+        const authoring_package *candidate = authoring_packages_at(packages, p);
+        if (!strcmp(candidate->identity, "project:facts")) {
+            root = candidate;
+        }
+    }
+    REQUIRE(root && root->diagnostic_count);
+    const script_diagnostic *expected = &root->diagnostics[0];
+    bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
+                expected->range.line == line && expected->range.column == column;
+    if (!same) {
+        fprintf(
+            stderr,
+            "stage zero %s: %s at %d:%d; stage one at %d:%d\n",
+            s->name,
+            expected->message,
+            expected->range.line,
+            expected->range.column,
+            line,
+            column
+        );
+    }
+    authoring_packages_free(packages);
+    REQUIRE(same);
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
@@ -2395,8 +2575,15 @@ static bool run_samples(sample_group group, int b)
                 get(&value->values[0], "line", &line) &&
                 get(&value->values[0], "column", &column)
             );
-            if (strcmp(message.str, s->message) || line.i != s->line ||
-                column.i != s->column) {
+            bool position = s->same_rejection
+                              ? rejects_like_oracle(
+                                    s,
+                                    message.str,
+                                    line.i,
+                                    column.i
+                                )
+                              : line.i == s->line && column.i == s->column;
+            if (strcmp(message.str, s->message) || !position) {
                 fprintf(
                     stderr,
                     "package compiler %s: %s at %d:%d\n",
@@ -2406,10 +2593,7 @@ static bool run_samples(sample_group group, int b)
                     column.i
                 );
             }
-            REQUIRE(
-                !strcmp(message.str, s->message) && line.i == s->line &&
-                column.i == s->column
-            );
+            REQUIRE(!strcmp(message.str, s->message) && position);
             arena_free(&detached);
             continue;
         }

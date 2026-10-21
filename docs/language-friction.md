@@ -18,6 +18,10 @@ Each entry starts with its class:
 A **Decision** records the owner's choice; nothing here is implemented unless
 the entry says so.
 
+The [package library plan](package-library-plan.md) prioritizes prerequisites
+for selected Odin-inspired packages. Add package evidence to the matching entry
+here; the plan records scheduling and package decision records own proposed APIs.
+
 ## Stage one rejects untyped locals
 
 Stage one. Before #558 an untyped number literal was a `number`, so
@@ -179,6 +183,13 @@ as C#'s `unchecked(expr)`: `hash = uint64(wrap: (hash ^ b) * Prime)`. Trapping
 can be relaxed later without breaking code; wrapping could not be tightened
 later without breaking code that relied on it.
 
+Decision (2026-10-21): shifts reject a negative count or a count greater than
+or equal to the operand width, including inside `T(wrap: expr)`. Shifted-out
+bits are discarded. Implemented locally across the VM, SLJIT, generated C,
+Wasm and typed constant folders. A regression also preserves earlier writes
+when an unused shift fails in an optimized function. Default checked arithmetic
+and lexical wrapping remain pending. See the [numeric contract](package-numeric-contract.md).
+
 ## Stage one has no character literals
 
 Stage one. Stage zero has character literals and `char` since #530: `'a'`
@@ -322,6 +333,12 @@ compiling itself from 28 to 41 seconds; the same steps in their own
 Suggestion: strings that carry their length and may hold any byte, with
 slices that share the bytes once ownership allows it.
 
+Decision (2026-10-21): strings are immutable, carry their byte length and may
+hold arbitrary bytes, including NUL. UTF-8 validation and decoding are explicit
+operations; validity is not a global string invariant. Storage, lifetime and
+boundary migration are tracked in [package foundations](package-foundations.md).
+Implementation is pending.
+
 ### Stage one does not check pub
 
 Stage one. Before #552 every top-level declaration was exported, so Odin's
@@ -339,11 +356,16 @@ projects' `library` blocks follow once they become packages.
 
 Implemented for stage zero in #552: it exports only `pub` declarations and
 names a private one an import reaches, and `core:strings` keeps its two
-splitters to itself. Stage one parses `pub` but exports every package
-declaration, so on its own it would accept an import of a private one.
+splitters to itself. Stage one originally parsed `pub` without restricting
+imported access.
 
-Suggestion: stage one's exports keep only `pub` declarations, as stage zero's
-and Rust's and Zig's do.
+Implemented locally on 2026-10-20 in `codex/odin-package-foundations-20261020`:
+stage one rejects imported private functions, constants and named types while
+allowing helpers across files of the same package. Focused imports checks pass
+on bytecode and SLJIT. This is an unmerged change. Prepared modules retain private
+callable entries, as stage zero does; source visibility does not restrict an
+explicit host invocation. Private union access gets a clearer private-name
+diagnostic than stage zero's current unknown-callable/value diagnostic.
 
 ### No way to build a string
 
@@ -454,6 +476,30 @@ budgets.
 Suggestion: keep debug metadata out of the prepared form the writer and the
 compiler tests process, or make it optional, and give harnesses that only test
 imports a fixed core fixture.
+
+### A small change can exceed a function's verifier storage budget
+
+Toolchain and runtime. During the package-visibility prerequisite on 2026-10-20,
+adding the private-member check to the compiler's large `EmitBody` function made
+stage-zero preparation fail with "definition exceeds verifier storage budget".
+The focused imports check failed during preparation in 1.537 seconds, before
+running package cases. Moving the check to the existing `ValueStep` and
+`CallStep` functions kept the change within the existing limit.
+
+`src/execution/function_builder.c` bounds its defined-operands matrix to 64 MiB:
+instruction count times `(slot count / 64 + 1)` 64-bit words. A source edit can
+increase either dimension, so source line count does not predict the limit.
+The diagnostic reports neither dimension nor the estimated storage.
+
+- The [JVM Code attribute](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.7.3)
+  has an explicit per-method limit of fewer than 65,536 code bytes. Chibi's
+  constraint instead depends on verification work, which needs its own
+  explanation and measurements.
+
+Suggestion: include the function, instruction count, slot count, required bytes
+and allowed bytes in the diagnostic. Investigate a less dense verifier state
+representation if measured compiler functions keep reaching the limit. Keep
+the verification bound and use small owning functions in the meantime.
 
 ## Calls nest at most 64 deep
 
@@ -746,6 +792,24 @@ operators went into the behavior input instead.
 
 Suggestion: recovery compares what the closure links: the value layout,
 prepared ABI, instruction names, and each native's identity, ABI and ports.
+
+## An old Python breaks inherited host deadlines on macOS
+
+Toolchain. During the 2026-10-21 package-foundation checks, the system Python
+3.9.6 reported a process-relative `time.monotonic()` value near zero. Native
+hosts use `CLOCK_UPTIME_RAW`, whose value was over one million seconds. Passing
+the supervisor's absolute deadline to the build host therefore failed before
+source loading with `build source could not be read`.
+
+The installed `/opt/homebrew/bin/python3.12` used the same clock epoch as the
+native host. Selecting its `libexec/bin` directory in the task's PATH allowed
+the documented bootstrap workflow to finish inside one shared 60-second
+deadline. Emscripten also needed `EMSDK_PYTHON` set to that interpreter. No
+global interpreter or deadline limits were changed.
+
+Suggestion: toolchain startup should validate the supported Python clock
+contract and diagnose an expired inherited deadline separately from a source
+read failure. The current workaround is explicit interpreter selection.
 
 ## A string literal cannot span lines
 

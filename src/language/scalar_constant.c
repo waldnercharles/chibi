@@ -69,7 +69,10 @@ const char *script_scalar_operation(
         uint64_t mask = UINT64_MAX >> (64 - width);
         uint64_t x = behavior_scalar_bits(left) & mask;
         uint64_t y = op == SCRIPT_OP_BIT_NOT ? 0 : behavior_scalar_bits(right);
-        unsigned shift = (unsigned)(y & (width - 1));
+        if ((op == SCRIPT_OP_SHIFT_LEFT || op == SCRIPT_OP_SHIFT_RIGHT) && y >= width) {
+            return "Integer shift count is outside the type width";
+        }
+        unsigned shift = (unsigned)y;
         uint64_t bits = 0;
         switch (op) {
             case SCRIPT_OP_BIT_AND: bits = x & y; break;

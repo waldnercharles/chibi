@@ -208,6 +208,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
             if (declared >= 0) {
+                hidden := PrivateType(forest, text, types, names, package, declared);
+                if (hidden >= 0) {
+                    return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+                }
                 resolved := ReadType(forest, text, types, names, package, declared);
                 if (resolved.storage == 0) {
                     return Fail(forest, declared, document, "local type is not supported yet");
@@ -737,6 +741,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (item.phase == 0 && kind == "member_expression") {
+        hidden := PrivateAccess(forest, text, callables, types, constants, names, package, item.node);
+        if (hidden >= 0) {
+            return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+        }
+    }
     if (kind == "number" && Floating(item.storage)) {
         // A literal where a floating value is expected is one.
         return FloatConstantStep(forest, text, document, Typed(-1, NumberStorage, 0, item.node), item.storage, ops, at,
@@ -1203,7 +1213,7 @@ Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-             params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
              item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
@@ -1219,6 +1229,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     marks: int[] = [];
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
+        hidden := PrivateAccess(forest, text, callables, types, constants, names, package, callee);
+        if (hidden >= 0) {
+            return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+        }
         sum_type: int = -1;
         if (Is(forest, callee, "member_expression")) {
             sum_type = UnionOf(forest, text, types, names, package, callee);

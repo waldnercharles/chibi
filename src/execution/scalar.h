@@ -91,8 +91,13 @@ static inline bool behavior_scalar_integer_op(
     return true;
 }
 
-/* Integer bitwise operations preserve the declared width. Shift counts use
- * their low log2(width) bits, including negative counts. Left shifts wrap;
+static inline bool behavior_scalar_shift_count_valid(pin_type type, uint64_t count)
+{
+    return count < behavior_scalar_size(type) * CHAR_BIT;
+}
+
+/* Integer bitwise operations preserve the declared width. Shift counts must
+ * be nonnegative and less than the declared width. Left shifts discard bits;
  * signed right shifts extend the sign bit, unsigned right shifts insert zeros.
  * Compute unsigned bits so no signed shift or overflow depends on C behavior. */
 static inline uint64_t behavior_scalar_bitwise_bits(
@@ -105,7 +110,8 @@ static inline uint64_t behavior_scalar_bitwise_bits(
     assert(type >= PIN_I8 && type <= PIN_U64);
     unsigned width = (unsigned)behavior_scalar_size(type) * CHAR_BIT;
     uint64_t mask = UINT64_MAX >> (64 - width);
-    unsigned count = (unsigned)(right & (width - 1));
+    assert((op != BF_SHL && op != BF_SHR) || behavior_scalar_shift_count_valid(type, right));
+    unsigned count = (unsigned)right;
     left &= mask;
     switch (op) {
         case BF_BIT_AND: return (left & right) & mask;

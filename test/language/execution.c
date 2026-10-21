@@ -992,7 +992,7 @@ TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches)
     return true;
 }
 
-TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts)
+TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts)
 {
     const pin_type integers[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
                                   PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
@@ -1043,9 +1043,9 @@ TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts)
         } cases[] = {
             { mask - 7, 1, mask - 15, mask - 3, (mask >> 1) - 3 },
             { sign, 0, sign, sign, sign },
-            { sign, width, sign, sign, sign },
-            { sign, width + 1, 0, sign | (sign >> 1), sign >> 1 },
-            { mask, mask, sign, mask, 1 },
+            { sign, width - 1, 0, mask, 1 },
+            { sign, 1, 0, sign | (sign >> 1), sign >> 1 },
+            { mask, width - 1, sign, mask, 1 },
         };
         for (int backend = 0; backend < 2; backend++) {
             for (int c = 0; c < 5; c++) {
@@ -1084,6 +1084,57 @@ TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts)
     return true;
 }
 
+TEST_CASE(execution_integer_shift_rejects_out_of_range_counts)
+{
+    const pin_type integers[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
+                                  PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
+    for (int t = 0; t < 8; t++) {
+        pin_type type = integers[t];
+        unsigned width = (unsigned)behavior_scalar_size(type) * 8;
+        const uint64_t counts[] = { width, width + 1, UINT64_MAX };
+        for (int op = 0; op < 2; op++) {
+            cleanup();
+            pin_value arguments[2] = { behavior_scalar_from_bits(type, 1),
+                                       { .type = type } };
+            pin_value result = { .type = type };
+            builder = behavior_function_builder_new();
+            behavior_function_builder_signature(builder, arguments, 2, &result, 1, NULL, 0);
+            int left = slot(type), right = slot(type), output = slot(type);
+            for (int a = 0; a < 2; a++) {
+                emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                                      .type = type,
+                                                      .output = a ? right : left,
+                                                      .left = a,
+                                                      .value = arguments[a] });
+            }
+            emit((behavior_function_instruction){ .op = op ? BF_SHR : BF_SHL,
+                                                  .type = type,
+                                                  .output = output,
+                                                  .left = left,
+                                                  .right = right,
+                                                  .node_id = 73,
+                                                  .pin = 3 });
+            emit((behavior_function_instruction){ .op = BF_RESULT,
+                                                  .type = type,
+                                                  .left = output });
+            emit((behavior_function_instruction){ .op = BF_END });
+            REQUIRE(finish());
+            REQUIRE(behavior_function_compile(function));
+            for (int backend = 0; backend < 2; backend++) {
+                for (int c = 0; c < 3; c++) {
+                    arguments[1] = behavior_scalar_from_bits(type, counts[c]);
+                    REQUIRE(
+                        run(arguments, 2, NULL, &result, backend == 1, 100) == FLOW_ERR_INVALID_GRAPH
+                    );
+                    REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA && context.error_pin == 3);
+                    REQUIRE(context.node_id == 73);
+                }
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands)
 {
     const pin_type invalid[] = { PIN_F32, PIN_F64, PIN_BOOL, PIN_ENUM, PIN_HANDLE };
@@ -1109,6 +1160,94 @@ TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands
         char error[256];
         function = behavior_function_builder_finish(builder, error, sizeof error);
         REQUIRE(function == NULL && strstr(error, "bitwise"));
+    }
+    return true;
+}
+
+/* Six tiny two-frame definitions, at most twelve instructions each. The
+ * variable-count definition runs three counts; each constant-count definition
+ * runs once, on bytecode and the compiled backend: twenty invocations total.
+ * An unused shift must still fail between the two persistent stores. */
+TEST_CASE(execution_fast_shift_preserves_failure_and_prior_store)
+{
+    const int counts[] = { 1, 32, -1 };
+    for (int op = 0; op < 2; op++) {
+        for (int mode = 0; mode < 3; mode++) {
+            cleanup();
+            builder = behavior_function_builder_new();
+            pin_value arguments[] = { { .type = PIN_I32, .i = 4 }, { .type = PIN_I32 } };
+            pin_value variable = { .type = PIN_I32 };
+            behavior_function_builder_signature(builder, arguments, 2, NULL, 0, &variable, 1);
+            /* The fixture owns this mutable builder. Add the internal child
+             * frame metadata without expanding the public builder interface. */
+            behavior_function *draft = (behavior_function *)
+                behavior_function_builder_definition(builder);
+            apush(
+                draft->frames,
+                ((behavior_function_frame){ .source = { .parent = 0 }, .depth = 1, .stack = -1 })
+            );
+            int before = slot(PIN_I32), after = slot(PIN_I32),
+                left = slot(PIN_I32), right = slot(PIN_I32), unused = slot(PIN_I32);
+            emit((behavior_function_instruction){ .op = BF_CHECK });
+            emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                                  .type = PIN_I32,
+                                                  .output = before,
+                                                  .value = { .type = PIN_I32, .i = 7 } });
+            emit((
+                behavior_function_instruction
+            ){ .op = BF_STORE, .type = PIN_I32, .left = before, .target = 0 });
+            emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                                  .type = PIN_I32,
+                                                  .output = left,
+                                                  .left = 0,
+                                                  .value = variable });
+            emit((behavior_function_instruction){
+                .op = mode ? BF_CONSTANT : BF_ARGUMENT,
+                .type = PIN_I32,
+                .output = right,
+                .left = 1,
+                .value = { .type = PIN_I32, .i = mode == 2 ? 32 : 1 } });
+            emit((behavior_function_instruction){ .op = BF_CHECK, .frame = 1 });
+            emit((behavior_function_instruction){ .op = op ? BF_SHR : BF_SHL,
+                                                  .type = PIN_I32,
+                                                  .output = unused,
+                                                  .left = left,
+                                                  .right = right,
+                                                  .frame = 1,
+                                                  .node_id = 73,
+                                                  .pin = 3 });
+            emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                                  .type = PIN_I32,
+                                                  .output = after,
+                                                  .value = { .type = PIN_I32, .i = 9 } });
+            emit((
+                behavior_function_instruction
+            ){ .op = BF_STORE, .type = PIN_I32, .left = after, .target = 0 });
+            emit((behavior_function_instruction){ .op = BF_END });
+            REQUIRE(finish());
+            REQUIRE(behavior_function_frame_count(function) == 2);
+            REQUIRE(behavior_function_compile(function));
+            for (int backend = 0; backend < 2; backend++) {
+                for (int c = 0; c < (mode ? 1 : 3); c++) {
+                    arguments[1].i = counts[c];
+                    variable.i = 0;
+                    bool valid = mode == 1 || (!mode && counts[c] == 1);
+                    REQUIRE(
+                        run(arguments, 2, &variable, NULL, backend == 1, 100) ==
+                        (valid ? FLOW_OK : FLOW_ERR_INVALID_GRAPH)
+                    );
+                    REQUIRE(variable.i == (valid ? 9 : 7));
+                    if (!valid) {
+                        REQUIRE(
+                            context.failure == BEHAVIOR_FUNCTION_DATA &&
+                            context.error_pin == 3
+                        );
+                        REQUIRE(context.node_id == 73);
+                    }
+                }
+            }
+            REQUIRE((function->fast != NULL) == (mode == 1));
+        }
     }
     return true;
 }
@@ -1807,7 +1946,9 @@ void test_language_execution()
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
     RUN_TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers);
-    RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts);
+    RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts);
+    RUN_TEST_CASE(execution_integer_shift_rejects_out_of_range_counts);
+    RUN_TEST_CASE(execution_fast_shift_preserves_failure_and_prior_store);
     RUN_TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands);
     RUN_TEST_CASE(execution_print_string_is_synchronous_and_preserves_context);
     RUN_TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage);

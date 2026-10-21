@@ -401,6 +401,128 @@ static bool exported_integer_width_edges()
     }
     return true;
 }
+static bool shift_fixture(int index)
+{
+    pin_type type = integer_types[index];
+    pin_value inputs[] = { { .type = type }, { .type = type }, { .type = PIN_BOOL } };
+    pin_value result = { .type = type };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, inputs, 3, &result, 1, NULL, 0);
+    int left = behavior_function_builder_slot(builder, type);
+    int right = behavior_function_builder_slot(builder, type);
+    int direction = behavior_function_builder_slot(builder, PIN_BOOL);
+    int output = behavior_function_builder_slot(builder, type);
+    int operands[] = { left, right, direction };
+    for (int a = 0; a < 3; a++) {
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = inputs[a].type,
+                                             .output = operands[a],
+                                             .left = a,
+                                             .value = inputs[a] }
+        );
+    }
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_BRANCH, .left = direction, .target = 6 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_SHL,
+                                         .type = type,
+                                         .output = output,
+                                         .left = left,
+                                         .right = right,
+                                         .node_id = 73,
+                                         .pin = 3 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_JUMP, .target = 7 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_SHR,
+                                         .type = type,
+                                         .output = output,
+                                         .left = left,
+                                         .right = right,
+                                         .node_id = 73,
+                                         .pin = 3 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = type, .left = output }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256], name[40];
+    functions[INTEGER_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(functions[INTEGER_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    snprintf(name, sizeof name, "export_shift_%d", index);
+    behavior_function_write_c(functions[INTEGER_FIXTURE + index], source, name);
+    return true;
+}
+static bool exported_shifts_check_counts()
+{
+    /* Six count boundaries, eight widths, both directions, VM and generated C. */
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        pin_type type = integer_types[i];
+        unsigned width = (unsigned)behavior_scalar_size(type) * 8;
+        uint64_t mask = UINT64_MAX >> (64 - width);
+        const uint64_t counts[] = { 0, 1, width - 1, width, width + 1, mask };
+        char name[40];
+        snprintf(name, sizeof name, "export_shift_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        for (int direction = 0; direction < 2; direction++) {
+            for (int c = 0; c < 6; c++) {
+                pin_value arguments[] = { behavior_scalar_from_bits(type, mask),
+                                          behavior_scalar_from_bits(type, counts[c]),
+                                          { .type = PIN_BOOL, .b = direction != 0 } };
+                bool fails = c >= 3;
+                uint64_t expected = 0;
+                if (!fails) {
+                    expected = direction ? (behavior_scalar_signed(type)
+                                                ? mask
+                                                : mask >> counts[c])
+                                         : (mask << counts[c]) & mask;
+                }
+                for (int backend = 0; backend < 2; backend++) {
+                    pin_value result = { .type = type };
+                    behavior_function_context context = { .arguments = arguments,
+                                                          .argument_count = 3,
+                                                          .results = &result,
+                                                          .budget = 64 };
+                    REQUIRE(
+                        behavior_function_bind(functions[INTEGER_FIXTURE + i], &context, NULL, 0)
+                    );
+                    int status = backend ? generated(&context)
+                                         : behavior_function_run(
+                                               functions[INTEGER_FIXTURE + i],
+                                               &context,
+                                               false
+                                           );
+                    REQUIRE(status == (fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                    if (fails) {
+                        REQUIRE(
+                            context.failure == BEHAVIOR_FUNCTION_DATA &&
+                            context.error_pin == 3
+                        );
+                        REQUIRE(context.node_id == 73);
+                    } else {
+                        REQUIRE((behavior_scalar_bits(result) & mask) == expected);
+                    }
+                    behavior_function_release_host(&context);
+                }
+            }
+        }
+    }
+    return true;
+}
 static int inspect(void *user, const behavior_function_point *point)
 {
     (void)user;
@@ -1442,7 +1564,7 @@ static bool writes_exported_current_world_scalars()
     return true;
 }
 
-TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
+static bool begin_export()
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
     char *created = mkdtemp(directory);
@@ -1450,37 +1572,25 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         directory[0] = 0;
     }
     REQUIRE(created);
+    char input[256];
+    snprintf(input, sizeof input, "%s/aliases.c", directory);
+    source = fopen(input, "w");
+    REQUIRE(source);
+    return true;
+}
+static bool compile_export(long source_limit)
+{
     char input[256], output[256], log[256], includes[PATH_MAX], debug[PATH_MAX];
     snprintf(input, sizeof input, "%s/aliases.c", directory);
     snprintf(output, sizeof output, "%s/aliases.so", directory);
     snprintf(log, sizeof log, "%s/compiler.log", directory);
     snprintf(includes, sizeof includes, "%s/src", tool_root());
     snprintf(debug, sizeof debug, "%s/src/execution/source_debug.c", tool_root());
-    source = fopen(input, "w");
-    REQUIRE(source);
-    for (int i = 0; i < ALIAS_FIXTURES; i++) {
-        REQUIRE(fixture(i));
-    }
-    REQUIRE(pause_fixture());
-    REQUIRE(borrow_fixture(false));
-    REQUIRE(borrow_fixture(true));
-    for (int i = 0; i < QUERY_FIXTURES; i++) {
-        REQUIRE(query_fixture(i));
-    }
-    for (int field = 0; field < READ_FIXTURES; field++) {
-        REQUIRE(read_fixture(field));
-    }
-    for (int field = 0; field < WRITE_FIXTURES; field++) {
-        REQUIRE(write_fixture(field));
-    }
-    for (int i = 0; i < CAST_FIXTURES; i++) {
-        REQUIRE(cast_fixture(i));
-    }
-    for (int i = 0; i < INTEGER_FIXTURES; i++) {
-        REQUIRE(integer_fixture(i));
-    }
     long bytes = ftell(source);
-    REQUIRE(bytes > 0 && bytes < 128 * 1024);
+    if (bytes <= 0 || bytes >= source_limit) {
+        fprintf(stderr, "Generated C fixture source is %ld bytes (limit: %ld)\n", bytes, source_limit);
+    }
+    REQUIRE(bytes > 0 && bytes < source_limit);
     int closed = fclose(source);
     source = NULL;
     REQUIRE(!closed);
@@ -1502,6 +1612,33 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         fprintf(stderr, "C export load: %s\n", dlerror());
     }
     REQUIRE(library);
+    return true;
+}
+TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
+{
+    REQUIRE(begin_export());
+    for (int i = 0; i < ALIAS_FIXTURES; i++) {
+        REQUIRE(fixture(i));
+    }
+    REQUIRE(pause_fixture());
+    REQUIRE(borrow_fixture(false));
+    REQUIRE(borrow_fixture(true));
+    for (int i = 0; i < QUERY_FIXTURES; i++) {
+        REQUIRE(query_fixture(i));
+    }
+    for (int field = 0; field < READ_FIXTURES; field++) {
+        REQUIRE(read_fixture(field));
+    }
+    for (int field = 0; field < WRITE_FIXTURES; field++) {
+        REQUIRE(write_fixture(field));
+    }
+    for (int i = 0; i < CAST_FIXTURES; i++) {
+        REQUIRE(cast_fixture(i));
+    }
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        REQUIRE(integer_fixture(i));
+    }
+    REQUIRE(compile_export(128 * 1024));
     for (int i = 0; i < ALIAS_FIXTURES; i++) {
         char name[40];
         snprintf(name, sizeof name, "export_alias_%d", i);
@@ -1567,9 +1704,20 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_integer_width_edges());
     return true;
 }
+TEST_CASE(generated_c_checks_shift_counts)
+{
+    REQUIRE(begin_export());
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        REQUIRE(shift_fixture(i));
+    }
+    REQUIRE(compile_export(64 * 1024));
+    REQUIRE(exported_shifts_check_counts());
+    return true;
+}
 void test_tool_c_export()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations);
+    RUN_TEST_CASE(generated_c_checks_shift_counts);
     pu_clear_setup();
 }

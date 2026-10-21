@@ -356,10 +356,6 @@ static void emitted_value(writer *w, const behavior_function *f, const behavior_
         byte(w, value_type(type) == 0x7e ? 0x85 : 0x73);
     } else {
         load(w, i->right, type);
-        if ((i->op == BF_SHL || i->op == BF_SHR) && behavior_scalar_size(type) < 4) {
-            constant(w, (int)behavior_scalar_size(type) * 8 - 1);
-            byte(w, 0x71);
-        }
         byte(w, binary_op(i->op, type));
     }
     memory(w, store_op(f->slots[i->output]), slot_offset(i->output));
@@ -733,6 +729,20 @@ bool execution_wasm_emit(
             } else if (i->op == BF_COMPONENT_READ) {
                 component_read(&code, i, pc);
             } else if (direct(f, i)) {
+                if (i->op == BF_SHL || i->op == BF_SHR) {
+                    // Wasm masks raw shift counts; reject them before the direct
+                    // operation. The canonical step reports DATA with source metadata.
+                    pin_type type = f->slots[i->left];
+                    bool wide = value_type(type) == 0x7e;
+                    load(&code, i->right, type);
+                    byte(&code, wide ? 0x42 : 0x41);
+                    signed_leb(&code, (int)behavior_scalar_size(type) * 8);
+                    byte(&code, wide ? 0x5a : 0x4f); // i64.ge_u / i32.ge_u
+                    byte(&code, 0x04);
+                    byte(&code, 0x40);
+                    helper(&code, pc);
+                    byte(&code, 0x0b);
+                }
                 emitted_value(&code, f, i);
             } else {
                 /* Checked component writes deliberately use the canonical step

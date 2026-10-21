@@ -3041,11 +3041,11 @@ TEST_CASE(program_local_array_survives_collection_mid_build)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
         REQUIRE(execution_instance_pending(instance) == 1);
         execution_memory_usage suspended = execution_program_memory_usage(program);
-        /* 200 items fill a 256-item buffer; the outgrown 8- to 128-item
-         * buffers would hold 248 more. */
+        /* 200 doubles fill a packed 256-item buffer; the outgrown 8- to
+         * 128-item buffers would hold 248 more. */
         REQUIRE(arena_collect_marks() > marks);
-        REQUIRE(suspended.payload_bytes >= 256 * sizeof(pin_value));
-        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(pin_value));
+        REQUIRE(suspended.payload_bytes >= 256 * sizeof(double));
+        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(double));
         REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
         REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
         REQUIRE(execution_instance_pending(instance) == 0);

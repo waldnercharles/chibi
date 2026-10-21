@@ -2,6 +2,7 @@
 #include "backend.h"
 #include "compiler_fixture.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/module_effects.h"
 #include "execution/status.h"
@@ -662,6 +663,55 @@ static int symbol_point_pc(const behavior_function *f, int start)
     }
     return -1;
 }
+static const char *call_intrinsic(const node_host_call *call, arena *storage, pin_value *args, int count)
+{
+    pin_value out = { .type = PIN_BOOL };
+    return call->value(storage, args, count, &out);
+}
+/* A local array of plain scalars changes in place without boxing: a byte
+ * costs a byte, and extending one packed array by another copies bytes. An
+ * item that does not fit inline boxes the array once. */
+TEST_CASE(row_array_owned_scalars_stay_packed)
+{
+    arena storage = { 0 };
+    pin_value bytes = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY };
+    for (int i = 0; i < 20; i++) {
+        pin_value args[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
+                             { .type = PIN_U8, .u8 = (uint8_t)i } };
+        REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, args, 2));
+    }
+    pin_array *array = bytes.ptr;
+    REQUIRE(array->stride == 1 && array->count == 20 && !array->items);
+    pin_value store[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
+                          { .type = PIN_I32, .i = 3 },
+                          { .type = PIN_U8, .u8 = 200 } };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_store_call, &storage, store, 3));
+    pin_value extend[] = { { .u64 = (uint64_t)(uintptr_t)&bytes }, bytes };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_extend_call, &storage, extend, 2));
+    REQUIRE(array->stride == 1 && array->count == 40);
+    for (int i = 0; i < 40; i++) {
+        REQUIRE(pin_array_get(array, i).u8 == (i % 20 == 3 ? 200 : i % 20));
+    }
+    /* Boxed items of the same type still join a packed array inline. */
+    pin_array *boxed = pin_array_snapshot_allocate(&storage, PIN_U8, NULL, 2);
+    boxed->items[0] = (pin_value){ .type = PIN_U8, .u8 = 7 };
+    boxed->items[1] = (pin_value){ .type = PIN_U8, .u8 = 8 };
+    pin_value more[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
+                         { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY, .ptr = boxed } };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_extend_call, &storage, more, 2));
+    REQUIRE(array->stride == 1 && array->count == 42 && pin_array_get(array, 41).u8 == 8);
+    /* An item of another type boxes the array and keeps every element. */
+    pin_value wide[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
+                         { .type = PIN_I32, .i = 1000 } };
+    REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, wide, 2));
+    REQUIRE(!array->stride && array->count == 43 && array->items);
+    REQUIRE(
+        pin_array_get(array, 3).u8 == 200 && pin_array_get(array, 41).u8 == 8 &&
+        pin_array_get(array, 42).i == 1000
+    );
+    arena_free(&storage);
+    return true;
+}
 TEST_CASE(row_array_local_arrays_update_in_place)
 {
     static const char source
@@ -853,5 +903,6 @@ void test_language_row_array()
     RUN_TEST_CASE(row_array_call_collectable_results);
     RUN_TEST_CASE(row_array_authored_construction);
     RUN_TEST_CASE(row_array_authored_retained_prefix);
+    RUN_TEST_CASE(row_array_owned_scalars_stay_packed);
     RUN_TEST_CASE(row_array_local_arrays_update_in_place);
 }

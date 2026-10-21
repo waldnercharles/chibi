@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "ecs/ecs.h"
+#include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "language/lower.h"
@@ -31,6 +32,8 @@
 #define RECORD_COPY_COUNT 200
 #define TEXT_BYTES (128 * 1024)
 #define TEXT_READS 4096
+#define BYTE_PIECES 4096
+#define BYTE_PIECE 16
 
 static const script_catalog_capability run_event = {
     .id = RUN_EVENT,
@@ -306,11 +309,48 @@ TEST_CASE(text_slice_benchmark)
     return true;
 }
 
+/* Builds a byte array from small pieces as the prepared writer does: each
+ * piece is pushed a byte at a time, then appended to the whole, which is
+ * then copied out as a call result. */
+TEST_CASE(byte_array_build_benchmark)
+{
+    arena storage = { 0 }, result = { 0 };
+    for (int trial = 0; trial < TRIAL_COUNT; trial++) {
+        double start = monotonic_seconds();
+        pin_value whole = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY }, out;
+        for (int i = 0; i < BYTE_PIECES; i++) {
+            pin_value piece = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY };
+            for (int b = 0; b < BYTE_PIECE; b++) {
+                pin_value push[] = { { .u64 = (uint64_t)(uintptr_t)&piece },
+                                     { .type = PIN_U8, .u8 = (uint8_t)b } };
+                REQUIRE(!EXECUTION_array_push_call.value(&storage, push, 2, &out));
+            }
+            pin_value extend[] = { { .u64 = (uint64_t)(uintptr_t)&whole }, piece };
+            REQUIRE(!EXECUTION_array_extend_call.value(&storage, extend, 2, &out));
+        }
+        pin_value copy;
+        REQUIRE(!pin_value_snapshot_to_arena(&result, &copy, &whole));
+        double elapsed = monotonic_seconds() - start;
+        REQUIRE(((const pin_array *)copy.ptr)->count == BYTE_PIECES * BYTE_PIECE);
+        arena_free(&storage);
+        arena_free(&result);
+        printf(
+            "BENCH bytes pieces=%d piece=%d trial=%d ns_per_byte=%.3f\n",
+            BYTE_PIECES,
+            BYTE_PIECE,
+            trial,
+            elapsed * 1e9 / (BYTE_PIECES * BYTE_PIECE)
+        );
+    }
+    return true;
+}
+
 void test_language_benchmark()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scalar_authored_call_benchmark);
     RUN_TEST_CASE(record_row_snapshot_benchmark);
     RUN_TEST_CASE(text_slice_benchmark);
+    RUN_TEST_CASE(byte_array_build_benchmark);
     pu_clear_setup();
 }

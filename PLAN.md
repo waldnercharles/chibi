@@ -695,8 +695,13 @@ import, UI host, renderer and project compilation, format and preparation
 libraries: 110 libraries and 692 compile commands, equal to CMake's when
 split as the shell splits them. `build-graph` now compares commands alone,
 and `build-graph-support` holds the rebuild cases.
-Next: executables beyond `reflect` (the players, compiler host, `chibi_ctl`
-and `chibi`), with their system libraries and the C++ runtime; the testing
+Slice 16, 2026-10-21: executables. The graph links the build host, the
+compiler host and the `chibi` launcher beside `reflect`, with object
+libraries, per-executable link options and link libraries in CMake's order,
+and writes `link_commands.json`, whose four commands `build-graph` compares
+with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
+Next: the C++-linked executables (the players, `chibi-compile`, `chibi_ctl`),
+which link the desktop archive's libraries and frameworks; the testing
 libraries and test drivers; then moving profile selection from
 `Build.chibi`'s CMake arguments into the graph.
 

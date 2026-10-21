@@ -40,7 +40,8 @@ pub Targets :: () -> string[] {
         "chibi_source_presentation", "chibi_graph_catalog", "chibi_player", "chibi_shader_preparation",
         "chibi_model_authoring", "chibi_source_catalog", "chibi_platform", "chibi_model_import",
         "chibi_ui_host", "chibi_renderer", "chibi_project_compilation", "chibi_project_format",
-        "chibi_project_preparation", "reflect"
+        "chibi_project_preparation", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
+        "chibi-compiler-host", "chibi", "reflect"
     ];
 }
 
@@ -684,6 +685,30 @@ Files :: (target: string) -> string[] {
             "src/authoring/application_catalog.c"
         ];
     }
+    if (target == "chibi_build_host") {
+        return [
+            "src/host/build_host.c", "src/host/build_catalog.c", "src/host/build_values.c",
+            "src/host/build_io.c", "src/support/sha256.c"
+        ];
+    }
+    if (target == "chibi-build-host") {
+        return ["src/host/build_main.c", "src/host/process.c"];
+    }
+    if (target == "chibi_compiler_host") {
+        return [
+            "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
+            "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
+            "src/toolchain/compiler_target.c"
+        ];
+    }
+    if (target == "chibi-compiler-host") {
+        return [
+            "src/toolchain/compiler_main.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c"
+        ];
+    }
+    if (target == "chibi") {
+        return ["src/host/chibi_main.c", "src/host/export.c", "src/host/process.c", "src/host/serve.c"];
+    }
     return [];
 }
 
@@ -1267,6 +1292,24 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_renderer") {
         return ["diagnostics/tracy.h", "support/math.h"];
+    }
+    if (target == "chibi_build-host") {
+        // The build host's private headers, which its object library and
+        // executable share.
+        return [
+            "host/build_host.h", "host/build_host_internal.h", "host/build_io.h", "host/build_values.h",
+            "host/process.h", "support/sha256.h"
+        ];
+    }
+    if (target == "chibi_compiler-host") {
+        return [
+            "support/sha256.h", "toolchain/compiler_artifact.h", "toolchain/compiler_bootstrap.h",
+            "toolchain/compiler_host.h", "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
+            "toolchain/compiler_target.h"
+        ];
+    }
+    if (target == "chibi_launcher") {
+        return ["host/export.h", "host/process.h", "host/serve.h"];
     }
     return [];
 }
@@ -2063,6 +2106,48 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_text", "public/ui_authoring", "public/ui_document", "public/image_preparation"
         ];
     }
+    if (target == "chibi_build_host") {
+        return [
+            "private/build-host", "public/authoring", "public/compiler", "public/language",
+            "public/language_syntax", "public/support", "public/syntax_runtime", "public/capabilities",
+            "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/native_capabilities", "public/reference_index", "public/source_catalog",
+            "public/input_map", "public/input_action", "public/prototype_document", "public/asset_values",
+            "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/events",
+            "public/text_capabilities", "public/array_capabilities"
+        ];
+    }
+    if (target == "chibi-build-host") {
+        return [
+            "private/build-host", "public/authoring", "public/compiler", "public/language",
+            "public/language_syntax", "public/support", "public/syntax_runtime", "public/capabilities",
+            "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/native_capabilities", "public/reference_index"
+        ];
+    }
+    if (target == "chibi_compiler_host") {
+        return [
+            "private/compiler-host", "public/behavior_runtime", "public/execution", "public/types",
+            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/native_prepared", "public/native_capabilities", "public/capabilities",
+            "public/text_capabilities", "public/array_capabilities", "public/value_document",
+            "public/asset_values", "public/asset_json", "public/json", "public/language_syntax",
+            "public/syntax_runtime"
+        ];
+    }
+    if (target == "chibi-compiler-host") {
+        return [
+            "third_party/yyjson", "private/compiler-host", "public/behavior_runtime", "public/execution",
+            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/events", "public/asset_text", "public/asset_values", "public/json"
+        ];
+    }
+    if (target == "chibi") {
+        return [
+            "private/launcher", "third_party/yyjson", "public/project_document", "public/support",
+            "public/json"
+        ];
+    }
     return [];
 }
 
@@ -2470,22 +2555,73 @@ pub Embeds :: (target: string) -> string[] {
 
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
-    return ["reflect"];
+    return ["reflect", "chibi-build-host", "chibi-compiler-host", "chibi"];
 }
 
-// The libraries an executable links, in CMake's order, after the external
-// libraries its profile names.
-pub Links :: (target: string) -> string[] {
-    if (target == "reflect") {
-        return ["chibi_capabilities", "chibi_types", "chibi_support"];
+// The libraries whose objects executables link directly, as CMake's OBJECT
+// libraries, rather than archive.
+pub ObjectLibrary :: (target: string) -> bool {
+    return target == "chibi_build_host" || target == "chibi_compiler_host";
+}
+
+// The object libraries an executable links, whose objects come before its
+// own, as CMake orders them.
+pub LinkedObjects :: (target: string) -> string[] {
+    if (target == "chibi-build-host") {
+        return ["chibi_build_host"];
+    }
+    if (target == "chibi-compiler-host") {
+        return ["chibi_compiler_host"];
     }
     return [];
 }
 
-// The system libraries an executable links last, as -lNAME on Unix.
-pub SystemLibraries :: (target: string) -> string[] {
+// Options an executable's link adds after the profile's, its CMake
+// LINK_OPTIONS: the compiler host drops what it does not call.
+pub LinkOptions :: (target: string) -> string[] {
+    if (target == "chibi-compiler-host" && build.platform() == "Darwin") {
+        return ["-Wl,-dead_strip"];
+    }
+    if (target == "chibi-compiler-host") {
+        return ["-Wl,--gc-sections"];
+    }
+    return [];
+}
+
+// What an executable links after its output, in CMake's order, which may
+// name a library twice: the graph's libraries by name, and `-l` and other
+// options as they are.
+pub Links :: (target: string) -> string[] {
     if (target == "reflect") {
-        return ["m"];
+        return ["chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
+    }
+    if (target == "chibi-build-host") {
+        return [
+            "chibi_support", "chibi_source_catalog", "chibi_authoring", "chibi_compiler", "chibi_language",
+            "chibi_language_syntax", "chibi_syntax_runtime", "chibi_reference_index", "chibi_json",
+            "chibi_input_map", "chibi_prototype_document", "chibi_scene_document", "chibi_asset_text",
+            "chibi_asset_kdl", "chibi_asset_values", "chibi_scene_runtime", "chibi_behavior_runtime",
+            "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_events", "chibi_ui_document",
+            "chibi_text_source", "chibi_text_search", "chibi_ui_document_values", "chibi_text_capabilities",
+            "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities", "chibi_capabilities",
+            "chibi_types", "chibi_support", "-lm"
+        ];
+    }
+    if (target == "chibi-compiler-host") {
+        return [
+            "chibi_asset_text", "chibi_asset_values", "chibi_json", "chibi_native_prepared",
+            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_events",
+            "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities",
+            "chibi_capabilities", "chibi_value_document", "chibi_types", "chibi_asset_json", "chibi_json",
+            "chibi_language_syntax", "chibi_syntax_runtime", "chibi_asset_values", "chibi_support", "-lm",
+            "chibi_asset_kdl"
+        ];
+    }
+    if (target == "chibi") {
+        return [
+            "chibi_project_document", "chibi_support", "chibi_json", "chibi_asset_text", "chibi_asset_values",
+            "chibi_asset_kdl", "chibi_language_syntax", "chibi_support", "-lm", "chibi_syntax_runtime"
+        ];
     }
     return [];
 }

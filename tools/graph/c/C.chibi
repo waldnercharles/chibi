@@ -273,6 +273,26 @@ Quote :: (text: string) -> string {
     return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
 }
 
+// An executable's link command, as CMake writes it: the compiler, `flags`, the
+// objects, `-o` and the output, then `libraries`.
+pub LinkCommand :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> string[] {
+    command := [tools.compiler];
+    command.extend(flags);
+    command.extend(objects);
+    command.extend(["-o", output]);
+    command.extend(libraries);
+    return command;
+}
+
+// The link_commands.json entry of an executable: its output and arguments.
+pub LinkEntry :: (command: string[], output: string) -> string {
+    arguments: string[] = [];
+    for (argument in command) {
+        arguments.append(Quote(argument));
+    }
+    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"]);
+}
+
 // A compile_commands.json entry for a source, in the `arguments` form clangd
 // and other tools read.
 pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: string) -> string {
@@ -292,11 +312,7 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
 // absolute paths are inputs too. 1 when it linked, 0 when it was current, -1
 // on failure.
 pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
-    command := [tools.compiler];
-    command.extend(flags);
-    command.extend(objects);
-    command.extend(["-o", output]);
-    command.extend(libraries);
+    command := LinkCommand(tools, output, objects, flags, libraries);
     inputs := objects;
     for (linked in libraries) {
         if (strings.HasPrefix(linked, "/")) {

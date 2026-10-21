@@ -79,7 +79,7 @@ and the inherited test deadline. `environment_names` in `build_host.c` owns the
 explicit allowlist. Missing allowed names read as empty strings; other names
 are capability errors. `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
-1 MiB. Each invocation permits 64 steps, probes included, and each step permits
+1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
 256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
 1 MiB, one build text value, for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
@@ -221,9 +221,10 @@ signature hashes the full environment; children see only the allowlist, so
 `build.environment_names` suffices. Once dependencies are vendored it no longer
 tracks dependency packages or source caches. Packaging also needs sizes,
 modification-time order, symbolic-link reads and unique staging directories.
-Each invocation has a 100,000-step execution budget, which bounds authored
-walks over large SDK trees; a walk of thousands of files needs a larger budget
-or a native tree operation. Add each with the move that first calls it.
+Each invocation may run 100 million instructions, as a package test may; the
+build graph raised it from 100,000 because it parses a dependency file per
+object. `chibi_build_options.instruction_budget` sets a smaller one. The
+deadline still bounds the time.
 
 ## Build graph (M6)
 
@@ -277,13 +278,16 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   `-std=gnu23`, `-arch` and `-isysroot`, the warning set, the sanitizers and
   Clang's `-Wno-gnu-zero-variadic-macro-arguments`.
 
-The graph owns `chibi_support`, `chibi_types`, `chibi_asset_values`,
-`chibi_text_search`, `chibi_ui_document_values`, `chibi_value_document`,
-`chibi_capabilities`, `chibi_ecs` and `chibi_events` on macOS and Linux: 32
-sources. CMake still builds them and everything else, and `build-graph`
-checks that their compile commands agree. That route compiles only
-`chibi_support`; building every library the graph owns is a manual check,
-about 40 s with sanitizers.
+`graph:engine`'s `Targets.chibi` lists the 31 libraries the graph owns on
+macOS and Linux, from `chibi_support` through the shader, model and image
+runtimes, the native capability tables, the documents and fields libraries,
+and three header-only libraries (`chibi_execution_contract`, `chibi_tasks`,
+`chibi_input_action`): 82 sources in 28 archives. A target's `Options`, such
+as `chibi_fields`' `-ffp-contract=off`, follow the profile flags for Clang and
+GCC. CMake still builds them and everything else, and `build-graph` checks that
+their compile commands agree. That route compiles only `chibi_support`;
+building every library the graph owns is a manual check, about 100 s with
+sanitizers, and an unchanged build then takes about 3 s.
 Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones

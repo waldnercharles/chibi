@@ -26,17 +26,6 @@ static char compiler[GRAPH_PATH], compiler_id[64], build_type[64],
     architecture[64], sysroot[GRAPH_PATH], sanitizers[128],
     debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH];
 static bool warnings;
-/* The libraries the graph owns, as graph:engine's Targets lists them. */
-static const char *const targets[] = { "chibi_support",
-                                       "chibi_types",
-                                       "chibi_asset_values",
-                                       "chibi_text_search",
-                                       "chibi_ui_document_values",
-                                       "chibi_value_document",
-                                       "chibi_capabilities",
-                                       "chibi_ecs",
-                                       "chibi_events" };
-#define TARGET_COUNT (int)(sizeof targets / sizeof *targets)
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
 
@@ -258,17 +247,34 @@ TEST_CASE(commands_match_cmake)
     yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
     REQUIRE(graph_doc && cmake_doc);
     yyjson_val *ours = yyjson_doc_get_root(graph_doc);
-    int matched = 0, expected = 0;
+    /* The libraries the graph owns are those its objects belong to. */
+    char owners[64][128];
+    int owner_count = 0;
     yyjson_val *entry;
+    yyjson_arr_iter mine_iter = yyjson_arr_iter_with(ours);
+    while ((entry = yyjson_arr_iter_next(&mine_iter))) {
+        const char *output = strstr(yyjson_get_str(yyjson_obj_get(entry, "output")), "/objects/");
+        REQUIRE(output);
+        output += strlen("/objects/");
+        char owner[128];
+        snprintf(owner, sizeof owner, "/%.*s.dir/", (int)strcspn(output, "/"), output);
+        bool seen = false;
+        for (int i = 0; i < owner_count; i++) {
+            seen |= !strcmp(owners[i], owner);
+        }
+        if (!seen) {
+            assert(owner_count < 64);
+            strcpy(owners[owner_count++], owner);
+        }
+    }
+    int matched = 0, expected = 0;
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(cmake_doc));
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *command = yyjson_get_str(yyjson_obj_get(entry, "command"));
         const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
         bool owned = false;
-        for (int t = 0; t < TARGET_COUNT; t++) {
-            char owner[128];
-            snprintf(owner, sizeof owner, "/%s.dir/", targets[t]);
-            owned |= command && strstr(command, owner) != NULL;
+        for (int i = 0; i < owner_count; i++) {
+            owned |= command && strstr(command, owners[i]) != NULL;
         }
         if (!owned) {
             continue;
@@ -285,6 +291,7 @@ TEST_CASE(commands_match_cmake)
             free(copy);
         }
     }
+    fprintf(stderr, "graph commands: %d of %d match CMake's in %d libraries\n", matched, expected, owner_count);
     REQUIRE(expected > 0 && matched == expected && (size_t)expected == yyjson_arr_size(ours));
     yyjson_doc_free(graph_doc);
     yyjson_doc_free(cmake_doc);

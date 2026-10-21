@@ -752,6 +752,8 @@ TEST_CASE(private_runtime_failures_name_their_cause)
         for (int i = 0; i < 2; i++) {
             behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
             chibi_build_options options = primitive_options(sources[i], backend);
+            /* The default budget takes seconds to run out. */
+            options.instruction_budget = 100000;
             chibi_build_result result;
             REQUIRE(!chibi_build_invoke(&options, &result));
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));

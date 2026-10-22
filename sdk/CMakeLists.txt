@@ -19,6 +19,7 @@ endif()
 # build. Inherited whole-repository includes must not hide a dependency leak.
 set_directory_properties(PROPERTIES INCLUDE_DIRECTORIES "")
 get_filename_component(CHIBI_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+include(licenses.cmake)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CHIBI_SDK_ROOT}/src/assets/project.h")
 file(STRINGS "${CHIBI_SDK_ROOT}/src/assets/project.h" project_version_line REGEX "^#define CHIBI_PROJECT_VERSION [0-9]+$")
 string(REGEX REPLACE ".* ([0-9]+)$" "\\1" CHIBI_PROJECT_FORMAT "${project_version_line}")

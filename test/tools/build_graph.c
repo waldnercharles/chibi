@@ -17,9 +17,9 @@
 
 #define GRAPH_PATH 4096
 #define GRAPH_RUN_SECONDS 50
-#define GRAPH_TOKENS 512
+#define GRAPH_TOKENS 1024
 #define GRAPH_OWNERS 256
-#define GRAPH_HEADERS 8
+#define GRAPH_HEADERS 9
 
 static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
@@ -611,6 +611,7 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
         }
     }
     int objects_end = count;
+    assert(count + 2 < GRAPH_TOKENS);
     theirs[count++] = "-o";
     theirs[count++] = (char *)path;
     count = split_into(libraries, theirs, count);
@@ -632,6 +633,40 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
     free(link_flags);
     free(libraries);
     return same;
+}
+
+/* Naming test_tools builds the programs it runs, whose paths it compiles in,
+ * as CMake's add_dependencies does, and no other program. */
+TEST_CASE(named_programs_build_what_they_run)
+{
+#ifdef __APPLE__
+    char build_dir[GRAPH_PATH], path[GRAPH_PATH];
+    join(build_dir, suite, "runs");
+    const char *const tools_only[] = { "--commands-only", "on", "--target", "test_tools", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, tools_only) == 0);
+    join(path, build_dir, "link_commands.json");
+    yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
+    REQUIRE(doc);
+    static const char *const programs[] = {
+        "test/tools/test_tools", "test/tools/policy_worker",
+        "bin/chibi_ctl",         "sdk/chibi-compile",
+        "sdk/chibi-build-host",  "sdk/chibi-compiler-host"
+    };
+    int found = 0;
+    yyjson_val *entry;
+    yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
+    while ((entry = yyjson_arr_iter_next(&iter))) {
+        const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
+        REQUIRE(strcmp(base(output), "test_host"));
+        for (int i = 0; i < 6; i++) {
+            snprintf(path, sizeof path, "%s/%s", build_dir, programs[i]);
+            found += !strcmp(output, path);
+        }
+    }
+    yyjson_doc_free(doc);
+    REQUIRE(found == 6);
+#endif
+    return true;
 }
 
 /* Every link command the graph writes, from the profile it finds, equals
@@ -681,10 +716,10 @@ TEST_CASE(links_match_cmake)
         yyjson_arr_size(yyjson_doc_get_root(doc))
     );
 /* reflect, the build host, the compiler host, the launcher and four test
- * drivers, and on macOS the player, chibi-compile, chibi_ctl and
- * test_language. */
+ * drivers, and on macOS the player, chibi-compile, chibi_ctl, test_language
+ * and test_tools. */
 #ifdef __APPLE__
-    size_t programs = 12;
+    size_t programs = 13;
 #else
     size_t programs = 8;
 #endif
@@ -975,7 +1010,8 @@ TEST_CASE(configured_headers_match_cmake)
 }
 
 /* The tooling tests' SDK contract consumers see only staged SDK headers and
- * the fixtures copied beside pico_unit. */
+ * the fixtures copied beside pico_unit; C export cases compile with the
+ * profile's compiler and C flags, which export_compiler.h lists. */
 TEST_CASE(tool_testing_headers_match_cmake)
 {
 #ifdef __APPLE__
@@ -986,9 +1022,10 @@ TEST_CASE(tool_testing_headers_match_cmake)
                                     "test/graph/fixture.h",
                                     "test/render/hidden_app.h",
                                     "test/support/reflected_types.h",
-                                    "test/support/gltf_fixture.h" };
+                                    "test/support/gltf_fixture.h",
+                                    "export_compiler.h" };
     REQUIRE(
-        configures_as_cmake("chibi_prepared_consumer", "test/tools/testing/include", headers, 8)
+        configures_as_cmake("chibi_prepared_consumer", "test/tools/testing/include", headers, 9)
     );
 #endif
     return true;
@@ -1040,6 +1077,15 @@ void test_build_graph(const char *host)
     RUN_TEST_CASE(commands_match_cmake);
     RUN_TEST_CASE(links_match_cmake);
     RUN_TEST_CASE(executables_stage_no_headers);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: another commands-only run of the whole graph takes
+ * seconds. */
+void test_build_graph_programs(const char *host)
+{
+    set_up(host);
+    RUN_TEST_CASE(named_programs_build_what_they_run);
     tool_remove_tree(suite);
 }
 

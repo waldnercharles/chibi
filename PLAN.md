@@ -722,7 +722,14 @@ Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
 compiles the 21 object libraries `test/tools` declares over staged SDK
 headers and the fixtures it copies beside pico_unit, and expands a target's
 own defines: 949 compile commands, equal to CMake's.
-Next: linking `test_tools` over them; an install layout, which
+Slice 21, 2026-10-21: `test_tools`. On macOS the graph links it over those
+consumers and writes every executable where CMake does, so the paths it
+compiles in for `chibi_ctl` and `policy_worker` (`{program:NAME}`) and the
+compiler it exports C with (`export_compiler.h`) equal CMake's: 1061
+compile commands and thirteen link commands. A build step now takes up to
+1,023 arguments, which its 497-argument link needs; the graph-built
+`test_tools` passes `make test-tools`' cases and `build-process`.
+Next: an install layout, which
 `chibi version` reads; then moving profile selection from `Build.chibi`'s
 CMake arguments into the graph.
 

@@ -1435,6 +1435,43 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
     arena_free(&storage);
     arena_free(&other);
+    /* The cost model reports the copy of each managed payload value the
+     * mask leaves out, and a possible one for a value it keeps. */
+    for (uint64_t mask = 0; mask < 2; mask++) {
+        builder = behavior_function_builder_new();
+        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                               { .type = PIN_U64, .u64 = mask },
+                               { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY } },
+                  made = { .type = PIN_UNION };
+        int host = behavior_function_builder_host(
+            builder,
+            &EXECUTION_union_keep_call,
+            &EXECUTION_assignment_access,
+            inputs,
+            3,
+            &made,
+            1
+        );
+        REQUIRE(behavior_function_builder_host_identity(
+            builder,
+            host,
+            keep | EXECUTION_INTRINSIC_IN_RESULT,
+            execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT)
+        ));
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        execution_cost_summary costs = behavior_function_costs(function);
+        REQUIRE(costs.complete);
+        REQUIRE(((costs.proven & EXECUTION_COST_COPY) != 0) == (mask == 0));
+        REQUIRE(((costs.possible & EXECUTION_COST_COPY) != 0) == (mask == 1));
+        behavior_function_free(function);
+        function = NULL;
+        behavior_function_builder_free(builder);
+        builder = NULL;
+    }
     return true;
 }
 TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)

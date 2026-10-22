@@ -1903,6 +1903,136 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
     }
     return true;
 }
+/* A function that builds results in its caller's storage still copies an
+ * argument it returns, which the caller shared rather than copied: the
+ * caller's later push leaves the result as it was. */
+TEST_CASE(borrow_shared_argument_returned_is_copied)
+{
+    cleanup();
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &array_shape, 1, &array_shape, 1, NULL, 0);
+    int unused = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_assignment_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                     EXECUTION_INTRINSIC_IN_RESULT;
+    assert(
+        behavior_function_builder_host_identity(builder, unused, built, execution_intrinsic_abi(built))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = unused,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int original = value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_ARGUMENT,
+                                         .value = array_shape },
+        true
+    );
+    int name = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = BF_POINTER_TYPE,
+                                         .value = { .type = BF_POINTER_TYPE } },
+        true
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                          .type = PIN_F64,
+                                          .left = original,
+                                          .right = name,
+                                          .value = array_shape });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    helper_function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!helper_function) {
+        fprintf(stderr, "shared argument helper: %s\n", error);
+    }
+    REQUIRE(helper_function);
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value count = { .type = PIN_I32 };
+    behavior_function_builder_signature(builder, NULL, 0, &count, 1, NULL, 0);
+    int local = behavior_function_builder_values(builder, &array_shape, 1);
+    int make = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_value_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t plain = execution_intrinsic_id(&EXECUTION_construct_call);
+    assert(
+        behavior_function_builder_host_identity(builder, make, plain, execution_intrinsic_abi(plain))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = make,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    put_address(
+        local,
+        value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        )
+    );
+    push_item(local, false);
+    int call = behavior_function_builder_call(builder, helper_function, &array_shape, 1, &array_shape, 1);
+    put_address(
+        behavior_function_builder_call_first(builder, call),
+        value(
+            (behavior_function_instruction){ .op = BF_LOAD,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = host_address(local),
+                                             .offset = offsetof(pin_value, d) },
+            true
+        )
+    );
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    push_item(local, false);
+    int returned = value(
+        (behavior_function_instruction){
+            .op = BF_LOAD,
+            .type = BF_POINTER_TYPE,
+            .left = host_address(behavior_function_builder_call_results(builder, call)),
+            .offset = offsetof(pin_value, d) },
+        true
+    );
+    int length = value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = PIN_I32,
+                                         .left = returned,
+                                         .offset = offsetof(pin_array, count) },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = length });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "shared argument caller: %s\n", error);
+    }
+    REQUIRE(function);
+    behavior_function_prepare_borrows(function);
+    behavior_function_prepare_borrows(helper_function);
+    REQUIRE(
+        helper_function->builds_results && helper_function->argument_sharing == BEHAVIOR_SHARING_SAFE
+    );
+    pin_value output = { .type = PIN_I32 };
+    REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
+    REQUIRE(output.i == 1);
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -1928,5 +2058,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
+    RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
     pu_clear_setup();
 }

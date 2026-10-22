@@ -416,6 +416,17 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     }
 }
 
+/* Whether a result is an argument the caller shared rather than copied, which
+ * lies in the caller's storage without having been built for this call. */
+static bool shared_argument(const behavior_function_context *context, const void *data)
+{
+    for (int i = 0; i < context->argument_count; i++) {
+        if (context->arguments[i].ptr == data) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool same_header(const pin_value *value, const pin_value *declared)
 {
     return value->type == declared->type && value->container == declared->container;
@@ -452,7 +463,8 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
                        result->type == PIN_UNION || result->type == PIN_STR;
         if (frame->function->builds_results && pointer && result->ptr &&
             context->value_storage != parent->value_storage &&
-            arena_contains(parent->value_storage, result->ptr)) {
+            arena_contains(parent->value_storage, result->ptr) &&
+            !shared_argument(context, result->ptr)) {
             out->ptr = result->ptr;
             continue;
         }

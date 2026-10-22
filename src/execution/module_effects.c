@@ -1346,6 +1346,7 @@ typedef struct
     int steps;
 } costs;
 
+static bool pointer_value(pin_value v, behavior_value_kind kind);
 static void cost_add(
     costs *c,
     const behavior_function *f,
@@ -1401,9 +1402,26 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             return;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_NEXT: return;
-        case EXECUTION_INTRINSIC_UNION_KEEP:
-            cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Union construction allocates a payload for the values it keeps");
+        case EXECUTION_INTRINSIC_UNION_KEEP: {
+            /* It copies each managed payload value its mask leaves out, and
+             * one it keeps that its storage does not hold. */
+            origin keep = bank_origin(f, pc, call->first + 1, 0, &c->steps);
+            unsigned proven = EXECUTION_COST_ALLOCATE, possible = 0;
+            for (int i = 0; i < call->result_first - call->first - 2; i++) {
+                const behavior_function_data_value *payload = &f->data_values[call->first + 2 + i];
+                if (!pointer_value(payload->initial, payload->kind)) {
+                    continue;
+                }
+                bool kept = keep.constant && i < 64 && (keep.bits >> i & 1);
+                if (keep.constant && !kept) {
+                    proven |= EXECUTION_COST_COPY;
+                } else {
+                    possible |= EXECUTION_COST_COPY;
+                }
+            }
+            cost_add(c, f, pc, id, proven, possible, "Union construction in the caller's storage copies the payload values it does not keep");
             return;
+        }
         case EXECUTION_INTRINSIC_UNION_MAKE: {
             int count = call->result_first - call->first;
             if (count > 1) {

@@ -386,13 +386,28 @@ Configure :: (profile: string, buildDir: string, arguments: string[]) -> int {
     }
     return 0;
 }
+// Prepares only the third-party archives, for a build the Chibi graph
+// (tools/toolchain/Graph.chibi) compiles instead of CMake.
+PrepareThirdParty :: (buildDir: string) -> int {
+    cache := ThirdPartyCache();
+    if (!build.make_directory(buildDir) || !build.make_directory(cache) || !ThirdParty(cache, buildDir) ||
+        !PruneThirdParty(cache)) {
+        build.report("cannot prepare the third-party archives");
+        return 1;
+    }
+    return 0;
+}
 Build :: () -> int {
     arguments := build.arguments();
     if (build.length(arguments) < 2) {
         build.report("usage: native|tool-host BUILD_DIR [--target NAME] [--jobs N] [--configure-only] -- CMAKE_ARGUMENTS");
+        build.report("       third-party BUILD_DIR");
         return 2;
     }
     profile := arguments[0];
+    if (profile == "third-party" && build.length(arguments) == 2) {
+        return PrepareThirdParty(arguments[1]);
+    }
     if (profile != "native" && profile != "tool-host") {
         build.report("unknown build profile");
         return 2;

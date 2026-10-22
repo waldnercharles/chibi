@@ -142,15 +142,42 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 6
+On macOS `make build` compiles with the Chibi build graph instead of CMake
+(since 2026-10-22). `Build.chibi third-party BUILD_DIR` prepares the pinned
+third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
+the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
+`release` from `make build-debug` and `make build-release`) and
+`CCACHE_BASEDIR` set to the checkout, as CMake sets it, and `--all-commands
+on`, which writes every target's compile commands; it links the root
+`compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
+no longer apply there; the graph finds the profile's toolchain on the
+machine. Without a current host, `make stage-zero-build` builds the first
+one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
+graph-reference` configures that tree with the sanitizer profile and builds
+what the build-graph checks compare with. Linux, the SDK, web and Studio
+builds still use CMake as below, so a source, define or library CMake gains
+belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
+the graph's commands equal CMake's again.
+
+The graph parses compiler dependency files in Chibi, reading their bytes once
+and treating line continuations as spaces. It unescapes only paths that need
+it. Large record and command-database joins use the existing `build.join`
+primitive rather than repeatedly copying an accumulated prefix. Small path
+joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
+Unknown or missing `--target` names fail before toolchain discovery or writes.
+
+Elsewhere `make build` uses this program when its private host reports protocol version 7
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
 natives under `build.`, version 5 runs programs as packages that may import
-`core:`, and version 6 has the array methods and the natives `append` and
-`extend` of project version 32. A cold build or an older host
+`core:`, version 6 has the array methods and the natives `append` and
+`extend` of project version 32, and version 7 has what the macOS graph build
+needs: `build.replace`, `build.byte_list` and steps of up to 1,023
+arguments. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
-path and builds the host for subsequent invocations. `BUILD_HOST` and
+path and builds the host for subsequent invocations (on macOS in
+`BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 
@@ -360,17 +387,18 @@ records the run as a link is recorded, over the inputs CMake names, and
 reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
-includes name. CMake still builds them and
-everything else, and `build-graph` checks that their compile commands agree;
-`build-graph-support` compiles only `chibi_support`. Building everything the
-graph owns, `test_tools` included, is a manual check, about 32 minutes with
-sanitizers and no compiler cache at a load average of 5;
+includes name. On macOS `make build` builds them with the graph; elsewhere
+CMake still does, and `build-graph` checks that their compile commands agree
+with a configured CMake build's; `build-graph-support` compiles only
+`chibi_support`. Before the dependency-parser and join improvements, building
+everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
+and no compiler cache at a load average of 5.
 `build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers, `build-graph-generated` generates the native type
-sources and rewrites the codec headers, `build-graph-programs` checks that
-naming `test_tools` also builds the programs it runs, and
-`build-graph-resources` that the launcher's and `chibi_ctl`'s resources equal
-CMake's.
+the archive's headers and prebuilt libraries; `build-graph-generated`
+generates the native type sources and rewrites the codec headers,
+`build-graph-programs` checks that naming `test_tools` also builds the programs
+it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
+resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads

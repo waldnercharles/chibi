@@ -402,6 +402,28 @@ TEST_CASE(third_party_archives_download_once_and_refuse_another_hash)
     return true;
 }
 
+/* For a build the Chibi graph compiles, the third-party mode prepares the
+ * archives this host's target pins, once, and runs no CMake. */
+TEST_CASE(third_party_mode_prepares_archives_without_cmake)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("third-party mode", b);
+        char file[1024], target[32], sha256[65];
+        fixture_archive(sha256);
+        host_target(target);
+        write_manifest(target, sha256);
+        const char *arguments[] = { "third-party", "graph build" };
+        REQUIRE(invoke(arguments, 2, b, 0));
+        REQUIRE(invoke(arguments, 2, b, 0));
+        REQUIRE(count_in("gh.trace", "gh release download") == 1);
+        snprintf(file, sizeof file, ".git/chibi/third_party/%s/third-party.cmake", sha256);
+        REQUIRE(file_contains(file, "# fixture archive\n"));
+        path(file, root, "cmake.trace");
+        REQUIRE(access(file, F_OK));
+    }
+    return true;
+}
+
 /* A configuration that starts from CMake alone loads cmake/third_party.cmake,
  * which downloads a missing archive through gh into the clone's store, leaves
  * no partial download behind and reuses the archive in another build. */
@@ -627,7 +649,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     tool_write(overrides, recipes);
     char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
-    path(previous, root, "protocol-4 host");
+    path(previous, root, "protocol-6 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
@@ -635,7 +657,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    /* A protocol-4 host answers the query but runs only library-form programs. */
+    /* A protocol-6 host answers the query but lacks the natives the graph uses. */
     const char *hosts[] = { missing, old, previous, current };
     for (int i = 0; i < 4; i++) {
         char host_option[1200];
@@ -678,6 +700,7 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(configuration_ignores_retired_dependency_switches);
     RUN_TEST_CASE(third_party_archives_download_once_and_refuse_another_hash);
+    RUN_TEST_CASE(third_party_mode_prepares_archives_without_cmake);
     RUN_TEST_CASE(cmake_loader_downloads_a_missing_archive_once);
     RUN_TEST_CASE(third_party_store_keeps_what_worktrees_pin);
 

@@ -233,6 +233,7 @@ bool behavior_function_own_decoded(behavior_function *f, size_t budget)
     }
     /* Every other pointer came from the decoder's bounded owned arena.
      * Runtime banks copy these headers and borrow that same immutable payload. */
+    behavior_function_note_derived(f);
     f->frozen = true;
     return true;
 }

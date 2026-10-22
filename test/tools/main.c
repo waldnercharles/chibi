@@ -54,13 +54,13 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #ifdef CHIBI_TEST_BUILD_PROCESS
 void test_tool_build_process(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
-void test_build_graph(const char *host);
-void test_build_graph_support(const char *host);
-void test_build_graph_reflect(const char *host);
-void test_build_graph_archive(const char *host);
-void test_build_graph_generated(const char *host);
-void test_build_graph_programs(const char *host);
-void test_build_graph_resources(const char *host);
+void test_build_graph(const char *host, const char *cmake_build);
+void test_build_graph_support(const char *host, const char *cmake_build);
+void test_build_graph_reflect(const char *host, const char *cmake_build);
+void test_build_graph_archive(const char *host, const char *cmake_build);
+void test_build_graph_generated(const char *host, const char *cmake_build);
+void test_build_graph_programs(const char *host, const char *cmake_build);
+void test_build_graph_resources(const char *host, const char *cmake_build);
 #endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
@@ -529,7 +529,7 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
-    if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
+    if (argc == 4 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
                       !strcmp(argv[1], "--build-graph-archive") ||
@@ -540,19 +540,19 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-graph")) {
-            test_build_graph(argv[2]);
+            test_build_graph(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-support")) {
-            test_build_graph_support(argv[2]);
+            test_build_graph_support(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-reflect")) {
-            test_build_graph_reflect(argv[2]);
+            test_build_graph_reflect(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-archive")) {
-            test_build_graph_archive(argv[2]);
+            test_build_graph_archive(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-programs")) {
-            test_build_graph_programs(argv[2]);
+            test_build_graph_programs(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-resources")) {
-            test_build_graph_resources(argv[2]);
+            test_build_graph_resources(argv[2], argv[3]);
         } else {
-            test_build_graph_generated(argv[2]);
+            test_build_graph_generated(argv[2], argv[3]);
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

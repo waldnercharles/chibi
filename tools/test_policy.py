@@ -14,6 +14,11 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# The configured CMake build the build-graph checks compare the graph with:
+# on macOS `make build` uses the graph, so `make graph-reference` configures
+# one beside it.
+GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
+                                            'build-cmake' if sys.platform == 'darwin' else 'build'))
 LIMIT = 60
 DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
@@ -283,49 +288,56 @@ TOOLS = {
     # build graph writes equals the configured CMake build's.
     'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                     '--build-graph',
-                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                    GRAPH_REFERENCE],
     # Three cases over chibi_support: about ten graph runs in a copied root
     # rebuild only what changed, retry a failed compile, and link the archive.
     # Compiles about thirty C files.
     'build-graph-support': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-support',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
     # One case: the graph builds and links reflect (about 27 C files with the
     # profile's sanitizers), its link command matches CMake's build.ninja, and
     # the program writes the same reflected sources as CMake's.
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
     # One case: the graph compiles chibi_vector_capabilities over the
     # third-party archive's staged Cute math headers and the task pool over its
     # prebuilt enkiTS (three C files with the profile's sanitizers), then finds
     # them current.
     'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-archive',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
     # Two cases: the graph runs the configured build's reflect to write the
     # native type sources and compiles one of them, and rewrites Cute's codec
     # headers with private symbols and compiles image preparation.
     'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-generated',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                              GRAPH_REFERENCE],
     # One case: naming test_tools in a commands-only run writes the links of
     # the programs it runs, as CMake's add_dependencies builds them.
     'build-graph-programs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                              '--build-graph-programs',
-                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                             GRAPH_REFERENCE],
     # One case: with a compiler that always fails, the graph still writes the
     # launcher's share/chibi and chibi_ctl's resources equal to CMake's.
     'build-graph-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-resources',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                              GRAPH_REFERENCE],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     # Six offline vendor dependency/configuration cases; eighteen direct children on Linux, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # Two configured-ownership cases:22children,14rejects,13tiny C units and one PCH.
+    # Two configured-ownership cases:23children,15rejects,13tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],

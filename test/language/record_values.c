@@ -608,6 +608,28 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
                                .ptr = &opaque_source };
     REQUIRE(!pin_write_struct(&other, &opaque_copy, &opaque, opaque_value));
     REQUIRE(opaque_copy == opaque_source);
+    typedef struct
+    {
+        const char *text;
+        uint32_t hidden;
+    } partial;
+    const type_field partial_field = { .name = "text",
+                                       .type = PIN_STR,
+                                       .offset = offsetof(partial, text),
+                                       .size = sizeof(char *) };
+    const type_desc partial_type = { .name = "test.unregistered.partial",
+                                     .size = sizeof(partial),
+                                     .fields = &partial_field,
+                                     .field_count = 1 };
+    char partial_text[] = "ok";
+    partial partial_source = { partial_text, 37 }, partial_copy = { "before", 91 };
+    pin_value partial_value = { .type = PIN_STRUCT,
+                                .type_name = partial_type.name,
+                                .ptr = &partial_source };
+    REQUIRE(!pin_write_struct(&other, &partial_copy, &partial_type, partial_value));
+    REQUIRE(partial_copy.hidden == 37 && partial_copy.text != partial_source.text);
+    partial_text[0] = 'x';
+    REQUIRE(!strcmp(partial_copy.text, "ok"));
     char native_bytes[] = "native";
     field = native_bytes;
     pin_value read;

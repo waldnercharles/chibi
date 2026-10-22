@@ -1,5 +1,11 @@
 # The Chibi language
 
+The three code blocks marked `SPDX-License-Identifier: MIT` are copy-paste
+examples under [the MIT license](../COPYING.EXAMPLES). Keep their copyright
+and permission notice when redistributing them. Other examples retain their
+[documented license](../LICENSE.md); this carveout does not cover the runtime,
+core libraries, generated scaffolding, or third-party material.
+
 Chibi uses `.chibi` files for functions and gameplay logic. Scenes and project
 configuration use KDL. The `.chibi` source contains the whole executable asset.
 Editors keep graph layout, watches and breakpoints in session.
@@ -129,6 +135,9 @@ A function names its parameters and result type. Calls pass arguments in
 parameter order.
 
 ```chibi
+// chibi-mit-example: damage-functions
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     DamageFor :: (level: int) -> int {
         return level * 2
@@ -179,6 +188,9 @@ Parameters normally receive value copies. A `ref` parameter writes to the
 caller's mutable value. A call needs no address-of operator.
 
 ```chibi
+// chibi-mit-example: reference-parameter
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     AddScore :: (score: ref int, points: int) {
         score += points
@@ -285,8 +297,9 @@ Every array function is also a method on its first argument: `xs.length()`,
 (`append`, `extend`, `insert`, `remove_index`, `remove_item`, `add_unique`,
 `set_array_elem`, `clear`, `reverse`, `swap` and `resize`) are statements on
 the array's name and change it in place; using one in an expression is an
-error. The functions `array_add` and `append` still return a changed copy until
-a project migration replaces them with the methods.
+error. As functions, they return a changed copy instead: `ys := append(xs, x)`
+and `zs := extend(xs, ys)` leave `xs` as it was. Project version 32 renamed
+`array_add` to `append` and the concatenating `append` to `extend`.
 
 Arrays have value semantics. Changing a copy leaves the original unchanged.
 Appending to an owned local array and writing its elements update that local
@@ -306,6 +319,9 @@ Array iteration binds the item first and an optional index second.
 Ordinary iteration takes a snapshot before the loop.
 
 ```chibi
+// chibi-mit-example: weighted-total
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     WeightedTotal :: (scores: int[]) -> int {
         total: int = 0

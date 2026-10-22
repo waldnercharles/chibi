@@ -413,6 +413,8 @@ TEST_CASE(record_globals_native_compatibility)
 
     char *text = arena_alloc(&producer, 16);
     strcpy(text, "native-text");
+    const pin_string expected_text = { .bytes = "native-text",
+                                       .length = sizeof("native-text") - 1 };
     pin_value values[] = {
         { .type = PIN_BOOL, .b = true },
         { .type = PIN_I32, .i = -37 },
@@ -431,7 +433,7 @@ TEST_CASE(record_globals_native_compatibility)
             REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
             text[0] = 'X';
             arena_free(&producer);
-            values[i].str = "native-text";
+            values[i].text = &expected_text;
             args[1] = values[i];
         }
         REQUIRE(pin_value_equal(&out, &values[i]));

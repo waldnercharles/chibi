@@ -149,8 +149,9 @@ for the first measurement; it does not record a pass.
   eight indexed string keys, and ownership/native-boundary checks. One tiny
   nested-record case checks local type resolution, a conflicting global shape,
   atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
-  it adds no loops or child processes.
-- `language-execution`: twenty-eight cases. The added five-instruction function
+  it adds no loops or child processes. One partial native record copy adds
+  three assertions for preserved opaque bytes and owned text after mutation.
+- `language-execution`: twenty-nine cases. The added five-instruction function
   runs eight times across two backends with a 100-instruction budget; four
   iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
   checks read ownership and rejection before reference/constructor publication.
@@ -162,7 +163,7 @@ for the first measurement; it does not record a pass.
   budget failure, metadata rejection and invalid field markers. A native-field
   size check uses an 81-byte stack string and a nearly exhausted logical budget
   with a hash sink; it allocates no large output buffer.
-- `build-process`: thirty-four cases. The new helper case adds five operations
+- `build-process`: thirty-seven cases. The new helper case adds seven operations
   on at most seven bytes and no processes. Existing invocation and child limits
   remain unchanged; binary-output and file assertions replace text rejection.
 - `ecs-strings`: three cases, each with one entity, at most two components and
@@ -179,6 +180,14 @@ for the first measurement; it does not record a pass.
 
 These extensions add no rendering, GPU or network work and no additional child
 process launches. They do not enable a quarantined aggregate.
+
+The independently reviewed compiler integration has 137 fixed samples: 90 base,
+13 types, 20 imports and 14 collections, with each selector under its own
+60-second deadline and imports using Release. The Release bootstrap also
+compares all 137 samples between stages and 59 fixed floating literals with
+both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+limit and writes only its closure and manifest; a failed compile may make one
+diagnostic call. It retains one shared 60-second production deadline.
 
 The compiled-runtime rollout passed native, language, tooling, materials and
 project groups under their shared 60-second deadlines. Browser Wasm execution
@@ -2192,7 +2201,8 @@ most two seconds, with shorter deliberate timeout/cancellation budgets; every
 native case clamps its budget to the inherited deadline.
 
 Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
+errors, timeout, active cancellation,
 and descendants whose leader exits first. The private host executes both the
 controlled source and unchanged recording workflow on bytecode and SLJIT, with
 actual backend counters and failure-path assertions. Compiler-enabled full
@@ -2228,24 +2238,61 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
-build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
-build that configured the tests. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` (and the debug directory,
-which depends on where a build is), the graph finds the rest of its profile
-on the machine and writes the compile commands of every target it owns, including
-the third-party archive's sources and include directories and the options of
-single sources, and each of the 363
-must equal `compile_commands.json`'s for the same source, apart from the
-object path and with the temporary build directory standing for CMake's. In a
-copy of the sources, about ten runs that build only `chibi_support` then check
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
+configured CMake build: on macOS, where `make build` uses the graph, the one
+`make graph-reference` configures in `build-cmake`, elsewhere `build`;
+`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each link command it writes in `link_commands.json` (thirteen on macOS,
+eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
+C++ compiler for an executable CMake links as C++, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 25 s.
+
+`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`--commands-only on --target test_tools --target chibi`: its link commands
+name them and the programs they run (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
+writes them, and no other test driver (macOS only). A second case names `chibi_support`:
+its compile database lists only that library's compiles, and with
+`--all-commands on` every target's, on macOS as many as CMake's. A third case
+rejects four fixed invalid target requests before discovery or output creation:
+an unknown target, a valid and unknown pair, a missing value, and another option
+instead of a value. A fourth case calls the authored `graph:c.Dependencies`
+parser through the bytecode CLI, with one short escaped-path fixture containing
+LF and CRLF continuations, two empty or targetless texts, and one fixed
+128-header file below 16 KiB. It checks exact paths and counts without compiler
+children, frames or GPU work. At most eight host subprocesses retain the existing
+50-second child limit and one shared 60-second supervisor deadline.
+
+`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+the launcher and `chibi_ctl` with a compiler that always fails: before any
+compile it writes `share/chibi` and `controller_resources`, all 213 files equal
+to CMake's (the build identity `engine.json` and the core and documentation
+sources) or, for the shaders, which CMake copies to `controller_resources`
+only when it configures, to `src/render/shaders`; an unchanged run leaves
+the identity's stamps. A second case runs it for `test_language`, whose
+`corpus.txt` must equal CMake's. macOS only. About 32 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or
 the flags or deleting an object recompiles exactly what depends on it, that a
 staged header nothing publishes is removed, and that a source that fails to
 compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about fifteen C files with the profile's sanitizers,
-about 32 s at a load average of 8.
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
 
 `python3 tools/test_policy.py tool build-graph-reflect` builds and links
 `reflect` from the graph (27 C files with the profile's sanitizers), requires
@@ -2256,17 +2303,32 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT from the
-third-party archive CMake configured with, and `chibi_vector_capabilities`
-over the archive's Cute math headers, which the graph stages: three C files
-with the profile's sanitizers. A second run compiles nothing, the object sits
-below `objects/chibi_execution_sljit/third-party/`, and the staged
-`cute_math.h` equals CMake's; a run naming an archive that is not unpacked
-fails before compiling and says so. A second case builds `chibi_native_types`
-with the configured build's `reflect` (`--reflect`): the graph stages the math
-headers, runs reflect as CMake does and compiles the one source; both written
-sources equal CMake's byte for byte, and an unchanged run neither reruns
-reflect nor compiles. About 23 s at a load average of 10.
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
+enkiTS's C++ scheduler from the third-party archive CMake configured with,
+`chibi_vector_capabilities` over the archive's Cute math headers, which the
+graph stages, and the task pool: four C and two C++ files with the profile's
+sanitizers. A second run compiles nothing, the objects sit below
+`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or with C++ sources and no C++ compiler, fails before compiling and
+says so. About 32 s at a load average of 10.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. On macOS a third
+builds `test_behavior_consumer`, which writes the language tests' configured
+headers (byte initializers, C string lines and copies); they equal CMake's
+and keep their stamps when unchanged. A fourth builds
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
+and `export_compiler.h`, the profile's compiler and C flags; they equal
+CMake's and keep their stamps when unchanged. About 34 s at a load
+average of 4.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

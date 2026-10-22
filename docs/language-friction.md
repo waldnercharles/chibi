@@ -593,7 +593,9 @@ source exceeded the 32 MB value limit; `chibi-compile` now writes the JSON.
 The M6 graph met the same limit: an up-to-date build of 362 sources reads 6 MB
 of compile records, and splitting each `stamp path` line with `build.before`
 and `build.after` exceeded 32 MB, so records now keep the path and the stamp
-on separate lines.
+on separate lines, and the host allows 256 MB of arena blocks (about 128 MB of
+values), since the next slices about double the sources. Freeing values a program no longer reaches would remove
+the ceiling.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
   (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.
@@ -620,7 +622,9 @@ because each split copies the rest of the text.
 The M6 graph's `compile_commands.json` writer escaped every argument with two
 `strings.ReplaceAll` calls: with 218 commands of about forty arguments the run
 took 7 s, and 2.4 s once it asks `build.before` whether the text holds a quote
-or backslash first and escapes only the rare argument that does.
+or backslash first and escapes only the rare argument that does. Rewriting
+Cute's 96 KB of codec headers with three `strings.ReplaceAll` calls took 11 s,
+so the build host gained `build.replace`.
 
 ## A host's natives can't form a package
 
@@ -665,6 +669,10 @@ The build graph's `c` package (M6) named a parameter `library`, the legacy
 declaration keyword; four functions failed with only "Unexpected syntax"
 until bisecting found it, and it became `target`. Its next slice hit it twice
 more, as a record field and as a local, which became `owner` and `built`.
+The build identity's version reader named a parameter `macro`; the graph
+failed with only "Unexpected syntax", and `chibi fmt --check` only said the
+file had syntax errors, until bisecting copies of the file found it; it
+became `define` (#650).
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,

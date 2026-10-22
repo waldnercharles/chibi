@@ -1,4 +1,5 @@
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/status.h"
 #include "support/array.h"
 #include "types/text.h"
@@ -605,11 +606,13 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     }
                     fprintf(
                         out,
-                        "{c->error_message=c->data->calls[%d].value(c->value_"
-                        "storage,"
+                        "{c->error_message=c->data->calls[%d].value(c->%s,"
                         "c->data->values+%d,%d,c->data->values+%d);if(c->error_"
                         "message){",
                         i->target,
+                        execution_intrinsic_in_result(spec->capability_id)
+                            ? "result_storage"
+                            : "value_storage",
                         spec->first,
                         spec->result_first - spec->first,
                         spec->result_first

@@ -174,7 +174,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
             variables: lower.Variable[] = [];
             ids: uint64[] = [];
             output: lower.Result = {expression: result, type: result_type};
-            ranges := array_add(expression_ranges, ExpressionRange(tree, function, document));
+            ranges := append(expression_ranges, ExpressionRange(tree, function, document));
             facts := lower.Request.Tables([boolean, integer], expressions, symbols, variables,
                                           [output], literals, ids, ranges, keys, abi, length(ranges) - 1);
             plan := lower.Lower(facts);
@@ -220,7 +220,7 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
                     strings.ByteLength(item.identity) > 240) {
                     return InputFailure(-1, "bounded package syntax or identity exceeds its limit");
                 }
-                keys = array_add(keys, item.key);
+                keys.append(item.key);
             }
             function: int = -1;
             document: int = -1;
@@ -284,8 +284,8 @@ pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.
             return InputFailure(index, "bounded source path or text exceeds its limit");
         }
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
-        inputs = array_add(inputs, input);
-        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
+        inputs.append(input);
+        sizes.append(uint64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,

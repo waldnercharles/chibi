@@ -111,7 +111,7 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     while (index < length(globals)) {
         bound: Name = {name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
                        container: 0, record: globals[index].record, writable: false, node: -1};
-        names = array_add(names, bound);
+        names.append(bound);
         index += 1;
     }
     index = 0;
@@ -119,12 +119,12 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
         kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
                       storage: kept_states[index].storage, container: 0, record: -1, writable: true,
                       node: kept_states[index].node};
-        names = array_add(names, kept);
+        names.append(kept);
         index += 1;
     }
     owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
                    writable: false, node: -1};
-    return array_add(names, owner);
+    return append(names, owner);
 }
 // The component of each component reference a body makes, or, when
 // `written`, of each it writes through.
@@ -133,7 +133,7 @@ ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> uint64[] {
     for (host in hosts) {
         if (host.intrinsic == ReferenceMakeIntrinsic && cells[host.first + 2].constant == uint64(ComponentReference) &&
             (host.written || !written)) {
-            found = array_add(found, cells[host.first + 6].constant);
+            found.append(cells[host.first + 6].constant);
         }
     }
     return found;
@@ -149,7 +149,7 @@ Distinct :: (items: uint64[]) -> uint64[] {
             }
         }
         if (!seen) {
-            kept = array_add(kept, item);
+            kept.append(item);
         }
     }
     return kept;
@@ -188,7 +188,7 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
                          key: 0, value_storage: 0, value_container: 0, value_record: -1};
-        declared = array_add(declared, row);
+        declared.append(row);
     }
     return declared;
 }
@@ -198,7 +198,7 @@ NativeFields :: (type_fields: GameField[]) -> TypeMember[] {
         row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: linked.record,
                            offset: linked.offset, writable: linked.writable, c_string: linked.c_string, constant: linked.constant,
                            read: linked.read, read_key: linked.read_key};
-        fields = array_add(fields, row);
+        fields.append(row);
     }
     return fields;
 }
@@ -249,7 +249,7 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
     listed: int[] = [];
     at: int = 0;
     while (at < declared.count) {
-        listed = array_add(listed, int(-1));
+        listed.append(int(-1));
         at += 1;
     }
     parameter := FirstMember(forest, Field(forest, handler, "parameters"));
@@ -280,7 +280,7 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
         if (listed[at] >= 0) {
             param.name = Text(forest, source, listed[at]);
         }
-        params = array_add(params, param);
+        params.append(param);
         at += 1;
     }
     return Payload.Bound(params);
@@ -309,8 +309,8 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             }
             index: int = 0;
             while (index < length(nodes)) {
-                forest = array_add(forest, snapshot.Node(nodes[index], fields[index], is_named[index], is_extra[index],
-                                                         0));
+                forest.append(snapshot.Node(nodes[index], fields[index], is_named[index], is_extra[index],
+                                            0));
                 index += 1;
             }
             root = top;
@@ -365,7 +365,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             }
             kept: StateDecl = {name: name, id: binding.ID("symbol", format_text("{}:1:{}", identity, name)),
                                storage: declared.storage, bits: bits, node: Field(forest, member, "name")};
-            kept_states = array_add(kept_states, kept);
+            kept_states.append(kept);
         } else if (Is(forest, member, "handler")) {
             if (Text(forest, source, Field(forest, member, "kind")) != "on" || Field(forest, member, "alias") >= 0 ||
                 !Is(forest, Field(forest, member, "name"), "identifier")) {
@@ -384,13 +384,13 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);
                 case .Bound(added):
-                    params = append(params, added);
+                    params.extend(added);
             }
             callable: Callable = {name: handled_name, package: 0, document: 0, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
                                   results: 0};
-            callables = array_add(callables, callable);
-            handled = array_add(handled, found);
+            callables.append(callable);
+            handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
             // A member procedure, which the behavior's handlers call.
             name := Text(forest, source, Field(forest, member, "name"));
@@ -399,9 +399,9 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);
                 case .Read(procedure, added):
-                    params = append(params, added);
-                    callables = array_add(callables, procedure);
-                    handled = array_add(handled, int(-1));
+                    params.extend(added);
+                    callables.append(procedure);
+                    handled.append(int(-1));
             }
         } else {
             return Result.Rejected(Diagnose(forest, member, 0, "unsupported behavior member"));
@@ -444,10 +444,10 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
             case .Rejected(diagnostic):
                 return [];
             case .Compiled(module, bytes):
-                ids = array_add(ids, module);
-                starts = array_add(starts, length(data));
-                lengths = array_add(lengths, length(bytes));
-                data = append(data, bytes);
+                ids.append(module);
+                starts.append(length(data));
+                lengths.append(length(bytes));
+                data.extend(bytes);
         }
         index += 1;
     }

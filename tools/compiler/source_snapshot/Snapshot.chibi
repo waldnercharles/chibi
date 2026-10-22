@@ -302,7 +302,7 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
             return Reject(Diagnostic(FileRange(file), "Package source byte limit exceeded"), documents, nodes, imports);
         }
         document := Retained(input);
-        documents = array_add(documents, document);
+        documents.append(document);
         routed := routes.FileRoute(roots, input.path, input.has_path, file);
         switch routed {
             case .Rejected(diagnostic):
@@ -331,7 +331,7 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
                 document.has_syntax = true;
                 index: int = 0;
                 while (index < length(localNodes)) {
-                    nodes = array_add(nodes, Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
+                    nodes.append(Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
                     index += 1;
                 }
                 documents[file] = document;
@@ -347,11 +347,11 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
                         document.header_document = file;
                         document.has_header = true;
                         graphFile: graph.File = {path: descriptor.path, directory: descriptor.directory, name: descriptor.name};
-                        files = array_add(files, graphFile);
-                        pendingStarts = array_add(pendingStarts, length(pending));
-                        pendingCounts = array_add(pendingCounts, length(items));
+                        files.append(graphFile);
+                        pendingStarts.append(length(pending));
+                        pendingCounts.append(length(items));
                         for (item in items) {
-                            pending = array_add(pending, item);
+                            pending.append(item);
                         }
                 }
         }
@@ -382,10 +382,10 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
                 case .Rejected(diagnostic):
                     return Reject(diagnostic, documents, nodes, imports);
                 case .Accepted(directory):
-                    imports = array_add(imports, Resolved(imported, directory));
+                    imports.append(Resolved(imported, directory));
                     graphImport: graph.Import = {file: imported.file, directory: directory,
                                                  alias: imported.alias, explicit_alias: imported.explicit_alias};
-                    graphImports = array_add(graphImports, graphImport);
+                    graphImports.append(graphImport);
             }
             document.import_count += 1;
             documents[file] = document;

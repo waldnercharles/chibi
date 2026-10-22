@@ -34,3 +34,9 @@ chibi_builtin_font(jetbrains-mono/JetBrainsMono-Regular.ttf editor_code_font)
 list(APPEND CHIBI_SDK_TARGETS chibi_builtin_fonts)
 install(DIRECTORY "${CHIBI_SDK_ROOT}/third_party/fonts/" DESTINATION share/chibi/licenses/fonts
     FILES_MATCHING PATTERN "*LICENSE*" PATTERN "*OFL*" PATTERN "*COPYING*")
+# These constituent notices use lowercase names, and NOTICES.md records their
+# attribution and provenance. Preserve that relative layout without font bytes.
+install(FILES "${CHIBI_SDK_ROOT}/third_party/fonts/nerd-fonts-symbols-only/NOTICES.md"
+    DESTINATION share/chibi/licenses/fonts/nerd-fonts-symbols-only)
+install(DIRECTORY "${CHIBI_SDK_ROOT}/third_party/fonts/nerd-fonts-symbols-only/licenses"
+    DESTINATION share/chibi/licenses/fonts/nerd-fonts-symbols-only)

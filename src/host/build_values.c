@@ -133,6 +133,67 @@ const char *build_values_join(build_values *values, const pin_value *arguments, 
     results[0].text = joined;
     return NULL;
 }
+static size_t find_text(pin_string text, pin_string find, size_t start)
+{
+    while (start + find.length <= text.length) {
+        const char *at = memchr(
+            text.bytes + start,
+            (unsigned char)find.bytes[0],
+            text.length - start - find.length + 1
+        );
+        if (!at) {
+            return text.length;
+        }
+        start = (size_t)(at - text.bytes);
+        if (!memcmp(at, find.bytes, find.length)) {
+            return start;
+        }
+        start++;
+    }
+    return text.length;
+}
+/* Every occurrence of a non-empty `find` in text, left to right, replaced by
+ * `with`. Byte lengths preserve embedded NUL in all three arguments. */
+const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results)
+{
+    if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1]) ||
+        !build_values_string(&arguments[2])) {
+        return "invalid build string arguments";
+    }
+    pin_string text = pin_text(arguments[0]), find = pin_text(arguments[1]),
+               with = pin_text(arguments[2]);
+    if (!find.length) {
+        return "invalid build string arguments";
+    }
+    size_t size = text.length;
+    for (size_t at = find_text(text, find, 0); at < text.length;
+         at = find_text(text, find, at + find.length)) {
+        if (with.length > find.length &&
+            with.length - find.length > BUILD_TEXT_LIMIT - size) {
+            return "build text limit exceeded";
+        }
+        size = size - find.length + with.length;
+    }
+    pin_string *result = allocate(values, sizeof(*result) + size + 1);
+    if (!result) {
+        return values->error;
+    }
+    char *bytes = (char *)(result + 1), *out = bytes;
+    *result = (pin_string){ .bytes = bytes, .length = (uint32_t)size };
+    size_t start = 0;
+    for (size_t at = find_text(text, find, start); at < text.length;
+         at = find_text(text, find, start)) {
+        memcpy(out, text.bytes + start, at - start);
+        out += at - start;
+        memcpy(out, with.bytes, with.length);
+        out += with.length;
+        start = at + find.length;
+    }
+    memcpy(out, text.bytes + start, text.length - start);
+    bytes[size] = 0;
+    results[0].text = result;
+    return NULL;
+}
 const char *build_values_starts_with(build_values *, const pin_value *arguments, pin_value *results)
 {
     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1])) {

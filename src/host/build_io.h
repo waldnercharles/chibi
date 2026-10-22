@@ -13,7 +13,7 @@ char *build_io_resolve(const char *root, const char *path);
 bool build_io_exists(const char *root, const char *path);
 bool build_io_mkdir(const char *root, const char *path);
 
-/* Read at most 1 MiB of regular-file bytes. A missing file returns an owned
+/* Read at most 16 MiB of regular-file bytes. A missing file returns an owned
  * empty string; all other failures return false with a static capability
  * diagnostic. Deadline uses chibi_process_now(); cancelled may be NULL. */
 bool build_io_read(
@@ -27,7 +27,7 @@ bool build_io_read(
 );
 
 /* Atomically replace bytes through a temporary file in the destination directory.
- * Data is limited to 1 MiB. Failed writes remove the temporary file. */
+ * Data is limited to 16 MiB. Failed writes remove the temporary file. */
 bool build_io_write(
     const char *root,
     const char *path,
@@ -48,7 +48,7 @@ const char *build_io_stamp(const char *root, const char *path, char stamp[BUILD_
 
 /* A directory's entry names except . and .., sorted by byte, as an owned
  * support/array.h array of owned strings. A missing directory lists no names.
- * Fails beyond 8,192 names or 1 MiB of names. */
+ * Fails beyond 8,192 names or 16 MiB of names. */
 const char *build_io_list(
     const char *root,
     const char *path,
@@ -81,6 +81,17 @@ const char *build_io_hash(
     char digest[65]
 );
 
+/* A regular file's bytes as `0xHH,` for each, the C initializer CMake's
+ * file(READ ... HEX) and "0x\\1," replacement write; *out is xmalloc'd. Fails
+ * for an input that is not a regular file or whose list would pass the build
+ * text limit. */
+const char *build_io_byte_list(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char **out
+);
 /* Writes a C file defining `const unsigned char SYMBOL[]` with the bytes of a
  * regular input file of at most 64 MiB, and `SYMBOL_size`, in the form
  * cmake/embed_binary.cmake writes. An output that already holds that text is

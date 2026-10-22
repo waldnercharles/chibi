@@ -525,11 +525,18 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
     REQUIRE(error[0]);
     migration_text = file_read_text(migration_manifest);
     REQUIRE(migration_text && strstr(migration_text, "version 25"));
+    /* The failed upgrade left every source at the current version and said so
+     * in the manifest, so going back to an old source means restoring the
+     * manifest too. */
+    REQUIRE(strstr(migration_text, "migrated"));
     free(migration_text);
     migration_text = NULL;
     const char
         *input = "Demo :: behavior { on Tick { e := Self()\n"
                  "x := get_transform().Value.x\nset_transform_x(x, self) } }\n";
+    REQUIRE(
+        write_migration_fixture(migration_manifest, "version 25\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
+    );
     REQUIRE(write_migration_fixture(migration_source, input));
     int steps = authoring_project_migrate(migration_root, native, error, sizeof error);
     if (steps < 0) {

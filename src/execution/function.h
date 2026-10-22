@@ -83,7 +83,11 @@ typedef struct
     const behavior_function *function;
     behavior_data_binding *calls;
     pin_value *values;
+    /* What a reset restores: the initial values, each struct buffer's bound. */
+    pin_value *initial;
     void **buffers;
+    /* The cells that own a struct buffer. */
+    int *buffered;
     /* The struct buffers' total size, fixed when the storage is made. */
     size_t buffer_bytes;
 } behavior_data_storage;
@@ -321,6 +325,9 @@ typedef struct behavior_function_context
     /* Invocation-owned copies outlive locals, suspension and returned values.
      * The caller resets this storage only after those values are released. */
     void *value_storage;
+    /* Where a function builds the locals it returns: its caller's value
+     * storage for a call, otherwise its own. */
+    void *result_storage;
     const char *(*copy_string)(void *storage, const char *text);
     const pin_string *(*copy_text)(void *storage, const pin_string *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);

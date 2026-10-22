@@ -177,7 +177,8 @@ static void box_detach(execution_box *box)
     int status = pin_value_snapshot_to_arena(&box->storage, &box->kept, box->value);
     assert(!status);
     (void)status;
-    box->detached = (behavior_function_context){ .value_storage = &box->storage };
+    box->detached = (behavior_function_context){ .value_storage = &box->storage,
+                                                 .result_storage = &box->storage };
     box->owner = &box->detached;
     box->value = &box->kept;
     box_release(box);

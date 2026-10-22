@@ -55,7 +55,7 @@ static const char SAMPLE
          "    while (i < count) {\n"
          "        point: Point = {x: i, y: strings.ByteLength(label), label: "
          "label};\n"
-         "        points = array_add(points, point);\n"
+         "        points = append(points, point);\n"
          "        i += 1;\n"
          "    }\n"
          "    if (count == 0) { return Shape.Empty; }\n"

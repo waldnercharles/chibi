@@ -345,7 +345,21 @@ const char *pin_write_struct_resolved(
     }
     arena_free(&temporary);
     if (!error) {
-        memcpy(destination, copy, target->size);
+        if (!value.record && source == target) {
+            /* Native reflection may omit fields. Keep their original bytes,
+             * then publish the validated, owned fields over them. */
+            memmove(destination, value.ptr, target->size);
+            for (int i = 0; i < target->field_count; i++) {
+                const type_field *field = &target->fields[i];
+                memcpy(
+                    (char *)destination + field->offset,
+                    (const char *)copy + field->offset,
+                    field->size
+                );
+            }
+        } else {
+            memcpy(destination, copy, target->size);
+        }
     }
     if (error && !storage) {
         free_field_text(target, copy, 0, resolver);

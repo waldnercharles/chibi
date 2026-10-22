@@ -90,8 +90,8 @@ import:
   an argument of a native such as `resize([int(0)], n)`, an array literal's
   first item gives its element type, as in stage zero; field reads;
   bounds-checked element reads;
-- element assignment, compound included, and `xs = array_add(xs, x)` and
-  `xs = append(xs, ys)` on a local array, which update it in place. As in
+- element assignment, compound included, and `xs = append(xs, x)` and
+  `xs = extend(xs, ys)` on a local array, which update it in place. As in
   stage zero, the native is recognized by its capability identity;
 - field assignment, compound included, on a local record: `x.f = v` writes as
   stage zero writes it, through the reference make, field and write
@@ -326,7 +326,7 @@ field target has an expression point for each member it reaches through and a
 symbol point for the name it starts from, and a compound assignment reads its
 target first. Stage zero writes a parameter through its reference, so
 assigning one has the target's points and no store. A local array that `xs =
-array_add(xs, x)` updates in place is stored, then read again. A `switch` arm
+append(xs, x)` updates in place is stored, then read again. A `switch` arm
 has an expression point for its pattern, and each binding of an arm or of `is`
 a symbol point. A function with a record or array result stores that result's
 symbol at its entry.
@@ -355,7 +355,7 @@ value, with its expression as origin and its type's header as initial value:
 - a compound assignment watches the value it stores at its target, and one on
   a name or an element also the value it reads there;
 - a `switch` arm watches the subject it reads again and its pattern's test;
-- `xs = array_add(xs, x)` watches the array as its argument and as the call's
+- `xs = append(xs, x)` watches the array as its argument and as the call's
   first input, the item as its second, and the array it leaves as the call's
   output.
 

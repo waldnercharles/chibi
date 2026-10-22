@@ -66,7 +66,7 @@ MultiplyTerm :: (value: Unit, term: Term) -> ProductResult {
             if (length(terms) == MaxTerms) {
                 return ProductResult.Product(Empty(Unknown), true);
             }
-            return ProductResult.Product(Unit.Value(kind, array_add(terms, term)), false);
+            return ProductResult.Product(Unit.Value(kind, append(terms, term)), false);
     }
 }
 

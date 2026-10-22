@@ -7,14 +7,17 @@ import strings "core:strings"
 // Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
 //   Libraries -- --build DIR [--profile sanitizer|debug|release] [--jobs N]
-//     [--target NAME]... [--commands-only on]
+//     [--target NAME]... [--commands-only on] [--all-commands on]
 // The profile, the Makefile's sanitizer profile unless named, is found on
 // this machine (engine.Discover); these options override what they name:
-//   --compiler PATH --compiler-id ID --build-type TYPE --architecture ARCH
-//   --sysroot DIR --warnings on|off --sanitizers LIST --debug-compilation-dir DIR
+//   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
+//   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST
+//   --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --third-party DIR --reflect PATH
-// Every path is absolute. Writes BUILD/compile_commands.json, then, unless
+// Every path is absolute. Writes BUILD/compile_commands.json, for every target
+// with --all-commands on, and BUILD/link_commands.json for those it builds,
+// then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
 
@@ -40,8 +43,30 @@ Count :: (text: string) -> int {
     return value;
 }
 
+// Every named target must exist, before any discovery or build writes.
+TargetsValid :: (arguments: string[], targets: string[]) -> bool {
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] != "--target") {
+            continue;
+        }
+        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
+            build.report("graph: --target requires a target name");
+            return false;
+        }
+        found := false;
+        for (target in targets) {
+            found = found || arguments[i + 1] == target;
+        }
+        if (!found) {
+            build.report(format_text("graph: unknown target '{0}'", arguments[i + 1]));
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether a target was named with --target, or none were, or a named
-// executable links it.
+// executable needs it (engine.Needed).
 Selected :: (arguments: string[], target: string) -> bool {
     named := false;
     for (i in 0..<length(arguments) - 1) {
@@ -50,7 +75,7 @@ Selected :: (arguments: string[], target: string) -> bool {
             if (arguments[i + 1] == target) {
                 return true;
             }
-            if (engine.Linked(arguments[i + 1], target)) {
+            if (engine.Needed(arguments[i + 1], target)) {
                 return true;
             }
         }
@@ -60,6 +85,10 @@ Selected :: (arguments: string[], target: string) -> bool {
 
 Libraries :: () -> int {
     arguments := build.arguments();
+    targets := engine.Targets();
+    if (!TargetsValid(arguments, targets)) {
+        return 2;
+    }
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
     // The named profile as this machine provides it; each option overrides
@@ -75,6 +104,7 @@ Libraries :: () -> int {
     sanitizers := Option(arguments, "--sanitizers", found.sanitizers);
     profile: engine.Profile = {
         compiler: compiler,
+        cxx_compiler: Option(arguments, "--cxx-compiler", engine.CxxCompiler(compiler, compiler_id)),
         compiler_id: compiler_id,
         build_type: Option(arguments, "--build-type", found.build_type),
         architecture: Option(arguments, "--architecture", found.architecture),
@@ -92,6 +122,7 @@ Libraries :: () -> int {
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", build.find_executable("ccache")),
         compiler: profile.compiler,
+        cxx_compiler: profile.cxx_compiler,
         archiver: Option(arguments, "--archiver", build.find_executable("ar")),
         ranlib: Option(arguments, "--ranlib", engine.DiscoverTool(compiler, "llvm-ranlib", "ranlib")),
         jobs: jobs
@@ -102,10 +133,14 @@ Libraries :: () -> int {
         return 2;
     }
     selected: string[] = [];
-    for (target in engine.Targets()) {
+    for (target in targets) {
         if (Selected(arguments, target)) {
-            selected = array_add(selected, target);
+            selected.append(target);
         }
+    }
+    if (engine.NeedsCxx(selected) && !strings.HasPrefix(profile.cxx_compiler, "/")) {
+        build.report("graph: no C++ compiler was found for the C++ sources; set CXX or --cxx-compiler");
+        return 2;
     }
     if (engine.NeedsThirdParty(selected) && profile.third_party == "") {
         build.report("graph: third_party/archives.tsv pins no archive for this host and profile");
@@ -118,8 +153,19 @@ Libraries :: () -> int {
     }
     build.make_directory(build_dir);
     commands := strings.Join([build_dir, "/compile_commands.json"], "");
-    if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, selected))) {
+    // With --all-commands the compile database names every target, as
+    // CMake's does, so editors see the flags of sources a build did not name.
+    listed := selected;
+    if (Option(arguments, "--all-commands", "") == "on") {
+        listed = targets;
+    }
+    if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, listed))) {
         build.report("graph: writing compile_commands.json failed");
+        return 1;
+    }
+    links := strings.Join([build_dir, "/link_commands.json"], "");
+    if (!build.write_file(links, engine.LinkCommands(tools, profile, build.root(), build_dir, selected))) {
+        build.report("graph: writing link_commands.json failed");
         return 1;
     }
     if (Option(arguments, "--commands-only", "") == "on") {

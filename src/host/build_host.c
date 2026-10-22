@@ -26,6 +26,9 @@
 #include <unistd.h>
 
 #define BUILD_MAX_ARGUMENTS 256
+/* A step's arguments, as many as chibi_process_begin passes: a link names
+ * each of its objects and libraries. */
+#define BUILD_MAX_STEP_ARGUMENTS 1023
 #define BUILD_MAX_ARGUMENT_BYTES 65536
 #define BUILD_MAX_STEPS 4096
 /* Instructions one program may run, as many as a package test: a build graph
@@ -191,7 +194,7 @@ static char **step_argv(build_host *host, const pin_value *arguments, char **pro
     const pin_array *array = arguments[0].ptr;
     if (arguments[0].type != PIN_STR || arguments[0].container != PIN_CONTAINER_ARRAY ||
         !array || array->element_type != PIN_STR || array->count < 1 ||
-        array->count > BUILD_MAX_ARGUMENTS || !array->items) {
+        array->count > BUILD_MAX_STEP_ARGUMENTS || !array->items) {
         return NULL;
     }
     size_t bytes = 0;
@@ -627,9 +630,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         if (!value) {
             continue;
         }
-        size_t value_size = strnlen(value, BUILD_TEXT_LIMIT + 1);
+        size_t value_size = strnlen(value, BUILD_ENVIRONMENT_LIMIT + 1);
         size_t size = strlen(environment_names[i]) + value_size + 2;
-        if (size > BUILD_TEXT_LIMIT - environment_bytes) {
+        if (size > BUILD_ENVIRONMENT_LIMIT - environment_bytes) {
             environment_valid = false;
             break;
         }

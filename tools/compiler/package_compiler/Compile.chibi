@@ -365,7 +365,7 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
         if (link.file == file) {
             alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
                            record: -1, writable: false, node: -1};
-            aliases = array_add(aliases, alias);
+            aliases.append(alias);
         }
     }
     return aliases;
@@ -502,7 +502,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         node := pending[top];
         kind := forest[node].kind;
         if (kind == "map_type") {
-            found = array_add(found, node);
+            found.append(node);
         }
         child := forest[node].first_child;
         while (child >= 0 && !Expression(kind)) {
@@ -510,7 +510,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
                 if (top < length(pending)) {
                     pending[top] = child;
                 } else {
-                    pending = array_add(pending, child);
+                    pending.append(child);
                 }
                 top += 1;
             }
@@ -535,7 +535,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
                               first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
                               value_record: value.record};
-        known = array_add(known, declared);
+        known.append(declared);
     }
     return known;
 }
@@ -635,7 +635,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     declared.kind = UnionDecl;
                     declared.first = length(types) + 1;
                     holder := length(types);
-                    types = array_add(types, declared);
+                    types.append(declared);
                     variant := FirstMember(forest, member);
                     while (variant >= 0) {
                         if (Is(forest, variant, "union_variant")) {
@@ -652,7 +652,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
                                                      storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
                                                      value_container: 0, value_record: -1};
-                            types = array_add(types, alternative);
+                            types.append(alternative);
                             grown := types[holder];
                             grown.count += 1;
                             types[holder] = grown;
@@ -685,7 +685,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
                                              writable: true, c_string: false, constant: false, read: -1, read_key: ""};
-                        members = array_add(members, field);
+                        members.append(field);
                         size += width;
                         if (width > alignment) {
                             alignment = width;
@@ -697,7 +697,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     }
                     declared.count = length(members) - declared.first;
                     declared.size = AlignTo(size, alignment);
-                    types = array_add(types, declared);
+                    types.append(declared);
                 }
             }
             member = NextMember(forest, member);
@@ -734,7 +734,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
                                                  writable: true, c_string: false, constant: false, read: -1, read_key: ""};
-                            members = array_add(members, field);
+                            members.append(field);
                             parameter = NextMember(forest, parameter);
                         }
                         alternative.count = length(members) - alternative.first;
@@ -767,8 +767,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
-                        params = append(params, added);
-                        callables = array_add(callables, callable);
+                        params.extend(added);
+                        callables.append(callable);
                 }
             } else if (Is(forest, member, "constant_declaration")) {
                 name := Text(forest, text, Field(forest, member, "name"));
@@ -800,7 +800,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                        node: Field(forest, member, "value"), file: file, folded: false,
                                        occurrence: Occurrence(documents[file].key, SymbolRecord, solid[named.start],
                                                               solid[named.end])};
-                constants = array_add(constants, constant);
+                constants.append(constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
@@ -909,7 +909,7 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
             case .Waiting:
                 return Folding.Waiting;
             case .Folded(bits):
-                folded = array_add(folded, int64(wrap: bits));
+                folded.append(int64(wrap: bits));
         }
     }
     left = folded[0];
@@ -1072,7 +1072,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                     param.default_text = literal;
             }
         }
-        added = array_add(added, param);
+        added.append(param);
         parameter = NextMember(forest, parameter);
     }
     count := length(added);
@@ -1097,7 +1097,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
                             has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
                             reference: false, node: Field(forest, named, "name")};
-            added = array_add(added, param);
+            added.append(param);
             named = NextMember(forest, named);
         }
     } else if (results >= 0) {
@@ -1224,7 +1224,7 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
         for (edge in edges) {
             if (edge.from == at && !seen[edge.to]) {
                 seen[edge.to] = true;
-                pending = array_add(pending, edge.to);
+                pending.append(edge.to);
             }
         }
     }
@@ -1241,8 +1241,8 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     package_names: string[] = [];
     package_ids: uint64[] = [];
     for (listed in packages) {
-        package_names = array_add(package_names, documents[files_of[listed.member_start]].identity);
-        package_ids = array_add(package_ids, binding.ID("module", package_names[length(package_names) - 1]));
+        package_names.append(documents[files_of[listed.member_start]].identity);
+        package_ids.append(binding.ID("module", package_names[length(package_names) - 1]));
     }
     fingerprints := resize([uint64(0)], length(packages));
     data: byte[] = [];
@@ -1262,7 +1262,7 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
                 }
                 starts[package] = length(data);
                 lengths[package] = length(bytes);
-                data = append(data, bytes);
+                data.extend(bytes);
         }
     }
     return Result.Compiled(package_ids[root],
@@ -1315,12 +1315,12 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
             children: int[] = [];
             child := forest[node].first_child;
             while (child >= 0) {
-                children = array_add(children, child);
+                children.append(child);
                 child = forest[child].next_sibling;
             }
             at_child := length(children) - 1;
             while (at_child >= 0) {
-                pending = array_add(pending, children[at_child]);
+                pending.append(children[at_child]);
                 at_child -= 1;
             }
         }
@@ -1336,7 +1336,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
         first: ConstDecl = {name: constants[at].name, package: constants[at].package, storage: constants[at].storage,
                             bits: constants[at].bits, node: constants[at].node, file: constants[at].file,
                             folded: constants[at].folded, occurrence: occurrence};
-        used = array_add(used, first);
+        used.append(first);
         at += 1;
     }
     return used;
@@ -1398,8 +1398,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     layouts: int[] = [];
     tags: int[] = [];
     for (declared in types) {
-        layouts = array_add(layouts, int(0));
-        tags = array_add(tags, int(0));
+        layouts.append(int(0));
+        tags.append(int(0));
         if (!reachable[declared.package]) {
             continue;
         }
@@ -1407,37 +1407,37 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             // Stage zero's tag: the union's ID in decimal, then the variant.
             union_id := binding.ID("package-symbol",
                                    format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
-            wide = array_add(wide, binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
+            wide.append(binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
             tags[length(tags) - 1] = length(wide) - 1;
         } else if (declared.kind == RecordDecl) {
-            wide = array_add(wide, binding.ID("package-symbol",
-                                              format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
-            wide = array_add(wide, LayoutHash(declared, members, target));
+            wide.append(binding.ID("package-symbol",
+                                   format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
+            wide.append(LayoutHash(declared, members, target));
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
                                                name: declared.type_name, size: declared.size, authored: true, first: length(fields),
                                                count: declared.count};
-            requirements = array_add(requirements, requirement);
+            requirements.append(requirement);
             at := declared.first;
             while (at < declared.first + declared.count) {
                 // Record fields are integers, bools or strings, so none names a type or unit.
                 field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
                                        has_type_name: false, unit: "", has_unit: false};
-                fields = array_add(fields, field);
+                fields.append(field);
                 at += 1;
             }
         } else if (declared.kind == NativeDecl) {
-            wide = array_add(wide, declared.id);
-            wide = array_add(wide, declared.layout);
+            wide.append(declared.id);
+            wide.append(declared.layout);
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: declared.storage,
                                                name: declared.type_name, size: declared.size, authored: false, first: 0,
                                                count: 0};
-            requirements = array_add(requirements, requirement);
+            requirements.append(requirement);
         }
     }
     abi_one := length(wide);
-    wide = array_add(wide, uint64(1));
+    wide.append(uint64(1));
     // A package's functions are contiguous; the module numbers them from 0.
     first_own: int = 0;
     while (first_own < length(callables) && callables[first_own].package != package) {
@@ -1477,7 +1477,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (owner_type != 0) {
             meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
         }
-        aliases := append(Aliases(links, callable.document), behaving);
+        aliases := extend(Aliases(links, callable.document), behaving);
         // The names a ref argument reaches live in data cells.
         referenced: string[] = [];
         if (referencing) {
@@ -1486,10 +1486,17 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         }
         mutated := MutatedNames(forest, documents[callable.document].text, Field(forest, callable.node, "body"),
                                 referenced);
+        // A function with one result builds the arrays it returns in its
+        // caller's storage.
+        built: int[] = [];
+        if (callable.results == 0) {
+            built = BuiltLocals(forest, documents[callable.document].text, types, aliases, callable.package,
+                                Field(forest, callable.node, "body"), referenced);
+        }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
                            aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced,
-                           mutated, ops, target);
+                           mutated, built, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
@@ -1497,20 +1504,20 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                           body_points, body_watches):
                 base := length(spans);
                 // Argument defaults and kinds.
-                spans = array_add(spans, Range(length(values), callable.count));
+                spans.append(Range(length(values), callable.count));
                 at: int = 0;
                 while (at < callable.count) {
-                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
+                    values.append(ParamHeader(params[callable.first + at], types, layouts, target));
                     at += 1;
                 }
-                spans = array_add(spans, Range(length(ints), callable.count));
+                spans.append(Range(length(ints), callable.count));
                 at = 0;
                 while (at < callable.count) {
                     kind: int = 0;
                     if (params[callable.first + at].reference) {
                         kind = ReferenceKind;
                     }
-                    ints = array_add(ints, kind);
+                    ints.append(kind);
                     at += 1;
                 }
                 // Result defaults and kinds: the one result, or each named one.
@@ -1518,46 +1525,46 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 if (callable.result != 0) {
                     result_count = 1;
                 }
-                spans = array_add(spans, Range(length(values), result_count));
+                spans.append(Range(length(values), result_count));
                 if (callable.result != 0) {
-                    values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
-                                                      types, layouts));
+                    values.append(Header(callable.result, callable.result_container, callable.result_record,
+                                         types, layouts));
                 }
                 at = 0;
                 while (at < callable.results) {
                     named := params[callable.first + callable.count + at];
-                    values = array_add(values, ScalarValue(named.storage, 0));
+                    values.append(ScalarValue(named.storage, 0));
                     at += 1;
                 }
-                spans = array_add(spans, Range(length(ints), result_count));
+                spans.append(Range(length(ints), result_count));
                 at = 0;
                 while (at < result_count) {
-                    ints = array_add(ints, int(0));
+                    ints.append(int(0));
                     at += 1;
                 }
                 // A behavior's states are each function's variables.
-                spans = array_add(spans, Range(length(values), length(kept_states)));
+                spans.append(Range(length(values), length(kept_states)));
                 for (kept in kept_states) {
-                    values = array_add(values, ScalarValue(kept.storage, length(wide)));
-                    wide = array_add(wide, kept.bits);
+                    values.append(ScalarValue(kept.storage, length(wide)));
+                    wide.append(kept.bits);
                 }
-                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                spans.append(Range(length(ints), length(body_slots)));
                 for (slot in body_slots) {
-                    ints = array_add(ints, slot.storage);
+                    ints.append(slot.storage);
                 }
-                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                spans.append(Range(length(ints), length(body_slots)));
                 for (slot in body_slots) {
-                    ints = array_add(ints, slot.kind);
+                    ints.append(slot.kind);
                 }
                 // Record and array pointers each slot may hold while the function waits.
-                spans = array_add(spans, Range(length(roots), length(body_roots)));
+                spans.append(Range(length(roots), length(body_roots)));
                 for (root in body_roots) {
-                    values = array_add(values, Header(root.storage, root.container, root.record, types, layouts));
+                    values.append(Header(root.storage, root.container, root.record, types, layouts));
                     row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
-                    roots = array_add(roots, row);
+                    roots.append(row);
                 }
                 // Instructions, each with its own value row and source at pc + 1.
-                spans = array_add(spans, Range(length(instructions), length(body_code)));
+                spans.append(Range(length(instructions), length(body_code)));
                 pc: int = 0;
                 for (code in body_code) {
                     value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
@@ -1567,38 +1574,38 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     if (code.payload != 0) {
                         value.wide = length(wide);
-                        wide = array_add(wide, code.payload);
+                        wide.append(code.payload);
                     }
-                    values = array_add(values, value);
+                    values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
                                                left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
                                                stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
-                    instructions = array_add(instructions, row);
+                    instructions.append(row);
                     pc += 1;
                 }
-                spans = array_add(spans, Range(length(locals), length(body_locals)));
+                spans.append(Range(length(locals), length(body_locals)));
                 for (body_local in body_locals) {
-                    values = array_add(values, ScalarValue(body_local.storage, 0));
+                    values.append(ScalarValue(body_local.storage, 0));
                     local: writer.Local = {kind: body_local.kind, initial: length(values) - 1, frame: 0, node: 0, pin: 0,
                                            offset: 0, parameter: false, array_default: false, data_index: 0};
-                    locals = array_add(locals, local);
+                    locals.append(local);
                 }
-                spans = array_add(spans, Range(length(parameters), callable.count));
+                spans.append(Range(length(parameters), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    values = array_add(values, ParamHeader(params[callable.first + at], types, layouts, target));
+                    values.append(ParamHeader(params[callable.first + at], types, layouts, target));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
-                    parameters = array_add(parameters, parameter);
+                    parameters.append(parameter);
                     at += 1;
                 }
                 // One frame with an empty origin, then the instruction origins.
-                sources = array_add(sources, NoSource());
+                sources.append(NoSource());
                 frame: writer.Frame = {source: length(sources) - 1, depth: 0, resume: 0, source_index: 0, stack: -1};
-                spans = array_add(spans, Range(length(frames), 1));
-                frames = array_add(frames, frame);
-                spans = array_add(spans, Range(length(sources), length(body_code) + 1));
-                sources = array_add(sources, NoSource());
+                spans.append(Range(length(frames), 1));
+                frames.append(frame);
+                spans.append(Range(length(sources), length(body_code) + 1));
+                sources.append(NoSource());
                 asset := documents[callable.document].key;
                 for (code in body_code) {
                     source := NoSource();
@@ -1608,13 +1615,13 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     source.end = code.end;
                     source.line = code.line;
                     source.column = code.column;
-                    sources = array_add(sources, source);
+                    sources.append(source);
                 }
-                spans = array_add(spans, Range(0, 0));
-                spans = array_add(spans, Range(0, 0));
+                spans.append(Range(0, 0));
+                spans.append(Range(0, 0));
                 // Data cells: record cells own a buffer of the record's size;
                 // others may hold a constant or a variant's tag.
-                spans = array_add(spans, Range(length(data), length(body_cells)));
+                spans.append(Range(length(data), length(body_cells)));
                 for (cell in body_cells) {
                     value := Header(cell.storage, cell.container, cell.record, types, layouts);
                     size: int = 0;
@@ -1625,100 +1632,100 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         value.wide = tags[cell.variant];
                     } else if (cell.constant != 0) {
                         value.wide = length(wide);
-                        wide = array_add(wide, cell.constant);
+                        wide.append(cell.constant);
                     }
-                    values = array_add(values, value);
+                    values.append(value);
                     datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
-                    data = array_add(data, datum);
+                    data.append(datum);
                 }
-                spans = array_add(spans, Range(length(hosts), length(body_hosts)));
+                spans.append(Range(length(hosts), length(body_hosts)));
                 for (host in body_hosts) {
                     capability := length(wide);
                     host_abi := abi_one;
                     if (host.linked >= 0) {
-                        wide = array_add(wide, identities[2 * host.linked]);
-                        wide = array_add(wide, identities[2 * host.linked + 1]);
+                        wide.append(identities[2 * host.linked]);
+                        wide.append(identities[2 * host.linked + 1]);
                         host_abi = capability + 1;
                     } else {
-                        wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
+                        wide.append(IntrinsicBase | uint64(host.intrinsic));
                     }
                     row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
                                         result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
                                         outcome_count: 0};
-                    hosts = array_add(hosts, row);
+                    hosts.append(row);
                 }
-                spans = array_add(spans, Range(length(calls), length(body_calls)));
+                spans.append(Range(length(calls), length(body_calls)));
                 for (invocation in body_calls) {
                     callee := callables[invocation.callee];
                     if (callee.package == package) {
-                        references = array_add(references, Own(invocation.callee - first_own));
+                        references.append(Own(invocation.callee - first_own));
                     } else {
                         row := Position(imported, callee.package);
                         if (row < 0) {
-                            imported = array_add(imported, callee.package);
-                            wide = array_add(wide, package_ids[callee.package]);
-                            wide = array_add(wide, fingerprints[callee.package]);
+                            imported.append(callee.package);
+                            wide.append(package_ids[callee.package]);
+                            wide.append(fingerprints[callee.package]);
                             dependency: writer.Import = {id: length(wide) - 2, fingerprint: length(wide) - 1};
-                            imports = array_add(imports, dependency);
+                            imports.append(dependency);
                             row = length(imports) - 1;
                         }
-                        wide = array_add(wide, binding.ID("package-symbol",
-                                                          format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
+                        wide.append(binding.ID("package-symbol",
+                                               format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
                         foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
-                        references = array_add(references, foreign);
+                        references.append(foreign);
                     }
                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,
                                          result_count: invocation.result_count, task: false};
-                    calls = array_add(calls, call);
+                    calls.append(call);
                 }
                 // No definitions; then the components the body reads or
                 // writes through references, each once, and each write.
-                spans = array_add(spans, Range(0, 0));
+                spans.append(Range(0, 0));
                 written := ComponentsOf(body_cells, body_hosts, true);
                 reached := Distinct(ComponentsOf(body_cells, body_hosts, false));
-                spans = array_add(spans, Range(length(components), length(reached)));
+                spans.append(Range(length(components), length(reached)));
                 for (component_id in reached) {
                     reached_row: writer.Component = {id: length(wide), binding: false};
-                    components = array_add(components, reached_row);
-                    wide = array_add(wide, component_id);
+                    components.append(reached_row);
+                    wide.append(component_id);
                 }
-                spans = array_add(spans, Range(length(ints), length(written)));
+                spans.append(Range(length(ints), length(written)));
                 for (component_id in written) {
-                    ints = array_add(ints, length(wide));
-                    wide = array_add(wide, component_id);
+                    ints.append(length(wide));
+                    wide.append(component_id);
                 }
-                spans = array_add(spans, Range(length(points), length(body_points)));
+                spans.append(Range(length(points), length(body_points)));
                 for (point in body_points) {
-                    wide = array_add(wide, point.occurrence);
-                    wide = array_add(wide, point.meaning);
+                    wide.append(point.occurrence);
+                    wide.append(point.meaning);
                     row: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1, start: point.start,
                                          end: point.end, line: point.line, column: point.column, kind: point.kind,
                                          completion: point.completion};
-                    points = array_add(points, row);
+                    points.append(row);
                 }
                 // Each watch's origin is a point of its own, past the
                 // function's points, and its initial value the type's header.
-                spans = array_add(spans, Range(length(watches), length(body_watches)));
+                spans.append(Range(length(watches), length(body_watches)));
                 for (watched in body_watches) {
-                    wide = array_add(wide, watched.occurrence);
-                    wide = array_add(wide, uint64(0));
+                    wide.append(watched.occurrence);
+                    wide.append(uint64(0));
                     origin: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1,
                                             start: watched.start, end: watched.end, line: watched.line,
                                             column: watched.column, kind: ExpressionRecord, completion: false};
-                    points = array_add(points, origin);
+                    points.append(origin);
                     // A behavior's handles are its entities.
                     watched_record := watched.record;
                     if (watched.storage == HandleStorage && watched_record < 0 && owner_type != 0) {
                         watched_record = TypeWithId(types, owner_type);
                     }
-                    values = array_add(values, Header(watched.storage, watched.container, watched_record, types, layouts));
+                    values.append(Header(watched.storage, watched.container, watched_record, types, layouts));
                     row: writer.Watch = {origin: length(points) - 1, initial: length(values) - 1,
                                          ordinal: watched.ordinal, output: watched.output, reference: watched.reference};
-                    watches = array_add(watches, row);
+                    watches.append(row);
                 }
                 while (length(spans) < base + writer.Tables) {
-                    spans = array_add(spans, Range(0, 0));
+                    spans.append(Range(0, 0));
                 }
                 head: writer.Function = {argument_count: callable.count, result_count: result_count,
                                          variable_count: length(kept_states), root_steps: 0, child_budget: 0,
@@ -1726,40 +1733,40 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          managed: false, custom_lowering: false, checkpoints: false, pin_watches: false,
                                          watch_size: 0, component_bindings: false, component_access: length(reached) != 0,
                                          spans: base};
-                functions = array_add(functions, head);
-                references = array_add(references, Own(index - first_own));
-                references = array_add(references, Own(-1));
+                functions.append(head);
+                references.append(Own(index - first_own));
+                references.append(Own(-1));
                 if (handler >= 0) {
                     // Stage zero's handler ID: the source, the handler's offset and its kind.
                     handled_event := game_events[handler];
-                    wide = array_add(wide, binding.ID("function", format_text("{}:{}:{}", identity,
-                                                                              forest[callable.node].start, HandlerFunction)));
-                    wide = array_add(wide, handled_event.id);
-                    wide = array_add(wide, handled_event.abi);
-                    wide = array_add(wide, uint64(Effects(ops, body_code, length(reached) != 0, length(written) != 0)));
+                    wide.append(binding.ID("function", format_text("{}:{}:{}", identity,
+                                                                   forest[callable.node].start, HandlerFunction)));
+                    wide.append(handled_event.id);
+                    wide.append(handled_event.abi);
+                    wide.append(uint64(Effects(ops, body_code, length(reached) != 0, length(written) != 0)));
                     row: writer.Entry = {id: length(wide) - 4, kind: HandlerFunction, entry_name: "", has_entry: false,
                                          event_id: length(wide) - 3, event_abi: length(wide) - 2,
                                          event_name: handled_event.name, has_event_name: true, continuation_wait: false,
                                          effects: length(wide) - 1, body: length(references) - 2,
                                          subscription: length(references) - 1};
-                    entries = array_add(entries, row);
+                    entries.append(row);
                 } else if (owner_type != 0) {
                     // A behavior's member procedure is a symbol of its source's scope.
-                    wide = array_add(wide, binding.ID("symbol", format_text("{}:1:{}:callable", identity,
-                                                                            callable.name)));
+                    wide.append(binding.ID("symbol", format_text("{}:1:{}:callable", identity,
+                                                                 callable.name)));
                     procedure: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: "", has_entry: false,
                                                event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
                                                continuation_wait: false, effects: 0, body: length(references) - 2,
                                                subscription: length(references) - 1};
-                    entries = array_add(entries, procedure);
+                    entries.append(procedure);
                 } else {
-                    wide = array_add(wide, binding.ID("package-symbol",
-                                                      format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
+                    wide.append(binding.ID("package-symbol",
+                                           format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
                     exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
                                               event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
                                               continuation_wait: false, effects: 0, body: length(references) - 2,
                                               subscription: length(references) - 1};
-                    entries = array_add(entries, exported);
+                    entries.append(exported);
                 }
         }
         index += 1;
@@ -1772,31 +1779,31 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         if (handler < 0 || Position(listed, handler) >= 0) {
             continue;
         }
-        listed = array_add(listed, handler);
+        listed.append(handler);
         handled_event := game_events[handler];
-        wide = array_add(wide, handled_event.id);
-        wide = array_add(wide, handled_event.abi);
+        wide.append(handled_event.id);
+        wide.append(handled_event.abi);
         declared: writer.Event = {id: length(wide) - 2, abi: length(wide) - 1, name: handled_event.name,
                                   first: length(event_fields), count: handled_event.count};
-        event_declarations = array_add(event_declarations, declared);
+        event_declarations.append(declared);
         at := handled_event.first;
         while (at < handled_event.first + handled_event.count) {
             payload := game_fields[at];
-            values = array_add(values, ScalarValue(payload.storage, 0));
-            wide = array_add(wide, payload.nominal);
+            values.append(ScalarValue(payload.storage, 0));
+            wide.append(payload.nominal);
             field: writer.EventField = {name: payload.name, nominal: length(wide) - 1, has_default: payload.has_default,
                                         default_owner: payload.default_owner, initial: length(values) - 1};
-            event_fields = array_add(event_fields, field);
+            event_fields.append(field);
             at += 1;
         }
     }
     states: writer.State[] = [];
     for (kept in kept_states) {
-        values = array_add(values, ScalarValue(kept.storage, length(wide)));
-        wide = array_add(wide, kept.bits);
-        wide = array_add(wide, kept.id);
+        values.append(ScalarValue(kept.storage, length(wide)));
+        wide.append(kept.bits);
+        wide.append(kept.id);
         row: writer.State = {id: length(wide) - 1, initial: length(values) - 1, shared: false, contains_tasks: false};
-        states = array_add(states, row);
+        states.append(row);
     }
     layouts_table: writer.ResultLayout[] = [];
     return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
@@ -1830,7 +1837,7 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
     while (index < length(collection_names)) {
         collection: routes.Collection = {name: collection_names[index], path: collection_paths[index], has_name: true,
                                          has_path: true};
-        collections = array_add(collections, collection);
+        collections.append(collection);
         index += 1;
     }
     inputs: snapshot.Input[] = [];
@@ -1838,8 +1845,8 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
     index = 0;
     while (index < length(paths)) {
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
-        inputs = array_add(inputs, input);
-        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
+        inputs.append(input);
+        sizes.append(uint64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,

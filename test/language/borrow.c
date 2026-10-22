@@ -1708,6 +1708,108 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     return true;
 }
 
+/* A function builds a value in its caller's storage, and may move it there
+ * at return, only when nothing but the updates that run there changes it: a
+ * plain push onto it or a raw write through it would leave it reaching the
+ * callee's own storage. */
+TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
+{
+    enum
+    {
+        BUILT_PUSH,
+        PLAIN_PUSH,
+        RAW_WRITE
+    };
+    for (int kind = BUILT_PUSH; kind <= RAW_WRITE; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+        int local = behavior_function_builder_values(builder, &array_shape, 1);
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        int made = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        );
+        put_address(local, made);
+        int number = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = PIN_F64,
+                                             .value = { .type = PIN_F64, .d = 2 } },
+            false
+        );
+        if (kind == RAW_WRITE) {
+            int array = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = host_address(local),
+                                                 .offset = offsetof(pin_value, d) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = PIN_F64,
+                                                  .left = number,
+                                                  .right = first_item(array) });
+        } else {
+            pin_value headers[] = { { .type = BF_POINTER_TYPE }, { .type = PIN_F64 } },
+                      done = { .type = PIN_BOOL };
+            int push = behavior_function_builder_host(
+                builder,
+                &EXECUTION_array_push_call,
+                &EXECUTION_assignment_access,
+                headers,
+                2,
+                &done,
+                1
+            );
+            uint64_t id = execution_intrinsic_id(&EXECUTION_array_push_call) |
+                          (kind == BUILT_PUSH ? EXECUTION_INTRINSIC_IN_RESULT : 0);
+            assert(
+                behavior_function_builder_host_identity(builder, push, id, execution_intrinsic_abi(id))
+            );
+            int first = behavior_function_builder_host_first(builder, push);
+            assert(
+                behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS)
+            );
+            put_address(first, host_address(local));
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = PIN_F64,
+                                                  .left = number,
+                                                  .right = host_address(first + 1),
+                                                  .offset = offsetof(pin_value, d) });
+            emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                                  .target = push,
+                                                  .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        }
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "built results %d: %s\n", kind, error);
+        }
+        REQUIRE(function && function->builds_results == (kind == BUILT_PUSH));
+    }
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -1732,5 +1834,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
+    RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
     pu_clear_setup();
 }

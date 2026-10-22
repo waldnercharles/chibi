@@ -1404,6 +1404,9 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         execution_intrinsic_resolve(keep | EXECUTION_INTRINSIC_IN_RESULT) == &EXECUTION_union_keep_call
     );
     REQUIRE(execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT) == 1);
+    /* A native capability id is a hash, so its bit 0x100 says nothing:
+     * this is Resize's. */
+    REQUIRE(!execution_intrinsic_in_result(UINT64_C(0xcb19ce8d1a7cd77f)));
     arena storage = { 0 }, other = { 0 };
     pin_array *held = pin_array_snapshot_allocate(&storage, PIN_I32, NULL, 1),
               *foreign = pin_array_snapshot_allocate(&other, PIN_I32, NULL, 1);
@@ -1430,15 +1433,6 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         arena_contains(&storage, value->values[2].ptr)
     );
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
-    /* A plain update leaves another storage's array alone, so growing it
-     * cannot leave it pointing into this storage. */
-    pin_value header = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = foreign };
-    pin_value growth[] = { { .u64 = (uint64_t)(uintptr_t)&header },
-                           { .type = PIN_I32, .i = 3 } },
-              done = { .type = PIN_BOOL };
-    const char *error = EXECUTION_array_push_call.value(&storage, growth, 2, &done);
-    REQUIRE(error && strstr(error, "not the local's own") && foreign->count == 1);
-    REQUIRE(!EXECUTION_array_push_call.value(&other, growth, 2, &done) && foreign->count == 2);
     arena_free(&storage);
     arena_free(&other);
     return true;

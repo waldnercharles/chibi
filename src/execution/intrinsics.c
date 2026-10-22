@@ -181,9 +181,9 @@ static bool box(arena *storage, pin_array *array)
     array->stride = 0;
     return true;
 }
-/* Sets `owned` to a local's array, owned by storage and ready to change in
- * place, or returns why it cannot be. */
-static const char *owned_array(arena *storage, pin_value *header, pin_array **owned)
+/* A local's array, owned by storage and ready to change in place; NULL when
+ * it cannot be boxed. */
+static pin_array *owned_array(arena *storage, pin_value *header)
 {
     assert(header && header->container == PIN_CONTAINER_ARRAY);
     if (!header->ptr) {
@@ -205,20 +205,13 @@ static const char *owned_array(arena *storage, pin_value *header, pin_array **ow
     }
     pin_array *array = header->ptr;
     /* A local's array and its layout live in this storage: every store into the
-     * local snapshots there, and a local a function returns is built in its
-     * caller's storage only by updates that run there. Growing another
-     * storage's array here would leave it pointing into this one. The
-     * optional lookup index is rebuilt on demand. */
-    if (!arena_contains(storage, array)) {
-        return "Array is not the local's own";
-    }
+     * local snapshots there. The optional lookup index is rebuilt on demand. */
     if (array->stride && !inline_scalar(array->element_type) && !box(storage, array)) {
-        return "Array exceeds its length limit";
+        return NULL;
     }
     array->buckets = NULL;
     array->bucket_mask = 0;
-    *owned = array;
-    return NULL;
+    return array;
 }
 /* Appends item to an owned array: inline when it is packed and the item fits,
  * otherwise as a boxed copy. Its capacity must already hold it. */
@@ -251,16 +244,12 @@ static const char *array_push(arena *storage, const pin_value *args, int count, 
 {
     assert(count == 2);
     (void)count;
-    pin_array *array = NULL;
-    const char *error = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64, &array);
-    if (error) {
-        return error;
-    }
-    if (array->count == INT_MAX ||
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
+    if (!array || array->count == INT_MAX ||
         pin_array_reserve_owned(storage, array, array->count + 1)) {
         return "Array exceeds its length limit";
     }
-    error = append_item(storage, array, &args[1]);
+    const char *error = append_item(storage, array, &args[1]);
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return error;
 }
@@ -275,10 +264,9 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
         return "Array index out of range";
     }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
-    pin_array *array = NULL;
-    const char *error = owned_array(storage, header, &array);
-    if (error) {
-        return error;
+    pin_array *array = owned_array(storage, header);
+    if (!array) {
+        return "Array exceeds its length limit";
     }
     if (array->stride && !pin_array_set(array, index, &args[2])) {
         return NULL;
@@ -297,14 +285,10 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
 {
     assert(count == 2);
     (void)count;
-    pin_array *array = NULL;
-    const char *owned = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64, &array);
-    if (owned) {
-        return owned;
-    }
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
     const pin_array *items = args[1].ptr;
     int added = items ? items->count : 0;
-    if (added > INT_MAX - array->count ||
+    if (!array || added > INT_MAX - array->count ||
         pin_array_reserve_owned(storage, array, array->count + added)) {
         return "Array exceeds its length limit";
     }

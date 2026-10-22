@@ -1321,11 +1321,12 @@ about 4.4 s of CPU. Two runtime and emitter changes followed:
   about 3.3 s, or 57 billion instructions.
 - A function now builds what it returns in its caller's storage: returned
   literals and variants, and the array locals it returns (result locations).
-  This brought recovery to about 55 billion instructions. 98% of results
+  This brought recovery to about 55.0 billion instructions. 98% of results
   already lay wholly in the callee's storage, but callees allocate about 13
   times their result's size, so handing the callee's storage to the caller
-  instead was ruled out. Updates that grow an array check that it is the
-  storage's own, which costs about 1%.
+  instead was ruled out. A result moves only when the argument-sharing
+  analysis shows nothing but the updates that run in the caller's storage
+  changes what the function builds there.
 
 What remains, in that run's samples:
 - The call-result copy into the caller is about 12%.

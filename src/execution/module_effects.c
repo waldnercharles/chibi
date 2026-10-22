@@ -1677,6 +1677,9 @@ typedef struct
     /* Small nonnegative integer constants a slot or cell holds. */
     int *literals, *cell_literals;
     bool memory, results, text_memory, retyped, unsafe, changed;
+    /* Whether values built in the caller's storage count as the caller's:
+     * then only updates that run there may change them. */
+    bool built;
 } share_flow;
 
 static bool pointer_value(pin_value v, behavior_value_kind kind)
@@ -1829,6 +1832,18 @@ static void share_host(share_flow *s, int pc)
     bool output = inputs;
     int root = SHARE_UNKNOWN;
     uint64_t id = intrinsic(host);
+    if (s->built && id && execution_intrinsic_in_result(id)) {
+        /* What it builds is the caller's; its own update of a built local
+         * may change it. */
+        output = execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_CONSTRUCT ||
+                 execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_UNION_KEEP;
+        for (int k = 0; k < host->result_count; k++) {
+            share_taint(s, &s->cells[host->result_first + k], output);
+            share_set(s, &s->contents[host->result_first + k], SHARE_UNKNOWN);
+            share_set(s, &s->cell_literals[host->result_first + k], SHARE_UNKNOWN);
+        }
+        return;
+    }
     if (!id) {
         const node_access *access = host->access;
         unsigned allowed = NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ |
@@ -2115,12 +2130,13 @@ static int *share_column(int count)
     return column;
 }
 /* One definition's own rules, ignoring what its callees do. Results start
- * tainted: they hold the caller's result cells until written. */
-static bool share_local(const behavior_function *f)
+ * tainted: they hold the caller's result cells until written. With `built`,
+ * what the definition builds in its caller's storage is tainted too. */
+static bool share_local(const behavior_function *f, bool built)
 {
     int slots = acount(f->slots), cells = acount(f->data_values),
         locals = acount(f->locals);
-    share_flow s = { .f = f, .results = true };
+    share_flow s = { .f = f, .results = true, .built = built };
     s.slots = xcalloc((size_t)slots + 1, sizeof *s.slots);
     s.cells = xcalloc((size_t)cells + 1, sizeof *s.cells);
     s.locals = xcalloc((size_t)locals + 1, sizeof *s.locals);
@@ -2166,6 +2182,10 @@ static int by_definition(const void *a, const void *b)
     uintptr_t y = (uintptr_t)(*(behavior_function *const *)b);
     return (x > y) - (x < y);
 }
+bool execution_builds_safely(const behavior_function *f)
+{
+    return share_local(f, true);
+}
 void execution_prepare_argument_sharing(behavior_function *root)
 {
     if (!root || root->argument_sharing != BEHAVIOR_SHARING_UNKNOWN) {
@@ -2180,7 +2200,7 @@ void execution_prepare_argument_sharing(behavior_function *root)
     apush(pending, root);
     for (int at = 0; at < acount(pending); at++) {
         behavior_function *f = pending[at];
-        f->argument_sharing = f->frozen && share_local(f)
+        f->argument_sharing = f->frozen && share_local(f, false)
                                 ? BEHAVIOR_SHARING_PENDING_SAFE
                                 : BEHAVIOR_SHARING_PENDING_COPY;
         for (int i = 0; i < acount(f->calls); i++) {

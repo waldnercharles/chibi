@@ -60,9 +60,11 @@ static inline execution_intrinsic execution_intrinsic_kind(uint64_t id)
 {
     return (execution_intrinsic)(id & 255);
 }
+/* Native capability ids are hashes, so only an intrinsic id carries the bit. */
 static inline bool execution_intrinsic_in_result(uint64_t id)
 {
-    return (id & EXECUTION_INTRINSIC_IN_RESULT) != 0;
+    return (id & ~(EXECUTION_INTRINSIC_IN_RESULT | UINT64_C(255))) == UINT64_C(0x4348494900000000) &&
+           (id & EXECUTION_INTRINSIC_IN_RESULT) != 0;
 }
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;

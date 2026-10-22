@@ -1,5 +1,6 @@
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/service.h"
 #include "execution/wasm_jit.h"
 #include "support/array.h"
@@ -305,6 +306,9 @@ void behavior_function_note_results(behavior_function *f)
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
     }
+    /* A result moves only when nothing but the updates that run in the
+     * caller's storage changes what the function builds there. */
+    f->builds_results = f->builds_results && execution_builds_safely(f);
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)

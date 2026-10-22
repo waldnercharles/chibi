@@ -468,7 +468,7 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
         "--entry",
         "BuildFixture",
         "--timeout-ms",
-        "1000",
+        "10000",
         NULL,
     };
     REQUIRE(tool_run(argv, root, log) == 23);
@@ -489,7 +489,7 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
         "--entry",
         "Absent",
         "--timeout-ms",
-        "1000",
+        "10000",
         NULL,
     };
     REQUIRE(tool_run(missing, root, log) != 0);
@@ -522,7 +522,7 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
         "--entry",
         "Build",
         "--timeout-ms",
-        "1000",
+        "10000",
         NULL,
     };
     REQUIRE(tool_run(core, root, log) == 7);
@@ -541,7 +541,7 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
         "--entry",
         "Build",
         "--timeout-ms",
-        "1000",
+        "10000",
         NULL,
     };
     REQUIRE(tool_run(absent, root, log) != 0);
@@ -625,12 +625,18 @@ static bool default_compiler(const char *host, bool corrupt)
         "--entry",
         "Build",
         "--timeout-ms",
-        "5000",
+        "10000",
         NULL,
     };
     /* The child has no toolchain on PATH and no environment-supplied SDK. */
-    const char *environment[] = { "PATH=/chibi/no-native-toolchain", NULL };
-    chibi_process_capture_result result = capture(argv, environment, 5);
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    chibi_process_capture_result result = capture(argv, environment, 15);
     REQUIRE(result.error == CHIBI_PROCESS_OK);
     REQUIRE(result.status == (corrupt ? 1 : 47));
     REQUIRE(!out.truncated && !err.truncated && !out.size);
@@ -712,6 +718,254 @@ TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_s
     permissions[2] = "u+w";
     REQUIRE(!tool_run(permissions, root, log));
     REQUIRE(valid);
+    return true;
+}
+
+typedef struct
+{
+    char inputs[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
+    char source[PATH_MAX], marker[PATH_MAX], digest[65];
+} startup_fixture;
+
+static bool startup_inputs(startup_fixture *fixture, const char *name)
+{
+    sdk_path(fixture->inputs, root, name);
+    REQUIRE(!mkdir(fixture->inputs, 0700));
+    char log[PATH_MAX], changed[PATH_MAX];
+    sdk_path(log, root, "startup-inputs.log");
+    const char *copy[] = {
+        "cp",
+#ifdef __APPLE__
+        "-cR",
+#else
+        "--reflink=auto",
+        "-R",
+#endif
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        fixture->inputs,
+        NULL,
+    };
+    REQUIRE(!tool_run(copy, root, log));
+    sdk_path(fixture->compiler, fixture->inputs, "compiler");
+    sdk_path(fixture->core, fixture->inputs, "core");
+    sdk_path(changed, fixture->compiler, "package_compiler/Compile.chibi");
+    FILE *file = fopen(changed, "ab");
+    REQUIRE(file);
+    bool written = fputs("\n// Exercise changed-source recovery before Build.\n", file) >=
+                   0;
+    written = !fclose(file) && written;
+    REQUIRE(written);
+    /* This changes a recorded source's bytes, keeping the manifest and seed
+     * intact so startup must recover rather than reject a damaged artifact. */
+    sdk_path(fixture->source, fixture->inputs, "Build.chibi");
+    sdk_path(fixture->marker, root, "startup-authored-ran");
+    tool_write(
+        fixture->source,
+        "package startup\nBuild :: () -> int { "
+        "build.write_file(\"startup-authored-ran\", \"unexpected\"); "
+        "return 0; }\n"
+    );
+    const char *permissions[] = { "chmod", "-R", "a-w", fixture->inputs, NULL };
+    bool frozen = !tool_run(permissions, root, log) &&
+                  sdk_hash(fixture->inputs, fixture->digest);
+    if (!frozen) {
+        permissions[2] = "u+w";
+        assert(!tool_run(permissions, root, log));
+    }
+    REQUIRE(frozen);
+    return true;
+}
+
+static bool startup_interrupted(startup_fixture *fixture, int signal, bool blocked)
+{
+    const char *argv[] = {
+        worker_path,
+        "build-blocked-signals",
+        host_path,
+        "--compiler",
+        fixture->compiler,
+        "--compiler-core",
+        fixture->core,
+        "--root",
+        root,
+        "--source",
+        fixture->source,
+        "--entry",
+        "Build",
+        "--timeout-ms",
+        signal ? "10000" : "50",
+        NULL,
+    };
+    const char *const *launch = blocked ? argv : argv + 2;
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    chibi_process_capture_result result;
+    bool sent = !signal;
+    if (!signal) {
+        result = capture(launch, environment, 2);
+    } else {
+        out = (chibi_process_output){ .data = output, .capacity = sizeof output };
+        err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
+        chibi_process_job job = { 0 };
+        double started = now(), deadline = started + 2;
+        result = chibi_process_begin(&job, launch[0], launch, root, environment, deadline, NULL, &out, &err);
+        if (result.error == CHIBI_PROCESS_OK) {
+            /* Real compiler recovery outlasts this startup window. Signal only
+             * the CLI, leaving its cancellation and cleanup responsibilities
+             * intact; the outer deadline contains a broken implementation. */
+            while (chibi_process_running(&job) && now() < started + .1) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            sent = chibi_process_running(&job) && !kill(job.pid, signal);
+            while (chibi_process_running(&job)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            result = chibi_process_end(&job);
+        }
+    }
+    char after[65], log[PATH_MAX];
+    bool unchanged = sdk_hash(fixture->inputs, after) &&
+                     !strcmp(fixture->digest, after);
+    sdk_path(log, root, "startup-inputs.log");
+    const char *permissions[] = { "chmod", "-R", "u+w", fixture->inputs, NULL };
+    REQUIRE(!tool_run(permissions, root, log));
+    REQUIRE(!unlink(fixture->source));
+    REQUIRE(sent);
+    REQUIRE(result.error == CHIBI_PROCESS_OK && result.status == 1);
+    REQUIRE(!out.size && !out.truncated && !err.truncated);
+    REQUIRE(strstr(errors, signal ? "build process cancelled" : "build process timeout"));
+    REQUIRE(access(fixture->marker, F_OK) == -1 && errno == ENOENT);
+    REQUIRE(unchanged);
+    return true;
+}
+
+TEST_CASE(private_host_cli_deadline_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-timeout"));
+    return startup_interrupted(&fixture, 0, false);
+}
+
+TEST_CASE(private_host_cli_sigint_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-sigint"));
+    return startup_interrupted(&fixture, SIGINT, false);
+}
+
+TEST_CASE(private_host_cli_sigterm_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-sigterm"));
+    return startup_interrupted(&fixture, SIGTERM, false);
+}
+
+TEST_CASE(private_host_cli_deadline_unblocks_inherited_signal_masks)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-blocked"));
+    return startup_interrupted(&fixture, 0, true);
+}
+
+TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
+{
+    char directory[PATH_MAX], source[PATH_MAX], marker[PATH_MAX];
+    char worker_environment[PATH_MAX + 32];
+    snprintf(worker_environment, sizeof worker_environment, "CHIBI_BUILD_WORKER=%s", worker_path);
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+        worker_environment,
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    const int signals[] = { SIGINT, SIGTERM };
+    for (int i = 0; i < 2; i++) {
+        sdk_path(directory, root, i ? "runtime-sigterm" : "runtime-sigint");
+        REQUIRE(!mkdir(directory, 0700));
+        sdk_path(source, directory, "Build.chibi");
+        sdk_path(marker, directory, "started");
+        tool_write(
+            source,
+            "package runtime\nBuild :: () -> int { "
+            "build.run([build.environment(\"CHIBI_BUILD_WORKER\"), "
+            "\"descendant\", build.root(), \"0\", \"0\"]); return 0; }\n"
+        );
+        const char *argv[] = {
+            host_path,
+            "--compiler",
+            CHIBI_SOURCE_ROOT "/tools/compiler",
+            "--compiler-core",
+            CHIBI_SOURCE_ROOT "/packages/core",
+            "--root",
+            directory,
+            "--source",
+            source,
+            "--entry",
+            "Build",
+            "--timeout-ms",
+            "10000",
+            NULL,
+        };
+        out = (chibi_process_output){ .data = output, .capacity = sizeof output };
+        err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
+        chibi_process_job job = { 0 };
+        double deadline = deadline_after(10);
+        chibi_process_capture_result result = chibi_process_begin(
+            &job,
+            argv[0],
+            argv,
+            root,
+            environment,
+            deadline,
+            NULL,
+            &out,
+            &err
+        );
+        bool sent = false;
+        if (result.error == CHIBI_PROCESS_OK) {
+            /* The worker's marker proves authored execution has started and
+             * owns a real descendant before the signal targets only the CLI. */
+            while (chibi_process_running(&job) && access(marker, F_OK)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            sent = chibi_process_running(&job) && !access(marker, F_OK) &&
+                   !kill(job.pid, signals[i]);
+            while (chibi_process_running(&job)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            result = chibi_process_end(&job);
+        }
+        bool diagnostic = !out.size && !out.truncated && !err.truncated &&
+                          strstr(errors, "build process cancelled");
+        const char *probe[] = { worker_path, "cleanup-probe", directory, NULL };
+        chibi_process_capture_result cleanup = capture(probe, environment, .5);
+        bool gone = cleanup.error == CHIBI_PROCESS_OK && !cleanup.status;
+        if (!gone) {
+            /* Contain a failed cleanup assertion before removing its fixture. */
+            FILE *file = fopen(marker, "r");
+            int pid = 0;
+            if (file) {
+                bool recorded = fscanf(file, "%d", &pid) == 1 && pid > 0;
+                fclose(file);
+                pid_t group = recorded ? getpgid(pid) : -1;
+                if (group > 0 && group != getpgrp()) {
+                    kill(-group, SIGKILL);
+                }
+            }
+        }
+        REQUIRE(sent);
+        REQUIRE(result.error == CHIBI_PROCESS_OK && result.status == 1);
+        REQUIRE(diagnostic);
+        REQUIRE(gone);
+    }
     return true;
 }
 
@@ -914,8 +1168,13 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
         options.core = CHIBI_SOURCE_ROOT "/packages/core";
+        options.deadline = deadline_after(10);
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result));
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(stderr, "core package build: %s\n", result.diagnostic);
+        }
+        REQUIRE(invoked);
         /* Each call into core:strings enters the backend again. */
         uint64_t entries = b ? result.counts.sljit_entries
                              : result.counts.bytecode_entries;
@@ -975,7 +1234,7 @@ TEST_CASE(private_programs_import_named_collections)
                            "--entry",
                            "Build",
                            "--timeout-ms",
-                           "1000",
+                           "10000",
                            NULL };
     REQUIRE(tool_run(argv, root, log) == 42);
     const char *malformed[] = { host_path,
@@ -1975,6 +2234,11 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
     RUN_TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_seed);
+    RUN_TEST_CASE(private_host_cli_deadline_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_sigint_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_sigterm_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_deadline_unblocks_inherited_signal_masks);
+    RUN_TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants);
     RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);

@@ -838,8 +838,8 @@ The five required Make groups passed 1,561 cases and 1,568,825 assertions. An
 isolated compiler/core-only recovery with an empty tool PATH reproduced the
 refreshed 11,856,792-byte compiler, SHA-256
 `2fcbdbaf6b999d87b119a8e6195752dc2b5aca18016e9349b9f6ae1a5bfa2b37`.
-Committed-source recovery and hosted cross-platform validation are the remaining
-publication checks. Public game compilation has not switched: StageOne's C catalog export
+Publication also requires committed-source recovery and hosted cross-platform
+validation. Public game compilation has not switched: StageOne's C catalog export
 and assembly, declared components, libraries, systems and projections still need
 their owning cutovers. Native build-host construction, SDK, other native-platform,
 Wasm, Studio and parity/recovery CMake paths remain. This change does not complete

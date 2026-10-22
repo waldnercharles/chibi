@@ -57,6 +57,11 @@ the explicit root. The CLI uses bytecode; the private C invocation API also
 supports SLJIT. Tests verify backend entry counters. The operation deadline
 starts before source I/O and is passed to the build invocation and its children.
 Every CLI invocation supplies a positive `--timeout-ms` argument.
+The CLI's preparation guard also enforces that deadline and handles SIGINT and
+SIGTERM during compiler recovery, loading and program compilation. It exits
+directly while no build child can exist. Before authored execution, the host
+disarms that guard; execution retains the process supervisor's cancellation,
+deadline and child-group cleanup.
 
 Every private native is named under `build.`, as Zig's build API sits under
 `std.Build`: `build.run`, `build.read_file`, `build.join` and so on. The

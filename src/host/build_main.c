@@ -1,4 +1,5 @@
 #include "host/build_host.h"
+#include "host/process.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
@@ -9,10 +10,12 @@
 #include <limits.h>
 #include <math.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* No game/native type packs are admitted by this private tool host. */
@@ -27,9 +30,87 @@ type_catalog_pack type_catalog_pack_at(int)
 }
 
 static volatile sig_atomic_t cancelled;
+static volatile sig_atomic_t preparing = 1;
+static _Atomic double preparation_deadline;
+
 static void cancel(int signal)
 {
-    cancelled = signal;
+    int saved_errno = errno;
+    if (!preparing) {
+        if (signal != SIGALRM) {
+            cancelled = signal;
+        }
+        errno = saved_errno;
+        return;
+    }
+    if (signal == SIGALRM) {
+        double now = chibi_process_now();
+        if (now >= 0 &&
+            now < atomic_load_explicit(&preparation_deadline, memory_order_relaxed)) {
+            errno = saved_errno;
+            return;
+        }
+        if (now < 0) {
+            write(STDERR_FILENO, "build process host failure\n", sizeof "build process host failure\n" - 1);
+            _exit(1);
+        }
+        write(STDERR_FILENO, "build process timeout\n", sizeof "build process timeout\n" - 1);
+        _exit(1);
+    }
+    write(STDERR_FILENO, "build process cancelled\n", sizeof "build process cancelled\n" - 1);
+    _exit(1);
+}
+
+/* The interval only matters if the wall timer fires before the monotonic
+ * deadline, for example across macOS sleep. No timer APIs run in a handler. */
+static bool preparation_start(double deadline)
+{
+    if (!atomic_is_lock_free(&preparation_deadline)) {
+        return false;
+    }
+    atomic_store_explicit(&preparation_deadline, deadline, memory_order_relaxed);
+    struct sigaction action = { .sa_handler = cancel };
+    sigemptyset(&action.sa_mask);
+    sigaddset(&action.sa_mask, SIGINT);
+    sigaddset(&action.sa_mask, SIGTERM);
+    sigaddset(&action.sa_mask, SIGALRM);
+    if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL) ||
+        sigaction(SIGALRM, &action, NULL) ||
+        sigprocmask(SIG_UNBLOCK, &action.sa_mask, NULL)) {
+        return false;
+    }
+    double now = chibi_process_now();
+    if (now < 0) {
+        return false;
+    }
+    double remaining = deadline > now ? deadline - now : 0;
+    time_t seconds = (time_t)remaining;
+    double fraction = (remaining - seconds) * 1000000;
+    suseconds_t micros = (suseconds_t)fraction;
+    if (fraction > micros) {
+        micros++;
+    }
+    if (micros == 1000000) {
+        seconds++;
+        micros = 0;
+    }
+    if (!seconds && !micros) {
+        micros = 1;
+    }
+    struct itimerval timer = { .it_value = { seconds, micros },
+                               .it_interval = { 0, 1000 } };
+    return setitimer(ITIMER_REAL, &timer, NULL) == 0;
+}
+
+/* No authored function or build child has run when this callback is called. */
+static void preparation_end()
+{
+    struct itimerval timer = { 0 };
+    if (setitimer(ITIMER_REAL, &timer, NULL)) {
+        fprintf(stderr, "build process host failure\n");
+        exit(1);
+    }
+    preparing = 0;
 }
 static int usage()
 {
@@ -162,9 +243,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
-    struct sigaction action = { .sa_handler = cancel };
-    sigemptyset(&action.sa_mask);
-    if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL)) {
+    if (!preparation_start(deadline)) {
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
@@ -232,6 +311,7 @@ int main(int argc, char **argv)
         .backend = BEHAVIOR_BYTECODE,
         .deadline = deadline,
         .cancelled = &cancelled,
+        .prepared = preparation_end,
     };
     chibi_build_result result = { 0 };
     bool success = compiler && chibi_build_invoke(&options, &result);

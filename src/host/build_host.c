@@ -868,6 +868,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         failure = "build host binding failed";
         goto done;
     }
+    if (options->prepared) {
+        options->prepared();
+    }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
     result->flow_status = behavior_function_run(entry, &context, options->backend == BEHAVIOR_SLJIT);

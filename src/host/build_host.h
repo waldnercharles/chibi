@@ -44,6 +44,9 @@ typedef struct
     uintptr_t instruction_budget; /* Zero for the host's default. */
     double deadline;              /* Absolute chibi_build_now() seconds. */
     const volatile sig_atomic_t *cancelled;
+    /* Optional caller lifecycle hook, after compilation and binding but before
+     * authored execution or build children. Not called on preparation failure. */
+    void (*prepared)();
 } chibi_build_options;
 
 typedef struct

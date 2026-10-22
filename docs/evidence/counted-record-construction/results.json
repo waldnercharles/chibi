@@ -89,7 +89,7 @@
         "Generated C remains canonical fallback.",
         "Optimizer applies only to proven counted add loops with item reservation <=64 KiB; append/aliases/unproven shapes remain canonical.",
         "Adversarial canonical IR shapes have source-review coverage, not independent mutation tests.",
-        "Installed compiler-off runtime, current Studio rendering/translation and other quarantined suites are not claimed."
+        "Installed compiler-off runtime, current Studio rendering/translation and other full-suite coverage are not claimed."
       ]
     }
   },

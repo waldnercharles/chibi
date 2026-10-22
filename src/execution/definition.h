@@ -142,6 +142,11 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
+    /* Some host call builds a returned local in the caller's storage. */
+    bool builds_results;
+    /* It reads components, or takes a reference that may name one, so a call
+     * binds the execution world. */
+    bool binds_world;
     behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
@@ -262,6 +267,10 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_prepare_borrows(behavior_function *function);
+/* Sets what a frozen function's body implies: builds_results and binds_world. */
+void behavior_function_note_derived(behavior_function *function);
+/* The instructions control may reach next from `pc`; returns their count. */
+int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);
 bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);

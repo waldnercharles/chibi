@@ -1,5 +1,7 @@
 #include "backend.h"
 #include "ecs/ecs.h"
+#include "execution/function.h"
+#include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/module.h"
 #include "execution/status.h"
@@ -34,6 +36,8 @@
 #define TEXT_READS 4096
 #define BYTE_PIECES 4096
 #define BYTE_PIECE 16
+#define RESET_CELLS 200
+#define RESET_COUNT 200000
 
 static const script_catalog_capability run_event = {
     .id = RUN_EVENT,
@@ -345,6 +349,44 @@ TEST_CASE(byte_array_build_benchmark)
     return true;
 }
 
+/* Restores the data of a function with as many cells as the compiler's
+ * largest helpers, as retiring each of its calls does. */
+TEST_CASE(data_reset_benchmark)
+{
+    behavior_function_builder *builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+    pin_value cells[RESET_CELLS];
+    for (int i = 0; i < RESET_CELLS; i++) {
+        cells[i] = (pin_value){ .type = PIN_I32, .i = i };
+    }
+    behavior_function_builder_values(builder, cells, RESET_CELLS);
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    REQUIRE(function);
+    behavior_data_storage *data = NULL;
+    behavior_function_prepare_data(function, NULL, &data);
+    REQUIRE(data);
+    for (int trial = 0; trial < TRIAL_COUNT; trial++) {
+        double start = monotonic_seconds();
+        for (int n = 0; n < RESET_COUNT; n++) {
+            data->values[n % RESET_CELLS].i = -1;
+            behavior_function_reset_data(data);
+        }
+        double elapsed = monotonic_seconds() - start;
+        REQUIRE(data->values[RESET_CELLS - 1].i == RESET_CELLS - 1);
+        printf(
+            "BENCH reset cells=%d trial=%d ns_per_reset=%.3f\n",
+            RESET_CELLS,
+            trial,
+            elapsed * 1e9 / RESET_COUNT
+        );
+    }
+    behavior_function_free_data(data);
+    behavior_function_free(function);
+    return true;
+}
 void test_language_benchmark()
 {
     pu_setup(NULL, cleanup);
@@ -352,5 +394,6 @@ void test_language_benchmark()
     RUN_TEST_CASE(record_row_snapshot_benchmark);
     RUN_TEST_CASE(text_slice_benchmark);
     RUN_TEST_CASE(byte_array_build_benchmark);
+    RUN_TEST_CASE(data_reset_benchmark);
     pu_clear_setup();
 }

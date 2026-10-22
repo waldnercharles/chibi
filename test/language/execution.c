@@ -1384,6 +1384,109 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
     return true;
 }
 
+/* The result bit runs an intrinsic in the caller's storage, and only those
+ * that may build there; union_keep runs only there. It keeps the payload
+ * values its mask names when they are held in storage and copies the rest. */
+TEST_CASE(execution_intrinsics_build_in_result_storage)
+{
+    uint64_t push = execution_intrinsic_id(&EXECUTION_array_push_call),
+             make = execution_intrinsic_id(&EXECUTION_union_make_call),
+             keep = execution_intrinsic_id(&EXECUTION_union_keep_call);
+    REQUIRE(
+        execution_intrinsic_resolve(push | EXECUTION_INTRINSIC_IN_RESULT) == &EXECUTION_array_push_call
+    );
+    REQUIRE(
+        execution_intrinsic_access(push | EXECUTION_INTRINSIC_IN_RESULT) == &EXECUTION_assignment_access
+    );
+    REQUIRE(!execution_intrinsic_resolve(make | EXECUTION_INTRINSIC_IN_RESULT));
+    REQUIRE(!execution_intrinsic_resolve(keep));
+    REQUIRE(
+        execution_intrinsic_resolve(keep | EXECUTION_INTRINSIC_IN_RESULT) == &EXECUTION_union_keep_call
+    );
+    REQUIRE(execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT) == 1);
+    /* A native capability id is a hash, so its bit 0x100 says nothing:
+     * this is Resize's. */
+    REQUIRE(!execution_intrinsic_in_result(UINT64_C(0xcb19ce8d1a7cd77f)));
+    arena storage = { 0 }, other = { 0 };
+    pin_array *held = pin_array_snapshot_allocate(&storage, PIN_I32, NULL, 1),
+              *foreign = pin_array_snapshot_allocate(&other, PIN_I32, NULL, 1);
+    held->items[0] = (pin_value){ .type = PIN_I32, .i = 1 };
+    foreign->items[0] = (pin_value){ .type = PIN_I32, .i = 2 };
+    pin_value args[] = { { .type = PIN_U64, .u64 = 7 },
+                         { .type = PIN_U64, .u64 = 3 },
+                         { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = held },
+                         { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = foreign },
+                         { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = held } },
+              out = { .type = PIN_UNION };
+    REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
+    const pin_union *value = out.ptr;
+    REQUIRE(value->tag == 7 && value->count == 3);
+    /* The first is kept; the second is not the storage's, and the mask leaves
+     * out the third. */
+    REQUIRE(value->values[0].ptr == held);
+    REQUIRE(
+        value->values[1].ptr != foreign &&
+        arena_contains(&storage, value->values[1].ptr)
+    );
+    REQUIRE(
+        value->values[2].ptr != held &&
+        arena_contains(&storage, value->values[2].ptr)
+    );
+    REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
+    /* A value kept once is copied where the mask keeps it again. */
+    args[1].u64 = 5;
+    REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
+    value = out.ptr;
+    REQUIRE(value->values[0].ptr == held && value->values[2].ptr != held);
+    REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
+    /* A union it keeps may hold a value another payload keeps, so it is
+     * copied: here the inner union keeps `held`, as the second payload does. */
+    pin_value inner = out,
+              nested[] = { args[0], { .type = PIN_U64, .u64 = 3 }, inner, args[2] };
+    REQUIRE(!EXECUTION_union_keep_call.value(&storage, nested, 4, &out));
+    value = out.ptr;
+    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr == held);
+    arena_free(&storage);
+    arena_free(&other);
+    /* The cost model reports the copy of each managed payload value the
+     * mask leaves out, and a possible one for a value it keeps. */
+    for (uint64_t mask = 0; mask < 2; mask++) {
+        builder = behavior_function_builder_new();
+        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                               { .type = PIN_U64, .u64 = mask },
+                               { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY } },
+                  made = { .type = PIN_UNION };
+        int host = behavior_function_builder_host(
+            builder,
+            &EXECUTION_union_keep_call,
+            &EXECUTION_assignment_access,
+            inputs,
+            3,
+            &made,
+            1
+        );
+        REQUIRE(behavior_function_builder_host_identity(
+            builder,
+            host,
+            keep | EXECUTION_INTRINSIC_IN_RESULT,
+            execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT)
+        ));
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        execution_cost_summary costs = behavior_function_costs(function);
+        REQUIRE(costs.complete);
+        REQUIRE(((costs.proven & EXECUTION_COST_COPY) != 0) == (mask == 0));
+        REQUIRE(((costs.possible & EXECUTION_COST_COPY) != 0) == (mask == 1));
+        behavior_function_free(function);
+        function = NULL;
+        behavior_function_builder_free(builder);
+        builder = NULL;
+    }
+    return true;
+}
 TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)
 {
     pin_value payload = { .type = PIN_STR, .str = "owned payload" }, value;
@@ -1793,6 +1896,7 @@ void test_language_execution()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
+    RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);
     RUN_TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls);

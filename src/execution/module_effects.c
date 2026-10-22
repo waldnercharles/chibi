@@ -1833,10 +1833,20 @@ static void share_host(share_flow *s, int pc)
     int root = SHARE_UNKNOWN;
     uint64_t id = intrinsic(host);
     if (s->built && id && execution_intrinsic_in_result(id)) {
-        /* What it builds is the caller's; its own update of a built local
-         * may change it. */
+        /* What it builds is the caller's, the array an update of a local
+         * leaves included; such an update may change it again. */
         output = execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_CONSTRUCT ||
                  execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_UNION_KEEP;
+        if (!output) {
+            int updated = s->contents[host->first];
+            if (updated < 0) {
+                share_scatter(s, true);
+            } else {
+                share_taint(s, &s->cells[updated], true);
+                share_set(s, &s->contents[updated], SHARE_UNKNOWN);
+                share_set(s, &s->cell_literals[updated], SHARE_UNKNOWN);
+            }
+        }
         for (int k = 0; k < host->result_count; k++) {
             share_taint(s, &s->cells[host->result_first + k], output);
             share_set(s, &s->contents[host->result_first + k], SHARE_UNKNOWN);

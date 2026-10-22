@@ -1708,6 +1708,42 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     return true;
 }
 
+/* Pushes 2.0 onto the local array `local`, in the caller's storage when
+ * `built`. */
+static void push_item(int local, bool built)
+{
+    int number = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 2 } },
+        false
+    );
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, { .type = PIN_F64 } },
+              done = { .type = PIN_BOOL };
+    int push = behavior_function_builder_host(
+        builder,
+        &EXECUTION_array_push_call,
+        &EXECUTION_assignment_access,
+        headers,
+        2,
+        &done,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_array_push_call) |
+                  (built ? EXECUTION_INTRINSIC_IN_RESULT : 0);
+    assert(behavior_function_builder_host_identity(builder, push, id, execution_intrinsic_abi(id)));
+    int first = behavior_function_builder_host_first(builder, push);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS));
+    put_address(first, host_address(local));
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_F64,
+                                          .left = number,
+                                          .right = host_address(first + 1),
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = push,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+}
 /* A function builds a value in its caller's storage, and may move it there
  * at return, only when nothing but the updates that run there changes it: a
  * plain push onto it or a raw write through it would leave it reaching the
@@ -1718,13 +1754,25 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
     {
         BUILT_PUSH,
         PLAIN_PUSH,
-        RAW_WRITE
+        RAW_WRITE,
+        GROWN_THEN_PLAIN
     };
-    for (int kind = BUILT_PUSH; kind <= RAW_WRITE; kind++) {
+    for (int kind = BUILT_PUSH; kind <= GROWN_THEN_PLAIN; kind++) {
         cleanup();
         builder = behavior_function_builder_new();
         behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
         int local = behavior_function_builder_values(builder, &array_shape, 1);
+        if (kind == GROWN_THEN_PLAIN) {
+            /* A built push puts the empty local's array in the caller's
+             * storage; a plain push would then grow it here. */
+            push_item(local, true);
+            push_item(local, false);
+            emit((behavior_function_instruction){ .op = BF_END });
+            char grown[256];
+            function = behavior_function_builder_finish(builder, grown, sizeof grown);
+            REQUIRE(function && !function->builds_results);
+            continue;
+        }
         int make = behavior_function_builder_host(
             builder,
             &EXECUTION_construct_call,
@@ -1770,35 +1818,7 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
                                                   .left = number,
                                                   .right = first_item(array) });
         } else {
-            pin_value headers[] = { { .type = BF_POINTER_TYPE }, { .type = PIN_F64 } },
-                      done = { .type = PIN_BOOL };
-            int push = behavior_function_builder_host(
-                builder,
-                &EXECUTION_array_push_call,
-                &EXECUTION_assignment_access,
-                headers,
-                2,
-                &done,
-                1
-            );
-            uint64_t id = execution_intrinsic_id(&EXECUTION_array_push_call) |
-                          (kind == BUILT_PUSH ? EXECUTION_INTRINSIC_IN_RESULT : 0);
-            assert(
-                behavior_function_builder_host_identity(builder, push, id, execution_intrinsic_abi(id))
-            );
-            int first = behavior_function_builder_host_first(builder, push);
-            assert(
-                behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS)
-            );
-            put_address(first, host_address(local));
-            emit((behavior_function_instruction){ .op = BF_WRITE,
-                                                  .type = PIN_F64,
-                                                  .left = number,
-                                                  .right = host_address(first + 1),
-                                                  .offset = offsetof(pin_value, d) });
-            emit((behavior_function_instruction){ .op = BF_HOST_CALL,
-                                                  .target = push,
-                                                  .left = BEHAVIOR_FUNCTION_HOST_DATA });
+            push_item(local, kind == BUILT_PUSH);
         }
         emit((behavior_function_instruction){ .op = BF_END });
         char error[256];

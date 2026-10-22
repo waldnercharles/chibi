@@ -441,14 +441,17 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
         }
         /* A function that builds its result in the caller's storage returns it
          * there without a copy. The intrinsics that build there copy into it
-         * everything they store, so a value made there holds nothing of the
-         * callee's own storage. */
+         * everything they store, and builds_results says nothing else changes
+         * what they build, so a value made there holds nothing of the callee's
+         * own storage. A callee that runs in the caller's storage, as with a
+         * collectable payload, makes everything there, so it copies. */
         pin_value *out = &parent->data->values[call.result_first + p];
         const pin_value *result = &context->results[p];
         bool pointer = result->container != PIN_CONTAINER_SINGLE ||
                        result->type == PIN_STRUCT ||
                        result->type == PIN_UNION || result->type == PIN_STR;
         if (frame->function->builds_results && pointer && result->ptr &&
+            context->value_storage != parent->value_storage &&
             arena_contains(parent->value_storage, result->ptr)) {
             out->ptr = result->ptr;
             continue;

@@ -1053,13 +1053,17 @@ static void make_clone()
     }
 }
 
-static void set_up(const char *host)
+/* The host runs the graph; the reference is the configured CMake build the
+ * graph is compared with. */
+static void set_up(const char *host, const char *cmake_build)
 {
-    /* The host sits in the configured build's sdk directory. */
     char *resolved = realpath(host, NULL);
     assert(resolved);
     snprintf(host_path, sizeof host_path, "%s", resolved);
-    snprintf(reference, sizeof reference, "%s", dirname(dirname(resolved)));
+    free(resolved);
+    resolved = realpath(cmake_build, NULL);
+    assert(resolved);
+    snprintf(reference, sizeof reference, "%s", resolved);
     free(resolved);
     strcpy(suite, "/tmp/chibi-graph-XXXXXX");
     assert(mkdtemp(suite));
@@ -1071,13 +1075,46 @@ static void set_up(const char *host)
     read_profile();
 }
 
-void test_build_graph(const char *host)
+void test_build_graph(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(commands_match_cmake);
     RUN_TEST_CASE(links_match_cmake);
     RUN_TEST_CASE(executables_stage_no_headers);
     tool_remove_tree(suite);
+}
+
+/* The entries of a compile database. */
+static size_t commands_in(const char *build_dir)
+{
+    char path[GRAPH_PATH];
+    join(path, build_dir, "compile_commands.json");
+    yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
+    assert(doc);
+    size_t count = yyjson_arr_size(yyjson_doc_get_root(doc));
+    yyjson_doc_free(doc);
+    return count;
+}
+
+/* A run that names a target lists only the compiles it builds, unless
+ * --all-commands asks for every target's, as many as CMake's database. */
+TEST_CASE(all_commands_list_every_target)
+{
+    char build_dir[GRAPH_PATH];
+    join(build_dir, suite, "all commands");
+    const char *const named[] = { "--commands-only", "on", "--target", "chibi_support", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, named) == 0);
+    size_t selected = commands_in(build_dir);
+    const char *const every[] = {
+        "--commands-only", "on", "--target", "chibi_support",
+        "--all-commands",  "on", NULL
+    };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, every) == 0);
+    REQUIRE(
+        selected > 0 && selected < commands_in(build_dir) &&
+        commands_in(build_dir) == commands_in(reference)
+    );
+    return true;
 }
 
 /* The number of files below ours, each equal to the file of the same path
@@ -1209,26 +1246,27 @@ TEST_CASE(language_corpus_lists_as_cmake)
 
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
-void test_build_graph_programs(const char *host)
+void test_build_graph_programs(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(named_programs_build_what_they_run);
+    RUN_TEST_CASE(all_commands_list_every_target);
     tool_remove_tree(suite);
 }
 
 /* A separate route: staging chibi_ctl's headers takes seconds. */
-void test_build_graph_resources(const char *host)
+void test_build_graph_resources(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(resources_install_as_cmake);
     RUN_TEST_CASE(language_corpus_lists_as_cmake);
     tool_remove_tree(suite);
 }
 
 /* A separate route: about ten graph runs over a copied root. */
-void test_build_graph_support(const char *host)
+void test_build_graph_support(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     make_clone();
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
@@ -1237,26 +1275,26 @@ void test_build_graph_support(const char *host)
 }
 
 /* A separate route: reflect's compiles take most of a minute's ceiling. */
-void test_build_graph_reflect(const char *host)
+void test_build_graph_reflect(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
     tool_remove_tree(suite);
 }
 
 /* A separate route: SLJIT's and enkiTS's compiles with sanitizers take
  * seconds. */
-void test_build_graph_archive(const char *host)
+void test_build_graph_archive(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(archive_sources_compile_and_stage);
     tool_remove_tree(suite);
 }
 
 /* A separate route: reflect's run and the codec compile take seconds. */
-void test_build_graph_generated(const char *host)
+void test_build_graph_generated(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

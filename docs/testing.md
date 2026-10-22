@@ -2168,8 +2168,10 @@ introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
 `python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
-build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
-build that configured the tests. It reads that build's profile from
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
+configured CMake build: on macOS, where `make build` uses the graph, the one
+`make graph-reference` configures in `build-cmake`, elsewhere `build`;
+`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
 `CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
 that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
 debug directory, which depends on where a build is), the graph finds the
@@ -2191,7 +2193,9 @@ are compared, and a manual full build links and runs them. About 25 s.
 `--commands-only on --target test_tools`: its link commands name
 `test_tools` and the programs it runs (`policy_worker`, `chibi_ctl`,
 `chibi-compile`, the build and compiler hosts), where CMake writes them, and
-no other test driver. macOS only. About 15 s.
+no other test driver (macOS only). A second case names `chibi_support`:
+its compile database lists only that library's compiles, and with
+`--all-commands on` every target's, as many as CMake's. About 39 s.
 
 `python3 tools/test_policy.py tool build-graph-resources` runs the graph for
 the launcher and `chibi_ctl` with a compiler that always fails: before any

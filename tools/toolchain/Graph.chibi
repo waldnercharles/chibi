@@ -7,7 +7,7 @@ import strings "core:strings"
 // Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
 //   Libraries -- --build DIR [--profile sanitizer|debug|release] [--jobs N]
-//     [--target NAME]... [--commands-only on]
+//     [--target NAME]... [--commands-only on] [--all-commands on]
 // The profile, the Makefile's sanitizer profile unless named, is found on
 // this machine (engine.Discover); these options override what they name:
 //   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
@@ -15,8 +15,9 @@ import strings "core:strings"
 //   --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --third-party DIR --reflect PATH
-// Every path is absolute. Writes BUILD/compile_commands.json and
-// BUILD/link_commands.json, then, unless
+// Every path is absolute. Writes BUILD/compile_commands.json, for every target
+// with --all-commands on, and BUILD/link_commands.json for those it builds,
+// then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
 
@@ -126,7 +127,13 @@ Libraries :: () -> int {
     }
     build.make_directory(build_dir);
     commands := strings.Join([build_dir, "/compile_commands.json"], "");
-    if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, selected))) {
+    // With --all-commands the compile database names every target, as
+    // CMake's does, so editors see the flags of sources a build did not name.
+    listed := selected;
+    if (Option(arguments, "--all-commands", "") == "on") {
+        listed = engine.Targets();
+    }
+    if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, listed))) {
         build.report("graph: writing compile_commands.json failed");
         return 1;
     }

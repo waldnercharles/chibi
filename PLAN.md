@@ -736,9 +736,16 @@ graph writes the build identity (`engine.json`) as
 resources: 213 files, equal to CMake's.
 Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
 `corpus.txt`, every fixture source by absolute path, equal to CMake's.
-Next: moving profile selection from `Build.chibi`'s CMake arguments into the
-graph, which makes `make build` build with it (awaiting the owner's
-decision); then packaging the SDK from the graph's build.
+Slice 24, 2026-10-22: on macOS `make build`, `make build-debug` and `make
+build-release` build with the graph, by profile name, as the owner chose on
+2026-10-22; Linux, the SDK, web and Studio builds keep CMake. `Build.chibi
+third-party` prepares the archives, a missing or older host is rebuilt with
+CMake in `BUILD_DIR-cmake`, and `make graph-reference` configures that tree
+for the build-graph checks. The host protocol rose to 7 for the natives the
+graph uses. A cold sanitizer build took 25 minutes, a no-op about 18 s; every
+admitted check passed against the graph-built tree.
+Next: packaging the SDK from the graph's build, the browser builds and Linux
+(which needs a Linux archive the owner approves).
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

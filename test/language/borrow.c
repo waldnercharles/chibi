@@ -1889,6 +1889,17 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
             function && function->builds_results ==
                             (kind == BUILT_PUSH || kind == VALUE_ARGUMENT)
         );
+        if (kind == RAW_ARGUMENT) {
+            /* Once argument sharing is known, a raw address may reach a callee
+             * that changes no argument, and not one that may. */
+            for (int copying = 1; copying >= 0; copying--) {
+                function->argument_sharing = BEHAVIOR_SHARING_UNKNOWN;
+                helper_function->argument_sharing = copying ? BEHAVIOR_SHARING_COPY
+                                                            : BEHAVIOR_SHARING_SAFE;
+                behavior_function_prepare_borrows(function);
+                REQUIRE(function->builds_results == !copying);
+            }
+        }
     }
     return true;
 }

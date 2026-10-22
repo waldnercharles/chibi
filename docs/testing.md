@@ -2175,11 +2175,11 @@ debug directory, which depends on where a build is), the graph finds the
 rest of its profile on the machine and writes the compile commands of every
 target it owns, including the third-party archive's sources and include
 directories, the options of single sources and C++ and Objective-C sources,
-and each of them (731 on macOS) must equal `compile_commands.json`'s for the same source
+and each of them (745 on macOS) must equal `compile_commands.json`'s for the same source
 in the same target, split as the shell splits it, apart from the object path
 and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (seven on macOS,
-four elsewhere) to equal its executable's `build.ninja` statement, with the
+requires each link command it writes in `link_commands.json` (eleven on macOS,
+eight elsewhere) to equal its executable's `build.ninja` statement, with the
 C++ compiler for an executable CMake links as C++, apart from where objects, the
 output and archives sit. A third builds the `chibi` launcher with a compiler
 that always fails: the headers its libraries staged stay in place, since an

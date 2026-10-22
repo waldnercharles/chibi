@@ -551,8 +551,12 @@ static char *ninja_variable(const char *ninja, const char *name, const char *var
     const char *block = strstr(ninja, head);
     assert(block);
     const char *end = strstr(block + 1, "\n\n");
+    /* A variable the statement does not set is empty, as LINK_LIBRARIES is
+     * for an executable that links no library. */
     const char *at = strstr(block, key);
-    assert(at && (!end || at < end));
+    if (!at || (end && at > end)) {
+        return strdup("");
+    }
     at += strlen(key);
     return strndup(at, strcspn(at, "\n"));
 }
@@ -644,11 +648,11 @@ TEST_CASE(links_match_cmake)
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *name = base(yyjson_get_str(yyjson_obj_get(entry, "output")));
-        /* CMake writes executables to sdk/, bin/ or the build directory; a
-         * bare name may also be a phony alias. */
+        /* CMake writes executables to sdk/, bin/, test/tools/ or the build
+         * directory; a bare name may also be a phony alias. */
         char cmake_path[GRAPH_PATH], head[GRAPH_PATH];
-        const char *const directories[] = { "sdk/", "bin/", "" };
-        for (int i = 0; i < 3; i++) {
+        const char *const directories[] = { "sdk/", "bin/", "test/tools/", "" };
+        for (int i = 0; i < 4; i++) {
             snprintf(cmake_path, sizeof cmake_path, "%s%s", directories[i], name);
             snprintf(head, sizeof head, "\nbuild %s: ", cmake_path);
             if (strstr(ninja, head)) {
@@ -672,12 +676,12 @@ TEST_CASE(links_match_cmake)
         matched,
         yyjson_arr_size(yyjson_doc_get_root(doc))
     );
-    /* reflect, the build host, the compiler host and the launcher, and on
-     * macOS the player, chibi-compile and chibi_ctl. */
+    /* reflect, the build host, the compiler host, the launcher and four test
+     * drivers, and on macOS the player, chibi-compile and chibi_ctl. */
 #ifdef __APPLE__
-    size_t programs = 7;
+    size_t programs = 11;
 #else
-    size_t programs = 4;
+    size_t programs = 8;
 #endif
     REQUIRE((size_t)matched == programs && yyjson_arr_size(yyjson_doc_get_root(doc)) == programs);
     yyjson_doc_free(doc);

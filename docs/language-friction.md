@@ -66,6 +66,10 @@ operations from remaining limits.
   it must be carried through binding and ABI validation. Purity alone does not
   prove that a native callback cannot retain an argument, and a cache cannot
   assume external code leaves boxed element headers unchanged.
+- Action dispatch currently validates native arguments in the backend and
+  again in the public action helper, with no callback between them. A follow-up
+  can remove the duplicate walk while preserving direct-helper validation and
+  failure classification. This is separate from the measured array-index cost.
 
 Decision (2026-10-22): pointer assignment shares a target, value assignment
 copies a value, and unreachable cycles are collected automatically. Users do

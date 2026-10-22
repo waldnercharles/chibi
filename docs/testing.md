@@ -2190,12 +2190,12 @@ executable stages none. Only `reflect` is linked by a test; the other links
 are compared, and a manual full build links and runs them. About 25 s.
 
 `python3 tools/test_policy.py tool build-graph-programs` runs the graph with
-`--commands-only on --target test_tools`: its link commands name
-`test_tools` and the programs it runs (`policy_worker`, `chibi_ctl`,
-`chibi-compile`, the build and compiler hosts), where CMake writes them, and
-no other test driver (macOS only). A second case names `chibi_support`:
+`--commands-only on --target test_tools --target chibi`: its link commands
+name them and the programs they run (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
+writes them, and no other test driver (macOS only). A second case names `chibi_support`:
 its compile database lists only that library's compiles, and with
-`--all-commands on` every target's, as many as CMake's. About 39 s.
+`--all-commands on` every target's, on macOS as many as CMake's. About 39 s.
 
 `python3 tools/test_policy.py tool build-graph-resources` runs the graph for
 the launcher and `chibi_ctl` with a compiler that always fails: before any

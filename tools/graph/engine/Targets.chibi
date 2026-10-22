@@ -3895,8 +3895,11 @@ pub ArtifactFormats :: () -> string[] {
 
 // The programs an executable runs, built with it as CMake's add_dependencies
 // builds them: test_tools runs the workers and tools whose paths it compiles
-// in.
+// in, and the launcher the compiler and player beside it.
 pub Runs :: (target: string) -> string[] {
+    if (target == "chibi") {
+        return ["chibi-compile", "chibi-player"];
+    }
     if (target == "test_tools") {
         return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
     }

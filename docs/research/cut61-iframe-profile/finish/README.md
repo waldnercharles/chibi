@@ -94,6 +94,12 @@ remain 38, and no extra `OnUpdate` is added by the stable fitted refresh. The
 inner Context sum/residual retains the original **5 ns** rounding tolerance.
 `analysis.json` records successful offline reconciliation.
 
+Published test logs omit retired test-policy banners and ceiling metadata.
+Nonexecution and rejected invocations state their recorded outcomes. Test case
+identities, results, measured durations and source/build identities are retained,
+including in the compressed logs. This normalization does not add runtime or
+browser coverage.
+
 Historical forms at the frozen source, after a separate build (the optional
 blank-document profiling loop has since been retired):
 

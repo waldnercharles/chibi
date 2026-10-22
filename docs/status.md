@@ -42,7 +42,7 @@ These are recorded results, not tests re-run by this documentation change.
   on GLES 3.2. This is a recorded focused run; GLES does not establish browser
   product acceptance, and this audit did not re-run either backend.
 - [Studio PR #53](https://github.com/waldnercharles/chibi-studio/pull/53) reports
-  all 16 acceptance selectors at `243fdc6`, each below 60 seconds. At `64c0b3b`
+  all 16 acceptance selectors at `243fdc6`. At `64c0b3b`
   it re-ran source-edit, code-keys, kdl-keys, code-followups, code-glyphs and smoke.
   Neither report establishes all interactions on `d10222d`.
 - Engine [release run 38099495996](https://github.com/waldnercharles/chibi/actions/runs/38099495996)

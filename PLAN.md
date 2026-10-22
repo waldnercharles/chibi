@@ -873,15 +873,14 @@ runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
 so the owner's instruction was to run the workflow once this branch reached
 `main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
-job ("recent account payments have failed or your spending limit needs to be
-increased"). At the owner's direction the site was instead built locally from
+job because hosted execution was unavailable. At the owner's direction the site was instead built locally from
 `main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
 the Pages source switched back to that branch. The commit, `0b17fddde`,
 replaces the old browser build, whose editor now lives on chibi-studio's own
 Pages site. To publish again, build the site from `main`, commit `build/docs`
 with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
 `gh-pages`, and push. Returning to the workflow means switching the Pages
-source back to GitHub Actions once billing allows. No published page uses an
+source back to GitHub Actions once hosted execution is available. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -1051,7 +1050,7 @@ Host status on 2026-10-20:
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
   On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
   readied M6, with these runs as M5's open gate (see M6).
-  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+  - They run when CI is back (disabled since 2026-09-25) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero
     remains the normal compiler.

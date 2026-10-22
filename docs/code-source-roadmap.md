@@ -1,7 +1,7 @@
 # Behavior code and declarative assets
 
-[CUT-70](https://linear.app/cute-engine/issue/CUT-70/replace-kdl-with-canonical-code-assets-and-first-class-graph-authoring)
-and [CUT-71](https://linear.app/cute-engine/issue/CUT-71/build-the-shared-c-code-frontend-and-direct-behavior-graph)
+CUT-70
+and CUT-71
 provide the shared native source frontend and direct behavior graph authoring.
 The current requirement keeps declarative content in KDL and makes readable
 `.chibi` the authority for executable behavior. LuaJIT is not part of this

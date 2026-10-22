@@ -247,9 +247,12 @@ Embed :: (source_root: string, build_dir: string, target: string) {
     }
 }
 
-// A source define with the values CMake substitutes: {source_root},
-// {build_type}, and {sha256:PATH} for a file's SHA-256.
+// A define with the values CMake substitutes: {source_root}, {build_type},
+// and {sha256:PATH} for a file's SHA-256.
 Expand :: (source_root: string, profile: Profile, define: string) -> string {
+    if (build.before(define, "{") == define) {
+        return define;
+    }
     text := build.replace(define, "{source_root}", source_root);
     text = build.replace(text, "{build_type}", profile.build_type);
     if (build.before(text, "{sha256:") == text) {
@@ -442,7 +445,7 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
                      language: string) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
-        flags.append(Join(["-D", define]));
+        flags.append(Join(["-D", Expand(source_root, profile, define)]));
     }
     flags.extend(ProfileDefines(target, profile));
     for (define in SourceDefines(target, file)) {

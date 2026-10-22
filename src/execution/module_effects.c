@@ -2057,6 +2057,15 @@ static void share_instruction(share_flow *s, int pc)
             const behavior_function_invocation *call = &f->calls[i->left];
             const behavior_function *callee = call->function;
             s->unsafe |= call->task;
+            /* A value argument reaches the callee as a copy, or shared with
+             * one that changes none; a raw address to what this definition
+             * builds would let the callee write through it. */
+            for (int k = 0; s->built && k < call->count; k++) {
+                const behavior_function_data_value *argument = &f->data_values[call->first + k];
+                s->unsafe |= share_cell(s, call->first + k) &&
+                             (argument->kind != BEHAVIOR_VALUE ||
+                              argument->initial.type == BF_POINTER_TYPE);
+            }
             /* Authored returns copy managed values; raw pointers keep their bits. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;

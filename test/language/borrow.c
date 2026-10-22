@@ -1755,9 +1755,11 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
         BUILT_PUSH,
         PLAIN_PUSH,
         RAW_WRITE,
-        GROWN_THEN_PLAIN
+        GROWN_THEN_PLAIN,
+        VALUE_ARGUMENT,
+        RAW_ARGUMENT
     };
-    for (int kind = BUILT_PUSH; kind <= GROWN_THEN_PLAIN; kind++) {
+    for (int kind = BUILT_PUSH; kind <= RAW_ARGUMENT; kind++) {
         cleanup();
         builder = behavior_function_builder_new();
         behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
@@ -1772,6 +1774,34 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
             function = behavior_function_builder_finish(builder, grown, sizeof grown);
             REQUIRE(function && !function->builds_results);
             continue;
+        }
+        if (kind == VALUE_ARGUMENT || kind == RAW_ARGUMENT) {
+            /* A helper takes the built array as a copied value, or as a raw
+             * address it could write through. */
+            behavior_function_builder *outer = builder;
+            builder = behavior_function_builder_new();
+            pin_value raw = { .type = BF_POINTER_TYPE };
+            behavior_function_builder_signature(
+                builder,
+                kind == RAW_ARGUMENT ? &raw : &array_shape,
+                1,
+                NULL,
+                0,
+                NULL,
+                0
+            );
+            if (kind == RAW_ARGUMENT) {
+                assert(
+                    behavior_function_builder_kind(builder, BEHAVIOR_BANK_ARGUMENT, 0, BEHAVIOR_ADDRESS)
+                );
+            }
+            emit((behavior_function_instruction){ .op = BF_END });
+            char helper[256];
+            behavior_function_free(helper_function);
+            helper_function = behavior_function_builder_finish(builder, helper, sizeof helper);
+            behavior_function_builder_free(builder);
+            builder = outer;
+            REQUIRE(helper_function);
         }
         int make = behavior_function_builder_host(
             builder,
@@ -1805,7 +1835,36 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
                                              .value = { .type = PIN_F64, .d = 2 } },
             false
         );
-        if (kind == RAW_WRITE) {
+        if (kind == VALUE_ARGUMENT || kind == RAW_ARGUMENT) {
+            pin_value raw = { .type = BF_POINTER_TYPE };
+            int call = behavior_function_builder_call(
+                builder,
+                helper_function,
+                kind == RAW_ARGUMENT ? &raw : &array_shape,
+                1,
+                NULL,
+                0
+            );
+            int argument = behavior_function_builder_call_first(builder, call);
+            if (kind == RAW_ARGUMENT) {
+                assert(
+                    behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, argument, BEHAVIOR_ADDRESS)
+                );
+            }
+            int array = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = host_address(local),
+                                                 .offset = offsetof(pin_value, d) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = array,
+                                                  .right = host_address(argument),
+                                                  .offset = offsetof(pin_value, d) });
+            emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+        } else if (kind == RAW_WRITE) {
             int array = value(
                 (behavior_function_instruction){ .op = BF_LOAD,
                                                  .type = BF_POINTER_TYPE,
@@ -1826,7 +1885,10 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
         if (!function) {
             fprintf(stderr, "built results %d: %s\n", kind, error);
         }
-        REQUIRE(function && function->builds_results == (kind == BUILT_PUSH));
+        REQUIRE(
+            function && function->builds_results ==
+                            (kind == BUILT_PUSH || kind == VALUE_ARGUMENT)
+        );
     }
     return true;
 }

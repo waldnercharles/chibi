@@ -152,9 +152,16 @@ Passed on macOS arm64 in this checkout, using the existing pico-unit dispatchers
   byte and agrees on the sample programs and floating-point literals (16,775
   assertions; 305.6 seconds in this run).
 
-Pending: regeneration/recovery of the checked-in compiler artifact.
+- Artifact generation and isolated recovery pass. Recovery ran with only the
+  runtime executable, compiler sources and core packages, with an empty
+  environment and unavailable external compiler commands. It reproduced all
+  13,104,075 artifact bytes and the recorded SHA-256.
+
 Prepared ABI is 21; bootstrap capability version is 6,
 while minimum remains 2 because the compiler sources do not use pointer syntax.
+The artifact manifest records source checkpoint `36f3e9350145242e0c0fc48f9f2e459dbd7c14ef`.
+Local test logs and diagnostic scratch remain in `.chibi/managed-pointers/`;
+the temporary seed and isolated recovery copies were removed after validation.
 
 Use the existing C pico-unit dispatchers and checks appropriate to each changed
 contract. The owner revoked the global test-duration ceiling on 2026-10-22;

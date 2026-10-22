@@ -20,6 +20,14 @@
 #define COMPILER_HOST_MAX_BATCH 64
 
 typedef struct compiler_host compiler_host;
+/* Diagnostic identity copies at most 511 bytes and reports truncation. Source
+ * positions are the authored compiler's byte ranges and one-based coordinates. */
+typedef struct
+{
+    bool present, truncated;
+    int start, end, line, column;
+    char asset[512];
+} compiler_host_source;
 typedef struct
 {
     char *json; /* malloc-owned, byte-preserving JSON; release with free(). */
@@ -27,6 +35,7 @@ typedef struct
     int flow_status;
     behavior_run_counts counts;
     char diagnostic[256];
+    compiler_host_source source;
 } compiler_host_result;
 
 typedef struct
@@ -36,18 +45,24 @@ typedef struct
     int flow_status;
     behavior_run_counts counts;
     char diagnostic[256];
+    compiler_host_source source;
 } compiler_host_bytes;
 
 /* Private runtime-only host. Loads a closed target-compatible prepared closure;
  * no source compilation/discovery occurs. Artifact bytes may retire on return.
  * Only text, arrays and the external JSON/raw-syntax bridges are admitted. */
 compiler_host *compiler_host_load(const void *, size_t, behavior_backend, char *error, size_t error_size);
+/* Pure value profile links only text/array capabilities. Raw syntax and JSON
+ * parsing remain capabilities of the separately loaded compiler artifact. */
+compiler_host *compiler_host_load_values(const void *, size_t, behavior_backend, char *, size_t);
 void compiler_host_free(compiler_host *);
 /* Compile's last six arguments for this host, which a compile for it takes:
  * the value layout, prepared ABI, instruction names, the natives it may call
  * (data functions with no flow, outcomes or suspension), their ports, and each
  * native's identity and signature ABI. Malloc-owned JSON; release with free(). */
 char *compiler_host_target_json(const compiler_host *, size_t *length);
+char *compiler_host_values_target_json(size_t *length, char *, size_t);
+char *compiler_host_compiler_target_json(size_t *length, char *, size_t);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);

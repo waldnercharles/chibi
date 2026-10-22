@@ -1,9 +1,9 @@
 # Declarative SDF modeling
 
-Models are editable KDL construction graphs stored in `content/models`. Their
+Models are editable compiled Chibi construction graphs stored in `content/models`. Their
 asset domain is `model`. The compiler derives a distance program, conservative
 local bounds, parameters, dependencies, and named part identities. The authored
-graph remains the source; no generated shape KDL is saved beside it.
+graph remains the source; no generated shape compiled Chibi is saved beside it.
 
 The validation sections below record earlier implementation revisions and do not
 verify the current checkout. Stages 1–6 passed their native build, focused modeling, public authoring,
@@ -15,7 +15,7 @@ does not establish backend readiness or target performance.
 
 ## Authoring and binding
 
-Edit saved model, material, prototype and scene KDL in the project, or use
+Edit saved model, material, prototype and scene compiled Chibi in the project, or use
 Studio. Inspect the native capability catalog before choosing nodes; the
 controller's `inspect_graph` and `validate_asset` operations inspect and compile
 saved construction. See the [saved-file workflow](runtime-authoring.md) for
@@ -105,7 +105,7 @@ alone does not make every combination of radii or offsets valid.
 The shared `Set Shape Parameter` behavior node updates one entity's shape/model
 parameter. It validates the proposed parameter snapshot and derived bounds
 before accepting the change. Public uniform changes reuse geometry code;
-structural edits recompile. `Shader.parameters` is a KDL object value in
+structural edits recompile. `Shader.parameters` is a compiled Chibi object value in
 a reflected string field. `shape.<name>` and `material.<name>` disambiguate the
 two binding namespaces. Read the public parameter names returned by
 `inspect_graph` rather than inventing flattened instance names.

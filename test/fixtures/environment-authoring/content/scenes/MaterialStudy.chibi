@@ -1,0 +1,45 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("MaterialStudy")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("MaterialStudyCamera"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Materials")),
+                    data.Field.Named("prototype", data.Value.Text("MaterialStudyWorld"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Solid sample")),
+                    data.Field.Named("prototype", data.Value.Text("MaterialSpecimen")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(115.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Cut sample")),
+                    data.Field.Named("prototype", data.Value.Text("MaterialSpecimen")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(-120.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([
+                        data.Value.Text("CutMaterial")
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

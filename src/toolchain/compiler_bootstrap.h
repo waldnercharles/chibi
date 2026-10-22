@@ -8,12 +8,13 @@
  * of the stage-one package compiler that compiles the compiler sources to
  * itself. bootstrap.json records its format, its bootstrap version, the
  * revision and checksums of the sources it compiles, its own checksum and the
- * target it was compiled for. The sources' bootstrap.kdl names the version a
- * compiler built from them has and the oldest version that can compile them. */
+ * target it was compiled for. package_compiler/Bootstrap.chibi supplies these
+ * versions through the compiled BootstrapContract function. Recovery checks the
+ * artifact metadata before loading, then the current contract after compilation. */
 typedef struct
 {
     const char *folder;   /* The artifact. */
-    const char *compiler; /* The compiler sources, holding bootstrap.kdl. */
+    const char *compiler; /* The compiler sources, including Bootstrap.chibi. */
     const char *core;     /* The core collection the sources import. */
     const char *seed;     /* write: the seed's closure and arguments. */
     const char *revision; /* write: the sources' revision, recorded as given. */
@@ -29,8 +30,9 @@ bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t si
 /* Recovers the compiler from the artifact and the sources on disk. When the
  * sources are those it recorded, the artifact must compile them to its own
  * bytes; otherwise the compiler it compiles must compile them to itself. An
- * unknown format, a damaged closure, another target or a version older than
- * the sources' minimum is rejected first. False with why; on success, report
+ * unknown format, invalid metadata, a damaged closure or another target is
+ * rejected before compilation. The recovered contract's minimum is checked
+ * before accepting or writing the result. False with why; on success, report
  * says what was recovered, and the recovered compiler is written to `output`
  * when there is one. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);

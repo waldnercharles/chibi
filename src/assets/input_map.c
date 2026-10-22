@@ -1,7 +1,7 @@
 #include "assets/input_map.h"
 
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
@@ -92,7 +92,7 @@ bool input_map_read(const char *text, input_action **out, char *error, size_t si
 {
     *out = NULL;
     char message[192];
-    av_doc *document = asset_text_read(text, message, sizeof message);
+    av_doc *document = asset_document_read(text, message, sizeof message);
     if (!document) {
         return fail(error, size, NULL, message);
     }
@@ -172,7 +172,7 @@ char *input_map_write(const input_action *map)
             av_obj_add_bool(document, action, "firing", true);
         }
     }
-    char *text = asset_text_write(root);
+    char *text = asset_document_write(root);
     av_doc_free(document);
     return text;
 }

@@ -1,4 +1,0 @@
-name "Lighting"
-components {
-    HRC2D ambient=0.25 intensity=1.0 resolution=0.5
-}

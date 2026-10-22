@@ -299,8 +299,8 @@ unrecorded, changed, linked and oversized files. The resource pin covers the
 Studio source project at consumer base `d10222dc`; these routes require a Studio
 build containing the matching new selectors.
 
-Restore `projects/studio/project.kdl` from `CHIBI_STUDIO_SOURCE` into
-`$CHIBI_STUDIO_BUILD/share/chibi/studio/project.kdl` before each invocation.
+Restore `projects/studio/project.chibi` from `CHIBI_STUDIO_SOURCE` into
+`$CHIBI_STUDIO_BUILD/share/chibi/studio/project.chibi` before each invocation.
 Studio migrates the build copy on startup, so a second invocation otherwise fails
 the unchanged-resource preflight. The engine route removes its disposable user
 project after every run. See Studio's `tests/acceptance/README.md` for the exact

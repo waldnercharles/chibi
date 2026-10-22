@@ -1,6 +1,0 @@
-name "Target"
-components {
-    Appearance border_color=0x72ead4aa border_width=1.0 color=0xffffff00 height=48.0 layer=4 shape="Circle" width=48.0
-    GlobalBinding name="DigTarget"
-    (object)Transform
-}

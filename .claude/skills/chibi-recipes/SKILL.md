@@ -22,7 +22,7 @@ reusable capability:
    only for a slider whose endpoints are not semantic limits. Native writes
    through row pointers must call `ecs_component_modified` before publication.
    Give it a Properties tab or icon
-   in `src/authoring/engine_components.kdl`.
+   in `src/authoring/engine_components.chibi`.
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit
    that row with the header change; never edit the ID by hand. Resolve a
@@ -30,7 +30,7 @@ reusable capability:
 3. Read the component where it acts: a system in `src/runtime`, or script
    through the generated get/set. Keep it optional, so scenes without it
    still work.
-4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
+4. Use it in a `test/fixtures/feature-coverage` scene or prototype (component object key
    `<Name>`) and cover its behavior with a pico_unit case.
    `make test-projects` fails until the component is used there or listed in
    that fixture's `coverage-gaps.txt` with a reason.
@@ -59,14 +59,18 @@ The smallest complete example is Play Sound:
 ## Add a test scene or scenario
 
 1. Pick the fixture project under `test/fixtures` that matches the area, or
-   add one with `project.kdl` (`version`, `name`, `content`, `start_scene`)
+   add one with `project.chibi` (`version`, `name`, `content`, `start_scene`)
    and a `content/` tree. Don't add game rules to engine fixtures; keep
    content minimal and independent of any one game. A scene that exercises
    an engine feature area belongs in `test/fixtures/feature-coverage`, where
    `make test-projects` runs every scene for four frames.
-2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
-   of `- name=... prototype=...`) and the prototypes it uses. A scenario in
-   `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
+2. Add `content/scenes/<Name>.chibi` as an ordinary module importing
+   `game:assets` and exporting `Build() -> byte[]`. Return `data.Encode(...)`
+   with the scene's version, name and entities; `data.Scene` and
+   `data.EntityDefinition.Named` provide typed family constructors. Add the
+   prototypes it names. A module in `content/scenarios/<Name>.chibi` uses
+   `data.Scenario` to name the scene, frame count and input keys. The complete
+   examples are in `docs/examples.md` and `docs/runtime-authoring.md`.
 3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
    then a `validate_asset` request per changed asset.
 4. Run it bounded. A scene:
@@ -76,46 +80,28 @@ The smallest complete example is Play Sound:
    Check `behavior_failures` and the state evidence. Keep frame counts
    small; the 60-second policy applies.
 
-## Change saved projects (migration)
+## Change saved project contracts
 
-Opening a project saved at an older version (`chibi_project_open`) upgrades
-it in place, and `chibi_ctl --migrate` does the same explicitly. The
-`validate_project` operation refuses an older project until one of them has
-run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
+Current source projects use manifest version 33. They compile ordinary Chibi
+asset modules; earlier document parsers and automatic source migrations are
+retired. `--migrate` validates the current baseline rather than recovering an
+older source format.
 
-Bump the version only when you can name a project in this repository or
-`chibi-studio` that would otherwise load wrong or fail, and the step would
-rewrite it. Skip the steps below for additive changes, a
-contract no project uses yet, a change to what the engine does with a value
-(a physics or rendering fix), or old data that loading already handles (a step
-that would only write what the runtime does anyway). The PR then says how to
-fix a hand-made project.
-
-1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
-   that upgrades the previous version to the `switch` in
-   `src/assets/project_migrate.c`. Steps are idempotent and stage every
-   source before replacing any. After each step the manifest's `migrated`
-   node records the version the sources reached, so a rerun after a later
-   failure resumes there; only a step interrupted while replacing runs again.
-2. Cover the step with a pico_unit case that migrates a small old-format
-   source and checks the result (see `program_version_11_references_migrate_to_values`
-   in `test/language/program.c`).
-3. Migrate every project in this repository with
-   `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
-   under `test/fixtures`.
-4. Run `chibi_ctl --format` on each migrated project and compile it with
-   `chibi-compile` to prove it still loads.
-
-Don't open version-bump PRs in other repositories (`chibi-studio`, games).
-Their projects may lag `main`: Studio, `chibi`, `chibi-compile` and `chibi
-export` upgrade an older project when they open it, and Studio CI opens
-Studio's projects against engine `main` on every run. A lagging project takes
-the new version in the next PR that changes it for another reason. Change
-another repository first only when a step stops on something it can't rewrite
-(a removed component a script names): make that edit work with the current
-engine, merge it before the engine PR, and leave its version number alone.
-Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one case that needs those
-projects migrated first.
+1. Identify an existing project in this repository or `chibi-studio` that the
+   contract change would make load wrong or fail. Skip a version bump for an
+   additive feature or an unused contract; explain any manual fix in the PR.
+2. Implement the change in authored Chibi when it is compiler/schema/authoring
+   policy. Keep native code limited to runtime facilities and integration.
+3. When a bump is required, change `CHIBI_PROJECT_VERSION` and convert affected
+   source modules, nested configuration values and references together. Preserve
+   ordered values, integer widths, scalar types and authored computations. Any
+   temporary conversion tool is removed from the final change.
+4. Cover the changed contract through the production compiler/value path using a
+   bounded admitted fixture. Format and compile each affected project under the
+   validation policy in `docs/testing.md`.
+5. Coordinate Studio/game conversions before raising the oldest supported source
+   version. Do not create a separate PR that only changes another repository's
+   version number.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

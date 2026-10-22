@@ -1,6 +1,0 @@
-name "Glow"
-components {
-    Appearance color=0x60f0d0ff height=3.0 layer=2 shape="Circle" width=3.0
-    Material albedo=0x60f0d0ff emission_color=0x60f0d0ff emission_intensity=0.15 emission_multiplier=1.0 scene=0x60f0d0ff
-    (object)Transform
-}

@@ -1,5 +1,8 @@
 # Gas-grid activation IDs: accepted specialization, rejected alternatives
 
+> Historical record: these measurements and plans describe a retired asset format.
+> Current authoring uses ordinary compiled Chibi modules.
+
 **Decision:** retain the specialized gas deposition change at `4490156b97d7345f676842d981f202cecd93b1c1`, now verified on `origin/main`. The change reuses integer IDs already produced while seeding each particle's 5×5 gas-grid halo. Bilinear deposition reads those IDs rather than repeating hash lookups for the same stencil cells. The source change is limited to `src/runtime/material_flow.c` and its tests in `test/runtime/materials.c`.
 
 This is a scoped native gas-flow kernel result. It does not establish a general fluid-index win, a whole-frame or tail-latency improvement, or a GPU/web speedup. The separate unused-index skip and generic-map candidates remain rejected as defaults.
@@ -50,7 +53,7 @@ The one-pass shared-map experiment is an older, independent source pair: `e0c766
 
 ## Correctness and limits
 
-The accepted candidate passed native `make test`, the native, scalar and worker material suites, and eight same-candidate native/scalar/four-worker parity cases. The independent correctness audit checked eight cases, 66 responses, 530 migrated asset entries, 2,097 source fingerprints and 11 artifacts. These checks establish the audited behavior and parity for those cases; they do not establish bitwise trajectories against the old implementation. Short-profile results establish cross-platform hashes and counters, without separate short endpoint replays. The current baseline and candidate use migrated KDL assets; migration provenance is retained separately from these same-version checks.
+The accepted candidate passed native `make test`, the native, scalar and worker material suites, and eight same-candidate native/scalar/four-worker parity cases. The independent correctness audit checked eight cases, 66 responses, 530 migrated asset entries, 2,097 source fingerprints and 11 artifacts. These checks establish the audited behavior and parity for those cases; they do not establish bitwise trajectories against the old implementation. Short-profile results establish cross-platform hashes and counters, without separate short endpoint replays. The current baseline and candidate use migrated the former document format assets; migration provenance is retained separately from these same-version checks.
 
 An independent native ASan/UBSan coordinate oracle also checked pre-pressure deposition and mass/momentum against the original accumulation order. The tested gas source and support bytes match the accepted slice; pressure and full trajectories remain covered only by the stated scene checks.
 

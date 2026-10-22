@@ -2,7 +2,7 @@
 
 > Historical implementation record. Commands, MCP recipes, helper scripts and
 > validation results below describe the recorded revision. The MCP product and
-> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
 > admitted checks. These results do not verify the current checkout.
 
@@ -17,7 +17,7 @@ The reference is [Mike W.'s Polaroid OneStep photograph](https://commons.wikimed
 licensed CC BY 2.0. The full attribution and original image are in
 [the reference folder](../projects/modeling_lab/reference/README.md).
 
-The saved [PolaroidOneStep model](../projects/modeling_lab/content/models/PolaroidOneStep.kdl)
+The saved [PolaroidOneStep model](../projects/modeling_lab/content/models/PolaroidOneStep.chibi)
 is a construction graph: 154 authored nodes, 26 named parts, 10 material slots,
 and two public parameters. It compiles to 903 distance nodes and 982 hit nodes
 within the existing 1,024-node limits. Scale and Lens Radius remain editable.
@@ -28,7 +28,7 @@ photograph. Hidden surfaces are inferred.
 
 The former `projects/modeling_lab/author-polaroid.mjs` recipe reproduced the asset from an empty project using 419 graph operations split at
 complete-part boundaries under the existing 128-operation request limit.
-The final independent reproduction produced byte-identical model KDL. All 17
+The final independent reproduction produced byte-identical model compiled Chibi. All 17
 camera-family assets matched semantically; four differed only in scene component
 order or generated expression function IDs. Both generated and saved projects
 passed validation and canonical formatting checks. Evidence:

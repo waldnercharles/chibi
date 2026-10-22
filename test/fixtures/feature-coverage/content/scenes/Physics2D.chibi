@@ -1,0 +1,38 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Physics2D")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Ball")),
+                    data.Field.Named("prototype", data.Value.Text("Ball")),
+                    data.Field.Named("behaviors", data.List([
+                        data.Value.Text("PhysicsProbe")
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Wall")),
+                    data.Field.Named("prototype", data.Value.Text("Wall"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Spinner")),
+                    data.Field.Named("prototype", data.Value.Text("Spinner")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Joint", data.Object([
+                            data.Field.Named("other", data.Value.Text("Wall"))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Gravity")),
+                    data.Field.Named("prototype", data.Value.Text("Gravity"))
+                ])
+            ]))
+        ])
+    );
+}

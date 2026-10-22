@@ -1,0 +1,24 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Drone")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Body", data.Object([
+                    data.Field.Named("type", data.Value.Text("Kinematic"))
+                ])),
+                data.Field.Named("Collider", data.Object([
+                    data.Field.Named("category", data.Value.UInt(2)),
+                    data.Field.Named("mask", data.Value.UInt(2)),
+                    data.Field.Named("radius", data.Value.Real(4.0))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(8.0))
+                ]))
+            ]))
+        ])
+    );
+}

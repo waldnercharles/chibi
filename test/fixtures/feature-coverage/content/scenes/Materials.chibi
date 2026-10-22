@@ -1,0 +1,25 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Materials")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("CoolSystem")),
+                    data.Field.Named("prototype", data.Value.Text("CoolSystem"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("behaviors", data.List([
+                        data.Value.Text("MaterialProbe")
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

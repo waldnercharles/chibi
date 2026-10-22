@@ -2,7 +2,7 @@
 # It consumes published engine/editor packages; game repositories never
 # compile the engine or Studio.
 # Enable GitHub Actions Pages and set CHIBI_ENGINE_TOKEN with read-only Contents
-# access to waldnercharles/chibi. project.kdl and content/ are the source snapshot.
+# access to waldnercharles/chibi. project.chibi and content/ are the source snapshot.
 name: Web
 
 on:
@@ -10,13 +10,13 @@ on:
     branches: [main]
     paths:
       - 'content/**'
-      - 'project.kdl'
+      - 'project.chibi'
       - '.github/workflows/web.yml'
   pull_request:
     branches: [main]
     paths:
       - 'content/**'
-      - 'project.kdl'
+      - 'project.chibi'
       - '.github/workflows/web.yml'
   workflow_dispatch:
   schedule:
@@ -131,7 +131,7 @@ jobs:
           chibi/sdk/bin/chibi export game --web chibi/web-player --output site
           mkdir site/dev
           tar -xzf packages/editor.tar.gz -C site/dev
-          git -C game archive --format=zip HEAD project.kdl content > site/dev/project.zip
+          git -C game archive --format=zip HEAD project.chibi content > site/dev/project.zip
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re
           site = pathlib.Path('site')

@@ -29,7 +29,7 @@
 #define HARNESS "test/tools/GameEquivalence.chibi"
 #define HARNESS_MILLISECONDS "50000"
 #define STORIES "test/stories"
-#define SCENARIO "/content/scenarios/Story.kdl"
+#define SCENARIO "/content/scenarios/Story.chibi"
 #define STORY_COUNT 5
 #define HARNESS_ARGUMENTS (5 + 2 * STORY_COUNT)
 #define STAGE_ONE "tools/toolchain/StageOne.chibi"

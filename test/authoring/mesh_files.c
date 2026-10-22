@@ -41,7 +41,7 @@ static const char *const created[] = { "content/meshes/quad.mesh",
                                        "bundle/model.mtl",
                                        "bundle/provenance.json",
                                        "bundle",
-                                       "models/Ball.kdl",
+                                       "models/Ball.chibi",
                                        "models" };
 
 static void inside(char *path, size_t size, const char *name)
@@ -462,7 +462,7 @@ static void ball()
     assert(!graph_connect_data(g, sphere, 0, model_graph_add_output(g), 0));
     char *saved = behavior_asset_save(asset);
     assert(saved);
-    write_file("models/Ball.kdl", saved, strlen(saved));
+    write_file("models/Ball.chibi", saved, strlen(saved));
     free(saved);
     behavior_asset_free(asset);
 }
@@ -513,7 +513,17 @@ TEST_CASE(model_exports_write_indexed_meshes)
     /* OBJ faces name the same vertices, one-based. */
     char *obj = bundle_text("bundle/model.obj");
     int faces = 0;
-    for (const char *line = strstr(obj, "\nf "); line; line = strstr(line + 1, "\nf ")) {
+    for (const char *line = strstr(
+             obj,
+             "\n"
+             "f "
+         );
+         line;
+         line = strstr(
+             line + 1,
+             "\n"
+             "f "
+         )) {
         faces++;
     }
     const int *corner = asset->indices;

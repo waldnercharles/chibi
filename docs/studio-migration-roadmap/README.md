@@ -15,9 +15,9 @@ or their product-parity gates.
 
 1. `packages.tsv` is the complete scoped PR/work-package register: 95 packages, with dependency IDs, decision gates, acceptance criteria and plan section references. It includes seven already-owned foundation packages so they are not implemented twice.
 2. `roadmap.md` renders that register as a human-readable checklist.
-3. `studio-path-coverage.csv` accounts for all 867 paths in the supplied exact-tree inventory. Every product source/header has an explicit primary package; shared responsibilities list additional packages. It retains the original immutable source URL, blob SHA, responsibility, candidate disposition and evidence level.
+3. [The archived path coverage](https://github.com/waldnercharles/chibi/blob/1117f2de55bb4ceaa8f3b16a0e0fb7dee7dc4881/docs/studio-migration-roadmap/studio-path-coverage.csv) accounts for all 867 paths in the supplied exact-tree inventory. Every product source/header has an explicit primary package; shared responsibilities list additional packages. It retains the original immutable source URL, blob SHA, responsibility, candidate disposition and evidence level.
 4. `validation.json` records counts, dependency checks, source fingerprints and mapping completeness. It is document validation only, not an application test result.
-5. `source/plan.md` and `source/studio-file-inventory.csv` preserve the complete source evidence (CSV line endings normalized to LF; original fingerprint retained in validation.json). References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
+5. `source/plan.md` and [the archived inventory](https://github.com/waldnercharles/chibi/blob/1117f2de55bb4ceaa8f3b16a0e0fb7dee7dc4881/docs/studio-migration-roadmap/source/studio-file-inventory.csv) preserve the complete source evidence (CSV line endings normalized to LF; original fingerprint retained in validation.json). References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
 
 The package count is a decomposition for coordination, not an obligation to create one PR per package. A package can become a narrow stack when independently reviewable subcontracts require it; several compatible packages can share one PR only if ownership, dependencies and exact-head evidence stay clear. Every package must ultimately link its real PR(s), or carry a reviewed, reasoned not-needed disposition if it is conditional. A draft placeholder is not feature completion.
 
@@ -48,29 +48,14 @@ counted-loop performance claim. Mechanical text bindings remain test-local.
 Live scene reads, current-SDK Studio integration, commands and panel cutover
 remain open; this note does not alter the frozen generated ledger.
 
-## Regeneration and maintenance
+## Historical regeneration
 
-This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
-
-From the repository root, the documentation-only regeneration command is:
-
-```sh
-python3 docs/studio-migration-roadmap/build_ledger.py
-```
-
-It validates identifiers, dependency resolution/acyclicity and baseline path counts while regenerating `packages.tsv`, `roadmap.md`, `studio-path-coverage.csv` and `validation.json`. It also prints a documentation validation summary. It does not build or execute the product and is not a Python product-test framework.
-
-For a clean, unchanged snapshot, verify reproducibility and whitespace:
-
-```sh
-python3 docs/studio-migration-roadmap/build_ledger.py
-git diff --check
-git diff --exit-code -- docs/studio-migration-roadmap/
-```
-
-After intentional snapshot edits, inspect the expected diff, run the same generator again, and verify the second run introduces no additional changes. Keep original `source/` fingerprints unchanged. Recheck the 95-package/867-path results and obtain independent documentation review before publication. Product readiness remains governed by its separate admitted C/pico_unit evidence.
-
-The generator refuses before any output write if an existing coverage CSV contains a non-baseline `tracking_status`, a nonempty `implementation_pr` or `exact_head_evidence`, or lacks those tracking columns. This prevents later implementation progress from being silently erased. If it refuses, preserve the recorded fields and first change to a reviewed status-preserving maintenance workflow; do not clear progress fields to bypass the guard. The current empty baseline remains deterministic.
+This is a frozen baseline snapshot. Its original inventory and generated path
+coverage remain at revision
+[`1117f2de`](https://github.com/waldnercharles/chibi/tree/1117f2de55bb4ceaa8f3b16a0e0fb7dee7dc4881/docs/studio-migration-roadmap).
+Check out that revision to reproduce its ledger with the inputs and generator
+that produced it. The archived paths and fingerprints are not a current source
+inventory or evidence that the compiled asset migration has passed validation.
 
 ## Scope and status
 

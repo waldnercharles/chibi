@@ -1,9 +1,0 @@
-name "OrthographicView"
-components {
-    Camera far_clip=400.0 height=100.0 near_clip=1.0 orthographic=#true width=180.0
-    Transform3D {
-        position y=200.0
-        rotation w=0.7071068 x=-0.7071068
-        scale x=1.0 y=1.0 z=1.0
-    }
-}

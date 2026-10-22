@@ -1,0 +1,44 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RenderFrame")),
+            data.Field.Named("includes", data.List([
+                data.Value.Text("RenderSolid")
+            ])),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(60.0)),
+                    data.Field.Named("elevation", data.Value.Real(36.0)),
+                    data.Field.Named("height", data.Value.Real(60.0)),
+                    data.Field.Named("primitive", data.Value.UInt(8)),
+                    data.Field.Named("width", data.Value.Real(60.0))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(1084281087))
+                ])),
+                data.Field.Named("VisualMotion", data.Object([
+                    data.Field.Named("angular_velocity", data.Object([
+                        data.Field.Named("y", data.Value.Real(0.80000000000000004))
+                    ])),
+                    data.Field.Named("reaction_duration", data.Value.Real(0.40000000000000002)),
+                    data.Field.Named("rest_elevation", data.Value.Real(36.0)),
+                    data.Field.Named("rotation", data.Object([
+                        data.Field.Named("y", data.Value.Real(0.5))
+                    ])),
+                    data.Field.Named("speed", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("VisualTransform", data.Object([
+                    data.Field.Named("scale", data.Value.Real(1.0)),
+                    data.Field.Named("yaw", data.Value.Real(0.5))
+                ]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("RenderFrameProbe")
+            ]))
+        ])
+    );
+}

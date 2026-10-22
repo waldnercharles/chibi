@@ -16,7 +16,16 @@ static bool expands(const char *text, const char *expected)
     char *out = rcss_expand(text, NULL, NULL, error, sizeof error);
     bool same = out && !strcmp(out, expected);
     if (!same) {
-        fprintf(stderr, "rcss: %s\nexpected:\n%sgot:\n%s\n", error, expected, out ? out : "(null)");
+        fprintf(
+            stderr,
+            "rcss: %s\n"
+            "expected:\n"
+            "%sgot:\n"
+            "%s\n",
+            error,
+            expected,
+            out ? out : "(null)"
+        );
     }
     free(out);
     return same;
@@ -164,7 +173,13 @@ TEST_CASE(rcss_maps_lines_through_expansion_and_joins)
     rcss_join(&sheet, &joined, out, &part);
     rcss_join(&sheet, &joined, ".z { d: 4; }\n", &map);
     apush(sheet, '\0');
-    REQUIRE(!strcmp(sheet, "body { c: 3; }\n.x { a: 1; }\n.y { b: 2; }\n.z { d: 4; }\n"));
+    REQUIRE(!strcmp(
+        sheet,
+        "body { c: 3; }\n"
+        ".x { a: 1; }\n"
+        ".y { b: 2; }\n"
+        ".z { d: 4; }\n"
+    ));
     REQUIRE(
         acount(joined.lines) == 4 && joined.lines[0].line == 0 &&
         joined.lines[0].file == -1

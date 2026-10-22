@@ -14,20 +14,76 @@
 #include <string.h>
 
 static const char *const texts[] = {
-    "name \"Ship\"\n"
-    "(array)children {\n"
-    "    - name=\"Left\" prototype=\"Turret\" {\n"
-    "        (array)children {\n"
-    "            - name=\"Muzzle\" prototype=\"Barrel\"\n"
-    "        }\n"
-    "    }\n"
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+    "            data.Field.Named(\"children\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"name\", "
+    "data.Value.Text(\"Left\")),\n"
+    "                    data.Field.Named(\"prototype\", "
+    "data.Value.Text(\"Turret\")),\n"
+    "                    data.Field.Named(\"children\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"name\", "
+    "data.Value.Text(\"Muzzle\")),\n"
+    "                            data.Field.Named(\"prototype\", "
+    "data.Value.Text(\"Barrel\"))\n"
+    "                        ])\n"
+    "                    ]))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
     "}\n",
-    "name \"Turret\"\n",
-    "name \"Barrel\"\n",
-    "name \"Escort\"\n"
-    "(array)includes \"Ship\"\n"
-    "(array)children {\n"
-    "    - name=\"Rear\" prototype=\"Barrel\"\n"
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Turret\"))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n",
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Barrel\"))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n",
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Escort\")),\n"
+    "            data.Field.Named(\"includes\", data.List([\n"
+    "                data.Value.Text(\"Ship\")\n"
+    "            ])),\n"
+    "            data.Field.Named(\"children\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"name\", "
+    "data.Value.Text(\"Rear\")),\n"
+    "                    data.Field.Named(\"prototype\", "
+    "data.Value.Text(\"Barrel\"))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
     "}\n",
 };
 static const char *const names[] = { "Ship", "Turret", "Barrel", "Escort" };
@@ -84,7 +140,7 @@ TEST_CASE(prototype_children_follow_a_rename)
     reference_index *index = reference_index_new();
     for (int i = 0; i < PROTOTYPE_COUNT; i++) {
         char path[64];
-        snprintf(path, sizeof path, "content/prototypes/%s.kdl", names[i]);
+        snprintf(path, sizeof path, "content/prototypes/%s.chibi", names[i]);
         reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, names[i], path, NULL);
         prototype *loaded = prototype_load_authored(texts[i], &registry, error, sizeof error);
         reference_index_add_prototype(index, i, loaded);
@@ -118,17 +174,53 @@ static const prototype_registry particle_registry = {
     .components = particle_components,
     .component_count = 1,
 };
-static const char *const
-    particle_prototype_text = "name \"Cloud\"\ncomponents {\n"
-                              "    Shader material=\"RainParticles.Fall\" "
-                              "parameters=\"Speed 2\\n\"\n}\n";
-static const char *const
-    particle_scene_text = "version 1\nname \"RainScene\"\n(array)entities {\n"
-                          "    - name=\"Drops\" prototype=\"Cloud\" {\n"
-                          "        components {\n"
-                          "            Shader material=\"RainParticles.Fall\"\n"
-                          "        }\n"
-                          "    }\n}\n";
+static const char *const particle_prototype_text =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Cloud\")),\n"
+    "            data.Field.Named(\"components\", data.Object([\n"
+    "                data.Field.Named(\"Shader\", data.Object([\n"
+    "                    data.Field.Named(\"material\", "
+    "data.Value.Text(\"RainParticles.Fall\")),\n"
+    "                    data.Field.Named(\"parameters\", "
+    "data.Value.Text(\"Speed 2\\n\"))\n"
+    "                ]))\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
+static const char *const particle_scene_text =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"RainScene\")),\n"
+    "            data.Field.Named(\"entities\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"name\", "
+    "data.Value.Text(\"Drops\")),\n"
+    "                    data.Field.Named(\"prototype\", "
+    "data.Value.Text(\"Cloud\")),\n"
+    "                    data.Field.Named(\"components\", data.Object([\n"
+    "                        data.Field.Named(\"Shader\", data.Object([\n"
+    "                            data.Field.Named(\"material\", "
+    "data.Value.Text(\"RainParticles.Fall\"))\n"
+    "                        ]))\n"
+    "                    ]))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
 
 static void particle_cleanup()
 {
@@ -249,16 +341,16 @@ static bool particle_refactor_fixture()
             particle_index,
             REFERENCE_ASSET_LIBRARY,
             "RainParticles",
-            "content/shader-libraries/RainParticles.kdl",
+            "content/shader-libraries/RainParticles.chibi",
             NULL
         ) == 0
     );
     REQUIRE(
-        reference_index_add_asset(particle_index, REFERENCE_ASSET_PROTOTYPE, "Cloud", "content/prototypes/Cloud.kdl", NULL) ==
+        reference_index_add_asset(particle_index, REFERENCE_ASSET_PROTOTYPE, "Cloud", "content/prototypes/Cloud.chibi", NULL) ==
         1
     );
     REQUIRE(
-        reference_index_add_asset(particle_index, REFERENCE_ASSET_SCENE, "RainScene", "content/scenes/RainScene.kdl", NULL) ==
+        reference_index_add_asset(particle_index, REFERENCE_ASSET_SCENE, "RainScene", "content/scenes/RainScene.chibi", NULL) ==
         2
     );
     char error[256] = { 0 };
@@ -346,10 +438,27 @@ TEST_CASE(qualified_shader_bindings_follow_library_and_function_renames)
 TEST_CASE(qualified_shader_bindings_reject_stale_refactors)
 {
     REQUIRE(particle_refactor_fixture());
-    const char *texts[] = { particle_library_text,
-                            "name \"Cloud\"\ncomponents {\n    Shader "
-                            "material=\"RainParticles.Other\"\n}\n",
-                            particle_scene_text };
+    const char *texts[] = {
+        particle_library_text,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Cloud\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Shader\", data.Object([\n"
+        "                    data.Field.Named(\"material\", "
+        "data.Value.Text(\"RainParticles.Other\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        particle_scene_text
+    };
     refactor_project project = { particle_index, texts, &particle_registry };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = 0 };
     char error[256] = { 0 };

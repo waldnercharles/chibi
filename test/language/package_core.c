@@ -479,7 +479,14 @@ static const call_case text_cases[] = {
     TEXT_SS("Trim", "xxxx", "x", ""),
     TEXT_SS("Trim", "hi", "", "hi"),
     TEXT_SS("Trim", "", "x", ""),
-    TEXT_S("TrimSpace", " \t\n hi there \r\v\f", "hi there"),
+    TEXT_S(
+        "TrimSpace",
+        " \t\n"
+        " hi there \r"
+        "\u000b"
+        "\f",
+        "hi there"
+    ),
     TEXT_S("TrimSpace", "   ", ""),
     TEXT_S(
         "TrimSpace",
@@ -553,12 +560,43 @@ static const call_case split_cases[] = {
     SPLIT(2, "a.", ".", 0, "2:a.|"),
     SPLIT(2, "abc", "", 0, "3:a|b|c"),
     SPLIT(3, "a.b.c", ".", 2, "2:a.|b.c"),
-    SPLIT(4, "a\r\nb\nc\r", "", 0, "3:a|b|c"),
+    SPLIT(
+        4,
+        "a\n"
+        "b\n"
+        "c",
+        "",
+        0,
+        "3:a|b|c"
+    ),
     SPLIT(4, "a\n", "", 0, "2:a|"),
     SPLIT(4, "", "", 0, "1:"),
-    SPLIT(5, "a\nb\nc", "", 2, "2:a|b\nc"),
-    SPLIT(6, "a\r\nb", "", 0, "2:a\r\n|b"),
-    SPLIT(7, "a\nb\nc", "", 2, "2:a\n|b\nc"),
+    SPLIT(
+        5,
+        "a\n"
+        "b\n"
+        "c",
+        "",
+        2,
+        "2:a|b\nc"
+    ),
+    SPLIT(
+        6,
+        "a\r\n"
+        "b",
+        "",
+        0,
+        "2:a\r\n|b"
+    ),
+    SPLIT(
+        7,
+        "a\r\n"
+        "b\n"
+        "c\r",
+        "",
+        2,
+        "2:a\n|b\nc"
+    ),
     SPLIT(8, "a,b,c", ",", 0, "abc"),
     SPLIT(8, "", ",", 0, ""),
     SPLIT(9, "  foo bar  baz   ", "", 0, "3:foo|bar|baz"),

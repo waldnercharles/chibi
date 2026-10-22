@@ -1,0 +1,51 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("SurfaceActivity")),
+            data.Field.Named("domain", data.Value.Text("material")),
+            data.Field.Named("id_counter", data.Value.UInt(300)),
+            data.Field.Named("description", data.Value.Text("A neutral lit receiver emits the local Surface Influence color.")),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(100)),
+                            data.Field.Named("type", data.Value.Text("Shader Surface Influence")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(200)),
+                            data.Field.Named("type", data.Value.Text("Shader Surface Output")),
+                            data.Field.Named("x", data.Value.Real(300.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Base Color", data.Object([
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.17999999999999999)),
+                                        data.Field.Named("y", data.Value.Real(0.17999999999999999)),
+                                        data.Field.Named("z", data.Value.Real(0.17999999999999999))
+                                    ]))
+                                ])),
+                                data.Field.Named("Roughness", data.Value.Real(0.80000000000000004))
+                            ]))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Color")),
+                            data.Field.Named("to", data.Value.Text("200.Emission"))
+                        ])
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

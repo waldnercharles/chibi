@@ -44,6 +44,28 @@ Python application-recovery driver. `check-host` retains native process and
 state-file assertions under quarantine. The minimal C suite does not reproduce
 the former coverage.
 
+## Compiled prototype workloads awaiting renewed admission
+
+The old scalar-evaluator admissions for `--typed-prototype`,
+`studio-prototype-source` and `studio-typed-prototype-preview` are withdrawn.
+Their fixtures and dispatcher selectors remain, but their standalone native/tool
+routes are absent from `tools/test_policy.py`. The engine fixture has compiled.
+None of these replacement compiler-backed workloads has been executed or admitted.
+
+The engine budget probe now allows at most twenty binary-search evaluations
+within 1–1,048,576 instructions, replacing the former ten probes within 1–1,024.
+The compiler replacement and this changed bound require independent review of
+exact sources, prepared compiler/SDK identity, complete inputs, cache state and
+complete-command runtime. Studio review must also identify its disposable
+project/preferences, rendered frame bounds and capture output.
+
+A reviewed first measurement must run under the production shared 60-second
+supervisor. Restore admission only after complete execution evidence establishes
+that the reviewed command fits; configuration and build timing stay separate.
+No execution is authorized by the retained selector or historical scalar result.
+Existing broad-suite quarantines remain in force. See the
+[workload description](testing.md#typed-prototype-compiler-workloads-quarantined).
+
 ## Retained short coverage
 
 Build standalone tools with `make tools-build`; report compilation separately.

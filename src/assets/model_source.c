@@ -4,7 +4,7 @@
 #include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/file_io.h"
 
 #include <assert.h>

@@ -1,0 +1,43 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("InputEntity")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("antialias", data.Value.Real(1.0)),
+                    data.Field.Named("color", data.Value.UInt(1938931455)),
+                    data.Field.Named("height", data.Value.Real(32.0)),
+                    data.Field.Named("width", data.Value.Real(32.0))
+                ])),
+                data.Field.Named("Body", data.Object([
+                    data.Field.Named("type", data.Value.Text("Dynamic"))
+                ])),
+                data.Field.Named("Collider", data.Object([
+                    data.Field.Named("category", data.Value.UInt(1)),
+                    data.Field.Named("radius", data.Value.Real(16.0))
+                ])),
+                data.Field.Named("Health", data.Object([
+                    data.Field.Named("current", data.Value.UInt(100)),
+                    data.Field.Named("maximum", data.Value.UInt(100))
+                ])),
+                data.Field.Named("Input", data.Object([])),
+                data.Field.Named("Movement", data.Object([
+                    data.Field.Named("speed", data.Value.Real(180.0))
+                ])),
+                data.Field.Named("Orientation", data.Object([])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(320.0)),
+                    data.Field.Named("y", data.Value.Real(180.0))
+                ])),
+                data.Field.Named("Velocity", data.Object([]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("InputBehavior")
+            ]))
+        ])
+    );
+}

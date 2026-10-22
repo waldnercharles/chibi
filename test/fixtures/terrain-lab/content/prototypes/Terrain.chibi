@@ -1,0 +1,43 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Terrain")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("border_color", data.Value.UInt(4072704767)),
+                    data.Field.Named("border_width", data.Value.Real(1.0)),
+                    data.Field.Named("color", data.Value.UInt(3130222591))
+                ])),
+                data.Field.Named("GlobalBinding", data.Object([
+                    data.Field.Named("name", data.Value.Text("Terrain"))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("albedo", data.Value.UInt(3130222591)),
+                    data.Field.Named("border_albedo", data.Value.UInt(4072704767)),
+                    data.Field.Named("border_scene", data.Value.UInt(4072704767)),
+                    data.Field.Named("scene", data.Value.UInt(3130222591))
+                ])),
+                data.Field.Named("MaterialTerrain", data.Object([
+                    data.Field.Named("category", data.Value.UInt(8)),
+                    data.Field.Named("cell_size", data.Value.Real(1.0)),
+                    data.Field.Named("field", data.Value.Text("QuarryField")),
+                    data.Field.Named("height", data.Value.Real(192.0)),
+                    data.Field.Named("mask", data.Value.UInt(1)),
+                    data.Field.Named("min_fragment_cells", data.Value.UInt(4)),
+                    data.Field.Named("seed", data.Value.UInt(13)),
+                    data.Field.Named("width", data.Value.Real(768.0))
+                ])),
+                data.Field.Named("Substance", data.Object([
+                    data.Field.Named("hardness", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("y", data.Value.Real(64.0))
+                ]))
+            ]))
+        ])
+    );
+}

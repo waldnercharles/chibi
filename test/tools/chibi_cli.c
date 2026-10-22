@@ -70,10 +70,46 @@ static void setup(const char *binary)
     const char *copy[] = { "/bin/cp", binary, launcher, NULL };
     assert(!tool_run(copy, root, log_path));
     assert(!chmod(launcher, 0700));
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", CHIBI_PROJECT_VERSION);
-    write_file("game with spaces/project.kdl", manifest);
-    write_file("game with spaces/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n");
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"CLI "
+        "proof\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\")),\n"
+        "            data.Field.Named(\"start_scene\", "
+        "data.Value.Text(\"scenes/Start.chibi\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        CHIBI_PROJECT_VERSION
+    );
+    write_file("game with spaces/project.chibi", manifest);
+    write_file(
+        "game with spaces/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_file(
         "bin/chibi-compile",
         "#!/bin/sh\nset -eu\n"
@@ -165,12 +201,48 @@ static void project(const char *relative, int version)
         snprintf(file, sizeof file, "%s/%s%s", root, relative, directories[i]);
         assert(!mkdir(file, 0700));
     }
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Checked\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", version);
-    snprintf(file, sizeof file, "%s/project.kdl", relative);
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Checked\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\")),\n"
+        "            data.Field.Named(\"start_scene\", "
+        "data.Value.Text(\"scenes/Start.chibi\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        version
+    );
+    snprintf(file, sizeof file, "%s/project.chibi", relative);
     write_file(file, manifest);
-    snprintf(file, sizeof file, "%s/content/scenes/Start.kdl", relative);
-    write_file(file, "version 1\nname \"Start\"\n(array)entities\n");
+    snprintf(file, sizeof file, "%s/content/scenes/Start.chibi", relative);
+    write_file(
+        file,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
 }
 
 /* The text of the file at `relative`, which must exist. */
@@ -211,10 +283,10 @@ TEST_CASE(check_prepares_without_writing)
     REQUIRE(!exists("checked/.chibi"));
 
     project("old", CHIBI_PROJECT_VERSION - 1);
-    char *manifest = contents("old/project.kdl");
+    char *manifest = contents("old/project.chibi");
     const char *old[] = { launcher, "check", "old", NULL };
     REQUIRE(tool_run(old, root, log_path) == 2);
-    bool kept = file_is("old/project.kdl", manifest);
+    bool kept = file_is("old/project.chibi", manifest);
     free(manifest);
     REQUIRE(kept);
     REQUIRE(!exists("old/.chibi"));
@@ -248,19 +320,19 @@ TEST_CASE(compiler_check_writes_nothing)
     REQUIRE(tool_run(both, root, log_path) == 2);
     REQUIRE(!exists("out"));
 
-    const char *invalid = "version 1\nname \"Start\"\n(array)entities {\n";
-    write_file("real/content/scenes/Start.kdl", invalid);
+    const char *invalid = "package asset\npub Build :: () -> byte[] {";
+    write_file("real/content/scenes/Start.chibi", invalid);
     REQUIRE(tool_run(valid, root, log_path) == 1);
-    REQUIRE(file_is("real/content/scenes/Start.kdl", invalid));
+    REQUIRE(file_is("real/content/scenes/Start.chibi", invalid));
     REQUIRE(!exists("real/.chibi"));
 
     project("real-old", CHIBI_PROJECT_VERSION - 1);
-    char *manifest = contents("real-old/project.kdl");
+    char *manifest = contents("real-old/project.chibi");
     char old[256];
     path(old, "real-old");
     const char *older[] = { compiler, "--project-root", old, "--check", NULL };
     REQUIRE(tool_run(older, root, log_path) == 1);
-    bool kept = file_is("real-old/project.kdl", manifest);
+    bool kept = file_is("real-old/project.chibi", manifest);
     free(manifest);
     REQUIRE(kept);
     return true;
@@ -318,7 +390,11 @@ TEST_CASE(version_of_the_built_launcher)
     char *text = tool_read(output);
     snprintf(expected, sizeof expected, "\nproject format: %d\n", CHIBI_PROJECT_VERSION);
     bool reported = text && !strncmp(text, "chibi ", 6) && strstr(text, expected) &&
-                    strstr(text, "\nartifact formats: ") &&
+                    strstr(
+                        text,
+                        "\n"
+                        "artifact formats: "
+                    ) &&
                     strstr(text, " execution ");
     free(text);
     REQUIRE(reported);
@@ -489,7 +565,12 @@ TEST_CASE(test_runs_the_compiler_tests)
     REQUIRE(file_is("compile.args", "--project-root\ngame with spaces\n--test\n"));
     const char *here[] = { launcher, "test", NULL };
     REQUIRE(tool_run(here, root, log_path) == 0);
-    REQUIRE(file_is("compile.args", "--project-root\n.\n--test\n"));
+    REQUIRE(file_is(
+        "compile.args",
+        "--project-root\n"
+        ".\n"
+        "--test\n"
+    ));
 
     write_file("fail", "");
     REQUIRE(tool_run(named, root, log_path) == 37);
@@ -644,7 +725,7 @@ TEST_CASE(compiler_test_needs_the_core_collection)
 
 /* fmt hands each project, or the one at or above the working directory, to
  * the compiler's --format, with --check when asked, and fails when one does;
- * an older project is reported, not migrated. A folder without a project.kdl
+ * an older project is reported, not migrated. A folder without a project.chibi
  * goes to the compiler as given, which formats its packages. */
 TEST_CASE(fmt_formats_each_project)
 {
@@ -678,10 +759,10 @@ TEST_CASE(fmt_formats_each_project)
     REQUIRE(tool_run(one, root, log_path) == 37);
     REQUIRE(!unlink(file));
     project("stale", CHIBI_PROJECT_VERSION - 1);
-    char *manifest = contents("stale/project.kdl");
+    char *manifest = contents("stale/project.chibi");
     const char *old[] = { launcher, "fmt", "stale", NULL };
     REQUIRE(tool_run(old, root, log_path) == 2);
-    bool kept = file_is("stale/project.kdl", manifest);
+    bool kept = file_is("stale/project.chibi", manifest);
     free(manifest);
     REQUIRE(kept);
     char loose[256];
@@ -689,7 +770,13 @@ TEST_CASE(fmt_formats_each_project)
     REQUIRE(!mkdir(loose, 0700));
     const char *packages[] = { launcher, "fmt", "--check", "loose", NULL };
     REQUIRE(tool_run(packages, root, log_path) == 0);
-    REQUIRE(file_is("compile.args", "--project-root\nloose\n--format\n--check\n"));
+    REQUIRE(file_is(
+        "compile.args",
+        "--project-root\n"
+        "loose\n"
+        "--format\n"
+        "--check\n"
+    ));
     const char *missing[] = { launcher, "fmt", "absent", NULL };
     REQUIRE(tool_run(missing, root, log_path) == 2);
     const char *help[] = { launcher, "fmt", "--help", NULL };
@@ -722,7 +809,11 @@ TEST_CASE(repository_packages_are_canonical)
 }
 
 static const char
-    MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
+    MESSY_SCENE[] = "package asset\nimport data \"game:assets\"\n"
+                    "pub Build::()->byte[]{return data.Encode(data.Object(["
+                    "data.Field.Named(\"version\",data.Value.UInt(1)),"
+                    "data.Field.Named(\"name\",data.Value.Text(\"Start\")),"
+                    "data.Field.Named(\"entities\",data.List([]))]))}\n";
 static const char MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
                                    "  on Tick :: (dt: float s) {   angle = "
                                    "angle + dt; }\n}\n";
@@ -737,7 +828,7 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     char directory[256], messy[256], output[256];
     path(directory, "messy/content/behaviors");
     REQUIRE(!mkdir(directory, 0700));
-    write_file("messy/content/scenes/Start.kdl", MESSY_SCENE);
+    write_file("messy/content/scenes/Start.chibi", MESSY_SCENE);
     write_file("messy/content/behaviors/Spin.chibi", MESSY_SOURCE);
     path(messy, "messy");
     path(output, "format.log");
@@ -745,14 +836,14 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
                             "--format", "--check",        NULL };
     REQUIRE(tool_run(check, root, output) == 1);
     REQUIRE(file_has("format.log", "not canonical: content/behaviors/Spin.chibi\n"));
-    REQUIRE(file_has("format.log", "not canonical: content/scenes/Start.kdl\n"));
-    REQUIRE(file_is("messy/content/scenes/Start.kdl", MESSY_SCENE));
+    REQUIRE(file_has("format.log", "not canonical: content/scenes/Start.chibi\n"));
+    REQUIRE(file_is("messy/content/scenes/Start.chibi", MESSY_SCENE));
     REQUIRE(file_is("messy/content/behaviors/Spin.chibi", MESSY_SOURCE));
 
     const char *format[] = { compiler, "--project-root", messy, "--format", NULL };
     REQUIRE(tool_run(format, root, output) == 0);
-    REQUIRE(file_has("format.log", "formatted content/scenes/Start.kdl\n"));
-    REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
+    REQUIRE(file_has("format.log", "formatted content/scenes/Start.chibi\n"));
+    REQUIRE(!file_is("messy/content/scenes/Start.chibi", MESSY_SCENE));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
         "Spin :: behavior {\n    angle: float = 0.0\n    on Tick :: (dt: float "
@@ -761,26 +852,39 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     ));
     REQUIRE(tool_run(check, root, output) == 0);
 
-    static const char
-        HULL[] = "name \"Hull\"\ncomponents {\n    (object)Transform\n}\n";
+    static const char HULL[] =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     path(directory, "messy/content/prototypes");
     REQUIRE(!mkdir(directory, 0700));
-    write_file("messy/content/prototypes/Hull.kdl", HULL);
+    write_file("messy/content/prototypes/Hull.chibi", HULL);
     REQUIRE(tool_run(check, root, output) == 0);
-    write_file("messy/content/prototypes/Copy.kdl", HULL);
+    write_file("messy/content/prototypes/Copy.chibi", HULL);
     REQUIRE(tool_run(check, root, output) == 1);
     REQUIRE(file_has("format.log", "two prototypes declare Hull"));
     char copy[256];
-    path(copy, "messy/content/prototypes/Copy.kdl");
+    path(copy, "messy/content/prototypes/Copy.chibi");
     REQUIRE(!unlink(copy));
 
     project("messy-old", CHIBI_PROJECT_VERSION - 1);
-    write_file("messy-old/content/scenes/Start.kdl", MESSY_SCENE);
+    write_file("messy-old/content/scenes/Start.chibi", MESSY_SCENE);
     char older[256];
     path(older, "messy-old");
     const char *old[] = { compiler, "--project-root", older, "--format", NULL };
     REQUIRE(tool_run(old, root, output) == 1);
-    REQUIRE(file_is("messy-old/content/scenes/Start.kdl", MESSY_SCENE));
+    REQUIRE(file_is("messy-old/content/scenes/Start.chibi", MESSY_SCENE));
 
     char target[256];
     path(target, "out/game.chibip");
@@ -808,7 +912,7 @@ static void directory(const char *relative)
 static const char MESSY_PACKAGE[] = "package lib\nDouble :: (x: int) -> int "
                                     "{   return x*2; }\n";
 
-/* Below a folder without a project.kdl, the real compiler's --format formats
+/* Below a folder without a project.chibi, the real compiler's --format formats
  * each package source, naming them as it does a project's. A file that is
  * not a package, or a tree the package loader refuses, fails the run before
  * anything is written, and so does a folder with no sources. */
@@ -861,7 +965,7 @@ TEST_CASE(compiler_format_rewrites_package_sources)
     path(bare, "bare");
     const char *empty[] = { compiler, "--project-root", bare, "--format", NULL };
     REQUIRE(tool_run(empty, root, output) == 1);
-    REQUIRE(file_has("packages.log", "holds no project.kdl or package files"));
+    REQUIRE(file_has("packages.log", "holds no project.chibi or package files"));
     return true;
 }
 
@@ -1013,7 +1117,14 @@ TEST_CASE(web_serves_the_export_until_stopped)
     char *head = port ? fetch(port, "HEAD", "/index.html", "localhost:8000") : NULL;
     bool served = port && entries("tmp") == 1 &&
                   answers(port, "/", "200 OK", "<title>CLI proof</title>") &&
-                  answers(port, "/data/game.chibip", "\r\n\r\nartifact", NULL) &&
+                  answers(
+                      port,
+                      "/data/game.chibip",
+                      "\r\n"
+                      "\r\n"
+                      "artifact",
+                      NULL
+                  ) &&
                   answers(port, "/chibi-player.wasm", "Content-Type: application/wasm", NULL) &&
                   answers(port, "/data/../../tmp", "400 Bad Request", NULL) &&
                   answers(port, "/%2e%2e/web.log", "400 Bad Request", NULL) &&
@@ -1075,22 +1186,18 @@ TEST_CASE(web_fails_without_leaving_a_folder)
 /* A site manifest with a home page and a guide whose output is `guide`. */
 static void site_manifest(const char *relative, const char *guide_source, const char *guide_output)
 {
-    char manifest[1024];
+    char manifest[16384];
     snprintf(
         manifest,
         sizeof manifest,
-        "title \"Fixture\"\n(array)sections {\n    - {\n        name "
-        "\"Overview\"\n"
-        "        (array)pages {\n            - {\n                title "
-        "\"Home\"\n"
-        "                source \"README.md\"\n                output "
-        "\"index.html\"\n"
-        "            }\n        }\n    }\n    - {\n        name \"Learn\"\n"
-        "        (array)pages {\n            - {\n                title "
-        "\"Guide\"\n"
-        "                source \"%s\"\n                output \"%s\"\n        "
-        "    }\n"
-        "        }\n    }\n}\n",
+        "package asset\nimport docs \"game:documentation\"\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return docs.Encode(\"Fixture\", [\n"
+        "        docs.Section.Group(\"Overview\", "
+        "[docs.Page.Markdown(\"Home\", \"README.md\", \"index.html\")]),\n"
+        "        docs.Section.Group(\"Learn\", [docs.Page.Markdown(\"Guide\", "
+        "\"%s\", \"%s\")])\n"
+        "    ]);\n}\n",
         guide_source,
         guide_output
     );
@@ -1111,11 +1218,11 @@ static void site_fixture(const char *relative)
     write_file(file, "# Guide\n\nBack [home](../README.md).\n\n```chibi\npackage sample\nValue :: 1\n```\n");
     snprintf(file, sizeof file, "%s/docs/private.md", relative);
     write_file(file, "# Private\n");
-    snprintf(file, sizeof file, "%s/docs/site.kdl", relative);
+    snprintf(file, sizeof file, "%s/docs/site.chibi", relative);
     site_manifest(file, "docs/guide.md", "guide.html");
 }
 
-/* The real compiler's --docs writes exactly the pages docs/site.kdl lists,
+/* The real compiler's --docs writes exactly the pages docs/site.chibi lists,
  * linked to one another, with the stylesheet, into a folder as readable as
  * mkdir makes one, names each link it writes as text, and refuses a manifest
  * whose pages leave the root or the site folder, collide or are missing. */
@@ -1180,16 +1287,16 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         { "docs/linked.md", "guide.html", "docs/linked.md is not a readable file inside" },
         { "docs/missing.md", "guide.html", "docs/missing.md is not a readable file inside" },
         { "docs", "guide.html", "docs is not a readable file inside" },
-        { "docs/guide.md", "index.html", "two pages write index.html" },
+        { "docs/guide.md", "index.html", "two pages write the same output" },
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        site_manifest("site/docs/site.kdl", refused[i][0], refused[i][1]);
+        site_manifest("site/docs/site.chibi", refused[i][0], refused[i][1]);
         REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", refused[i][2]));
         REQUIRE(file_has("site/build/docs/guide.html", "Back <a href=\"index.html\">home</a>."));
     }
 
     /* A published chibi example must parse, and a whole package analyze. */
-    site_manifest("site/docs/site.kdl", "docs/guide.md", "guide.html");
+    site_manifest("site/docs/site.chibi", "docs/guide.md", "guide.html");
     write_file(
         "site/docs/guide.md",
         "# Guide\n"
@@ -1316,30 +1423,24 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
  * reference page reads `packages` with `collection`, when given. */
 static void generated_site(const char *packages, const char *collection)
 {
-    char manifest[1024], reference[256] = "";
-    if (collection) {
-        snprintf(reference, sizeof reference, "                collection \"%s\"\n", collection);
-    }
+    char manifest[16384];
     snprintf(
         manifest,
         sizeof manifest,
-        "title \"Generated\"\n(array)sections {\n    - {\n        name "
-        "\"Overview\"\n"
-        "        (array)pages {\n            - {\n                title "
-        "\"Home\"\n"
-        "                source \"README.md\"\n                output "
-        "\"index.html\"\n            }\n"
-        "            - {\n                title \"Packages\"\n                "
-        "packages \"%s\"\n%s"
-        "                output \"packages.html\"\n            }\n"
-        "            - {\n                title \"Grammar\"\n                "
-        "grammar \"grammar.js\"\n"
-        "                output \"grammar.html\"\n            }\n        }\n   "
-        " }\n}\n",
+        "package asset\nimport docs \"game:documentation\"\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return docs.Encode(\"Generated\", "
+        "[docs.Section.Group(\"Overview\", [\n"
+        "        docs.Page.Markdown(\"Home\", \"README.md\", \"index.html\"),\n"
+        "        docs.Page.Packages(\"Packages\", \"%s\", \"%s\", "
+        "\"packages.html\"),\n"
+        "        docs.Page.Grammar(\"Grammar\", \"grammar.js\", "
+        "\"grammar.html\")\n"
+        "    ])]);\n}\n",
         packages,
-        reference
+        collection ? collection : ""
     );
-    write_file("generated/docs/site.kdl", manifest);
+    write_file("generated/docs/site.chibi", manifest);
 }
 
 /* The real compiler's --docs generates a package reference from the
@@ -1418,7 +1519,11 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         tool_run(docs, root, output) == 1 &&
         file_has("generated.log", "empty holds no package files")
     );
-    write_file("generated/grammar.js", "rules: {\n}\n");
+    write_file(
+        "generated/grammar.js",
+        "rules: {\n"
+        "}\n"
+    );
     generated_site("lib", "lib");
     REQUIRE(
         tool_run(docs, root, output) == 1 &&
@@ -1439,7 +1544,12 @@ TEST_CASE(doc_runs_the_compiler_docs)
     REQUIRE(file_is("compile.args", "--project-root\ngame with spaces\n--docs\n"));
     const char *here[] = { launcher, "doc", NULL };
     REQUIRE(tool_run(here, root, log_path) == 0);
-    REQUIRE(file_is("compile.args", "--project-root\n.\n--docs\n"));
+    REQUIRE(file_is(
+        "compile.args",
+        "--project-root\n"
+        ".\n"
+        "--docs\n"
+    ));
     write_file("fail", "");
     REQUIRE(tool_run(named, root, log_path) == 37);
     REQUIRE(!unlink(file));
@@ -1592,7 +1702,7 @@ TEST_CASE(installed_project_commands)
     REQUIRE(!exists("installed/.chibi"));
     const char *format[] = { launcher, "fmt", "--check", game, NULL };
     REQUIRE(tool_run(format, root, output) == 0);
-    write_file("installed/content/scenes/Start.kdl", MESSY_SCENE);
+    write_file("installed/content/scenes/Start.chibi", MESSY_SCENE);
     REQUIRE(tool_run(format, root, output) == 1);
     const char *rewrite[] = { launcher, "fmt", game, NULL };
     REQUIRE(tool_run(rewrite, root, output) == 0 && tool_run(format, root, output) == 0);
@@ -1622,7 +1732,11 @@ TEST_CASE(installed_package_commands_and_docs)
     path(output, "installed.log");
     const char *run[] = { launcher, "test", tree, NULL };
     REQUIRE(tool_run(run, root, output) == 1);
-    REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
+    REQUIRE(file_has(
+        "installed.log",
+        "PASS facts.Passes\n"
+        "FAIL facts.Fails\n"
+    ));
     REQUIRE(file_has("installed.log", "Assertion failed: four bytes\n2 tests, 1 failed\n"));
 
     directory("packages/lib");

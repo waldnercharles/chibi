@@ -1,0 +1,56 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("SurfaceDestructible")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("color", data.Value.UInt(1786945535)),
+                    data.Field.Named("height", data.Value.Real(24.0)),
+                    data.Field.Named("width", data.Value.Real(32.0))
+                ])),
+                data.Field.Named("Collider", data.Object([
+                    data.Field.Named("category", data.Value.UInt(1)),
+                    data.Field.Named("height", data.Value.Real(24.0)),
+                    data.Field.Named("mask", data.Value.UInt(1)),
+                    data.Field.Named("shape", data.Value.Text("Box")),
+                    data.Field.Named("width", data.Value.Real(32.0))
+                ])),
+                data.Field.Named("Destructible", data.Object([
+                    data.Field.Named("cell_size", data.Value.Real(2.0)),
+                    data.Field.Named("min_fragment_cells", data.Value.UInt(2))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("absorption", data.Value.Real(1.0)),
+                    data.Field.Named("albedo", data.Value.UInt(1786945535)),
+                    data.Field.Named("edge_light", data.Value.Real(1.0)),
+                    data.Field.Named("scene", data.Value.UInt(1786945535))
+                ])),
+                data.Field.Named("MaterialSurface3D", data.Object([
+                    data.Field.Named("bevel_width", data.Value.Real(3.0)),
+                    data.Field.Named("depth", data.Value.Real(12.0)),
+                    data.Field.Named("elevation", data.Value.Real(8.0)),
+                    data.Field.Named("enabled", data.Value.Bool(true)),
+                    data.Field.Named("material_height", data.Value.Bool(true)),
+                    data.Field.Named("relief", data.Value.Real(2.0)),
+                    data.Field.Named("relief_scale", data.Value.Real(8.0)),
+                    data.Field.Named("seed", data.Value.UInt(23)),
+                    data.Field.Named("spacing", data.Value.Real(2.0))
+                ])),
+                data.Field.Named("Shader", data.Object([
+                    data.Field.Named("material", data.Value.Text("SurfaceRelief"))
+                ])),
+                data.Field.Named("Substance", data.Object([
+                    data.Field.Named("hardness", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(-28.0)),
+                    data.Field.Named("y", data.Value.Real(24.0))
+                ]))
+            ]))
+        ])
+    );
+}

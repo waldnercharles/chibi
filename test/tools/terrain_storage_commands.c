@@ -154,9 +154,9 @@ static void setup()
 #endif
     assert(tool_run(args, scratch, log_path) == 0);
     char path[512];
-    at(path, sizeof path, "content/scenes/SeamStudy.kdl");
+    at(path, sizeof path, "content/scenes/SeamStudy.chibi");
     scene = tool_read(path);
-    at(path, sizeof path, "content/prototypes/SeamTerrain.kdl");
+    at(path, sizeof path, "content/prototypes/SeamTerrain.chibi");
     prototype = tool_read(path);
     assert(scene && prototype);
     tool_write(save_path, "{\"existing\":\"kept\"}\n");
@@ -198,15 +198,40 @@ static void replace_asset(const char *relative, const char *source, const char *
 static void cut_scene(bool cut)
 {
     if (!cut) {
-        write_asset("content/scenes/SeamStudy.kdl", scene);
+        write_asset("content/scenes/SeamStudy.chibi", scene);
         return;
     }
     /* Reuse the checked-in CPU cut behavior and slab scene. No game policy. */
     replace_asset(
-        "content/scenes/SeamStudy.kdl",
+        "content/scenes/SeamStudy.chibi",
         scene,
-        "        name \"Cut slab\"\n",
-        "        name \"Cut slab\"\n        (array)behaviors \"CutMaterial\"\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Cut "
+        "slab\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Cut "
+        "slab\")),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"CutMaterial\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
 }
 
@@ -429,7 +454,7 @@ TEST_CASE(terrain_storage_controller_rejects_invalid_loads_without_replacing_ter
     REQUIRE(unchanged(blob, saved, length));
     saved[length - 1] ^= 1;
     write_bytes(blob, saved, length);
-    replace_asset("content/prototypes/SeamTerrain.kdl", prototype, "seed=7", "seed=8");
+    replace_asset("content/prototypes/SeamTerrain.chibi", prototype, "seed=7", "seed=8");
     begin("load_terrain", "Cut slab", "slot", save_path);
     send();
     REQUIRE(run() != 0 && !ok(0));

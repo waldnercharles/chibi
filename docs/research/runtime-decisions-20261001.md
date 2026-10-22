@@ -1,10 +1,13 @@
 # Runtime decisions, 2026-10-01
 
+> Historical record: these measurements and plans describe a retired asset format.
+> Current authoring uses ordinary compiled Chibi modules.
+
 The ready batch `ba538384` is pushed to main. Its renderer cache, retained storage
 scratch and Wasm validation evidence stay frozen in the ready report. The shared
 generic spatial map remains unmerged: its native timing matrix rejects it as the
 default. The separate existing-grid activation-ID slice originally at `cfccc152`
-is accepted at `4490156b` after isolated validation against KDL main `897dd6de`.
+is accepted at `4490156b` after isolated validation against the former document format main `897dd6de`.
 The [gas activation report](gas-activation-20261001.md) records its fresh native
 matrix and cross-platform correctness checks. The additional unused-index skips
 are rejected: a targeted liquid case regressed 5.81% at p50, with all three pairs

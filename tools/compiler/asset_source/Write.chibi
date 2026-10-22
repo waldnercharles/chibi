@@ -1,0 +1,207 @@
+package asset_source
+
+import strings "core:strings"
+
+MaxBytes: int : 16777216;
+MaxValues: int : 1000000;
+MaxDepth: int : 1024;
+
+// These kinds are the native adapter's transport ABI, not source syntax.
+// Every column has the same length. Node zero is the sole root with parent -1;
+// later nodes appear in preorder and keep their parent's authored child order.
+// Unused scalar slots are zero/empty. Object children carry their field key.
+
+ValidText :: (bytes: int[]) -> bool {
+    at: int = 0;
+    while (at < length(bytes)) {
+        first := bytes[at];
+        if (first < 128) { at += 1; continue; }
+        count: int = 0;
+        low: int = 128;
+        high: int = 191;
+        if (first >= 194 && first <= 223) {
+            count = 2;
+        } else if (first >= 224 && first <= 239) {
+            count = 3;
+            if (first == 224) { low = 160; }
+            if (first == 237) { high = 159; }
+        } else if (first >= 240 && first <= 244) {
+            count = 4;
+            if (first == 240) { low = 144; }
+            if (first == 244) { high = 143; }
+        } else { return false; }
+        if (count > length(bytes) - at || bytes[at + 1] < low || bytes[at + 1] > high) {
+            return false;
+        }
+        offset: int = 2;
+        while (offset < count) {
+            if (bytes[at + offset] < 128 || bytes[at + offset] > 191) { return false; }
+            offset += 1;
+        }
+        at += count;
+    }
+    return true;
+}
+
+Quoted :: (text: string) -> string {
+    assert(strings.ByteLength(text) <= MaxBytes, "Asset string exceeds source quota");
+    bytes := strings.Bytes(text);
+    assert(ValidText(bytes), "Asset strings must be valid UTF-8");
+    parts: string[] = ["\""];
+    hex := "0123456789abcdef";
+    start: int = 0;
+    used: int = 2;
+    at: int = 0;
+    while (at < length(bytes)) {
+        value := bytes[at];
+        if (value == 34 || value == 92 || value < 32) {
+            parts.append(strings.Slice(text, start, at - start));
+            used += at - start;
+            if (value < 32) {
+                parts.append(format_text("\\u00{}{}", strings.Slice(hex, value >> 4, 1), strings.Slice(hex, value & 15, 1)));
+                used += 6;
+            } else {
+                parts.append("\\");
+                parts.append(strings.Slice(text, at, 1));
+                used += 2;
+            }
+            assert(used <= MaxBytes, "Asset string exceeds source quota");
+            start = at + 1;
+        }
+        at += 1;
+    }
+    assert(length(bytes) - start <= MaxBytes - used, "Asset string exceeds source quota");
+    parts.append(strings.Slice(text, start, length(bytes) - start));
+    parts.append("\"");
+    return strings.Join(parts, "");
+}
+
+Indent :: (depth: int) -> string {
+    return strings.Repeat("    ", depth + 2);
+}
+
+Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
+           real: double, boolean: bool) -> string {
+    if (kind == 0) { return "data.Value.Null"; }
+    if (kind == 1) {
+        if (boolean) { return "data.Value.Bool(true)"; }
+        return "data.Value.Bool(false)";
+    }
+    if (kind == 2) { return format_text("data.Value.Int({})", signed); }
+    if (kind == 3) { return format_text("data.Value.UInt({})", unsigned); }
+    if (kind == 4) {
+        assert(real == real && real <= 1.7976931348623157e308 &&
+                   real >= -1.7976931348623157e308, "Asset reals must be finite");
+        literal := format_text("{:.17g}", real);
+        if (!strings.ContainsAny(literal, ".eE")) { literal = strings.Join([literal, ".0"], ""); }
+        return format_text("data.Value.Real({})", literal);
+    }
+    assert(kind == 5, "Invalid asset scalar kind");
+    return format_text("data.Value.Text({})", Quoted(text));
+}
+
+EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+         signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string) -> string {
+    count := length(kinds);
+    assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
+    assert(length(parents) == count && length(keys) == count && length(texts) == count &&
+               length(signed) == count && length(unsigned) == count && length(reals) == count &&
+               length(booleans) == count, "Asset source columns must have equal lengths");
+    assert(parents[0] == -1, "Asset source needs exactly one root");
+    children: int[] = [];
+    for (kind in kinds) {
+        assert(kind >= 0 && kind <= 7, "Invalid asset value kind");
+        children.append(0);
+    }
+    stack: int[] = [];
+    seen: [string: bool] = [:];
+    parts: string[] = [];
+    if (document) {
+        parts.append("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        ");
+    }
+    at: int = 0;
+    while (at < count) {
+        parent := parents[at];
+        if (at > 0) { assert(parent >= 0 && parent < at, "Asset parents must precede their children"); }
+        while (length(stack) > 0 && stack[length(stack) - 1] != parent) {
+            closed := stack[length(stack) - 1];
+            stack.remove_index(length(stack) - 1);
+            if (children[closed] > 0) {
+                parts.append("\n");
+                parts.append(Indent(length(stack)));
+            }
+            parts.append("])");
+            if (parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+        }
+        if (at > 0) {
+            assert(length(stack) > 0 && stack[length(stack) - 1] == parent,
+                   "Asset children must form a preorder tree");
+            if (children[parent] > 0) { parts.append(","); }
+            parts.append("\n");
+            parts.append(Indent(length(stack)));
+            children[parent] += 1;
+            if (kinds[parent] == 6) {
+                identity := format_text("{}:{}", parent, keys[at]);
+                assert(!seen[identity], "Duplicate asset object field");
+                seen[identity] = true;
+                parts.append(format_text("{}.Field.Named(", alias));
+                parts.append(Quoted(keys[at]));
+                parts.append(", ");
+            }
+        }
+        kind := kinds[at];
+        if (kind == 6 || kind == 7) {
+            assert(length(stack) < MaxDepth, "Asset source exceeds depth quota");
+            if (kind == 6) { parts.append(format_text("{}.Object([", alias)); }
+            else { parts.append(format_text("{}.List([", alias)); }
+            stack.append(at);
+        } else {
+            scalar := Scalar(kind, texts[at], signed[at], unsigned[at], reals[at], booleans[at]);
+            parts.append(strings.Join([alias, strings.Slice(scalar, 4, strings.ByteLength(scalar) - 4)], ""));
+            if (parent >= 0 && kinds[parent] == 6) { parts.append(")"); }
+        }
+        at += 1;
+    }
+    while (length(stack) > 0) {
+        closed := stack[length(stack) - 1];
+        stack.remove_index(length(stack) - 1);
+        if (children[closed] > 0) {
+            parts.append("\n");
+            parts.append(Indent(length(stack)));
+        }
+        parts.append("])");
+        if (parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+    }
+    if (document) { parts.append("\n    )\n}\n"); }
+    used: int = 0;
+    for (part in parts) {
+        bytes := strings.ByteLength(part);
+        assert(bytes <= MaxBytes - used, "Asset source exceeds byte quota");
+        used += bytes;
+    }
+    return strings.Join(parts, "");
+}
+
+Emit :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+         signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool) -> string {
+    return EmitNamed(kinds, parents, keys, texts, signed, unsigned, reals, booleans, document, "data");
+}
+
+SourceBytes :: (text: string) -> byte[] {
+    assert(strings.ByteLength(text) <= MaxBytes, "Asset source exceeds byte quota");
+    out: byte[] = [];
+    for (value in strings.Bytes(text)) { out.append(byte(value)); }
+    return out;
+}
+
+// Constructor expression for syntax-owned insertion/replacement. The same
+// authored writer owns quoting, numeric spelling and shape validation.
+pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+                   signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+    return SourceBytes(Emit(kinds, parents, keys, texts, signed, unsigned, reals, booleans, false));
+}
+
+pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+    return SourceBytes(Emit(kinds, parents, keys, texts, signed, unsigned, reals, booleans, true));
+}

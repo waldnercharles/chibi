@@ -63,7 +63,7 @@ use aliases without gaining unsupported behavior bindings.
 
 Studio's graph menu (⋯) offers Optimize and Math to Expressions. These actions
 use editor document history. The former `optimize_graph` agent mutation request
-is retired; agents edit saved `.chibi`/KDL source and use native inspection and
+is retired; agents edit saved `.chibi` source and use native inspection and
 validation as described in the [asset workflow](runtime-authoring.md).
 
 The optimizer report includes `folded_inputs`, `removed_nodes`,

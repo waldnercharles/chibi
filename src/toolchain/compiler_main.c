@@ -168,6 +168,7 @@ static int usage()
         "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
         "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
         "--output-artifact FILE | --output-bytes FILE]\n"
+        "       chibi-compiler-host --target-json [OUTPUT]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
         "[--seed DIR [--revision TEXT] | --recover FILE]\n"
     );
@@ -194,6 +195,24 @@ static int bootstrap(const compiler_bootstrap *b)
 }
 int main(int argc, char **argv)
 {
+    if ((argc == 2 || argc == 3) && !strcmp(argv[1], "--target-json")) {
+        size_t length;
+        char error[256] = { 0 };
+        char *json = compiler_host_compiler_target_json(&length, error, sizeof error);
+        if (!json) {
+            fprintf(stderr, "%s\n", error);
+            return 1;
+        }
+        FILE *output = argc == 3 ? fopen(argv[2], "wb") : stdout;
+        bool ok = output && fwrite(json, 1, length, output) == length &&
+                  !fflush(output);
+        if (output && output != stdout) {
+            ok = !fclose(output) && ok;
+        }
+        free(json);
+        return ok ? 0 : 1;
+    }
+
     const char *artifact = NULL, *input = NULL, *output_artifact = NULL;
     /* --output-bytes writes a byte[] result that is not a compiler, such as
      * a game's modules, without loading it as one. */

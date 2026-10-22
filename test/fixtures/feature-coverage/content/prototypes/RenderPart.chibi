@@ -1,0 +1,23 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RenderPart")),
+            data.Field.Named("includes", data.List([
+                data.Value.Text("RenderSolid")
+            ])),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(4289745151))
+                ])),
+                data.Field.Named("VisualTransform", data.Object([
+                    data.Field.Named("scale", data.Value.Real(1.0)),
+                    data.Field.Named("yaw", data.Value.Real(0.5))
+                ]))
+            ]))
+        ])
+    );
+}

@@ -1,7 +1,7 @@
 #include "authoring/project_prepare_internal.h"
 #include "authoring/source_asset.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 
 #include <dirent.h>
@@ -99,9 +99,8 @@ bool project_prepare_prototypes(
     struct dirent *entry;
     while (valid && (entry = readdir(dir))) {
         size_t n = strlen(entry->d_name);
-        bool source = n > 6 && !strcmp(entry->d_name + n - 6, ".chibi");
-        if (entry->d_name[0] == '.' ||
-            (!source && (n < 4 || strcmp(entry->d_name + n - 4, ".kdl")))) {
+        if (entry->d_name[0] == '.' || n <= 6 ||
+            strcmp(entry->d_name + n - 6, ".chibi")) {
             continue;
         }
         char path[4096];
@@ -112,14 +111,9 @@ bool project_prepare_prototypes(
             break;
         }
         char *text = project_prepare_read(path, &budget, error, size);
-        av_doc *document = !text ? NULL
-                         : source
-                             ? authoring_prototype_source_read(text, registry, error, size)
-                             : av_doc_read(text, error, size);
-        if (source && document) {
-            free(text);
-            text = av_doc_write(document);
-        }
+        av_doc *document = text
+                             ? authoring_prototype_document_read(text, registry, error, size)
+                             : NULL;
         if (!document) {
             free(text);
             valid = false;

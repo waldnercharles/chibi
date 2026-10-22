@@ -47,7 +47,7 @@ candidate, not a merged or deployed editor feature.
   resolved inputs and dependency fingerprints. It bounds dimensions, evaluation
   work, distinct image keys and decoded image storage.
 - `test/fixtures/environment-authoring` recovers the two-sample MaterialStudy
-  scene with current KDL and `.chibi` contracts. Both source masks start with
+  scene with current compiled Chibi and `.chibi` contracts. Both source masks start with
   8,420 occupied cells. After one authored Tick and the next material boundary,
   the cut sample has 4,640 source cells, an empty cut center and retained
   fragments; the comparison sample is unchanged. This proves CPU behavior.
@@ -304,7 +304,7 @@ for these terrain fixes.
   public SDK APIs and controller operations. Studio owns the authoring application
   and consumes an installed SDK. Examples own playable acceptance content.
 - Follow [code-source-roadmap.md](code-source-roadmap.md). Declarative materials,
-  fields and shader libraries remain KDL with their existing domain validation and
+  fields and shader libraries remain compiled Chibi with their existing domain validation and
   lowering. Executable behaviors, callable libraries and systems use `.chibi`.
   This initiative does not introduce a shader language or move GPU graphs into
   the behavior compiler.

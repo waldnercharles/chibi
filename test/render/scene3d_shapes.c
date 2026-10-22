@@ -375,13 +375,31 @@ TEST_CASE(nearer_solids_win_in_any_order)
 
 TEST_CASE(parallel_geometry_draws_what_serial_geometry_does)
 {
-    const char *parts = "(array)- {\n"
-                        "    - {\n"
-                        "        primitive 0\n"
-                        "        (array)size 0.1 0.1 0.1\n"
-                        "        (array)rotation 0 0.3 0\n"
-                        "    }\n"
-                        "}\n";
+    const char
+        *parts = "package asset\n"
+                 "\n"
+                 "import data \"game:assets\"\n"
+                 "\n"
+                 "pub Build :: () -> byte[] {\n"
+                 "    return data.Encode(\n"
+                 "        data.List([\n"
+                 "            data.Object([\n"
+                 "                data.Field.Named(\"primitive\", "
+                 "data.Value.UInt(0)),\n"
+                 "                data.Field.Named(\"size\", data.List([\n"
+                 "                    data.Value.Real(0.1),\n"
+                 "                    data.Value.Real(0.1),\n"
+                 "                    data.Value.Real(0.1)\n"
+                 "                ])),\n"
+                 "                data.Field.Named(\"rotation\", data.List([\n"
+                 "                    data.Value.UInt(0),\n"
+                 "                    data.Value.Real(0.3),\n"
+                 "                    data.Value.UInt(0)\n"
+                 "                ]))\n"
+                 "            ])\n"
+                 "        ])\n"
+                 "    )\n"
+                 "}\n";
     char error[256];
     REQUIRE(authoring_parts_prepare(parts, error, sizeof error));
     for (int i = 0; i < 1537; i++) {

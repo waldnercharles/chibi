@@ -16,7 +16,12 @@ typedef enum
     AUTHORING_PROTOTYPE_REMOVE_COMPONENT,
     AUTHORING_PROTOTYPE_ATTACH_BEHAVIOR,
     /* Remove every occurrence of the requested behavior symbol. */
-    AUTHORING_PROTOTYPE_DETACH_BEHAVIOR
+    AUTHORING_PROTOTYPE_DETACH_BEHAVIOR,
+    /* field names an existing scalar parameter; component is unused. */
+    AUTHORING_PROTOTYPE_SET_PARAMETER,
+    /* field names an explicit component field override. Dotted paths fail:
+     * native records must be reset as a whole. */
+    AUTHORING_PROTOTYPE_RESET_FIELD_OVERRIDE
 } authoring_prototype_edit_kind;
 
 typedef struct
@@ -25,7 +30,7 @@ typedef struct
     const char *component;
     /* Reflected field names, optionally separated by dots. */
     const char *field;
-    /* SET_FIELD: leaf value. ADD_COMPONENT: complete PIN_STRUCT creation
+    /* SET_FIELD/SET_PARAMETER: leaf value. ADD_COMPONENT: complete PIN_STRUCT creation
      * payload, including the consumer's contextual native defaults. Borrowed. */
     pin_value value;
     const char *behavior;
@@ -41,7 +46,7 @@ typedef struct
     bool materialized;
 } authoring_prototype_edit_result;
 
-/* Pure, bounded edit of one static prototype. Input strings, payloads,
+/* Pure, bounded edit of one prototype. Input strings, payloads,
  * registry and catalog are borrowed and never changed. Conflicting operations,
  * invalid input, unrepresentable values or invalid final composition fail with
  * an empty result. Successful source and model are owned by the result.
@@ -52,9 +57,15 @@ typedef struct
  * Runtime handles are never emitted as symbols. Existing symbolic links
  * survive ordinary edits and structural materialization.
  *
+ * Literal fields are edited in place. Computed fields receive explicit
+ * overrides; resetting an override restores the computed value. Parameters
+ * retain their established scalar type. Helper source remains untouched.
+ *
  * Nested fields follow the existing language's whole-record override rule.
  * When an ancestor record is omitted, author its resolved siblings as well
  * to retain their current values; this does not introduce per-axis inheritance.
+ * RESET_FIELD_OVERRIDE rejects nested paths to preserve sibling overrides;
+ * reset the entire component field that owns the native record instead.
  *
  * The caller owns source/dependency revision checks and editor history.
  * Registry descriptors and include context must outlive the returned model. */

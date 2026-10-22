@@ -942,7 +942,12 @@ TEST_CASE(docs_reference_lists_declarations)
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
-            fprintf(stderr, "reference:\n%s\n", html);
+            fprintf(
+                stderr,
+                "reference:\n"
+                "%s\n",
+                html
+            );
         }
         free(html);
         REQUIRE(listed);
@@ -981,7 +986,12 @@ TEST_CASE(docs_grammar_lists_rules)
                       strstr(html, "<h3 id=\"_item\">_item</h3>") &&
                       !strstr(html, "word") && !strstr(html, "extras");
         if (!listed && html) {
-            fprintf(stderr, "grammar:\n%s\n", html);
+            fprintf(
+                stderr,
+                "grammar:\n"
+                "%s\n",
+                html
+            );
         }
         free(html);
         REQUIRE(listed);

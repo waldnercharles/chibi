@@ -1,3 +1,0 @@
-name "Swarmer"
-(object)components
-(array)behaviors "Pursuit"

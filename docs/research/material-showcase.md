@@ -3,10 +3,10 @@
 These independent Arena2D scenes demonstrate the current material runtime. Launch a release build from the repository root:
 
 ```sh
-make play SCENE=scenes/MaterialShowcaseLiquidDDR.kdl
+make play SCENE=scenes/MaterialShowcaseLiquidDDR.chibi
 ```
 
-`PROJECT` defaults to `projects/arena2d`; use `SCENE=scenes/<name>.kdl` for any name below. **R** restarts, **Escape** pauses, **Enter** resumes, and **Q** quits while paused. [Launch target](../../Makefile), [controls](../../src/host/main.c)
+`PROJECT` defaults to `projects/arena2d`; use `SCENE=scenes/<name>.chibi` for any name below. **R** restarts, **Escape** pauses, **Enter** resumes, and **Q** quits while paused. [Launch target](../../Makefile), [controls](../../src/host/main.c)
 
 | Scene | Seeded parcels | What to watch |
 | --- | ---: | --- |
@@ -79,6 +79,9 @@ Solver selection is per material world. DDR liquid and MPM elastic matter do not
 
 MPM liquid is compressible. The coarse-grid liquid comparison ends with parcel volume ratios ranging from 0.39 to 5.41 and visible thin strands, so it is not a general liquid-quality upgrade over DDR. Complete transfer stencils can still exchange momentum across thin walls; collision projection does not supply CPIC separation. Gas is a coarse velocity field with tracers, without composition diffusion. Explosion pressure is an authored gameplay blast kernel whose density and strength need tuning, not a resolved detonation model.
 
-At eight seconds, the open thermal scene has extinguished 325 of 32,168 fuel parcels, about 1%, while the sealed control remains burning. It demonstrates local quenching, not rapid bulk extinguishing. Organic strain reaches about 13.5% in the final sample; the scene demonstrates gentle elastic contact without tearing. [Acceptance report](material-showcase-frames/scenes/material-showcase.json)
+At eight seconds, the open thermal scene has extinguished 325 of 32,168 fuel parcels, about 1%, while the sealed control remains burning. It demonstrates local quenching, not rapid bulk extinguishing. Organic strain reaches about 13.5% in the final sample; the scene demonstrates gentle elastic contact without tearing. [Acceptance report](https://github.com/waldnercharles/chibi/blob/60d58df57666732a3f6a9ff759195b091c6b05d8/docs/research/material-showcase-frames/scenes/material-showcase.json)
 
 `materials.mpm.limited` means mechanics advanced only part of the requested step after reaching a substep or stability limit; inspect `advanced_time` before interpreting a run. The showcase checks reject sampled limited steps. With `--profile`, they also reject any limited step over the full replay interval. This continuation does not add out-of-core particle paging, full chemistry, attachment joints, structural stress fracture or plastic tearing. Particle count alone is not a frame-budget measurement. [Solver contract](../../src/runtime/material_mpm.h), [step budget and blast](../../src/runtime/material_fluid.c)
+
+The full historical explosion capture is [archived at its original revision](https://github.com/waldnercharles/chibi/blob/60d58df57666732a3f6a9ff759195b091c6b05d8/docs/research/material-showcase-frames/explosion/material-explosion.json).
+Its paths and hashes describe that retired game snapshot.

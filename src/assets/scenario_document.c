@@ -2,7 +2,7 @@
 
 #include "runtime/components.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 
@@ -231,7 +231,7 @@ static bool read_document(av_value *root, scenario_document *out, char *error, s
 
 scenario_document *scenario_document_load(const char *text, char *error, size_t error_size)
 {
-    av_doc *doc = av_doc_read(text, error, error_size);
+    av_doc *doc = asset_document_read(text, error, error_size);
     if (!doc) {
         return NULL;
     }
@@ -326,7 +326,7 @@ char *scenario_document_save(const scenario_document *document)
     for (int i = 0; i < acount(document->keys); i++) {
         write_key(doc, keys, &document->keys[i]);
     }
-    char *text = av_doc_write(doc);
+    char *text = asset_document_write(av_doc_root(doc));
     av_doc_free(doc);
     return text;
 }

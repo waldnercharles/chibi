@@ -2,7 +2,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/model/value_copy.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -221,7 +221,7 @@ int graph_append_value(graph *g, av_value *document, float dx, float dy)
 int graph_append(graph *g, const char *text, float dx, float dy)
 {
     char error[160];
-    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
     if (!doc) {
         serialize_error_set("%s", text ? error : "null code input");
         return -1;

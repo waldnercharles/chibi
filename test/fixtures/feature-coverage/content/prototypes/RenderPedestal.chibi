@@ -1,0 +1,25 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RenderPedestal")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(1.0)),
+                    data.Field.Named("height", data.Value.Real(1.0)),
+                    data.Field.Named("width", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(3229143295))
+                ])),
+                data.Field.Named("MeshParts", data.Object([
+                    data.Field.Named("parts", data.Value.Text("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        data.List([\n            data.Object([\n                data.Field.Named(\"primitive\", data.Value.UInt(0)),\n                data.Field.Named(\"size\", data.List([\n                    data.Value.Real(50.0),\n                    data.Value.Real(12.0),\n                    data.Value.Real(50.0)\n                ])),\n                data.Field.Named(\"position\", data.List([\n                    data.Value.Real(0.0),\n                    data.Value.Real(6.0),\n                    data.Value.Real(0.0)\n                ]))\n            ]),\n            data.Object([\n                data.Field.Named(\"primitive\", data.Value.UInt(1)),\n                data.Field.Named(\"size\", data.List([\n                    data.Value.Real(30.0),\n                    data.Value.Real(30.0),\n                    data.Value.Real(30.0)\n                ])),\n                data.Field.Named(\"position\", data.List([\n                    data.Value.Real(0.0),\n                    data.Value.Real(27.0),\n                    data.Value.Real(0.0)\n                ]))\n            ])\n        ])\n    );\n}\n"))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

@@ -1,4 +1,0 @@
-name "Lighting"
-components {
-    HRC2D ambient=0.08 bounce_hysteresis=1.0 bounce_intensity=1.0 falloff=1.0 feedback=#true intensity=1.0 radiance_hysteresis=1.0 resolution=0.5 specular=1.0 surface_bevel=1.0 surface_depth_gain=1.0 surface_depth_history=0.65 surface_depth_quality="Balanced" surface_depth_radius=128.0 surface_depth_visibility="Bounded segments" surface_mode="Depth thickness" surface_radius=24.0 surface_relief=1.5 surface_thickness=64.0 target_fps=60.0
-}

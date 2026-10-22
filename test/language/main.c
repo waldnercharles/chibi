@@ -39,6 +39,7 @@ void test_language_iteration();
 void test_language_generic();
 void test_language_source_assets();
 void test_language_source_prototype_edits();
+void test_language_typed_prototype();
 void test_language_symbol_references();
 void test_language_program();
 void test_language_retention();
@@ -249,6 +250,7 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
+    bool typed_prototype = argc == 2 && !strcmp(argv[1], "--typed-prototype");
     bool source_prototype_edits = argc == 2 &&
                                   !strcmp(argv[1], "--source-prototype-edits");
     bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
@@ -288,7 +290,7 @@ int main(int argc, char **argv)
          !component_write && !component_write_layout && !scalarize && !borrow &&
          !reductions && !binding_schedule && !activation_cache && !headless &&
          !build_workflow && !navigation && !publication && !field_runtime &&
-         !prototype && !source_prototype_edits && !ui_authoring &&
+         !prototype && !source_prototype_edits && !typed_prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -342,6 +344,7 @@ int main(int argc, char **argv)
             "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --source-prototype-edits "
+            "| --typed-prototype "
             "| --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | --runtime-attribution | --record-values | "
@@ -424,6 +427,13 @@ int main(int argc, char **argv)
         test_language_text_format();
     } else if (ui_authoring) {
         test_ui_authoring();
+    } else if (typed_prototype) {
+#ifdef CHIBI_TEST_SOURCE_ASSETS
+        test_language_typed_prototype();
+#else
+        fprintf(stderr, "typed-prototype requires CHIBI_TEST_SOURCE_ASSETS\n");
+        return 1;
+#endif
     } else if (source_prototype_edits) {
 #ifdef CHIBI_TEST_SOURCE_ASSETS
         test_language_source_prototype_edits();

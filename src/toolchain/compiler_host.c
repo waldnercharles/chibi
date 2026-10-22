@@ -31,6 +31,7 @@ struct compiler_host
     package_collection *packages;
     execution_module *root;
     behavior_backend backend;
+    bool values_only;
 };
 static void message(char *out, size_t size, const char *text)
 {
@@ -38,10 +39,11 @@ static void message(char *out, size_t size, const char *text)
         snprintf(out, size, "%s", text);
     }
 }
-compiler_host *compiler_host_load(
+static compiler_host *load(
     const void *bytes,
     size_t length,
     behavior_backend backend,
+    bool values_only,
     char *error,
     size_t error_size
 )
@@ -56,7 +58,8 @@ compiler_host *compiler_host_load(
                                              COMPILER_SYNTAX_DEFINITION_PACK };
     compiler_host *host = xcalloc(1, sizeof *host);
     host->backend = backend;
-    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, error_size);
+    host->values_only = values_only;
+    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, values_only ? 2 : 4, error, error_size);
     if (!host->native) {
         compiler_host_free(host);
         return NULL;
@@ -86,6 +89,26 @@ compiler_host *compiler_host_load(
     }
     return host;
 }
+compiler_host *compiler_host_load(
+    const void *bytes,
+    size_t length,
+    behavior_backend backend,
+    char *error,
+    size_t size
+)
+{
+    return load(bytes, length, backend, false, error, size);
+}
+compiler_host *compiler_host_load_values(
+    const void *bytes,
+    size_t length,
+    behavior_backend backend,
+    char *error,
+    size_t size
+)
+{
+    return load(bytes, length, backend, true, error, size);
+}
 uint64_t compiler_host_entry(const char *symbol)
 {
     return script_catalog_id("package-symbol", symbol);
@@ -93,6 +116,34 @@ uint64_t compiler_host_entry(const char *symbol)
 char *compiler_host_target_json(const compiler_host *host, size_t *length)
 {
     return compiler_target_json(native_capabilities_catalog(host->native), length);
+}
+char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
+    native_capabilities
+        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, size);
+    if (!native) {
+        return NULL;
+    }
+    char *json = compiler_target_json(native_capabilities_catalog(native), length);
+    native_capabilities_free(native);
+    return json;
+}
+char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    native_capabilities
+        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, size);
+    if (!native) {
+        return NULL;
+    }
+    char *json = compiler_target_json(native_capabilities_catalog(native), length);
+    native_capabilities_free(native);
+    return json;
 }
 void compiler_host_free(compiler_host *host)
 {
@@ -338,6 +389,7 @@ typedef struct
     int flow_status;
     behavior_run_counts counts;
     char diagnostic[256];
+    compiler_host_source source;
 } invocation_result;
 static bool byte_type(const pin_value *value, pin_container container)
 {
@@ -518,7 +570,15 @@ static bool invoke(
     }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
+    behavior_execution_scope execution = { .remaining = budget, .pure = true };
+    bool owned_scope = host->values_only && !behavior_execution_scope_active();
+    if (owned_scope) {
+        behavior_execution_scope_begin(&execution);
+    }
     out->flow_status = behavior_function_run(function, &context, host->backend != BEHAVIOR_BYTECODE);
+    if (owned_scope) {
+        behavior_execution_scope_end(&execution);
+    }
     behavior_run_scope_end(&scope);
     out->counts = scope.counts;
     if (out->flow_status != FLOW_OK || !context.returned) {
@@ -561,6 +621,20 @@ static bool invoke(
         failure = "compiler result cannot be encoded within byte limit";
     }
 done:
+    if (failure && out->flow_status < 0) {
+        const behavior_function_source *source = behavior_function_failure_source(&context);
+        if (source) {
+            out->source = (compiler_host_source){ .present = true,
+                                                  .start = source->start,
+                                                  .end = source->end,
+                                                  .line = source->line,
+                                                  .column = source->column };
+            const char *asset = source->asset_name ? source->asset_name : "";
+            int count = snprintf(out->source.asset, sizeof out->source.asset, "%s", asset);
+            out->source.truncated = count < 0 ||
+                                    (size_t)count >= sizeof out->source.asset;
+        }
+    }
     if (failure && !out->diagnostic[0]) {
         message(out->diagnostic, sizeof out->diagnostic, failure);
     }
@@ -595,6 +669,7 @@ bool compiler_host_invoke(
     out->length = result.length;
     out->flow_status = result.flow_status;
     out->counts = result.counts;
+    out->source = result.source;
     memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
     return ok;
 }
@@ -622,6 +697,7 @@ bool compiler_host_invoke_bytes(
     out->length = result.length;
     out->flow_status = result.flow_status;
     out->counts = result.counts;
+    out->source = result.source;
     memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
     return ok;
 }
@@ -719,6 +795,7 @@ bool compiler_host_invoke_batch(
                     result.length <= COMPILER_HOST_MAX_BYTES - used - 2;
         yyjson_doc_free(result_doc);
         if (!invoked || !fits) {
+            out->source = result.source;
             snprintf(
                 out->diagnostic,
                 sizeof out->diagnostic,

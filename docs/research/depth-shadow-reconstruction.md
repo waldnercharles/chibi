@@ -110,7 +110,7 @@ Validation scope: native Metal frozen captures, three MCP-validated diagnostic
 scenes, image-level shadow/clear-path checks, `git diff --check`, and matching
 hashes for every preexisting file in the preservation snapshot. The whole copied
 project's format check reports two inherited noncanonical behavior assets,
-`SdfCameraOrbitYaw.kdl` and `SdfCameraYawSway.kdl`; they were not edited. No new
+`SdfCameraOrbitYaw.chibi` and `SdfCameraYawSway.chibi`; they were not edited. No new
 Web, GLES, moving-camera, or whole-engine test result is claimed for this study.
 
 All screen-space proposals below still lack hidden and offscreen geometry. A
@@ -383,7 +383,7 @@ The three new lab scenes and all controlled variants validated through public
 MCP authoring calls with project-root checks.
 
 `make test` stopped at the pre-existing noncanonical Arena2D
-`content/scenes/Sandbox.kdl`. It is not a passing whole-engine suite. Original
+`content/scenes/Sandbox.chibi`. It is not a passing whole-engine suite. Original
 scenes and unrelated WIP were preserved, and changes remain uncommitted.
 
 

@@ -45,7 +45,7 @@ test admission, project version, generated assets, or runtime behavior.
 | `panel-sources.csv` | All 44 registrations in synchronization order; exact add/sync/action symbols and mount gate |
 | `commands.csv` | All 123 command identities and defaults, including macro-expanded declarations and in-memory enum ordinal |
 | `ownership.md` | Source-backed shared/instance state, command/input dispatch, document/history and asynchronous ownership; explicit audit gaps |
-| `selectors.csv` | All 26 native Studio selectors and 25 relevant engine prerequisites; admission versus execution and excluded coverage |
+| [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) | All 26 native Studio selectors and 25 relevant engine prerequisites; admission versus execution and excluded coverage |
 | `source-provenance.csv` | Exact fetched/source-audited Git blobs, byte counts, SHA-256 and immutable URLs |
 | `engine-fonts.csv` | All 28 files in the candidate engine font tree, including licenses/readmes; source byte fingerprints, not installed-font or rendered-output proof |
 | `toolchain-files.json` | Local compiler/build-tool executable identities; not a complete SDK/dependency closure |
@@ -172,7 +172,7 @@ records must be recreated from actual builds, never filled in as passes.
 `studio-panel-idle` is a separately admitted fixed workload and has its own
 setup; it does not grant the full acceptance executable permission.
 
-Read `selectors.csv` as a per-feature coverage map. Do not execute its rows as
+Read [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) as a per-feature coverage map. Do not execute its rows as
 a substitute aggregate. Preserve the production supervisor's shared 60-second
 deadline, exact input bounds, independent admission and root serialization.
 Build/configure time is separate. Actual native/SLJIT and actual Wasm execution

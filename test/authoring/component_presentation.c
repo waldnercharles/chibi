@@ -73,19 +73,46 @@ TEST_CASE(engine_components_present_without_a_document)
 }
 TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
 {
-    const char *document = "components {\n"
-                           "    Collider icon=\"shape\"\n"
-                           "    Body tab=\"Object\"\n"
-                           "    Camera icon=\"none\"\n"
-                           "    Combustion {\n"
-                           "        fields {\n"
-                           "            blast_radius unit=\"m\"\n"
-                           "            ignition {\n"
-                           "                (array)range 0 2\n"
-                           "            }\n"
-                           "        }\n"
-                           "    }\n"
-                           "}\n";
+    const char *document =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Collider\", data.Object([\n"
+        "                    data.Field.Named(\"icon\", "
+        "data.Value.Text(\"shape\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Body\", data.Object([\n"
+        "                    data.Field.Named(\"tab\", "
+        "data.Value.Text(\"Object\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Camera\", data.Object([\n"
+        "                    data.Field.Named(\"icon\", "
+        "data.Value.Text(\"none\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Combustion\", data.Object([\n"
+        "                    data.Field.Named(\"fields\", data.Object([\n"
+        "                        data.Field.Named(\"blast_radius\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"unit\", "
+        "data.Value.Text(\"m\"))\n"
+        "                        ])),\n"
+        "                        data.Field.Named(\"ignition\", data.Object([\n"
+        "                            data.Field.Named(\"range\", data.List([\n"
+        "                                data.Value.UInt(0),\n"
+        "                                data.Value.UInt(2)\n"
+        "                            ]))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     char error[256] = { 0 };
     REQUIRE(component_presentation_read(document, registry(), &presentation, error, sizeof error));
     const ecs_component_desc *collider = component("Collider");
@@ -99,18 +126,46 @@ TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
     field_hint ignition = hint("Combustion", "ignition");
     REQUIRE(unit_is(ignition, NULL) && ignition.min == 0 && ignition.max == 2);
     /* An invalid document keeps the last valid read. */
-    const char *invalid = "components {\n"
-                          "    Body tab=\"Nowhere\"\n"
-                          "}\n";
+    const char *
+        invalid = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"components\", data.Object([\n"
+                  "                data.Field.Named(\"Body\", data.Object([\n"
+                  "                    data.Field.Named(\"tab\", "
+                  "data.Value.Text(\"Nowhere\"))\n"
+                  "                ]))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n";
     REQUIRE(!component_presentation_read(invalid, registry(), &presentation, error, sizeof error));
     REQUIRE(strstr(error, "unknown tab"));
-    const char *color = "components {\n"
-                        "    Appearance {\n"
-                        "        fields {\n"
-                        "            color unit=\"u\"\n"
-                        "        }\n"
-                        "    }\n"
-                        "}\n";
+    const char *color =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Appearance\", data.Object([\n"
+        "                    data.Field.Named(\"fields\", data.Object([\n"
+        "                        data.Field.Named(\"color\", data.Object([\n"
+        "                            data.Field.Named(\"unit\", "
+        "data.Value.Text(\"u\"))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     REQUIRE(!component_presentation_read(color, registry(), &presentation, error, sizeof error));
     REQUIRE(strstr(error, "numeric field"));
     REQUIRE(component_presentation_tab(&presentation, component("Body")) == COMPONENT_TAB_OBJECT);

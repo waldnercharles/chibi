@@ -139,7 +139,7 @@ static int docs(const char *project)
     free(root);
     return status;
 }
-/* Formats the package sources below a folder that holds no project.kdl. */
+/* Formats the package sources below a folder that holds no project.chibi. */
 static int format_packages(const char *folder, bool check)
 {
     char *root = realpath(folder, NULL);
@@ -152,7 +152,7 @@ static int format_packages(const char *folder, bool check)
     return differing < 0 || (check && differing) ? 1 : 0;
 }
 /* Formats the project's assets with the composition chibi build uses, or the
- * package sources below a folder without a project.kdl; with check only
+ * package sources below a folder without a project.chibi; with check only
  * reports what differs. Fails for an older project, which it does not
  * migrate, an asset that differs under check, an invalid one or a failed
  * write. */

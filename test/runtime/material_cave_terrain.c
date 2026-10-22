@@ -46,7 +46,7 @@ static behavior_asset *cave_asset()
 {
     char *text = text_file_read(
         CHIBI_SOURCE_ROOT
-        "/test/fixtures/material-contracts/content/fields/CaveField.kdl"
+        "/test/fixtures/material-contracts/content/fields/CaveField.chibi"
     );
     assert(text);
     behavior_asset *asset = behavior_asset_load(text);
@@ -55,7 +55,7 @@ static behavior_asset *cave_asset()
     return asset;
 }
 
-/* Compiles CaveField.kdl into a world's material fields. */
+/* Compiles CaveField.chibi into a world's material fields. */
 static bool compile_cave(material_fields *fields, char *error, size_t size)
 {
     const registry_pack **previous = use_field_nodes();
@@ -66,7 +66,7 @@ static bool compile_cave(material_fields *fields, char *error, size_t size)
     return compiled;
 }
 
-/* Bakes CaveField.kdl, connecting its air. */
+/* Bakes CaveField.chibi, connecting its air. */
 static float *cave_field_generate(unsigned seed, int width, int height, float cell, float radius, float roughness)
 {
     const registry_pack **previous = use_field_nodes();
@@ -190,7 +190,18 @@ TEST_CASE(terrain_boundary_cut)
     REQUIRE(material_field_prepare_arguments(
         materials_fields(live->runtime->materials),
         "CaveField",
-        "Radius 72\nRoughness 30\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(72)),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.UInt(30))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         field_error,
         sizeof field_error
     ));
@@ -213,18 +224,31 @@ TEST_CASE(terrain_boundary_cut)
         world,
         source,
         &COMPONENT_MaterialTerrain,
-        &(MaterialTerrain){ .seed = 1729,
-                            .width = 512,
-                            .height = 512,
-                            .cell_size = 2,
-                            .field = "CaveField",
-                            .parameters = "Radius 72\n"
-                                          "Roughness 30\n",
-                            .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
-                            .border_cells = 8,
-                            .category = 8,
-                            .mask = 1,
-                            .min_fragment_cells = 4 }
+        &(MaterialTerrain){
+            .seed = 1729,
+            .width = 512,
+            .height = 512,
+            .cell_size = 2,
+            .field = "CaveField",
+            .parameters = "package asset\n"
+                          "\n"
+                          "import data \"game:assets\"\n"
+                          "\n"
+                          "pub Build :: () -> byte[] {\n"
+                          "    return data.Encode(\n"
+                          "        data.Object([\n"
+                          "            data.Field.Named(\"Radius\", "
+                          "data.Value.UInt(72)),\n"
+                          "            data.Field.Named(\"Roughness\", "
+                          "data.Value.UInt(30))\n"
+                          "        ])\n"
+                          "    )\n"
+                          "}\n",
+            .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
+            .border_cells = 8,
+            .category = 8,
+            .mask = 1,
+            .min_fragment_cells = 4 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(!materials_prepare(live->runtime->materials));
@@ -269,7 +293,18 @@ TEST_CASE(terrain_boundary_cut)
     REQUIRE(material_field_prepare_arguments(
         materials_fields(live->runtime->materials),
         "CaveField",
-        "Radius 72\nRoughness 30\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(72)),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.UInt(30))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         field_error,
         sizeof field_error
     ));
@@ -278,8 +313,20 @@ TEST_CASE(terrain_boundary_cut)
     REQUIRE(!ecs_entity_is_alive(world, target));
     MaterialTerrain *terrain = MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
-    terrain->parameters = "Radius 96\n"
-                          "Roughness 30\n";
+    terrain->parameters = "package asset\n"
+                          "\n"
+                          "import data \"game:assets\"\n"
+                          "\n"
+                          "pub Build :: () -> byte[] {\n"
+                          "    return data.Encode(\n"
+                          "        data.Object([\n"
+                          "            data.Field.Named(\"Radius\", "
+                          "data.Value.UInt(96)),\n"
+                          "            data.Field.Named(\"Roughness\", "
+                          "data.Value.UInt(30))\n"
+                          "        ])\n"
+                          "    )\n"
+                          "}\n";
     REQUIRE(material_field_prepare_arguments(
         materials_fields(live->runtime->materials),
         terrain->field,
@@ -319,7 +366,18 @@ TEST_CASE(terrain_stream_restore)
     REQUIRE(material_field_prepare_arguments(
         materials_fields(live->runtime->materials),
         "CaveField",
-        "Radius 72\nRoughness 30\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(72)),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.UInt(30))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     ));
@@ -332,18 +390,31 @@ TEST_CASE(terrain_stream_restore)
         world,
         source,
         &COMPONENT_MaterialTerrain,
-        &(MaterialTerrain){ .seed = 1729,
-                            .width = 4096,
-                            .height = 512,
-                            .cell_size = 2,
-                            .field = "CaveField",
-                            .parameters = "Radius 72\n"
-                                          "Roughness 30\n",
-                            .category = 8,
-                            .mask = 1,
-                            .min_fragment_cells = 4,
-                            .stream_radius = 128,
-                            .stream_budget = 64 }
+        &(MaterialTerrain){
+            .seed = 1729,
+            .width = 4096,
+            .height = 512,
+            .cell_size = 2,
+            .field = "CaveField",
+            .parameters = "package asset\n"
+                          "\n"
+                          "import data \"game:assets\"\n"
+                          "\n"
+                          "pub Build :: () -> byte[] {\n"
+                          "    return data.Encode(\n"
+                          "        data.Object([\n"
+                          "            data.Field.Named(\"Radius\", "
+                          "data.Value.UInt(72)),\n"
+                          "            data.Field.Named(\"Roughness\", "
+                          "data.Value.UInt(30))\n"
+                          "        ])\n"
+                          "    )\n"
+                          "}\n",
+            .category = 8,
+            .mask = 1,
+            .min_fragment_cells = 4,
+            .stream_radius = 128,
+            .stream_budget = 64 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(!materials_prepare(live->runtime->materials));
@@ -442,7 +513,18 @@ TEST_CASE(terrain_host_views)
     REQUIRE(material_field_prepare_arguments(
         materials_fields(live->runtime->materials),
         "CaveField",
-        "Radius 72\nRoughness 30\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(72)),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.UInt(30))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     ));
@@ -455,18 +537,31 @@ TEST_CASE(terrain_host_views)
         world,
         source,
         &COMPONENT_MaterialTerrain,
-        &(MaterialTerrain){ .seed = 1729,
-                            .width = 4096,
-                            .height = 512,
-                            .cell_size = 2,
-                            .field = "CaveField",
-                            .parameters = "Radius 72\n"
-                                          "Roughness 30\n",
-                            .category = 8,
-                            .mask = 1,
-                            .min_fragment_cells = 4,
-                            .stream_radius = 128,
-                            .stream_budget = 64 }
+        &(MaterialTerrain){
+            .seed = 1729,
+            .width = 4096,
+            .height = 512,
+            .cell_size = 2,
+            .field = "CaveField",
+            .parameters = "package asset\n"
+                          "\n"
+                          "import data \"game:assets\"\n"
+                          "\n"
+                          "pub Build :: () -> byte[] {\n"
+                          "    return data.Encode(\n"
+                          "        data.Object([\n"
+                          "            data.Field.Named(\"Radius\", "
+                          "data.Value.UInt(72)),\n"
+                          "            data.Field.Named(\"Roughness\", "
+                          "data.Value.UInt(30))\n"
+                          "        ])\n"
+                          "    )\n"
+                          "}\n",
+            .category = 8,
+            .mask = 1,
+            .min_fragment_cells = 4,
+            .stream_radius = 128,
+            .stream_budget = 64 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(!materials_prepare(live->runtime->materials));
@@ -511,7 +606,18 @@ TEST_CASE(terrain_preparation_scratch)
         REQUIRE(material_field_prepare_arguments(
             materials_fields(live->runtime->materials),
             "CaveField",
-            "Radius 72\nRoughness 30\n",
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"Radius\", data.Value.UInt(72)),\n"
+            "            data.Field.Named(\"Roughness\", data.Value.UInt(30))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
             error,
             sizeof error
         ));
@@ -531,18 +637,31 @@ TEST_CASE(terrain_preparation_scratch)
                 world,
                 source,
                 &COMPONENT_MaterialTerrain,
-                &(MaterialTerrain){ .seed = 1729,
-                                    .width = 512,
-                                    .height = 512,
-                                    .cell_size = 2,
-                                    .field = "CaveField",
-                                    .parameters = "Radius 72\n"
-                                                  "Roughness 30\n",
-                                    .category = 8,
-                                    .mask = 1,
-                                    .min_fragment_cells = 4,
-                                    .stream_radius = 128,
-                                    .stream_budget = 64 }
+                &(MaterialTerrain){
+                    .seed = 1729,
+                    .width = 512,
+                    .height = 512,
+                    .cell_size = 2,
+                    .field = "CaveField",
+                    .parameters = "package asset\n"
+                                  "\n"
+                                  "import data \"game:assets\"\n"
+                                  "\n"
+                                  "pub Build :: () -> byte[] {\n"
+                                  "    return data.Encode(\n"
+                                  "        data.Object([\n"
+                                  "            data.Field.Named(\"Radius\", "
+                                  "data.Value.UInt(72)),\n"
+                                  "            data.Field.Named(\"Roughness\", "
+                                  "data.Value.UInt(30))\n"
+                                  "        ])\n"
+                                  "    )\n"
+                                  "}\n",
+                    .category = 8,
+                    .mask = 1,
+                    .min_fragment_cells = 4,
+                    .stream_radius = 128,
+                    .stream_budget = 64 }
             );
         }
         ecs_entity moving = ecs_world_create_entity(world);
@@ -616,7 +735,20 @@ static ecs_entity volume_terrain(ecs_world *world, materials *runtime)
                     material_field_prepare_arguments(
                         materials_fields(runtime),
                         "CaveField",
-                        "Radius 72\nRoughness 30\n",
+                        "package asset\n"
+                        "\n"
+                        "import data \"game:assets\"\n"
+                        "\n"
+                        "pub Build :: () -> byte[] {\n"
+                        "    return data.Encode(\n"
+                        "        data.Object([\n"
+                        "            data.Field.Named(\"Radius\", "
+                        "data.Value.UInt(72)),\n"
+                        "            data.Field.Named(\"Roughness\", "
+                        "data.Value.UInt(30))\n"
+                        "        ])\n"
+                        "    )\n"
+                        "}\n",
                         error,
                         sizeof error
                     );
@@ -641,18 +773,31 @@ static ecs_entity volume_terrain(ecs_world *world, materials *runtime)
         world,
         source,
         &COMPONENT_MaterialTerrain,
-        &(MaterialTerrain){ .seed = 1729,
-                            .width = 512,
-                            .height = 512,
-                            .cell_size = 2,
-                            .field = "CaveField",
-                            .parameters = "Radius 72\n"
-                                          "Roughness 30\n",
-                            .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
-                            .border_cells = 8,
-                            .category = 8,
-                            .mask = 1,
-                            .min_fragment_cells = 4 }
+        &(MaterialTerrain){
+            .seed = 1729,
+            .width = 512,
+            .height = 512,
+            .cell_size = 2,
+            .field = "CaveField",
+            .parameters = "package asset\n"
+                          "\n"
+                          "import data \"game:assets\"\n"
+                          "\n"
+                          "pub Build :: () -> byte[] {\n"
+                          "    return data.Encode(\n"
+                          "        data.Object([\n"
+                          "            data.Field.Named(\"Radius\", "
+                          "data.Value.UInt(72)),\n"
+                          "            data.Field.Named(\"Roughness\", "
+                          "data.Value.UInt(30))\n"
+                          "        ])\n"
+                          "    )\n"
+                          "}\n",
+            .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
+            .border_cells = 8,
+            .category = 8,
+            .mask = 1,
+            .min_fragment_cells = 4 }
     );
     material_test_component(
         world,

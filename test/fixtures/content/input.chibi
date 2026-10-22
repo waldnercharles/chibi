@@ -1,0 +1,21 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("Dash", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("Shift")
+                ]))
+            ])),
+            data.Field.Named("Fire", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("Space")
+                ])),
+                data.Field.Named("firing", data.Value.Bool(true))
+            ]))
+        ])
+    );
+}

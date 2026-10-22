@@ -5,7 +5,6 @@
 #include "graph/document/serialize.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
-#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <dirent.h>

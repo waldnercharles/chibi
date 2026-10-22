@@ -17,7 +17,7 @@ target_include_directories(chibi_graph_model PRIVATE "${CMAKE_CURRENT_BINARY_DIR
 target_link_libraries(chibi_graph_model PUBLIC chibi_types chibi_execution_contract PRIVATE chibi_asset_values)
 list(APPEND CHIBI_SDK_TARGETS chibi_graph_model)
 
-# Graph document editing and native KDL authoring; no behavioral executor.
+# Graph document editing and compiled Chibi asset authoring; no behavioral executor.
 add_library(chibi_graph_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/graph/authoring/constant.c"
     "${CHIBI_SDK_ROOT}/src/graph/authoring/optimize.c"
@@ -109,7 +109,7 @@ foreach(header IN ITEMS graph/model/graph_internal.h graph/model/native_definiti
 endforeach()
 target_include_directories(chibi_graph_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/graph")
 target_link_libraries(chibi_graph_authoring PUBLIC chibi_graph_model chibi_ecs chibi_events chibi_asset_values
-    PRIVATE chibi_asset_text chibi_value_document chibi_conversion_capabilities chibi_capabilities
+    PRIVATE chibi_asset_documents chibi_value_document chibi_conversion_capabilities chibi_capabilities
     chibi_core_capabilities chibi_math_capabilities chibi_arithmetic_capabilities
     chibi_comparison_capabilities chibi_vector_capabilities chibi_text_capabilities chibi_state_capabilities
     chibi_array_capabilities chibi_selection_capabilities chibi_set_capabilities)

@@ -1,7 +1,7 @@
 #include "assets/field_parameters.h"
 
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -19,7 +19,7 @@ static bool parse_parameters(
     av_doc *doc = NULL;
     bool valid = true;
     if (text && text[0]) {
-        doc = av_value_read(text, NULL, 0);
+        doc = asset_document_read(text, NULL, 0);
         valid = doc && av_is_obj(av_doc_root(doc));
         if (valid) {
             av_obj_iter iter = av_obj_iter_with(av_doc_root(doc));

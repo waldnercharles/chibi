@@ -395,7 +395,19 @@ TEST_CASE(material_height_cache_tracks_parameters_image_reload_and_sampling)
     height_pixels[3] = height_pixels[7] = 255;
     test_mount_images(&height_image, 1);
     image_height_material(SHADER_IMAGE_LINEAR, SHADER_IMAGE_NEAREST);
-    Shader binding = { .material = "Mesh height parity", .parameters = "Gain 1.0\n" };
+    Shader binding = { .material = "Mesh height parity",
+                       .parameters = "package asset\n"
+                                     "\n"
+                                     "import data \"game:assets\"\n"
+                                     "\n"
+                                     "pub Build :: () -> byte[] {\n"
+                                     "    return data.Encode(\n"
+                                     "        data.Object([\n"
+                                     "            data.Field.Named(\"Gain\", "
+                                     "data.Value.Real(1.0))\n"
+                                     "        ])\n"
+                                     "    )\n"
+                                     "}\n" };
     shader_error prepared = { 0 };
     REQUIRE(authoring_shader_binding_prepare(&binding, &prepared));
     REQUIRE(ecs_world_record_add(world, entity, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
@@ -412,7 +424,19 @@ TEST_CASE(material_height_cache_tracks_parameters_image_reload_and_sampling)
     REQUIRE(draw(surface));
     REQUIRE(render_material_raster_mesh_work(raster).mesh_uploads == 0);
 
-    REQUIRE(set_gain("Gain 2.0\n"));
+    REQUIRE(set_gain(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Gain\", data.Value.Real(2.0))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     REQUIRE(height_surface((GlobalTransform2D){ 0 }) == surface);
     REQUIRE(surface->parts[0].dynamic_revision > revision);
     REQUIRE(render_mesh_surface_pick(surface, (CF_V2){ .5f, -.5f }, &height));
@@ -438,13 +462,37 @@ TEST_CASE(material_height_cache_tracks_parameters_image_reload_and_sampling)
     REQUIRE(draw(surface) && height_matches(height));
     revision = surface->parts[0].dynamic_revision;
 
-    REQUIRE(set_gain("Gain 20.0\n"));
+    REQUIRE(set_gain(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Gain\", data.Value.Real(20.0))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     REQUIRE(!height_surface((GlobalTransform2D){ 0 }));
     REQUIRE(surface->parts[0].dynamic_revision == revision);
     REQUIRE(render_mesh_surface_pick(surface, (CF_V2){ .5f, -.5f }, &height));
     REQUIRE(fabsf(height - expected) < .001f);
     REQUIRE(render_material_raster_mesh_work(raster).dynamic_meshes == 1);
-    REQUIRE(set_gain("Gain 2.0\n"));
+    REQUIRE(set_gain(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Gain\", data.Value.Real(2.0))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     image_height_material(SHADER_IMAGE_SRGB, SHADER_IMAGE_BILINEAR);
     REQUIRE(!height_surface((GlobalTransform2D){ 0 }));
     REQUIRE(strstr(diagnostic, "Linear"));

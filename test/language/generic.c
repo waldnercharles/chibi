@@ -1,4 +1,3 @@
-#include "assets/project_migrate.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
@@ -767,27 +766,7 @@ TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
     }
     return true;
 }
-TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders)
-{
-    char error[256], *migrated = NULL, *again = NULL;
-    REQUIRE(
-        !chibi_migrate_syntax("library Fixed { Identity :: <T: plain int>(item:T)->T { return item } }", &migrated, error, sizeof error)
-    );
-    REQUIRE(migrated && !strstr(migrated, "<T"));
-    REQUIRE(analyze(migrated));
-    REQUIRE(!chibi_migrate_syntax(migrated, &again, error, sizeof error));
-    REQUIRE(!again);
-    free(migrated);
-    migrated = NULL;
-    REQUIRE(chibi_migrate_syntax(
-        "library Open { Identity :: <T>(item:T)->T { return item } }",
-        &migrated,
-        error,
-        sizeof error
-    ));
-    REQUIRE(!migrated && strstr(error, "argument binders"));
-    return true;
-}
+
 TEST_SUITE(language_generic_suite)
 {
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
@@ -803,7 +782,6 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);
     RUN_TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifiers);
     RUN_TEST_CASE(compile_time_string_alias_survives_analysis_destruction);
-    RUN_TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders);
 }
 void test_language_generic()
 {

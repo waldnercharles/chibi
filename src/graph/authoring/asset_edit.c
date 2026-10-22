@@ -7,7 +7,6 @@
 #include "graph/model/registry.h"
 #include "graph/model/value_copy.h"
 #include "graph/nodes/core_nodes.h"
-#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>

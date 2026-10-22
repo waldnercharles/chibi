@@ -1,5 +1,0 @@
-name "Camera"
-components {
-    Camera height=180.0 width=320.0
-    (object)Transform
-}

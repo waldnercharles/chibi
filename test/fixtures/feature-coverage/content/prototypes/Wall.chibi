@@ -1,0 +1,30 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Wall")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("color", data.Value.UInt(2155905279)),
+                    data.Field.Named("height", data.Value.Real(64.0)),
+                    data.Field.Named("width", data.Value.Real(16.0))
+                ])),
+                data.Field.Named("Body", data.Object([])),
+                data.Field.Named("Collider", data.Object([
+                    data.Field.Named("category", data.Value.UInt(1)),
+                    data.Field.Named("height", data.Value.Real(64.0)),
+                    data.Field.Named("mask", data.Value.UInt(1)),
+                    data.Field.Named("shape", data.Value.Text("Box")),
+                    data.Field.Named("width", data.Value.Real(16.0))
+                ])),
+                data.Field.Named("SensorContact", data.Object([])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(40.0))
+                ]))
+            ]))
+        ])
+    );
+}

@@ -1,0 +1,94 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("RenderingVisibility")),
+            data.Field.Named("presentation", data.Value.Text("3d")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("View")),
+                    data.Field.Named("prototype", data.Value.Text("RenderView"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Visibility")),
+                    data.Field.Named("prototype", data.Value.Text("Stage")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Fog", data.Object([
+                            data.Field.Named("origin", data.Object([
+                                data.Field.Named("x", data.Value.Real(-200.0)),
+                                data.Field.Named("y", data.Value.Real(-120.0))
+                            ])),
+                            data.Field.Named("columns", data.Value.UInt(40)),
+                            data.Field.Named("rows", data.Value.UInt(24)),
+                            data.Field.Named("cell_size", data.Value.Real(10.0)),
+                            data.Field.Named("color", data.Value.UInt(270545151))
+                        ])),
+                        data.Field.Named("Vision", data.Object([
+                            data.Field.Named("radius", data.Value.Real(85.0)),
+                            data.Field.Named("remember", data.Value.Bool(true))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-70.0))
+                        ])),
+                        data.Field.Named("Environment", data.Object([
+                            data.Field.Named("ambient_sky", data.Value.UInt(4294967295)),
+                            data.Field.Named("ambient_ground", data.Value.UInt(4294967295)),
+                            data.Field.Named("ambient_intensity", data.Value.Real(0.80000000000000004)),
+                            data.Field.Named("occlusion", data.Value.Text("Off"))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Visible")),
+                    data.Field.Named("prototype", data.Value.Text("RenderSolid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-70.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(4291846399))
+                        ])),
+                        data.Field.Named("RenderState", data.Object([
+                            data.Field.Named("visibility_culled", data.Value.Bool(true))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("OutsideSight")),
+                    data.Field.Named("prototype", data.Value.Text("RenderSolid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(70.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(1082195967))
+                        ])),
+                        data.Field.Named("RenderState", data.Object([
+                            data.Field.Named("visibility_culled", data.Value.Bool(true))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("ExplicitlyHidden")),
+                    data.Field.Named("prototype", data.Value.Text("RenderSolid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-70.0)),
+                            data.Field.Named("y", data.Value.Real(55.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(4281348351))
+                        ])),
+                        data.Field.Named("RenderState", data.Object([
+                            data.Field.Named("hidden", data.Value.Bool(true))
+                        ]))
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

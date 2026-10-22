@@ -263,7 +263,7 @@ operations, runtime state storage, and rendering. Authored assets own regional
 composition, rules, bosses, weapon effects, visual choices, and tuning. Keep
 quests, combat, and progression optional for scenes that do not use them.
 
-Edit `.chibi` behaviors and KDL scene/prototype assets in the working project.
+Edit `.chibi` behaviors and compiled Chibi scene/prototype assets in the working project.
 Inspect existing capabilities and dependencies, format the saved files, validate
 changed assets, then run a bounded native scenario or preview. See the
 [saved-file authoring workflow](runtime-authoring.md).

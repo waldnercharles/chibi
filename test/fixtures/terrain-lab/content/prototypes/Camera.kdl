@@ -1,6 +1,0 @@
-name "Camera"
-components {
-    Camera height=360.0 width=640.0
-    Transform y=-24.0
-}
-(array)behaviors "QuarryCamera"

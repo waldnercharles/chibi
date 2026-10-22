@@ -1,7 +1,8 @@
 # The Chibi language
 
-Chibi uses `.chibi` files for functions and gameplay logic. Scenes and project
-configuration use KDL. The `.chibi` source contains the whole executable asset.
+Chibi uses `.chibi` files for executable functions and typed asset configuration.
+The authored compiler handles both; data modules import `game:assets` and
+export `Build() -> byte[]`.
 Editors keep graph layout, watches and breakpoints in session.
 
 This overview introduces the language through small examples. Game examples
@@ -62,6 +63,42 @@ Example :: library {
     }
 }
 ```
+
+## Asset modules
+
+Prototypes, scenes, materials, events, input maps and project configuration are
+ordinary Chibi modules. They import the typed `game:assets` library and export
+`Build() -> byte[]`, returning `data.Encode(...)` of their value tree. For example,
+a prototype with literal starting values is:
+
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(data.Object([
+        data.Field.Named("name", data.Value.Text("Enemy")),
+        data.Field.Named("components", data.Object([
+            data.Field.Named("Health", data.Object([
+                data.Field.Named("current", data.Value.Int(100)),
+                data.Field.Named("maximum", data.Value.Int(100))
+            ]))
+        ]))
+    ]));
+}
+```
+
+Objects use `data.Object` with named fields; arrays use `data.List`. Scalars use
+`data.Value.Int`, `UInt`, `Real`, `Bool`, `Text` or `Null`. Family constructors
+such as `data.Project`, `data.Scene` and `data.Prototype` provide typed required
+arguments. Native family validators check the resulting references and layouts.
+
+Computed inspector inputs use ordinary literal `Parameters()` and `Overrides()`
+functions. `Build()` reads parameters, calls pure helpers, applies the explicit
+overrides and includes both metadata objects in its result. Constructor kinds
+establish editable parameter types. Inspector changes preserve computation;
+Reset restores it. See the complete [computed prototype example](runtime-authoring.md#authored-prototypes-and-relationships).
 
 ## Values and operators
 

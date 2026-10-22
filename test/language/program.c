@@ -1,6 +1,5 @@
 #include "assets/input_map.h"
 #include "assets/project.h"
-#include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_minimize.h"
@@ -25,6 +24,7 @@
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -572,60 +572,6 @@ static bool compile(const char *source, behavior_backend backend)
     }
     program = execution_program_new(module, world, NULL);
     return program != NULL;
-}
-/* Historical migration cases assert their intermediate spelling, then run
- * it through every later source step: version 23 declarations, 24
- * retention, 25 syntax, 26 conversions, 27 parameter names, 28 function
- * bodies and 29 handler payloads, with the test catalog's Impulse declared. */
-static const char *const
-    IMPULSE_DECLARATION = "version 3\nname \"Impulse\"\ndomain "
-                          "\"event\"\n(array)variables {\n"
-                          "    - id=1 name=\"amount\" type=\"double\"\n    - "
-                          "id=2 name=\"enabled\" type=\"bool\"\n}\n";
-static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
-{
-    switch (step) {
-        case 0:
-            return chibi_migrate_declarations(source, migrated, error, size);
-        case 1: return chibi_migrate_retention(source, migrated, error, size);
-        case 2: return chibi_migrate_syntax(source, migrated, error, size);
-        case 3: return chibi_migrate_conversions(source, migrated, error, size);
-        case 4: return chibi_migrate_entry(source, migrated, error, size);
-        case 5: return chibi_migrate_after_entry(source, migrated, error, size);
-        default:
-            return chibi_migrate_handlers(source, &IMPULSE_DECLARATION, 1, migrated, error, size);
-    }
-}
-static char *current_source(const char *source)
-{
-    char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 7; step++) {
-        char *migrated = NULL;
-        if (migrate_step(step, current, &migrated, error, sizeof error)) {
-            fprintf(stderr, "migration: %s\n", error);
-            free(current);
-            return NULL;
-        }
-        if (migrated) {
-            free(current);
-            current = migrated;
-        }
-    }
-    return current;
-}
-static bool compile_migrated(const char *source, behavior_backend backend)
-{
-    char *current = current_source(source);
-    bool valid = current && compile(current, backend);
-    free(current);
-    return valid;
-}
-static bool declarations_equal(const char *actual, const char *historical)
-{
-    char *current = current_source(historical);
-    bool equal = current && !strcmp(actual, current);
-    free(current);
-    return equal;
 }
 static uint64_t state_id(const char *name)
 {
@@ -4792,27 +4738,6 @@ TEST_CASE(program_handler_payloads_do_not_hide_parameters)
 }
 TEST_CASE(program_nested_functions_wait_for_themselves)
 {
-    /* Version 10 blocked on nested callees too; action initializers keep
-     * their own lifetime, parenthesized or not. */
-    const char *source = "behavior N { n: double = 0;"
-                         "action later = (Outer());"
-                         "function Outer() -> () { function Inner() -> () { "
-                         "await Delay(1); } Inner(); n += 1; }"
-                         "function Pause() -> () { await Delay(1); }"
-                         "function Start() -> () { action Pause = timer(1); "
-                         "Pause(); } }";
-    /* A nested action shadows the waiting function of the same name. */
-    const char *expected = "behavior N { n: double = 0;"
-                           "action later = (Outer());"
-                           "function Outer() -> () { function Inner() -> () { "
-                           "await Delay(1); } await Inner(); n += 1; }"
-                           "function Pause() -> () { await Delay(1); }"
-                           "function Start() -> () { action Pause = timer(1); "
-                           "Pause(); } }";
-    char **all = chibi_migrate_task_calls(&source, 1);
-    REQUIRE(all[0] && !strcmp(all[0], expected));
-    free(all[0]);
-    free(all);
     /* Declaring a waiting function does not make its parent wait. */
     const char *plain = "P :: behavior { n: double = 0;"
                         "Outer :: () -> (v: double) { "
@@ -4833,874 +4758,16 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
     }
     return true;
 }
-TEST_CASE(program_version_11_references_migrate_to_values)
-{
-    const char *source = "behavior R { n: double = 1; m: int = 6;"
-                         "function Bump(ref double v) -> () { v += 2; }"
-                         "on Impulse(amount, enabled) { Bump(n); &n = n + 1;"
-                         " m = m & 3; m &= 7; s := \"a &b\"; /* &c */ } }";
-    const char *expected = "behavior R { n: double = 1; m: int = 6;"
-                           "function Bump(ref double v) -> () { v += 2; }"
-                           "on Impulse(amount, enabled) { Bump(n); n = n + 1;"
-                           " m = m & 3; m &= 7; s := \"a &b\"; /* &c */ } }";
-    char *migrated = chibi_migrate_references(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_references(expected));
-    char *bound = chibi_migrate_references("x := fallback(&speed, default: 0)");
-    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: 0)"));
-    free(bound);
-    bound = chibi_migrate_references("x := fallback((&speed), default: 0)");
-    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: (speed), default: 0)"));
-    free(bound);
-    bound = chibi_migrate_references("x := fallback(driver, &speed, default: 0)");
-    REQUIRE(bound && !strcmp(bound, "x := fallback(driver, binding: speed, default: 0)"));
-    free(bound);
-    bound = chibi_migrate_references("x := fallback(get(a, b), ((&speed)), default: (0))");
-    REQUIRE(bound && !strcmp(bound, "x := fallback(get(a, b), binding: ((speed)), default: (0))"));
-    free(bound);
-    bound = chibi_migrate_references("x := fallback(binding: &speed, default: f(&n))");
-    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: f(n))"));
-    free(bound);
-    bound = chibi_migrate_references("f(Value: ref int split &count, Other: true & ok)");
-    REQUIRE(bound && !strcmp(bound, "f(Value: ref int split count, Other: true & ok)"));
-    free(bound);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        prepare();
-        REQUIRE(compile_migrated(migrated, backends[b]));
-        execution_instance *instance = execution_program_attach(
-            program,
-            ecs_entity_to_u64(ecs_world_create_entity(world))
-        );
-        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
-                                   { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 4));
-    }
-    free(migrated);
-    return true;
-}
-/* The test catalog's Impulse event, declared as a project declares it, so
- * the version 30 migration can type a handler's payload. */
-static void declare_impulse(const char *root, bool declared)
-{
-    char path[300];
-    snprintf(path, sizeof path, "%s/content/Impulse.kdl", root);
-    if (!declared) {
-        unlink(path);
-        return;
-    }
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(
-        "version 3\nname \"Impulse\"\ndomain \"event\"\n(array)variables {\n"
-        "    - id=1 name=\"amount\" type=\"double\"\n    - id=2 "
-        "name=\"enabled\" type=\"bool\"\n}\n",
-        file
-    );
-    fclose(file);
-}
-TEST_CASE(program_version_12_results_migrate_to_returns)
-{
-    const char *
-        source = "behavior R { n: double = 0\n"
-                 "    function Pair(x: double) -> (Sum: double, Twice: "
-                 "double, Kept: double) {\n"
-                 "        result Sum: double = x + 1\n"
-                 "        Kept = 4\n"
-                 "        result Twice: double = (x) * 2\n"
-                 "        if x > 10 {\n"
-                 "            return\n"
-                 "        }\n"
-                 "        return\n"
-                 "    }\n"
-                 "    pure function Seven() -> (Result: double) { "
-                 "result Result: double = 7; }\n"
-                 "    function Half(x: double) -> (Out: double) {\n"
-                 "        result Out: double = x / 2\n"
-                 "        if x > 100 {\n"
-                 "            Out := 3\n"
-                 "            Out = 4\n"
-                 "            return\n"
-                 "        }\n"
-                 "    }\n"
-                 "    function Set(x: double) -> (Value: double) {\n"
-                 "        result Value: double = x\n"
-                 "        if x > 1 {\n"
-                 "            Value = 10\n"
-                 "        }\n"
-                 "        return\n"
-                 "    }\n"
-                 "    function List(x: double) -> (Values: double[]) {\n"
-                 "        result Values: double[] = [x]\n"
-                 "        Values[0] = 2\n"
-                 "        return\n"
-                 "    }\n"
-                 "    function Bump(x: ref double) { x += 1 }\n"
-                 "    function Observe(x: double) { return x }\n"
-                 "    function Wrap() { function Observe(x: ref double) { "
-                 "x = 1 } }\n"
-                 "    function Bumped(x: double) -> (Total: double) {\n"
-                 "        result Total: double = x\n"
-                 "        Bump(Total)\n"
-                 "        return\n"
-                 "    }\n"
-                 "    function Seen(x: double) -> (Last: double) {\n"
-                 "        result Last: double = x\n"
-                 "        Observe(x: Last)\n"
-                 "        return\n"
-                 "    }\n"
-                 "    function Outer() -> (X: double) { if n > 0 {} /* lead */ "
-                 "result X: double = 1; function Inner() { return } return }\n"
-                 "    on Impulse(amount, enabled) { p := Pair(2); n = "
-                 "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
-                 "}\n";
-    const char *
-        expected = "behavior R { n: double = 0\n"
-                   "    function Pair(x: double) -> (Sum: double, "
-                   "Twice: double, Kept: double) {\n"
-                   "        Kept = 4\n"
-                   "        if x > 10 {\n"
-                   "            return(x + 1, (x) * 2, Kept)\n"
-                   "        }\n"
-                   "        return(x + 1, (x) * 2, Kept)\n"
-                   "    }\n"
-                   "    pure function Seven() -> (Result: double) { "
-                   "return 7 }\n"
-                   "    function Half(x: double) -> (Out: double) {\n"
-                   "        if x > 100 {\n"
-                   "            Out := 3\n"
-                   "            Out = 4\n"
-                   "            return x / 2\n"
-                   "        }\n"
-                   "        return x / 2\n"
-                   "    }\n"
-                   "    function Set(x: double) -> (Value: double) {\n"
-                   "        Value = x\n"
-                   "        if x > 1 {\n"
-                   "            Value = 10\n"
-                   "        }\n"
-                   "        return Value\n"
-                   "    }\n"
-                   "    function List(x: double) -> (Values: double[]) {\n"
-                   "        Values = [x]\n"
-                   "        Values[0] = 2\n"
-                   "        return Values\n"
-                   "    }\n"
-                   "    function Bump(x: ref double) { x += 1 }\n"
-                   "    function Observe(x: double) { return x }\n"
-                   "    function Wrap() { function Observe(x: ref double) { "
-                   "x = 1 } }\n"
-                   "    function Bumped(x: double) -> (Total: double) {\n"
-                   "        Total = x\n"
-                   "        Bump(Total)\n"
-                   "        return Total\n"
-                   "    }\n"
-                   "    function Seen(x: double) -> (Last: double) {\n"
-                   "        Observe(x: Last)\n"
-                   "        return x\n"
-                   "    }\n"
-                   "    function Outer() -> (X: double) { if n > 0 {} /* lead "
-                   "*/ "
-                   "function Inner() { return } return 1 }\n"
-                   "    on Impulse(amount, enabled) { p := Pair(2); n "
-                   "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
-                   "}\n";
-    char *migrated = chibi_migrate_results(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_results(expected));
-#ifndef __EMSCRIPTEN__
-    /* Links at the staging paths are replaced, not written through, and
-     * only the top-level version node changes. */
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], outside[256],
-         staged[256], error[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/content/R.chibi", root);
-    FILE *file = fopen(path, "wb");
-    fputs(source, file);
-    fclose(file);
-    snprintf(outside, sizeof outside, "%s/outside", root);
-    file = fopen(outside, "wb");
-    fputs("keep", file);
-    fclose(file);
-    snprintf(staged, sizeof staged, "%s/content/R.chibi.migrating", root);
-    REQUIRE(!link(outside, staged));
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    snprintf(staged, sizeof staged, "%s.migrating", manifest);
-    REQUIRE(!symlink(outside, staged));
-    file = fopen(manifest, "wb");
-    fputs(
-        "meta {\n    version 12\n}\n/-\nversion 12\n/- x {\n}\n// metadata "
-        "{\nname #\"P\\\"#; /* a /* b */ { */ \"version\" "
-        "0xc\ncontent "
-        "\"content\"\n"
-        "start_scene \"scenes/Start.kdl\"\n",
-        file
-    );
-    fclose(file);
-    REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
-    declare_impulse(root, true);
-    int upgraded = chibi_project_migrate(root, error, sizeof error);
-    declare_impulse(root, false);
-    if (upgraded < 0) {
-        fprintf(stderr, "migration: %s\n", error);
-    }
-    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 12);
-    char text[2048];
-    file = fopen(outside, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, "keep"));
-    struct stat info;
-    REQUIRE(!lstat(manifest, &info) && S_ISREG(info.st_mode));
-    REQUIRE((info.st_mode & 07777) == 0640);
-    REQUIRE(!stat(path, &info) && (info.st_mode & 07777) == 0600);
-    file = fopen(manifest, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    char current[32];
-    snprintf(current, sizeof current, "\nversion %d\n", CHIBI_PROJECT_VERSION);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, current));
-    file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(declarations_equal(text, expected));
-    unlink(path);
-    unlink(outside);
-    unlink(manifest);
-    snprintf(path, sizeof path, "%s/content", root);
-    rmdir(path);
-    rmdir(root);
-#endif
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        prepare();
-        REQUIRE(compile_migrated(migrated, backends[b]));
-        execution_instance *instance = execution_program_attach(
-            program,
-            ecs_entity_to_u64(ecs_world_create_entity(world))
-        );
-        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
-                                   { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 30));
-    }
-    free(migrated);
-    return true;
-}
-TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
-{
-    const char *source = "behavior B { n: double = 0;"
-                         "function Wait() -> () { await Delay(1); n += 1; }"
-                         "function Outer() -> (v: double, w: double) { Wait(); "
-                         "return(n, 0); }"
-                         "function Plain() -> () { n += 100; }"
-                         "on Impulse(amount, enabled) { Plain(); x := "
-                         "Outer().v; n += x; Outer(); await Wait(); } }";
-    const char
-        *expected = "behavior B { n: double = 0;"
-                    "function Wait() -> () { await Delay(1); n += 1; }"
-                    "function Outer() -> (v: double, w: double) { await "
-                    "Wait(); return(n, 0); }"
-                    "function Plain() -> () { n += 100; }"
-                    "on Impulse(amount, enabled) { Plain(); x := (await "
-                    "Outer()).v; n += x; await Outer(); await Wait(); } }";
-    const char
-        *library = "library Store { function Work() -> () { await Delay(1); } "
-                   "function Idle() -> () { } }";
-    const char
-        *user = "behavior U { on Impulse(amount, enabled) { Store.Work(); "
-                "store.work(); Store.Idle(); Work(); } }";
-    const char *sources[] = { source, library, user };
-    char **all = chibi_migrate_task_calls(sources, 3);
-    char *migrated = all[0];
-    REQUIRE(migrated && !strcmp(migrated, expected) && !all[1]);
-    REQUIRE(
-        all[2] &&
-        !strcmp(
-            all[2],
-            "behavior U { on Impulse(amount, enabled) { await Store.Work(); "
-            "await store.work(); Store.Idle(); Work(); } }"
-        )
-    );
-    free(all[2]);
-    free(all);
-    all = chibi_migrate_task_calls(&expected, 1);
-    REQUIRE(!all[0]);
-    free(all);
-    /* A call names the innermost function of that name in its scope. */
-    const char
-        *nested = "behavior N { function A() -> () { "
-                  "function Tick() -> () { } Tick(); } "
-                  "function C() -> () { "
-                  "function Tick() -> () { await Delay(1); } Tick(); } }";
-    all = chibi_migrate_task_calls(&nested, 1);
-    REQUIRE(
-        all[0] &&
-        !strcmp(
-            all[0],
-            "behavior N { function A() -> () { function Tick() -> () { } "
-            "Tick(); } function C() -> () { function Tick() -> () { await "
-            "Delay(1); } await Tick(); } }"
-        )
-    );
-    free(all[0]);
-    free(all);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        prepare();
-        REQUIRE(compile_migrated(migrated, backends[b]));
-        execution_instance *instance = execution_program_attach(
-            program,
-            ecs_entity_to_u64(ecs_world_create_entity(world))
-        );
-        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
-                                   { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        for (int i = 1; i <= 4; i++) {
-            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
-        }
-        REQUIRE(number_state(instance, "n", 204) && execution_instance_pending(instance) == 0);
-    }
-    free(migrated);
 
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/content/B.chibi", root);
-    FILE *file = fopen(path, "wb");
-    fputs(source, file);
-    fclose(file);
-    /* Symlinks are not sources: neither a cycle nor a file outside content is
-     * followed. */
-    char outside[256], link[256];
-    snprintf(outside, sizeof outside, "%s/Outside.chibi", root);
-    file = fopen(outside, "wb");
-    fputs(source, file);
-    fclose(file);
-    snprintf(link, sizeof link, "%s/content/Outside.chibi", root);
-    REQUIRE(!symlink(outside, link));
-    snprintf(link, sizeof link, "%s/content/loop", root);
-    REQUIRE(!symlink(root, link));
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    file = fopen(path, "wb");
-    fputs(
-        "version  10 // saved by an older build\r\ncontent \"content\"\r\n"
-        "start_scene \"scenes/Start.kdl\"\r\n",
-        file
-    );
-    fclose(file);
-    declare_impulse(root, true);
-    int upgraded = chibi_project_migrate(root, error, sizeof error);
-    declare_impulse(root, false);
-    if (upgraded < 0) {
-        fprintf(stderr, "migration: %s\n", error);
-    }
-    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 10);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-    char text[1024];
-    file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    char current[32];
-    snprintf(current, sizeof current, "version %d\n", CHIBI_PROJECT_VERSION);
-    REQUIRE(!strncmp(text, current, strlen(current)));
-    unlink(path);
-    snprintf(path, sizeof path, "%s/content/B.chibi", root);
-    file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(declarations_equal(text, expected));
-    unlink(path);
-    file = fopen(outside, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, source));
-    unlink(outside);
-    unlink(link);
-    snprintf(link, sizeof link, "%s/content/Outside.chibi", root);
-    unlink(link);
-    snprintf(path, sizeof path, "%s/content", root);
-    rmdir(path);
-    rmdir(root);
-    return true;
-}
-
-TEST_CASE(program_version_16_locals_migrate_to_declarations)
-{
-    const char *source = "behavior L { n: double = 0; hits: double = 0\n"
-                         "    local base = n + 1\n"
-                         "    local twice: double = local.base * 2\n"
-                         "    function Add(x: double) {\n"
-                         "        local X = x + 1\n"
-                         "        if local.X > 1 { hits += X }\n"
-                         "        return twice + X\n"
-                         "    }\n"
-                         "    on Impulse(amount, enabled) {\n"
-                         "        if enabled { n = base + Add(amount) }\n"
-                         "    }\n"
-                         "}\n";
-    const char *expected = "behavior L { n: double = 0; hits: double = 0\n"
-                           "    function Add(x: double) {\n"
-                           "        X := x + 1\n"
-                           "        if X > 1 { hits += X }\n"
-                           "        base := n + 1\n"
-                           "        twice: double = base * 2\n"
-                           "        return twice + X\n"
-                           "    }\n"
-                           "    on Impulse(amount, enabled) {\n"
-                           "        if enabled { base := n + 1; n = "
-                           "base + Add(amount) }\n"
-                           "    }\n"
-                           "}\n";
-    char error[256] = "";
-    char *migrated = NULL, *unchanged = NULL;
-    REQUIRE(!chibi_migrate_locals(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_locals(expected, &unchanged, error, sizeof error) && !unchanged);
-    /* Declaring `base` in Shadow would make it read the parameter `n`. */
-    const char *shadowed = "behavior L { n: double = 0\n"
-                           "    local base = n + 1\n"
-                           "    function Shadow(n: double) { return base }\n"
-                           "}\n";
-    REQUIRE(
-        chibi_migrate_locals(shadowed, &unchanged, error, sizeof error) &&
-        strstr(error, "`n`")
-    );
-    /* An action argument reads the expression when the action starts. */
-    const char *argument = "behavior L { n: double = 0\n"
-                           "    local base = n + 1\n"
-                           "    local more: double = local.base\n"
-                           "    action wait = timer(more)\n"
-                           "}\n";
-    REQUIRE(!chibi_migrate_locals(argument, &unchanged, error, sizeof error));
-    REQUIRE(
-        unchanged && !strcmp(
-                         unchanged,
-                         "behavior L { n: double = 0\n"
-                         "    action wait = timer(cast<double>((n + 1)))\n"
-                         "}\n"
-                     )
-    );
-    free(unchanged);
-    /* Each run evaluates a local once, so a loop does not re-evaluate it. */
-    const char *loop = "behavior L { n: double = 0\n"
-                       "    local base = 1 + 1\n"
-                       "    on Impulse(amount, enabled) {\n"
-                       "        i: double = 0\n"
-                       "        while i < 2 { i += 1; n += base }\n"
-                       "    }\n"
-                       "}\n";
-    REQUIRE(!chibi_migrate_locals(loop, &unchanged, error, sizeof error));
-    REQUIRE(
-        unchanged && !strcmp(
-                         unchanged,
-                         "behavior L { n: double = 0\n"
-                         "    on Impulse(amount, enabled) {\n"
-                         "        i: double = 0\n"
-                         "        base := 1 + 1\n"
-                         "        while i < 2 { i += 1; n += base }\n"
-                         "    }\n"
-                         "}\n"
-                     )
-    );
-    free(unchanged);
-    /* A quoted name needs an identifier no other name spells. */
-    const char *names[] = {
-        "behavior L { local \"a-b\" = 1; local \"ab\" = 2\n"
-        "    on Impulse(amount, enabled) { amount = local.\"a-b\" + "
-        "local.\"ab\" }\n}\n",
-        "behavior L { ab: double = 0; local \"a b\" = 1\n"
-        "    on Impulse(amount, enabled) { ab = local.\"a b\" }\n}\n",
-        "behavior L { local \"if\" = 1\n"
-        "    on Impulse(amount, enabled) { amount = local.\"if\" }\n}\n",
-    };
-    for (int i = 0; i < 3; i++) {
-        unchanged = NULL;
-        REQUIRE(chibi_migrate_locals(names[i], &unchanged, error, sizeof error) && !unchanged);
-    }
-    /* A branch might skip the first read, or a loop reach it after the state
-     * it reads changed, and an expansion runs at every read. */
-    const char *later[] = {
-        "behavior L { n: double = 0\n"
-        "    function One() { return 1 }\n"
-        "    local hit = One()\n"
-        "    on Tick() { if n > 0 { n = hit }; if n > 1 { n = hit } }\n"
-        "}\n",
-        "behavior L { n: double = 0\n"
-        "    local hit = n + 1\n"
-        "    on Tick() { if n > 0 { n = hit }; n = 10; if n > 1 { n = hit } "
-        "}\n"
-        "}\n",
-        "behavior L { n: double = 0\n"
-        "    local hit = n + 1\n"
-        "    on Tick() { i: double = 0; while i < 2 { i += 1; n += hit } }\n"
-        "}\n",
-        "behavior L { n: double = 0\n"
-        "    function One() { return 1 }\n"
-        "    local hit = One()\n"
-        "    on Tick() { hit := 0; a := local.hit; b := local.hit }\n"
-        "}\n",
-        "behavior L { n: double = 0\n"
-        "    local hit = n + 1\n"
-        "    on Tick() { hit := 0; while n < 2 { n += local.hit } }\n"
-        "}\n",
-        "behavior L { n: double = 0\n"
-        "    function SetN() { n = 5; return 0 }\n"
-        "    local hit = n + 1\n"
-        "    on Tick() { n = SetN() + hit }\n"
-        "}\n",
-        "behavior L { n: double = 0; local hit = hit + 1\n"
-        "    on Tick() { n = hit }\n}\n",
-        "behavior L { n: double = 0; local hit = other; local other = hit\n"
-        "    on Tick() { n = hit }\n}\n",
-        "behavior L { n: double = 0; items: double = 0\n"
-        "    function One() { return 1 }\n"
-        "    local index = One(); local hit = items[index]\n"
-        "    on Tick() { n = hit; hit = 2 }\n}\n",
-        "behavior L { n: double = 0; local hit = [0]\n"
-        "    on Tick() { hit := 0; a := local.hit[0]; b := local.hit[0] }\n}\n",
-        "behavior L { n: double = 0\n"
-        "    function SetN() { n = 5; return 0 }\n"
-        "    local hit = n + 1; local other = SetN()\n"
-        "    on Tick() { n = other + hit }\n}\n",
-        "behavior L { n: double = 0\n"
-        "    function One() { return 1 }\n"
-        "    local hit = One(); local twice = hit + hit\n"
-        "    action wait = timer(twice)\n}\n",
-        "behavior L { n: double = 0\n"
-        "    function One() { return 1 }\n"
-        "    local hit = One()\n"
-        "    on Tick() { hit = 2; n = hit }\n}\n",
-    };
-    for (int i = 0; i < 13; i++) {
-        unchanged = NULL;
-        REQUIRE(
-            chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
-            !unchanged && strstr(error, "`hit`")
-        );
-    }
-    /* Read in one branch only, it is declared inside that branch. */
-    const char
-        *one = "behavior L { n: double = 0\n"
-               "    function One() { return 1 }\n"
-               "    local hit = One()\n"
-               "    on Impulse(amount, enabled) { if enabled { n = hit } }\n"
-               "}\n";
-    REQUIRE(!chibi_migrate_locals(one, &unchanged, error, sizeof error));
-    REQUIRE(unchanged && strstr(unchanged, "if enabled { hit := One(); n = hit }"));
-    free(unchanged);
-    /* A condition is always read, so the local goes before its statement. */
-    const char *condition = "behavior L { n: double = 0\n"
-                            "    function One() { return 1 }\n"
-                            "    local hit = One()\n"
-                            "    on Impulse(amount, enabled) { if hit > 0 { n "
-                            "= hit } }\n"
-                            "}\n";
-    REQUIRE(!chibi_migrate_locals(condition, &unchanged, error, sizeof error));
-    REQUIRE(unchanged && strstr(unchanged, "{ hit := One(); if hit > 0 { n = hit } }"));
-    free(unchanged);
-    const char *disabled[] = {
-        "behavior L { disabled local X = 1 }\n",
-        "behavior L { disabled /* x */ local X = 1 }\n"
-    };
-    for (int i = 0; i < 2; i++) {
-        REQUIRE(
-            chibi_migrate_locals(disabled[i], &unchanged, error, sizeof error) &&
-            !unchanged && strstr(error, "disabled")
-        );
-    }
-    /* A comment in a result type does not end it. */
-    const char *tuple = "behavior L { n: double = 0\n"
-                        "    function Pair() { return 1 }\n"
-                        "    local pair: (a: double /* ) */) = Pair()\n"
-                        "    on Tick() { n = pair }\n}\n";
-    REQUIRE(!chibi_migrate_locals(tuple, &unchanged, error, sizeof error));
-    REQUIRE(unchanged && strstr(unchanged, "{ pair := Pair(); n = pair }"));
-    free(unchanged);
-    /* Comments and line breaks may sit between a local's tokens. */
-    const char *spaced[] = {
-        "behavior L { n: double = 0; local /* note */ X = 1\n"
-        "    on Impulse(amount, enabled) { n = X }\n}\n",
-        "behavior L { n: double = 0; local X /* note */ = 1\n"
-        "    on Impulse(amount, enabled) { n = X }\n}\n",
-        "behavior L { n: double = 0; local\n    X = 1\n"
-        "    on Impulse(amount, enabled) { n = X }\n}\n",
-    };
-    for (int i = 0; i < 3; i++) {
-        REQUIRE(!chibi_migrate_locals(spaced[i], &unchanged, error, sizeof error));
-        REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "X := 1; n = X"));
-        free(unchanged);
-    }
-    /* A local naming storage reads and writes it; an action's output or the
-     * owner is read once. */
-    const char
-        *alias = "behavior L { n: double = 0\n"
-                 "    local alias = n\n"
-                 "    local typed: double = alias\n"
-                 "    action wait = timer(1)\n"
-                 "    local done = wait.Done\n"
-                 "    local hp = get_component(self).Value\n"
-                 "    local me = self\n"
-                 "    local amount = event.amount\n"
-                 "    local health = self.Health\n"
-                 "    local armor = engine[\"Get Component\"](self).Value\n"
-                 "    on Tick() { alias = 2; m := typed; typed = 3; n = "
-                 "done; hp = 4; e := me; health = 5; armor = 6; a := amount }\n"
-                 "}\n";
-    REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
-    REQUIRE(
-        unchanged &&
-        !strcmp(
-            unchanged,
-            "behavior L { n: double = 0\n"
-            "    action wait = timer(1)\n"
-            "    on Tick() { n = 2; m := n; n = 3; done := "
-            "wait.Done; n = done; "
-            "get_component(self).Value = 4; me := self; e := me; "
-            "self.Health = 5; engine[\"Get Component\"](self).Value = 6; "
-            "amount := event.amount; a := amount }\n"
-            "}\n"
-        )
-    );
-    free(unchanged);
-    /* A system's component parameter is storage too. */
-    const char *system = "system S(position: Position) { local p = position; "
-                         "p.x = 1 }\n";
-    REQUIRE(!chibi_migrate_locals(system, &unchanged, error, sizeof error));
-    REQUIRE(unchanged && strstr(unchanged, "{ position.x = 1 }"));
-    free(unchanged);
-    /* `local.X` names the root local past a nearer `X`. */
-    const char *qualified = "behavior L { n: double = 0\n"
-                            "    local X = n + 1\n"
-                            "    on Impulse(amount, enabled) { X := 0; n = "
-                            "local.X + X }\n"
-                            "}\n";
-    REQUIRE(!chibi_migrate_locals(qualified, &unchanged, error, sizeof error));
-    REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "n = (n + 1) + X"));
-    free(unchanged);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        prepare();
-        REQUIRE(compile_migrated(migrated, backends[b]));
-        execution_instance *instance = execution_program_attach(
-            program,
-            ecs_entity_to_u64(ecs_world_create_entity(world))
-        );
-        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
-                                   { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 5) && number_state(instance, "hits", 2));
-    }
-    free(migrated);
-    return true;
-}
-TEST_CASE(program_version_13_values_migrate_to_their_expressions)
-{
-    const char *source = "behavior V { n: double = 0\n"
-                         "    value twice = n * 2\n"
-                         "    value more = twice + 1\n"
-                         "    /* who */ value who: entity = self\n"
-                         "    function Add(x: double) {\n"
-                         "        value sum: double = x + more\n"
-                         "        X := entry.x\n"
-                         "        return Keep(Value: sum + X)\n"
-                         "    }\n"
-                         "    function Keep(Value: double) { return Value }\n"
-                         "    function Shadow(more: double) { return more }\n"
-                         "    on Impulse(amount, enabled) { w := who; n = "
-                         "Add(amount) + "
-                         "Shadow(5) + twice }\n"
-                         "}\n";
-    const char *expected = "behavior V { n: double = 0\n"
-                           "    /* who */ function Add(x: double) {\n"
-                           "        X := entry.x\n"
-                           "        return Keep(Value: cast<double>(x + ((n * "
-                           "2) + 1)) + X)\n"
-                           "    }\n"
-                           "    function Keep(Value: double) { return Value }\n"
-                           "    function Shadow(more: double) { return more }\n"
-                           "    on Impulse(amount, enabled) { w := "
-                           "cast<entity>(self); n = Add(amount) "
-                           "+ Shadow(5) + (n * 2) }\n"
-                           "}\n";
-    char error[256] = "";
-    char *migrated = NULL, *unchanged = NULL;
-    REQUIRE(!chibi_migrate_values(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && !strcmp(migrated, expected) && !error[0]);
-    REQUIRE(!chibi_migrate_values(expected, &unchanged, error, sizeof error) && !unchanged);
-    /* Expanding `twice` where a local `n` is declared would read the local. */
-    const char *shadowed = "behavior V { n: double = 0\n"
-                           "    value twice = n * 2\n"
-                           "    on Impulse(amount, enabled) { n := amount; m "
-                           ":= twice }\n"
-                           "}\n";
-    REQUIRE(
-        chibi_migrate_values(shadowed, &unchanged, error, sizeof error) &&
-        strstr(error, "`n`")
-    );
-    /* The failure does not depend on room for its message. */
-    REQUIRE(chibi_migrate_values(shadowed, &unchanged, NULL, 0) == -1 && !unchanged);
-    /* Expanding `x` inside Outer would call Outer's own F. */
-    const char *callable = "behavior V { n: double = 0\n"
-                           "    function F() { return 1 }\n"
-                           "    value x = F()\n"
-                           "    function Outer() { function F() { return 2 }\n"
-                           "        return x }\n"
-                           "}\n";
-    error[0] = '\0';
-    REQUIRE(
-        chibi_migrate_values(callable, &unchanged, error, sizeof error) &&
-        strstr(error, "`F`")
-    );
-    /* An action is a callable too. */
-    const char *action = "behavior V { n: double = 0\n"
-                         "    function F() { return 1 }\n"
-                         "    value x = F()\n"
-                         "    function Outer() { action F = timer(1)\n"
-                         "        return x }\n"
-                         "}\n";
-    error[0] = '\0';
-    REQUIRE(
-        chibi_migrate_values(action, &unchanged, error, sizeof error) &&
-        strstr(error, "`F`")
-    );
-    /* A project whose values conflict stays at version 13, even when the
-     * caller has no room for the message. */
-    char root[] = "/tmp/chibi-values-XXXXXX", path[256], manifest[256], text[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/content/V.chibi", root);
-    FILE *file = fopen(path, "wb");
-    fputs(shadowed, file);
-    fclose(file);
-    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    file = fopen(manifest, "wb");
-    fputs("version 13\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
-    fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1 && strstr(error, "`n`"));
-    REQUIRE(chibi_project_migrate(root, NULL, 0) == -1);
-    file = fopen(manifest, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(strstr(text, "version 13"));
-    file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, shadowed));
-    unlink(path);
-    unlink(manifest);
-    snprintf(path, sizeof path, "%s/content", root);
-    rmdir(path);
-    rmdir(root);
-    free(migrated);
-    prepare();
-    REQUIRE(compile_migrated(expected, BEHAVIOR_BYTECODE));
-    execution_instance *instance = execution_program_attach(
-        program,
-        ecs_entity_to_u64(ecs_world_create_entity(world))
-    );
-    const pin_value args[] = { { .type = PIN_F64, .d = 1 },
-                               { .type = PIN_BOOL, .b = true } };
-    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-    REQUIRE(number_state(instance, "n", 8));
-    return true;
-}
-/* Migrates a version 14 project holding content/Level.kdl and a start scene
- * at `path` under the root, which the manifest names `start_scene`. */
-static bool migrates_start_scene(
-    const char *source,
-    const char *expected,
-    const char *start_scene,
-    const char *path
-)
-{
-    char root[] = "/tmp/chibi-migrate-XXXXXX", manifest[256], error[256];
-    REQUIRE(mkdtemp(root));
-    char scene[256], start[256], directory[256];
-    snprintf(directory, sizeof directory, "%s/content", root);
-    REQUIRE(!mkdir(directory, 0700));
-    snprintf(scene, sizeof scene, "%s/content/Level.kdl", root);
-    snprintf(start, sizeof start, "%s/%s", root, path);
-    snprintf(directory, sizeof directory, "%s", start);
-    *strrchr(directory, '/') = 0;
-    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
-    const char *scenes[] = { scene, start };
-    for (int i = 0; i < 2; i++) {
-        FILE *file = fopen(scenes[i], "wb");
-        fputs(source, file);
-        fclose(file);
-    }
-    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    FILE *file = fopen(manifest, "wb");
-    fprintf(file, "version 14\ncontent \"content\"\nstart_scene \"%s\"\n", start_scene);
-    fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 14);
-    for (int i = 0; i < 2; i++) {
-        char text[1024];
-        file = fopen(scenes[i], "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        REQUIRE(!strcmp(text, expected));
-        unlink(scenes[i]);
-    }
-    unlink(manifest);
-    rmdir(directory);
-    snprintf(directory, sizeof directory, "%s/content", root);
-    rmdir(directory);
-    rmdir(root);
-    return true;
-}
-TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
-{
-    const char *source = "version 1\n"
-                         "name \"Start\"\n"
-                         "(array)entities {\n"
-                         "    - name=\"Camera\" prototype=\"Camera\"\n"
-                         "    - name=\"Player\" prototype=\"Player\" {\n"
-                         "        (array)behaviors \"Move\"\n"
-                         "    }\n"
-                         "}\n";
-    const char *expected = "version 1\n"
-                           "name \"Start\"\n"
-                           "(array)entities {\n"
-                           "    - {\n"
-                           "        name \"Camera\"\n"
-                           "        prototype \"Camera\"\n"
-                           "        (array)behaviors\n"
-                           "    }\n"
-                           "    - {\n"
-                           "        name \"Player\"\n"
-                           "        prototype \"Player\"\n"
-                           "        (array)behaviors \"Move\"\n"
-                           "    }\n"
-                           "}\n";
-    char *migrated = chibi_migrate_scene_behaviors(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_scene_behaviors(expected));
-    REQUIRE(!chibi_migrate_scene_behaviors(
-        "name \"Camera\"\n(array)entities {\n    - name=\"A\"\n}\n"
-    ));
-    free(migrated);
-
-    /* Scenes outside content/scenes migrate too, and so does a start scene
-     * the scan cannot find: outside the content, or hidden. */
-    REQUIRE(migrates_start_scene(source, expected, "../Start.kdl", "Start.kdl"));
-    REQUIRE(migrates_start_scene(source, expected, ".scenes/Start.kdl", "content/.scenes/Start.kdl"));
-    return true;
-}
 static const script_catalog_parameter action_parameter = { .name = "Action",
                                                            .type = { .storage = PIN_STR } };
 static const script_catalog_parameter held_result = { .name = "Held",
                                                       .type = { .storage = PIN_BOOL } };
 static const script_catalog_parameter pressed_result = { .name = "Pressed",
                                                          .type = { .storage = PIN_BOOL } };
-/* Writes content/input.kdl under a new temporary root. */
+
+/* The fixture root is a content directory; map is an ordinary compiled-source
+ * module supplied by the test, so no project scaffold or source rewrite is needed. */
 static bool input_project(char root[], const char *map)
 {
     REQUIRE(mkdtemp(root));
@@ -5708,10 +4775,12 @@ static bool input_project(char root[], const char *map)
     snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
     FILE *file = fopen(path, "wb");
     REQUIRE(file);
-    fputs(map, file);
-    fclose(file);
+    bool written = fputs(map, file) >= 0;
+    written = fclose(file) == 0 && written;
+    REQUIRE(written);
     return true;
 }
+
 static void remove_input_project(const char *root)
 {
     char path[256];
@@ -5719,6 +4788,7 @@ static void remove_input_project(const char *root)
     unlink(path);
     rmdir(root);
 }
+
 static bool bool_state(execution_instance *instance, const char *name, bool expected)
 {
     const pin_value *value = execution_instance_state(instance, state_id(name));
@@ -5726,13 +4796,29 @@ static bool bool_state(execution_instance *instance, const char *name, bool expe
 }
 TEST_CASE(program_input_map_validates_actions)
 {
-    const char *canonical = "Jump {\n"
-                            "    (array)sources \"Space\" \"Z\"\n"
-                            "}\n"
-                            "Fire {\n"
-                            "    (array)sources \"X\"\n"
-                            "    firing #true\n"
-                            "}\n";
+    const char *canonical =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Jump\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Space\"),\n"
+        "                    data.Value.Text(\"Z\")\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Fire\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"X\")\n"
+        "                ])),\n"
+        "                data.Field.Named(\"firing\", data.Value.Bool(true))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     input_action *map;
     char error[256];
     REQUIRE(input_map_read(canonical, &map, error, sizeof error));
@@ -5749,13 +4835,74 @@ TEST_CASE(program_input_map_validates_actions)
     {
         const char *text, *message;
     } invalid[] = {
-        { "Jump {\n    (array)sources \"Nope\"\n}\n", "Jump: sources must list" },
-        { "Jump {\n    (array)sources\n}\n", "Jump: sources must list" },
-        { "Jump {\n    (array)sources \"Z\"\n}\nJump {\n    (array)sources "
-          "\"X\"\n}\n",
-          "duplicate" },
-        { "\"\" {\n    (array)sources \"Z\"\n}\n", "an action needs a name" },
-        { "Jump {\n    (array)sources \"Z\"\n    firing 1\n}\n", "optional firing flag" },
+        { "package asset\n"
+          "\n"
+          "import data \"game:assets\"\n"
+          "\n"
+          "pub Build :: () -> byte[] {\n"
+          "    return data.Encode(\n"
+          "        data.Object([\n"
+          "            data.Field.Named(\"Jump\", data.Object([\n"
+          "                data.Field.Named(\"sources\", data.List([\n"
+          "                    data.Value.Text(\"Nope\")\n"
+          "                ]))\n"
+          "            ]))\n"
+          "        ])\n"
+          "    )\n"
+          "}\n",
+          "Jump: sources must list" },
+        { "package asset\n"
+          "\n"
+          "import data \"game:assets\"\n"
+          "\n"
+          "pub Build :: () -> byte[] {\n"
+          "    return data.Encode(\n"
+          "        data.Object([\n"
+          "            data.Field.Named(\"Jump\", data.Object([\n"
+          "                data.Field.Named(\"sources\", data.List([]))\n"
+          "            ]))\n"
+          "        ])\n"
+          "    )\n"
+          "}\n",
+          "Jump: sources must list" },
+        { "package asset\nimport data \"game:assets\"\n"
+          "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+          "data.Field.Named(\"Jump\", data.Object([])),"
+          "data.Field.Named(\"Jump\", data.Object([]))])) }\n",
+          "Duplicate" },
+        { "package asset\n"
+          "\n"
+          "import data \"game:assets\"\n"
+          "\n"
+          "pub Build :: () -> byte[] {\n"
+          "    return data.Encode(\n"
+          "        data.Object([\n"
+          "            data.Field.Named(\"\", data.Object([\n"
+          "                data.Field.Named(\"sources\", data.List([\n"
+          "                    data.Value.Text(\"Z\")\n"
+          "                ]))\n"
+          "            ]))\n"
+          "        ])\n"
+          "    )\n"
+          "}\n",
+          "an action needs a name" },
+        { "package asset\n"
+          "\n"
+          "import data \"game:assets\"\n"
+          "\n"
+          "pub Build :: () -> byte[] {\n"
+          "    return data.Encode(\n"
+          "        data.Object([\n"
+          "            data.Field.Named(\"Jump\", data.Object([\n"
+          "                data.Field.Named(\"sources\", data.List([\n"
+          "                    data.Value.Text(\"Z\")\n"
+          "                ])),\n"
+          "                data.Field.Named(\"firing\", data.Value.UInt(1))\n"
+          "            ]))\n"
+          "        ])\n"
+          "    )\n"
+          "}\n",
+          "optional firing flag" },
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         REQUIRE(!input_map_read(invalid[i].text, &map, error, sizeof error) && !map);
@@ -5767,15 +4914,34 @@ TEST_CASE(program_input_map_validates_actions)
             strstr(error, invalid[i].message)
         );
     }
-    const char *cooperative = "P1Left {\n"
-                              "    (array)sources \"Z\"\n"
-                              "    controller 0\n"
-                              "    (array)buttons \"Dpad Left\"\n"
-                              "}\n"
-                              "P2Confirm {\n"
-                              "    controller 1\n"
-                              "    (array)buttons \"A\"\n"
-                              "}\n";
+    const char *cooperative =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P1Left\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Z\")\n"
+        "                ])),\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(0)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"Dpad Left\")\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"P2Confirm\", data.Object([\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(1)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"A\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     REQUIRE(input_map_read(cooperative, &map, error, sizeof error));
     REQUIRE(acount(map) == 2 && map[0].controls && map[0].buttons);
     REQUIRE(map[1].controller == 1 && !map[1].controls && map[1].buttons);
@@ -5787,31 +4953,110 @@ TEST_CASE(program_input_map_validates_actions)
     input_map_free(map);
     free(text);
     const char *bad_controllers[] = {
-        "P {\n controller 4\n (array)buttons \"A\"\n}\n",
-        "P {\n controller -1\n (array)buttons \"A\"\n}\n",
-        "P {\n controller 0\n}\n",
-        "P {\n (array)buttons \"A\"\n}\n",
-        "P {\n controller 0\n (array)buttons \"Unknown\"\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P\", data.Object([\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(4)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"A\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P\", data.Object([\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.Int(-1)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"A\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P\", data.Object([\n"
+        "                data.Field.Named(\"controller\", data.Value.UInt(0))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P\", data.Object([\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"A\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"P\", data.Object([\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(0)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"Unknown\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
     };
     for (size_t i = 0; i < sizeof bad_controllers / sizeof *bad_controllers; i++) {
         REQUIRE(!input_map_read(bad_controllers[i], &map, error, sizeof error) && !map);
     }
     /* A map holds at most INPUT_ACTION_MAX actions. */
-    size_t size = (INPUT_ACTION_MAX + 1) *
-                  sizeof "A256 {\n    (array)sources \"Z\"\n}\n";
-    char *many = xmalloc(size);
-    size_t most = 0, used = 0;
+    av_doc *values = av_doc_new();
+    av_value *actions = av_obj(values);
+    av_doc_set_root(values, actions);
+    char name[32];
     for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
-        most = used;
-        used += (size_t)snprintf(many + used, size - used, "A%d {\n    (array)sources \"Z\"\n}\n", i);
+        snprintf(name, sizeof name, "A%d", i);
+        av_value *action = av_obj_add_obj(values, actions, name);
+        av_arr_add_str(values, av_obj_add_arr(values, action, "sources"), "Z");
     }
-    REQUIRE(!input_map_read(many, &map, error, sizeof error) && !map);
+    char *many = asset_document_write(actions);
+    REQUIRE(many && !input_map_read(many, &map, error, sizeof error) && !map);
     REQUIRE(strstr(error, "at most"));
-    many[most] = 0;
-    REQUIRE(input_map_read(many, &map, error, sizeof error));
+    free(many);
+    av_obj_remove_key(actions, name);
+    many = asset_document_write(actions);
+    REQUIRE(many && input_map_read(many, &map, error, sizeof error));
     REQUIRE(acount(map) == INPUT_ACTION_MAX);
     input_map_free(map);
     free(many);
+    av_doc_free(values);
     return true;
 }
 /* The catalog finds the references in a scene's or prototype's nested
@@ -5820,33 +5065,72 @@ TEST_CASE(program_scene_children_are_referenced)
 {
     char root[] = "/tmp/chibi-children-XXXXXX", path[256], ship[256];
     REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/scenes/Start.kdl", root);
-    snprintf(ship, sizeof ship, "%s/prototypes/Ship.kdl", root);
+    snprintf(path, sizeof path, "%s/scenes/Start.chibi", root);
+    snprintf(ship, sizeof ship, "%s/prototypes/Ship.chibi", root);
     source_catalog_edit edits[] = {
         {
             .path = path,
-            .text = "version 1\n"
-                    "name \"Start\"\n"
-                    "(array)entities {\n"
-                    "    - {\n"
-                    "        name \"Ship\"\n"
-                    "        prototype \"Hull\"\n"
-                    "        (array)children {\n"
-                    "            - {\n"
-                    "                name \"Turret\"\n"
-                    "                (array)children {\n"
-                    "                    - name=\"Barrel\" prototype=\"Gun\"\n"
-                    "                }\n"
-                    "            }\n"
-                    "        }\n"
-                    "    }\n"
+            .text = "package asset\n"
+                    "\n"
+                    "import data \"game:assets\"\n"
+                    "\n"
+                    "pub Build :: () -> byte[] {\n"
+                    "    return data.Encode(\n"
+                    "        data.Object([\n"
+                    "            data.Field.Named(\"version\", "
+                    "data.Value.UInt(1)),\n"
+                    "            data.Field.Named(\"name\", "
+                    "data.Value.Text(\"Start\")),\n"
+                    "            data.Field.Named(\"entities\", data.List([\n"
+                    "                data.Object([\n"
+                    "                    data.Field.Named(\"name\", "
+                    "data.Value.Text(\"Ship\")),\n"
+                    "                    data.Field.Named(\"prototype\", "
+                    "data.Value.Text(\"Hull\")),\n"
+                    "                    data.Field.Named(\"children\", "
+                    "data.List([\n"
+                    "                        data.Object([\n"
+                    "                            data.Field.Named(\"name\", "
+                    "data.Value.Text(\"Turret\")),\n"
+                    "                            "
+                    "data.Field.Named(\"children\", data.List([\n"
+                    "                                data.Object([\n"
+                    "                                    "
+                    "data.Field.Named(\"name\", data.Value.Text(\"Barrel\")),\n"
+                    "                                    "
+                    "data.Field.Named(\"prototype\", "
+                    "data.Value.Text(\"Gun\"))\n"
+                    "                                ])\n"
+                    "                            ]))\n"
+                    "                        ])\n"
+                    "                    ]))\n"
+                    "                ])\n"
+                    "            ]))\n"
+                    "        ])\n"
+                    "    )\n"
                     "}\n",
         },
         {
             .path = ship,
-            .text = "name \"Ship\"\n"
-                    "(array)children {\n"
-                    "    - name=\"Mast\" prototype=\"Pole\"\n"
+            .text = "package asset\n"
+                    "\n"
+                    "import data \"game:assets\"\n"
+                    "\n"
+                    "pub Build :: () -> byte[] {\n"
+                    "    return data.Encode(\n"
+                    "        data.Object([\n"
+                    "            data.Field.Named(\"name\", "
+                    "data.Value.Text(\"Ship\")),\n"
+                    "            data.Field.Named(\"children\", data.List([\n"
+                    "                data.Object([\n"
+                    "                    data.Field.Named(\"name\", "
+                    "data.Value.Text(\"Mast\")),\n"
+                    "                    data.Field.Named(\"prototype\", "
+                    "data.Value.Text(\"Pole\"))\n"
+                    "                ])\n"
+                    "            ]))\n"
+                    "        ])\n"
+                    "    )\n"
                     "}\n",
         }
     };
@@ -5893,14 +5177,46 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     native.capabilities = capabilities;
     native.capability_count = 3;
     char root[] = "/tmp/chibi-input-XXXXXX";
-    REQUIRE(input_project(root, "Jump {\n    (array)sources \"Space\"\n}\n"));
+    REQUIRE(input_project(
+        root,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Jump\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Space\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     source_catalog *project = source_catalog_new(root, &native);
     /* An unsaved edit of the map replaces the file, and one without text
      * removes it. */
     char map[256];
     snprintf(map, sizeof map, "%s/" INPUT_MAP_FILE, root);
     source_catalog_edit edits[] = {
-        { .path = map, .text = "Dash {\n    (array)sources \"X\"\n}\n" },
+        { .path = map,
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"Dash\", data.Object([\n"
+                  "                data.Field.Named(\"sources\", data.List([\n"
+                  "                    data.Value.Text(\"X\")\n"
+                  "                ]))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
         { .path = map },
     };
     for (int i = 0; i < 2; i++) {
@@ -5941,8 +5257,26 @@ TEST_CASE(program_input_actions_read_through_typed_names)
      * each such action is reported. */
     source_catalog_edit lifecycle = {
         .path = map,
-        .text = "Tick {\n    (array)sources \"X\"\n}\n"
-                "Jump {\n    (array)sources \"Space\"\n}\n",
+        .text = "package asset\n"
+                "\n"
+                "import data \"game:assets\"\n"
+                "\n"
+                "pub Build :: () -> byte[] {\n"
+                "    return data.Encode(\n"
+                "        data.Object([\n"
+                "            data.Field.Named(\"Tick\", data.Object([\n"
+                "                data.Field.Named(\"sources\", data.List([\n"
+                "                    data.Value.Text(\"X\")\n"
+                "                ]))\n"
+                "            ])),\n"
+                "            data.Field.Named(\"Jump\", data.Object([\n"
+                "                data.Field.Named(\"sources\", data.List([\n"
+                "                    data.Value.Text(\"Space\")\n"
+                "                ]))\n"
+                "            ]))\n"
+                "        ])\n"
+                "    )\n"
+                "}\n",
     };
     clashing = source_catalog_edited(root, &native, &lifecycle, 1);
     REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
@@ -5956,11 +5290,26 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     /* A project event may share an action's name: both raise that event. */
     char events[256], event[256];
     snprintf(events, sizeof events, "%s/events", root);
-    snprintf(event, sizeof event, "%s/Jump.kdl", events);
+    snprintf(event, sizeof event, "%s/Jump.chibi", events);
     REQUIRE(!mkdir(events, 0700));
     FILE *file = fopen(event, "wb");
     REQUIRE(file);
-    fputs("version 3\nname \"Jump\"\ndomain \"event\"\n", file);
+    fputs(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(3)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Jump\")),\n"
+        "            data.Field.Named(\"domain\", data.Value.Text(\"event\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        file
+    );
     fclose(file);
     source_catalog *shared = source_catalog_new(root, &native);
     REQUIRE(!source_catalog_diagnostic_count(shared));
@@ -6049,25 +5398,85 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
     native.capability_count = acount(native_capabilities);
     char root[] = "/tmp/chibi-globals-XXXXXX", prototype[256], scene[256];
     REQUIRE(mkdtemp(root));
-    snprintf(prototype, sizeof prototype, "%s/prototypes/Room.kdl", root);
-    snprintf(scene, sizeof scene, "%s/scenes/Start.kdl", root);
+    snprintf(prototype, sizeof prototype, "%s/prototypes/Room.chibi", root);
+    snprintf(scene, sizeof scene, "%s/scenes/Start.chibi", root);
     const source_catalog_edit edits[] = {
         { .path = prototype,
-          .text = "name \"Room\"\ncomponents {\n    GlobalBinding "
-                  "name=\"Level\"\n}\n"
-                  "(array)children {\n    - {\n        name \"Player\"\n       "
-                  " components {\n            GlobalBinding name=\"Player\"\n  "
-                  "      }\n    }\n}\n" },
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Room\")),\n"
+                  "            data.Field.Named(\"components\", data.Object([\n"
+                  "                data.Field.Named(\"GlobalBinding\", "
+                  "data.Object([\n"
+                  "                    data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Level\"))\n"
+                  "                ]))\n"
+                  "            ])),\n"
+                  "            data.Field.Named(\"children\", data.List([\n"
+                  "                data.Object([\n"
+                  "                    data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Player\")),\n"
+                  "                    data.Field.Named(\"components\", "
+                  "data.Object([\n"
+                  "                        data.Field.Named(\"GlobalBinding\", "
+                  "data.Object([\n"
+                  "                            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Player\"))\n"
+                  "                        ]))\n"
+                  "                    ]))\n"
+                  "                ])\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
         { .path = scene,
-          .text = "name \"Start\"\n(array)entities {\n    - {\n        name "
-                  "\"Room\"\n"
-                  "        components {\n            GlobalBinding "
-                  "name=\"Level\"\n        }\n"
-                  "        (array)children {\n            - {\n                "
-                  "name \"Camera\"\n"
-                  "                components {\n                    "
-                  "GlobalBinding name=\"Camera\"\n                }\n          "
-                  "  }\n        }\n    }\n}\n" },
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Start\")),\n"
+                  "            data.Field.Named(\"entities\", data.List([\n"
+                  "                data.Object([\n"
+                  "                    data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Room\")),\n"
+                  "                    data.Field.Named(\"components\", "
+                  "data.Object([\n"
+                  "                        data.Field.Named(\"GlobalBinding\", "
+                  "data.Object([\n"
+                  "                            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Level\"))\n"
+                  "                        ]))\n"
+                  "                    ])),\n"
+                  "                    data.Field.Named(\"children\", "
+                  "data.List([\n"
+                  "                        data.Object([\n"
+                  "                            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Camera\")),\n"
+                  "                            "
+                  "data.Field.Named(\"components\", data.Object([\n"
+                  "                                "
+                  "data.Field.Named(\"GlobalBinding\", data.Object([\n"
+                  "                                    "
+                  "data.Field.Named(\"name\", data.Value.Text(\"Camera\"))\n"
+                  "                                ]))\n"
+                  "                            ]))\n"
+                  "                        ])\n"
+                  "                    ]))\n"
+                  "                ])\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
     };
     source_catalog *project = source_catalog_edited(root, &native, edits, 2);
     REQUIRE(!source_catalog_diagnostic_count(project));
@@ -6172,1087 +5581,10 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
     rmdir(root);
     return true;
 }
-/* Migrates a version 15 project whose scene and prototype bind actions, into
- * an input map that already holds one. */
-TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
-{
-    const char *scene = "version 1\n"
-                        "name \"Start\"\n"
-                        "(array)entities {\n"
-                        "    - {\n"
-                        "        name \"Player\"\n"
-                        "        prototype \"Player\"\n"
-                        "        (array)behaviors\n"
-                        "        components {\n"
-                        "            GAME.GameActionBinding action=\"Jump\" "
-                        "source=\"Z\"\n"
-                        "            GAME.GameInput\n"
-                        "        }\n"
-                        "        retained_components {\n"
-                        "            GAME.GameActionBinding action=\"Slide\" "
-                        "source=\"X\"\n"
-                        "        }\n"
-                        "    }\n"
-                        "}\n";
-    const char
-        *prototype = "name \"Player\"\n"
-                     "components {\n"
-                     "    GAME.GameActionBinding action=\"Fire\" firing=#true "
-                     "source=\"X\"\n"
-                     "    (object)GAME.GameInput\n"
-                     "}\n"
-                     "detached_components {\n"
-                     "    GAME.GameActionBinding action=\"Dash\" source=\"Z\"\n"
-                     "}\n";
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content", "content/scenes", "content/prototypes" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *files[][2] = {
-        { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
-        { "content/scenes/Start.kdl", scene },
-        { "content/prototypes/Player.kdl", prototype },
-        { "content/" INPUT_MAP_FILE, "Jump {\n    (array)sources \"Space\"\n}\n" },
-    };
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(files[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 15);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-    const char *expected[] = {
-        NULL,
-        "version 1\n"
-        "name \"Start\"\n"
-        "(array)entities {\n"
-        "    - {\n"
-        "        name \"Player\"\n"
-        "        prototype \"Player\"\n"
-        "        (array)behaviors\n"
-        "        components {\n"
-        "            (object)Input\n"
-        "        }\n"
-        "    }\n"
-        "}\n",
-        "name \"Player\"\n"
-        "components {\n"
-        "    (object)Input\n"
-        "}\n",
-        "Jump {\n"
-        "    (array)sources \"Space\" \"Z\"\n"
-        "}\n"
-        "Fire {\n"
-        "    (array)sources \"X\"\n"
-        "    firing #true\n"
-        "}\n",
-    };
-    for (int i = 3; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        char text[1024];
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        if (expected[i] && strcmp(text, expected[i])) {
-            fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
-        }
-        REQUIRE(!expected[i] || !strcmp(text, expected[i]));
-    }
 
-    /* Which action a script's binding read meant depends on its entity, so
-     * one stops the migration. */
-    const char *scripts[][2] = {
-        { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
-        { "content/Move.chibi", "behavior Move {\n    // ActionBinding\n    on pressed_changed(pressed) {\n    }\n}\n" },
-    };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, scripts[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(scripts[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
-    REQUIRE(strstr(error, "Move.chibi reads PressedChanged"));
-    snprintf(path, sizeof path, "%s/%s", root, scripts[1][0]);
-    unlink(path);
-
-    /* An input map that the input map reader would reject stops the
-     * migration before any asset changes. */
-    const char *unrelated[][2] = {
-        { "content/scenes/Start.kdl", scene },
-        { "content/" INPUT_MAP_FILE, "bindings {\n    jump \"Space\"\n}\n" },
-    };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, unrelated[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(unrelated[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
-    REQUIRE(strstr(error, "content/" INPUT_MAP_FILE " is not an input map"));
-    const char *const *kept[] = { scripts[0], unrelated[0], unrelated[1] };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
-        char text[1024];
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        REQUIRE(!strcmp(text, kept[i][1]));
-    }
-
-    /* So does a map that the moved bindings would take past the action
-     * limit. */
-    snprintf(path, sizeof path, "%s/content/" INPUT_MAP_FILE, root);
-    FILE *full = fopen(path, "wb");
-    for (int i = 0; i < INPUT_ACTION_MAX; i++) {
-        fprintf(full, "A%d {\n    (array)sources \"Space\"\n}\n", i);
-    }
-    fclose(full);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
-    REQUIRE(strstr(error, "more than 256 actions"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
-        char text[1024];
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        REQUIRE(!strcmp(text, kept[i][1]));
-    }
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        unlink(path);
-    }
-    for (int i = 2; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        rmdir(path);
-    }
-    rmdir(root);
-    return true;
-}
 /* Removes obsolete motion from a version 17 project while preserving an
  * unrelated SdfMotion scene name. */
-TEST_CASE(program_version_17_sdf_motion_is_removed)
-{
-    const char *scene = "version 1\n"
-                        "name \"SdfMotion\"\n"
-                        "(array)entities {\n"
-                        "    - {\n"
-                        "        name \"Enemy\"\n"
-                        "        prototype \"Enemy\"\n"
-                        "        (array)behaviors\n"
-                        "        components {\n"
-                        "            GAME.GameSdfMotion amplitude=2.0\n"
-                        "            (object)GAME.GameInput\n"
-                        "        }\n"
-                        "        retained_components {\n"
-                        "            GameSdfMotion time=1.0\n"
-                        "        }\n"
-                        "    }\n"
-                        "}\n";
-    const char *prototype = "name \"Enemy\"\n"
-                            "components {\n"
-                            "    GAME.GameSdfMotion angular_frequency=4.0\n"
-                            "}\n"
-                            "detached_components {\n"
-                            "    GAME.GameSdfMotion pluck_amplitude=1.0\n"
-                            "}\n";
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content", "content/scenes", "content/prototypes" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *manifest = "version 17\ncontent \"content\"\nstart_scene "
-                           "\"scenes/Start.kdl\"\n";
-    const char *files[][2] = {
-        { CHIBI_PROJECT_MANIFEST, manifest },
-        { "content/scenes/Start.kdl", scene },
-        { "content/prototypes/Enemy.kdl", prototype },
-        { "content/Note.chibi", "// GameSdfMotion is gone.\nbehavior Note {\n}\n" },
-        { "content/scenes/SdfMotion.kdl",
-          "// GameSdfMotion is removed.\nversion 1\nname \"SdfMotion\"\n"
-          "description \"GameSdfMotion example\"\n(array)entities\n" },
-    };
-    for (int i = 0; i < 5; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(files[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 17);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-    const char *expected[] = {
-        NULL,
-        "version 1\n"
-        "name \"SdfMotion\"\n"
-        "(array)entities {\n"
-        "    - {\n"
-        "        name \"Enemy\"\n"
-        "        prototype \"Enemy\"\n"
-        "        (array)behaviors\n"
-        "        components {\n"
-        "            (object)Input\n"
-        "        }\n"
-        "    }\n"
-        "}\n",
-        "name \"Enemy\"\n"
-        "(object)components\n",
-        "// GameSdfMotion is gone.\nNote :: behavior {\n}\n",
-        files[4][1],
-    };
-    for (int i = 1; i < 5; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        char text[1024];
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        if (strcmp(text, expected[i])) {
-            fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
-        }
-        REQUIRE(!strcmp(text, expected[i]));
-    }
 
-    /* Only a person can remove any other use, so a script that names the
-     * component, by name or in a string, or another asset that still names
-     * it stops the migration before any asset changes. */
-    static const struct
-    {
-        const char *path, *text, *message;
-    } uses[] = {
-        { "content/Wobble.chibi",
-          "behavior Wobble {\n    on Tick(dt) {\n        "
-          "self.GameSdfMotion.time += dt\n    }\n}\n",
-          "Wobble.chibi uses GameSdfMotion, which version 18 removes" },
-        { "content/Probe.chibi",
-          "behavior Probe {\n    on Tick(dt) {\n        moving := "
-          "has_component(Component: "
-          "\"GAME.GameSdfMotion\", Entity: 0)\n    }\n}\n",
-          "Probe.chibi uses GAME.GameSdfMotion" },
-        { "content/Escaped.chibi",
-          "behavior Escaped {\n    on Tick(dt) {\n        moving := "
-          "has_component(Component: "
-          "\"GAME.GameSdf\\u004dotion\", Entity: 0)\n    }\n}\n",
-          "Escaped.chibi uses GAME.GameSdfMotion" },
-        { "content/Scenario.kdl",
-          "name \"Wobble\"\ncomponent \"GAME.GameSdfMotion\"\n",
-          "Scenario.kdl uses GameSdfMotion" },
-    };
-    for (size_t u = 0; u < sizeof uses / sizeof *uses; u++) {
-        const char *kept[][2] = {
-            { CHIBI_PROJECT_MANIFEST, manifest },
-            { "content/prototypes/Enemy.kdl", prototype },
-            { uses[u].path, uses[u].text },
-        };
-        for (int i = 0; i < 3; i++) {
-            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
-            FILE *file = fopen(path, "wb");
-            fputs(kept[i][1], file);
-            fclose(file);
-        }
-        REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
-        if (!strstr(error, uses[u].message)) {
-            fprintf(stderr, "migration error: %s\n", error);
-        }
-        REQUIRE(strstr(error, uses[u].message));
-        for (int i = 0; i < 3; i++) {
-            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
-            char text[1024];
-            FILE *file = fopen(path, "rb");
-            text[fread(text, 1, sizeof text - 1, file)] = 0;
-            fclose(file);
-            REQUIRE(!strcmp(text, kept[i][1]));
-        }
-        snprintf(path, sizeof path, "%s/%s", root, uses[u].path);
-        unlink(path);
-    }
-    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
-    unlink(path);
-    for (int i = 1; i < 5; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        unlink(path);
-    }
-    for (int i = 2; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        rmdir(path);
-    }
-    rmdir(root);
-    return true;
-}
-/* Migrates a version 18 scene whose object names hold the '.' that version 19
- * uses to separate paths, and stops on a rename that would clash. */
-TEST_CASE(program_version_18_dotted_names_are_renamed)
-{
-    const char *scene = "version 1\n"
-                        "name \"Start\"\n"
-                        "(array)entities {\n"
-                        "    - name=\"Ship\"\n"
-                        "    - name=\"Ship.Turret.Barrel\"\n"
-                        "}\n";
-    const char *renamed = "version 1\n"
-                          "name \"Start\"\n"
-                          "(array)entities {\n"
-                          "    - name=\"Ship\"\n"
-                          "    - name=\"Ship_Turret_Barrel\"\n"
-                          "}\n";
-    const char *clash = "version 1\n"
-                        "name \"Start\"\n"
-                        "(array)entities {\n"
-                        "    - name=\"Ship.Turret\"\n"
-                        "    - name=\"Ship_Turret\"\n"
-                        "}\n";
-    /* A saved scenario's targets and entity payloads follow the rename; other
-     * strings keep their dots. */
-    const char *scenario =
-        "scene \"Start\"\n"
-        "frames 2\n"
-        "(array)inputs {\n"
-        "    - {\n"
-        "        frame 0\n"
-        "        (array)events {\n"
-        "            - {\n"
-        "                name \"Hit\"\n"
-        "                target \"Ship.Turret.Barrel\"\n"
-        "                (array)values {\n"
-        "                    - type=\"entity\" value=\"Ship.Turret.Barrel\"\n"
-        "                    - type=\"string\" value=\"v1.2\"\n"
-        "                }\n"
-        "            }\n"
-        "        }\n"
-        "        (array)ui {\n"
-        "            - target=\"Ship.Turret.Barrel\" element=\"fire\" "
-        "event=\"click\"\n"
-        "        }\n"
-        "    }\n"
-        "}\n";
-    const char *manifest = "version 18\ncontent \"content\"\nstart_scene "
-                           "\"scenes/Start.kdl\"\n";
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256], text[1024];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content", "content/scenes", "content/scenarios" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *runs[][2] = {
-        { scene, NULL },
-        { clash, "Start.kdl has two objects that version 19 names Ship_Turret" }
-    };
-    for (int run = 0; run < 2; run++) {
-        const char *files[][2] = {
-            { CHIBI_PROJECT_MANIFEST, manifest },
-            { "content/scenes/Start.kdl", runs[run][0] },
-            { "content/scenarios/Fight.kdl", scenario },
-        };
-        for (int i = 0; i < 3; i++) {
-            snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-            FILE *file = fopen(path, "wb");
-            fputs(files[i][1], file);
-            fclose(file);
-        }
-        int migrated = chibi_project_migrate(root, error, sizeof error);
-        snprintf(path, sizeof path, "%s/%s", root, files[1][0]);
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        if (runs[run][1]) {
-            REQUIRE(migrated == -1 && strstr(error, runs[run][1]));
-            REQUIRE(!strcmp(text, clash));
-            continue;
-        }
-        REQUIRE(migrated == CHIBI_PROJECT_VERSION - 18);
-        REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-        if (strcmp(text, renamed)) {
-            fprintf(stderr, "migrated scene:\n%s", text);
-        }
-        REQUIRE(!strcmp(text, renamed));
-        snprintf(path, sizeof path, "%s/content/scenarios/Fight.kdl", root);
-        file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        int targets = 0;
-        for (const char *at = strstr(text, "\"Ship_Turret_Barrel\""); at;
-             at = strstr(at + 1, "\"Ship_Turret_Barrel\"")) {
-            targets++;
-        }
-        if (targets != 3 || strstr(text, "Ship.Turret") || !strstr(text, "\"v1.2\"")) {
-            fprintf(stderr, "migrated scenario:\n%s", text);
-        }
-        REQUIRE(targets == 3 && !strstr(text, "Ship.Turret") && strstr(text, "\"v1.2\""));
-    }
-    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
-    unlink(path);
-    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
-    unlink(path);
-    snprintf(path, sizeof path, "%s/content/scenarios/Fight.kdl", root);
-    unlink(path);
-    for (int i = 2; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        rmdir(path);
-    }
-    rmdir(root);
-    return true;
-}
-static char *read_whole(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        return NULL;
-    }
-    static char text[1024];
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    return text;
-}
-static void write_whole(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    fputs(text, file);
-    fclose(file);
-}
-TEST_CASE(program_version_19_components_move_to_chibi)
-{
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content", "content/components", "content/scenes" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *manifest = "version 19\ncontent \"content\"\nstart_scene "
-                           "\"scenes/Start.kdl\"\n";
-    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
-    write_whole(path, "version 1\nname \"Start\"\n(array)entities\n");
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    write_whole(path, manifest);
-    snprintf(path, sizeof path, "%s/content/components/Charge.kdl", root);
-    write_whole(
-        path,
-        "name \"Charge\"\n"
-        "description \"Stored energy.\\n\\nRefills.\"\n"
-        "(array)fields {\n"
-        "    - name=\"level\" type=\"float\" description=\"\"\n"
-        "    - name=\"rate\" type=\"float\" description=\"Per second.\\n\"\n"
-        "    - name=\"drift\" type=\"CF_V2\"\n"
-        "}\n"
-    );
-    int steps = chibi_project_migrate(root, error, sizeof error);
-    if (steps < 0) {
-        fprintf(stderr, "migrate: %s\n", error);
-    }
-    REQUIRE(steps == CHIBI_PROJECT_VERSION - 19);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-    REQUIRE(!read_whole(path));
-    snprintf(path, sizeof path, "%s/content/components/Charge.chibi", root);
-    const char *expected = "// Stored energy.\n"
-                           "//\n"
-                           "// Refills.\n"
-                           "Charge :: component {\n"
-                           "    //\n"
-                           "    level: float\n"
-                           "    // Per second.\n"
-                           "    //\n"
-                           "    rate: float\n"
-                           "    drift: CF_V2\n"
-                           "}\n";
-    REQUIRE(!strcmp(read_whole(path), expected));
-
-    /* A declaration the step cannot read stops it before any file changes. */
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    write_whole(path, manifest);
-    snprintf(path, sizeof path, "%s/content/components/Bad.kdl", root);
-    const char *bad = "name \"Bad\"\n(array)fields {\n    - name=\"x\" "
-                      "type=\"float[]\"\n}\n";
-    write_whole(path, bad);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
-    REQUIRE(strstr(error, "Bad.kdl"));
-    REQUIRE(!strcmp(read_whole(path), bad));
-    snprintf(path, sizeof path, "%s/content/components/Bad.chibi", root);
-    REQUIRE(!read_whole(path));
-    REQUIRE(!chibi_migrate_component("name \"1x\"\n(array)fields\n", error, sizeof error));
-    /* KDL allowed names .chibi reserves, and a person's file is never
-     * replaced. */
-    remove(path);
-    snprintf(path, sizeof path, "%s/content/components/Bad.kdl", root);
-    remove(path);
-    REQUIRE(
-        !chibi_migrate_component("name \"Cell\"\n(array)fields {\n    - name=\"state\" type=\"int\"\n}\n", error, sizeof error)
-    );
-    REQUIRE(strstr(error, "'state: int' is not valid .chibi"));
-    snprintf(path, sizeof path, "%s/content/components/Cell.kdl", root);
-    write_whole(path, "name \"Cell\"\n(array)fields {\n    - name=\"x\" type=\"int\"\n}\n");
-    snprintf(path, sizeof path, "%s/content/components/Cell.chibi", root);
-    write_whole(path, "component Cell {\n    y: int\n}\n");
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    write_whole(path, manifest);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
-    REQUIRE(strstr(error, "Cell.chibi already exists"));
-    return true;
-}
-/* Migrates a version 20 material whose Surface Output, node 1, implies its
- * pin IDs. The pins version 21 appends would continue them at 10, which is
- * the Time node's ID, so the material only loads once they take IDs from its
- * counter. */
-TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids)
-{
-    const char
-        *material = "version 3\n"
-                    "name \"Glow\"\n"
-                    "domain \"material\"\n"
-                    "id_counter 12\n"
-                    "(array)graphs {\n"
-                    "    - {\n"
-                    "        kind \"event\"\n"
-                    "        name \"\"\n"
-                    "        (array)nodes {\n"
-                    "            - id=1 type=\"Shader Surface Output\"\n"
-                    "            - id=10 type=\"Shader Time\"\n"
-                    "        }\n"
-                    "        (array)edges {\n"
-                    "            - from=\"10.Value\" to=\"1.Roughness\"\n"
-                    "        }\n"
-                    "    }\n"
-                    "}\n";
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content", "content/materials" };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *files[][2] = {
-        { CHIBI_PROJECT_MANIFEST, "version 20\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
-        { "content/materials/Glow.kdl", material },
-    };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(files[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 20);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
-    char text[2048];
-    FILE *file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    const char
-        *expected = "version 3\n"
-                    "name \"Glow\"\n"
-                    "domain \"material\"\n"
-                    "id_counter 15\n"
-                    "(array)graphs {\n"
-                    "    - {\n"
-                    "        kind \"event\"\n"
-                    "        name \"\"\n"
-                    "        (array)nodes {\n"
-                    "            - {\n"
-                    "                id 1\n"
-                    "                type \"Shader Surface Output\"\n"
-                    "                inputs {\n"
-                    "                    Occlusion id=12\n"
-                    "                    \"Alpha Mode\" id=13\n"
-                    "                    \"Alpha Cutoff\" id=14\n"
-                    "                }\n"
-                    "            }\n"
-                    "            - id=10 type=\"Shader Time\"\n"
-                    "        }\n"
-                    "        (array)edges {\n"
-                    "            - from=\"10.Value\" to=\"1.Roughness\"\n"
-                    "        }\n"
-                    "    }\n"
-                    "}\n";
-    if (strcmp(text, expected)) {
-        fprintf(stderr, "migrated Glow.kdl:\n%s", text);
-    }
-    REQUIRE(!strcmp(text, expected));
-    const registry_pack **previous = NULL;
-    for (int i = 0; i < registry_pack_count(); i++) {
-        apush(previous, registry_pack_at(i));
-    }
-    registry_set_packs((const registry_pack *[]){ &SHADER_PACK }, 1);
-    behavior_asset *before = behavior_asset_load(material),
-                   *after = behavior_asset_load(text);
-    registry_set_packs(previous, acount(previous));
-    afree(previous);
-    const node *output = after ? graph_node_by_id(after->graph, 1) : NULL;
-    bool fresh = output && output->input_pins[SHADER_SURFACE_OCCLUSION].id == 12 &&
-                 output->input_pins[SHADER_SURFACE_ALPHA_MODE].id == 13 &&
-                 output->input_pins[SHADER_SURFACE_ALPHA_CUTOFF].id == 14 &&
-                 after->graph->id_counter == 15;
-    behavior_asset_free(before);
-    behavior_asset_free(after);
-    REQUIRE(!before && fresh);
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        unlink(path);
-    }
-    for (int i = 1; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        rmdir(path);
-    }
-    rmdir(root);
-    return true;
-}
-/* Migrates a version 21 project whose prototype, scene and component
- * presentation name GameHRC2D fields version 22 removes. Version 22 fails to
- * load such assets, so the step drops those fields and keeps the rest. */
-TEST_CASE(program_version_21_lighting_drops_lab_fields)
-{
-    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
-    REQUIRE(mkdtemp(root));
-    const char *directories[] = { "content",
-                                  "content/editor",
-                                  "content/prototypes",
-                                  "content/scenes" };
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        REQUIRE(!mkdir(path, 0700));
-    }
-    const char *files[][3] = {
-        { CHIBI_PROJECT_MANIFEST,
-          "version 21\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
-          "version 21\ncontent \"content\"\nstart_scene "
-          "\"scenes/Start.kdl\"\n" },
-        { "content/prototypes/Lighting.kdl",
-          "name \"Lighting\"\n"
-          "components {\n"
-          "    GAME.GameHRC2D ambient=0.08 min_resolution=0.25 "
-          "particle_focal_length=300.0 "
-          "resolution=0.5 trace_levels=3 upscale_mode=\"Edge aware\" "
-          "upscale_threshold=0.1\n"
-          "    Other min_resolution=0.75 trace_levels=8\n"
-          "}\n"
-          "detached_components {\n"
-          "    GameHRC2D color_resolution=2 gather_resolution=1 "
-          "surface_depth_emitters=1 surface_depth_near_detail=#true "
-          "surface_thickness=48.0\n"
-          "}\n",
-          "name \"Lighting\"\n"
-          "components {\n"
-          "    GAME.GameHRC2D ambient=0.08 resolution=0.5\n"
-          "    Other min_resolution=0.75 trace_levels=8\n"
-          "}\n"
-          "detached_components {\n"
-          "    GameHRC2D surface_thickness=48.0\n"
-          "}\n" },
-        { "content/scenes/Start.kdl",
-          "version 1\n"
-          "name \"Start\"\n"
-          "(array)entities {\n"
-          "    - {\n"
-          "        name \"Lighting\"\n"
-          "        prototype \"Lighting\"\n"
-          "        components {\n"
-          "            GameHRC2D debug_view=\"Fluence\" horizon_cache=#true "
-          "intensity=2.0\n"
-          "        }\n"
-          "        retained_components {\n"
-          "            GAME.GameHRC2D horizon_fuse_relief=#true "
-          "horizon_reproject=#true horizon_hierarchy=#true fog=0.2\n"
-          "            Other horizon_cache=#true\n"
-          "        }\n"
-          "        (array)children {\n"
-          "            - {\n"
-          "                name \"Child\"\n"
-          "                prototype \"Lighting\"\n"
-          "                components {\n"
-          "                    GAME.GameHRC2D intensity=0.5 trace_levels=4\n"
-          "                }\n"
-          "                retained_components {\n"
-          "                    GameHRC2D ambient=0.1 horizon_cache=#true\n"
-          "                    Other trace_levels=9\n"
-          "                }\n"
-          "            }\n"
-          "        }\n"
-          "    }\n"
-          "}\n",
-          "version 1\n"
-          "name \"Start\"\n"
-          "(array)entities {\n"
-          "    - {\n"
-          "        name \"Lighting\"\n"
-          "        prototype \"Lighting\"\n"
-          "        components {\n"
-          "            GameHRC2D intensity=2.0\n"
-          "        }\n"
-          "        retained_components {\n"
-          "            GAME.GameHRC2D fog=0.2\n"
-          "            Other horizon_cache=#true\n"
-          "        }\n"
-          "        (array)children {\n"
-          "            - {\n"
-          "                name \"Child\"\n"
-          "                prototype \"Lighting\"\n"
-          "                components {\n"
-          "                    GAME.GameHRC2D intensity=0.5\n"
-          "                }\n"
-          "                retained_components {\n"
-          "                    GameHRC2D ambient=0.1\n"
-          "                    Other trace_levels=9\n"
-          "                }\n"
-          "            }\n"
-          "        }\n"
-          "    }\n"
-          "}\n" },
-        { "content/editor/Components.kdl",
-          "components {\n"
-          "    GAME.GameHRC2D {\n"
-          "        tab \"Material\"\n"
-          "        fields {\n"
-          "            min_resolution {\n"
-          "                (array)range 0.1 1\n"
-          "            }\n"
-          "            target_fps unit=\"fps\"\n"
-          "            trace_levels {\n"
-          "                (array)range 1 5\n"
-          "            }\n"
-          "        }\n"
-          "    }\n"
-          "    GameHRC2D {\n"
-          "        fields {\n"
-          "            debug_view label=\"Diagnostic\"\n"
-          "            intensity unit=\"gain\"\n"
-          "        }\n"
-          "    }\n"
-          "    Other {\n"
-          "        fields {\n"
-          "            trace_levels unit=\"steps\"\n"
-          "        }\n"
-          "    }\n"
-          "}\n",
-          "components {\n"
-          "    GAME.GameHRC2D {\n"
-          "        tab \"Material\"\n"
-          "        fields {\n"
-          "            target_fps unit=\"fps\"\n"
-          "        }\n"
-          "    }\n"
-          "    GameHRC2D {\n"
-          "        fields {\n"
-          "            intensity unit=\"gain\"\n"
-          "        }\n"
-          "    }\n"
-          "    Other {\n"
-          "        fields {\n"
-          "            trace_levels unit=\"steps\"\n"
-          "        }\n"
-          "    }\n"
-          "}\n" },
-    };
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        write_whole(path, files[i][1]);
-    }
-    char content[256], scene[256];
-    snprintf(content, sizeof content, "%s/content", root);
-    snprintf(scene, sizeof scene, "%s/content/scenes/Start.kdl", root);
-    REQUIRE(!chibi_project_migrate_content(content, scene, 21, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(content, scene, 21, error, sizeof error));
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        const char *text = read_whole(path);
-        if (strcmp(text, files[i][2])) {
-            fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
-        }
-        REQUIRE(!strcmp(text, files[i][2]));
-        unlink(path);
-    }
-    for (int i = 3; i >= 0; i--) {
-        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
-        rmdir(path);
-    }
-    rmdir(root);
-    return true;
-}
-TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
-{
-    const char
-        *source = "// GameTransform and GAME.GameHealth are documented here.\n"
-                  "behavior B {\n"
-                  "    label: string = \"GAME.GameHealth\"\n"
-                  "    other: GameCustom = null\n"
-                  "    function game_custom() { }\n"
-                  "    function get_game_transform_custom() { }\n"
-                  "    pose: struct<\"GameTransform\"> = null\n"
-                  "    lower: gametransform = null\n"
-                  "    body: enum<\"GameBodyType\"> = \"Dynamic\"\n"
-                  "    on Tick(dt: double) {\n"
-                  "        p := get_game_transform()\n"
-                  "        upper := GET_GAME_TRANSFORM()\n"
-                  "        mixed := Get_game_transform()\n"
-                  "        compact := GETGAMETRANSFORM()\n"
-                  "        h := get_component(Component: \"GAME.GameHealth\")\n"
-                  "        any := "
-                  "has_entities_with_component(\"GAME.GameCollider\")\n"
-                  "        count := count_matching_entities([], [{component: "
-                  "\"GAME.GameHealth\"}])\n"
-                  "        x := component(\"GAME.Custom\", \"value\")\n"
-                  "        y := "
-                  "convert<\"Unwrap_GameInput\">(get_game_input())\n"
-                  "        game_move_transform(p, 1, 2)\n"
-                  "        game_custom()\n"
-                  "        get_game_transform_custom()\n"
-                  "        self.GameTransform.x = 4\n"
-                  "        e := self\n"
-                  "        e.GameTransform.x = 5\n"
-                  "    }\n"
-                  "}\n";
-    const char *
-        expected = "// GameTransform and GAME.GameHealth are documented here.\n"
-                   "behavior B {\n"
-                   "    label: string = \"GAME.GameHealth\"\n"
-                   "    other: GameCustom = null\n"
-                   "    function game_custom() { }\n"
-                   "    function get_game_transform_custom() { }\n"
-                   "    pose: struct<\"Transform\"> = null\n"
-                   "    lower: Transform = null\n"
-                   "    body: enum<\"BodyType\"> = \"Dynamic\"\n"
-                   "    on Tick(dt: double) {\n"
-                   "        p := get_transform()\n"
-                   "        upper := GET_TRANSFORM()\n"
-                   "        mixed := Get_transform()\n"
-                   "        compact := GETTRANSFORM()\n"
-                   "        h := get_component(Component: \"Health\")\n"
-                   "        any := has_entities_with_component(\"Collider\")\n"
-                   "        count := count_matching_entities([], [{component: "
-                   "\"Health\"}])\n"
-                   "        x := component(\"Custom\", \"value\")\n"
-                   "        y := convert<\"Unwrap_Input\">(get_input())\n"
-                   "        move_transform(p, 1, 2)\n"
-                   "        game_custom()\n"
-                   "        get_game_transform_custom()\n"
-                   "        self.Transform.x = 4\n"
-                   "        e := self\n"
-                   "        e.Transform.x = 5\n"
-                   "    }\n"
-                   "}\n";
-    const char *asset = "// GAME.GameTransform keeps this comment.\n"
-                        "name \"GAME.GameTransform\"\n"
-                        "components {\n"
-                        "    GAME.GameTransform x=4.0\n"
-                        "    GAME.Custom label=\"GameTransform\"\n"
-                        "    GameHealth current=3\n"
-                        "}\n"
-                        "(array)nodes {\n"
-                        "    - type=\"Get_GameTransform\" "
-                        "description=\"GameTransform\"\n"
-                        "}\n";
-    const char *asset_expected = "// GAME.GameTransform keeps this comment.\n"
-                                 "name \"GAME.GameTransform\"\n"
-                                 "components {\n"
-                                 "    Transform x=4.0\n"
-                                 "    Custom label=\"GameTransform\"\n"
-                                 "    Health current=3\n"
-                                 "}\n"
-                                 "(array)nodes {\n"
-                                 "    - type=\"Get_Transform\" "
-                                 "description=\"GameTransform\"\n"
-                                 "}\n";
-    char error[256] = "";
-    char *migrated = chibi_migrate_prefixes(source, true, error, sizeof error);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    free(migrated);
-    migrated = chibi_migrate_prefixes(asset, false, error, sizeof error);
-    REQUIRE(migrated && !strcmp(migrated, asset_expected));
-    free(migrated);
-    REQUIRE(!chibi_migrate_prefixes(expected, true, error, sizeof error));
-    REQUIRE(!chibi_migrate_prefixes(asset_expected, false, error, sizeof error));
-    const char *collision = "components {\nGAME.GameHealth current=1\nHealth "
-                            "current=2\n}\n";
-    REQUIRE(!chibi_migrate_prefixes(collision, false, error, sizeof error) && error[0]);
-
-    char *current_expected = NULL;
-    REQUIRE(!chibi_migrate_declarations(expected, &current_expected, error, sizeof error));
-    REQUIRE(current_expected);
-    char *retained = NULL, *current = NULL;
-    REQUIRE(!chibi_migrate_retention(current_expected, &retained, error, sizeof error));
-    REQUIRE(
-        !chibi_migrate_syntax(retained ? retained : current_expected, &current, error, sizeof error)
-    );
-    REQUIRE(current);
-    free(retained);
-    free(current_expected);
-    current_expected = current;
-    current = NULL;
-    REQUIRE(!chibi_migrate_handlers(current_expected, NULL, 0, &current, error, sizeof error));
-    if (current) {
-        free(current_expected);
-        current_expected = current;
-    }
-    char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    const char *files[][2] = {
-        { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
-        { "content/B.chibi", source },
-        { "content/Scene.kdl", asset },
-    };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        fputs(files[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
-    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    snprintf(path, sizeof path, "%s/content/B.chibi", root);
-    FILE *file = fopen(path, "rb");
-    REQUIRE(file);
-    char text[2048];
-    text[fread(text, 1, sizeof text - 1, file)] = '\0';
-    fclose(file);
-    REQUIRE(!strcmp(text, current_expected));
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        unlink(path);
-    }
-    snprintf(path, sizeof path, "%s/content", root);
-    rmdir(path);
-    rmdir(root);
-    free(current_expected);
-    return true;
-}
-TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
-{
-    const char
-        *source = "behavior B {\n"
-                  "    function get_game_input() { }\n"
-                  "    macro get_game_input_custom() -> () { entry Begin {} "
-                  "exit Done; }\n"
-                  "    on Tick(dt: double) {\n"
-                  "        get_game_input()\n"
-                  "        get_game_input_custom()\n"
-                  "        get_game_transform_custom()\n"
-                  "        get_game_transform_macro()\n"
-                  "        \"motion_helpers\".\"get-game-transform-custom\"()\n"
-                  "        \"Motion Helpers\".get_game_transform()\n"
-                  "        \"Motion Helpers\".get_game_transform_macro()\n"
-                  "        p := get_game_velocity()\n"
-                  "        q := Get_GameTransform()\n"
-                  "        Get_GameBodyType()\n"
-                  "        Get_GameGlobalIllumination()\n"
-                  "        self.GameTransform.x = 4\n"
-                  "    }\n"
-                  "}\n";
-    const char
-        *expected = "behavior B {\n"
-                    "    function get_game_input() { }\n"
-                    "    macro get_game_input_custom() -> () { entry Begin {} "
-                    "exit Done; }\n"
-                    "    on Tick(dt: double) {\n"
-                    "        get_game_input()\n"
-                    "        get_game_input_custom()\n"
-                    "        get_game_transform_custom()\n"
-                    "        get_game_transform_macro()\n"
-                    "        "
-                    "\"motion_helpers\".\"get-game-transform-custom\"()\n"
-                    "        \"Motion Helpers\".get_game_transform()\n"
-                    "        \"Motion Helpers\".get_game_transform_macro()\n"
-                    "        p := get_velocity()\n"
-                    "        q := Get_Transform()\n"
-                    "        Get_GameBodyType()\n"
-                    "        Get_GameGlobalIllumination()\n"
-                    "        self.Transform.x = 4\n"
-                    "    }\n"
-                    "}\n";
-    const char
-        *library = "library \"Motion Helpers\" {\n"
-                   "    function \"Get Game Transform Custom\"() { }\n"
-                   "    function get_game_transform() { }\n"
-                   "    function Get_GameBodyType() { }\n"
-                   "    function Get_GameGlobalIllumination() { }\n"
-                   "    function call_helpers() { get_game_transform(); }\n"
-                   "    macro get_game_transform_macro() -> () { entry "
-                   "Begin {} exit Done; }\n"
-                   "}\n";
-    char root[] = "/tmp/chibi-prefix-helpers-XXXXXX", path[256], error[256];
-    char *current_expected = NULL, *current_library = NULL;
-    REQUIRE(!chibi_migrate_declarations(expected, &current_expected, error, sizeof error));
-    REQUIRE(!chibi_migrate_declarations(library, &current_library, error, sizeof error));
-    REQUIRE(current_expected && current_library);
-    char *retained = NULL, *current = NULL;
-    REQUIRE(!chibi_migrate_retention(current_expected, &retained, error, sizeof error));
-    REQUIRE(
-        !chibi_migrate_syntax(retained ? retained : current_expected, &current, error, sizeof error)
-    );
-    REQUIRE(current);
-    free(retained);
-    free(current_expected);
-    current_expected = current;
-    retained = NULL;
-    current = NULL;
-    REQUIRE(!chibi_migrate_retention(current_library, &retained, error, sizeof error));
-    REQUIRE(
-        !chibi_migrate_syntax(retained ? retained : current_library, &current, error, sizeof error)
-    );
-    REQUIRE(current);
-    free(retained);
-    free(current_library);
-    current_library = current;
-    char **targets[] = { &current_expected, &current_library };
-    for (int i = 0; i < 2; i++) {
-        current = NULL;
-        REQUIRE(!chibi_migrate_handlers(*targets[i], NULL, 0, &current, error, sizeof error));
-        if (current) {
-            free(*targets[i]);
-            *targets[i] = current;
-        }
-    }
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    const char *files[][2] = {
-        { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
-        { "content/B.chibi", source },
-        { "content/Helpers.chibi", library },
-        { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
-    };
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        fputs(files[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
-    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    bool source_matches = false, library_matches = false;
-    for (int i = 1; i <= 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        FILE *file = fopen(path, "rb");
-        REQUIRE(file);
-        char text[2048];
-        text[fread(text, 1, sizeof text - 1, file)] = '\0';
-        fclose(file);
-        if (i == 1) {
-            source_matches = !strcmp(text, current_expected);
-            if (!source_matches) {
-                fprintf(stderr, "Migrated helper source differs:\n%s", text);
-            }
-        }
-        if (i == 2) {
-            library_matches = !strcmp(text, current_library);
-        }
-    }
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
-        unlink(path);
-    }
-    snprintf(path, sizeof path, "%s/content", root);
-    rmdir(path);
-    rmdir(root);
-    free(current_expected);
-    free(current_library);
-    REQUIRE(source_matches && library_matches);
-    return true;
-}
 TEST_CASE(program_constant_definitions_execute)
 {
     const char *source =
@@ -7292,1231 +5624,6 @@ TEST_CASE(program_constant_definitions_execute)
     return true;
 }
 
-TEST_CASE(program_version_23_declarations_and_switch_migrate)
-{
-    const char *source = "library Damage {\n"
-                         "// function and match stay in comments.\n"
-                         "pure /* keep */ function DamageFor(level: int) -> "
-                         "(Result: int) {\n"
-                         "label := \"function match default\";\n"
-                         "match enum (level) { case 1 { return 3 } default { "
-                         "return 4 } }\n"
-                         "}\n"
-                         "}";
-    char error[192] = { 0 }, *migrated = NULL, *again = NULL;
-    REQUIRE(!chibi_migrate_declarations(source, &migrated, error, sizeof error));
-    REQUIRE(migrated);
-    REQUIRE(strstr(migrated, "/* keep */ DamageFor :: pure fn(level: int)"));
-    REQUIRE(strstr(migrated, "// function and match stay in comments."));
-    REQUIRE(strstr(migrated, "\"function match default\""));
-    REQUIRE(strstr(migrated, "switch  (level) { case 1: { return 3 } case: { return 4 } }"));
-    char *retained = NULL, *current = NULL;
-    REQUIRE(!chibi_migrate_retention(migrated, &retained, error, sizeof error));
-    REQUIRE(!chibi_migrate_syntax(retained ? retained : migrated, &current, error, sizeof error));
-    REQUIRE(current);
-    free(retained);
-    script_syntax *syntax = script_parse(current);
-    REQUIRE(syntax->diagnostic_count == 0);
-    script_syntax_free(syntax);
-    REQUIRE(!chibi_migrate_declarations(migrated, &again, error, sizeof error));
-    REQUIRE(!again);
-    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], sidecar[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/Damage.chibi", root);
-    write_whole(path, source);
-    /* A leftover sidecar from before they were dropped is left alone. */
-    const char *leftover = "{\"version\":2,\"anchors\":[{\"start\":0}]}";
-    snprintf(sidecar, sizeof sidecar, "%s.meta", path);
-    write_whole(sidecar, leftover);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
-    /* migrate_content advances exactly one version, unlike project_migrate. */
-    const char *written = read_whole(path);
-    REQUIRE(written && !strcmp(written, migrated));
-    written = read_whole(sidecar);
-    REQUIRE(written && !strcmp(written, leftover));
-    REQUIRE(!unlink(path) && !unlink(sidecar));
-    REQUIRE(!rmdir(root));
-    free(migrated);
-    free(current);
-    REQUIRE(
-        chibi_migrate_declarations("library Bad { function", &migrated, error, sizeof error) < 0
-    );
-    REQUIRE(!migrated);
-    return true;
-}
-
-TEST_CASE(program_version_23_not_calls_migrate_with_native_identity)
-{
-    const script_catalog_parameter boolean = { .name = "Value",
-                                               .type = { .storage = PIN_BOOL } };
-    const script_catalog_capability negate = {
-        .id = script_catalog_id("capability", "not"),
-        .name = "not",
-        .kind = SCRIPT_CAPABILITY_FUNCTION,
-        .parameters = &boolean,
-        .parameter_count = 1,
-        .results = &boolean,
-        .result_count = 1,
-        .pure = true,
-    };
-    script_catalog native = catalog;
-    native.capabilities = &negate;
-    native.capability_count = 1;
-    const char *inputs[] = {
-        "library NativeNegation { function Evaluate(enabled: bool) -> (Result: "
-        "bool) { "
-        "Value: bool = not(Value: not(Value: enabled)); return not(Value) } }",
-        "library AuthoredNegation { function \"not\"(Value: bool) -> (Result: "
-        "bool) { return Value } "
-        "function Evaluate(enabled: bool) -> (Result: bool) { return "
-        "not(Value: enabled) } }",
-    };
-    const char *identities[] = { "NativeNegation", "AuthoredNegation" };
-    for (int i = 0; i < 2; i++) {
-        char error[256] = { 0 }, *declarations = NULL, *retained = NULL,
-             *current = NULL;
-        REQUIRE(!chibi_migrate_declarations(inputs[i], &declarations, error, sizeof error));
-        REQUIRE(declarations && strstr(declarations, "\"not\"("));
-        REQUIRE(!chibi_migrate_retention(declarations, &retained, error, sizeof error));
-        int status = chibi_migrate_syntax(retained ? retained : declarations, &current, error, sizeof error);
-        if (status) {
-            fprintf(
-                stderr,
-                "%s syntax migration: %s\ninput: %s\n",
-                identities[i],
-                error,
-                retained ? retained : declarations
-            );
-        }
-        REQUIRE(!status);
-        const char *modern = current  ? current
-                           : retained ? retained
-                                      : declarations;
-        char *normalized = authoring_source_migrate_generated(
-            modern,
-            &native,
-            identities[i],
-            error,
-            sizeof error
-        );
-        if (!normalized) {
-            fprintf(stderr, "not migration: %s\n", error);
-        }
-        REQUIRE(normalized);
-        REQUIRE(!strstr(normalized, "\"not\""));
-        if (!i) {
-            REQUIRE(strstr(normalized, "!"));
-            REQUIRE(!strstr(normalized, "not("));
-        } else {
-            REQUIRE(strstr(normalized, "not("));
-            REQUIRE(!strstr(normalized, "!"));
-        }
-        script_syntax *parsed = script_parse(normalized);
-        REQUIRE(!parsed->diagnostic_count);
-        script_analysis *checked = script_analyze_document(parsed, &native, identities[i]);
-        REQUIRE(checked->valid);
-        script_analysis_free(checked);
-        script_syntax_free(parsed);
-        free(normalized);
-        free(current);
-        free(retained);
-        free(declarations);
-    }
-    return true;
-}
-
-TEST_CASE(program_version_24_retention_migrates_and_executes)
-{
-    const char *source = "behavior Retention {\n"
-                         "implicit := 0.0\n"
-                         "state inferred := 1\n"
-                         "state typed: int = 2\n"
-                         "state int backwards = 3\n"
-                         "state \"quoted name\" := 4\n"
-                         "Count :: fn() {\n"
-                         "state calls: double = 0\n"
-                         "calls += 1\n"
-                         "implicit += calls\n"
-                         "}\n"
-                         "on Impulse(amount, enabled) { Count() }\n}\n";
-    char error[192] = { 0 }, *migrated = NULL, *again = NULL;
-    REQUIRE(!chibi_migrate_retention(source, &migrated, error, sizeof error));
-    REQUIRE(migrated);
-    REQUIRE(strstr(migrated, "implicit := 0"));
-    REQUIRE(strstr(migrated, "inferred : retain = 1"));
-    REQUIRE(strstr(migrated, "typed: retain int = 2"));
-    REQUIRE(strstr(migrated, "backwards: retain int = 3"));
-    REQUIRE(strstr(migrated, "\"quoted name\" : retain = 4"));
-    REQUIRE(!chibi_migrate_retention(migrated, &again, error, sizeof error) && !again);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int i = 0; i < 2; i++) {
-        prepare();
-        REQUIRE(compile_migrated(migrated, backends[i]));
-        ecs_entity owner = ecs_world_create_entity(world);
-        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
-        REQUIRE(instance);
-        pin_value payload[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
-        for (int event = 0; event < 2; event++) {
-            REQUIRE(
-                execution_instance_dispatch(instance, 11, payload, 2, event, 0, 1000) == FLOW_OK
-            );
-        }
-        REQUIRE(execution_instance_state(instance, state_id("implicit"))->d == 3);
-        REQUIRE(execution_instance_state(instance, state_id("inferred"))->i == 1);
-    }
-    free(migrated);
-
-    const char
-        *shared = "system Totals { shared total := 0; shared typed: int = 2; "
-                  "shared int backwards = 3; total += 1; }";
-    REQUIRE(!chibi_migrate_retention(shared, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "total : retain(system) = 0"));
-    REQUIRE(strstr(migrated, "typed: retain(system) int = 2"));
-    REQUIRE(strstr(migrated, "backwards: retain(system) int = 3"));
-    prepare();
-    char *cleaned = NULL;
-    REQUIRE(!chibi_migrate_syntax(migrated, &cleaned, error, sizeof error));
-    syntax = script_parse(cleaned ? cleaned : migrated);
-    free(cleaned);
-    analysis = script_analyze(syntax, &catalog);
-    REQUIRE(analysis->valid);
-    bool found_shared = false;
-    for (int i = 0; i < analysis->symbol_count; i++) {
-        found_shared |= !strcmp(analysis->symbols[i].name, "total") &&
-                        analysis->symbols[i].kind == SCRIPT_SHARED_STATE;
-    }
-    REQUIRE(found_shared);
-    free(migrated);
-
-    const char
-        *comments = "behavior B {\n"
-                    "state /* keep storage */ count /* keep name */ := 0\n"
-                    "state\n int /* keep type */ typed = 1\n"
-                    "sharedText := \"state shared\"\n"
-                    "// state ignored := 9\n}\n";
-    REQUIRE(!chibi_migrate_retention(comments, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "/* keep storage */ count /* keep name */ : retain = 0"));
-    REQUIRE(strstr(migrated, "/* keep type */ typed: retain int = 1"));
-    REQUIRE(strstr(migrated, "sharedText := \"state shared\""));
-    REQUIRE(strstr(migrated, "// state ignored := 9"));
-    free(migrated);
-
-    /* Version 23 emits version 24 source before retention moves to version 25. */
-    const char *old = "behavior B { state n: int = 0; function Next() { "
-                      "state saved: int = 1; n += saved; } }";
-    REQUIRE(!chibi_migrate_declarations(old, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "Next :: fn"));
-    REQUIRE(!chibi_migrate_retention(migrated, &again, error, sizeof error));
-    REQUIRE(again && strstr(again, "saved: retain int = 1"));
-    cleaned = NULL;
-    REQUIRE(!chibi_migrate_syntax(again, &cleaned, error, sizeof error));
-    script_syntax *check = script_parse(cleaned ? cleaned : again);
-    free(cleaned);
-    REQUIRE(!check->diagnostic_count);
-    script_syntax_free(check);
-    free(migrated);
-    free(again);
-    migrated = NULL;
-    REQUIRE(chibi_migrate_retention("behavior Bad { state", &migrated, error, sizeof error) < 0);
-    REQUIRE(!migrated);
-    return true;
-}
-
-TEST_CASE(program_version_24_retention_content_is_all_or_nothing)
-{
-    const char *source = "behavior B {\nstate /* keep */ int count = 0\n"
-                         "on Impulse(amount, enabled) { count += 1 }\n}\n";
-    char error[192] = { 0 }, *migrated = NULL;
-    REQUIRE(!chibi_migrate_retention(source, &migrated, error, sizeof error));
-    REQUIRE(migrated);
-    char root[] = "/tmp/chibi-retention-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/B.chibi", root);
-    FILE *file = fopen(path, "wb");
-    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
-    /* One invalid source prevents every staged replacement in this step. */
-    snprintf(path, sizeof path, "%s/Bad.chibi", root);
-    FILE *bad = fopen(path, "wb");
-    REQUIRE(bad && fputs("behavior Bad { state", bad) >= 0 && !fclose(bad));
-    REQUIRE(chibi_project_migrate_content(root, NULL, 24, error, sizeof error) < 0);
-    REQUIRE(!unlink(path));
-    snprintf(path, sizeof path, "%s/B.chibi", root);
-    FILE *original = fopen(path, "rb");
-    REQUIRE(original);
-    char unchanged[512];
-    unchanged[fread(unchanged, 1, sizeof unchanged - 1, original)] = '\0';
-    REQUIRE(!fclose(original) && !strcmp(unchanged, source));
-    error[0] = '\0';
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char written[512];
-    written[fread(written, 1, sizeof written - 1, file)] = '\0';
-    REQUIRE(!fclose(file) && !strcmp(written, migrated));
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    free(migrated);
-    return true;
-}
-
-TEST_CASE(program_version_25_syntax_preserves_storage_and_comments)
-{
-    char action_error[192] = { 0 }, *action_migrated = NULL;
-    REQUIRE(!chibi_migrate_syntax(
-        "behavior Empty { action once = do_once() }",
-        &action_migrated,
-        action_error,
-        sizeof action_error
-    ));
-    REQUIRE(
-        action_migrated &&
-        !strcmp(action_migrated, "Empty :: behavior { action once = do_once() }")
-    );
-    free(action_migrated);
-    action_migrated = NULL;
-    REQUIRE(!chibi_migrate_syntax(
-        "behavior Choice { action inner = engine[\"Branch\"](Condition: true) "
-        "}",
-        &action_migrated,
-        action_error,
-        sizeof action_error
-    ));
-    REQUIRE(action_migrated && strstr(action_migrated, "action inner = branch_if(Condition: true)"));
-    free(action_migrated);
-    const char *source = "system /* header */ Totals {\n"
-                         "total: retain(system) int = 0\n"
-                         "typed: retain(system) int = 1\n"
-                         "inferred: retain(system) = 2\n"
-                         "shared: retain(system) int = 3\n"
-                         "Advance :: fn(int amount) {\n"
-                         "depth_limit /* budget */ 64\n"
-                         "total += amount\n}\n"
-                         "foreach (item in [1, 2]) { Advance(item) }\n}\n";
-    char error[192] = { 0 }, *migrated = NULL, *again = NULL;
-    REQUIRE(!chibi_migrate_syntax(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "/* header */ Totals :: system()"));
-    REQUIRE(strstr(migrated, "total: retain int = 0"));
-    REQUIRE(strstr(migrated, "typed: retain int = 1"));
-    REQUIRE(strstr(migrated, "inferred: retain = 2"));
-    REQUIRE(strstr(migrated, "shared: retain int = 3"));
-    REQUIRE(!strstr(migrated, "retain(system)"));
-    REQUIRE(strstr(migrated, "Advance :: (amount: int)"));
-    REQUIRE(strstr(migrated, "/* budget */"));
-    REQUIRE(strstr(migrated, "for (item in [1, 2])"));
-    REQUIRE(!chibi_migrate_syntax(migrated, &again, error, sizeof error) && !again);
-    free(migrated);
-    const char *per_row[] = {
-        "system S { int visits = 0 }",
-        "system S { visits: int = 0 }",
-        "system S { visits := 0 }",
-        "system S { visits: retain int = 0 }",
-        "system S { Next :: fn() { visits: retain int = 0 } }"
-    };
-    for (size_t i = 0; i < sizeof per_row / sizeof *per_row; i++) {
-        REQUIRE(chibi_migrate_syntax(per_row[i], &migrated, error, sizeof error) < 0);
-        REQUIRE(!migrated && strstr(error, "Per-row system state"));
-    }
-    REQUIRE(
-        !chibi_migrate_syntax("system S { Next :: fn() { visits: int = 0 } }", &migrated, error, sizeof error)
-    );
-    REQUIRE(migrated && strstr(migrated, "visits: int = 0"));
-    free(migrated);
-    const char
-        *query = "system Motion query position: Position, velocity: Velocity "
-                 "without Body { position.x += velocity.x }";
-    REQUIRE(!chibi_migrate_syntax(query, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "Motion :: system( position: Position, velocity: Velocity)"));
-    free(migrated);
-    REQUIRE(
-        !chibi_migrate_syntax("behavior B { F :: fn() { depth_limit 0 } G :: fn() { depth_limit 32 } }", &migrated, error, sizeof error)
-    );
-    REQUIRE(migrated && !strstr(migrated, "depth_limit"));
-    free(migrated);
-    REQUIRE(
-        chibi_migrate_syntax("behavior B { owner Other }", &migrated, error, sizeof error) < 0
-    );
-    REQUIRE(!migrated && strstr(error, "owner"));
-    return true;
-}
-
-TEST_CASE(program_version_25_syntax_content_preserves_header_comments)
-{
-    const char *source = "// authored source\nbehavior /* header */ Counter { "
-                         "count := 0 }";
-    char error[192] = { 0 }, *migrated = NULL;
-    REQUIRE(!chibi_migrate_syntax(source, &migrated, error, sizeof error) && migrated);
-    REQUIRE(strstr(migrated, "// authored source") && strstr(migrated, "/* header */"));
-    char root[] = "/tmp/chibi-syntax-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/B.chibi", root);
-    FILE *file = fopen(path, "wb");
-    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char written[1024];
-    written[fread(written, 1, sizeof written - 1, file)] = '\0';
-    REQUIRE(!fclose(file) && !strcmp(written, migrated));
-    const char *per_row = "system S { visits: retain int = 0 }";
-    file = fopen(path, "wb");
-    REQUIRE(file && fputs(per_row, file) >= 0 && !fclose(file));
-    REQUIRE(chibi_project_migrate_content(root, NULL, 25, error, sizeof error) < 0);
-    REQUIRE(strstr(error, "B.chibi") && strstr(error, "Per-row system state"));
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char unchanged[1024];
-    unchanged[fread(unchanged, 1, sizeof unchanged - 1, file)] = '\0';
-    REQUIRE(!fclose(file) && !strcmp(unchanged, per_row));
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    free(migrated);
-    return true;
-}
-
-TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate)
-{
-    const char *source =
-        "behavior \"Odd Behavior\" {\n"
-        "\"stored count\": int = 0\n"
-        "\"Apply Damage\" :: pure fn(\"Damage Amount\": int) {\n"
-        "state.\"stored count\" += Damage_Amount\n}\n"
-        "action spawn_prototype = engine[\"Spawn Prototype\"](\"Drone\")\n"
-        "on Tick { print_string(\"Apply Damage\"); \"Apply Damage\"(1); "
-        "target := engine[\"Self\"](); print_string(spawn_prototype.Entity) "
-        "}\n}\n";
-    char error[192] = { 0 }, *migrated = NULL, *again = NULL;
-    REQUIRE(!chibi_migrate_syntax(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "Odd_Behavior :: behavior"));
-    REQUIRE(strstr(migrated, "stored_count: int = 0"));
-    REQUIRE(strstr(migrated, "Apply_Damage :: (Damage_Amount: int)"));
-    REQUIRE(strstr(migrated, "state.stored_count += Damage_Amount"));
-    REQUIRE(strstr(migrated, "action spawn_prototype_action = spawn_prototype(Drone)"));
-    REQUIRE(strstr(migrated, "print_string(\"Apply Damage\")"));
-    REQUIRE(strstr(migrated, "target := self; print_string(spawn_prototype_action.Entity)"));
-    REQUIRE(!chibi_migrate_syntax(migrated, &again, error, sizeof error) && !again);
-    free(migrated);
-    REQUIRE(
-        chibi_migrate_syntax("behavior B { \"same name\" := 0; same_name := 1 }", &migrated, error, sizeof error) <
-        0
-    );
-    REQUIRE(!migrated && strstr(error, "collide"));
-    REQUIRE(
-        chibi_migrate_syntax(
-            "behavior B { action spawn_prototype = engine[\"Spawn "
-            "Prototype\"](); spawn_prototype_action := 0 }",
-            &migrated,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!migrated && strstr(error, "collide"));
-    REQUIRE(
-        chibi_migrate_syntax("behavior B { on Tick { engine[\"??\"]() } }", &migrated, error, sizeof error) < 0
-    );
-    REQUIRE(!migrated && strstr(error, "capability"));
-    REQUIRE(!chibi_migrate_syntax(
-        "behavior B { left :: fn() {} on Tick { engine[\"Left\"](); "
-        "self.Position.left = 1; consume(left: 2); left(); } }",
-        &migrated,
-        error,
-        sizeof error
-    ));
-    REQUIRE(migrated && strstr(migrated, "left_function :: ()"));
-    REQUIRE(strstr(migrated, "self.Position.left = 1"));
-    REQUIRE(strstr(migrated, "consume(left: 2)"));
-    REQUIRE(strstr(migrated, "left_function();"));
-    free(migrated);
-    return true;
-}
-
-TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
-{
-    const char *sources[] = {
-        "library Effects { Launch :: fn(kind:name=\"\"){ spawn_prototype(kind) "
-        "} "
-        "Burst :: fn(kind:name=\"Drone\"){ Launch(kind) } "
-        "Mixed :: fn(amount:int, kind:name){ Launch(kind) } "
-        "TextOnly :: fn(Prototype:name=\"Label\"){ print_string(Prototype) } }",
-        "behavior App { on Tick { label:=\"Drone\"; Effects.Launch(label); "
-        "Effects.Burst(); "
-        "Effects.Mixed(amount: 1, \"Drone\"); "
-        "Effects.Launch(kind:name=\"Drone\"); "
-        "add_component(\"Health\"); hit:=component(\"Health\",\"current\"); "
-        "print_string(\"Drone\") } }"
-    };
-    char error[192] = { 0 }, root[] = "/tmp/chibi-reference-flow-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    const char *files[] = { "Effects.chibi", "App.chibi" };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file && fputs(sources[i], file) >= 0 && !fclose(file));
-    }
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    char contents[2][2048];
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "rb");
-        REQUIRE(file);
-        contents[i][fread(contents[i], 1, sizeof contents[i] - 1, file)] = 0;
-        REQUIRE(!fclose(file));
-        REQUIRE(!unlink(path));
-    }
-    REQUIRE(strstr(contents[0], "Launch :: (kind:Prototype)"));
-    REQUIRE(strstr(contents[0], "Burst :: (kind:Prototype=Drone)"));
-    REQUIRE(strstr(contents[0], "Mixed :: (amount:int, kind:Prototype)"));
-    REQUIRE(strstr(contents[0], "TextOnly :: (Prototype:name=\"Label\")"));
-    REQUIRE(strstr(contents[1], "label: Prototype =Drone"));
-    REQUIRE(strstr(contents[1], "Effects.Mixed(amount: 1, Drone)"));
-    REQUIRE(strstr(contents[1], "Effects.Launch(kind:Prototype=Drone)"));
-    REQUIRE(strstr(contents[1], "add_component(Health)"));
-    REQUIRE(strstr(contents[1], "hit:=self.Health.current"));
-    REQUIRE(strstr(contents[1], "print_string(\"Drone\")"));
-    REQUIRE(!rmdir(root));
-    char *migrated = NULL;
-    REQUIRE(
-        chibi_migrate_syntax(
-            "behavior B { on Tick { label:=\"Health\"; spawn_prototype(label); "
-            "add_component(label) } }",
-            &migrated,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!migrated && strstr(error, "incompatible"));
-    REQUIRE(
-        chibi_migrate_syntax(
-            "behavior B { on Tick { label:=format_text(\"{}\",1); "
-            "spawn_prototype(label) } }",
-            &migrated,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!migrated && strstr(error, "computed"));
-    REQUIRE(!chibi_migrate_syntax(
-        "behavior B { Show :: fn(message=\"Label\") { print_string(message) } "
-        "on Tick { Show() } }",
-        &migrated,
-        error,
-        sizeof error
-    ));
-    REQUIRE(migrated && strstr(migrated, "Show :: (message=\"Label\")"));
-    free(migrated);
-    migrated = NULL;
-    const char *mixed_text[] = {
-        "behavior B { on Tick { label:=\"Drone\"; spawn_prototype(label); "
-        "print_string(label) } }",
-        "behavior B { Show :: fn(message:string){ print_string(message) } "
-        "on Tick { label:=\"Drone\"; spawn_prototype(label); Show(label) } }",
-        "behavior B { on Tick { label:=\"Drone\"; text:=label; "
-        "spawn_prototype(label); print_string(text) } }",
-    };
-    for (int i = 0; i < (int)(sizeof mixed_text / sizeof *mixed_text); i++) {
-        REQUIRE(chibi_migrate_syntax(mixed_text[i], &migrated, error, sizeof error) < 0);
-        REQUIRE(!migrated && strstr(error, "ordinary text"));
-    }
-    REQUIRE(
-        chibi_migrate_syntax("behavior B { Launch :: fn(Ship:name=\"Ship\"){ spawn_prototype(Ship) } }", &migrated, error, sizeof error) <
-        0
-    );
-    REQUIRE(!migrated && strstr(error, "captured"));
-    return true;
-}
-
-/* Version 28 reads parameters by name: `entry.X` becomes `X`, a bare
- * `entry` becomes the callable's only parameter, and `after entry` stays. The
- * current grammar refuses `entry` as a value. */
-TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
-{
-    const char *source = "Moves :: library {\n"
-                         "Step :: (Speed: float, Scale: float) -> float {\n"
-                         "    // entry.Speed stays in comments.\n"
-                         "    return entry.Speed * entry.Scale\n"
-                         "}\n"
-                         "Twice :: (Value: float) -> float {\n"
-                         "    return entry * 2\n"
-                         "}\n"
-                         "Across :: (p: Point) -> float {\n"
-                         "    return entry.x\n"
-                         "}\n"
-                         "}";
-    const char *expected = "Moves :: library {\n"
-                           "Step :: (Speed: float, Scale: float) -> float {\n"
-                           "    // entry.Speed stays in comments.\n"
-                           "    return Speed * Scale\n"
-                           "}\n"
-                           "Twice :: (Value: float) -> float {\n"
-                           "    return Value * 2\n"
-                           "}\n"
-                           "Across :: (p: Point) -> float {\n"
-                           "    return p.x\n"
-                           "}\n"
-                           "}";
-    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
-    REQUIRE(!chibi_migrate_entry(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    free(migrated);
-    REQUIRE(!chibi_migrate_entry(expected, &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    const char *handler = "M :: library { macro Go() -> () { exit Then; after "
-                          "entry { } } }";
-    REQUIRE(!chibi_migrate_entry(handler, &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    REQUIRE(
-        chibi_migrate_entry(
-            "L :: library { F :: (a: int, b: int) -> int { return entry } }",
-            &unchanged,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!unchanged && strstr(error, "names no parameter of its callable"));
-    REQUIRE(
-        chibi_migrate_entry(
-            "L :: library { F :: (a: int) -> int { a := entry.a; return a } }",
-            &unchanged,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
-    const char *captured[] = {
-        "L :: library { F :: (v: int) -> int { v := 2; return entry } }",
-        "L :: library { F :: (i: int) -> int { for i in 0..3 { } return "
-        "entry.i } }",
-    };
-    for (int i = 0; i < 2; i++) {
-        REQUIRE(chibi_migrate_entry(captured[i], &unchanged, error, sizeof error) < 0);
-        REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
-    }
-    char root[] = "/tmp/chibi-entry-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/Moves.chibi", root);
-    write_whole(path, source);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 27, error, sizeof error));
-    const char *text = read_whole(path);
-    REQUIRE(text && !strcmp(text, expected));
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    script_syntax *refused = script_parse(
-        "L :: library { F :: (a: int) -> int { return entry.a } }"
-    );
-    bool rejected = refused->diagnostic_count > 0;
-    script_syntax_free(refused);
-    REQUIRE(rejected);
-    return true;
-}
-/* Version 30 handlers name the payload fields they read, typed from the
- * engine's version 29 events or the project's event declarations. */
-TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
-{
-    const char *damage = "version 3\nname \"Damage\"\ndomain "
-                         "\"event\"\n(array)variables {\n"
-                         "    - id=2 name=\"Amount\" type=\"int\"\n"
-                         "    - id=3 name=\"Source\" type=\"handle\" "
-                         "type_name=\"ecs.entity\"\n}\n";
-    const char *declarations[] = {
-        damage,
-        "version 3\nname \"Died\"\ndomain \"event\"\n(array)variables {\n"
-        "    - id=1 name=\"Source\" type=\"handle\" "
-        "type_name=\"ecs.entity\"\n}\n",
-        "version 3\nname \"Big\"\ndomain \"event\"\n(array)variables {\n"
-        "    - id=1 name=\"Count\" type=\"int64\"\n"
-        "    - id=2 name=\"Tags\" type=\"int\" container=\"set\"\n"
-        "    - id=3 name=\"Level\" type=\"int\" type_name=\"int\"\n}\n",
-    };
-    const struct
-    {
-        const char *source, *expected;
-    } cases[] = {
-        { "B :: behavior { x: float = 0; on Tick(dt) { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
-        { "B :: behavior { x: float = 0; on Tick as tick(DeltaSeconds: float = "
-          "0.0) { x += tick.DeltaSeconds + "
-          "DeltaSeconds } }",
-          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
-          "dt } }" },
-        { "B :: behavior { on Contact_Begin { destroy(event.Other) } }", "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { destroy(Other) } }" },
-        { "B :: behavior { on Begin { } on Tick { } }",
-          "B :: behavior { on Begin :: () { } on Tick :: () { } }" },
-        { "B :: behavior { total: int = 0; on Damage as hit { total += "
-          "hit.Amount } }",
-          "B :: behavior { total: int = 0; on Damage :: (Amount: int) { total "
-          "+= Amount } }" },
-        { "B :: behavior { last: handle<ecs.entity> = 0; on Died as "
-          "died(Source: handle<ecs.entity> = 0) { last = "
-          "Source } }",
-          "B :: behavior { last: handle<ecs.entity> = 0; on Died :: (Source: "
-          "handle<ecs.entity>) { last = Source } }" },
-        { "B :: behavior { on Repair as repair() { } }",
-          "B :: behavior { on Repair :: () { } }" },
-        /* `event.F` names a field before a listed parameter. */
-        { "B :: behavior { on Contact_Begin(Point, Other) { last = "
-          "event.Other; at = Other } }",
-          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>, "
-          "Point: struct<CF_V2>) { last = Other; at = Point } }" },
-        { "B :: behavior { on Contact_Begin(point, other) { "
-          "destroy(event.other) "
-          "} }",
-          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
-          "destroy(Other) } }" },
-        { "B :: behavior { on Contact_Begin(other, point) { last = event.Other "
-          "} }",
-          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
-          "last = Other } }" },
-        /* An empty list binds the fields' own names, and comments take no
-         * position. */
-        { "B :: behavior { on Damage() { total += Amount } }",
-          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
-        { "B :: behavior { on Damage as d() { total += d.Amount } }",
-          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
-        { "B :: behavior { on Contact_Begin(/* note */ o, p) { destroy(o) } }",
-          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
-          "destroy(Other) } }" },
-        /* An alias declared in source names the event. */
-        { "B :: behavior { event hurt = Damage; on hurt { total += Amount } }",
-          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
-          "total += Amount } }" },
-        { "B :: behavior { Watch :: () { event moved = Died; on moved(a) { "
-          "last = a } } event moved = Damage; on moved(a, b) { total += a } }",
-          "B :: behavior { Watch :: () { event moved = Died; on moved :: "
-          "(Source: handle<ecs.entity>) { last = Source } } event moved = "
-          "Damage; on moved :: (Amount: int) { total += Amount } }" },
-        { "B :: behavior { event hurt = Damage; on hurt(a: int, s: "
-          "handle<ecs.entity>) { total += a } }",
-          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
-          "total += Amount } }" },
-        /* An array element reads its value; a function's own parameter and a
-         * named argument do not read an alias. */
-        { "B :: behavior { on Damage(a, s) { values := [a, 1] } }", "B :: behavior { on Damage :: (Amount: int) { values := [Amount, 1] } }" },
-        { "B :: behavior { Add :: (hit: int) { total += hit } on Damage as hit "
-          "{ Add(hit: hit.Amount) } }",
-          "B :: behavior { Add :: (hit: int) { total += hit } on Damage :: "
-          "(Amount: int) { Add(hit: Amount) } }" },
-        { "B :: behavior { on Vanished(Source: handle<ecs.entity>, Count: int) "
-          "{ last = Source } }",
-          "B :: behavior { on Vanished :: (Source: handle<ecs.entity>) { last "
-          "= Source } }" },
-        /* Every scalar spells as itself, and a field the migration cannot
-         * spell stops only a handler that reads it. */
-        { "B :: behavior { on Big { steps += Count + Level } }",
-          "B :: behavior { on Big :: (Count: int64, Level: int) { steps += "
-          "Count + Level } }" },
-    };
-    char error[256], *migrated = NULL;
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        if (chibi_migrate_handlers(cases[i].source, declarations, 3, &migrated, error, sizeof error)) {
-            fprintf(stderr, "case %zu: %s\n", i, error);
-        }
-        if (!migrated || strcmp(migrated, cases[i].expected)) {
-            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
-        }
-        REQUIRE(migrated && !strcmp(migrated, cases[i].expected));
-        free(migrated);
-        REQUIRE(
-            !chibi_migrate_handlers(cases[i].expected, declarations, 3, &migrated, error, sizeof error)
-        );
-        REQUIRE(!migrated);
-    }
-    const struct
-    {
-        const char *source, *message;
-    } refused[] = {
-        { "B :: behavior { action show = Show(menu.Key); on Damage as menu { "
-          "show() } }",
-          "outside the handler" },
-        { "B :: behavior { on Damage { Keep(event) } }", "the whole `event`" },
-        { "B :: behavior { on Damage as hit { Keep(hit) } }", "the whole payload" },
-        { "B :: behavior { x: float = 0; on Tick(t) { dt := 1.0; x += t } }",
-          "declares a name that a payload field" },
-        { "B :: behavior { Other: int = 0; on Contact_Begin(o) { Other = 1; "
-          "destroy(o) } }",
-          "another meaning" },
-        { "B :: behavior { on Damage { Keep(event.Force) } }", "does not have" },
-        /* A local, loop or pattern that rebinds a listed parameter. */
-        { "B :: behavior { on Contact_Begin(o, p) { o := self; last = o } }",
-          "declares a name that a payload parameter" },
-        { "B :: behavior { on Contact_Begin(o, p) { for o in items { Keep(o) } "
-          "} }",
-          "declares a name that a payload parameter" },
-        { "B :: behavior { on Contact_Begin(o, p) { if p is Point o { Keep(o) "
-          "} } }",
-          "declares a name that a payload parameter" },
-        { "B :: behavior { on Damage as m { for m in items { total += m.Amount "
-          "} } }",
-          "its payload alias" },
-        { "B :: behavior { Peek :: () -> float { if total > 0 { m := 1.0 } "
-          "return m.x } on Damage as m { total += m.Amount } }",
-          "outside the handler" },
-        /* An event the migration cannot find has only the fields of a typed
-         * list. */
-        { "B :: behavior { on Vanished(source) { } }", "untyped payload field" },
-        { "B :: behavior { on Vanished { Keep(event.Source) } }", "does not have" },
-        { "B :: behavior { event a = Damage; event b = a; on b { } }", "alias of an alias" },
-        { "B :: behavior { on Big { Keep(Tags) } }", "cannot spell" },
-    };
-    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        REQUIRE(
-            chibi_migrate_handlers(refused[i].source, declarations, 3, &migrated, error, sizeof error) < 0
-        );
-        if (!strstr(error, refused[i].message)) {
-            fprintf(stderr, "refusal %zu: %s\n", i, error);
-        }
-        REQUIRE(!migrated && strstr(error, refused[i].message));
-    }
-    /* A project's own event declarations type its handlers' payloads. */
-    char root[] = "/tmp/chibi-handlers-XXXXXX", path[300];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/events", root);
-    REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
-    write_whole(path, damage);
-    snprintf(path, sizeof path, "%s/Hurt.chibi", root);
-    write_whole(path, "Hurt :: behavior { total: int = 0; on Damage { total += Amount } }");
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 29, error, sizeof error));
-    const char *text = read_whole(path);
-    REQUIRE(
-        text && !strcmp(text, "Hurt :: behavior { total: int = 0; on Damage :: (Amount: int) { total += Amount } }")
-    );
-    REQUIRE(!unlink(path));
-    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
-    REQUIRE(!unlink(path));
-    snprintf(path, sizeof path, "%s/events", root);
-    REQUIRE(!rmdir(path));
-    REQUIRE(!rmdir(root));
-    return true;
-}
-/* Version 31 reads the frame step only through a Tick handler's list or a
- * system's step clause. */
-TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
-{
-    const struct
-    {
-        const char *source, *expected;
-    } cases[] = {
-        { "B :: behavior { x: float = 0; on Tick :: () { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
-        { "B :: behavior { x: float = 0; on Tick :: () { x += delta + "
-          "delta_time() } }",
-          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
-          "dt } }" },
-        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } "
-          "}",
-          NULL },
-        { "S :: system(p: Position) { p.x += dt }",
-          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
-        { "S :: system(p: Position) on Tick :: () { p.x += delta }",
-          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
-        /* The catalog's spellings name the capability; a local declared later
-         * or in an inner block hides only the reads in its scope. */
-        { "B :: behavior { x: float = 0; on Tick :: () { x += DeltaTime() } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
-        { "B :: behavior { x: float = 0; on Tick :: () { x += dt; if x > 1 { "
-          "dt := 1; x += dt } } }",
-          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt; "
-          "if x > 1 { dt := 1; x += dt } } }" },
-        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
-          "delta } }",
-          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
-          "dt } }" },
-        { "S :: system(t: Transform) { delta: retain float = 0; delta += 1; "
-          "t.x = delta }",
-          NULL },
-        /* A parameter, local or state of that name reads no global. */
-        { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
-        { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },
-        { "B :: behavior { dt: float = 0; on Begin :: () { dt = 1 } }", NULL },
-        { "B :: behavior { x: float = 0; on Tick :: () { other.dt = 1; F(dt: "
-          "1) } }",
-          NULL },
-    };
-    char error[256], *migrated = NULL;
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        if (chibi_migrate_step_globals(cases[i].source, &migrated, error, sizeof error)) {
-            fprintf(stderr, "case %zu: %s\n", i, error);
-        }
-        bool same = cases[i].expected
-                      ? migrated && !strcmp(migrated, cases[i].expected)
-                      : !migrated;
-        if (!same) {
-            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
-        }
-        REQUIRE(same);
-        free(migrated);
-        migrated = NULL;
-    }
-    const struct
-    {
-        const char *source, *message;
-    } refused[] = {
-        { "B :: behavior { x: float = 0; F :: () { x += dt } }", "outside a Tick" },
-        { "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () "
-          "{ "
-          "go() } }",
-          "outside a Tick" },
-        { "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
-          "outside a Tick" },
-        { "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { "
-          "go() "
-          "} after go { x += dt } }",
-          "outside a Tick" },
-        /* Renaming a read to `dt` must not capture another `dt`. */
-        { "B :: behavior { x: float = 0; on Tick :: () { dt := 2.0; x += delta "
-          "* "
-          "dt } }",
-          "another dt" },
-        { "B :: behavior { x: float = 0; on Tick :: () { for dt in 0..3 { x += "
-          "delta_time() } } }",
-          "another dt" },
-    };
-    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        REQUIRE(chibi_migrate_step_globals(refused[i].source, &migrated, error, sizeof error) < 0);
-        if (!strstr(error, refused[i].message)) {
-            fprintf(stderr, "refusal %zu: %s\n", i, error);
-        }
-        REQUIRE(!migrated && strstr(error, refused[i].message));
-    }
-    return true;
-}
-/* Version 32 calls array_add `append` and append `extend`, in every spelling
- * the catalog matches; methods already have those meanings. */
-TEST_CASE(program_version_31_array_calls_take_their_new_names)
-{
-    const struct
-    {
-        const char *source, *expected;
-    } cases[] = {
-        { "L :: library { F :: (xs: int[]) -> int[] { return array_add(xs, 1) "
-          "} }",
-          "L :: library { F :: (xs: int[]) -> int[] { return append(xs, 1) } "
-          "}" },
-        { "L :: library { F :: (xs: int[], ys: int[]) -> int[] { return "
-          "append(append(xs, ys), ArrayAdd(ys, 2)) } }",
-          "L :: library { F :: (xs: int[], ys: int[]) -> int[] { return "
-          "extend(extend(xs, ys), append(ys, 2)) } }" },
-        { "L :: library { F :: (xs: int[]) -> int[] { xs.append(1); "
-          "xs.extend([2]); return xs } }",
-          NULL },
-        /* A source that calls `extend` is already migrated. */
-        { "L :: library { F :: (xs: int[]) -> int[] { return extend(append(xs, "
-          "1), [2]) } }",
-          NULL },
-    };
-    char error[256], *migrated = NULL;
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        if (chibi_migrate_array_calls(cases[i].source, &migrated, error, sizeof error)) {
-            fprintf(stderr, "case %zu: %s\n", i, error);
-        }
-        bool same = cases[i].expected
-                      ? migrated && !strcmp(migrated, cases[i].expected)
-                      : !migrated;
-        if (!same) {
-            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
-        }
-        REQUIRE(same);
-        free(migrated);
-        migrated = NULL;
-    }
-    /* Calls of a function declared with one of those names would change
-     * meaning. */
-    const char *refused[] = {
-        "L :: library { append :: (xs: int[]) -> int[] { return xs } }",
-        "L :: library { Extend :: (xs: int[]) -> int[] { return xs } }",
-        "L :: library { F :: (array_add: int) -> int { return array_add } }",
-        "L :: library { F :: () -> int { append := 1; return append } }",
-        "B :: behavior { action Append = Go(); on Begin :: () { Append() } }",
-    };
-    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        REQUIRE(chibi_migrate_array_calls(refused[i], &migrated, error, sizeof error) < 0);
-        if (!strstr(error, "named like an array function")) {
-            fprintf(stderr, "refusal %zu: %s\n", i, error);
-        }
-        REQUIRE(!migrated && strstr(error, "named like an array function"));
-    }
-    return true;
-}
-static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
-{
-    int *calls = user;
-    if (!(*calls)++) {
-        snprintf(error, size, "finalization failed");
-        return -1;
-    }
-    return 0;
-}
-/* A rerun after finalization failed resumes after the steps that finished:
- * a migrated `append(xs, 1)` that only adds an item stays as it is. */
-TEST_CASE(program_migration_retry_resumes_after_finished_steps)
-{
-    const char *source = "L :: library { F :: (xs: int[]) -> int[] { return "
-                         "array_add(xs, 1) } }",
-               *expected = "L :: library { F :: (xs: int[]) -> int[] { return "
-                           "append(xs, 1) } }";
-    char root[] = "/tmp/chibi-retry-XXXXXX", path[300], manifest[300],
-         error[256] = { 0 };
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/content/Adds.chibi", root);
-    write_whole(path, source);
-    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    char text[96];
-    snprintf(
-        text,
-        sizeof text,
-        "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n",
-        CHIBI_PROJECT_VERSION - 1
-    );
-    write_whole(manifest, text);
-    int calls = 0;
-    REQUIRE(
-        chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error) < 0
-    );
-    char marked[96];
-    snprintf(
-        marked,
-        sizeof marked,
-        "version %d\nmigrated %d\ncontent \"content\"\nstart_scene "
-        "\"Start.kdl\"\n",
-        CHIBI_PROJECT_VERSION - 1,
-        CHIBI_PROJECT_VERSION
-    );
-    REQUIRE(!strcmp(read_whole(manifest), marked));
-    REQUIRE(!strcmp(read_whole(path), expected));
-    int resumed = chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error);
-    if (resumed != 1) {
-        fprintf(stderr, "resumed %d: %s\n", resumed, error);
-    }
-    REQUIRE(resumed == 1);
-    REQUIRE(calls == 2 && !strcmp(read_whole(path), expected));
-    snprintf(text, sizeof text, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
-    REQUIRE(!strcmp(read_whole(manifest), text));
-    REQUIRE(!unlink(path) && !unlink(manifest));
-    snprintf(path, sizeof path, "%s/content", root);
-    REQUIRE(!rmdir(path) && !rmdir(root));
-    return true;
-}
-/* An upgrade that fails after its steps wrote, for example in finalization,
- * leaves scripts at the current version under an older manifest. Its rerun
- * starts at that version, and every step leaves those scripts alone. */
-TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated)
-{
-    const char *current = "Lead :: behavior {\n    on Tick :: (dt: float s) "
-                          "{\n    }\n}\n";
-    char root[] = "/tmp/chibi-rerun-XXXXXX", path[300], error[256] = { 0 };
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/Lead.chibi", root);
-    write_whole(path, current);
-    for (int from = 23; from < CHIBI_PROJECT_VERSION; from++) {
-        if (chibi_project_migrate_content(root, NULL, from, error, sizeof error)) {
-            fprintf(stderr, "step %d: %s\n", from, error);
-        }
-        REQUIRE(!error[0]);
-        const char *text = read_whole(path);
-        REQUIRE(text && !strcmp(text, current));
-    }
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    return true;
-}
-/* Version 29 runs a function's own body: the statements of `after entry`
- * move after the function's statements, before the handlers that follow, and
- * macros keep theirs. The current analyzer refuses `after entry` in a
- * function. */
-TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
-{
-    const char *source = "Moves :: library {\n"
-                         "Step :: (Speed: float) -> float {\n"
-                         "    scale := 2.0\n"
-                         "    after entry {\n"
-                         "        // Doubles the speed.\n"
-                         "        if Speed > 1.0 {\n"
-                         "            return Speed * scale\n"
-                         "        }\n"
-                         "        return 0.0\n"
-                         "    }\n"
-                         "}\n"
-                         "Spawn :: (Prototype: Prototype) {\n"
-                         "    action spawned = spawn_prototype(Prototype)\n"
-                         "    after entry {\n"
-                         "        spawned()\n"
-                         "    }\n"
-                         "    after spawned {\n"
-                         "        return\n"
-                         "    }\n"
-                         "}\n"
-                         "Last :: () {\n"
-                         "    after entry { log('d') }\n"
-                         "}\n"
-                         "Once :: (Value: int) -> int { after entry { return "
-                         "Value } }\n"
-                         "}";
-    const char *expected = "Moves :: library {\n"
-                           "Step :: (Speed: float) -> float {\n"
-                           "    scale := 2.0\n"
-                           "    // Doubles the speed.\n"
-                           "    if Speed > 1.0 {\n"
-                           "        return Speed * scale\n"
-                           "    }\n"
-                           "    return 0.0\n"
-                           "}\n"
-                           "Spawn :: (Prototype: Prototype) {\n"
-                           "    action spawned = spawn_prototype(Prototype)\n"
-                           "    spawned()\n"
-                           "    after spawned {\n"
-                           "        return\n"
-                           "    }\n"
-                           "}\n"
-                           "Last :: () {\n"
-                           "    log('d')\n"
-                           "}\n"
-                           "Once :: (Value: int) -> int { return Value }\n"
-                           "}";
-    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
-    REQUIRE(!chibi_migrate_after_entry(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    free(migrated);
-    REQUIRE(!chibi_migrate_after_entry(expected, &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    const char *macro = "M :: library { macro Go() -> () { exit Then; after "
-                        "entry { } } }";
-    REQUIRE(!chibi_migrate_after_entry(macro, &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    const struct
-    {
-        const char *source, *message;
-    } refused[] = {
-        { "L :: library { F :: (a: int) { after entry { b := event }\n} }", "reads `event`" },
-        { "L :: library { F :: (a: int) { after entry as e { b := e.a }\n} }",
-          "names the payload" },
-        { "L :: library { F :: (a: int) { b := 1; after entry { b := 2 }\n} }", "also uses" },
-        { "L :: library { F :: (a: int) { after entry { a := 2 }\n} }", "also uses" },
-        { "L :: library { F :: (a: int) { after entry { b := 1 } after entry { "
-          "b := 2 }\n} }",
-          "also uses" },
-        { "L :: library { F :: (p: Prototype) { action spawned = "
-          "spawn_prototype(p); "
-          "after entry { spawned := 2 }\n} }",
-          "also uses" },
-        { "L :: library { F :: (a: int) { a = 2; after entry { b := a }\n} }",
-          "assign or pass" },
-        { "L :: library { F :: (p: Point) { p.x = 2; after entry { b := p }\n} "
-          "}",
-          "assign or pass" },
-        { "L :: library { Bump :: (x: ref int) { x += 1 }\nF :: (v: int) -> "
-          "int { Bump(v); "
-          "after entry { return v }\n} }",
-          "pass by reference" },
-        { "L :: library { F :: (a: int) { b := 1; after entry { c := a } } }",
-          "on one line" },
-    };
-    for (int i = 0; i < 10; i++) {
-        REQUIRE(chibi_migrate_after_entry(refused[i].source, &unchanged, error, sizeof error) < 0);
-        REQUIRE(!unchanged && strstr(error, refused[i].message));
-    }
-    /* A statement that reads a parameter, passes it to a callable taking
-     * copies, or changes one the handler does not read, leaves the handler's
-     * reads as they were. */
-    const char *kept = "L :: library { F :: (a: int, b: int) -> int { b = 2; "
-                       "Log(a); c := a; "
-                       "after entry { return a + c }\n} }";
-    REQUIRE(!chibi_migrate_after_entry(kept, &migrated, error, sizeof error));
-    REQUIRE(migrated && strstr(migrated, "return a + c") && !strstr(migrated, "after entry"));
-    free(migrated);
-    /* A call names its own library's callable or a qualified one, so a
-     * callable of the same name in another library takes copies. */
-    char project[] = "/tmp/chibi-after-entry-ref-XXXXXX", file[288];
-    REQUIRE(mkdtemp(project));
-    const char *names[] = { "W.chibi", "C.chibi", "L.chibi" };
-    const char *libraries[] = {
-        "W :: library { Bump :: (x: ref int) { x += 1 } }",
-        "C :: library { Bump :: (x: int) { } }",
-        "L :: library { F :: (v: int) { C.Bump(v); after entry { G(v) }\n} }",
-    };
-    for (int i = 0; i < 3; i++) {
-        snprintf(file, sizeof file, "%s/%s", project, names[i]);
-        write_whole(file, libraries[i]);
-    }
-    REQUIRE(!chibi_project_migrate_content(project, NULL, 28, error, sizeof error));
-    write_whole(file, "L :: library { F :: (v: int) { W.Bump(v); after entry { G(v) }\n} }");
-    REQUIRE(chibi_project_migrate_content(project, NULL, 28, error, sizeof error) < 0);
-    REQUIRE(strstr(error, "pass by reference"));
-    for (int i = 0; i < 3; i++) {
-        snprintf(file, sizeof file, "%s/%s", project, names[i]);
-        REQUIRE(!unlink(file));
-    }
-    REQUIRE(!rmdir(project));
-    char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/Moves.chibi", root);
-    write_whole(path, source);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 28, error, sizeof error));
-    const char *text = read_whole(path);
-    REQUIRE(text && !strcmp(text, expected));
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    prepare();
-    syntax = script_parse("L :: library { F :: (a: int) -> int { after entry { return a } } }");
-    analysis = script_analyze(syntax, &catalog);
-    bool function_refused = false;
-    for (int d = 0; d < analysis->diagnostic_count; d++) {
-        function_refused |= strstr(analysis->diagnostics[d].message, "A function runs its own body") !=
-                            NULL;
-    }
-    REQUIRE(function_refused && !analysis->valid);
-    return true;
-}
-TEST_CASE(program_version_26_casts_migrate_to_conversions)
-{
-    const char
-        *source = "Bits :: library {\n"
-                  "Mask /* m */ :: cast<uint>(/* keep */ 255)\n"
-                  "Shift :: cast<uint>(4)\n"
-                  "// cast<int>(x) stays in comments.\n"
-                  "Low :: (x: int, e: entity) -> byte {\n"
-                  "    other := cast<handle<ecs.entity>>(e)\n"
-                  "    return cast<byte>(/* low */ cast<uint>(x) & Mask)\n"
-                  "}\n"
-                  "}";
-    const char *expected = "Bits :: library {\n"
-                           "Mask /* m */ : uint : /* keep */ 255\n"
-                           "Shift: uint : 4\n"
-                           "// cast<int>(x) stays in comments.\n"
-                           "Low :: (x: int, e: entity) -> byte {\n"
-                           "    other := entity(e)\n"
-                           "    return byte(/* low */ uint(x) & Mask)\n"
-                           "}\n"
-                           "}";
-    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
-    REQUIRE(!chibi_migrate_conversions(source, &migrated, error, sizeof error));
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    /* A rerun after an interrupted step leaves converted typed constants. */
-    REQUIRE(!chibi_migrate_conversions(expected, &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    REQUIRE(!chibi_migrate_conversions("L :: library { N :: 1 }", &unchanged, error, sizeof error));
-    REQUIRE(!unchanged);
-    REQUIRE(
-        chibi_migrate_conversions(
-            "L :: library { F :: (x: int) { y := cast<int[]>(x) } }",
-            &unchanged,
-            error,
-            sizeof error
-        ) < 0
-    );
-    REQUIRE(!unchanged && strstr(error, "no T(value) spelling"));
-    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256];
-    REQUIRE(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/Bits.chibi", root);
-    write_whole(path, source);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 26, error, sizeof error));
-    const char *text = read_whole(path);
-    REQUIRE(text && !strcmp(text, expected));
-    REQUIRE(!unlink(path));
-    REQUIRE(!rmdir(root));
-    free(migrated);
-    return true;
-}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char
@@ -9652,43 +6759,17 @@ void test_language_program()
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_many_tasks_collect_in_linear_mark_work);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
-    RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
+
     RUN_TEST_CASE(program_handler_payloads_do_not_hide_parameters);
     RUN_TEST_CASE(program_nested_functions_wait_for_themselves);
-    RUN_TEST_CASE(program_version_11_references_migrate_to_values);
-    RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
-    RUN_TEST_CASE(program_version_13_values_migrate_to_their_expressions);
-    RUN_TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors);
-    RUN_TEST_CASE(program_version_15_bindings_migrate_to_the_input_map);
+
     RUN_TEST_CASE(program_input_map_validates_actions);
     RUN_TEST_CASE(program_scene_children_are_referenced);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
     RUN_TEST_CASE(program_scene_bindings_are_typed_names_before_play);
-    RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
-    RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
-    RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
-    RUN_TEST_CASE(program_version_19_components_move_to_chibi);
-    RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
-    RUN_TEST_CASE(program_version_21_lighting_drops_lab_fields);
-    RUN_TEST_CASE(program_version_22_prefixes_migrate_without_changing_data);
-    RUN_TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers);
+
     RUN_TEST_CASE(program_constant_definitions_execute);
-    RUN_TEST_CASE(program_version_23_declarations_and_switch_migrate);
-    RUN_TEST_CASE(program_version_23_not_calls_migrate_with_native_identity);
-    RUN_TEST_CASE(program_version_24_retention_migrates_and_executes);
-    RUN_TEST_CASE(program_version_24_retention_content_is_all_or_nothing);
-    RUN_TEST_CASE(program_version_25_syntax_preserves_storage_and_comments);
-    RUN_TEST_CASE(program_version_25_syntax_content_preserves_header_comments);
-    RUN_TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate);
-    RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
-    RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
-    RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
-    RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
-    RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
-    RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
-    RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
-    RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
-    RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
+
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

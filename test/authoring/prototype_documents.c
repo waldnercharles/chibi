@@ -79,22 +79,225 @@ static bool refuses_rebase(const char *local, const char *previous, const char *
 TEST_CASE(rebase_keeps_local_values_over_evolving_defaults)
 {
     REQUIRE(rebases(
-        "Health current=73 maximum=100\n",
-        "Health current=100 maximum=100\n",
-        "Health current=200 maximum=200\n",
-        "Health current=73 maximum=200\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(100))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(100)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(100))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(200)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(200))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(200))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     ));
     REQUIRE(rebases(
-        "Input {\n    move x=3 y=0\n    label \"custom\"\n}\n",
-        "Input {\n    move x=0 y=0\n    label \"default\"\n}\n",
-        "Input {\n    move x=1 y=2\n    label \"new\"\n    enabled #true\n}\n",
-        "Input {\n    move x=3 y=2\n    label \"custom\"\n    enabled "
-        "#true\n}\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Input\", data.Object([\n"
+        "                data.Field.Named(\"move\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(3)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(0))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"label\", "
+        "data.Value.Text(\"custom\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Input\", data.Object([\n"
+        "                data.Field.Named(\"move\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(0))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"label\", "
+        "data.Value.Text(\"default\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Input\", data.Object([\n"
+        "                data.Field.Named(\"move\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"label\", "
+        "data.Value.Text(\"new\")),\n"
+        "                data.Field.Named(\"enabled\", data.Value.Bool(true))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Input\", data.Object([\n"
+        "                data.Field.Named(\"move\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(3)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"label\", "
+        "data.Value.Text(\"custom\")),\n"
+        "                data.Field.Named(\"enabled\", data.Value.Bool(true))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     ));
-    REQUIRE(
-        rebases("Health current=73\n", "", "Health current=200 maximum=200\n", "Health current=73 maximum=200\n")
-    );
-    REQUIRE(rebases("Health current=73\n", "Health current=100\n", "", "Health current=73\n"));
+    REQUIRE(rebases(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(200)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(200))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(200))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
+    REQUIRE(rebases(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(100))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(73))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
 
     av_value *empty = test_read_asset_value("");
     av_doc *null_doc = av_doc_new();
@@ -103,10 +306,87 @@ TEST_CASE(rebase_keeps_local_values_over_evolving_defaults)
     av_value_free(empty);
     REQUIRE(!rebased);
     REQUIRE(refuses_rebase("", "", ""));
-    REQUIRE(refuses_rebase("Health #null\n", "", ""));
-    REQUIRE(refuses_rebase("(object)Health\n(object)Input\n", "", ""));
-    REQUIRE(refuses_rebase("(object)Health\n", "(object)Input\n", ""));
-    REQUIRE(refuses_rebase("(object)Health\n", "", "Health #null\n"));
+    REQUIRE(refuses_rebase(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Value.Null)\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "",
+        ""
+    ));
+    REQUIRE(refuses_rebase(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([])),\n"
+        "            data.Field.Named(\"Input\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "",
+        ""
+    ));
+    REQUIRE(refuses_rebase(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Input\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        ""
+    ));
+    REQUIRE(refuses_rebase(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Value.Null)\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     return true;
 }
 
@@ -132,8 +412,24 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
                                     .include_user = NULL };
     char error[256];
     test_prototype = prototype_load(
-        "name \"StringOwner\"\ncomponents {\n    test.Label "
-        "text=\"customized\"\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"StringOwner\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"test.Label\", data.Object([\n"
+        "                    data.Field.Named(\"text\", "
+        "data.Value.Text(\"customized\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -171,13 +467,35 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
                                     .component_count = REGISTRY_COMPONENT_COUNT };
     char error[256];
     test_prototype = prototype_load(
-        "name \"Retained\"\n"
-        "components {\n"
-        "    Transform x=10 y=20\n"
-        "    Health current=73 maximum=100\n"
-        "    Input {\n"
-        "        move x=3 y=4\n"
-        "    }\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Retained\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(10)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(20))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.UInt(73)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.UInt(100))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Input\", data.Object([\n"
+        "                    data.Field.Named(\"move\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.UInt(3)),\n"
+        "                        data.Field.Named(\"y\", data.Value.UInt(4))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n",
         &registry,
         error,
@@ -219,12 +537,23 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
     REQUIRE(Input_get(world, entity)->move.y == 4);
 
     prototype *invalid = prototype_load(
-        "name \"Invalid\"\n"
-        "components {\n"
-        "    (object)Health\n"
-        "}\n"
-        "detached_components {\n"
-        "    (object)Health\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Invalid\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"detached_components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n",
         &registry,
         error,
@@ -234,21 +563,88 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
     return true;
 }
 
-static const char *base_enemy = "name \"BaseEnemy\"\n"
-                                "components {\n"
-                                "    Health current=50 maximum=50\n"
-                                "    Transform x=1 y=2\n"
-                                "}\n"
-                                "(array)behaviors \"idle.graph\"\n";
-static const char *derived_enemy = "name \"Enemy\"\n"
-                                   "identity \"enemy-id\"\n"
-                                   "(array)includes \"BaseEnemy\"\n"
-                                   "components {\n"
-                                   "    Health current=100\n"
-                                   "}\n"
-                                   "(array)behaviors \"attack.graph\"\n";
-static const char *cycle_a = "name \"CycleA\"\n(array)includes \"CycleB\"\n";
-static const char *cycle_b = "name \"CycleB\"\n(array)includes \"CycleA\"\n";
+static const char *base_enemy =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"BaseEnemy\")),\n"
+    "            data.Field.Named(\"components\", data.Object([\n"
+    "                data.Field.Named(\"Health\", data.Object([\n"
+    "                    data.Field.Named(\"current\", data.Value.UInt(50)),\n"
+    "                    data.Field.Named(\"maximum\", data.Value.UInt(50))\n"
+    "                ])),\n"
+    "                data.Field.Named(\"Transform\", data.Object([\n"
+    "                    data.Field.Named(\"x\", data.Value.UInt(1)),\n"
+    "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+    "                ]))\n"
+    "            ])),\n"
+    "            data.Field.Named(\"behaviors\", data.List([\n"
+    "                data.Value.Text(\"idle.graph\")\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
+static const char *derived_enemy =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+    "            data.Field.Named(\"identity\", "
+    "data.Value.Text(\"enemy-id\")),\n"
+    "            data.Field.Named(\"includes\", data.List([\n"
+    "                data.Value.Text(\"BaseEnemy\")\n"
+    "            ])),\n"
+    "            data.Field.Named(\"components\", data.Object([\n"
+    "                data.Field.Named(\"Health\", data.Object([\n"
+    "                    data.Field.Named(\"current\", data.Value.UInt(100))\n"
+    "                ]))\n"
+    "            ])),\n"
+    "            data.Field.Named(\"behaviors\", data.List([\n"
+    "                data.Value.Text(\"attack.graph\")\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
+static const char
+    *cycle_a = "package asset\n"
+               "\n"
+               "import data \"game:assets\"\n"
+               "\n"
+               "pub Build :: () -> byte[] {\n"
+               "    return data.Encode(\n"
+               "        data.Object([\n"
+               "            data.Field.Named(\"name\", "
+               "data.Value.Text(\"CycleA\")),\n"
+               "            data.Field.Named(\"includes\", data.List([\n"
+               "                data.Value.Text(\"CycleB\")\n"
+               "            ]))\n"
+               "        ])\n"
+               "    )\n"
+               "}\n";
+static const char
+    *cycle_b = "package asset\n"
+               "\n"
+               "import data \"game:assets\"\n"
+               "\n"
+               "pub Build :: () -> byte[] {\n"
+               "    return data.Encode(\n"
+               "        data.Object([\n"
+               "            data.Field.Named(\"name\", "
+               "data.Value.Text(\"CycleB\")),\n"
+               "            data.Field.Named(\"includes\", data.List([\n"
+               "                data.Value.Text(\"CycleA\")\n"
+               "            ]))\n"
+               "        ])\n"
+               "    )\n"
+               "}\n";
 static int attached;
 
 static const char *find_base(const char *name, void *)
@@ -303,13 +699,35 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
     REQUIRE(health && health->current == 100 && health->maximum == 50);
     saved = prototype_save(test_prototype);
     copy = prototype_load(
-        "(array)behaviors \"attack.graph\" \"idle.graph\"\n"
-        "identity \"enemy-id\"\n"
-        "components {\n"
-        "    Transform y=2 x=1\n"
-        "    Health maximum=50 current=100\n"
-        "}\n"
-        "name \"Enemy\"\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"attack.graph\"),\n"
+        "                data.Value.Text(\"idle.graph\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"identity\", "
+        "data.Value.Text(\"enemy-id\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2)),\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(1))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.UInt(50)),\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.UInt(100))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -321,8 +739,38 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
     prototype_free(test_prototype);
     prototype_free(copy);
     free(again);
-    test_prototype = prototype_load("name \"Plain\"\n", &registry, error, sizeof error);
-    copy = prototype_load("name \"Other\"\n", &registry, error, sizeof error);
+    test_prototype = prototype_load(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Plain\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        error,
+        sizeof error
+    );
+    copy = prototype_load(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Other\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        error,
+        sizeof error
+    );
     again = test_prototype ? prototype_save(test_prototype) : NULL;
     REQUIRE(test_prototype && copy && again);
     REQUIRE(strcmp(prototype_identity(test_prototype), prototype_identity(copy)) != 0);
@@ -396,7 +844,21 @@ TEST_CASE(prototype_spawns_edits_and_captures_overrides)
     av_value_free(values);
 
     /* Sparse field overrides apply without zeroing sibling fields. */
-    values = test_read_asset_value("Health current=7\n");
+    values = test_read_asset_value(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(7))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     ecs_entity overridden = { 0 };
     REQUIRE(prototype_spawn(copy, world, &hooks, &overridden, error, sizeof error) == ECS_OK);
     REQUIRE(
@@ -429,18 +891,48 @@ TEST_CASE(scene_documents_save_reflected_values_readably)
 {
     char error[256];
     scene = scene_document_load(
-        "version 1\n"
-        "name \"Readable\"\n"
-        "(array)entities {\n"
-        "    - {\n"
-        "        name \"Fluid\"\n"
-        "        prototype \"Base\"\n"
-        "        components {\n"
-        "            FluidVolume kind=1 color=966781183 absorption=0.035\n"
-        "            Transform x=0.15000000596046448 y=-0.0\n"
-        "            Collider category=16\n"
-        "        }\n"
-        "    }\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Readable\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Fluid\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Base\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"FluidVolume\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"kind\", "
+        "data.Value.UInt(1)),\n"
+        "                            data.Field.Named(\"color\", "
+        "data.Value.UInt(966781183)),\n"
+        "                            data.Field.Named(\"absorption\", "
+        "data.Value.Real(0.035))\n"
+        "                        ])),\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.Real(0.15000000596046448)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.Real(-0.0))\n"
+        "                        ])),\n"
+        "                        data.Field.Named(\"Collider\", data.Object([\n"
+        "                            data.Field.Named(\"category\", "
+        "data.Value.UInt(16))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n",
         error,
         sizeof error
@@ -472,7 +964,22 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
     scene = scene_document_new("CombatScene");
     REQUIRE(scene && scene_document_add_entity(scene, -1, "Player", "PlayerPrototype") == 0);
     REQUIRE(scene_document_set_entity_behaviors(scene, 0, behaviors, 2) == 0);
-    values = test_read_asset_value("Health current=7 maximum=9\n");
+    values = test_read_asset_value(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(7)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(9))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
     REQUIRE(av_obj_get(scene->entities[0].components, "Health"));
     av_value_free(values);
@@ -481,7 +988,7 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
     REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
     saved = scene_document_save(scene, components());
     char error[256];
-    av_doc *labeled = av_doc_read(saved, error, sizeof error);
+    av_doc *labeled = asset_document_read(saved, error, sizeof error);
     av_value *entity = labeled
                          ? av_arr_get(av_obj_get(av_doc_root(labeled), "entities"), 0)
                          : NULL;
@@ -495,8 +1002,24 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
     saved = NULL;
 
     values = test_read_asset_value(
-        "Health current=7 maximum=9\n"
-        "Appearance shape=4294967296\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.UInt(7)),\n"
+        "                data.Field.Named(\"maximum\", data.Value.UInt(9))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Appearance\", data.Object([\n"
+        "                data.Field.Named(\"shape\", "
+        "data.Value.UInt(4294967296))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
     scene->physics = (physics_settings){ .workers = 8,
@@ -519,23 +1042,71 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
     REQUIRE(again && !strcmp(saved, again));
 
     scene_document_free(loaded);
-    loaded = scene_document_load("version 1\nname \"Minimal\"\n(array)entities\n", error, sizeof error);
+    loaded = scene_document_load(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Minimal\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(loaded && physics_settings_equal(loaded->physics, physics_defaults()));
     return true;
 }
 
 TEST_CASE(scene_documents_refuse_invalid_physics_names_and_versions)
 {
-    const char *invalid_physics[] = { "substeps 0;", "substeps 1.5;",
-                                      "workers 33;", "contact_damping -1;",
-                                      "sleep 0;",    "unknown #true;" };
+    const char *invalid_physics[] = {
+        "substeps 0;",
+        "substeps 1.5;",
+        "workers 33;",
+        "contact_damping -1;",
+        "sleep 0;",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"unknown\", data.Value.Bool(true))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    };
     char error[256];
     for (int i = 0; i < 6; i++) {
-        char text[256];
+        char text[16384];
         snprintf(
             text,
             sizeof text,
-            "version 1\nname \"Invalid\"\n(array)entities\nphysics { %s }\n",
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+            "            data.Field.Named(\"name\", "
+            "data.Value.Text(\"Invalid\")),\n"
+            "            data.Field.Named(\"entities\", data.List([])),\n"
+            "            data.Field.Named(\"physics\", data.Object([\n"
+            "                data.Field.Named(\"%s\", data.Object([]))\n"
+            "            ]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
             invalid_physics[i]
         );
         loaded = scene_document_load(text, error, sizeof error);
@@ -544,7 +1115,23 @@ TEST_CASE(scene_documents_refuse_invalid_physics_names_and_versions)
     scene = scene_document_new("Duplicate");
     REQUIRE(scene && scene_document_add_entity(scene, -1, "A", "P") == 0);
     REQUIRE(scene_document_add_entity(scene, -1, "A", "P") != 0);
-    loaded = scene_document_load("version 2\nname \"Bad\"\n(array)entities\n", error, sizeof error);
+    loaded = scene_document_load(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(2)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(!loaded && strstr(error, "version 1"));
     return true;
 }

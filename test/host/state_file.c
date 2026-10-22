@@ -23,7 +23,7 @@ TEST_CASE(state_file_atomic_replacement_and_recovery)
     char directory[] = "/tmp/chibi-state-file-XXXXXX";
     REQUIRE(mkdtemp(directory));
     char path[512], blocked[512];
-    snprintf(path, sizeof path, "%s/recovery.kdl", directory);
+    snprintf(path, sizeof path, "%s/recovery.chibi", directory);
     snprintf(blocked, sizeof blocked, "%s/blocked", directory);
     REQUIRE(!chibi_read_file(path));
     REQUIRE(chibi_write_file(path, ""));
@@ -64,7 +64,7 @@ TEST_CASE(state_file_atomic_replacement_and_recovery)
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
             continue;
         }
-        REQUIRE(!strcmp(entry->d_name, "recovery.kdl") || !strcmp(entry->d_name, "blocked"));
+        REQUIRE(!strcmp(entry->d_name, "recovery.chibi") || !strcmp(entry->d_name, "blocked"));
         count++;
     }
     REQUIRE(closedir(entries) == 0 && count == 2);

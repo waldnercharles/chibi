@@ -24,8 +24,8 @@ TEST_CASE(node_comments_fold_save_and_reload)
 
     char *document = graph_save(&g);
     REQUIRE(document);
-    REQUIRE(strstr(document, "comment=\"Tuned by hand\""));
-    REQUIRE(strstr(document, "comment_hidden=#true"));
+    REQUIRE(strstr(document, "Tuned by hand"));
+    REQUIRE(strstr(document, "data.Value.Bool(true)"));
     graph *loaded = graph_load(document);
     REQUIRE(loaded);
     node *loaded_real = graph_node_by_id(loaded, real->id);
@@ -47,13 +47,27 @@ TEST_CASE(comment_lines_round_trip_through_asset_documents)
 {
     behavior_asset *asset = behavior_asset_new("Lines");
     node *noted = graph_add_node(asset->graph, graph_palette_node("Add"));
-    REQUIRE(graph_set_node_comment(asset->graph, noted, "First line\nSecond: line", false) == 0);
+    REQUIRE(
+        graph_set_node_comment(
+            asset->graph,
+            noted,
+            "First line\n"
+            "Second: line",
+            false
+        ) == 0
+    );
     char *document = graph_asset_text(asset);
     REQUIRE(document);
     behavior_asset *reread = graph_asset_read(document);
     REQUIRE(reread);
     node *renoted = graph_node_by_id(reread->graph, noted->id);
-    REQUIRE(renoted && !strcmp(renoted->comment, "First line\nSecond: line"));
+    REQUIRE(
+        renoted && !strcmp(
+                       renoted->comment,
+                       "First line\n"
+                       "Second: line"
+                   )
+    );
     char *resaved = graph_asset_text(reread);
     REQUIRE(resaved && !strcmp(document, resaved));
     free(resaved);
@@ -66,10 +80,26 @@ TEST_CASE(comment_lines_round_trip_through_asset_documents)
 TEST_CASE(non_string_comments_are_rejected)
 {
     graph *bad = graph_load(
-        "version 1\n"
-        "id_counter 3\n"
-        "(array)nodes {\n"
-        "    - id=1 type=\"Real\" comment=7\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"id_counter\", data.Value.UInt(3)),\n"
+        "            data.Field.Named(\"nodes\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"id\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"type\", "
+        "data.Value.Text(\"Real\")),\n"
+        "                    data.Field.Named(\"comment\", "
+        "data.Value.UInt(7))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n"
     );
     REQUIRE(!bad);

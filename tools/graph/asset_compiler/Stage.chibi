@@ -1,0 +1,50 @@
+package asset_compiler_stage
+
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string { return strings.Join(parts, ""); }
+
+// The shipped compiler artifact is a bootstrap input. Source changes regenerate
+// it through the authored compiler before the graph compiles its resource.
+pub Stage :: (root: string, build_dir: string) -> bool {
+    resource := Join([root, "/tools/compiler/asset_compiler/bootstrap/native64"]);
+    output := Join([build_dir, "/sdk/generated/assets"]);
+    current := build.file_exists(Join([resource, "/sources.sha256"])) &&
+               build.file_exists(Join([resource, "/manifest.json"])) &&
+               build.file_exists(Join([resource, "/asset_compiler.chibip"])) &&
+               build.file_exists(Join([resource, "/asset_compiler_packaged.c"]));
+    lines: string[] = [];
+    if (current) { lines = build.lines(build.read_file(Join([resource, "/sources.sha256"]))); }
+    saw_source := false;
+    for (line in lines) {
+        if (line == "") { continue; }
+        saw_source = true;
+        expected := build.before(line, " ");
+        path := build.after(line, " ");
+        if (strings.ByteLength(expected) != 64 || path == "" ||
+            build.hash_file(Join([root, "/", path])) != expected) { current = false; }
+    }
+    current = current && saw_source;
+    if (current) {
+        manifest := build.read_file(Join([resource, "/manifest.json"]));
+        artifact := build.before(build.after(manifest, "\"artifact_sha256\":\""), "\"");
+        code := build.before(build.after(manifest, "\"resource_sha256\":\""), "\"");
+        current = strings.ByteLength(artifact) == 64 && strings.ByteLength(code) == 64 &&
+                  build.hash_file(Join([resource, "/asset_compiler.chibip"])) == artifact &&
+                  build.hash_file(Join([resource, "/asset_compiler_packaged.c"])) == code;
+    }
+    if (!build.make_directory(output)) { return false; }
+    if (!current) {
+        host := Join([build_dir, "/sdk/chibi-compiler-host"]);
+        orchestrator := Join([build_dir, "/sdk/chibi-build-host"]);
+        if (build.run([orchestrator, "--root", root, "--source", Join([root, "/tools/graph/AssetCompiler.chibi"]),
+                       "--core", Join([root, "/packages/core"]), "--entry", "Build", "--timeout-ms", "180000",
+                       "--", host, output]) != 0) {
+            build.report(Join(["asset compiler regeneration failed: ", build.last_stderr()]));
+            return false;
+        }
+        return true;
+    }
+    return build.copy_file(Join([resource, "/asset_compiler_packaged.c"]), Join([output, "/asset_compiler_packaged.c"])) &&
+           build.embed_file(Join([resource, "/asset_compiler.chibip"]), Join([output, "/asset_compiler_blob.inc"]), "asset_compiler_blob");
+}

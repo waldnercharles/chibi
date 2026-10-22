@@ -112,9 +112,11 @@ if(TARGET chibi_build_host)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
     add_dependencies(test_tools chibi-build-host)
 endif()
-if(TARGET chibi_compiler_host)
+if(TARGET chibi-compiler-host)
     target_sources(test_tools PRIVATE compiler_artifact.c compiler_bootstrap.c)
     target_link_libraries(test_tools PRIVATE chibi_compiler_host)
+    get_target_property(compiler_host_binary chibi_compiler_host BINARY_DIR)
+    target_include_directories(test_tools PRIVATE "${compiler_host_binary}/private/compiler-host")
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_COMPILER_ARTIFACT=1)
     add_dependencies(test_tools chibi-compiler-host)
 endif()
@@ -217,22 +219,22 @@ if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALL
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
 endif()
 
-# KDL asset text and the native value tree it reads into.
-if(TARGET Chibi::asset_text AND TARGET Chibi::asset_json)
-    add_library(chibi_asset_values_consumer OBJECT ../support/asset_text.c ../support/asset_value.c)
+# Compiled assets and their owned native value tree.
+if(TARGET Chibi::asset_documents AND TARGET Chibi::asset_json)
+    add_library(chibi_asset_values_consumer OBJECT ../support/asset_document.c ../support/asset_value.c)
     target_include_directories(chibi_asset_values_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_link_libraries(chibi_asset_values_consumer PRIVATE Chibi::asset_text Chibi::asset_json)
+    target_link_libraries(chibi_asset_values_consumer PRIVATE Chibi::asset_documents Chibi::asset_json)
     target_compile_options(chibi_asset_values_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_asset_values_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::asset_text Chibi::asset_json)
+    target_link_libraries(test_tools PRIVATE Chibi::asset_documents Chibi::asset_json)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_VALUES=1)
 endif()
 
 # The repository's published documentation site, built by a given compiler
-# from copies of the pages docs/site.kdl lists.
-if(TARGET Chibi::asset_text)
+# from copies of the pages docs/site.chibi lists.
+if(TARGET Chibi::asset_documents)
     target_sources(test_tools PRIVATE published_docs.c)
-    target_link_libraries(test_tools PRIVATE Chibi::asset_text)
+    target_link_libraries(test_tools PRIVATE Chibi::asset_documents)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PUBLISHED_DOCS=1)
 endif()
 
@@ -284,28 +286,12 @@ if(TARGET Chibi::project_document AND TARGET Chibi::text_source)
     target_include_directories(chibi_project_document_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_project_document_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE
         CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
-    target_link_libraries(chibi_project_document_consumer PRIVATE Chibi::project_document Chibi::text_source)
+    target_link_libraries(chibi_project_document_consumer PRIVATE Chibi::project_document Chibi::text_source
+        Chibi::asset_documents)
     target_compile_options(chibi_project_document_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_document_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::text_source)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DOCUMENT=1)
-endif()
-
-# Exact Studio declaration migration through the public document/syntax owners.
-if(TARGET Chibi::project_document AND TARGET Chibi::language_syntax AND
-   TARGET Chibi::authoring AND TARGET Chibi::json)
-    configure_file("${CHIBI_TOOL_ROOT}/test/tools/fixture.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/tools/fixture.h" COPYONLY)
-    add_library(chibi_project_declarations_consumer OBJECT project_declarations.c)
-    target_include_directories(chibi_project_declarations_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_compile_definitions(chibi_project_declarations_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
-    target_link_libraries(chibi_project_declarations_consumer PRIVATE Chibi::project_document
-        Chibi::language_syntax Chibi::authoring Chibi::json)
-    target_compile_options(chibi_project_declarations_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_declarations_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::language_syntax
-        Chibi::authoring Chibi::json)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DECLARATIONS=1)
 endif()
 
 # Reflection cases drive the native generator that SDK packages are built with.
@@ -424,11 +410,11 @@ if(TARGET Chibi::model_import)
     target_include_directories(chibi_model_import_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_model_import_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
     target_link_libraries(chibi_model_import_consumer PRIVATE Chibi::model_import Chibi::mesh_runtime
-        Chibi::graph_authoring Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+        Chibi::graph_authoring Chibi::graph_compilation Chibi::native_types Chibi::asset_documents Chibi::platform)
     target_compile_options(chibi_model_import_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_model_import_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::model_import Chibi::mesh_runtime Chibi::graph_authoring
-        Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+        Chibi::graph_compilation Chibi::native_types Chibi::asset_documents Chibi::platform)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
     if(TARGET chibi_render_consumer)
@@ -478,12 +464,12 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             ../graph/collapse.c ../graph/problems.c ../graph/vectors.c)
         target_include_directories(chibi_graph_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_graph_consumer PRIVATE Chibi::project_preparation Chibi::graph_catalog
-            Chibi::graph_authoring Chibi::graph_compilation Chibi::asset_text Chibi::arithmetic_capabilities
+            Chibi::graph_authoring Chibi::graph_compilation Chibi::asset_documents Chibi::arithmetic_capabilities
             Chibi::vector_capabilities)
         target_compile_options(chibi_graph_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_graph_consumer>)
         target_link_libraries(test_tools PRIVATE Chibi::graph_authoring Chibi::graph_compilation
-            Chibi::asset_text Chibi::vector_capabilities)
+            Chibi::asset_documents Chibi::vector_capabilities)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
         if(TARGET chibi_ctl)

@@ -123,11 +123,42 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     REQUIRE(shader);
     REQUIRE(render_shader_parameters_validate(
         shader,
-        "(array)Tint 1 -2 0.5\n"
-        "Opacity 4\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(1),\n"
+        "                data.Value.Int(-2),\n"
+        "                data.Value.Real(0.5)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Opacity\", data.Value.UInt(4))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &error
     ));
-    const char *parameter_key = "(array)Tint 1 -2 0.5\nOpacity 4\n";
+    const char
+        *parameter_key = "package asset\n"
+                         "\n"
+                         "import data \"game:assets\"\n"
+                         "\n"
+                         "pub Build :: () -> byte[] {\n"
+                         "    return data.Encode(\n"
+                         "        data.Object([\n"
+                         "            data.Field.Named(\"Tint\", data.List([\n"
+                         "                data.Value.UInt(1),\n"
+                         "                data.Value.Int(-2),\n"
+                         "                data.Value.Real(0.5)\n"
+                         "            ])),\n"
+                         "            data.Field.Named(\"Opacity\", "
+                         "data.Value.UInt(4))\n"
+                         "        ])\n"
+                         "    )\n"
+                         "}\n";
     float prepared[32][4];
     REQUIRE(shader_values_plain(shader, parameter_key, prepared, &error));
     int tint_slot = parameter_slot(shader, "Tint"),
@@ -156,11 +187,57 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     REQUIRE(!shader_values_load(payload, payload_size, &error));
     free(payload);
     payload = NULL;
-    REQUIRE(!render_shader_parameters_validate(shader, "(array)Tint 1\n", &error));
+    REQUIRE(!render_shader_parameters_validate(
+        shader,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(1)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &error
+    ));
     REQUIRE(strstr(error.message, "array of 3"));
-    REQUIRE(!render_shader_parameters_validate(shader, "(array)Opacity 4\n", &error));
+    REQUIRE(!render_shader_parameters_validate(
+        shader,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Opacity\", data.List([\n"
+        "                data.Value.UInt(4)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &error
+    ));
     REQUIRE(strstr(error.message, "finite number or boolean"));
-    REQUIRE(!render_shader_parameters_validate(shader, "Missing 1\n", &error));
+    REQUIRE(!render_shader_parameters_validate(
+        shader,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Missing\", data.Value.UInt(1))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &error
+    ));
     REQUIRE(strstr(error.message, "Unknown shader preview parameter"));
     return true;
 }
@@ -174,8 +251,24 @@ TEST_CASE(shader_bindings_prepare_their_material_values)
     REQUIRE(render_shader_upsert(asset, &error));
     int shader = render_shader_find(asset->name);
     REQUIRE(shader);
-    Shader binding = { .material = asset->name,
-                       .parameters = "(array)Tint 0.25 0.5 0.75\n" };
+    Shader binding = {
+        .material = asset->name,
+        .parameters = "package asset\n"
+                      "\n"
+                      "import data \"game:assets\"\n"
+                      "\n"
+                      "pub Build :: () -> byte[] {\n"
+                      "    return data.Encode(\n"
+                      "        data.Object([\n"
+                      "            data.Field.Named(\"Tint\", data.List([\n"
+                      "                data.Value.Real(0.25),\n"
+                      "                data.Value.Real(0.5),\n"
+                      "                data.Value.Real(0.75)\n"
+                      "            ]))\n"
+                      "        ])\n"
+                      "    )\n"
+                      "}\n"
+    };
     REQUIRE(authoring_shader_binding_prepare(&binding, &error));
     float values[32][4];
     REQUIRE(shader_values_plain(shader, binding.parameters, values, &error));
@@ -213,7 +306,21 @@ TEST_CASE(model_parameters_match_reconstructed_prepared_generation)
     REQUIRE(render_shader_models_upsert(models, 1, &diagnostic));
     int shader = render_shader_find(asset->name);
     REQUIRE(shader);
-    REQUIRE(render_shader_parameters_validate(shader, "Radius 3\n", &diagnostic));
+    REQUIRE(render_shader_parameters_validate(
+        shader,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(3))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &diagnostic
+    ));
     char error[512];
     REQUIRE(authoring_visual_prepare(NULL, 0, &visual_assets, error, sizeof error));
     REQUIRE(acount(visual_assets) == 4);
@@ -357,8 +464,27 @@ TEST_CASE(particle_function_parameters_survive_preparation)
     ));
     REQUIRE(result[0][0] == 2 && result[0][1] == 3 && result[0][2] == 7);
     REQUIRE(result[1][0] == 6 && fabsf(result[2][2] - 0.8f) < 0.0001f);
-    Shader binding = { .material = "Particles.Cloud",
-                       .parameters = "Radius 2\n(array)Tint 1 0 0 0.5\n" };
+    Shader binding = {
+        .material = "Particles.Cloud",
+        .parameters = "package asset\n"
+                      "\n"
+                      "import data \"game:assets\"\n"
+                      "\n"
+                      "pub Build :: () -> byte[] {\n"
+                      "    return data.Encode(\n"
+                      "        data.Object([\n"
+                      "            data.Field.Named(\"Radius\", "
+                      "data.Value.UInt(2)),\n"
+                      "            data.Field.Named(\"Tint\", data.List([\n"
+                      "                data.Value.UInt(1),\n"
+                      "                data.Value.UInt(0),\n"
+                      "                data.Value.UInt(0),\n"
+                      "                data.Value.Real(0.5)\n"
+                      "            ]))\n"
+                      "        ])\n"
+                      "    )\n"
+                      "}\n"
+    };
     const behavior_asset *sources[] = { asset };
     REQUIRE(
         render_shader_binding_sources_validate(&binding, binding.parameters, sources, 1, &error)
@@ -375,13 +501,45 @@ TEST_CASE(particle_function_parameters_survive_preparation)
         &error
     ));
     REQUIRE(parameters[3][0] == 2 && parameters[5][0] == 1);
-    REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "(array)Tint 1 2 3\n", sources, 1, &error)
-    );
+    REQUIRE(!render_shader_binding_sources_validate(
+        &binding,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(1),\n"
+        "                data.Value.UInt(2),\n"
+        "                data.Value.UInt(3)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        sources,
+        1,
+        &error
+    ));
     REQUIRE(strstr(error.message, "4 finite"));
-    REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "Missing 2\n", sources, 1, &error)
-    );
+    REQUIRE(!render_shader_binding_sources_validate(
+        &binding,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Missing\", data.Value.UInt(2))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        sources,
+        1,
+        &error
+    ));
     REQUIRE(strstr(error.message, "Unknown"));
     char *index_name = decoded.names[0];
     decoded.names[0] = "Wrong";
@@ -537,10 +695,40 @@ TEST_CASE(particle_function_links_library_helpers)
     const behavior_asset *catalog[] = { asset, helper };
     shader_error error = { 0 };
     Shader binding = { .material = "Particles.Cloud" };
-    REQUIRE(render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 2, &error));
-    REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 1, &error)
-    );
+    REQUIRE(render_shader_binding_sources_validate(
+        &binding,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(2))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        catalog,
+        2,
+        &error
+    ));
+    REQUIRE(!render_shader_binding_sources_validate(
+        &binding,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(2))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        catalog,
+        1,
+        &error
+    ));
     REQUIRE(strstr(error.message, "missing function library"));
     linked_asset = behavior_asset_link_libraries(
         asset,

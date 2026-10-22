@@ -7,7 +7,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/images/catalog.h"
 #include "runtime/images/sky.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -148,15 +148,48 @@ TEST_CASE(failed_scene_launch_destroys_entities_before_their_strings)
     prototype_registry prototypes = registry();
     char error[256] = "";
     test_prototype = prototype_load(
-        "name \"StringOwner\"\ncomponents {\n    Ui "
-        "document=\"prototype\"\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"StringOwner\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Ui\", data.Object([\n"
+        "                    data.Field.Named(\"document\", "
+        "data.Value.Text(\"prototype\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &prototypes,
         error,
         sizeof error
     );
     REQUIRE(test_prototype);
     preview = prototype_preview_new(&prototypes);
-    av_doc *doc = av_doc_read("Ui document=\"scene override string\"\n", error, sizeof error);
+    av_doc *doc = asset_document_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Ui\", data.Object([\n"
+        "                data.Field.Named(\"document\", "
+        "data.Value.Text(\"scene override string\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(doc);
     components = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
@@ -189,14 +222,44 @@ TEST_CASE(scene_launch_prepares_what_overrides_name)
     REQUIRE(render_image_mount_content(root, error, sizeof error));
     prototype_registry prototypes = registry();
     test_prototype = prototype_load(
-        "name \"Sky\"\ncomponents {\n    Environment\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Sky\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Environment\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &prototypes,
         error,
         sizeof error
     );
     REQUIRE(test_prototype);
     preview = prototype_preview_new(&prototypes);
-    av_doc *doc = av_doc_read("Environment sky=\"content/skies/override.hdr\"\n", error, sizeof error);
+    av_doc *doc = asset_document_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Environment\", data.Object([\n"
+        "                data.Field.Named(\"sky\", "
+        "data.Value.Text(\"content/skies/override.hdr\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(doc);
     components = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);

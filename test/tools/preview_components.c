@@ -54,9 +54,28 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
         snprintf(path, sizeof path, "%s/%s", directory, folders[i]);
         REQUIRE(mkdir(path, 0700) == 0);
     }
-    char manifest[128];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Preview components\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
-    write_asset("project.kdl", manifest);
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Preview "
+        "components\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        CHIBI_PROJECT_VERSION
+    );
+    write_asset("project.chibi", manifest);
     write_asset(
         "content/components/PreviewHeat.chibi",
         "PreviewHeat :: component {\n"
@@ -64,7 +83,29 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
         "}\n"
     );
     write_asset("content/prototypes/Probe.chibi", "Probe :: prototype { PreviewHeat { level: 7 } }\n");
-    write_asset("content/scenes/Probe.kdl", "version 1\nname \"Probe\"\n(array)entities {\n    - name=\"Probe\" prototype=\"Probe\"\n}\n");
+    write_asset(
+        "content/scenes/Probe.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Probe\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Probe\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Probe\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     /* Explicit preview targets do not need a default launch target. Full
      * project/player opening still requires one. */
     chibi_project launch = { 0 };

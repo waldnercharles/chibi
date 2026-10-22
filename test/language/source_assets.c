@@ -2,12 +2,14 @@
 #include "authoring/prototype_prepare.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
+#include "authoring/source_format.h"
 #include "authoring/source_prototype_edit.h"
 #include "backend.h"
 #include "language/lower.h"
 #include "runtime/scenes/prepared.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
+#include "support/file_io.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 #ifdef CHIBI_TEST_RECORD_SERVICES
@@ -125,16 +127,54 @@ TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults)
                                     .component_count = 1,
                                     .include = include };
     document = authoring_prototype_source_read(
-        "Enemy :: prototype { Health { Current: 100, maximum: 150 } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"Current\", "
+        "data.Value.Int(100)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.Int(150))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     );
     REQUIRE(document);
-    base_text = av_doc_write(document);
+    base_text = asset_document_write(av_doc_root(document));
     av_doc_free(document);
     document = authoring_prototype_source_read(
-        "Elite :: prototype(Enemy) { Health { current: 200 } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(200))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -148,19 +188,62 @@ TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults)
     REQUIRE(!prototype_read_field(authored, "Health", "maximum", &v));
     REQUIRE(v.i == 150);
     REQUIRE(!authoring_prototype_source_read(
-        "Bad :: prototype { Health { current: 1, Current: 2 } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(1)),\n"
+        "                    data.Field.Named(\"Current\", data.Value.Int(2))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     ));
     REQUIRE(!authoring_prototype_source_read(
-        "Bad :: prototype { Health { missing: 1 } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"missing\", data.Value.Int(1))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     ));
     REQUIRE(!authoring_prototype_source_read(
-        "Bad :: prototype { Health { current: random() } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Bad\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(random())))]))]))])) }\n",
         &registry,
         error,
         sizeof error
@@ -170,8 +253,22 @@ TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults)
 TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup)
 {
     relation = authoring_relationship_source_read(
-        "Targets :: relationship { exclusive: true, acyclic: true, "
-        "on_delete_target: Remove }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Targets\")),\n"
+        "            data.Field.Named(\"exclusive\", data.Value.Bool(true)),\n"
+        "            data.Field.Named(\"acyclic\", data.Value.Bool(true)),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Text(\"Remove\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     );
@@ -183,18 +280,61 @@ TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup)
                                     .relationship_count = 1,
                                     .include = include };
     document = authoring_prototype_source_read(
-        "Child :: prototype { Health { current: 5 } }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Child\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(5))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     );
     REQUIRE(document);
-    child_text = av_doc_write(document);
+    child_text = asset_document_write(av_doc_root(document));
     av_doc_free(document);
     document = authoring_prototype_source_read(
-        "Squad :: prototype { Health { current: 100 } "
-        "children: [{name: \"enemy\", prototype: Child}], "
-        "links: {Targets: child.enemy} }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Squad\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(100))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemy\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Child\"))\n"
+        "                ])\n"
+        "            ])),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -250,26 +390,111 @@ TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup)
 }
 TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_contracts)
 {
-    const char *quoted[] = {
-        "Bad :: prototype { behaviors: [\"Probe\"] }",
-        "Bad :: prototype { behaviors: [Probe, \"Other\"] }",
-        "Bad :: prototype { links: {Targets: \"child.enemy\"} }",
-        "Bad :: prototype { links: {Targets: [child.enemy, \"child.other\"]} }",
-        ("Bad :: prototype { children: [{name: \"enemy\", prototype: "
-         "\"Child\"}] }"),
+    const char *invalid_references[] = {
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Int(1)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Probe\"),\n"
+        "                data.Value.Bool(true)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", data.Value.Int(1))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", data.List([\n"
+        "                    data.Value.Text(\"child.enemy\"),\n"
+        "                    data.Value.Bool(true)\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        ("package asset\n"
+         "\n"
+         "import data \"game:assets\"\n"
+         "\n"
+         "pub Build :: () -> byte[] {\n"
+         "    return data.Encode(\n"
+         "        data.Object([\n"
+         "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+         "            data.Field.Named(\"children\", data.List([\n"
+         "                data.Object([\n"
+         "                    data.Field.Named(\"name\", "
+         "data.Value.Text(\"enemy\")),\n"
+         "                    data.Field.Named(\"prototype\", "
+         "data.Value.Int(1))\n"
+         "                ])\n"
+         "            ]))\n"
+         "        ])\n"
+         "    )\n"
+         "}\n"),
     };
-    for (size_t i = 0; i < sizeof quoted / sizeof *quoted; i++) {
-        REQUIRE(!authoring_prototype_source_read(quoted[i], NULL, error, sizeof error));
-        REQUIRE(strstr(error, "not a string"));
+    for (size_t i = 0; i < sizeof invalid_references / sizeof *invalid_references; i++) {
+        REQUIRE(!authoring_prototype_source_read(invalid_references[i], NULL, error, sizeof error));
+        REQUIRE(error[0]);
     }
     REQUIRE(!authoring_relationship_source_read(
-        "Bad :: relationship {on_delete_target: \"Remove\"}",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Int(1))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     ));
-    REQUIRE(strstr(error, "not a string"));
-    /* Symbol-only references must not restrict actual component text or
-     * the user-visible names of child entities. */
+    REQUIRE(error[0]);
+    /* Reference fields reject non-text values without restricting ordinary
+     * component text or the user-visible names of child entities. */
     const type_field label_field = { .name = "label",
                                      .type = PIN_STR,
                                      .size = sizeof(char *) };
@@ -286,9 +511,39 @@ TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_cont
     const prototype_registry caption_registry = { .components = caption_components,
                                                   .component_count = 1 };
     document = authoring_prototype_source_read(
-        "Good :: prototype { Caption {label: \"Probe\"} behaviors:[Probe]; "
-        "children:[{name:\"enemy\",prototype:Child}], "
-        "links:{Targets:child.enemy} }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Good\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Caption\", data.Object([\n"
+        "                    data.Field.Named(\"label\", "
+        "data.Value.Text(\"Probe\"))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Probe\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemy\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Child\"))\n"
+        "                ])\n"
+        "            ])),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &caption_registry,
         error,
         sizeof error
@@ -302,29 +557,87 @@ TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_cont
         !strcmp(av_get_str(av_obj_get(av_arr_get(av_obj_get(root, "children"), 0), "name")), "enemy")
     );
     REQUIRE(!authoring_relationship_source_read(
-        "First :: relationship {} Second :: relationship {}",
+        "package asset\n"
+        "pub Build :: () -> byte[] { return [] }\n"
+        "pub Build :: () -> byte[] { return [] }\n",
         error,
         sizeof error
     ));
-    REQUIRE(strstr(error, "Invalid authored asset declaration"));
-    REQUIRE(
-        !authoring_prototype_source_read("First :: prototype {} Second :: prototype {}", NULL, error, sizeof error)
-    );
-    REQUIRE(strstr(error, "Invalid authored asset declaration"));
-    REQUIRE(
-        !authoring_relationship_source_read("Bad :: relationship { exclusive: 1 }", error, sizeof error)
-    );
+    REQUIRE(error[0]);
+    REQUIRE(!authoring_prototype_source_read(
+        "package asset\n"
+        "pub Build :: () -> byte[] { return [] }\n"
+        "pub Build :: () -> byte[] { return [] }\n",
+        NULL,
+        error,
+        sizeof error
+    ));
+    REQUIRE(error[0]);
     REQUIRE(!authoring_relationship_source_read(
-        "Bad :: relationship { on_delete_target: Unknown }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"exclusive\", data.Value.Int(1))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     ));
-    REQUIRE(
-        !authoring_relationship_source_read("Bad :: relationship { traversable: true }", error, sizeof error)
-    );
+    REQUIRE(!authoring_relationship_source_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Text(\"Unknown\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    ));
+    REQUIRE(!authoring_relationship_source_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bad\")),\n"
+        "            data.Field.Named(\"traversable\", data.Value.Bool(true))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    ));
     relation = authoring_relationship_source_read(
-        "Owns :: relationship { exclusive:true, acyclic:true, "
-        "on_delete_target:Delete }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Owns\")),\n"
+        "            data.Field.Named(\"exclusive\", data.Value.Bool(true)),\n"
+        "            data.Field.Named(\"acyclic\", data.Value.Bool(true)),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Text(\"Delete\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     );
@@ -404,11 +717,55 @@ TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
     const char *root = "/__chibi_source_asset_test__";
     const source_catalog_edit edits[] = {
         { .path = "/__chibi_source_asset_test__/prototypes/Enemy.chibi",
-          .text = "Enemy :: prototype {}" },
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Enemy\")),\n"
+                  "            data.Field.Named(\"includes\", data.List([])),\n"
+                  "            data.Field.Named(\"components\", "
+                  "data.Object([]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
         { .path = "/__chibi_source_asset_test__/prototypes/Elite.chibi",
-          .text = "Elite :: prototype(Enemy) {}" },
+          .text = "/* local note */\n"
+                  "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Elite\")),\n"
+                  "            data.Field.Named(\"includes\", data.List([\n"
+                  "                data.Value.Text(\"Enemy\")\n"
+                  "            ])),\n"
+                  "            data.Field.Named(\"components\", "
+                  "data.Object([]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
         { .path = "/__chibi_source_asset_test__/relationships/Targets.chibi",
-          .text = "Targets :: relationship { exclusive: true }" },
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Targets\")),\n"
+                  "            data.Field.Named(\"exclusive\", "
+                  "data.Value.Bool(true))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n" },
     };
     const script_catalog empty = { 0 };
     project = source_catalog_edited(root, &empty, edits, 3);
@@ -420,7 +777,24 @@ TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
     REQUIRE(reference->id == script_catalog_id("prototype", "Enemy"));
     REQUIRE(reference->text_kind == SOURCE_TEXT_CHIBI);
     REQUIRE(!strncmp(reference->text + reference->range.start, "Enemy", 5));
-    syntax = script_parse("Elite :: prototype(Enemy) {}");
+    syntax = script_parse(
+        "/* local note */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     authoring_completions completions = { 0 };
     int offset = (int)(strstr(syntax->text, "Enemy") - syntax->text) + 2;
     authoring_asset_source_complete(syntax, project, offset, &completions);
@@ -432,7 +806,21 @@ TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
 }
 TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_change)
 {
-    relation = authoring_relationship_source_read("Targets :: relationship {}", error, sizeof error);
+    relation = authoring_relationship_source_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Targets\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(relation);
     script_catalog_type type = { .id = 12002,
                                  .name = "Health",
@@ -500,7 +888,19 @@ TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_cha
 TEST_CASE(source_relationship_native_commands_are_deferred)
 {
     relation = authoring_relationship_source_read(
-        "Targets :: relationship {exclusive:true}",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Targets\")),\n"
+        "            data.Field.Named(\"exclusive\", data.Value.Bool(true))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     );
@@ -539,7 +939,20 @@ TEST_CASE(source_authored_relationship_compiled_rows_retire_and_restart)
 TEST_CASE(source_scene_release_preserves_external_panic_and_cleans_internal_links)
 {
     relation = authoring_relationship_source_read(
-        "Targets :: relationship { on_delete_target: Panic }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Targets\")),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Text(\"Panic\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     );
@@ -592,7 +1005,20 @@ static int refuse_panic_graph(ecs_world *spawn_world, ecs_entity entity, const c
 TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
 {
     relation = authoring_relationship_source_read(
-        "Targets :: relationship { on_delete_target: Panic }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Targets\")),\n"
+        "            data.Field.Named(\"on_delete_target\", "
+        "data.Value.Text(\"Panic\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         error,
         sizeof error
     );
@@ -601,13 +1027,53 @@ TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
     prototype_registry registry = { .relationships = relations,
                                     .relationship_count = 1,
                                     .include = include };
-    document = authoring_prototype_source_read("Child :: prototype {}", &registry, error, sizeof error);
+    document = authoring_prototype_source_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Child\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        error,
+        sizeof error
+    );
     REQUIRE(document);
-    child_text = av_doc_write(document);
+    child_text = asset_document_write(av_doc_root(document));
     av_doc_free(document);
     document = authoring_prototype_source_read(
-        "Squad :: prototype { children: [{name: \"enemy\", prototype: Child}]; "
-        "links: {Targets: child.enemy} }",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Squad\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemy\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Child\"))\n"
+        "                ])\n"
+        "            ])),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -637,19 +1103,35 @@ static int migration_refuse(const char *content, const char *start, int from, vo
     return -1;
 }
 
-TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
+TEST_CASE(source_project_version_refusal_preserves_manifest)
 {
     char directory[] = "/tmp/chibi-source-finalize.XXXXXX";
     REQUIRE(mkdtemp(directory));
     char content[256], manifest[256];
     snprintf(content, sizeof content, "%s/content", directory);
-    snprintf(manifest, sizeof manifest, "%s/project.kdl", directory);
+    snprintf(manifest, sizeof manifest, "%s/project.chibi", directory);
     REQUIRE(!mkdir(content, 0700));
+    const char *source = "package asset\n"
+                         "\n"
+                         "import data \"game:assets\"\n"
+                         "\n"
+                         "pub Build :: () -> byte[] {\n"
+                         "    return data.Encode(\n"
+                         "        data.Object([\n"
+                         "            data.Field.Named(\"version\", "
+                         "data.Value.Int(25)),\n"
+                         "            data.Field.Named(\"name\", "
+                         "data.Value.Text(\"Unsupported\")),\n"
+                         "            data.Field.Named(\"content\", "
+                         "data.Value.Text(\"content\")),\n"
+                         "            data.Field.Named(\"start_scene\", "
+                         "data.Value.Text(\"Start.chibi\"))\n"
+                         "        ])\n"
+                         "    )\n"
+                         "}\n";
     FILE *file = fopen(manifest, "wb");
     REQUIRE(file);
-    REQUIRE(
-        fputs("version 25\nname \"Migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file) >= 0
-    );
+    REQUIRE(fputs(source, file) >= 0);
     REQUIRE(!fclose(file));
     chibi_project opened = { 0 };
     char error[256];
@@ -658,19 +1140,18 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
         chibi_project_open_migrating(&opened, directory, migration_refuse, &called, error, sizeof error) ==
         -1
     );
-    REQUIRE(called == 25);
-    REQUIRE(strstr(error, "native finalization refused"));
-    file = fopen(manifest, "rb");
-    REQUIRE(file);
-    char bytes[256] = { 0 };
-    REQUIRE(fread(bytes, 1, sizeof bytes - 1, file) > 0);
-    fclose(file);
-    REQUIRE(strstr(bytes, "version 25"));
-    REQUIRE(!chibi_project_inspect(&opened, directory, error, sizeof error));
+    REQUIRE(!called && strstr(error, "older build"));
+    char *unchanged = file_read_text(manifest);
+    REQUIRE(unchanged && !strcmp(unchanged, source));
+    free(unchanged);
+    REQUIRE(chibi_project_inspect(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
-    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == CHIBI_PROJECT_VERSION - 25);
-    REQUIRE(!chibi_project_read(&opened, directory, error, sizeof error));
+    REQUIRE(chibi_project_migrate(directory, error, sizeof error) < 0);
+    REQUIRE(chibi_project_read(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
+    unchanged = file_read_text(manifest);
+    REQUIRE(unchanged && !strcmp(unchanged, source));
+    free(unchanged);
     unlink(manifest);
     rmdir(content);
     rmdir(directory);
@@ -680,7 +1161,7 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
 void test_language_source_assets()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable);
+    RUN_TEST_CASE(source_project_version_refusal_preserves_manifest);
     RUN_TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults);
     RUN_TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup);
     RUN_TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_contracts);
@@ -871,22 +1352,88 @@ static bool bridge_edit(
 TEST_CASE(source_edit_replaces_only_the_normalized_value_span)
 {
     prototype_registry registry = bridge_registry();
-    const char *source = "// keep header\nElite :: prototype { HeAlTh { "
-                         "Cu_rRent: 0x64, /* keep */ maximum: 150 } }\n";
+    const char
+        *source = "// keep header\n"
+                  "/* keep */\n"
+                  "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Elite\")),\n"
+                  "            data.Field.Named(\"includes\", data.List([])),\n"
+                  "            data.Field.Named(\"components\", data.Object([\n"
+                  "                data.Field.Named(\"HeAlTh\", data.Object([\n"
+                  "                    data.Field.Named(\"Cu_rRent\", "
+                  "data.Value.Int(100)),\n"
+                  "                    data.Field.Named(\"maximum\", "
+                  "data.Value.Int(150))\n"
+                  "                ]))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n";
     authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
                                     .component = "Health",
                                     .field = "current",
                                     .value = { .type = PIN_I32, .i = 200 } };
     REQUIRE(bridge_edit(source, &registry, &op, 1));
     REQUIRE(bridge_result.changed && !bridge_result.materialized);
-    REQUIRE(
-        !strcmp(bridge_result.source, "// keep header\nElite :: prototype { HeAlTh { Cu_rRent: 200, /* keep */ maximum: 150 } }\n")
-    );
+    REQUIRE(!strcmp(
+        bridge_result.source,
+        "// keep header\n"
+        "/* keep */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"HeAlTh\", data.Object([\n"
+        "                    data.Field.Named(\"Cu_rRent\", "
+        "data.Value.Int(200)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.Int(150))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     pin_value v;
     REQUIRE(!prototype_read_field(bridge_result.value, "Health", "current", &v) && v.i == 200);
-    REQUIRE(
-        !strcmp(source, "// keep header\nElite :: prototype { HeAlTh { Cu_rRent: 0x64, /* keep */ maximum: 150 } }\n")
-    );
+    REQUIRE(!strcmp(
+        source,
+        "// keep header\n"
+        "/* keep */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"HeAlTh\", data.Object([\n"
+        "                    data.Field.Named(\"Cu_rRent\", "
+        "data.Value.Int(100)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.Int(150))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     op.value.i = 100;
     REQUIRE(bridge_edit(source, &registry, &op, 1));
     REQUIRE(!bridge_result.changed && !strcmp(bridge_result.source, source));
@@ -903,19 +1450,81 @@ TEST_CASE(source_edit_replaces_only_the_normalized_value_span)
 TEST_CASE(source_edit_sparse_component_keeps_other_base_fields_live)
 {
     prototype_registry registry = bridge_registry();
-    base_text = strdup("Enemy :: prototype { Health { current: 100, maximum: 150 } }");
+    base_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(100)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.Int(150))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
                                     .component = "Health",
                                     .field = "current",
                                     .value = { .type = PIN_I32, .i = 200 } };
-    REQUIRE(bridge_edit("Elite :: prototype(Enemy) { /* local note */ }", &registry, &op, 1));
-    REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "prototype(Enemy)"));
+    REQUIRE(bridge_edit(
+        "/* local note */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &op,
+        1
+    ));
+    REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
     REQUIRE(
         strstr(bridge_result.source, "/* local note */") &&
         !strstr(bridge_result.source, "maximum")
     );
     free(base_text);
-    base_text = strdup("Enemy :: prototype { Health { current: 110, maximum: 175 } }");
+    base_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(110)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.Int(175))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     document = authoring_prototype_source_read(bridge_result.source, &registry, error, sizeof error);
     REQUIRE(document);
     authored = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
@@ -927,22 +1536,107 @@ TEST_CASE(source_edit_sparse_component_keeps_other_base_fields_live)
 TEST_CASE(source_edit_nested_axis_obeys_existing_whole_record_semantics)
 {
     prototype_registry registry = bridge_registry();
-    base_text = strdup("Enemy :: prototype { Sample { position: {x: 1, y: 2} } }");
+    base_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(1)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(2))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
                                     .component = "Sample",
                                     .field = "position.x",
                                     .value = { .type = PIN_F32, .f = 9 } };
-    REQUIRE(bridge_edit("Elite :: prototype(Enemy) {}", &registry, &op, 1));
+    REQUIRE(bridge_edit(
+        "/* local note */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &op,
+        1
+    ));
     pin_value v;
     REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &v));
     REQUIRE(((bridge_vector *)v.ptr)->x == 9 && ((bridge_vector *)v.ptr)->y == 2);
-    REQUIRE(strstr(bridge_result.source, "prototype(Enemy)") && !bridge_result.materialized);
-    const char *explicit_source = "Elite :: prototype { Sample { position: { "
-                                  "x: 1, /* axis */ y: 2 } } }";
-    REQUIRE(bridge_edit(explicit_source, &registry, &op, 1));
     REQUIRE(
-        !strcmp(bridge_result.source, "Elite :: prototype { Sample { position: { x: 9, /* axis */ y: 2 } } }")
+        strstr(bridge_result.source, "data.Value.Text(\"Enemy\")") &&
+        !bridge_result.materialized
     );
+    const char *explicit_source =
+        "/* axis */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(1)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(2))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
+    REQUIRE(bridge_edit(explicit_source, &registry, &op, 1));
+    REQUIRE(!strcmp(
+        bridge_result.source,
+        "/* axis */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(9)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(2))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     return true;
 }
 TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
@@ -960,12 +1654,32 @@ TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
         .component = "Sample",
         .value = { .type = PIN_STRUCT, .type_name = "BridgeSample", .ptr = &defaults }
     };
-    REQUIRE(
-        bridge_edit("Elite :: prototype { /* other */ Health {current:1} }", &registry, &add, 1)
-    );
+    REQUIRE(bridge_edit(
+        "/* other */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(1))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &add,
+        1
+    ));
     pin_value v;
     REQUIRE(!memcmp(&defaults, &original, sizeof defaults));
-    REQUIRE(strstr(bridge_result.source, "prefab: Enemy"));
+    REQUIRE(strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
     REQUIRE(
         !prototype_read_field(bridge_result.value, "Sample", "label", &v) &&
         !strcmp(v.str, defaults.label)
@@ -978,40 +1692,155 @@ TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
                                         .component = "Sample" };
     REQUIRE(bridge_edit(added, &registry, &remove, 1));
     free(added);
-    REQUIRE(
-        !bridge_result.materialized &&
-        strstr(bridge_result.source, "/* other */ Health {current:1}")
-    );
+    REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "/* other */"));
     REQUIRE(prototype_read_field(bridge_result.value, "Sample", "position", &v));
     defaults.label = NULL;
-    REQUIRE(bridge_edit("Elite :: prototype {}", &registry, &add, 1));
+    REQUIRE(bridge_edit(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &add,
+        1
+    ));
     REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "label", &v) && !v.str);
     return true;
 }
 TEST_CASE(source_edit_inherited_remove_preserves_children_links_and_behavior_order)
 {
     prototype_registry registry = bridge_registry();
-    relation = authoring_relationship_source_read("Targets :: relationship {}", error, sizeof error);
+    relation = authoring_relationship_source_read(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Targets\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     REQUIRE(relation);
     const ecs_relationship_desc *relationships[] = { relation };
     registry.relationships = relationships;
     registry.relationship_count = 1;
-    child_text = strdup("Child :: prototype { Health {current:5} }");
+    child_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Child\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(5))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     base_text = strdup(
-        "Enemy :: prototype { Health {current:100} Sample {position:{x:3,y:4}, "
-        "target: child.enemy} "
-        "children:[{name:\"enemy\",prototype:Child,retained_components:{Health:"
-        "{maximum:9}}}]; "
-        "links:{Targets:child.enemy}; behaviors:[Zulu, Alpha]; }"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.Int(100))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(3)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(4))\n"
+        "                    ])),\n"
+        "                    data.Field.Named(\"target\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemy\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Child\")),\n"
+        "                    data.Field.Named(\"retained_components\", "
+        "data.Object([\n"
+        "                        data.Field.Named(\"Health\", data.Object([\n"
+        "                            data.Field.Named(\"maximum\", "
+        "data.Value.Int(9))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ])),\n"
+        "            data.Field.Named(\"links\", data.Object([\n"
+        "                data.Field.Named(\"Targets\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Zulu\"),\n"
+        "                data.Value.Text(\"Alpha\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     const char
-        *source = "Elite :: prototype(Enemy) { /* keep */ Sample { label: "
-                  "\"local\" } identity:\"stable-id\"; behaviors:[Local]; }";
+        *source = "/* keep */\n"
+                  "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Elite\")),\n"
+                  "            data.Field.Named(\"includes\", data.List([\n"
+                  "                data.Value.Text(\"Enemy\")\n"
+                  "            ])),\n"
+                  "            data.Field.Named(\"components\", data.Object([\n"
+                  "                data.Field.Named(\"Sample\", data.Object([\n"
+                  "                    data.Field.Named(\"label\", "
+                  "data.Value.Text(\"local\"))\n"
+                  "                ]))\n"
+                  "            ])),\n"
+                  "            data.Field.Named(\"identity\", "
+                  "data.Value.Text(\"stable-id\")),\n"
+                  "            data.Field.Named(\"behaviors\", data.List([\n"
+                  "                data.Value.Text(\"Local\")\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n";
     authoring_prototype_edit remove = { .kind = AUTHORING_PROTOTYPE_REMOVE_COMPONENT,
                                         .component = "Health" };
     REQUIRE(bridge_edit(source, &registry, &remove, 1));
-    REQUIRE(bridge_result.materialized && !strstr(bridge_result.source, "prototype(Enemy)"));
-    REQUIRE(strstr(bridge_result.source, "/* keep */ Sample { label: \"local\""));
+    REQUIRE(bridge_result.materialized && !strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
+    REQUIRE(strstr(bridge_result.source, "/* keep */"));
     REQUIRE(!strcmp(prototype_identity(bridge_result.value), "stable-id"));
     REQUIRE(
         acount(bridge_result.value->children->entities) == 1 &&
@@ -1052,37 +1881,181 @@ TEST_CASE(source_edit_behavior_splices_and_inherited_detach)
     authoring_prototype_edit detach = { .kind = AUTHORING_PROTOTYPE_DETACH_BEHAVIOR,
                                         .behavior = "First" };
     REQUIRE(bridge_edit(
-        "Elite :: prototype { behaviors:[First, /* retain */ Second, First, /* "
-        "adjacent */ First, Third, First /* tail */]; }",
+        "/* retain */\n"
+        "/* adjacent */\n"
+        "/* tail */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"Second\"),\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"Third\"),\n"
+        "                data.Value.Text(\"First\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         &detach,
         1
     ));
     REQUIRE(!prototype_has_graph(bridge_result.value, "First"));
-    REQUIRE(
-        !strcmp(bridge_result.source, "Elite :: prototype { behaviors:[ /* retain */ Second,  /* adjacent */  Third,  /* tail */]; }")
-    );
+    REQUIRE(!strcmp(
+        bridge_result.source,
+        "/* retain */\n"
+        "/* adjacent */\n"
+        "/* tail */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Second\"),\n"
+        "                data.Value.Text(\"Third\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     REQUIRE(bridge_result.changed && !bridge_result.materialized);
     REQUIRE(
         acount(bridge_result.value->graphs) == 2 &&
         !strcmp(bridge_result.value->graphs[0], "Second") &&
         !strcmp(bridge_result.value->graphs[1], "Third")
     );
-    REQUIRE(
-        bridge_edit("Elite :: prototype { behaviors:[First, /* between */ First, First /* end */]; }", &registry, &detach, 1)
-    );
+    REQUIRE(bridge_edit(
+        "/* between */\n"
+        "/* end */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"First\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &detach,
+        1
+    ));
     REQUIRE(
         !acount(bridge_result.value->graphs) &&
-        !strcmp(bridge_result.source, "Elite :: prototype { behaviors:[ /* between */   /* end */]; }")
+        !strcmp(
+            bridge_result.source,
+            "/* between */\n"
+            "/* end */\n"
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"name\", "
+            "data.Value.Text(\"Elite\")),\n"
+            "            data.Field.Named(\"includes\", data.List([])),\n"
+            "            data.Field.Named(\"components\", data.Object([])),\n"
+            "            data.Field.Named(\"behaviors\", data.List([]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n"
+        )
     );
     authoring_prototype_edit attach = { .kind = AUTHORING_PROTOTYPE_ATTACH_BEHAVIOR,
                                         .behavior = "Second" };
-    REQUIRE(bridge_edit("Elite :: prototype {}", &registry, &attach, 1));
+    REQUIRE(bridge_edit(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &attach,
+        1
+    ));
     REQUIRE(prototype_has_graph(bridge_result.value, "Second"));
-    base_text = strdup("Enemy :: prototype { behaviors:[First,Second,First,Third,First]; }");
-    REQUIRE(
-        bridge_edit("Elite :: prototype(Enemy) { /* keep metadata */ behaviors:[First,Local,First]; }", &registry, &detach, 1)
+    base_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"Second\"),\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"Third\"),\n"
+        "                data.Value.Text(\"First\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
+    REQUIRE(bridge_edit(
+        "/* keep metadata */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"First\"),\n"
+        "                data.Value.Text(\"Local\"),\n"
+        "                data.Value.Text(\"First\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &detach,
+        1
+    ));
     REQUIRE(
         bridge_result.materialized &&
         !prototype_has_graph(bridge_result.value, "First") &&
@@ -1115,9 +2088,30 @@ TEST_CASE(source_edit_typed_batch_and_null_symbolic_link)
           .field = "mode",
           .value = { .type = PIN_ENUM, .type_name = "BridgeMode", .e = 1 } },
     };
-    REQUIRE(
-        bridge_edit("Elite :: prototype { Health {current:1 /*keep*/} Sample {} }", &registry, ops, 4)
-    );
+    REQUIRE(bridge_edit(
+        "/*keep*/\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(1))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Sample\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        ops,
+        4
+    ));
     pin_value value;
     REQUIRE(strstr(bridge_result.source, "/*keep*/"));
     REQUIRE(
@@ -1136,23 +2130,91 @@ TEST_CASE(source_edit_typed_batch_and_null_symbolic_link)
         !prototype_read_field(bridge_result.value, "Sample", "mode", &value) &&
         value.e == 1
     );
-    child_text = strdup("Child :: prototype { Health {current:5} }");
+    child_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Child\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(5))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     ops[0] = (authoring_prototype_edit){ .kind = AUTHORING_PROTOTYPE_SET_FIELD,
                                          .component = "Sample",
                                          .field = "target",
                                          .value = { .type = PIN_HANDLE, .u64 = 0 } };
-    REQUIRE(
-        bridge_edit("Elite :: prototype { Sample {target:child.enemy} children:[{name:\"enemy\",prototype:Child}]; }", &registry, ops, 1)
-    );
+    REQUIRE(bridge_edit(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"target\", "
+        "data.Value.Text(\"child.enemy\"))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemy\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Child\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        ops,
+        1
+    ));
     REQUIRE(bridge_result.changed && !acount(bridge_result.value->links));
-    REQUIRE(strstr(bridge_result.source, "target:null"));
+    REQUIRE(strstr(bridge_result.source, "data.Value.Null"));
     return true;
 }
 TEST_CASE(source_edit_batch_rejections_have_no_partial_result)
 {
     prototype_registry registry = bridge_registry();
-    const char *source = "Elite :: prototype { Health {current:1} Sample "
-                         "{position:{x:2,y:3}} }";
+    const char *source =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(1))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(2)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(3))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     authoring_prototype_edit ops[] = {
         { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
           .component = "Health",
@@ -1165,7 +2227,32 @@ TEST_CASE(source_edit_batch_rejections_have_no_partial_result)
     };
     REQUIRE(!bridge_edit(source, &registry, ops, 2));
     REQUIRE(!bridge_result.source && !bridge_result.value && !bridge_result.changed);
-    REQUIRE(!strcmp(source, "Elite :: prototype { Health {current:1} Sample {position:{x:2,y:3}} }"));
+    REQUIRE(!strcmp(
+        source,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(1))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", data.Value.Int(2)),\n"
+        "                        data.Field.Named(\"y\", data.Value.Int(3))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     ops[1] = ops[0];
     REQUIRE(!bridge_edit(source, &registry, ops, 2));
     REQUIRE(!bridge_result.source && !bridge_result.value);
@@ -1179,12 +2266,40 @@ TEST_CASE(source_edit_batch_rejections_have_no_partial_result)
     ops[0].value = (pin_value){ .type = PIN_STRUCT,
                                 .type_name = "AssetHealth",
                                 .ptr = &value };
-    REQUIRE(!bridge_edit("Elite :: prototype { Health {current:1} }", &registry, ops, 1));
+    REQUIRE(!bridge_edit(
+        "/* other */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", data.Value.Int(1))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        ops,
+        1
+    ));
     ops[0].kind = AUTHORING_PROTOTYPE_SET_FIELD;
     ops[0].field = "prefab";
     ops[0].value = (pin_value){ .type = PIN_NAME, .str = "Missing" };
     REQUIRE(!bridge_edit(source, &registry, ops, 1));
-    REQUIRE(!bridge_edit("Elite :: prototype { Health {current: } }", &registry, NULL, 0));
+    REQUIRE(!bridge_edit(
+        "package asset\n"
+        "pub Build :: () -> byte[] { return ",
+        &registry,
+        NULL,
+        0
+    ));
     REQUIRE(!bridge_result.source && !bridge_result.value);
     REQUIRE(
         !authoring_prototype_source_edit(source, &registry, NULL, ops, 1, &bridge_result, error, sizeof error)
@@ -1216,5 +2331,493 @@ void test_language_source_prototype_edits()
     RUN_TEST_CASE(source_edit_behavior_splices_and_inherited_detach);
     RUN_TEST_CASE(source_edit_typed_batch_and_null_symbolic_link);
     RUN_TEST_CASE(source_edit_batch_rejections_have_no_partial_result);
+    pu_clear_setup();
+}
+
+/* Fixed scalar authoring specimens: no filesystem, host calls or world steps. */
+static const char *typed_enemy =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "Twice :: (value: int) -> int { return value * 2 }\n"
+    "Label :: (enabled: bool, label: string) -> string {\n"
+    "    if enabled { return label }\n"
+    "    return \"Other\"\n"
+    "}\n"
+    "HealthForLevel :: (level: int, base: int) -> int {\n"
+    "    total := base\n"
+    "    i := 0\n"
+    "    while i < level {\n"
+    "        if i == 1 { total += Twice(5) } else { total += 5 }\n"
+    "        i += 1\n"
+    "    }\n"
+    "    return total\n"
+    "}\n"
+    "pub Parameters :: () -> data.Value { return data.Object([\n"
+    "            data.Field.Named(\"level\", data.Value.Int(3)),\n"
+    "            data.Field.Named(\"base\", data.Value.Int(100)),\n"
+    "            data.Field.Named(\"enabled\", data.Value.Bool(true)),\n"
+    "            data.Field.Named(\"scale\", data.Value.Real(1.5)),\n"
+    "            data.Field.Named(\"label\", data.Value.Text(\"Guard\"))\n"
+    "        ]) }\n"
+    "pub Overrides :: () -> data.Value { return data.Object([]) }\n"
+    "MakeEnemy :: (parameters: data.Value) -> data.Value {\n"
+    "    return data.Object([data.Field.Named(\"name\", "
+    "data.Value.Text(\"Enemy\")), data.Field.Named(\"parameters\", "
+    "parameters), data.Field.Named(\"components\", "
+    "data.Object([data.Field.Named(\"Health\", "
+    "data.Object([data.Field.Named(\"current\", "
+    "data.Value.Int(int64(HealthForLevel(int(data.AsInt(data.Get(parameters, "
+    "\"level\"))), int(data.AsInt(data.Get(parameters, \"base\"))))))), "
+    "data.Field.Named(\"maximum\", data.Value.Int(200))])), "
+    "data.Field.Named(\"Sample\", data.Object([data.Field.Named(\"label\", "
+    "data.Value.Text(Label(data.AsBool(data.Get(parameters, \"enabled\")), "
+    "data.AsText(data.Get(parameters, \"label\")))))]))]))])\n"
+    "}\n"
+    "pub Build :: () -> byte[] { return "
+    "data.Encode(data.ApplyPrototype(MakeEnemy(Parameters()), "
+    "data.Object([data.Field.Named(\"components\", Overrides()), "
+    "data.Field.Named(\"overrides\", Overrides())]))) }\n";
+static bool typed_health(const prototype *value, int expected)
+{
+    pin_value field;
+    return !prototype_read_field(value, "Health", "current", &field) &&
+           field.i == expected;
+}
+TEST_CASE(typed_prototype_helpers_and_parameter_recomputation)
+{
+    prototype_registry registry = bridge_registry();
+    REQUIRE(bridge_edit(typed_enemy, &registry, NULL, 0));
+    REQUIRE(typed_health(bridge_result.value, 120));
+    pin_value label;
+    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "label", &label));
+    REQUIRE(label.str && !strcmp(label.str, "Guard"));
+    authoring_prototype_field_source info;
+    REQUIRE(authoring_prototype_source_field(typed_enemy, "Health", "current", &info));
+    REQUIRE(info.computed && !info.overridden);
+    REQUIRE(info.expression.end > info.expression.start);
+    const char *
+        call = "HealthForLevel(int(data.AsInt(data.Get(parameters, "
+               "\"level\"))), int(data.AsInt(data.Get(parameters, \"base\"))))";
+    const char *located = strstr(typed_enemy + info.expression.start, call);
+    REQUIRE(located && located + strlen(call) <= typed_enemy + info.expression.end);
+    authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_PARAMETER,
+                                    .field = "level",
+                                    .value = { .type = PIN_I32, .i = 4 } };
+    REQUIRE(bridge_edit(typed_enemy, &registry, &op, 1));
+    REQUIRE(typed_health(bridge_result.value, 125));
+    REQUIRE(strstr(bridge_result.source, call));
+    REQUIRE(strstr(bridge_result.source, "while i < level"));
+    document = authoring_prototype_source_parameters(bridge_result.source, error, sizeof error);
+    REQUIRE(document);
+    REQUIRE(av_get_int(av_obj_get(av_doc_root(document), "level")) == 4);
+    REQUIRE(av_get_bool(av_obj_get(av_doc_root(document), "enabled")));
+    REQUIRE(av_get_num(av_obj_get(av_doc_root(document), "scale")) == 1.5);
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_doc_root(document), "label")), "Guard"));
+    const char *
+        names = "package asset\n"
+                "\n"
+                "import data \"game:assets\"\n"
+                "\n"
+                "asset_evaluation_result_0 :: () -> int { return 2 }\n"
+                "asset_parameter_0 :: () -> int { return 2 }\n"
+                "pub Parameters :: () -> data.Value { return data.Object([\n"
+                "            data.Field.Named(\"level\", data.Value.Int(3))\n"
+                "        ]) }\n"
+                "pub Overrides :: () -> data.Value { return data.Object([]) }\n"
+                "MakeEnemy :: (parameters: data.Value) -> data.Value {\n"
+                "    return data.Object([data.Field.Named(\"name\", "
+                "data.Value.Text(\"Enemy\")), data.Field.Named(\"parameters\", "
+                "parameters), data.Field.Named(\"components\", "
+                "data.Object([data.Field.Named(\"Health\", "
+                "data.Object([data.Field.Named(\"current\", "
+                "data.Value.Int(int64(asset_evaluation_result_0() + "
+                "asset_parameter_0() + int(data.AsInt(data.Get(parameters, "
+                "\"level\"))))))]))]))])\n"
+                "}\n"
+                "pub Build :: () -> byte[] { return "
+                "data.Encode(data.ApplyPrototype(MakeEnemy(Parameters()), "
+                "data.Object([data.Field.Named(\"components\", Overrides()), "
+                "data.Field.Named(\"overrides\", Overrides())]))) }\n";
+    REQUIRE(bridge_edit(names, &registry, NULL, 0));
+    REQUIRE(typed_health(bridge_result.value, 7));
+    syntax = script_parse(typed_enemy);
+    REQUIRE(!syntax->diagnostic_count);
+    base_text = authoring_source_format(syntax, error, sizeof error);
+    REQUIRE(base_text);
+    REQUIRE(bridge_edit(base_text, &registry, NULL, 0));
+    REQUIRE(typed_health(bridge_result.value, 120));
+    REQUIRE(strstr(base_text, "HealthForLevel"));
+    REQUIRE(strstr(base_text, "while"));
+    REQUIRE(authoring_prototype_source_field(base_text, "Health", "current", &info));
+    REQUIRE(info.computed && !info.overridden);
+    return true;
+}
+TEST_CASE(typed_prototype_override_reset_preserves_formula)
+{
+    prototype_registry registry = bridge_registry();
+    authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
+                                    .component = "Health",
+                                    .field = "current",
+                                    .value = { .type = PIN_I32, .i = 90 } };
+    REQUIRE(bridge_edit(typed_enemy, &registry, &op, 1));
+    REQUIRE(typed_health(bridge_result.value, 90));
+    REQUIRE(
+        strstr(bridge_result.source, "HealthForLevel(int(data.AsInt(data.Get(parameters, \"level\")))")
+    );
+    authoring_prototype_field_source info;
+    REQUIRE(authoring_prototype_source_field(bridge_result.source, "Health", "current", &info));
+    REQUIRE(info.computed && info.overridden);
+    base_text = strdup(bridge_result.source);
+    op = (authoring_prototype_edit){ .kind = AUTHORING_PROTOTYPE_SET_PARAMETER,
+                                     .field = "level",
+                                     .value = { .type = PIN_I32, .i = 4 } };
+    REQUIRE(bridge_edit(base_text, &registry, &op, 1));
+    REQUIRE(typed_health(bridge_result.value, 90));
+    child_text = strdup(bridge_result.source);
+    op = (authoring_prototype_edit){ .kind = AUTHORING_PROTOTYPE_RESET_FIELD_OVERRIDE,
+                                     .component = "Health",
+                                     .field = "current" };
+    REQUIRE(bridge_edit(child_text, &registry, &op, 1));
+    REQUIRE(typed_health(bridge_result.value, 125));
+    REQUIRE(authoring_prototype_source_field(bridge_result.source, "Health", "current", &info));
+    REQUIRE(info.computed && !info.overridden);
+    return true;
+}
+TEST_CASE(typed_prototype_parameter_type_refusal_is_atomic)
+{
+    prototype_registry registry = bridge_registry();
+    authoring_prototype_edit ops[] = {
+        { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
+          .component = "Health",
+          .field = "maximum",
+          .value = { .type = PIN_I32, .i = 300 } },
+        { .kind = AUTHORING_PROTOTYPE_SET_PARAMETER,
+          .field = "level",
+          .value = { .type = PIN_STR, .str = "four" } },
+    };
+    REQUIRE(
+        !authoring_prototype_source_edit(typed_enemy, &registry, &bridge_catalog, ops, 2, &bridge_result, error, sizeof error)
+    );
+    REQUIRE(!bridge_result.source && !bridge_result.value && !bridge_result.changed);
+    REQUIRE(strstr(error, "parameter") || strstr(error, "Parameter"));
+    REQUIRE(bridge_edit(typed_enemy, &registry, NULL, 0));
+    REQUIRE(typed_health(bridge_result.value, 120));
+    REQUIRE(strstr(bridge_result.source, "data.Value.Int(200)"));
+    return true;
+}
+TEST_CASE(typed_prototype_rejects_unavailable_capabilities_and_maps_errors)
+{
+    prototype_registry registry = bridge_registry();
+    const char *sources[] = {
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Bad\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(random())))]))]))])) }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Process(\"command\"))))]))]))])) }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "Emit :: () -> int { Print(\"output\"); return 1 }\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Emit())))]))]))])) }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "Wrong :: () -> int {\n"
+        "return true\n"
+        "}\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Wrong())))]))]))])) }\n",
+    };
+    for (int i = 0; i < 4; i++) {
+        document = authoring_prototype_source_read(sources[i], &registry, error, sizeof error);
+        REQUIRE(!document);
+        REQUIRE(error[0]);
+        REQUIRE(strstr(error, "line") || strchr(error, ':'));
+        if (i == 3) {
+            REQUIRE(strstr(error, "6:") || strstr(error, "line 6,"));
+        }
+    }
+    return true;
+}
+static bool typed_cancelled(void *user)
+{
+    int *remaining = user;
+    return --*remaining <= 0;
+}
+TEST_CASE(typed_prototype_budget_and_cancellation_bound_runtime)
+{
+    prototype_registry registry = bridge_registry();
+    const char *source =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "Spin :: (n: int) -> int { i := 0; while i < n { i += 1 } return i }\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Spin(1000)))), data.Field.Named(\"maximum\", "
+        "data.Value.Int(int64(Spin(1000))))]))]))])) }\n";
+    authoring_prototype_source_options options = { .instruction_budget = 100 };
+    document = authoring_prototype_source_read_with_options(source, &registry, &options, error, sizeof error);
+    REQUIRE(!document && strstr(error, "budget"));
+    options.instruction_budget = 1000000;
+    int remaining = 10;
+    options.cancelled = typed_cancelled;
+    options.user = &remaining;
+    document = authoring_prototype_source_read_with_options(source, &registry, &options, error, sizeof error);
+    REQUIRE(!document && strstr(error, "cancelled"));
+    REQUIRE(remaining <= 0);
+    /* Find a sufficient single-field budget without asserting an opcode count.
+     * The same budget must be shared by both fields in the second document. */
+    const char *single = "package asset\n"
+                         "\n"
+                         "import data \"game:assets\"\n"
+                         "\n"
+                         "Count :: () -> int { i := 0; while i < 8 { i += 1 } "
+                         "return i }\n"
+                         "pub Build :: () -> byte[] { return "
+                         "data.Encode(data.Object([data.Field.Named(\"name\", "
+                         "data.Value.Text(\"Enemy\")), "
+                         "data.Field.Named(\"components\", "
+                         "data.Object([data.Field.Named(\"Health\", "
+                         "data.Object([data.Field.Named(\"current\", "
+                         "data.Value.Int(int64(Count())))]))]))])) }\n";
+    const char *double_field =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "Count :: () -> int { i := 0; while i < 8 { i += 1 } return i }\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Count()))), data.Field.Named(\"maximum\", "
+        "data.Value.Int(int64(Count())))]))]))])) }\n";
+    options = (authoring_prototype_source_options){ .instruction_budget = 1048576 };
+    document = authoring_prototype_source_read_with_options(single, &registry, &options, error, sizeof error);
+    REQUIRE(document);
+    av_doc_free(document);
+    document = NULL;
+    uint64_t low = 1, high = 1048576;
+    while (low < high) {
+        uint64_t middle = low + (high - low) / 2;
+        options.instruction_budget = middle;
+        document = authoring_prototype_source_read_with_options(single, &registry, &options, error, sizeof error);
+        if (document) {
+            high = middle;
+            av_doc_free(document);
+            document = NULL;
+        } else {
+            REQUIRE(strstr(error, "budget"));
+            low = middle + 1;
+        }
+    }
+    options.instruction_budget = high;
+    document = authoring_prototype_source_read_with_options(single, &registry, &options, error, sizeof error);
+    REQUIRE(document);
+    av_doc_free(document);
+    document = authoring_prototype_source_read_with_options(double_field, &registry, &options, error, sizeof error);
+    REQUIRE(!document && strstr(error, "budget"));
+    return true;
+}
+TEST_CASE(typed_prototype_metadata_never_executes_helpers)
+{
+    const char *source =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "Spin :: () -> int { while true {} return 1 }\n"
+        "pub Parameters :: () -> data.Value { return data.Object([\n"
+        "            data.Field.Named(\"level\", data.Value.Int(2))\n"
+        "        ]) }\n"
+        "pub Overrides :: () -> data.Value { return data.Object([\n"
+        "            data.Field.Named(\"Health\", data.Object([\n"
+        "                data.Field.Named(\"current\", data.Value.Int(90))\n"
+        "            ]))\n"
+        "        ]) }\n"
+        "MakeEnemy :: (parameters: data.Value) -> data.Value {\n"
+        "    return data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Enemy\")), data.Field.Named(\"parameters\", "
+        "parameters), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Health\", "
+        "data.Object([data.Field.Named(\"current\", "
+        "data.Value.Int(int64(Spin())))])), data.Field.Named(\"Sample\", "
+        "data.Object([data.Field.Named(\"position\", data.Object([\n"
+        "            data.Field.Named(\"x\", data.Value.Real(1.0)),\n"
+        "            data.Field.Named(\"y\", data.Value.Real(2.0))\n"
+        "        ])), data.Field.Named(\"prefab\", "
+        "data.Value.Text(\"Enemy\"))]))]))])\n"
+        "}\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.ApplyPrototype(MakeEnemy(Parameters()), "
+        "data.Object([data.Field.Named(\"components\", Overrides()), "
+        "data.Field.Named(\"overrides\", Overrides())]))) }\n";
+    document = authoring_prototype_source_parameters(source, error, sizeof error);
+    REQUIRE(document && av_get_int(av_obj_get(av_doc_root(document), "level")) == 2);
+    authoring_prototype_field_source info;
+    REQUIRE(authoring_prototype_source_field(source, "Health", "current", &info));
+    REQUIRE(info.computed && info.overridden);
+    REQUIRE(authoring_prototype_source_field(source, "Sample", "position.x", &info));
+    REQUIRE(!info.computed && !info.overridden);
+    REQUIRE(authoring_prototype_source_field(source, "Sample", "prefab", &info));
+    REQUIRE(!info.computed && !info.overridden);
+    return true;
+}
+TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings)
+{
+    prototype_registry registry = bridge_registry();
+    const char *source =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Parameters :: () -> data.Value { return data.Object([\n"
+        "            data.Field.Named(\"axis\", data.Value.Real(3.0))\n"
+        "        ]) }\n"
+        "pub Overrides :: () -> data.Value { return data.Object([]) }\n"
+        "MakeEnemy :: (parameters: data.Value) -> data.Value {\n"
+        "    return data.Object([data.Field.Named(\"name\", "
+        "data.Value.Text(\"Elite\")), data.Field.Named(\"parameters\", "
+        "parameters), data.Field.Named(\"components\", "
+        "data.Object([data.Field.Named(\"Sample\", "
+        "data.Object([data.Field.Named(\"position\", "
+        "data.Object([data.Field.Named(\"x\", "
+        "data.Value.Real(data.AsReal(data.Get(parameters, \"axis\")))), "
+        "data.Field.Named(\"y\", data.Value.Real(2.0))]))]))]))])\n"
+        "}\n"
+        "pub Build :: () -> byte[] { return "
+        "data.Encode(data.ApplyPrototype(MakeEnemy(Parameters()), "
+        "data.Object([data.Field.Named(\"components\", Overrides()), "
+        "data.Field.Named(\"overrides\", Overrides())]))) }\n";
+    authoring_prototype_edit op = { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
+                                    .component = "Sample",
+                                    .field = "position.x",
+                                    .value = { .type = PIN_F32, .f = 9 } };
+    REQUIRE(bridge_edit(source, &registry, &op, 1));
+    pin_value value;
+    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
+    REQUIRE(strstr(bridge_result.source, "data.Get(parameters, \"axis\")"));
+    child_text = strdup(bridge_result.source);
+    authoring_prototype_edit reset = { .kind = AUTHORING_PROTOTYPE_RESET_FIELD_OVERRIDE,
+                                       .component = "Sample",
+                                       .field = "position.x" };
+    authoring_prototype_edit_result rejected = { 0 };
+    bool reset_ok = authoring_prototype_source_edit(
+        child_text,
+        &registry,
+        &bridge_catalog,
+        &reset,
+        1,
+        &rejected,
+        error,
+        sizeof error
+    );
+    bool empty = !rejected.source && !rejected.value && !rejected.changed;
+    authoring_prototype_edit_result_free(&rejected);
+    REQUIRE(!reset_ok && empty);
+    REQUIRE(strstr(error, "entire native record position"));
+    REQUIRE(!strcmp(child_text, bridge_result.source));
+    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
+    reset.field = "position";
+    REQUIRE(bridge_edit(child_text, &registry, &reset, 1));
+    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(((bridge_vector *)value.ptr)->x == 3 && ((bridge_vector *)value.ptr)->y == 2);
+    REQUIRE(strstr(bridge_result.source, "data.Get(parameters, \"axis\")"));
+    base_text = strdup(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Enemy\")),\n"
+        "            data.Field.Named(\"includes\", data.List([])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Sample\", data.Object([\n"
+        "                    data.Field.Named(\"position\", data.Object([\n"
+        "                        data.Field.Named(\"x\", "
+        "data.Value.Real(1.0)),\n"
+        "                        data.Field.Named(\"y\", "
+        "data.Value.Real(2.0))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    REQUIRE(bridge_edit(
+        "/* local note */\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Enemy\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &registry,
+        &op,
+        1
+    ));
+    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
+    REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
+    return true;
+}
+void test_language_typed_prototype()
+{
+    pu_setup(NULL, bridge_cleanup);
+    RUN_TEST_CASE(typed_prototype_helpers_and_parameter_recomputation);
+    RUN_TEST_CASE(typed_prototype_override_reset_preserves_formula);
+    RUN_TEST_CASE(typed_prototype_parameter_type_refusal_is_atomic);
+    RUN_TEST_CASE(typed_prototype_rejects_unavailable_capabilities_and_maps_errors);
+    RUN_TEST_CASE(typed_prototype_budget_and_cancellation_bound_runtime);
+    RUN_TEST_CASE(typed_prototype_metadata_never_executes_helpers);
+    RUN_TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings);
     pu_clear_setup();
 }

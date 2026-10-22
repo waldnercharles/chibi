@@ -74,9 +74,9 @@ editing belongs to the separate graph authoring package.
 `Chibi::studio_capabilities` is an optional compiler-enabled package for Studio's
 typed service calls. Studio supplies the service implementation; the package
 contains no editor UI or graph objects.
-`Chibi::asset_text` parses and writes KDL documents during asset preparation and
-authoring. Its parser implementation and headers are private. This target is
-included only in the compiler-enabled SDK.
+`Chibi::asset_documents` evaluates compiled Chibi asset sources and transports
+owned asset values during preparation and authoring. The compiler-enabled SDK
+provides the shared prepared compiler host; authored source policy stays in Chibi.
 `Chibi::language_syntax` owns incremental parse snapshots. `Chibi::language`
 resolves source against a supplied declaration catalog. `Chibi::compiler` lowers
 that resolved source to the executable representation. `Chibi::execution` owns
@@ -95,7 +95,7 @@ contract. These packages contain no graph or Studio dependencies.
 `Chibi::authoring` also owns canonical navigation, rename plans, highlights,
 completion and hover results shared by source consumers.
 `Chibi::component_presentation` reads reflected field labels, ranges and editor
-grouping from KDL without depending on prototypes, graph objects or Studio.
+grouping from compiled Chibi source without depending on prototypes, graph objects or Studio.
 `Chibi::project_document` owns project manifest creation, loading and scene-path
 resolution. Both are optional compiler-enabled packages.
 `Chibi::reference_index` owns project dependency/reference facts and reachability

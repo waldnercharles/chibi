@@ -1,5 +1,6 @@
 #include "assets/project.h"
 #include "platform/cute.h"
+#include "support/asset_document.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -14,30 +15,178 @@
 static const char *program;
 static char root[128];
 static yyjson_doc *replies[9];
-static const char *material =
-    "version 3\nname \"Bake\"\ndomain \"material\"\nid_counter 1000\n"
-    "(array)graphs {\n - {\n kind \"event\"\n name \"\"\n (array)nodes {\n"
-    " - {\n id 1\n type \"Shader Surface Output\"\n }\n"
-    " - {\n id 100\n type \"Call Pure Function\"\n reference_id 300\n "
-    "reference_name \"Local\"\n outputs {\n Result id=101 declaration_id=401 "
-    "type=\"float\"\n }\n }\n"
-    " }\n (array)edges {\n - from=\"100.Result\" to=\"1.Roughness\"\n }\n }\n"
-    " - {\n id 300\n kind \"function\"\n name \"Local\"\n entry_id 301\n "
-    "return_id 400\n call_depth_limit 64\n"
-    " (array)nodes {\n - {\n id 301\n type \"Function Entry\"\n }\n"
-    " - {\n id 400\n type \"Return\"\n (array)inputs {\n - id=401 "
-    "name=\"Result\" type=\"float\" kind=\"data\"\n }\n }\n"
-    " - {\n id 500\n type \"Shader Parameter\"\n reference_name \"Rough\"\n "
-    "outputs {\n Value default=0.25\n }\n }\n"
-    " }\n (array)edges {\n - from=\"500.Value\" to=\"400.Result\"\n }\n }\n}\n";
+static const char *material[] = {
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"version\", data.Value.UInt(3)),\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Bake\")),\n"
+    "            data.Field.Named(\"domain\", data.Value.Text(\"material\")),\n"
+    "            data.Field.Named(\"id_counter\", data.Value.UInt(1000)),\n"
+    "            data.Field.Named(\"graphs\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"kind\", "
+    "data.Value.Text(\"event\")),\n"
+    "                    data.Field.Named(\"name\", data.Value.Text(\"\")),\n"
+    "                    data.Field.Named(\"nodes\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(1)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Shader Surface Output\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(100)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Call Pure Function\")),\n"
+    "                            data.Field.Named(\"reference_id\", "
+    "data.Value.UInt(300)),\n"
+    "                            data.Field.Named(\"reference_name\", "
+    "data.Value.Text(\"Local\")),\n"
+    "                            data.Field.Named(\"outputs\", data.Object([\n"
+    "                                data.Field.Named(\"Result\", "
+    "data.Object([\n"
+    "                                    data.Field.Named(\"id\", "
+    "data.Value.UInt(101)),\n"
+    "                                    data.Field.Named(\"declaration_id\", "
+    "data.Value.UInt(401)),\n"
+    "                                    data.Field.Named(\"type\", "
+    "data.Value.Text(\"float\"))\n"
+    "                                ]))\n"
+    "                            ]))\n"
+    "                        ])\n"
+    "                    ])),\n"
+    "                    data.Field.Named(\"edges\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"100.Result\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"1.Roughness\"))\n"
+    "                        ])\n"
+    "                    ]))\n"
+    "                ]),\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"id\", data.Value.UInt(300)),\n"
+    "                    data.Field.Named(\"kind\", "
+    "data.Value.Text(\"function\")),\n"
+    "                    data.Field.Named(\"name\", "
+    "data.Value.Text(\"Local\")),\n"
+    "                    data.Field.Named(\"entry_id\", "
+    "data.Value.UInt(301)),\n"
+    "                    data.Field.Named(\"return_id\", "
+    "data.Value.UInt(400)),\n"
+    "                    data.Field.Named(\"call_depth_limit\", "
+    "data.Value.UInt(64)),\n"
+    "                    data.Field.Named(\"nodes\", data.List([\n",
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(301)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Function Entry\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(400)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Return\")),\n"
+    "                            data.Field.Named(\"inputs\", data.List([\n"
+    "                                data.Object([\n"
+    "                                    data.Field.Named(\"id\", "
+    "data.Value.UInt(401)),\n"
+    "                                    data.Field.Named(\"name\", "
+    "data.Value.Text(\"Result\")),\n"
+    "                                    data.Field.Named(\"type\", "
+    "data.Value.Text(\"float\")),\n"
+    "                                    data.Field.Named(\"kind\", "
+    "data.Value.Text(\"data\"))\n"
+    "                                ])\n"
+    "                            ]))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(500)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Shader Parameter\")),\n"
+    "                            data.Field.Named(\"reference_name\", "
+    "data.Value.Text(\"Rough\")),\n"
+    "                            data.Field.Named(\"outputs\", data.Object([\n"
+    "                                data.Field.Named(\"Value\", "
+    "data.Object([\n"
+    "                                    data.Field.Named(\"default\", "
+    "data.Value.Real(0.25))\n"
+    "                                ]))\n"
+    "                            ]))\n"
+    "                        ])\n"
+    "                    ])),\n"
+    "                    data.Field.Named(\"edges\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"500.Value\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"400.Result\"))\n"
+    "                        ])\n"
+    "                    ]))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n"
+};
 static const char *image_material =
-    "version 3\nname \"Image\"\ndomain \"material\"\nid_counter 200\n"
-    "(array)graphs {\n - {\n kind \"event\"\n name \"\"\n (array)nodes {\n"
-    " - {\n id 1\n type \"Shader Surface Output\"\n }\n"
-    " - {\n id 100\n type \"Shader Image Texture\"\n inputs {\n Image "
-    "\"content/images/Test.png\"\n \"Color Space\" 1\n }\n }\n"
-    " }\n (array)edges {\n - from=\"100.Color\" to=\"1.Base Color\"\n }\n "
-    "}\n}\n";
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"version\", data.Value.UInt(3)),\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Image\")),\n"
+    "            data.Field.Named(\"domain\", data.Value.Text(\"material\")),\n"
+    "            data.Field.Named(\"id_counter\", data.Value.UInt(200)),\n"
+    "            data.Field.Named(\"graphs\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"kind\", "
+    "data.Value.Text(\"event\")),\n"
+    "                    data.Field.Named(\"name\", data.Value.Text(\"\")),\n"
+    "                    data.Field.Named(\"nodes\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(1)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Shader Surface Output\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(100)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Shader Image Texture\")),\n"
+    "                            data.Field.Named(\"inputs\", data.Object([\n"
+    "                                data.Field.Named(\"Image\", "
+    "data.Value.Text(\"content/images/Test.png\")),\n"
+    "                                data.Field.Named(\"Color Space\", "
+    "data.Value.UInt(1))\n"
+    "                            ]))\n"
+    "                        ])\n"
+    "                    ])),\n"
+    "                    data.Field.Named(\"edges\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"100.Color\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"1.Base Color\"))\n"
+    "                        ])\n"
+    "                    ]))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
 
 static void write_at(const char *name, const char *text)
 {
@@ -47,39 +196,68 @@ static void write_at(const char *name, const char *text)
 }
 static void write_many_images()
 {
-    char path[256];
-    snprintf(path, sizeof path, "%s/content/materials/TooMany.kdl", root);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs("version 3\nname \"TooMany\"\ndomain \"material\"\nid_counter 10000\n(array)graphs {\n - {\n kind \"event\"\n name \"\"\n (array)nodes {\n - {\n id 1\n type \"Shader Surface Output\"\n }\n", file);
+    av_doc *doc = av_doc_new();
+    av_value *root_value = av_obj(doc);
+    av_doc_set_root(doc, root_value);
+    av_obj_add_int(doc, root_value, "version", 3);
+    av_obj_add_str(doc, root_value, "name", "TooMany");
+    av_obj_add_str(doc, root_value, "domain", "material");
+    av_obj_add_int(doc, root_value, "id_counter", 10000);
+    av_value *graph = av_arr_add_obj(doc, av_obj_add_arr(doc, root_value, "graphs"));
+    av_obj_add_str(doc, graph, "kind", "event");
+    av_obj_add_str(doc, graph, "name", "");
+    av_value *nodes = av_obj_add_arr(doc, graph, "nodes");
+    av_value *output = av_arr_add_obj(doc, nodes);
+    av_obj_add_int(doc, output, "id", 1);
+    av_obj_add_str(doc, output, "type", "Shader Surface Output");
     for (int i = 0; i < 9; i++) {
-        fprintf(
-            file,
-            " - {\n id %d\n type \"Shader Image Texture\"\n inputs {\n Image "
-            "\"content/images/missing%d.png\"\n }\n }\n",
-            1000 + i * 100,
-            i
-        );
+        av_value *node = av_arr_add_obj(doc, nodes);
+        av_obj_add_int(doc, node, "id", 1000 + i * 100);
+        av_obj_add_str(doc, node, "type", "Shader Image Texture");
+        char image[128];
+        snprintf(image, sizeof image, "content/images/missing%d.png", i);
+        av_obj_add_str(doc, av_obj_add_obj(doc, node, "inputs"), "Image", image);
     }
     for (int i = 0; i < 8; i++) {
-        fprintf(
-            file,
-            " - {\n id %d\n type \"Shader Add\"\n inputs {\n A type=\"struct\" "
-            "type_name=\"ShaderVec3\"\n B type=\"struct\" "
-            "type_name=\"ShaderVec3\"\n }\n outputs {\n Value type=\"struct\" "
-            "type_name=\"ShaderVec3\"\n }\n }\n",
-            3000 + i * 100
-        );
-    }
-    fputs(" }\n (array)edges {\n - from=\"1000.Color\" to=\"3000.A\"\n", file);
-    for (int i = 0; i < 8; i++) {
-        fprintf(file, " - from=\"%d.Color\" to=\"%d.B\"\n", 1100 + i * 100, 3000 + i * 100);
-        if (i < 7) {
-            fprintf(file, " - from=\"%d.Value\" to=\"%d.A\"\n", 3000 + i * 100, 3100 + i * 100);
+        av_value *node = av_arr_add_obj(doc, nodes);
+        av_obj_add_int(doc, node, "id", 3000 + i * 100);
+        av_obj_add_str(doc, node, "type", "Shader Add");
+        av_value *inputs = av_obj_add_obj(doc, node, "inputs"),
+                 *outputs = av_obj_add_obj(doc, node, "outputs");
+        const char *names[] = { "A", "B", "Value" };
+        for (int j = 0; j < 3; j++) {
+            av_value *port = av_obj_add_obj(doc, j < 2 ? inputs : outputs, names[j]);
+            av_obj_add_str(doc, port, "type", "struct");
+            av_obj_add_str(doc, port, "type_name", "ShaderVec3");
         }
     }
-    fputs(" - from=\"3700.Value\" to=\"1.Base Color\"\n }\n }\n}\n", file);
-    assert(!fclose(file));
+    av_value *edges = av_obj_add_arr(doc, graph, "edges"),
+             *edge = av_arr_add_obj(doc, edges);
+    av_obj_add_str(doc, edge, "from", "1000.Color");
+    av_obj_add_str(doc, edge, "to", "3000.A");
+    for (int i = 0; i < 8; i++) {
+        char from[64], to[64];
+        edge = av_arr_add_obj(doc, edges);
+        snprintf(from, sizeof from, "%d.Color", 1100 + i * 100);
+        snprintf(to, sizeof to, "%d.B", 3000 + i * 100);
+        av_obj_add_str(doc, edge, "from", from);
+        av_obj_add_str(doc, edge, "to", to);
+        if (i < 7) {
+            edge = av_arr_add_obj(doc, edges);
+            snprintf(from, sizeof from, "%d.Value", 3000 + i * 100);
+            snprintf(to, sizeof to, "%d.A", 3100 + i * 100);
+            av_obj_add_str(doc, edge, "from", from);
+            av_obj_add_str(doc, edge, "to", to);
+        }
+    }
+    edge = av_arr_add_obj(doc, edges);
+    av_obj_add_str(doc, edge, "from", "3700.Value");
+    av_obj_add_str(doc, edge, "to", "1.Base Color");
+    char *source = asset_document_write(root_value);
+    assert(source);
+    write_at("content/materials/TooMany.chibi", source);
+    free(source);
+    av_doc_free(doc);
 }
 static yyjson_val *value(int i)
 {
@@ -110,11 +288,32 @@ TEST_CASE(offline_material_bake_contract)
         snprintf(path, sizeof path, "%s/%s", root, dirs[i]);
         REQUIRE(!mkdir(path, 0700));
     }
-    char manifest[160];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Bake test\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
-    write_at("project.kdl", manifest);
-    write_at("content/materials/Bake.kdl", material);
-    write_at("content/materials/Image.kdl", image_material);
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bake "
+        "test\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        CHIBI_PROJECT_VERSION
+    );
+    write_at("project.chibi", manifest);
+    char material_source[8192];
+    snprintf(material_source, sizeof material_source, "%s%s", material[0], material[1]);
+    write_at("content/materials/Bake.chibi", material_source);
+    write_at("content/materials/Image.chibi", image_material);
     write_many_images();
     CF_Pixel pixel = { .r = 255, .g = 64, .b = 0, .a = 255 };
     CF_Image image = { 1, 1, &pixel };

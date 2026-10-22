@@ -1,5 +1,0 @@
-name "Follower"
-components {
-    Transform x=-60.0
-}
-(array)behaviors "Trail"

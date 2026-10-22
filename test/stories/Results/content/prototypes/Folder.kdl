@@ -1,5 +1,0 @@
-name "Folder"
-components {
-    (object)Transform
-}
-(array)behaviors "Fold"

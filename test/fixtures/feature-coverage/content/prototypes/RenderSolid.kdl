@@ -1,6 +1,0 @@
-name "RenderSolid"
-components {
-    Geometry3D depth=50.0 elevation=25.0 height=50.0 width=50.0
-    Material scene=0xd0d8e0ff
-    (object)Transform
-}

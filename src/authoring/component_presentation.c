@@ -1,7 +1,7 @@
 #include "authoring/component_presentation.h"
 
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -23,9 +23,9 @@ static const char *const ICON_NAMES[COMPONENT_ICON_COUNT] = {
     "gamepad", "keyboard", "projectile", "health",  "diamond", "shape",
 };
 
-/* engine_components.kdl, embedded at build time. */
-extern const unsigned char component_presentation_engine_kdl[];
-extern const size_t component_presentation_engine_kdl_size;
+/* engine_components.chibi, embedded at build time. */
+extern const unsigned char component_presentation_engine_source[];
+extern const size_t component_presentation_engine_source_size;
 
 /* The engine's tab and icon for one of its components, named by key. */
 typedef struct
@@ -99,9 +99,9 @@ static bool read_icon(av_value *value, component_icon *out)
 
 char *component_presentation_engine_text()
 {
-    size_t size = component_presentation_engine_kdl_size;
+    size_t size = component_presentation_engine_source_size;
     char *text = xmalloc(size + 1);
-    memcpy(text, component_presentation_engine_kdl, size);
+    memcpy(text, component_presentation_engine_source, size);
     text[size] = 0;
     return text;
 }
@@ -117,7 +117,7 @@ static const engine_component *engine_components(int *count)
     if (!components) {
         char error[256];
         char *text = component_presentation_engine_text();
-        av_doc *doc = asset_text_read(text, error, sizeof error);
+        av_doc *doc = asset_document_read(text, error, sizeof error);
         free(text);
         assert(doc);
         av_obj_iter iterator = av_obj_iter_with(av_obj_get(av_doc_root(doc), "components"));
@@ -331,7 +331,7 @@ bool component_presentation_read(
 )
 {
     assert(text && out);
-    av_doc *doc = asset_text_read(text, error, error_size);
+    av_doc *doc = asset_document_read(text, error, error_size);
     if (!doc) {
         return false;
     }

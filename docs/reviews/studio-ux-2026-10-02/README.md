@@ -1,5 +1,8 @@
 # Studio UI and interaction QA
 
+> Historical record: this document describes an earlier source format and toolchain.
+> Use the current language and authoring guides for executable instructions.
+
 This pass preserves Studio's C/RmlUi implementation, shared kit controls, and
 compact authoring layout. The requested design skills informed the audit. The
 editor's own UI and graph contracts governed the implementation.
@@ -28,7 +31,7 @@ The table below records how those principles affected concrete decisions.
 | Maximized Properties spread the label column across 38% of the window, separating fields from component headings. | The shared property split caps labels at 160 dp, scaled with the standard font. Narrow panes retain their proportional split. | Proximity, Common Region |
 | Larger fonts made graph breadcrumbs and source toolbar controls overlap. | Header actions retain their width; document names shrink with ellipsis. | Fitts's Law, Similarity |
 | Function parameter names disappeared in narrow Properties panes. | Signature fields wrap while retaining an editable name field. | Proximity, Working Memory |
-| KDL source exposed floating-point representation noise such as `0.20000000000000001`. | Serialization uses concise decimals that preserve the original scalar on reload. Native float values no longer gain digits when promoted to doubles. | Mental Model, Aesthetic-Usability Effect |
+| the former document format source exposed floating-point representation noise such as `0.20000000000000001`. | Serialization uses concise decimals that preserve the original scalar on reload. Native float values no longer gain digits when promoted to doubles. | Mental Model, Aesthetic-Usability Effect |
 | Every Assets emission rescanned references, filtered and sorted all assets, and allocated temporary lists. | Usage counts and sorted IDs follow the actual index revision. Filter changes rebuild rows only; unchanged emissions reuse the model. Explicit index refresh wakes the view. | Doherty Threshold |
 | Closed graph asset pickers still enumerated the entire catalog. | Catalog work occurs when the picker opens. | Doherty Threshold |
 | Minified web HTML silently skipped local workspace injection and opened bundled content. | The server recognizes executable quoted or unquoted serial, threaded, and plain launch scripts, skips inert templates, and fails clearly when no launch script exists. | Mental Model, Postel's Law |
@@ -46,7 +49,7 @@ rendered controls and inspect document/model results.
 | Layout and preferences | Horizontal/vertical splits, maximize/restore, drawer switching, document reveal, side-pane state, dark/light themes, compact/comfortable density, narrow 1024×768 and wide 1440×1000 windows, UI scaling through 200%, font changes through 18 dp, shortcut recording and cancellation |
 | Assets and scenes | Search and no results, kind/group filtering, virtual rows, explicit index refresh, new-asset menus, invalid-name feedback, scene creation, add prototype, object rename, Frame, delete and Undo, save to the mirrored workspace |
 | Graph and Properties | Node drag and cached geometry, wire pickup/cancel/reconnect/disconnect/stale source/Undo, numeric and source autocomplete edits, expression drafts, folded sources, typed vectors, enum search, colors and alpha, nested collections, function parameter name typing/cancellation and container menus, Undo/Redo and serialized replay |
-| Canvas and source | Fit/Phone/Desktop preview sizing, selection through collapsed and filtered Hierarchy, source/canvas selection synchronization, RML/RCSS and KDL editors, live/deferred edits, failed and successful reload, checkpoint-only drafts, source navigation and code intelligence |
+| Canvas and source | Fit/Phone/Desktop preview sizing, selection through collapsed and filtered Hierarchy, source/canvas selection synchronization, RML/RCSS and the former document format editors, live/deferred edits, failed and successful reload, checkpoint-only drafts, source navigation and code intelligence |
 | Playback and diagnostics | Play, Pause, Step, Stop, focused game input, Output tabs, Performance history, bounded idle/playing inspection and retained intermediate telemetry |
 | Collaboration | Dialog and cancellation in browser; follow/stop/leave/request failure states in rendered fixtures; action serialization, stale-action rejection, atomic reconnect replay, and Undo in native tests |
 
@@ -120,7 +123,7 @@ draft, and the container menu stayed anchored and usable.
 | `make web` with profiling ON and OFF | Serial and worker builds, backend checks, and paired packaging passed; final build has profiling OFF |
 | `make check-format` and `git diff --check` | Passed |
 | Numeric serialization | Adjacent values, subnormals, extremes, signed zero, concise decimals, cloning, and 19,951 sampled native numeric round trips passed |
-| Canonical numeric migration | 102 KDL files reformatted; all 353 changed native float values preserve their original bits; no unexpected value changes |
+| Canonical numeric migration | 102 the former document format files reformatted; all 353 changed native float values preserve their original bits; no unexpected value changes |
 | Chromium browser QA | Worker and explicit serial startup, playback controls, and the recorded interaction matrix passed; no captured page exceptions |
 
 Native validation used Debug builds with AddressSanitizer, UndefinedBehaviorSanitizer,
@@ -131,6 +134,6 @@ Clang 23.1.1 and the macOS 26.5 SDK. The local CMake override was
 The browser [startup and error record](performance/browser-smoke.json),
 [timings](performance/browser-results.md), and screenshots retain the evidence
 separately from the source audit. Authoring checks used the temporary workspace;
-authoring tests did not change the repository's game content. Checked-in KDL
+authoring tests did not change the repository's game content. Checked-in the former document format
 assets were subsequently reformatted for concise numeric spelling, with value
 preservation checked separately.

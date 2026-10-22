@@ -1,0 +1,37 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Player")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Aim", data.Object([])),
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("height", data.Value.Real(18.0)),
+                    data.Field.Named("width", data.Value.Real(20.0))
+                ])),
+                data.Field.Named("Collider", data.Object([])),
+                data.Field.Named("Drive", data.Object([])),
+                data.Field.Named("GlobalBinding", data.Object([
+                    data.Field.Named("name", data.Value.Text("Player"))
+                ])),
+                data.Field.Named("Health", data.Object([])),
+                data.Field.Named("Input", data.Object([])),
+                data.Field.Named("Material", data.Object([])),
+                data.Field.Named("Movement", data.Object([])),
+                data.Field.Named("Orientation", data.Object([])),
+                data.Field.Named("Transform", data.Object([])),
+                data.Field.Named("Velocity", data.Object([])),
+                data.Field.Named("Weapon", data.Object([
+                    data.Field.Named("cooldown", data.Value.Real(1.0))
+                ]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("Movement"),
+                data.Value.Text("Weapon")
+            ]))
+        ])
+    );
+}

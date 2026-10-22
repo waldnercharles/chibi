@@ -1,5 +1,0 @@
-name "Prop"
-components {
-    Sprite frame_height=16 frame_width=16 height_map="content/images/props_height.png" image="content/images/props.png" layer=1 normal_map="content/images/props_normal.png" relief=4.0
-    (object)Transform
-}

@@ -88,5 +88,5 @@ sparse grids are additional implementation work. This is a reviewed assessment,
 not implemented solver code.
 
 External LuaJIT, V8 and JavaScriptCore comparisons remain postponed until further
-notice. [The evidence JSON](performance-next-wave-20261001.json) binds source,
+notice. [The evidence JSON](https://github.com/waldnercharles/chibi/blob/f2d9718625736d2ca02e2861cb4c42745893a954/docs/research/performance-next-wave-20261001.json) binds source,
 validation, preserved failures, artifacts and delivery receipts.

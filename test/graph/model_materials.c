@@ -708,11 +708,25 @@ TEST_CASE(flattened_parameter_limit)
     REQUIRE((int)bindings[1][2] + (int)bindings[2][2] == 32);
     model_material_slot applied;
     REQUIRE(render_shader_model_material_slot(index, 0, &applied));
-    char text[1024];
+    char text[16384];
     snprintf(
         text,
         sizeof text,
-        "(array)\"material.%s.Color0\" 0 0.5 0.25\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"material.%s.Color0\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.Real(0.5),\n"
+        "                data.Value.Real(0.25)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         applied.name
     );
     REQUIRE(render_shader_parameters_validate(index, text, &error));
@@ -737,12 +751,44 @@ TEST_CASE(flattened_parameter_limit)
     memcpy(valid_bindings, bindings, sizeof bindings);
     memcpy(valid_parameters, parameters, sizeof parameters);
     /* Color0 appears in both materials and cannot be overridden as a bare name. */
-    REQUIRE(!render_shader_parameters_validate(index, "(array)Color0 0 0 0\n", &error));
+    REQUIRE(!render_shader_parameters_validate(
+        index,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Color0\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(0)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &error
+    ));
     REQUIRE(!render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
-        "(array)Color0 0 0 0\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Color0\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(0)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         0,
         bindings,
         parameters,
@@ -867,9 +913,28 @@ TEST_CASE(scoped_namespace_collision)
     int index = render_shader_find(a->name);
     model_material_slot applied;
     REQUIRE(render_shader_model_material_slot(index, 0, &applied));
-    char lookup[1024], overrides[1200];
+    char lookup[1024], overrides[16384];
     snprintf(lookup, sizeof lookup, "%s.Color0", applied.name);
-    snprintf(overrides, sizeof overrides, "(array)\"material.%s\" 0 0.5 0.25\n", lookup);
+    snprintf(
+        overrides,
+        sizeof overrides,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"material.%s\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.Real(0.5),\n"
+        "                data.Value.Real(0.25)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        lookup
+    );
     REQUIRE(render_shader_parameters_validate(index, overrides, &error));
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };

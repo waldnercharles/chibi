@@ -1,8 +1,6 @@
 #include "toolchain/compiler_bootstrap.h"
 
 #include "execution/status.h"
-#include "support/asset_text.h"
-#include "support/asset_value.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_host.h"
@@ -25,7 +23,6 @@
 #define BOOTSTRAP_BUDGET 2000000000u
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
-#define CONTRACT_FILE "bootstrap.kdl"
 /* Compile's arguments: the project, its collections' names and paths, the
  * source paths and texts, whether to emit debugger points and watches, which
  * the compiler is compiled without, then the six that describe the target:
@@ -128,32 +125,40 @@ typedef struct
     int version, minimum;
 } contract;
 
-static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
-{
-    char *path = join(compiler, CONTRACT_FILE);
-    size_t length;
-    char *text = (char *)read_bytes(path, 4096, &length);
-    char reason[256] = "it cannot be read";
-    av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
-    av_value *root = doc ? av_doc_root(doc) : NULL;
-    *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
-                     .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
-    bool valid = c->minimum >= 1 && c->minimum <= c->version;
-    if (!valid) {
-        snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
-    }
-    av_doc_free(doc);
-    free(text);
-    free(path);
-    return valid;
-}
-
 /* The ID of a callable of the compiler's root package. */
 static uint64_t entry(const char *name)
 {
     char symbol[96];
     snprintf(symbol, sizeof symbol, "project:package_compiler:1:%s:callable", name);
     return compiler_host_entry(symbol);
+}
+
+/* The contract is executable Chibi compiled with the compiler. Native recovery
+ * reads artifact metadata first and asks the recovered compiler for its current
+ * contract only after compilation, avoiding a source-parser bootstrap cycle. */
+static bool compiled_contract(compiler_host *host, contract *c, char *error, size_t size)
+{
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(host, entry("BootstrapContract"), "[]", 2, 10000, &result);
+    yyjson_doc *doc = called && result.flow_status == FLOW_OK
+                        ? yyjson_read(result.json, result.length, 0)
+                        : NULL;
+    yyjson_val *results = yyjson_doc_get_root(doc);
+    yyjson_val *values = yyjson_arr_get(results, 0);
+    yyjson_val *version = yyjson_arr_get(values, 0),
+               *minimum = yyjson_arr_get(values, 1);
+    int64_t v = yyjson_get_sint(version), m = yyjson_get_sint(minimum);
+    bool valid = yyjson_arr_size(results) == 1 && yyjson_arr_size(values) == 2 && yyjson_is_int(version) &&
+                 yyjson_is_int(minimum) && m >= 1 && v >= m && v <= INT32_MAX;
+    if (valid) {
+        *c = (contract){ .version = (int)v, .minimum = (int)m };
+    } else {
+        snprintf(error, size, "Compiled BootstrapContract needs a version and a minimum from 1 to it: %.140s",
+                 called ? (result.json ? result.json : "execution failed") : result.diagnostic);
+    }
+    yyjson_doc_free(doc);
+    free(result.json);
+    return valid;
 }
 
 /* Whether the six target values from first in values are this host's, as
@@ -399,7 +404,6 @@ static yyjson_mut_val *record_sources(
 static yyjson_mut_doc *manifest(
     const compiler_bootstrap *b,
     const seed *s,
-    const contract *c,
     char *error,
     size_t size
 )
@@ -416,8 +420,6 @@ static yyjson_mut_doc *manifest(
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_int(doc, root, "format", BOOTSTRAP_FORMAT);
-    yyjson_mut_obj_add_int(doc, root, "version", c->version);
-    yyjson_mut_obj_add_int(doc, root, "minimum", c->minimum);
     yyjson_mut_obj_add_strcpy(doc, root, "revision", b->revision ? b->revision : "");
     yyjson_mut_obj_add_strcpy(doc, root, "entry", id);
     yyjson_mut_val *closure = yyjson_mut_obj_add_obj(doc, root, "closure");
@@ -441,11 +443,11 @@ static yyjson_mut_doc *manifest(
 
 bool compiler_bootstrap_write(const compiler_bootstrap *b, char *error, size_t size)
 {
-    contract c;
+    contract c = { 0 };
     seed s = { 0 };
-    bool valid = read_contract(b->compiler, &c, error, size) &&
-                 read_seed(b->seed, &s, error, size);
-    yyjson_mut_doc *doc = valid ? manifest(b, &s, &c, error, size) : NULL;
+    bool valid = read_seed(b->seed, &s, error, size);
+    /* Check disk/source ownership before loading an untrusted seed. */
+    yyjson_mut_doc *doc = valid ? manifest(b, &s, error, size) : NULL;
     compiler_host *host = doc ? compiler_host_load(
                                     s.closure,
                                     s.closure_length,
@@ -454,8 +456,14 @@ bool compiler_bootstrap_write(const compiler_bootstrap *b, char *error, size_t s
                                     size
                                 )
                               : NULL;
+    valid = host && compiled_contract(host, &c, error, size);
+    if (valid) {
+        yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+        yyjson_mut_obj_add_int(doc, root, "version", c.version);
+        yyjson_mut_obj_add_int(doc, root, "minimum", c.minimum);
+    }
     size_t length = 0;
-    unsigned char *output = host && target_matches(host, s.args, TARGET_FIRST, error, size)
+    unsigned char *output = valid && target_matches(host, s.args, TARGET_FIRST, error, size)
                               ? compile(host, s.json, s.json_length, &length, error, size)
                               : NULL;
     valid = output && same(output, length, s.closure, s.closure_length);
@@ -498,10 +506,9 @@ static void free_artifact(artifact *a)
     free(a->closure);
 }
 
-/* Reads the artifact; false with why when this host does not read its format,
- * its version is older than the sources' minimum or its closure is not the
- * one its manifest records. */
-static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a, char *error, size_t size)
+/* Read artifact metadata and check its recorded contract, format and closure.
+ * The current sources' compiled minimum is checked after recovery. */
+static bool read_artifact(const compiler_bootstrap *b, artifact *a, char *error, size_t size)
 {
     char *path = join(b->folder, MANIFEST_FILE), *file = join(b->folder, CLOSURE_FILE);
     size_t length = 0;
@@ -534,13 +541,13 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
         );
         return false;
     }
-    if (version < minimum) {
+    int64_t minimum = yyjson_get_sint(yyjson_obj_get(a->root, "minimum"));
+    if (minimum < 1 || version < minimum || version > INT32_MAX) {
         snprintf(
             error,
             size,
             "the artifact has bootstrap version %" PRId64
-            ", older than %d, the oldest these compiler "
-            "sources support; produce a newer one from stage zero",
+            " and minimum %" PRId64 "; it needs a version and a minimum from 1 to it",
             version,
             minimum
         );
@@ -657,6 +664,21 @@ static bool recover(
     if (!first) {
         return false;
     }
+    compiler_host *next = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
+    contract current = { 0 };
+    bool compatible = next && compiled_contract(next, &current, report, size);
+    int64_t artifact_version = yyjson_get_sint(yyjson_obj_get(a->root, "version"));
+    if (compatible && artifact_version < current.minimum) {
+        snprintf(report, size, "the artifact has bootstrap version %" PRId64
+                 ", older than %d, the oldest these compiler sources support; produce a newer one from stage zero",
+                 artifact_version, current.minimum);
+        compatible = false;
+    }
+    if (!compatible) {
+        compiler_host_free(next);
+        free(first);
+        return false;
+    }
     const char *revision = yyjson_get_str(yyjson_obj_get(a->root, "revision"));
     revision = revision && *revision ? revision : "unrecorded";
     char digest[65];
@@ -676,10 +698,10 @@ static bool recover(
             snprintf(report, size, "the artifact compiles the sources it records to %zu other bytes", first_length);
         }
         valid = valid && written(output, first, first_length, report, size);
+        compiler_host_free(next);
         free(first);
         return valid;
     }
-    compiler_host *next = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
     unsigned char *second = next
                               ? compile(next, json, length, &second_length, report, size)
                               : NULL;
@@ -708,12 +730,10 @@ static bool recover(
 
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
-    contract c;
     artifact a = { 0 };
     size_t length = 0;
     int changed = 0;
-    bool valid = read_contract(b->compiler, &c, report, size) &&
-                 read_artifact(b, c.minimum, &a, report, size);
+    bool valid = read_artifact(b, &a, report, size);
     char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
                        : NULL;
     compiler_host *host = json ? compiler_host_load(

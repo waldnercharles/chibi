@@ -1,0 +1,27 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("SeamProbe")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Body", data.Object([
+                    data.Field.Named("continuous", data.Value.Bool(true)),
+                    data.Field.Named("type", data.Value.Text("Kinematic"))
+                ])),
+                data.Field.Named("Collider", data.Object([
+                    data.Field.Named("category", data.Value.UInt(1)),
+                    data.Field.Named("mask", data.Value.UInt(8)),
+                    data.Field.Named("radius", data.Value.Real(2.0)),
+                    data.Field.Named("sensor", data.Value.Bool(true))
+                ])),
+                data.Field.Named("Transform", data.Object([])),
+                data.Field.Named("Velocity", data.Object([
+                    data.Field.Named("y", data.Value.Real(2400.0))
+                ]))
+            ]))
+        ])
+    );
+}

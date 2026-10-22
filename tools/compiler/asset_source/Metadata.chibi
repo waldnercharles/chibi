@@ -1,0 +1,380 @@
+package asset_source
+
+import raw "project:compiler_syntax"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// Ranges belong to the supplied immutable source revision. Constructor and
+// literal ranges are separate so scalar edits can preserve comments/wrappers.
+pub Binding :: struct {
+    kind: int;
+    parent: int;
+    key: string;
+    start: int;
+    end: int;
+    name_start: int;
+    name_end: int;
+    literal_start: int;
+    literal_end: int;
+    container_start: int;
+    container_end: int;
+    computed: bool;
+    literal_text: string;
+}
+pub Inspection :: union {
+    Found(bindings: Binding[], alias: string)
+    | Rejected(start: int, end: int, message: string)
+}
+InspectWork :: struct {
+    node: int;
+    parent: int;
+    key: string;
+    name_start: int;
+    name_end: int;
+    depth: int;
+}
+Children :: union {
+    Found(nodes: int[], keys: string[], starts: int[], ends: int[])
+    | Computed
+}
+
+CstField :: (nodes: syntax.Node[], fields: string[], node: int, name: string) -> int {
+    if (node < 0) { return -1; }
+    child := nodes[node].first_child;
+    while (child >= 0) {
+        if (fields[child] == name) { return child; }
+        child = nodes[child].next_sibling;
+    }
+    return -1;
+}
+CstText :: (source: string, nodes: syntax.Node[], node: int) -> string {
+    if (node < 0) { return ""; }
+    return strings.Slice(source, nodes[node].start, nodes[node].end - nodes[node].start);
+}
+Unwrap :: (nodes: syntax.Node[], fields: string[], node: int) -> int {
+    current := node;
+    depth: int = 0;
+    while (current >= 0 && nodes[current].kind == "parenthesized_expression" && depth < MaxDepth) {
+        current = CstField(nodes, fields, current, "expression");
+        depth += 1;
+    }
+    return current;
+}
+NamedChildren :: (nodes: syntax.Node[], named: bool[], extra: bool[], node: int) -> int[] {
+    out: int[] = [];
+    if (node < 0) { return out; }
+    child := nodes[node].first_child;
+    while (child >= 0) {
+        if (named[child] && !extra[child]) { out.append(child); }
+        child = nodes[child].next_sibling;
+    }
+    return out;
+}
+CallName :: (source: string, nodes: syntax.Node[], fields: string[], node: int) -> string {
+    current := Unwrap(nodes, fields, node);
+    if (current < 0) { return ""; }
+    if (nodes[current].kind == "call_expression") {
+        return CstText(source, nodes, CstField(nodes, fields, current, "function"));
+    }
+    return CstText(source, nodes, current);
+}
+CallArguments :: (nodes: syntax.Node[], fields: string[], named: bool[], extra: bool[], node: int) -> int[] {
+    return NamedChildren(nodes, named, extra, CstField(nodes, fields, Unwrap(nodes, fields, node), "arguments"));
+}
+ArgumentValue :: (nodes: syntax.Node[], fields: string[], node: int) -> int {
+    if (node >= 0 && (nodes[node].kind == "named_argument" || nodes[node].kind == "typed_argument")) {
+        return CstField(nodes, fields, node, "value");
+    }
+    return node;
+}
+ScalarLiteral :: (source: string, nodes: syntax.Node[], fields: string[], node: int, kind: int) -> bool {
+    current := Unwrap(nodes, fields, node);
+    if (current < 0) { return false; }
+    if (kind == 5) { return nodes[current].kind == "string"; }
+    if (kind == 1) { return nodes[current].kind == "boolean"; }
+    if (kind < 2 || kind > 4) { return false; }
+    if (nodes[current].kind == "unary_expression") {
+        operator := CstText(source, nodes, CstField(nodes, fields, current, "operator"));
+        if (operator != "-" && operator != "+") { return false; }
+        current = Unwrap(nodes, fields, CstField(nodes, fields, current, "operand"));
+    }
+    return current >= 0 && nodes[current].kind == "number";
+}
+ConstructorKind :: (name: string, alias: string) -> int {
+    if (name == format_text("{}.Value.Null", alias)) { return 0; }
+    if (name == format_text("{}.Value.Bool", alias)) { return 1; }
+    if (name == format_text("{}.Value.Int", alias)) { return 2; }
+    if (name == format_text("{}.Value.UInt", alias)) { return 3; }
+    if (name == format_text("{}.Value.Real", alias)) { return 4; }
+    if (name == format_text("{}.Value.Text", alias)) { return 5; }
+    if (name == format_text("{}.Object", alias)) { return 6; }
+    if (name == format_text("{}.List", alias) || name == format_text("{}.Value.Array", alias)) { return 7; }
+    return 8;
+}
+ReadChildren :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[], extra: bool[],
+                 node: int, kind: int, alias: string) -> Children {
+    arguments := CallArguments(nodes, fields, named, extra, node);
+    if (length(arguments) != 1) { return Children.Computed; }
+    array := Unwrap(nodes, fields, ArgumentValue(nodes, fields, arguments[0]));
+    if (array < 0 || nodes[array].kind != "array_expression") { return Children.Computed; }
+    items := NamedChildren(nodes, named, extra, array);
+    values: int[] = [];
+    keys: string[] = [];
+    starts: int[] = [];
+    ends: int[] = [];
+    for (item in items) {
+        value := item;
+        key := "";
+        start: int = -1;
+        end: int = -1;
+        if (kind == 6) {
+            if (CallName(source, nodes, fields, item) != format_text("{}.Field.Named", alias)) {
+                return Children.Computed;
+            }
+            args := CallArguments(nodes, fields, named, extra, item);
+            if (length(args) != 2) { return Children.Computed; }
+            key_node := Unwrap(nodes, fields, ArgumentValue(nodes, fields, args[0]));
+            if (key_node < 0 || nodes[key_node].kind != "string") { return Children.Computed; }
+            decoded := compiler_json_string(CstText(source, nodes, key_node));
+            if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) { return Children.Computed; }
+            key = decoded.value;
+            start = nodes[key_node].start;
+            end = nodes[key_node].end;
+            value = ArgumentValue(nodes, fields, args[1]);
+        }
+        values.append(value);
+        keys.append(key);
+        starts.append(start);
+        ends.append(end);
+    }
+    return Children.Found(values, keys, starts, ends);
+}
+
+pub Inspect :: (source: string, function_name: string) -> Inspection {
+    assert(strings.ByteLength(source) <= MaxBytes, "Asset source exceeds metadata quota");
+    switch raw.Parse(source) {
+        case .Parsed(nodes, fields, named, extra, root):
+            if (root < 0 || nodes[root].has_error) { return Inspection.Rejected(0, 0, "Invalid Chibi source"); }
+            alias := "";
+            function: int = -1;
+            for (node in NamedChildren(nodes, named, extra, root)) {
+                if (nodes[node].kind == "import_declaration") {
+                    path := CstField(nodes, fields, node, "path");
+                    decoded := compiler_json_string(CstText(source, nodes, path));
+                    if (decoded.valid && decoded.value == "game:assets") {
+                        alias = CstText(source, nodes, CstField(nodes, fields, node, "alias"));
+                        if (alias == "") { alias = "assets"; }
+                    }
+                } else if (nodes[node].kind == "function_declaration" &&
+                           CstText(source, nodes, CstField(nodes, fields, node, "name")) == function_name) {
+                    if (function >= 0) { return Inspection.Rejected(nodes[node].start, nodes[node].end, "Duplicate asset metadata function"); }
+                    function = node;
+                }
+            }
+            if (function < 0) { return Inspection.Found([], alias); }
+            body := CstField(nodes, fields, function, "body");
+            statements := NamedChildren(nodes, named, extra, body);
+            if (length(statements) != 1 || nodes[statements[0]].kind != "return_statement") {
+                return Inspection.Rejected(nodes[function].start, nodes[function].end, "Editable asset functions require one return expression");
+            }
+            expression := CstField(nodes, fields, statements[0], "value");
+            if (expression < 0) { return Inspection.Rejected(nodes[function].start, nodes[function].end, "Asset function needs a return value"); }
+            if (CallName(source, nodes, fields, expression) == format_text("{}.Encode", alias)) {
+                args := CallArguments(nodes, fields, named, extra, expression);
+                if (length(args) == 1) { expression = ArgumentValue(nodes, fields, args[0]); }
+            }
+            bindings: Binding[] = [];
+            pending: InspectWork[] = [{node: expression, parent: -1, key: "", name_start: -1, name_end: -1, depth: 0}];
+            while (length(pending) > 0) {
+                work := pending[length(pending) - 1];
+                pending.remove_index(length(pending) - 1);
+                assert(work.depth <= MaxDepth && length(bindings) < MaxValues, "Asset metadata exceeds tree quota");
+                current := Unwrap(nodes, fields, work.node);
+                kind := ConstructorKind(CallName(source, nodes, fields, current), alias);
+                binding: Binding = {kind: kind, parent: work.parent, key: work.key,
+                    start: nodes[work.node].start, end: nodes[work.node].end,
+                    name_start: work.name_start, name_end: work.name_end,
+                    literal_start: -1, literal_end: -1, container_start: -1, container_end: -1,
+                    computed: kind == 8, literal_text: ""};
+                if (kind >= 1 && kind <= 5) {
+                    args := CallArguments(nodes, fields, named, extra, current);
+                    if (length(args) == 1) {
+                        literal := ArgumentValue(nodes, fields, args[0]);
+                        binding.computed = !ScalarLiteral(source, nodes, fields, literal, kind);
+                        if (!binding.computed) {
+                            if (kind == 1 || kind == 5) { literal = Unwrap(nodes, fields, literal); }
+                            token := Unwrap(nodes, fields, literal);
+                            negative: bool = false;
+                            if (nodes[token].kind == "unary_expression") {
+                                negative = CstText(source, nodes, CstField(nodes, fields, token, "operator")) == "-";
+                                token = Unwrap(nodes, fields, CstField(nodes, fields, token, "operand"));
+                            }
+                            binding.literal_text = CstText(source, nodes, token);
+                            if (negative) { binding.literal_text = strings.Join(["-", binding.literal_text], ""); }
+                            binding.literal_start = nodes[literal].start;
+                            binding.literal_end = nodes[literal].end;
+                        }
+                    } else { binding.computed = true; }
+                }
+                index := length(bindings);
+                if (kind == 6 || kind == 7) {
+                    switch ReadChildren(source, nodes, fields, named, extra, current, kind, alias) {
+                        case .Computed: binding.computed = true;
+                        case .Found(values, keys, starts, ends):
+                            args := CallArguments(nodes, fields, named, extra, current);
+                            array := Unwrap(nodes, fields, ArgumentValue(nodes, fields, args[0]));
+                            binding.container_start = nodes[array].start;
+                            binding.container_end = nodes[array].end;
+                            child := length(values) - 1;
+                            while (child >= 0) {
+                                pending.append({node: values[child], parent: index, key: keys[child],
+                                    name_start: starts[child], name_end: ends[child], depth: work.depth + 1});
+                                child -= 1;
+                            }
+                    }
+                }
+                bindings.append(binding);
+            }
+            return Inspection.Found(bindings, alias);
+    }
+}
+
+// Classification only locates the ordinary package marker; incomplete drafts
+// keep their asset editor mode without evaluating or type checking the module.
+pub Classify :: (source: string) -> bool {
+    if (strings.ByteLength(source) > MaxBytes) { return false; }
+    switch raw.Parse(source) {
+        case .Parsed(nodes, fields, named, extra, root):
+            if (root < 0) { return false; }
+            for (node in NamedChildren(nodes, named, extra, root)) {
+                if (nodes[node].kind == "package_header") {
+                    return CstText(source, nodes, CstField(nodes, fields, node, "name")) == "asset";
+                }
+            }
+            return false;
+    }
+}
+
+pub FieldSource :: union {
+    Found(computed: bool, overridden: bool, start: int, end: int) | Missing
+}
+Normalized :: (text: string) -> string {
+    return strings.ToLower(strings.Join(strings.Split(text, "_"), ""));
+}
+FindChild :: (bindings: Binding[], parent: int, name: string) -> int {
+    index := parent + 1;
+    while (index < length(bindings)) {
+        if (bindings[index].parent == parent && Normalized(bindings[index].key) == Normalized(name)) { return index; }
+        index += 1;
+    }
+    return -1;
+}
+FindPath :: (bindings: Binding[], parent: int, parts: string[]) -> int {
+    current := parent;
+    for (part in parts) {
+        if (current >= 0 && bindings[current].computed) { return current; }
+        current = FindChild(bindings, current, part);
+        if (current < 0) { return -1; }
+    }
+    return current;
+}
+Descendant :: (bindings: Binding[], index: int, ancestor: int) -> bool {
+    current := index;
+    while (current >= 0) {
+        if (current == ancestor) { return true; }
+        current = bindings[current].parent;
+    }
+    return false;
+}
+
+pub Field :: (source: string, component: string, field_path: string) -> FieldSource {
+    parts := strings.Split(field_path, ".");
+    computed: bool = false;
+    overridden: bool = false;
+    start: int = -1;
+    end: int = -1;
+    found: bool = false;
+    switch Inspect(source, "Build") {
+        case .Rejected(rejected_start, rejected_end, message): return FieldSource.Missing;
+        case .Found(bindings, alias):
+            if (length(bindings) == 0) { return FieldSource.Missing; }
+            if (bindings[0].computed) {
+                computed = true;
+                found = true;
+                start = bindings[0].start;
+                end = bindings[0].end;
+            } else {
+                components := FindChild(bindings, 0, "components");
+                owner := FindChild(bindings, components, component);
+                if (components >= 0 && bindings[components].computed) {
+                    computed = true;
+                    found = true;
+                    start = bindings[components].start;
+                    end = bindings[components].end;
+                } else if (components >= 0 && owner >= 0) {
+                    field := FindPath(bindings, owner, parts);
+                    if (field >= 0) {
+                        found = true;
+                        start = bindings[field].start;
+                        end = bindings[field].end;
+                        index := field;
+                        while (index < length(bindings)) {
+                            if (Descendant(bindings, index, field) && bindings[index].computed) { computed = true; }
+                            index += 1;
+                        }
+                    } else if (bindings[owner].computed) {
+                        found = true;
+                        computed = true;
+                        start = bindings[owner].start;
+                        end = bindings[owner].end;
+                    }
+                }
+            }
+    }
+    if (!MetadataActive(source, "overrides")) {
+        if (!found) { return FieldSource.Missing; }
+        return FieldSource.Found(computed, false, start, end);
+    }
+    switch Inspect(source, "Overrides") {
+        case .Rejected(rejected_start, rejected_end, message): return FieldSource.Missing;
+        case .Found(bindings, alias):
+            if (length(bindings) > 0) {
+                owner := FindChild(bindings, 0, component);
+                if (owner >= 0) {
+                    current := owner;
+                    for (part in parts) {
+                        current = FindChild(bindings, current, part);
+                        if (current < 0) { break; }
+                    }
+                    overridden = current >= 0;
+                }
+            }
+    }
+    if (!found && !overridden) { return FieldSource.Missing; }
+    return FieldSource.Found(computed, overridden, start, end);
+}
+
+RetainComments :: (source: string, start: int, end: int, replacement: string) -> string {
+    comments: string[] = [];
+    switch raw.Parse(source) {
+        case .Parsed(nodes, fields, named, extra, root):
+            for (node in nodes) {
+                if (node.kind == "comment" && node.start >= start && node.end <= end) {
+                    comments.append(strings.Slice(source, node.start, node.end - node.start));
+                }
+            }
+    }
+    if (length(comments) == 0) { return replacement; }
+    // A parenthesized expression keeps line comments from terminating return.
+    return strings.Join(["(\n", strings.Join(comments, "\n"), "\n", replacement, "\n)"], "");
+}
+
+MetadataActive :: (source: string, name: string) -> bool {
+    switch Inspect(source, "Build") {
+        case .Rejected(start, end, message): return true;
+        case .Found(bindings, alias):
+            if (length(bindings) == 0) { return false; }
+            if (bindings[0].computed) { return true; }
+            return FindChild(bindings, 0, name) >= 0;
+    }
+}

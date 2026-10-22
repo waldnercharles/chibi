@@ -1,4 +1,0 @@
-name "ArenaExperience"
-components {
-    Shader material="ArenaExperience"
-}

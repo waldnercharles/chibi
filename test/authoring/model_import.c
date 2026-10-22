@@ -7,7 +7,7 @@
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/shaders/prepared.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "test/support/gltf_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -170,7 +170,7 @@ static bool holds_material(const char *key, const char *name, const standard_mat
     char *saved = behavior_asset_save(asset);
     behavior_asset_free(asset);
     char reason[128];
-    char *expected = asset_text_to_disk(saved, reason, sizeof reason);
+    char *expected = asset_document_to_disk(saved, reason, sizeof reason);
     free(saved);
     size_t length = 0;
     char *text = read_file(key, &length);
@@ -269,11 +269,11 @@ static const char CRATE[] =
 
 static const char *const CRATE_FILES[] = {
     "content/textures/Crate/albedo.png",
-    "content/materials/Crate_Painted_Wood.kdl",
-    "content/materials/Crate_Material1.kdl",
-    "content/materials/Crate_Default.kdl",
+    "content/materials/Crate_Painted_Wood.chibi",
+    "content/materials/Crate_Material1.chibi",
+    "content/materials/Crate_Default.chibi",
     "content/meshes/Crate.mesh",
-    "content/prototypes/Crate.kdl"
+    "content/prototypes/Crate.chibi"
 };
 
 static void crate(gltf_fixture *f)
@@ -309,7 +309,7 @@ TEST_CASE(model_imports_write_each_part_once)
         .scale = { 1, 1 }
     };
     REQUIRE(
-        holds_material("content/materials/Crate_Painted_Wood.kdl", "Crate_Painted_Wood", &wood)
+        holds_material("content/materials/Crate_Painted_Wood.chibi", "Crate_Painted_Wood", &wood)
     );
     standard_material glow = factors();
     glow.base_color[3] = .5f;
@@ -318,9 +318,9 @@ TEST_CASE(model_imports_write_each_part_once)
     glow.emission[2] = .3f * 2;
     glow.alpha_mode = SHADER_ALPHA_MASK;
     glow.alpha_cutoff = .25f;
-    REQUIRE(holds_material("content/materials/Crate_Material1.kdl", "Crate_Material1", &glow));
+    REQUIRE(holds_material("content/materials/Crate_Material1.chibi", "Crate_Material1", &glow));
     standard_material plain = factors();
-    REQUIRE(holds_material("content/materials/Crate_Default.kdl", "Crate_Default", &plain));
+    REQUIRE(holds_material("content/materials/Crate_Default.chibi", "Crate_Default", &plain));
 
     REQUIRE(reads_mesh("content/meshes/Crate.mesh"));
     REQUIRE(acount(mesh.vertices) == 12 && acount(mesh.groups) == 3);
@@ -343,20 +343,52 @@ TEST_CASE(model_imports_write_each_part_once)
     REQUIRE(near_v3(mesh.min, (CF_V3){ -2, 0, 3 }) && near_v3(mesh.max, (CF_V3){ 2, 0, 7 }));
     REQUIRE(near_v3(mesh.vertices[0].position, (CF_V3){ -2, 0, 3 }));
 
-    char *prototype = read_file("content/prototypes/Crate.kdl", &length);
+    char *prototype = read_file("content/prototypes/Crate.chibi", &length);
     REQUIRE(
-        prototype && !strcmp(
-                         prototype,
-                         "name \"Crate\"\n"
-                         "components {\n"
-                         "    Geometry3D depth=1.0 height=1.0 width=1.0\n"
-                         "    MeshAsset source=\"content/meshes/Crate.mesh\"\n"
-                         "    Transform3D {\n"
-                         "        rotation w=1.0\n"
-                         "        scale x=1.0 y=1.0 z=1.0\n"
-                         "    }\n"
-                         "}\n"
-                     )
+        prototype &&
+        !strcmp(
+            prototype,
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"name\", "
+            "data.Value.Text(\"Crate\")),\n"
+            "            data.Field.Named(\"components\", data.Object([\n"
+            "                data.Field.Named(\"Geometry3D\", data.Object([\n"
+            "                    data.Field.Named(\"depth\", "
+            "data.Value.Real(1.0)),\n"
+            "                    data.Field.Named(\"height\", "
+            "data.Value.Real(1.0)),\n"
+            "                    data.Field.Named(\"width\", "
+            "data.Value.Real(1.0))\n"
+            "                ])),\n"
+            "                data.Field.Named(\"MeshAsset\", data.Object([\n"
+            "                    data.Field.Named(\"source\", "
+            "data.Value.Text(\"content/meshes/Crate.mesh\"))\n"
+            "                ])),\n"
+            "                data.Field.Named(\"Transform3D\", data.Object([\n"
+            "                    data.Field.Named(\"rotation\", data.Object([\n"
+            "                        data.Field.Named(\"w\", "
+            "data.Value.Real(1.0))\n"
+            "                    ])),\n"
+            "                    data.Field.Named(\"scale\", data.Object([\n"
+            "                        data.Field.Named(\"x\", "
+            "data.Value.Real(1.0)),\n"
+            "                        data.Field.Named(\"y\", "
+            "data.Value.Real(1.0)),\n"
+            "                        data.Field.Named(\"z\", "
+            "data.Value.Real(1.0))\n"
+            "                    ]))\n"
+            "                ]))\n"
+            "            ]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n"
+        )
     );
     free(prototype);
 
@@ -369,9 +401,11 @@ TEST_CASE(model_imports_write_each_part_once)
                    "\"name\":\"Gone\","
                    "\"normalTexture\":{\"index\":0,\"texCoord\":1}}]";
     REQUIRE(import(&f, "hidden.gltf", hidden, "Hidden"));
-    static const char *const shown[] = { "content/materials/Hidden_Default.kdl",
-                                         "content/meshes/Hidden.mesh",
-                                         "content/prototypes/Hidden.kdl" };
+    static const char *const shown[] = {
+        "content/materials/Hidden_Default.chibi",
+        "content/meshes/Hidden.mesh",
+        "content/prototypes/Hidden.chibi"
+    };
     REQUIRE(wrote(shown, 3) && !acount(report.warnings));
     gltf_fixture_free(&f);
     return true;
@@ -452,27 +486,27 @@ TEST_CASE(model_imports_name_parts_apart)
     snprintf(
         long_name,
         sizeof long_name,
-        "content/materials/Box_%.59s.kdl",
+        "content/materials/Box_%.59s.chibi",
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     snprintf(
         long_second,
         sizeof long_second,
-        "content/materials/Box_%.57s_2.kdl",
+        "content/materials/Box_%.57s_2.chibi",
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     const char *const keys[] = { "content/textures/Box/Tex.png",
                                  "content/textures/Box/tex_2.png",
-                                 "content/materials/Box_Wood.kdl",
-                                 "content/materials/Box_wood_2.kdl",
-                                 "content/materials/Box_Wood_.kdl",
+                                 "content/materials/Box_Wood.chibi",
+                                 "content/materials/Box_wood_2.chibi",
+                                 "content/materials/Box_Wood_.chibi",
                                  long_name,
                                  long_second,
                                  "content/meshes/Box.mesh",
-                                 "content/prototypes/Box.kdl" };
+                                 "content/prototypes/Box.chibi" };
     REQUIRE(wrote(keys, 9));
-    REQUIRE(strlen(long_name) - strlen("content/materials/.kdl") == 63);
-    REQUIRE(strlen(long_second) - strlen("content/materials/.kdl") == 63);
+    REQUIRE(strlen(long_name) - strlen("content/materials/.chibi") == 63);
+    REQUIRE(strlen(long_second) - strlen("content/materials/.chibi") == 63);
     gltf_fixture_free(&f);
     return true;
 }
@@ -495,9 +529,9 @@ TEST_CASE(model_imports_name_materials_of_the_longest_models)
         name
     ));
     char material[128], mesh_key[128], prototype[128];
-    snprintf(material, sizeof material, "content/materials/%.47s_Wood.kdl", name);
+    snprintf(material, sizeof material, "content/materials/%.47s_Wood.chibi", name);
     snprintf(mesh_key, sizeof mesh_key, "content/meshes/%s.mesh", name);
-    snprintf(prototype, sizeof prototype, "content/prototypes/%s.kdl", name);
+    snprintf(prototype, sizeof prototype, "content/prototypes/%s.chibi", name);
     const char *const keys[] = { material, mesh_key, prototype };
     REQUIRE(wrote(keys, 3));
     REQUIRE(reads_mesh(mesh_key) && acount(mesh.groups) == 1);
@@ -525,14 +559,14 @@ TEST_CASE(model_imports_replace_nothing_and_undo_failures)
     free(after);
 
     char path[128];
-    inside(path, sizeof path, "content/prototypes/Late.kdl");
+    inside(path, sizeof path, "content/prototypes/Late.chibi");
     FILE *file = fopen(path, "wb");
     REQUIRE(file && fputs("keep\n", file) >= 0 && !fclose(file));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Late"));
-    REQUIRE(!strcmp(error, "content/prototypes/Late.kdl already exists"));
-    REQUIRE(!exists("content/textures/Late") && !exists("content/materials/Late_Default.kdl"));
+    REQUIRE(!strcmp(error, "content/prototypes/Late.chibi already exists"));
+    REQUIRE(!exists("content/textures/Late") && !exists("content/materials/Late_Default.chibi"));
     REQUIRE(!exists("content/meshes/Late.mesh") && exists("content/meshes/Crate.mesh"));
-    char *kept = read_file("content/prototypes/Late.kdl", &length);
+    char *kept = read_file("content/prototypes/Late.chibi", &length);
     REQUIRE(kept && !strcmp(kept, "keep\n"));
     free(kept);
     gltf_fixture_free(&f);
@@ -556,8 +590,23 @@ static bool put(const char *relative, const char *text)
 /* Writes the content file `relative`, declaring `name`, in its folder. */
 static bool declare(const char *relative, const char *name)
 {
-    char text[96];
-    snprintf(text, sizeof text, "name \"%s\"\n", name);
+    char text[16384];
+    snprintf(
+        text,
+        sizeof text,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"%s\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        name
+    );
     return put(relative, text);
 }
 
@@ -570,24 +619,29 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
 {
     gltf_fixture f = { 0 };
     crate(&f);
-    REQUIRE(declare("content/shapes/Plank.kdl", "Crate_Painted_Wood"));
+    REQUIRE(declare("content/shapes/Plank.chibi", "Crate_Painted_Wood"));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
-    REQUIRE(!strcmp(error, "content/shapes/Plank.kdl already declares Crate_Painted_Wood"));
+    REQUIRE(!strcmp(error, "content/shapes/Plank.chibi already declares Crate_Painted_Wood"));
     REQUIRE(entries("content") == 1 && !acount(report.written));
-    REQUIRE(declare("content/shapes/Plank.kdl", "Plank"));
-    REQUIRE(declare("content/prototypes/Box.kdl", "Crate"));
+    REQUIRE(declare("content/shapes/Plank.chibi", "Plank"));
+    REQUIRE(declare("content/prototypes/Box.chibi", "Crate"));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
-    REQUIRE(!strcmp(error, "content/prototypes/Box.kdl already declares Crate"));
+    REQUIRE(!strcmp(error, "content/prototypes/Box.chibi already declares Crate"));
     REQUIRE(entries("content") == 2 && entries("content/prototypes") == 1);
-    REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
+    REQUIRE(declare("content/prototypes/Box.chibi", "Box"));
     /* A file or folder it cannot read could hide a clash, so it refuses
      * then too. A file that declares no name hides none. */
-    REQUIRE(put("content/events/Broken.kdl", "name \"Broken\n"));
-    REQUIRE(put("content/events/Nameless.kdl", "event\n"));
+    REQUIRE(put("content/events/Broken.chibi", "package asset\npub Build :: () -> byte[] {"));
+    REQUIRE(
+        put("content/events/Nameless.chibi", "package asset\nimport data \"game:assets\"\npub Build :: () -> byte[] { return data.Encode(data.Object([])) }\n")
+    );
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
-    REQUIRE(!strcmp(error, "Cannot read content/events/Broken.kdl: line 1, column 6: Parse error"));
+    REQUIRE(
+        strstr(error, "Cannot read content/events/Broken.chibi: line ") &&
+        strstr(error, "column ")
+    );
     REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
-    REQUIRE(declare("content/events/Broken.kdl", "Broken"));
+    REQUIRE(declare("content/events/Broken.chibi", "Broken"));
     char fields[128];
     inside(fields, sizeof fields, "content/fields");
     REQUIRE(declare("content/fields", "Fields"));
@@ -611,11 +665,11 @@ TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
                                            "shapes",           "models" };
     /* The crate writes three materials, one more than the catalog holds. */
     int existing = NATIVE_GRAPH_DOCUMENTS_MAX - 2;
-    bool declared = declare("content/prototypes/Box.kdl", "Box");
+    bool declared = declare("content/prototypes/Box.chibi", "Box");
     for (int i = 0; i < existing; i++) {
         char key[96], name[16];
         snprintf(name, sizeof name, "Graph%d", i);
-        snprintf(key, sizeof key, "content/%s/%s.kdl", folders[i % 6], name);
+        snprintf(key, sizeof key, "content/%s/%s.chibi", folders[i % 6], name);
         declared = declare(key, name) && declared;
     }
     REQUIRE(declared);
@@ -623,9 +677,9 @@ TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
     REQUIRE(
         !strcmp(error, "The content holds 1022 native graphs, and 3 more materials would pass the 1024 a project can prepare")
     );
-    REQUIRE(!acount(report.written) && !exists("content/prototypes/Crate.kdl"));
+    REQUIRE(!acount(report.written) && !exists("content/prototypes/Crate.chibi"));
     char first[128];
-    inside(first, sizeof first, "content/shader-libraries/Graph0.kdl");
+    inside(first, sizeof first, "content/shader-libraries/Graph0.chibi");
     REQUIRE(!unlink(first));
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     gltf_fixture_free(&f);
@@ -838,7 +892,7 @@ TEST_CASE(model_imports_keep_each_texture_transform)
         );
         REQUIRE(import(&f, file, members, name));
         REQUIRE(!acount(report.warnings));
-        snprintf(material_key, sizeof material_key, "content/materials/%s_M.kdl", name);
+        snprintf(material_key, sizeof material_key, "content/materials/%s_M.chibi", name);
         snprintf(material_name, sizeof material_name, "%s_M", name);
         snprintf(image_key, sizeof image_key, "content/textures/%s/albedo.png", name);
         standard_material expected = factors();
@@ -899,7 +953,7 @@ TEST_CASE(model_imports_keep_default_and_signed_texture_scales)
             textured("", transformed_material(0, cases[i].transform)),
             cases[i].name
         ));
-        snprintf(key, sizeof key, "content/materials/%s_M.kdl", cases[i].name);
+        snprintf(key, sizeof key, "content/materials/%s_M.chibi", cases[i].name);
         snprintf(name, sizeof name, "%s_M", cases[i].name);
         snprintf(image, sizeof image, "content/textures/%s/albedo.png", cases[i].name);
         standard_material expected = factors();
@@ -1277,7 +1331,7 @@ TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials)
         .wrap = SHADER_IMAGE_REPEAT,
         .scale = { 1, 1 }
     };
-    REQUIRE(holds_material("content/materials/Lamp_Glow.kdl", "Lamp_Glow", &unlit));
+    REQUIRE(holds_material("content/materials/Lamp_Glow.chibi", "Lamp_Glow", &unlit));
     gltf_fixture_free(&f);
     return true;
 }

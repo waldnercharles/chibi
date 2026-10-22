@@ -1,5 +1,0 @@
-name "Scenery"
-components {
-    Appearance color=0x203b47ff height=100.0 layer=-8 width=190.0
-    (object)Transform
-}

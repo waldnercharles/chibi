@@ -9,7 +9,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/images/catalog.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -1166,7 +1166,7 @@ static bool authoring_plain_validate(int index, const char *text, shader_error *
         }
         return false;
     }
-    av_doc *doc = av_value_read(text, NULL, 0);
+    av_doc *doc = asset_document_read(text, NULL, 0);
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {
@@ -1238,7 +1238,7 @@ static bool authoring_plain_validate(int index, const char *text, shader_error *
 static void parse_parameters(const shader_asset *asset, const char *text, float values[32][4])
 {
     memcpy(values, asset->defaults, sizeof asset->defaults);
-    av_doc *doc = text && *text ? av_value_read(text, NULL, 0) : NULL;
+    av_doc *doc = text && *text ? asset_document_read(text, NULL, 0) : NULL;
     av_value *root = doc ? av_doc_root(doc) : NULL;
     for (int i = 0; i < 32; i++) {
         if (!asset->names[i]) {
@@ -1358,7 +1358,7 @@ static bool authoring_binding_parameter_values_from(
     if (!text || !*text) {
         return true;
     }
-    av_doc *doc = av_value_read(text, NULL, 0);
+    av_doc *doc = asset_document_read(text, NULL, 0);
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {
@@ -1439,7 +1439,7 @@ static bool parse_material_parameters_scoped(
     if (!text || !*text) {
         return true;
     }
-    av_doc *doc = av_value_read(text, NULL, 0);
+    av_doc *doc = asset_document_read(text, NULL, 0);
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {

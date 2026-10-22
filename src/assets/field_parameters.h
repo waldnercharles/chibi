@@ -1,7 +1,7 @@
 #pragma once
 #include "runtime/material_field.h"
 
-/* KDL parameter text is asset preparation, separate from the typed runtime
+/* Chibi parameter text is asset preparation, separate from the typed runtime
  * catalog. Each call validates names/types, then passes scalar records to it. */
 bool material_field_bake_text(
     const material_fields *,

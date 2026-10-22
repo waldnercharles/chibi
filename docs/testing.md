@@ -47,7 +47,7 @@ longer than the deadline. The project selectors left the native group when it
 reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
 coverage, mesh files, project validation and model import alone took 33 s.
 
-`published-docs` copies `docs/site.kdl` and every page, package folder and
+`published-docs` copies `docs/site.chibi` and every page, package folder and
 grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
 which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
 must parse, and each whole package must analyze, so a language change that
@@ -342,7 +342,7 @@ cases passed 226 assertions in 0.964 seconds with ASan/UBSan after fixing select
 of the builder's unnamed source sentinel. The later grammar
 and authoring integrations require their own affected validation. The expanded
 13-case navigation selector now passes 130 assertions in 0.864 seconds with
-ASan/UBSan, including exact KDL declaration/reference edits, local event alias
+ASan/UBSan, including exact compiled Chibi declaration/reference edits, local event alias
 resolution, and hover/highlights over external documents.
 The 14-case extension passes 144 assertions in 0.743 seconds with ASan/UBSan.
 It adds exact RML event-token renaming while preserving surrounding markup,
@@ -387,7 +387,7 @@ node's library host call against the field evaluator, sampled and baked, over
 Neither selector loads a renderer or runs engine frames.
 `prototype-document` selects one independently reviewed case with two small
 reflected types and fixed creation-default, detached-component, value snapshot,
-partial KDL and malformed-size operations. It has no files, worlds, processes or
+partial compiled Chibi and malformed-size operations. It has no files, worlds, processes or
 GPU work. The standalone consumer uses the public `Chibi::prototype_document`
 interface; it passes 21 assertions in 0.928 seconds under ASan/UBSan.
 `ui-authoring` selects two independently reviewed public SDK cases with fixed
@@ -425,7 +425,7 @@ acceptance binary, SDK, compile inputs, extraction metadata, every file under
 complete source manifest after camera fixture changes; do not reuse an earlier
 sixteen-file snapshot or omit new files. The existing 8–32-file, 256 KiB-per-file
 bounds and file/directory symlink rejection still apply. Restore the source
-`projects/studio/project.kdl` into the build's `share/chibi/studio/project.kdl`
+`projects/studio/project.chibi` into the build's `share/chibi/studio/project.chibi`
 before each independent run, as Studio may migrate that build copy on startup.
 Exactly one `Studio 3D camera accepted: frames=30` line is required; incomplete,
 repeated or diagnostic-bearing output fails. C policy regressions check those
@@ -512,7 +512,7 @@ under ASan/UBSan through the production supervisor on a shared four-core host.
 `--material-destruction` checks material masks and their cover rectangles,
 carving and fragment extraction, contours, callback queues and capacity
 fallback, damage rounding, debris, fuel blasts reaching bodies as Material
-Impact events, and `CaveField.kdl` baked against an independent reference cave
+Impact events, and `CaveField.chibi` baked against an independent reference cave
 and streamed as terrain through preview worlds: 26 cases, 2,700 assertions,
 2.7 seconds. `--material-fluids` checks the particle fluid's sleeping,
 cohesion, liquid splits and merges, body response, gas flow, buoyancy and
@@ -540,7 +540,7 @@ and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
 `benchmark_trials`.
 
-`--asset-values` runs nine cases on KDL asset text and the native value tree:
+`--asset-values` runs nine cases on compiled Chibi asset text and the native value tree:
 typed scalars at the 64-bit limits, slashdash, annotated arrays and source
 ranges; reals and floats that read back bit for bit and write plainly;
 escaped separators; thirteen malformed documents reported with a line and
@@ -1864,7 +1864,7 @@ activation. The existing array capability pack supplies the append operation.
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
-- a missing or invalid `bootstrap.kdl`;
+- invalid compiled bootstrap contract metadata;
 - another manifest format, or a version older than the minimum;
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;
@@ -1891,7 +1891,7 @@ and how they play. It is a standalone selector, not part of any group, and
 takes about 6 s.
 
 - **Stories.** Each story is a small project that shows one feature, played
-  by its `content/scenarios/Story.kdl`. `test/stories/README.md` lists them in
+  by its `content/scenarios/Story.chibi`. `test/stories/README.md` lists them in
   the order stage one reaches them. Each compiles alone, so stage one can
   pass one story before it compiles another.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
@@ -2649,7 +2649,7 @@ operation refuses the replacement and preserves the previous revision and value.
 This replaces the obsolete test that registered an executable library graph in
 the preview and edited a `.chibi` presentation as executable state. Preview
 executable libraries now require canonical source publication. Three more cases
-lower `FieldShapes.chibi` into a graph library and link `MaterialIslands.kdl`
+lower `FieldShapes.chibi` into a graph library and link `MaterialIslands.chibi`
 against it, retain a radius parameter default of 40 in a call that samples -40
 at its center, and publish library edits to a live preview. The field relinks
 while its valid or invalid unsaved draft stays intact. A library that drops the
@@ -3020,3 +3020,44 @@ to fit the source/row limits or deadline is a blocker; do not increase a cap or
 split the selector to evade it. Header environments, semantic sidecars, body
 analysis, exports, lowering, artifact assembly and `Checked` remain
 unimplemented here.
+
+
+## Typed prototype compiler workloads: quarantined
+
+The migrated `--typed-prototype` fixture retains seven C cases in the existing
+installed-SDK language dispatcher. Its old scalar-evaluator admission has been
+withdrawn. The replacement compiler path has compiled but has not been executed
+or admitted; compilation is not a runtime pass.
+
+The cases cover helper calls, local mutation, branches and loops, scalar
+parameters and recomputation, explicit overrides and whole-record Reset,
+atomic type refusal, source-located capability/type errors, cancellation,
+syntax-only metadata and native record sibling preservation. The infinite helper
+is inspected as syntax without execution. A tiny pair of helpers checks authored
+names resembling generated identifiers; one format/read round trip checks that
+computation survives formatting.
+
+The current runtime probes request a 100-instruction rejection, cancellation
+after ten polls, and at most twenty binary-search evaluations within
+1–1,048,576 instructions to find a single-field budget. That budget must reject
+two identical fields. Other successful loops have at most eight iterations per
+evaluation. These are fixture bounds, not permission to execute the workload.
+
+The external Studio fixtures are also retained without admission:
+
+- `studio-prototype-source`: two hidden frames at fixed 1/60 second, four small
+  temporary prototype files, three actors and one checkpoint restore; covers
+  parameters/overrides/Reset, undo/redo, save/reload and stale-input refusal.
+- `studio-typed-prototype-preview`: two rendered frames, one computed prototype
+  and one screenshot; checks the production Parameters and computed/override/Reset
+  controls.
+
+All three standalone routes require renewed independent review of the exact
+compiler-backed sources, prepared compiler identity, installed SDK, input sizes,
+cache state and complete command. The reviewed first measurement must include
+compiler work within the production 60-second supervisor. Record configuration,
+backend, sanitizer settings and complete execution logs before restoring an
+admission. Keep configuration/build timing separate. Do not increase a limit or
+split a workload to evade the deadline. The fixtures/selectors remain available
+for that review; their supervised execution routes are disabled in
+`tools/test_policy.py`. Existing broad-suite quarantines remain unchanged.

@@ -1,6 +1,0 @@
-version 1
-name "Main"
-(array)entities {
-    - name="Leader" prototype="Leader"
-    - name="Follower" prototype="Follower"
-}

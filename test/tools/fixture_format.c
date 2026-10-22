@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "support/asset_document.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -36,14 +37,17 @@ TEST_CASE(fixture_projects_are_canonically_formatted)
      * outdated manifests before starting any controller child. */
     for (size_t i = 0; i < sizeof projects / sizeof *projects; i++) {
         char manifest[4096];
-        int length = snprintf(manifest, sizeof manifest, "%s/%s/project.kdl", tool_root(), projects[i]);
+        int length = snprintf(manifest, sizeof manifest, "%s/%s/project.chibi", tool_root(), projects[i]);
         REQUIRE(length > 0 && (size_t)length < sizeof manifest);
-        FILE *file = fopen(manifest, "rb");
-        REQUIRE(file);
-        int version = 0;
-        bool current = fscanf(file, "version %d", &version) == 1 &&
-                       version == CHIBI_PROJECT_VERSION;
-        REQUIRE(!fclose(file));
+        char *text = tool_read(manifest);
+        REQUIRE(text);
+        char error[256];
+        av_doc *doc = asset_document_read(text, error, sizeof error);
+        free(text);
+        REQUIRE(doc);
+        bool current = av_get_int(av_obj_get(av_doc_root(doc), "version")) ==
+                       CHIBI_PROJECT_VERSION;
+        av_doc_free(doc);
         REQUIRE(current);
     }
     snprintf(scratch, sizeof scratch, "/tmp/chibi-fixture-format-XXXXXX");

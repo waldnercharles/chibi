@@ -1,9 +1,0 @@
-version 1
-name "NativeRainField"
-presentation "3d"
-(array)entities {
-    - name="Rain" prototype="NativeRain"
-    - name="Opaque block" prototype="RainOccluder"
-    - name="Camera" prototype="RainCamera"
-    - name="Environment" prototype="RainEnvironment"
-}

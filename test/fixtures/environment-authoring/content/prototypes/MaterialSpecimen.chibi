@@ -1,0 +1,51 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("MaterialSpecimen")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("color", data.Value.UInt(1269808639))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("albedo", data.Value.UInt(1269808639)),
+                    data.Field.Named("emission_color", data.Value.UInt(1269808639)),
+                    data.Field.Named("emission_multiplier", data.Value.Real(1.0)),
+                    data.Field.Named("scene", data.Value.UInt(1269808639))
+                ])),
+                data.Field.Named("MaterialBreakProfile", data.Object([
+                    data.Field.Named("chip_speed", data.Value.Real(8.0)),
+                    data.Field.Named("dust_lifetime_max", data.Value.Real(0.40000000000000002)),
+                    data.Field.Named("dust_lifetime_min", data.Value.Real(0.20000000000000001)),
+                    data.Field.Named("dust_limit", data.Value.UInt(4)),
+                    data.Field.Named("dust_size_max", data.Value.Real(0.59999999999999998)),
+                    data.Field.Named("dust_size_min", data.Value.Real(0.29999999999999999)),
+                    data.Field.Named("dust_speed_max", data.Value.Real(6.0)),
+                    data.Field.Named("dust_speed_min", data.Value.Real(3.0)),
+                    data.Field.Named("fragment_speed", data.Value.Real(10.0)),
+                    data.Field.Named("release_speed", data.Value.Real(6.0))
+                ])),
+                data.Field.Named("MaterialTerrain", data.Object([
+                    data.Field.Named("category", data.Value.UInt(8)),
+                    data.Field.Named("cell_size", data.Value.Real(2.0)),
+                    data.Field.Named("field", data.Value.Text("MaterialIslands")),
+                    data.Field.Named("height", data.Value.Real(224.0)),
+                    data.Field.Named("mask", data.Value.UInt(15)),
+                    data.Field.Named("min_fragment_cells", data.Value.UInt(10)),
+                    data.Field.Named("parameters", data.Value.Text("")),
+                    data.Field.Named("seed", data.Value.UInt(7)),
+                    data.Field.Named("width", data.Value.Real(384.0))
+                ])),
+                data.Field.Named("Substance", data.Object([
+                    data.Field.Named("blast_multiplier", data.Value.Real(1.0)),
+                    data.Field.Named("hardness", data.Value.Real(1.0)),
+                    data.Field.Named("retain_chips", data.Value.Bool(true))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

@@ -2,7 +2,7 @@
 
 #include "assets/physics_settings.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
@@ -485,7 +485,7 @@ av_value *scene_document_to_value(const scene_document *document, ecs_component_
 char *scene_document_save(const scene_document *document, ecs_component_catalog components)
 {
     av_value *value = scene_document_to_value(document, components);
-    char *text = asset_text_write(value);
+    char *text = asset_document_write(value);
     av_value_free(value);
     return text;
 }
@@ -656,6 +656,6 @@ scene_document *scene_document_load_value(av_value *value, char *error, size_t e
 
 scene_document *scene_document_load(const char *text, char *error, size_t error_size)
 {
-    av_doc *parsed = text ? asset_text_read(text, error, error_size) : NULL;
+    av_doc *parsed = text ? asset_document_read(text, error, error_size) : NULL;
     return parsed ? load_document_value(parsed, error, error_size) : NULL;
 }

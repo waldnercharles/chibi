@@ -68,7 +68,7 @@ def validate_package(package, kind='player'):
     with binary.open('rb') as executable:
         if executable.read(4) == b'\0asm':
             raise ValueError('Expected a native player executable')
-    if kind == 'runtime' and any(re.search(r'Chibi::(?:graph|studio|compiler|authoring|language|syntax|asset_(?:text|kdl))', target)
+    if kind == 'runtime' and any(re.search(r'Chibi::(?:graph|studio|compiler|authoring|language|syntax|asset_documents)', target)
                                  for target in manifest.get('targets', [])):
         raise ValueError('Runtime SDK contains compiler/Studio exports')
     requirements = manifest.get('requirements', {})

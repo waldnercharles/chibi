@@ -1,5 +1,0 @@
-name "Marker"
-components {
-    Appearance color=0x72ead4ff height=18.0 layer=2 width=2.0
-    Transform y=-9.0
-}

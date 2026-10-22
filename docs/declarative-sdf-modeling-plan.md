@@ -2,7 +2,7 @@
 
 > Historical implementation record. Commands, MCP recipes, helper scripts and
 > validation results below describe the recorded revision. The MCP product and
-> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
 > admitted checks. These results do not verify the current checkout.
 
@@ -10,19 +10,19 @@ Status: implementation is in the isolated declarative-modeling worktree. See [th
 
 ## Summary
 
-Add a declarative modeling layer that preserves named parts, parameters, and construction operations in our existing KDL graph format. Compile those definitions into the existing bounded SDF rendering pipeline. Blender-compatible Python and MCP interfaces are explicitly outside this plan.
+Add a declarative modeling layer that preserves named parts, parameters, and construction operations in our existing compiled Chibi graph format. Compile those definitions into the existing bounded SDF rendering pipeline. Blender-compatible Python and MCP interfaces are explicitly outside this plan.
 
 ## Context
 
 The SDF experiments are in `/Users/cwaldner/.codex/worktrees/sdf-scenes/c-blueprints`, inspected at HEAD `631f9a710bfccbf2b0843017304322d71798a46d` with additional working changes possible. Implementation must establish its own current source baseline and coordinate with that work before integrating dependencies.
 
-The current system already stores shapes, materials, functions, parameters, prototypes, and scenes as KDL graphs. The lab authors sphere, rounded-box, torus, Boolean, and animated examples through the existing public graph operations. The runtime compiles shape graphs into shader code and evaluates their distance outputs inside bounded proxies.
+The current system already stores shapes, materials, functions, parameters, prototypes, and scenes as compiled Chibi graphs. The lab authors sphere, rounded-box, torus, Boolean, and animated examples through the existing public graph operations. The runtime compiles shape graphs into shader code and evaluates their distance outputs inside bounded proxies.
 
 Current shape edges carry scalar/vector samples, not reusable geometry values. A modeling operation must preserve an unevaluated shape definition to transform or instantiate a complete part. The new layer must also keep authored construction information rather than replacing the saved asset with flattened arithmetic.
 
 ## Scope
 
-The deliverable is editable procedural SDF assets in Studio and KDL, with deterministic compilation, parameterized reuse, conservative bounds, material assignment, diagnostics, and focused validation scenes. Existing Chibi graph authoring and inspection tools remain the authoring interface for automation.
+The deliverable is editable procedural SDF assets in Studio and compiled Chibi, with deterministic compilation, parameterized reuse, conservative bounds, material assignment, diagnostics, and focused validation scenes. Existing Chibi graph authoring and inspection tools remain the authoring interface for automation.
 
 Excluded: Blender API emulation; a new Python SDK or MCP server; exact Blender modifier behavior; arbitrary face/edge editing; mesh reconstruction into primitive graphs; generative model installation; character skinning; cloth/hair simulation; mesh export; new GI techniques; and the parent task's renderer optimization work.
 
@@ -35,7 +35,7 @@ Paths below are relative to the implementation checkout. Features under `project
 | `src/graph/model/behavior_asset.h` | Asset domains, named functions, variables, and graph ownership |
 | `src/graph/model/graph.h`, `pin.h`, `type.h` | Stable graph/node identities, typed edges, nominal types, and reflected values |
 | `src/graph/document/serialize*.c` | Saved graph structure, references, and values |
-| `src/support/asset_text.c`, `asset_value.c` | KDL parsing and common document values |
+| `src/support/asset_document.c`, `asset_value.c` | compiled Chibi parsing and common document values |
 | `src/graph/shader/shader_adapter.c` | Scalar/vector graph lowering and function expansion |
 | `src/graph/shader/shader_graph.c` | CPU evaluation and shader generation from the shader IR |
 | `src/render/shader_catalog.c` | Compiled assets, parameter binding, revisions, and shader source |
@@ -47,16 +47,16 @@ The existing shape graph returns one distance. The inspected shader IR permits 3
 
 ## Recommended architecture
 
-Introduce `domain "model"` and a `content/models` asset family using the existing graph document and KDL serialization. Keep numerical `shape` graphs useful as field programs. A model graph describes construction: it connects geometry definitions, parameters, and named parts.
+Introduce `domain "model"` and a `content/models` asset family using the existing graph document and compiled Chibi serialization. Keep numerical `shape` graphs useful as field programs. A model graph describes construction: it connects geometry definitions, parameters, and named parts.
 
 ```text
-KDL model graph, parameters, and referenced model assets
+compiled Chibi model graph, parameters, and referenced model assets
     -> validated construction DAG and dependency graph
     -> compiled distance program, bounds program, and part/material mapping
     -> existing shader catalog and bounded SDF renderer
 ```
 
-Use one authored source of truth. Generated shader IR, bounds, source mappings, and cache entries are derived products. Do not save a second generated shape KDL file that users can edit independently.
+Use one authored source of truth. Generated shader IR, bounds, source mappings, and cache entries are derived products. Do not save a second generated shape compiled Chibi file that users can edit independently.
 
 Add capability modules under `src/graph/modeling/`, separate from the existing graph data structures in `src/graph/model/`. The modeling compiler traverses construction nodes with an explicit position context and emits existing shader IR wherever possible. Add low-level shader operations only when an operation cannot be expressed efficiently by the current IR; CPU and GPU implementations must agree.
 
@@ -182,7 +182,7 @@ The 4080 Super is available for asset generation only and is not a game performa
 | --- | --- |
 | Construction model | New `src/graph/modeling/model_nodes.*`, `model_ir.*`, `model_compile.*`, `model_bounds.*`; operation contracts, semantic compilation, source mapping, and conservative bounds |
 | Asset model and persistence | `src/graph/model/behavior_asset.*`, nominal type registration, `src/graph/document/serialize*.c`, `library.c`; model domain, persistent part/reference/parameter metadata, and round trips |
-| Asset discovery | `src/assets/new_asset.*`, `behavior_loader.c`, `reference_index.*`, `asset_source.*`; creation, loading, dependency navigation, and KDL intelligence |
+| Asset discovery | `src/assets/new_asset.*`, `behavior_loader.c`, `reference_index.*`, `asset_source.*`; creation, loading, dependency navigation, and compiled Chibi intelligence |
 | Publication lifecycle | `src/runtime/behaviors/live.c`, `src/render/shader_catalog.*`; validated compiled generations, bounds/parameter revisions, material dependencies, and cleanup |
 | SDF integration | `src/render/mesh_surface.*`, `mesh_material.*`, `scene_renderer.c`, `shaders/sdf_material.frag`; model bounds, off-center proxies, material resolution, and batching compatibility |
 | Compiler target | `src/graph/shader/shader_graph.*`, `shader_adapter.c`; narrow target operations or entry points needed by model lowering, preserving numerical shape graphs |
@@ -196,15 +196,15 @@ These are responsibility boundaries and starting paths, not a requirement to cre
 
 - Integrate the required SDF capability from the active work only after recording its exact source state and preserving unrelated changes. This plan does not authorize merging or editing that worktree now.
 - Model assets are an additional capability. Raw numerical shapes, mesh assets, and behavior graphs remain supported for their distinct uses; do not label them obsolete merely because models exist.
-- If an existing saved contract must change, migrate the affected assets directly and remove the superseded contract. Bump `CHIBI_PROJECT_VERSION` and every relevant `project.kdl` when older builds can no longer load those projects. The model domain itself needs a version review; do not silently write it under an incompatible project version.
+- If an existing saved contract must change, migrate the affected assets directly and remove the superseded contract. Bump `CHIBI_PROJECT_VERSION` and every relevant `project.chibi` when older builds can no longer load those projects. The model domain itself needs a version review; do not silently write it under an incompatible project version.
 - Retain authored graphs as the editable source after optimization. Do not add mesh-to-SDF baking, runtime geometry scripts, skeletal animation, a replacement editor, or sampled-volume rendering to solve an early milestone.
-- No performance promise follows from compact KDL. Keep source reuse, compiler expansion, field evaluations, and frame cost separate.
+- No performance promise follows from compact compiled Chibi. Keep source reuse, compiler expansion, field evaluations, and frame cost separate.
 
 ## Verification and completion
 
 For every stage, retain its scene, validation result, fixed camera/parameter settings, and inspected images. Numerical checks must use independent expectations or references, not merely repeat the lowering implementation. Visual output alone does not establish distance safety, bounds correctness, or speed.
 
-Run the affected focused tests while developing, then `make build` and `make test` for a completed integration. Run `make web` and the native/Web authoring checks for editor and shared compiler changes. After hand-editing KDL, run `build/chibi_ctl --project-root <root> --format`, then its check mode. Inspect packaged asset discovery and launch separately from a successful engine build. Avoid rebuilding the active parent worktree for this plan.
+Run the affected focused tests while developing, then `make build` and `make test` for a completed integration. Run `make web` and the native/Web authoring checks for editor and shared compiler changes. After hand-editing compiled Chibi, run `build/chibi_ctl --project-root <root> --format`, then its check mode. Inspect packaged asset discovery and launch separately from a successful engine build. Avoid rebuilding the active parent worktree for this plan.
 
 Completion means both final study assets can be constructed, revised by named parts and parameters, saved, reloaded, validated, packaged, and rendered through the supported operations. References and material assignments survive edits; bounds remain conservative; invalid input is diagnosed; repeated instances retain expected program sharing. The staged evidence must identify any unsupported backend or unverified workflow rather than treating it as passed.
 

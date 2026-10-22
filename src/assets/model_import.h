@@ -17,8 +17,8 @@ typedef struct
  * the content folder `content` as `name`. Every mesh node bakes into
  * meshes/<name>.mesh with one group per material, each glTF material its
  * triangles draw with becomes a Standard material at
- * materials/<name>_<material>.kdl, its images are copied under
- * textures/<name>/, and prototypes/<name>.kdl draws the mesh.
+ * materials/<name>_<material>.chibi, its images are copied under
+ * textures/<name>/, and prototypes/<name>.chibi draws the mesh.
  * It writes nothing over an existing file and leaves nothing behind when it
  * fails; false with why in `error`. The report holds what it wrote and left
  * out; free it with model_import_report_free either way. */

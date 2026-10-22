@@ -1,8 +1,0 @@
-name "Ball"
-components {
-    Appearance color=0x5b6ee1ff height=16.0 width=16.0
-    Body type="Dynamic"
-    Collider category=1 mask=1 radius=8.0
-    (object)Transform
-    Velocity x=60.0
-}

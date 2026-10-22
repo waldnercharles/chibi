@@ -9,7 +9,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/core_nodes.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -1056,7 +1056,7 @@ static int load_edges(graph *g, av_value *edges)
 graph *graph_load(const char *text)
 {
     char error[160];
-    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
     if (!doc) {
         serialize_error_set("%s", text ? error : "null graph input");
         return NULL;
@@ -1472,7 +1472,7 @@ static int serialize_repair_math_calls(behavior_asset *asset)
 behavior_asset *behavior_asset_load(const char *text)
 {
     char error[160];
-    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
     if (!doc) {
         serialize_error_set("%s", text ? error : "null graph input");
         return NULL;

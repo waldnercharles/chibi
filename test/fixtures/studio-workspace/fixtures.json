@@ -9,10 +9,10 @@
     "sha256": "07175c210c1fc4366e54b00b46331e31d80ed4e49808b4362fe6e1e15b140b53",
     "source": "projects/arena2d/content/behaviors/Weapon.chibi"
   },
-  "content/editor/Components.kdl": {
+  "content/editor/Components.chibi": {
     "purpose": "reflected component labels and field grouping consumed by graph completion",
     "sha256": "01f98168c66d949d6f0d41d1483cb17e0c0759ed7065fce0905b7de7aa79af9a",
-    "source": "projects/arena2d/content/editor/Components.kdl"
+    "source": "projects/arena2d/content/editor/Components.chibi"
   },
   "content/libraries/DirectionMath.chibi": {
     "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
@@ -24,23 +24,23 @@
     "sha256": "e7001582df4e6c2fc2cb7b9d3ef4c665bbe347bb7657b72ef3717cedd7febed6",
     "source": "projects/arena2d/content/libraries/WeaponActions.chibi"
   },
-  "content/prototypes/Camera.kdl": {
+  "content/prototypes/Camera.chibi": {
     "purpose": "camera overlay without camera choreography",
     "sha256": "354c4e1410ef0a36f32001f9c26decaaa432787a8378efc1d45e262511e3c51c"
   },
-  "content/prototypes/Player.kdl": {
+  "content/prototypes/Player.chibi": {
     "purpose": "component context for completion and authoring session with idle weapon",
     "sha256": "07b8f677156e54a8fcd0cf94f6dfc5d6a0b7960c1587a936ed7e0ca787420c7f"
   },
-  "content/prototypes/Projectile.kdl": {
+  "content/prototypes/Projectile.chibi": {
     "purpose": "signature context for frozen callable projectile function; scene does not fire",
     "sha256": "5f869389167d71f4e5467f6ad64873e6f219ca2908acc8c31e0310ede02569af"
   },
-  "content/scenarios/Firefight.kdl": {
+  "content/scenarios/Firefight.chibi": {
     "purpose": "bounded idle replay exercises graph close, stop and reopen lifetime",
     "sha256": "081b057508fc94fe573a1b18c524a4e955ef1d72861729d0741b06899f51dd84"
   },
-  "content/scenes/Sandbox.kdl": {
+  "content/scenes/Sandbox.chibi": {
     "purpose": "two subjects for authoring selection, camera overlays and runtime transitions",
     "sha256": "fa5cfdbb1f7580a383fd714ef2bed0486520c32ba49a0f6eaa7c83a4a49b34a1"
   },
@@ -76,7 +76,7 @@
     "purpose": "synthetic designer widget catalog keeps four UI assets and Repair event",
     "sha256": "8b6c2d10e8bb47935cdc98a29d6d1fea0785f2b7c24ed1c7b58c34f007fea140"
   },
-  "project.kdl": {
+  "project.chibi": {
     "purpose": "synthetic authoring workspace",
     "sha256": "d4c314ecbb9646858c480a56e938f5992ea6f64514f369f32b787483a584b49e"
   }

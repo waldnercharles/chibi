@@ -1,5 +1,0 @@
-name "Conductor"
-components {
-    Rhythm bpm=120.0 pulse_width=0.25
-    (object)Transform
-}

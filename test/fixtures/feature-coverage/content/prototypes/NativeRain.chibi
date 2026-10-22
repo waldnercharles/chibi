@@ -1,0 +1,36 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("NativeRain")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(0.59999999999999998)),
+                    data.Field.Named("height", data.Value.Real(4.0)),
+                    data.Field.Named("primitive", data.Value.UInt(5)),
+                    data.Field.Named("width", data.Value.Real(0.59999999999999998))
+                ])),
+                data.Field.Named("ParticleField3D", data.Object([
+                    data.Field.Named("additive", data.Value.Bool(true)),
+                    data.Field.Named("count", data.Value.UInt(128)),
+                    data.Field.Named("seed", data.Value.UInt(7)),
+                    data.Field.Named("time", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Shader", data.Object([
+                    data.Field.Named("material", data.Value.Text("RainParticles.Fall")),
+                    data.Field.Named("parameters", data.Value.Text("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        data.Object([\n            data.Field.Named(\"Spacing\", data.Value.UInt(7)),\n            data.Field.Named(\"DropSize\", data.Value.Real(1.25))\n        ])\n    );\n}\n"))
+                ])),
+                data.Field.Named("Transform3D", data.Object([
+                    data.Field.Named("scale", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0)),
+                        data.Field.Named("y", data.Value.Real(1.0)),
+                        data.Field.Named("z", data.Value.Real(1.0))
+                    ]))
+                ]))
+            ]))
+        ])
+    );
+}

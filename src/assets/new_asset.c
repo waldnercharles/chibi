@@ -10,7 +10,7 @@
 #include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/component_catalog.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -134,6 +134,32 @@ static char *source_text(const char *kind, const char *name)
     return text;
 }
 
+static char *data_source(new_asset_kind kind, const char *name)
+{
+    char error[160];
+    char *identifier = authoring_source_identifier(name, error, sizeof error);
+    bool valid = identifier && !strcmp(identifier, name) && !strchr(identifier, '.');
+    free(identifier);
+    if (!valid) {
+        return NULL;
+    }
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_str(doc, root, "name", name);
+    if (kind == NEW_ASSET_PROTOTYPE) {
+        av_obj_add_obj(doc, root, "components");
+    } else {
+        av_obj_add_bool(doc, root, "exclusive", false);
+        av_obj_add_bool(doc, root, "acyclic", false);
+        av_obj_add_bool(doc, root, "traversable", false);
+        av_obj_add_str(doc, root, "on_delete_target", "Remove");
+    }
+    char *source = asset_document_write(root);
+    av_doc_free(doc);
+    return source;
+}
+
 char *new_asset_text(new_asset_kind kind, const char *name)
 {
     switch (kind) {
@@ -146,8 +172,8 @@ char *new_asset_text(new_asset_kind kind, const char *name)
             scene_document_free(scene);
             return text;
         }
-        case NEW_ASSET_PROTOTYPE: return source_text("prototype", name);
-        case NEW_ASSET_RELATIONSHIP: return source_text("relationship", name);
+        case NEW_ASSET_PROTOTYPE: return data_source(kind, name);
+        case NEW_ASSET_RELATIONSHIP: return data_source(kind, name);
         case NEW_ASSET_SYSTEM: return source_text("system", name);
         case NEW_ASSET_BEHAVIOR: return source_text("behavior", name);
         case NEW_ASSET_EVENT:
@@ -204,8 +230,8 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         return NULL;
     }
     errno = 0;
-    /* Models share the shapes namespace. Prototypes also admit KDL, so a
-     * new source prototype must not duplicate its existing KDL asset. */
+    /* Models share the shapes namespace. Prototypes also admit Chibi, so a
+     * new source prototype must not duplicate its existing Chibi asset. */
     int rival = kind == NEW_ASSET_MODEL     ? NEW_ASSET_SHAPE
               : kind == NEW_ASSET_SHAPE     ? NEW_ASSET_MODEL
               : kind == NEW_ASSET_PROTOTYPE ? NEW_ASSET_PROTOTYPE

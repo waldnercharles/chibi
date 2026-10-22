@@ -2,9 +2,9 @@
 
 Material algorithms operate on native grids and masks. Authored fields define
 geometry; reflected components define tuning; behaviors decide gameplay outcomes.
-`test/fixtures/environment-authoring/content/scenes/MaterialStudy.kdl` exercises
+`test/fixtures/environment-authoring/content/scenes/MaterialStudy.chibi` exercises
 this boundary with two recovered procedural specimens and an authored cut.
-`SeamStudy.kdl` in the same fixture uses two small slabs and continuous probes
+`SeamStudy.chibi` in the same fixture uses two small slabs and continuous probes
 for collision acceptance at a chunk boundary. These focused scenes omit game
 movement, fluid worlds, health, projectiles, encounters and combat configuration.
 
@@ -252,7 +252,7 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Edit field KDL and system/library `.chibi` files directly, or use Studio. Use
+Edit field compiled Chibi and system/library `.chibi` files directly, or use Studio. Use
 native `inspect_graph`, `inspect_system` and `validate_asset` requests for saved
 content; request examples are in the [asset workflow](runtime-authoring.md).
 Native `preview_field` produces a deterministic CPU PNG, range and hash without
@@ -265,7 +265,7 @@ printf '%s\n' '{"contract":1,"operation":"preview_field","kind":"field","name":"
 
 The editor lists fields, filters their palette, exposes pure scalar library
 calls, and provides seed/cell-size controls and a field preview in Details.
-The fixture start scene is `scenes/MaterialStudy.kdl`; `scenes/SeamStudy.kdl`
+The fixture start scene is `scenes/MaterialStudy.chibi`; `scenes/SeamStudy.chibi`
 is its separate collision specimen.
 
 Build with `make build`. Select admitted checks using `make agent-list` and

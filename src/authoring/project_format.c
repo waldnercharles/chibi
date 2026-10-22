@@ -17,7 +17,6 @@
 #include "runtime/declared_components.h"
 #include "support/array.h"
 #include "support/asset_format.h"
-#include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 
@@ -185,23 +184,10 @@ static bool folder_files(const char *folder, const char *extension, char ***name
     return true;
 }
 
-/* Prototypes are code or declarative files; every other family has one
- * extension. The names stay sorted together. */
+/* Every asset family has one Chibi source extension. */
 static bool family_files(const asset_family *family, const char *folder, char ***names)
 {
-    if (!folder_files(folder, family->extension, names)) {
-        return false;
-    }
-    if (family->kind != FORMAT_PROTOTYPE) {
-        return true;
-    }
-    return folder_files(folder, DECLARATIVE_ASSET_EXTENSION, names);
-}
-
-static bool code_path(const char *path)
-{
-    size_t length = strlen(path), suffix = strlen(CODE_ASSET_EXTENSION);
-    return length > suffix && !strcmp(path + length - suffix, CODE_ASSET_EXTENSION);
+    return folder_files(folder, family->extension, names);
 }
 
 static void free_names(char **names)
@@ -283,7 +269,7 @@ static char *canonical_graph(const char *text, char *error, size_t size)
         snprintf(error, size, "%s", graph_last_error());
         return NULL;
     }
-    char *saved = behavior_asset_save(asset);
+    char *saved = format_text(text, error, size);
     behavior_asset *reopened = saved ? behavior_asset_load(saved) : NULL;
     if (!reopened || !behavior_asset_equal(asset, reopened)) {
         free(saved);
@@ -297,7 +283,7 @@ static char *canonical_graph(const char *text, char *error, size_t size)
 
 /* It must resolve, but saves as authored: its own content, naming its
  * includes and children's prototypes. */
-static char *canonical_prototype(formatter *f, const char *text, const char *path, char *error, size_t size)
+static char *canonical_prototype(formatter *f, const char *text, const char *, char *error, size_t size)
 {
     if (!f->prototypes_read) {
         f->prototypes_valid = read_prototypes(f, f->prototypes_error, sizeof f->prototypes_error);
@@ -321,9 +307,7 @@ static char *canonical_prototype(formatter *f, const char *text, const char *pat
     prototype *authored = resolved
                             ? prototype_load_authored(text, &registry, error, size)
                             : NULL;
-    char *saved = !authored       ? NULL
-                : code_path(path) ? format_text(text, error, size)
-                                  : prototype_save(authored);
+    char *saved = authored ? format_text(text, error, size) : NULL;
     prototype_free(authored);
     prototype_free(resolved);
     return saved;
@@ -355,8 +339,7 @@ static char *canonical_asset(
         }
         case FORMAT_SCENE: {
             scene_document *scene = scene_document_load(text, error, size);
-            char *saved = scene ? scene_document_save(scene, project_components())
-                                : NULL;
+            char *saved = scene ? format_text(text, error, size) : NULL;
             scene_document_free(scene);
             return saved;
         }
@@ -365,11 +348,11 @@ static char *canonical_asset(
             component_presentation presentation = { 0 };
             bool valid = component_presentation_read(text, project_components(), &presentation, error, size);
             component_presentation_free(&presentation);
-            return valid ? xstrdup(text) : NULL;
+            return valid ? format_text(text, error, size) : NULL;
         }
         case FORMAT_SCENARIO: {
             scenario_document *scenario = scenario_document_load(text, error, size);
-            char *saved = scenario ? scenario_document_save(scenario) : NULL;
+            char *saved = scenario ? format_text(text, error, size) : NULL;
             scenario_document_free(scenario);
             return saved;
         }
@@ -384,11 +367,6 @@ static int format_asset(formatter *f, const asset_entry *entry)
     char *text = file_read_text(path);
     char *canonical = text ? canonical_asset(f, entry->family, text, path, error, sizeof error)
                            : NULL;
-    if (canonical && !code_path(path)) {
-        char *disk = asset_text_to_disk(canonical, error, sizeof error);
-        free(canonical);
-        canonical = disk;
-    }
     int differing = -1;
     if (!canonical) {
         fprintf(stderr, "format: %s: %s\n", entry->relative, text ? error : "could not read it");
@@ -401,7 +379,7 @@ static int format_asset(formatter *f, const asset_entry *entry)
     return differing;
 }
 
-/* The input map is canonical as its own writer emits it. */
+/* Validate the input values, then format their authored computation. */
 static int format_input_map(const formatter *f)
 {
     char *path = join(f->content, INPUT_MAP_FILE);
@@ -413,10 +391,9 @@ static int format_input_map(const formatter *f)
     char error[256] = "could not read it";
     input_action *map = NULL;
     char *text = file_read_text(path);
-    char *written = text && input_map_read(text, &map, error, sizeof error)
-                      ? input_map_write(map)
-                      : NULL;
-    char *canonical = written ? asset_text_to_disk(written, error, sizeof error) : NULL;
+    char *canonical = text && input_map_read(text, &map, error, sizeof error)
+                        ? format_text(text, error, sizeof error)
+                        : NULL;
     int differing = -1;
     if (!canonical) {
         fprintf(stderr, "format: content/" INPUT_MAP_FILE ": %s\n", error);
@@ -425,7 +402,6 @@ static int format_input_map(const formatter *f)
     }
     input_map_free(map);
     free(canonical);
-    free(written);
     free(text);
     free(path);
     return differing;
@@ -618,7 +594,7 @@ int authoring_packages_format(const char *root, bool check)
         return -1;
     }
     if (!acount(files)) {
-        fprintf(stderr, "format: %s holds no project.kdl or package files\n", root);
+        fprintf(stderr, "format: %s holds no project.chibi or package files\n", root);
         return -1;
     }
     size_t prefix = strlen(root) + 1;

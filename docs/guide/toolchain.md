@@ -5,8 +5,8 @@ The command finds the compiler, player and engine resources beside itself.
 
 ## Build and run
 
-PROJECT is a project folder or its `project.kdl`. Without a path, these
-commands find the nearest `project.kdl` in or above the working directory.
+PROJECT is a project folder or its `project.chibi`. Without a path, these
+commands find the nearest `project.chibi` in or above the working directory.
 
 ```sh
 chibi check /path/to/game
@@ -18,25 +18,29 @@ chibi run /path/to/game
 `.chibi/build/game.chibip`. `run` builds changed content and starts the player.
 Pass player options after `--`. Use `chibi-player --help` to list them.
 
-An older project must migrate before these commands can use it. The error
-message gives the migration command. If a migration fails partway, the
-manifest's `migrated` node records the version its sources reached, and the
-next run continues from there. Fix the sources as they are; to start over from
-old sources, restore `project.kdl` with them.
+Current projects use version 33 compiled Chibi sources. Earlier document formats
+require an offline source conversion; their historical parser and migration chain
+are retired. Rebuild prepared artifacts after converting source contracts.
 
 ## Project files
 
-A project has a `project.kdl` manifest and a content folder:
+A project has a `project.chibi` manifest and a content folder:
 
-```kdl
-version 29
-name "My Game"
-content "content"
-start_scene "scenes/Main.kdl"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Project("My Game", 33, "content", "scenes/Main.chibi", [])
+    );
+}
 ```
 
 The start scene path is relative to the content folder. Behaviors, libraries
-and systems use `.chibi`. Scenes, prototypes and materials use KDL.
+and systems use executable Chibi declarations. Scenes, prototypes and materials
+use ordinary compiled modules with the same `.chibi` suffix.
 
 ## Format files
 
@@ -45,10 +49,10 @@ chibi fmt /path/to/game
 chibi fmt --check /path/to/game
 ```
 
-`fmt` rewrites sources and KDL assets in their canonical form. It keeps UI
+`fmt` rewrites sources and compiled Chibi assets in their canonical form. It keeps UI
 markup unchanged. `--check` reports files that need formatting and writes nothing.
 
-For a folder without `project.kdl`, `fmt` formats package sources instead.
+For a folder without `project.chibi`, `fmt` formats package sources instead.
 Each source file must start with `package NAME`.
 
 ## Test packages
@@ -143,7 +147,7 @@ chibi doc /path/to/repository
 chibi doc /path/to/repository --serve
 ```
 
-`doc` publishes the pages listed in `docs/site.kdl` to `build/docs`. The manifest
+`doc` publishes the pages listed in `docs/site.chibi` to `build/docs`. The manifest
 can select Markdown, package references and grammar rules. Other files stay private.
 `--serve` previews the result locally. It accepts the same `--port` option as `web`.
 

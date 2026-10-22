@@ -108,7 +108,7 @@ controllers. Header-described work is not assumed to run on a worker thread.
 Every row needs identical visible state, action/document/history outputs and
 deterministic same-platform pixels where applicable. The selectors named below
 are only narrow available contracts; none was run in this report. See
-`selectors.csv` for admitted commands, missing routes and exclusions.
+[the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) for admitted commands, missing routes and exclusions.
 
 | Feature family | Available narrow evidence surface | Still missing for conversion acceptance |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ are only narrow available contracts; none was run in this report. See
 | Outliner | `studio-outliner-move`, `studio-scene-move`; exact shared filter/range fields | Full filter/range/rename/hide/lock/spawn, duplicates, large scroll, error traces and rendered goldens |
 | Assets | `studio-asset-pointer`; partial panel-idle work counts | Open/delete/import/batch undo/stale thumbnails, large virtualization and cache/retry ownership |
 | Properties/Members | `studio-source-edit`, `studio-panel-idle`; source edit/presentation CPU contracts | Mixed/computed/override fields, every scrub/type/cancel edge, identity/reacquisition and all types |
-| Text/code | Source edit, publication/navigation/format prerequisites; paused source-history selector | Code/KDL keys and follow-up selectors are unadmitted; complete IME/Unicode/Vim/typing groups and native platform input |
+| Text/code | Source edit, publication/navigation/format prerequisites; paused source-history selector | Chibi source keys and follow-up selectors are unadmitted; complete IME/Unicode/Vim/typing groups and native platform input |
 | Graph | Graph visibility/pointer/source-edit plus graph model/presentation prerequisites | Complete wire/search/refactor/fold/context/pointer workflows, hidden input and large live-debug graphs |
 | Debugger | `studio-debugger-source-history` | Valid live generation replacement, alias IDs, all pause/step/error/owner states |
 | Designer/Inspector/UI buffers | Shared buffer/history declarations; UI-document/authoring/format prerequisites; bounded Inspector reads in panel-idle | Live edit/slots/styles, stale targets, tree/multi-part history, editor arbitration and pixels |

@@ -549,7 +549,7 @@ Step 5 is implemented for the package compiler on 2026-10-19:
 - `make bootstrap-artifact` writes stage two as a checksummed artifact, with a
   manifest recording:
   - its revision;
-  - its bootstrap version and minimum, from `tools/compiler/bootstrap.kdl`;
+  - its bootstrap version and minimum, from `tools/compiler/bootstrap.chibi`;
   - each source's SHA-256;
   - the external inputs: the value layout, prepared ABI, instruction names and
     native identities.
@@ -614,7 +614,7 @@ capability tables, and three header-only libraries. Its target table,
 compiled; it is now the source of truth. The host's instruction budget rose
 to 100 million and its step limit to 4,096 for graphs of this size.
 Slice 5, 2026-10-21: the in-tree vendored C (`chibi_fmt`, `chibi_json`,
-`chibi_asset_kdl`) and the libraries over it (`chibi_asset_json`,
+`chibi_asset_chibi`) and the libraries over it (`chibi_asset_json`,
 `chibi_asset_text`, `chibi_text_capabilities`), plus `chibi_array_capabilities`,
 `chibi_field_capabilities` and `chibi_input_map`: 40 libraries, 100 sources.
 Each target now names its include directories, defines and options
@@ -625,7 +625,7 @@ arrays `cmake/embed_binary.cmake` wrote, and the graph embeds
 sources. A `--target` build stages the headers of the libraries its includes
 name.
 Slice 7, 2026-10-21: `chibi_component_presentation`, whose engine component
-KDL is embedded, and `chibi_save_runtime`: 43 libraries, 122 sources, all of
+former asset format is embedded, and `chibi_save_runtime`: 43 libraries, 122 sources, all of
 which compiled and archived from the graph. Every other library now waits on
 one of three inputs: `chibi_execution` (51 libraries include it; it compiles
 SLJIT), Cute math (`public/math`, 46) and `chibi_native_types` (39), which the
@@ -763,7 +763,7 @@ the compiler's own packages can hold tests (`chibi-cli`'s
 each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. A PATH that is a folder
-without a `project.kdl` is a package tree instead: the compiler formats each
+without a `project.chibi` is a package tree instead: the compiler formats each
 `.chibi` file below it that `chibi test` would read, after PR #478 taught the
 source formatter package syntax. Every file must declare a package, checked
 before anything is written, so a project's behaviors are never formatted
@@ -800,7 +800,7 @@ Implement commands through shared modules, not separate scripts:
   only for a broken requested capability.
 - `check` uses the same parser, package resolver, semantic analyzer, and native
   catalog as `build`, but writes no project files or published artifact.
-- `fmt` reuses canonical source and KDL formatters. `--check` writes nothing and
+- `fmt` reuses canonical source and former asset format formatters. `--check` writes nothing and
   returns nonzero for noncanonical or invalid input.
 - `test` runs a documented authored-test contract through the shared supervisor.
   Approve discovery and assertion semantics before adding language syntax.
@@ -819,7 +819,7 @@ Status: implemented, reviewed and published. The site has been live at
 https://waldnercharles.github.io/chibi/ since 2026-10-20, as the end of this
 status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
-`ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
+`ROOT/docs/site.chibi`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
 generator is authored Chibi in `tools/docs`, which SDKs ship as
 `share/chibi/docs`: `markdown` renders the subset the public pages use
@@ -953,7 +953,7 @@ done: the hosted M5 validation helpers in `.github/scripts/` with their
 `native-unit-dependencies.tsv`, which no workflow ran; the CUT61 `analyze.py`;
 and game runtime installation (`make update-game-runtime`,
 `tools/install_game_runtime.py`
-and `tools/kdl_asset.py`), which served the retired game repositories. Git
+and `tools/chibi_asset.py`), which served the retired game repositories. Git
 history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
 `browser-sample.js` sampler followed the same day, also approved.
 On 2026-10-20 build programs became packages: one file with a `package`
@@ -1466,3 +1466,22 @@ assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
 assertions in 6.6s on macOS, each under its own production 60-second deadline.
 It does not implement header composition, semantic phases, exports, lowering,
 artifact output or `Checked`, and makes no M5/self-hosting completion claim.
+
+
+### M10 compiled asset/configuration migration — 2026-10-21
+
+The owner approved full removal of the former declarative asset format and its
+parser/emitter/dependency, with every active asset compiled by the Chibi-authored
+Compiler. `docs/typed-assets/PLAN.md` tracks the complete migration and deletion
+gates. New source writing, schema policy and source editing belong in Chibi;
+native code is limited to runtime invocation, value transport, reflection and
+platform operations. Implementation and native/browser packaging are complete
+in the engine and Studio worktrees. The old parser/emitter/vendor dependency,
+frozen migration code and prototype-only grammar additions are removed. All 388
+inventoried assets and embedded fixtures use compiled Chibi modules. Native and
+browser Studio builds, installed/relocated SDK consumers, actual native/Wasm asset
+compilation, the largest migrated asset and the installed documentation build
+passed; see the asset plan for evidence and limits. Full runtime/UI suites were
+not run, and obsolete scalar-path admissions were withdrawn. This is an
+uncommitted worktree checkpoint, not a merge or deployment, and does not mark
+all of M10 complete.

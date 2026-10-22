@@ -1401,7 +1401,11 @@ TEST_CASE(language_component_declares_measured_fields)
     );
     REQUIRE(c && !component_diagnostics && acount(c->fields) == 11);
     REQUIRE(!strcmp(c->name, "Projectile"));
-    REQUIRE(!strcmp(c->description, "Something fired.\nTwice described."));
+    REQUIRE(!strcmp(
+        c->description,
+        "Something fired.\n"
+        "Twice described."
+    ));
     REQUIRE(field_is(component_field(c, "speed"), "number", "u/s", 0, 600));
     REQUIRE(!strcmp(component_field(c, "speed")->description, "How fast."));
     REQUIRE(field_is(component_field(c, "lifetime"), "number", "s", 0, 0));
@@ -1410,7 +1414,11 @@ TEST_CASE(language_component_declares_measured_fields)
     REQUIRE(!component_field(c, "friction")->description);
     REQUIRE(field_is(component_field(c, "friction"), "number", NULL, 0, 1));
     REQUIRE(field_is(component_field(c, "drift"), "number", "rad/s", -1.5, 2));
-    REQUIRE(!strcmp(component_field(c, "drift")->description, "\nTurns."));
+    REQUIRE(!strcmp(
+        component_field(c, "drift")->description,
+        "\n"
+        "Turns."
+    ));
     REQUIRE(field_is(component_field(c, "rate"), "number", "banana/basket", 0, 0));
     REQUIRE(field_is(component_field(c, "count"), "number", "banana", 0, 12));
     REQUIRE(field_is(component_field(c, "level"), "float", NULL, 0, 0));

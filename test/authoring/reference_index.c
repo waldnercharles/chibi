@@ -96,12 +96,18 @@ static void cleanup()
 TEST_CASE(reference_assets_keep_identity_by_path_and_key)
 {
     refs = reference_index_new();
-    int prototype = reference_index_add_asset(refs, REFERENCE_ASSET_PROTOTYPE, "Ship", "content/prototypes/Ship.kdl", NULL);
-    int material = reference_index_add_asset(refs, REFERENCE_ASSET_MATERIAL, "Ship", "content/materials/Ship.kdl", NULL);
+    int prototype = reference_index_add_asset(
+        refs,
+        REFERENCE_ASSET_PROTOTYPE,
+        "Ship",
+        "content/prototypes/Ship.chibi",
+        NULL
+    );
+    int material = reference_index_add_asset(refs, REFERENCE_ASSET_MATERIAL, "Ship", "content/materials/Ship.chibi", NULL);
     REQUIRE(prototype != material);
     REQUIRE(reference_index_find_name(refs, REFERENCE_ASSET_MATERIAL, "Ship") == material);
     REQUIRE(
-        reference_index_find_asset(refs, REFERENCE_ASSET_PROTOTYPE, "./content/prototypes/Ship.kdl", NULL) ==
+        reference_index_find_asset(refs, REFERENCE_ASSET_PROTOTYPE, "./content/prototypes/Ship.chibi", NULL) ==
         prototype
     );
     /* An unsaved asset keeps its key while renamed, then takes its path. */
@@ -224,7 +230,7 @@ TEST_CASE(reference_graphs_index_every_kind_of_symbol)
     healer h = healer_new();
     healer_asset = h.asset;
     refs = reference_index_new();
-    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.chibi", NULL);
     int source = reference_index_add_asset(refs, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.chibi", NULL);
     damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
@@ -327,11 +333,29 @@ TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
     };
     char error[256];
     ship = prototype_load(
-        "name \"Ship\"\n"
-        "(array)behaviors \"Flight\"\n"
-        "components {\n"
-        "    Shader material=\"Hull\"\n"
-        "    Ui document=\"Hud\"\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Flight\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Shader\", data.Object([\n"
+        "                    data.Field.Named(\"material\", "
+        "data.Value.Text(\"Hull\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Ui\", data.Object([\n"
+        "                    data.Field.Named(\"document\", "
+        "data.Value.Text(\"Hud\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n",
         &registry,
         error,
@@ -339,8 +363,14 @@ TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
     );
     REQUIRE(ship);
     refs = reference_index_new();
-    int prototype = reference_index_add_asset(refs, REFERENCE_ASSET_PROTOTYPE, "Ship", "content/prototypes/Ship.kdl", NULL);
-    int scene = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
+    int prototype = reference_index_add_asset(
+        refs,
+        REFERENCE_ASSET_PROTOTYPE,
+        "Ship",
+        "content/prototypes/Ship.chibi",
+        NULL
+    );
+    int scene = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.chibi", NULL);
     int hud = reference_index_add_asset(refs, REFERENCE_ASSET_UI, "Hud", "content/ui/Hud.rml", NULL);
     reference_index_add_prototype(refs, prototype, ship);
     int flight = reference_index_find_name(refs, REFERENCE_ASSET_BEHAVIOR, "Flight");
@@ -443,7 +473,7 @@ TEST_CASE(reference_calls_climb_handlers_and_detect_cycles)
     REQUIRE(graph_connect_exec(g, h.tick, 0, h.send, 0, 0) == 0);
     REQUIRE(behavior_asset_add_function_call_node_to_graph(h.asset, h.heal, h.heal));
     refs = reference_index_new();
-    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.chibi", NULL);
     int source = reference_index_add_asset(refs, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.chibi", NULL);
     damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;

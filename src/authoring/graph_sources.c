@@ -2,7 +2,7 @@
 
 #include "graph/document/serialize.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_format.h"
 #include "support/xalloc.h"
 
 #include <assert.h>

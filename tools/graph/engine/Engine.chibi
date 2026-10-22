@@ -1,6 +1,7 @@
 package engine
 
 import c "graph:c"
+import asset_compiler "graph:asset_compiler"
 import strings "core:strings"
 
 // Builds the engine's libraries, which Targets.chibi describes, with the C
@@ -568,6 +569,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         }
     }
     for (target in targets) {
+        if (target == "chibi_asset_documents" && !asset_compiler.Stage(source_root, build_dir)) { return -1; }
         Embed(source_root, build_dir, target);
     }
     for (target in Staged(targets)) {

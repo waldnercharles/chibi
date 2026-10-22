@@ -79,9 +79,23 @@ TEST_CASE(scoped_material_parameters)
     behavior_asset *pair = painted_pair(material->name);
     const behavior_asset *models[] = { pair };
     REQUIRE(render_shader_models_upsert(models, 1, &error));
-    const char *text = "shape.Radius 9\n"
-                       "material.ImageSlot.Roughness 0.35\n"
-                       "MirrorSlot.Roughness 0.65\n";
+    const char *
+        text = "package asset\n"
+               "\n"
+               "import data \"game:assets\"\n"
+               "\n"
+               "pub Build :: () -> byte[] {\n"
+               "    return data.Encode(\n"
+               "        data.Object([\n"
+               "            data.Field.Named(\"shape.Radius\", "
+               "data.Value.UInt(9)),\n"
+               "            data.Field.Named(\"material.ImageSlot.Roughness\", "
+               "data.Value.Real(0.35)),\n"
+               "            data.Field.Named(\"MirrorSlot.Roughness\", "
+               "data.Value.Real(0.65))\n"
+               "        ])\n"
+               "    )\n"
+               "}\n";
     REQUIRE(prepare(text));
     render_shader_parameter_cache *cache = NULL;
     float values[32][4] = { { 0 } };
@@ -111,12 +125,60 @@ TEST_CASE(scoped_material_parameters)
     }
     float before[32][4];
     memcpy(before, values, sizeof values);
-    const char *invalid[] = { "material.MirrorSlot.Roughness \"bad\"\n",
-                              "(array)MirrorSlot.Roughness 0.2 0.3\n",
-                              "MirrorSlot.Unknown 0.2\n",
-                              "Roughness 0.2\n"
-                              "MirrorSlot.Roughness 0.3\n",
-                              "malformed {" };
+    const char *invalid[] = {
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"material.MirrorSlot.Roughness\", "
+        "data.Value.Text(\"bad\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"MirrorSlot.Roughness\", data.List([\n"
+        "                data.Value.Real(0.2),\n"
+        "                data.Value.Real(0.3)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"MirrorSlot.Unknown\", "
+        "data.Value.Real(0.2))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Roughness\", data.Value.Real(0.2)),\n"
+        "            data.Field.Named(\"MirrorSlot.Roughness\", "
+        "data.Value.Real(0.3))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "malformed {"
+    };
     for (int i = 0; i < 5; i++) {
         REQUIRE(!prepare(invalid[i]));
         REQUIRE(!render_shader_material_parameters_scoped_cached(
@@ -143,8 +205,33 @@ TEST_CASE(scoped_material_parameters)
     ));
     REQUIRE(near_value(values[0][0], .65f));
     /* Both slots paint with ScopePaint, so its unscoped names are ambiguous. */
-    REQUIRE(!prepare("Roughness 0.4\n"));
-    REQUIRE(!prepare("material.Roughness 0.45\n"));
+    REQUIRE(!prepare(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Roughness\", data.Value.Real(0.4))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
+    REQUIRE(!prepare(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"material.Roughness\", "
+        "data.Value.Real(0.45))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     REQUIRE(render_shader_material_parameters_scoped_cached(
         id,
         NULL,

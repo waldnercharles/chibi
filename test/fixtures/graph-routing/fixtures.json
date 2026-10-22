@@ -74,15 +74,15 @@
     "sha256": "07175c210c1fc4366e54b00b46331e31d80ed4e49808b4362fe6e1e15b140b53",
     "source": "projects/arena2d/content/behaviors/Weapon.chibi"
   },
-  "content/events/Damage.kdl": {
+  "content/events/Damage.chibi": {
     "purpose": "event signature dependency of routing corpus",
     "sha256": "e2a90987fa4ac914bd079a3f2ad47b0002f0933ae38186fb1ad3beb184f90aaf",
-    "source": "projects/arena2d/content/events/Damage.kdl"
+    "source": "projects/arena2d/content/events/Damage.chibi"
   },
-  "content/events/Material Impact.kdl": {
+  "content/events/Material Impact.chibi": {
     "purpose": "event signature dependency of routing corpus",
     "sha256": "d57898ee3f520364fe2344140d8caa9db4811dc534be90321b40bc25421137d2",
-    "source": "projects/arena2d/content/events/Material Impact.kdl"
+    "source": "projects/arena2d/content/events/Material Impact.chibi"
   },
   "content/libraries/DirectionMath.chibi": {
     "purpose": "call signature dependency of routing corpus",
@@ -94,16 +94,16 @@
     "sha256": "e7001582df4e6c2fc2cb7b9d3ef4c665bbe347bb7657b72ef3717cedd7febed6",
     "source": "projects/arena2d/content/libraries/WeaponActions.chibi"
   },
-  "content/prototypes/BoostEmitter.kdl": {
+  "content/prototypes/BoostEmitter.chibi": {
     "purpose": "minimal typed spawn declaration; retains only components needed by routing corpus",
     "sha256": "dbfbe93b42d42c2e86a5ac889b13f391c9c7940f0998fe365392fc14ee28f76e",
-    "source": "projects/arena2d/content/prototypes/BoostEmitter.kdl",
+    "source": "projects/arena2d/content/prototypes/BoostEmitter.chibi",
     "source_sha256": "86c7f7d24cd23f9643b4b8a576742cd95b7dc9a00cc1ecd38f8b2149ec30331c"
   },
-  "content/prototypes/MovementEmitter.kdl": {
+  "content/prototypes/MovementEmitter.chibi": {
     "purpose": "minimal typed spawn declaration; retains only components needed by routing corpus",
     "sha256": "88c77a2e00e7f1f4c24efa115dbc433c121b44eb896172ce30a3200394eadab6",
-    "source": "projects/arena2d/content/prototypes/MovementEmitter.kdl",
+    "source": "projects/arena2d/content/prototypes/MovementEmitter.chibi",
     "source_sha256": "7f98979b142bce7390e03ce45363b87adc7ff617bc1363bf146ba4f413b5bb01"
   }
 }

@@ -28,7 +28,7 @@ For a development build, use `make build`. Run the command as `build/sdk/chibi`.
 
 ## Run a project
 
-Give `chibi run` a project folder or its `project.kdl`:
+Give `chibi run` a project folder or its `project.chibi`:
 
 ```sh
 chibi run /path/to/game

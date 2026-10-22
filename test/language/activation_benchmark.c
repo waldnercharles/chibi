@@ -221,9 +221,8 @@ TEST_CASE(synchronous_activation_benchmark)
                 REQUIRE(check_total(1 + (trial + 1) * trial_total));
                 printf(
                     "ACTIVATION trial=%d seconds=%.9f "
-                    "ns_per_root_activation=%.3f "
-                    "xalloc_calls=%llu requested_bytes=%llu "
-                    "arena_blocks=%llu\n",
+                    "ns_per_root_activation=%.3f xalloc_calls=%llu "
+                    "requested_bytes=%llu arena_blocks=%llu\n",
                     trial,
                     elapsed,
                     elapsed * 1e9 / (OWNER_COUNT * ITERATION_COUNT),

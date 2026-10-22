@@ -108,9 +108,9 @@ TEST_CASE(saved_material_failures)
     snprintf(materials, sizeof materials, "%s/materials", directory);
     REQUIRE(!mkdir(models, 0700));
     REQUIRE(!mkdir(materials, 0700));
-    snprintf(model_path, sizeof model_path, "%s/models/Pair.kdl", directory);
-    snprintf(left_path, sizeof left_path, "%s/materials/Left.kdl", directory);
-    snprintf(right_path, sizeof right_path, "%s/materials/Right.kdl", directory);
+    snprintf(model_path, sizeof model_path, "%s/models/Pair.chibi", directory);
+    snprintf(left_path, sizeof left_path, "%s/materials/Left.chibi", directory);
+    snprintf(right_path, sizeof right_path, "%s/materials/Right.chibi", directory);
     behavior_asset *pair = material_pair();
     behavior_asset *left = parameter_material("Left", 17);
     behavior_asset *right = parameter_material("Right", 15);
@@ -124,7 +124,7 @@ TEST_CASE(saved_material_failures)
     save(right_path, too_many);
     char *before = file_read_text(right_path);
     REQUIRE(!model_content_validate(directory, error, sizeof error));
-    REQUIRE(strstr(error, "32") && strstr(error, "Pair.kdl"));
+    REQUIRE(strstr(error, "32") && strstr(error, "Pair.chibi"));
     char *after = file_read_text(right_path);
     REQUIRE(!strcmp(before, after));
     REQUIRE(render_shader_revision() == revision);
@@ -135,7 +135,7 @@ TEST_CASE(saved_material_failures)
     save(right_path, invalid);
     before = file_read_text(right_path);
     REQUIRE(!model_content_validate(directory, error, sizeof error));
-    REQUIRE(strstr(error, "Pair.kdl"));
+    REQUIRE(strstr(error, "Pair.chibi"));
     after = file_read_text(right_path);
     REQUIRE(!strcmp(before, after));
     REQUIRE(render_shader_revision() == revision);
@@ -146,13 +146,13 @@ TEST_CASE(saved_material_failures)
     char libraries[256], library_path[256];
     snprintf(libraries, sizeof libraries, "%s/shader-libraries", directory);
     REQUIRE(!mkdir(libraries, 0700));
-    snprintf(library_path, sizeof library_path, "%s/ShaderMath.kdl", libraries);
+    snprintf(library_path, sizeof library_path, "%s/ShaderMath.chibi", libraries);
     char *library_text = file_read_text(
         CHIBI_SOURCE_ROOT
-        "/test/fixtures/content/shader-libraries/ShaderMath.kdl"
+        "/test/fixtures/content/shader-libraries/ShaderMath.chibi"
     );
     char *material_text = file_read_text(
-        CHIBI_SOURCE_ROOT "/test/fixtures/content/materials/PulseRing.kdl"
+        CHIBI_SOURCE_ROOT "/test/fixtures/content/materials/PulseRing.chibi"
     );
     REQUIRE(library_text && material_text);
     behavior_asset *library_material = behavior_asset_load(material_text);
@@ -190,8 +190,8 @@ TEST_CASE(saved_model_sources)
     char folder[256], leaf_path[256], parent_path[256], error[1024];
     snprintf(folder, sizeof folder, "%s/models", directory);
     REQUIRE(!mkdir(folder, 0700));
-    snprintf(leaf_path, sizeof leaf_path, "%s/models/ZLeaf.kdl", directory);
-    snprintf(parent_path, sizeof parent_path, "%s/models/AParent.kdl", directory);
+    snprintf(leaf_path, sizeof leaf_path, "%s/models/ZLeaf.chibi", directory);
+    snprintf(parent_path, sizeof parent_path, "%s/models/AParent.chibi", directory);
     REQUIRE(model_content_validate(directory, error, sizeof error));
     behavior_asset *leaf = model("ZLeaf", &NODE_ModelSphere);
     behavior_asset *parent = model("AParent", &NODE_ModelInstance);
@@ -209,7 +209,7 @@ TEST_CASE(saved_model_sources)
     save(leaf_path, leaf);
     char *before = file_read_text(leaf_path);
     REQUIRE(!model_content_validate(directory, error, sizeof error));
-    REQUIRE(strstr(error, ".kdl") && strstr(error, "node"));
+    REQUIRE(strstr(error, ".chibi") && strstr(error, "node"));
     char *after = file_read_text(leaf_path);
     REQUIRE(!strcmp(before, after));
     free(before);
@@ -220,10 +220,10 @@ TEST_CASE(saved_model_sources)
     save(leaf_path, leaf);
     REQUIRE(!unlink(leaf_path));
     REQUIRE(!model_content_validate(directory, error, sizeof error));
-    REQUIRE(strstr(error, "AParent.kdl") && strstr(error, "ZLeaf"));
+    REQUIRE(strstr(error, "AParent.chibi") && strstr(error, "ZLeaf"));
     write_text(leaf_path, "domain \"model\" {\n");
     REQUIRE(!model_content_validate(directory, error, sizeof error));
-    REQUIRE(strstr(error, "ZLeaf.kdl"));
+    REQUIRE(strstr(error, "ZLeaf.chibi"));
     save(leaf_path, leaf);
     REQUIRE(model_content_validate(directory, error, sizeof error));
 

@@ -9,7 +9,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/core_nodes.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 
@@ -73,7 +73,7 @@ reference_asset_kind reference_domain_kind(behavior_domain domain)
 
 static void add_mesh_parts(reference_index *index, reference at, const char *parts)
 {
-    av_doc *doc = av_value_read(parts, NULL, 0);
+    av_doc *doc = asset_document_read(parts, NULL, 0);
     av_value *root = av_doc_root(doc);
     at.role = REFERENCE_BIND;
     at.component = MESH_PARTS ".parts";

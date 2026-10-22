@@ -258,7 +258,8 @@ static char **scene_files(const char *content)
     char **names = NULL;
     for (struct dirent *entry; dir && (entry = readdir(dir));) {
         size_t n = strlen(entry->d_name);
-        if (entry->d_name[0] != '.' && n > 4 && !strcmp(entry->d_name + n - 4, ".kdl")) {
+        if (entry->d_name[0] != '.' && n > 6 &&
+            !strcmp(entry->d_name + n - 6, ".chibi")) {
             apush(names, xstrdup(entry->d_name));
         }
     }

@@ -5,7 +5,7 @@
 #include "graph/document/serialize.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -67,7 +67,7 @@ char *graph_asset_text(const behavior_asset *asset)
     av_doc *doc = av_doc_new();
     av_value *value = behavior_asset_to_value(doc, asset);
     av_doc_set_root(doc, value);
-    char *text = value ? av_doc_write(doc) : NULL;
+    char *text = value ? asset_document_write(av_doc_root(doc)) : NULL;
     av_doc_free(doc);
     return text;
 }
@@ -75,7 +75,7 @@ char *graph_asset_text(const behavior_asset *asset)
 behavior_asset *graph_asset_read(const char *text)
 {
     char error[160];
-    av_doc *doc = av_doc_read(text, error, sizeof error);
+    av_doc *doc = asset_document_read(text, error, sizeof error);
     if (!doc) {
         return NULL;
     }

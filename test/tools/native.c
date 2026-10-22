@@ -1137,10 +1137,47 @@ TEST_CASE(native_controller_device_handoff_keeps_action_held)
 #ifdef CHIBI_TEST_PREPARATION
 TEST_CASE(native_pointer_scenario_roundtrip)
 {
-    const char *text = "scene \"Pointer\"\nframes 2\n(array)keys {\n"
-                       "- frame=0 { pointer { origin x=2 y=3 z=10; direction "
-                       "x=0 y=0 z=-1; } }\n"
-                       "- frame=1\n}\n";
+    const char *text =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"scene\", "
+        "data.Value.Text(\"Pointer\")),\n"
+        "            data.Field.Named(\"frames\", data.Value.UInt(2)),\n"
+        "            data.Field.Named(\"keys\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"pointer\", data.Object([\n"
+        "                        data.Field.Named(\"origin\", data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.UInt(2)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(3)),\n"
+        "                            data.Field.Named(\"z\", "
+        "data.Value.UInt(10))\n"
+        "                        ])),\n"
+        "                        data.Field.Named(\"direction\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.UInt(0)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(0)),\n"
+        "                            data.Field.Named(\"z\", "
+        "data.Value.Int(-1))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(1))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     char error[256];
     scenario_document *document = scenario_document_load(text, error, sizeof error);
     REQUIRE(document && acount(document->keys) == 2);
@@ -1163,8 +1200,35 @@ TEST_CASE(native_pointer_scenario_roundtrip)
         "origin x=0 y=0 z=1; direction x=0 y=0 z=1e100;",
     };
     for (int i = 0; i < 3; i++) {
-        char source[256];
-        snprintf(source, sizeof source, "scene \"Pointer\"\nframes 1\n(array)keys { - frame=0 { pointer { %s } } }", invalid[i]);
+        char source[16384];
+        snprintf(
+            source,
+            sizeof source,
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"scene\", "
+            "data.Value.Text(\"Pointer\")),\n"
+            "            data.Field.Named(\"frames\", data.Value.UInt(1)),\n"
+            "            data.Field.Named(\"keys\", data.List([\n"
+            "                data.Object([\n"
+            "                    data.Field.Named(\"frame\", "
+            "data.Value.UInt(0)),\n"
+            "                    data.Field.Named(\"pointer\", data.Object([\n"
+            "                        data.Field.Named(\"%s\", "
+            "data.Object([]))\n"
+            "                    ]))\n"
+            "                ])\n"
+            "            ]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
+            invalid[i]
+        );
         REQUIRE(!scenario_document_load(source, error, sizeof error));
         REQUIRE(strstr(error, "pointer"));
     }
@@ -1173,14 +1237,59 @@ TEST_CASE(native_pointer_scenario_roundtrip)
 
 TEST_CASE(native_controller_scenario_roundtrip)
 {
-    const char
-        *text = "scene \"Controllers\"\nframes 3\nseed 7\n(array)keys {\n"
-                "- frame=0 { (array)controls \"Z\"; (array)controllers {\n"
-                "- connected=#true { (array)buttons \"Dpad Left\" \"Left Stick "
-                "Left\"; }\n"
-                "- connected=#true { (array)buttons \"A\"; }\n"
-                "- connected=#false\n- connected=#false\n}\n}\n"
-                "- frame=1\n}\n";
+    const char *text =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"scene\", "
+        "data.Value.Text(\"Controllers\")),\n"
+        "            data.Field.Named(\"frames\", data.Value.UInt(3)),\n"
+        "            data.Field.Named(\"seed\", data.Value.UInt(7)),\n"
+        "            data.Field.Named(\"keys\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"controls\", data.List([\n"
+        "                        data.Value.Text(\"Z\")\n"
+        "                    ])),\n"
+        "                    data.Field.Named(\"controllers\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(true)),\n"
+        "                            data.Field.Named(\"buttons\", "
+        "data.List([\n"
+        "                                data.Value.Text(\"Dpad Left\"),\n"
+        "                                data.Value.Text(\"Left Stick Left\")\n"
+        "                            ]))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(true)),\n"
+        "                            data.Field.Named(\"buttons\", "
+        "data.List([\n"
+        "                                data.Value.Text(\"A\")\n"
+        "                            ]))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(1))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     char error[256];
     scenario_document *document = scenario_document_load(text, error, sizeof error);
     REQUIRE(document && acount(document->keys) == 2);
@@ -1192,7 +1301,7 @@ TEST_CASE(native_controller_scenario_roundtrip)
     REQUIRE(input_keyframe_same(&document->keys[0], &expected));
     REQUIRE(input_keyframe_same(&document->keys[1], &(input_keyframe){ 0 }));
     char *saved = scenario_document_save(document);
-    REQUIRE(saved && !strstr(saved, "#false"));
+    REQUIRE(saved && !strstr(saved, "data.Value.Bool(false)"));
     scenario_document *read = scenario_document_load(saved, error, sizeof error);
     free(saved);
     REQUIRE(read && acount(read->keys) == 2);
@@ -1204,13 +1313,74 @@ TEST_CASE(native_controller_scenario_roundtrip)
     scenario_document_free(read);
     scenario_document_free(document);
     const char *invalid[] = {
-        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
-        "(array)controllers {\n"
-        "- connected=#false\n- connected=#false\n- connected=#false\n"
-        "- connected=#false\n- connected=#false\n}\n}\n}\n",
-        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
-        "(array)controllers {\n"
-        "- connected=#false { (array)buttons \"A\"; }\n}\n}\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"scene\", "
+        "data.Value.Text(\"Controllers\")),\n"
+        "            data.Field.Named(\"frames\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"keys\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"controllers\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"scene\", "
+        "data.Value.Text(\"Controllers\")),\n"
+        "            data.Field.Named(\"frames\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"keys\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"frame\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"controllers\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"connected\", "
+        "data.Value.Bool(false)),\n"
+        "                            data.Field.Named(\"buttons\", "
+        "data.List([\n"
+        "                                data.Value.Text(\"A\")\n"
+        "                            ]))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
     };
     for (int i = 0; i < 2; i++) {
         REQUIRE(!scenario_document_load(invalid[i], error, sizeof error));

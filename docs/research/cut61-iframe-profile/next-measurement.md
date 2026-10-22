@@ -58,7 +58,7 @@ Measure **one full `area_panels_take_turns(false)` invocation**, currently the
 first check in `studio_documents_panel_checks` at
 `test/editor/studio_documents_panels.c:1096` and `:1172`.
 
-This existing case opens `projects/arena2d/content/scenes/Sandbox.kdl` with
+This existing case opens `projects/arena2d/content/scenes/Sandbox.chibi` with
 `Movement`, mounts actual Studio panels, switches every directed pair of the
 nine editors, maximizes/restores areas, changes drawer and side-pane contents,
 opens/closes the HUD preview and palette/picker/refactor UI, and compares bound

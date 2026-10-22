@@ -83,7 +83,7 @@ typedef struct behavior_asset
 } behavior_asset;
 
 const char *behavior_domain_name(behavior_domain domain);
-/* Executable behavior/library assets use code; declarative graph domains use KDL. */
+/* Behavior and library programs and graph data use compiled Chibi source. */
 const char *behavior_asset_extension(behavior_domain domain);
 /* Materials, shapes, shader libraries and fields compute values only: their
  * graphs have no execution pins, so their functions are pure. */

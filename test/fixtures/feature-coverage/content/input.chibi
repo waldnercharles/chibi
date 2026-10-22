@@ -1,0 +1,15 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("Shoot", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("Space")
+                ]))
+            ]))
+        ])
+    );
+}

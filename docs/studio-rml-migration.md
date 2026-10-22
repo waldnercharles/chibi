@@ -1,8 +1,12 @@
 # Studio in RML and RCSS
 
+> Historical record: these measurements and plans describe a retired asset format.
+> Current authoring uses ordinary compiled Chibi modules.
+> Suffixes in prose follow current conventions; linked Git revisions retain the exact historical files.
+
 > Historical implementation record. Commands, MCP recipes, helper scripts and
 > validation results below describe the recorded revision. The MCP product and
-> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
 > admitted checks. These results do not verify the current checkout.
 
@@ -37,7 +41,7 @@ Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
 F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4, D1, G1 and I1 done; the rest planned. The
-Outliner runs on KDL behaviors over editor nodes (Behavior-driven panels, a spike). The spike (S0) ran on a
+Outliner runs on the former document format behaviors over editor nodes (Behavior-driven panels, a spike). The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -63,7 +67,7 @@ panels ▸ Recommendation)
   BehaviorHeader's controls).
 - [ ] Then Properties' UI logic (keep its view model as an `Object Fields`
   query node), the palette and pickers (a `Rank` query), Assets' grid.
-- [ ] Gaps left by the gating work: the Text Editor's KDL completion lists
+- [ ] Gaps left by the gating work: the Text Editor's the former document format completion lists
   `studio` nodes in every project; `buildGraph` accepts a `studio` node in a
   game behavior (only `validateAsset` refuses it); the project-wide Problems
   scope doesn't flag them; events behaviors send each other from a game UI
@@ -209,9 +213,9 @@ kit call sites across 40 files. The largest at that point:
 | Status bar | Authored: `StatusBar.rml` with UI Scale's menu | `editor`, `commands`, `shell` | Done (W3 C3) |
 | Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
-| Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component and the asset fields' pickers are the palette's (C4) |
+| Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.chibi`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component and the asset fields' pickers are the palette's (C4) |
 | Properties: Node, Member | Authored (G1): `Properties.rml`'s graph section and `GraphField.rml` over `graph_details` (`studio_graph_details.c`); `studio_graph_properties.c` and `studio_member_properties.c` write the rows and run their intents | Literal editors, binding autocomplete, expression code, type picker, reorder grips | Done (W4 G1) |
-| Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml` over KDL behaviors (OutlinerRows, OutlinerInput, OutlinerRename, OutlinerMenu, OutlinerHeaderInput) and the `studio` editor nodes (`studio_nodes.h`); no panel source | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2); behavior-driven (spike) |
+| Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml` over the former document format behaviors (OutlinerRows, OutlinerInput, OutlinerRename, OutlinerMenu, OutlinerHeaderInput) and the `studio` editor nodes (`studio_nodes.h`); no panel source | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2); behavior-driven (spike) |
 | Scene and Canvas headers | Authored: `SceneHeader.rml` over `scene` (`studio_scene.c`), `canvas` (`studio_canvas.c`) and `commands` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | Done (W3 C1) |
 | Scene viewport | `Scene.rml` and `Canvas.rml` over `scene_view` and `canvas`; the `kit_surface` showing `kit:viewport` stays native in their slot | Texture, pointer input, camera labels | Done (C1): overlays authored; input stays in C |
 | Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
@@ -233,7 +237,7 @@ kit call sites across 40 files. The largest at that point:
 ### Panels
 
 A panel is `content/ui/<Panel>.rml` and `.rcss`, its prototype and an entity
-in `scenes/Studio.kdl`, as today, plus a C source registered in one table in
+in `scenes/Studio.chibi`, as today, plus a C source registered in one table in
 `studio_sources.c` (`studio_panel_sources`, F1; `studio_internal.h`):
 
 ```c
@@ -422,7 +426,7 @@ and each wave retargets its tests from kit paths.
 
 ## Behavior-driven panels
 
-A panel's markup and styles should work with KDL behaviors on its prototype,
+A panel's markup and styles should work with the former document format behaviors on its prototype,
 as a game's UI does, not with a C panel source: C keeps capabilities, which
 behaviors call as nodes, and the native pieces that need native speed. The
 Outliner is the spike that proves it (branch of `editor-polish-design`,
@@ -557,7 +561,7 @@ drag (F4) and the Scene's drop preview over an element marked
 `data-object` stay in the host.
 
 **The Outliner's behaviors** (`projects/studio/content/behaviors`), on the
-Outliner and OutlinerHeader prototypes and their `Studio.kdl` entities:
+Outliner and OutlinerHeader prototypes and their `Studio.chibi` entities:
 
 | Behavior | Events | What it does | Nodes, edges |
 |---|---|---|---|
@@ -663,7 +667,7 @@ the rows shown, rows are found by `data-object`, and a game's preview binds
 **Authoring cost:** the Outliner's C went from 800 lines to 224
 (`studio_outliner.c`: mounting, rename, Hide in Editor, ranges), and its
 three panel sources left the table. The behaviors are about 140 nodes and
-160 edges (1,014 lines of KDL, which tools write), plus 13 event assets
+160 edges (1,014 lines of the former document format, which tools write), plus 13 event assets
 (148 lines). The node pack is 796 lines of C (`studio_nodes.c` 407,
 `studio_node_calls.c` 300, the header 89) that other panels reuse; the
 shared gaps are about 450.
@@ -976,7 +980,7 @@ Every wave meets:
 
 Shared files are append-only, one section per workstream: `studio_internal.h`,
 `kit.h`, `rml.h`, `rml.cpp`, the panel table in `studio_sources.c`, the action
-table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
+table in `studio_ui.c`, `scenes/Studio.chibi`, `test_suite.c`, `sources.cmake`,
 `CMakeLists.txt`.
 
 ### Wave 0
@@ -2224,7 +2228,7 @@ widget are the references, as the kit's were.
 - **Text Editor header**: `CodeHeader.rml` over `code_header`: a UI
   document's Back and Forward, part, file with its unsaved dot, Find, Vim's
   mode, the problems' count and Invalid chip, and the apply mode; an
-  asset's KDL source's name, Unsaved, Save and apply mode.
+  asset's the former document format source's name, Unsaved, Save and apply mode.
 - **Fixes**: the kit's rename field in the crumbs had no width, so the
   name typed was invisible; the authored one is 160 dp at most. The
   rename field's blur after Escape doesn't commit (the rename ends first).
@@ -2571,7 +2575,7 @@ entry onto the hierarchy and for a widget element opening its widget.
   (selection, renaming, the hovered row, the carry) has a variable of its own,
   so a selection reads about 220 views outside Details, not the window's.
 - **Capabilities are plain C, apart from the panels' glue**, so they can
-  become behavior nodes when panels' logic moves to KDL graphs:
+  become behavior nodes when panels' logic moves to the former document format graphs:
   `studio_designer_values.c` (a property's control, a control's value as
   document text, a new property's start value), `studio_designer_edit.c`
   (attributes, the inline style, which rules match an element, what an Add

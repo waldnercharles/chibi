@@ -9,7 +9,7 @@ if(NOT TARGET Chibi::project_preparation)
     find_package(Chibi CONFIG REQUIRED)
 endif()
 
-set(packages asset_authoring asset_json asset_text authoring behavior_runtime
+set(packages asset_authoring asset_json asset_documents authoring behavior_runtime
     component_presentation ecs execution execution_contract field_catalog graph_authoring
     graph_compilation graph_model graph_catalog host_native_default image_preparation json
     model_authoring model_import model_runtime native_capabilities native_types platform project_document

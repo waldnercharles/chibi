@@ -1,4 +1,8 @@
 # Chibi Studio in .chibi
+
+> Historical record: this document describes an earlier source format and toolchain.
+> Use the current language and authoring guides for executable instructions.
+> Suffixes in prose follow current conventions; linked Git revisions retain the exact historical files.
 ## Migration plan and language-readiness review
 
 15 October 2026 · Revision 2 · Implementation authorized; staged readiness gates apply
@@ -1052,7 +1056,7 @@ The authorized next action is the Stage 0 baseline and Stage 1A engine-aware low
 [s-library-state]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/language/program.c#L1290-L1328
 [s-version]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/assets/project.h#L11-L17
 [s-rules]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/AGENTS.md
-[s-fixture-manifest]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/fixtures/studio-workspace/project.kdl#L1-L4
+[s-fixture-manifest]: https://github.com/waldnercharles/chibi/tree/02f8453211dd4cc57965ba52c645f08a92e53c5e
 [s-fixture-source]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/fixtures/studio-workspace/content/behaviors/Weapon.chibi#L1-L6
 [s-old-parser]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/assets/project_migrate.c#L23-L61
 [s-migrate-staging]: https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/assets/project_migrate.c#L4126-L4143
@@ -1068,7 +1072,7 @@ Static baseline audit, updated with the authorized implementation direction. No 
 - Product native sources: **155 = 154 C + 1 C++**, comprising **151** `studio` library sources and **4** host/registry executable sources. Reconciled against [studio_sources.cmake](https://github.com/waldnercharles/chibi-studio/blob/78cb4d4c47242db9f7af2b9573653d9756050e99/cmake/studio_sources.cmake) and [CMakeLists.txt](https://github.com/waldnercharles/chibi-studio/blob/78cb4d4c47242db9f7af2b9573653d9756050e99/CMakeLists.txt); zero omitted or unaccounted product translation units.
 - Product headers: **62 = 61 under src + 1 public application header**. Test headers: **17**.
 - Native test sources: **82 = 4 acceptance + 78 held oracle C files**. Product and test native totals are **237**; all headers bring native-source/header inventory to **316**.
-- Studio authored project: **264 files**, with **10 .chibi, 81 RML, 102 RCSS, 61 KDL and 10 metadata files**. The repository-wide 81 `.chibi` files must not be mistaken for 81 Studio application modules.
+- Studio authored project: **264 files**, with **10 .chibi, 81 RML, 102 RCSS, 61 the former document format and 10 metadata files**. The repository-wide 81 `.chibi` files must not be mistaken for 81 Studio application modules.
 - `tests/held` has 324 current tree files. Its README reports 321 unique preserved oracle/fixture files; that provenance statement and current directory count measure different things. The held sources have no executable target and are not passing coverage. [Held oracle contract](https://github.com/waldnercharles/chibi-studio/blob/78cb4d4c47242db9f7af2b9573653d9756050e99/tests/held/engine_oracles/README.md).
 
 #### Disposition meaning

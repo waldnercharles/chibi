@@ -1,12 +1,9 @@
 #include "assets/project.h"
 
-#include "assets/project_migrate.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
-#include "support/text_edit.h"
 #include "support/xalloc.h"
 
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -24,10 +21,6 @@ static void set_error(char *error, size_t error_size, const char *message)
         snprintf(error, error_size, "%s", message);
     }
 }
-
-/* The manifest node that records the version an unfinished upgrade's sources
- * reached. */
-#define MIGRATED_NODE "migrated"
 
 static void set_errorf(char *error, size_t error_size, const char *format, const char *path)
 {
@@ -54,7 +47,7 @@ static char *parent_path(const char *path);
 /* `flags` adds open flags, such as O_EXCL | O_NOFOLLOW for a staging path. */
 static int write_asset_file(const char *path, const char *text, int flags, char *error, size_t error_size)
 {
-    char *canonical = asset_text_to_disk(text, error, error_size);
+    char *canonical = asset_document_to_disk(text, error, error_size);
     if (!canonical) {
         return -1;
     }
@@ -91,8 +84,8 @@ static char *manifest_text(const char *name)
     av_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
     av_obj_add_strcpy(doc, root, "name", name);
     av_obj_add_str(doc, root, "content", "content");
-    av_obj_add_str(doc, root, "start_scene", "scenes/Start.kdl");
-    char *text = av_doc_write(doc);
+    av_obj_add_str(doc, root, "start_scene", "scenes/Start.chibi");
+    char *text = asset_document_write(av_doc_root(doc));
     av_doc_free(doc);
     return text;
 }
@@ -105,7 +98,7 @@ static char *start_scene_text()
     av_obj_add_int(doc, root, "version", 1);
     av_obj_add_str(doc, root, "name", "Start");
     av_obj_add_arr(doc, root, "entities");
-    char *text = av_doc_write(doc);
+    char *text = asset_document_write(av_doc_root(doc));
     av_doc_free(doc);
     return text;
 }
@@ -366,7 +359,7 @@ static av_doc *manifest_document(const char *path, char *error, size_t error_siz
         return NULL;
     }
     char parse_error[128];
-    av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
+    av_doc *document = asset_document_read(text, parse_error, sizeof parse_error);
     free(text);
     if (!document) {
         snprintf(error, error_size, "Invalid project manifest %s: %s", path, parse_error);
@@ -380,7 +373,7 @@ static av_doc *manifest_document(const char *path, char *error, size_t error_siz
     return document;
 }
 
-static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
+static int read_manifest(const char *path, chibi_project *project, char *error, size_t error_size)
 {
     av_doc *document = manifest_document(path, error, error_size);
     if (!document) {
@@ -437,7 +430,6 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     project->start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
     project->ui = manifest_ui ? xstrdup(manifest_ui) : NULL;
     int result = read_application(av_obj_get(root, "application"), &project->application, path, error, error_size);
-    *opened = found;
     av_doc_free(document);
     return result;
 }
@@ -451,131 +443,6 @@ static char *scene_path(const char *root, const char *content, const char *scene
         return join_path(root, scene);
     }
     return join_path(content, scene);
-}
-
-/* The canonical path of the manifest's start scene, so the upgrade can tell
- * whether it lies inside the content, or NULL when there is none. */
-static char *start_scene_path(const chibi_project *project, const char *content)
-{
-    if (!content || !project->start_scene || !project->start_scene[0]) {
-        return NULL;
-    }
-    char *scene = scene_path(project->root, content, project->start_scene);
-    char *canonical = absolute_path(scene);
-    free(scene);
-    return canonical;
-}
-
-/* The manifest text with `version` set and its `migrated` node set to
- * `migrated`, or removed when that is 0. KDL itself locates the nodes, so
- * comments and spellings stay. */
-static char *upgraded_manifest(const char *text, int version, int migrated)
-{
-    char parse_error[128];
-    av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
-    assert(document); /* read_manifest already parsed it. */
-    av_value *root = av_doc_root(document);
-    av_source at = av_get_source(av_obj_get(root, "version"));
-    av_value *node = av_obj_get(root, MIGRATED_NODE);
-    char version_text[16], migrated_text[32];
-    snprintf(version_text, sizeof version_text, "%d", version);
-    text_edit edits[2] = { { (int)at.start, (int)at.end, version_text } };
-    int count = 1;
-    if (node) {
-        av_source reached = av_get_source(node);
-        size_t end = reached.end + (text[reached.end] == '\n');
-        snprintf(migrated_text, sizeof migrated_text, "%d", migrated);
-        edits[count++] = migrated
-                           ? (text_edit){ (int)reached.start, (int)reached.end, migrated_text }
-                           : (text_edit){ (int)reached.name_start, (int)end, "" };
-    } else if (migrated) {
-        snprintf(migrated_text, sizeof migrated_text, "\n" MIGRATED_NODE " %d", migrated);
-        edits[count++] = (text_edit){ (int)at.end, (int)at.end, migrated_text };
-    }
-    av_doc_free(document);
-    return text_edits_apply(text, edits, count);
-}
-/* Rewrites the manifest through upgraded_manifest, replacing it only once the
- * new one is fully written. */
-static int write_manifest(const char *manifest, int version, int migrated, char *error, size_t error_size)
-{
-    char *text = read_file(manifest, error, error_size);
-    if (!text) {
-        return -1;
-    }
-    char *updated = upgraded_manifest(text, version, migrated);
-    free(text);
-    size_t length = strlen(manifest) + sizeof ".migrating";
-    char *staged = xmalloc(length);
-    snprintf(staged, length, "%s.migrating", manifest);
-    /* Never write through a link left at the staging path. */
-    unlink(staged);
-    int status = write_asset_file(staged, updated, O_EXCL | O_NOFOLLOW, error, error_size);
-    struct stat original;
-    if (!status &&
-        (stat(manifest, &original) || chmod(staged, original.st_mode & 07777))) {
-        set_errorf(error, error_size, "Cannot keep the permissions of %s", manifest);
-        remove(staged);
-        status = -1;
-    }
-    if (!status && rename(staged, manifest)) {
-        set_errorf(error, error_size, "Cannot replace %s", manifest);
-        remove(staged);
-        status = -1;
-    }
-    free(staged);
-    free(updated);
-    return status;
-}
-/* The version the sources reached in an upgrade that failed later: the
- * manifest's `migrated` node, or `from` when there is none; -1 when the
- * manifest cannot be read. */
-static int migrated_version(const char *manifest, int from, char *error, size_t error_size)
-{
-    char *text = read_file(manifest, error, error_size);
-    if (!text) {
-        return -1;
-    }
-    char parse_error[128];
-    av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
-    assert(document); /* read_manifest already parsed it. */
-    av_value *node = av_obj_get(av_doc_root(document), MIGRATED_NODE);
-    int reached = av_is_int(node) ? (int)av_get_int(node) : from;
-    av_doc_free(document);
-    free(text);
-    return reached > from && reached <= CHIBI_PROJECT_VERSION ? reached : from;
-}
-
-/* Runs each step from `from`, then finalization, then records the new
- * version. After each step the manifest's `migrated` node records the
- * version the sources reached, so a rerun after a later failure resumes
- * there rather than running a finished step again; the final write removes
- * it. */
-static int upgrade(
-    const char *manifest,
-    const char *content,
-    const char *start_scene,
-    int from,
-    chibi_project_migration_fn finalize,
-    void *user,
-    char *error,
-    size_t error_size
-)
-{
-    int reached = migrated_version(manifest, from, error, error_size);
-    if (reached < 0) {
-        return -1;
-    }
-    for (int version = reached; version < CHIBI_PROJECT_VERSION; version++) {
-        if (chibi_project_migrate_content(content, start_scene, version, error, error_size) ||
-            write_manifest(manifest, from, version + 1, error, error_size)) {
-            return -1;
-        }
-    }
-    if (finalize && finalize(content, start_scene, from, user, error, error_size)) {
-        return -1;
-    }
-    return write_manifest(manifest, CHIBI_PROJECT_VERSION, 0, error, error_size);
 }
 
 void chibi_project_free(chibi_project *project)
@@ -595,36 +462,23 @@ void chibi_project_free(chibi_project *project)
 
 int chibi_project_migrate_finalized(
     const char *path,
-    chibi_project_migration_fn finalize,
-    void *user,
+    chibi_project_migration_fn,
+    void *,
     char *error,
     size_t error_size
 )
 {
-    chibi_project project = { 0 };
-    char *manifest = NULL;
-    int from = CHIBI_PROJECT_VERSION;
-    if (is_directory(path)) {
-        manifest = join_path(path, CHIBI_PROJECT_MANIFEST);
-    } else {
-        manifest = xstrdup(path);
-    }
-    int status = read_manifest(manifest, &project, &from, error, error_size);
-    chibi_project_free(&project);
-    free(manifest);
-    if (status) {
-        return -1;
-    }
-    if (chibi_project_open_migrating(&project, path, finalize, user, error, error_size)) {
-        return -1;
-    }
-    chibi_project_free(&project);
-    return CHIBI_PROJECT_VERSION - from;
+    return chibi_project_migrate(path, error, error_size);
 }
+
 int chibi_project_migrate(const char *path, char *error, size_t error_size)
 {
-    return chibi_project_migrate_finalized(path, NULL, NULL, error, error_size);
+    chibi_project project = { 0 };
+    int status = chibi_project_read(&project, path, error, error_size);
+    chibi_project_free(&project);
+    return status;
 }
+
 char *chibi_project_find(const char *start)
 {
     char *directory = absolute_path(start);
@@ -654,20 +508,10 @@ bool chibi_project_package_folder(const char *path)
     return folder;
 }
 
-typedef enum
-{
-    PROJECT_READ_CURRENT,
-    PROJECT_MIGRATE_FULL,
-    PROJECT_INSPECT_CURRENT_OR_OLD,
-    PROJECT_MIGRATE_CONTENT,
-} project_open_mode;
-
 static int open_project(
     chibi_project *project,
     const char *path,
-    project_open_mode mode,
-    chibi_project_migration_fn finalize,
-    void *user,
+    bool require_start_scene,
     char *error,
     size_t error_size
 )
@@ -719,15 +563,7 @@ static int open_project(
         return -1;
     }
     project->root = root;
-    int version = CHIBI_PROJECT_VERSION;
-    if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
-        chibi_project_free(project);
-        free(input);
-        free(manifest);
-        return -1;
-    }
-    if (mode == PROJECT_READ_CURRENT && version < CHIBI_PROJECT_VERSION) {
-        snprintf(error, error_size, "Project version %d is older than %d; run chibi_ctl --project-root <root> --migrate", version, CHIBI_PROJECT_VERSION);
+    if (manifest && read_manifest(manifest, project, error, error_size) != 0) {
         chibi_project_free(project);
         free(input);
         free(manifest);
@@ -744,24 +580,10 @@ static int open_project(
                            : join_path(project->root, project->content);
     free(input);
     char *absolute_content = absolute_path(content_path);
-    char *start_scene = start_scene_path(project, absolute_content);
-    if ((mode == PROJECT_MIGRATE_FULL || mode == PROJECT_MIGRATE_CONTENT) &&
-        absolute_content && is_directory(absolute_content) &&
-        version < CHIBI_PROJECT_VERSION &&
-        upgrade(manifest, absolute_content, start_scene, version, finalize, user, error, error_size)) {
-        free(absolute_content);
-        absolute_content = NULL;
-        version = -1;
-    }
-    free(start_scene);
     free(manifest);
     free(content_path);
     free(project->content);
     project->content = absolute_content;
-    if (version < 0) {
-        chibi_project_free(project);
-        return -1;
-    }
     if (!project->content) {
         set_errorf(error, error_size, "Content directory does not exist: %s", requested);
         chibi_project_free(project);
@@ -780,7 +602,7 @@ static int open_project(
     if (!project->name) {
         project->name = basename_copy(project->root);
     }
-    if (mode != PROJECT_MIGRATE_CONTENT && !project->start_scene) {
+    if (require_start_scene && !project->start_scene) {
         set_errorf(error, error_size, "Project has no start scene: %s", project->root);
         chibi_project_free(project);
         return -1;
@@ -793,39 +615,39 @@ static int open_project(
 
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
 {
-    return open_project(project, path, PROJECT_MIGRATE_FULL, NULL, NULL, error, error_size);
+    return open_project(project, path, true, error, error_size);
 }
 int chibi_project_open_migrating(
     chibi_project *project,
     const char *path,
-    chibi_project_migration_fn finalize,
-    void *user,
+    chibi_project_migration_fn,
+    void *,
     char *error,
     size_t error_size
 )
 {
-    return open_project(project, path, PROJECT_MIGRATE_FULL, finalize, user, error, error_size);
+    return open_project(project, path, true, error, error_size);
 }
 
 int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
 {
-    return open_project(project, path, PROJECT_READ_CURRENT, NULL, NULL, error, error_size);
+    return open_project(project, path, true, error, error_size);
 }
 int chibi_project_open_content_migrating(
     chibi_project *project,
     const char *path,
-    chibi_project_migration_fn finalize,
-    void *user,
+    chibi_project_migration_fn,
+    void *,
     char *error,
     size_t error_size
 )
 {
-    return open_project(project, path, PROJECT_MIGRATE_CONTENT, finalize, user, error, error_size);
+    return open_project(project, path, false, error, error_size);
 }
 
 int chibi_project_inspect(chibi_project *project, const char *path, char *error, size_t error_size)
 {
-    return open_project(project, path, PROJECT_INSPECT_CURRENT_OR_OLD, NULL, NULL, error, error_size);
+    return open_project(project, path, true, error, error_size);
 }
 
 char *chibi_project_content(const char *root, char *error, size_t error_size)

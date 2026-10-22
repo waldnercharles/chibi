@@ -1,13 +1,16 @@
 # Author a game with Chibi
 
-The game's `project.kdl` selects its `content` directory and starting scene.
-`chibi-compile` and `chibi_ctl` both read assets from that directory.
-Project format 10 uses `.chibi` executable source for behaviors, callable
-libraries, and systems. Scenes, prototypes, shaders, models, and other declarative
-assets use KDL. Studio, text editors, and AI agents edit these same asset files.
-The copied player deployment lives in the game's ignored `.chibi/runtime` directory.
-The compiler, Studio, and controller are separate authoring tools; they do not
-ship inside the game runtime.
+The game's `project.chibi` selects its `content` directory and starting scene.
+All game assets use ordinary `.chibi` modules or executable Chibi declarations.
+Data modules import `game:assets`, export `Build() -> byte[]`, and return
+`data.Encode(...)` of typed values. The authored compiler compiles those modules;
+family validators then check reflected components, references and runtime limits.
+Behaviors, callable libraries and systems keep their executable declarations.
+Studio, text editors and AI agents edit the same saved source.
+
+The player consumes prepared starting values and executable programs. Asset
+construction helpers run during authoring/build, rather than once per frame.
+The compiler and Studio ship as authoring tools, separately from the player.
 
 Each game lives in its own repository. Studio owns its starter and shell assets
 in `chibi-studio`; [examples](examples.md) lists the checked-in projects to learn
@@ -17,7 +20,7 @@ game under the engine checkout.
 ## Start a project
 
 Scaffold files with the controller instead of copying another project. `new_project`
-writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
+writes `project.chibi` and an empty `content/scenes/Start.chibi`; `new_asset` writes an
 empty asset of one kind in its content folder, the same form Studio's New menu
 starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
 a bad name or path with `invalid_request`, and a disk that refuses the write with
@@ -43,20 +46,12 @@ model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed. Once nothing else is wrong, it prepares the
 project as `chibi-compile` does and lists what preparation refuses, such as
 resources that together pass the player's 4,096 records or 64 MiB, so a valid
-project compiles. It never changes files: a project saved by an earlier build
-fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
-Version 30 rewrites each `on` handler as `on X :: (Field: Type)`, listing the
-payload fields it reads; the older `on X(a)`, `on X as e` and `on X` forms no
-longer parse. The migration refuses a handler that it cannot rewrite
-exactly, such as one that reads the whole `event` or whose alias an action
-reads; rewrite that handler by hand and migrate again. It does not see events
-that a game's own native table declares, so write those handlers in the named
-form first. Version 31 removes the step globals `dt`, `delta` and
-`delta_time()`: a read in an `on Tick` handler or a system becomes a listed
-`dt`, and the migration refuses one anywhere else, where the step must be
-passed in.
+project compiles. It never changes files. Current projects use manifest version 33. Earlier
+source formats require offline conversion; historical migration parsers have
+been retired. Rebuild prepared artifacts after changing a source contract.
+
 A prototype is the `name` it declares, whatever its file is called: scenes and
-other prototypes' `(array)includes` find it by that name in the player and in
+other prototypes' `includes` values find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over
 1024 bytes, are refused.
 `new_asset` names a new prototype's file after it. `--format` checks a
@@ -91,7 +86,7 @@ reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
 sets the detail of the light grid. `sky` lights a side view from above: open
 ground receives its color, and absorbing materials block it like other light,
 so the ground under an overhang and the inside of a cave stay dark. Studio adds the component with `ambient` and
-`intensity` at 1 and `resolution` at 0.5, but KDL initializes an omitted field to
+`intensity` at 1 and `resolution` at 0.5, but compiled Chibi initializes an omitted field to
 zero before range validation (`resolution` becomes 0.1), so write every setting
 a scene needs. See the `Lighting` prototype in `test/fixtures/sprites`.
 
@@ -126,7 +121,7 @@ updates cannot be reassociated. Floating arithmetic may overflow to infinity
 before the store; positive/negative infinity clamp to the high/low endpoint.
 NaN becomes the field's validated default, or zero clamped into the interval
 when no default is declared, with a development diagnostic and no exception.
-KDL text still rejects nonfinite literals before loading; typed asset values
+compiled Chibi text still rejects nonfinite literals before loading; typed asset values
 and prepared streams use the same validation as runtime writes.
 
 Native `NODE_RANGE` declares the same contract. `NODE_RANGE_DEFAULT` supplies a
@@ -192,44 +187,100 @@ Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
-Projects saved before version 20 declared components in KDL; `--migrate`
-rewrites each into `.chibi`.
+Project component declarations are executable `.chibi` declarations; the player
+loads their prepared layouts. Historical source formats are no longer opened.
 
 ## Authored prototypes and relationships
 
-Files under `content/prototypes` can declare prototypes in `.chibi`. Existing KDL
-prototypes remain readable. Component entries supply sparse defaults, and ordered
-bases compose before the declaration's own overrides:
+Files under `content/prototypes` are ordinary asset modules. Their result names
+a prototype and supplies its components, ordered `includes`, behaviors, children
+and links. Native validators resolve component names and field types after the
+module finishes. Literal configuration and computed configuration use the same
+compiler, value types and function syntax.
 
-The following declarations belong in separate files:
+An editable computed prototype exposes two ordinary functions:
+`Parameters()` returns an object of scalar literal constructors and `Overrides()`
+returns literal component field overrides. `Build()` uses both explicitly and
+retains them as authoring metadata. For example:
 
 ```chibi
-// content/prototypes/Enemy.chibi
-Enemy :: prototype {
-    Health { current: 100, maximum: 150 }
-    behaviors: [EnemyAI]
-    children: [{name: "enemy", prototype: Child}]
-    links: {Targets: child.enemy}
+package asset
+
+import data "game:assets"
+
+pub Parameters :: () -> data.Value {
+    return data.Object([
+        data.Field.Named("level", data.Value.Int(2)),
+        data.Field.Named("base_health", data.Value.Int(100))
+    ]);
 }
-// content/prototypes/Elite.chibi
-Elite :: prototype(Enemy, Armored) {
-    Health { current: 200 }
+
+pub Overrides :: () -> data.Value {
+    return data.Object([
+        data.Field.Named("Health", data.Object([
+            data.Field.Named("current", data.Value.Int(40))
+        ]))
+    ]);
+}
+
+HealthForLevel :: (level: int64, base: int64) -> int64 {
+    return base + level * 20;
+}
+
+pub Build :: () -> byte[] {
+    parameters := Parameters();
+    level := data.AsInt(data.Get(parameters, "level"));
+    base := data.AsInt(data.Get(parameters, "base_health"));
+    components := data.Object([
+        data.Field.Named("Health", data.Object([
+            data.Field.Named("current", data.Value.Int(HealthForLevel(level, base))),
+            data.Field.Named("maximum", data.Value.Int(HealthForLevel(level, base)))
+        ]))
+    ]);
+    return data.Encode(data.Object([
+        data.Field.Named("name", data.Value.Text("Enemy")),
+        data.Field.Named("parameters", parameters),
+        data.Field.Named("overrides", Overrides()),
+        data.Field.Named("components", data.OverrideComponents(components, Overrides()))
+    ]));
 }
 ```
 
-Each file declares one prototype. Referenced prototypes, behaviors and components
-must exist. Defaults support literals, static names, arrays and objects; executable
-calls are rejected. Overrides replace authored fields while preserving unspecified
-inherited defaults. Component/field spellings must resolve uniquely.
+The Parameters panel edits the exposed constructor arguments and preserves their
+established scalar kinds: `Int`, `UInt`, `Real`, `Bool` or `Text`. Helper functions
+can use branches, loops, local mutation, arrays and records supported by the
+compiler. This example computes 140 health, then explicitly overrides current
+health to 40. Editing a computed field changes `Overrides()` and preserves the
+helper expression. Reset removes the override and recomputes from the latest
+parameters. A nested native record is edited/reset as a whole field, preserving
+resolved siblings when an individual member changes. Source, inspector, undo,
+redo and save share the same source session. No generic Bake action is required.
+
+Compilation and evaluation have finite instruction, allocation, frame and output
+limits with cancellation. Asset modules have no implicit process, filesystem,
+clock, output or random capabilities. Procedural randomness must receive an
+explicit seed through a pure helper. Errors retain the invalid draft and identify
+its source location; prior valid preview data can remain marked stale. Importers
+and concrete resource generation are separate explicit tool operations.
+
+The [implementation plan](typed-assets/PLAN.md) records current validation and
+remaining work. Source metadata is inspected without running construction helpers.
 
 Relationship declarations live under `content/relationships`:
 
 ```chibi
-Targets :: relationship {
-    exclusive: true
-    acyclic: true
-    traversable: false
-    on_delete_target: Remove
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(data.Object([
+        data.Field.Named("name", data.Value.Text("Targets")),
+        data.Field.Named("exclusive", data.Value.Bool(true)),
+        data.Field.Named("acyclic", data.Value.Bool(true)),
+        data.Field.Named("traversable", data.Value.Bool(false)),
+        data.Field.Named("on_delete_target", data.Value.Text("Remove"))
+    ]));
 }
 ```
 
@@ -237,7 +288,7 @@ Boolean traits default to false. `traversable` requires `exclusive` and implies
 acyclic traversal. Target deletion defaults to `Remove`; `Delete` and `Panic`
 select the existing ECS policies. Relationships currently have no payload data.
 
-Initial prototype links address instance-local children, such as `child.enemy`.
+Initial prototype links address instance-local children, such as `"child.enemy"`.
 A nonexclusive relationship may name several targets in an array. An explicitly
 named relationship overrides inherited links for that relationship. Arbitrary
 scene-global initial targets and queryable embedded components are not supported.
@@ -461,15 +512,32 @@ scopes, `ECS_UP`, `ECS_SELF_UP` and explicit cascade ordering.
 
 A scene entity starts from its prototype's components and behaviors. Its
 `components` override the prototype's values. A `behaviors` list replaces the
-prototype's behaviors, and an empty `(array)behaviors` removes them all; leave
+prototype's behaviors, and an empty `behaviors` array removes them all; leave
 the list out to keep the prototype's behaviors.
 
-```kdl
-(array)entities {
-    - name="Player" prototype="Player"
-    - name="Decoy" prototype="Player" {
-        (array)behaviors
-    }
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Player")),
+                    data.Field.Named("prototype", data.Value.Text("Player"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Decoy")),
+                    data.Field.Named("prototype", data.Value.Text("Player")),
+                    data.Field.Named("behaviors", data.List([]))
+                ])
+            ])),
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Main"))
+        ])
+    );
 }
 ```
 
@@ -478,21 +546,36 @@ parent, and its `Transform` is relative to the parent's placement. A name must
 be unique among its siblings and cannot contain `.`; a path such as
 `Ship.Turret` names a nested entity, for example as a scenario target.
 
-```kdl
-(array)entities {
-    - {
-        name "Ship"
-        prototype "Ship"
-        (array)children {
-            - {
-                name "Turret"
-                prototype "Turret"
-                components {
-                    Transform x=0.0 y=-12.0
-                }
-            }
-        }
-    }
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Ship")),
+                    data.Field.Named("prototype", data.Value.Text("Ship")),
+                    data.Field.Named("children", data.List([
+                        data.Object([
+                            data.Field.Named("name", data.Value.Text("Turret")),
+                            data.Field.Named("prototype", data.Value.Text("Turret")),
+                            data.Field.Named("components", data.Object([
+                                data.Field.Named("Transform", data.Object([
+                                    data.Field.Named("x", data.Value.Real(0.0)),
+                                    data.Field.Named("y", data.Value.Real(-12.0))
+                                ]))
+                            ]))
+                        ])
+                    ]))
+                ])
+            ])),
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Main"))
+        ])
+    );
 }
 ```
 
@@ -503,19 +586,35 @@ child cannot use the prototype it belongs to, directly or through its
 children. Studio cannot load a prototype with children yet, as with
 includes, and snapshots name only the scene's own entities.
 
-```kdl
-name "Ship"
-components {
-    Transform x=0.0 y=0.0
-}
-(array)children {
-    - {
-        name "Turret"
-        prototype "Turret"
-        components {
-            Transform x=0.0 y=-12.0
-        }
-    }
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Ship")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(0.0)),
+                    data.Field.Named("y", data.Value.Real(0.0))
+                ]))
+            ])),
+            data.Field.Named("children", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Turret")),
+                    data.Field.Named("prototype", data.Value.Text("Turret")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(-12.0))
+                        ]))
+                    ]))
+                ])
+            ]))
+        ])
+    );
 }
 ```
 
@@ -523,7 +622,7 @@ components {
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected
    components, functions, and types to choose available capabilities.
-2. Edit the saved `.chibi` or KDL source. Keep game rules, scene composition,
+2. Edit the saved `.chibi` source. Keep game rules, scene composition,
    visual choices, and tuning in the game project.
 3. Format the project and validate changed assets with the native controller.
    Resolve loader/compiler diagnostics before running the content.
@@ -562,7 +661,7 @@ printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"content/behavi
 ```
 
 Asset paths in requests and replies start with `content/`, which stands for the
-folder `project.kdl` selects: `content/behaviors/Projectile.chibi` is
+folder `project.chibi` selects: `content/behaviors/Projectile.chibi` is
 `behaviors/Projectile.chibi` there.
 
 Change the path to an asset in your project. A request failure returns a nonzero
@@ -590,7 +689,7 @@ A short sample run does not establish full runtime or rendering coverage.
 
 Scripts start another scene with `load_scene(Scene: "Level2")`, restart the
 running one with `reload_scene()`, and read its name with `current_scene()`. A
-scene's name is its file name in `content/scenes` without `.kdl`. A request
+scene's name is its file name in `content/scenes` without its `.chibi` suffix. A request
 takes effect after the frame: the host destroys every entity, discards
 uncommitted save changes, keeps committed save data, and starts the scene, whose
 Begin runs before its first frame. Time, held input and audio carry on.
@@ -811,17 +910,42 @@ it carries, to `mass` on its `Body3D` or `Body`, so
 `self.Body3D.mass` times a change of speed is the impulse that makes it. The
 mass reads zero until the body's first step.
 
-```kdl
-name "Crate"
-components {
-    Body3D type="Dynamic"
-    Collider3D category=1 mask=1 friction=0.6 {
-        size x=32.0 y=32.0 z=32.0
-    }
-    Transform3D {
-        position y=64.0
-        scale x=1.0 y=1.0 z=1.0
-    }
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Crate")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Body3D", data.Object([
+                    data.Field.Named("type", data.Value.Text("Dynamic"))
+                ])),
+                data.Field.Named("Collider3D", data.Object([
+                    data.Field.Named("category", data.Value.UInt(1)),
+                    data.Field.Named("mask", data.Value.UInt(1)),
+                    data.Field.Named("friction", data.Value.Real(0.6)),
+                    data.Field.Named("size", data.Object([
+                        data.Field.Named("x", data.Value.Real(32.0)),
+                        data.Field.Named("y", data.Value.Real(32.0)),
+                        data.Field.Named("z", data.Value.Real(32.0))
+                    ]))
+                ])),
+                data.Field.Named("Transform3D", data.Object([
+                    data.Field.Named("position", data.Object([
+                        data.Field.Named("y", data.Value.Real(64.0))
+                    ])),
+                    data.Field.Named("scale", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0)),
+                        data.Field.Named("y", data.Value.Real(1.0)),
+                        data.Field.Named("z", data.Value.Real(1.0))
+                    ]))
+                ]))
+            ]))
+        ])
+    );
 }
 ```
 

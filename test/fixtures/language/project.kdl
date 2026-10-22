@@ -1,4 +1,0 @@
-version 32
-name "Language contracts"
-content "content"
-start_scene "scenes/Start.kdl"

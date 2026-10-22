@@ -42,7 +42,7 @@ struct prototype_registry
     int default_count;
     const ecs_relationship_desc *const *relationships;
     int relationship_count;
-    /* Optional authoring decoder. Runtime/document-only users retain KDL. */
+    /* Optional authoring decoder. Runtime/document-only users retain Chibi. */
     prototype_decode_fn decode;
 };
 

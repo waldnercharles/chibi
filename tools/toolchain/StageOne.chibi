@@ -47,8 +47,7 @@ Recovered :: (host: string, root: string) -> string {
     core := Join([root, "/packages/core"])
     artifact := Join([compiler, "/bootstrap"])
     digests := build.concat(Digests(compiler), Digests(core))
-    digests = build.concat(digests, [build.hash_file(Join([compiler, "/bootstrap.kdl"])),
-                                     build.hash_file(Join([artifact, "/bootstrap.json"])),
+    digests = build.concat(digests, [build.hash_file(Join([artifact, "/bootstrap.json"])),
                                      build.hash_file(Join([artifact, "/compiler.chibip"])),
                                      build.hash_file(host)])
     cache := Join([root, "/.chibi/stage-one"])

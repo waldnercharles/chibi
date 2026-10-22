@@ -69,7 +69,7 @@ eye is from the origin.
   hemisphere ambient. Without an Environment the scene uses
   `environment_defaults()`.
 
-Omitted KDL fields are zero, so author every lighting field you need. Studio adds
+Omitted compiled Chibi fields are zero, so author every lighting field you need. Studio adds
 both components with their defaults filled in.
 
 ## Shadows
@@ -546,7 +546,7 @@ the `warnings`. An import writes:
 - `content/meshes/<name>.mesh`: the triangles of every mesh node, placed by
   their node transforms, with one material group per glTF material in glTF
   order and a last one for primitives that name none.
-- `content/materials/<name>_<material>.kdl`: a Standard material for each glTF
+- `content/materials/<name>_<material>.chibi`: a Standard material for each glTF
   material the mesh's triangles use, and `<name>_Default` for primitives with
   none.
   Characters an asset name refuses become `_`, and a name that matches an
@@ -555,7 +555,7 @@ the `warnings`. An import writes:
 - `content/textures/<name>/<image>.png` or `.jpg`: each image a material uses,
   copied byte for byte and named for the image, else its file, else
   `Image<n>`.
-- `content/prototypes/<name>.kdl`: a prototype with Transform3D, Geometry3D of
+- `content/prototypes/<name>.chibi`: a prototype with Transform3D, Geometry3D of
   1 by 1 by 1 and a Mesh Asset naming the mesh.
 
 It never replaces a file and removes everything it wrote when a step fails.

@@ -195,7 +195,17 @@ TEST_CASE(field_parameters_and_errors)
         material_field_bake_text(
             catalog,
             "parameters",
-            "Radius 7\n",
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"Radius\", data.Value.UInt(7))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
             0,
             (field_grid){ 1, 1, 1 },
             &out,
@@ -229,7 +239,17 @@ TEST_CASE(field_parameters_and_errors)
     REQUIRE(!material_field_bake_text(
         catalog,
         "parameters",
-        "Unknown 7\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Unknown\", data.Value.UInt(7))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         0,
         (field_grid){ 1, 1, 1 },
         &out,
@@ -952,7 +972,7 @@ TEST_CASE(field_links_source_library)
         shapes = strcmp(libraries[i]->name, "FieldShapes") ? shapes : libraries[i];
     }
     REQUIRE(shapes && behavior_asset_find_graph_by_name(shapes, "Islands"));
-    text = text_file_read(CONTRACTS "/fields/MaterialIslands.kdl");
+    text = text_file_read(CONTRACTS "/fields/MaterialIslands.chibi");
     behavior_asset *islands = behavior_asset_load(text);
     free(text);
     REQUIRE(islands);
@@ -1380,7 +1400,7 @@ TEST_CASE(field_source_library_hot_apply)
     strcpy(root, "/tmp/chibi-fields-XXXXXX");
     REQUIRE(mkdtemp(root));
     copy_fixture("libraries", "FieldShapes.chibi");
-    copy_fixture("fields", "MaterialIslands.kdl");
+    copy_fixture("fields", "MaterialIslands.chibi");
     ecs_world *ecs = ecs_world_new();
     for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
         REQUIRE(!ecs_world_register_component(ecs, REGISTRY_COMPONENTS[i], NULL));
@@ -1460,7 +1480,7 @@ TEST_CASE(field_source_library_hot_apply)
     preview_world_free(live);
     ecs_world_free(ecs);
     remove_fixture("libraries", "FieldShapes.chibi");
-    remove_fixture("fields", "MaterialIslands.kdl");
+    remove_fixture("fields", "MaterialIslands.chibi");
     rmdir(root);
     return true;
 }

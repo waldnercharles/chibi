@@ -10,7 +10,7 @@
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 #include "yyjson.h"
@@ -1218,7 +1218,7 @@ static char *material_text(const char *name, const standard_material *material)
     char *saved = behavior_asset_save(asset);
     behavior_asset_free(asset);
     char error[160];
-    char *text = asset_text_to_disk(saved, error, sizeof error);
+    char *text = asset_document_to_disk(saved, error, sizeof error);
     assert(text);
     free(saved);
     return text;
@@ -1392,14 +1392,14 @@ static bool write_files(import *in, const render_mesh_asset *mesh, const standar
             continue;
         }
         char key[NEW_ASSET_NAME_MAX + 32];
-        snprintf(key, sizeof key, "content/materials/%s.kdl", in->materials[slot]);
+        snprintf(key, sizeof key, "content/materials/%s.chibi", in->materials[slot]);
         if (!write_text(in, key, material_text(in->materials[slot], &materials[slot]))) {
             return false;
         }
     }
     char mesh_key[NEW_ASSET_NAME_MAX + 32], prototype_key[NEW_ASSET_NAME_MAX + 32];
     snprintf(mesh_key, sizeof mesh_key, "content/meshes/%s.mesh", in->name);
-    snprintf(prototype_key, sizeof prototype_key, "content/prototypes/%s.kdl", in->name);
+    snprintf(prototype_key, sizeof prototype_key, "content/prototypes/%s.chibi", in->name);
     return write_mesh(in, mesh, mesh_key) &&
            write_text(in, prototype_key, prototype_text(in->name, mesh_key));
 }

@@ -842,7 +842,7 @@ later attribute syntax.
 ## Event payloads have no single typed declaration
 
 Language. An event's payload is declared in three places: the engine's events
-in a C table, a project's events in KDL, and each test file's events in its own
+in a C table, a project's events in compiled Chibi, and each test file's events in its own
 C catalog. Old handlers could also leave a field untyped. The version 30
 migration therefore needed three type sources and a frozen copy of the engine
 table (#565). Converting the tests' handlers then needed each test catalog's
@@ -858,3 +858,33 @@ table aside for them (the PR that removed the old handler forms).
 
 Suggestion: declare an event's payload as a record in `.chibi` source, which
 the compilers, Studio, migrations and tests then share.
+
+## Prototype helper evaluation: initial scalar slice
+
+Language and asset pipeline. The earlier source reader walked prototype syntax
+into an `av_doc` and rejected calls. The typed-assets worktree now adds an
+initial implementation through Chibi's compiler and VM. Prototype-local helpers
+can use scalar parameters, calls, branches, loops and local mutation to compute
+reflected scalar component values. Source locations identify the original
+expression and field. Studio companion edits preserve parameters and formulas
+through explicit overrides and Reset. The initial scalar slice is implemented
+locally and its focused engine and Studio ownership checks pass. It remains uncommitted and unmerged.
+
+Remaining friction is aggregate helper values and native math/string
+capabilities, which currently produce diagnostics. The scalar VM has a shared
+instruction budget, bounded frames/storage and cancellation checks, but compiler
+execution has no mid-compilation cancellation hook and its allocations are not
+covered by the VM storage limit. The broader compiled Chibi migration and explicit
+build/import generators remain future work. See
+[the typed asset plan](typed-assets/PLAN.md) for the approved schema and limits.
+
+- [Pkl's evaluator builder](https://github.com/apple/pkl/blob/ac0d9f1d31a4f70109cc173f5eb15f483bfaa7ff/pkl-core/src/main/java/org/pkl/core/EvaluatorBuilder.java)
+  is prior art for restricting modules/resources and setting a timeout; Pkl
+  itself is not inherently pure.
+- [Starlark Go's evaluator](https://github.com/google/starlark-go/blob/4f4267fb140d1e8b91c9bce55cee2f809e8840dd/starlark/eval.go)
+  is prior art for shared step limits and cancellation; it is dynamically typed.
+- [Zig's build-system guide](https://ziglang.org/learn/build-system/) places
+  generated outputs and system-tool execution in explicit build steps.
+
+These runtimes differ from Chibi's. Reuse applicable policy patterns and
+independently useful tests with attribution rather than adding another runtime.

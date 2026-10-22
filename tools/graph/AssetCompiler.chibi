@@ -1,0 +1,224 @@
+package asset_compiler_build
+
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string { return strings.Join(parts, ""); }
+
+Quote :: (text: string) -> string {
+    parts := ["\""];
+    start: int = 0;
+    index: int = 0;
+    for (value in strings.Bytes(text)) {
+        escape := "";
+        if (value == 34) { escape = "\\\""; }
+        if (value == 92) { escape = "\\\\"; }
+        if (value == 10) { escape = "\\n"; }
+        if (value == 13) { escape = "\\r"; }
+        if (value == 9) { escape = "\\t"; }
+        if (value < 32 && escape == "") {
+            digits := "0123456789abcdef";
+            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
+        }
+        if (escape != "") {
+            parts.append(strings.Slice(text, start, index - start));
+            parts.append(escape);
+            start = index + 1;
+        }
+        index += 1;
+    }
+    parts.append(strings.Slice(text, start, index - start));
+    parts.append("\"");
+    return Join(parts);
+}
+
+Array :: (values: string[]) -> string {
+    parts: string[] = [];
+    for (value in values) { parts.append(Quote(value)); }
+    return Join(["[", strings.Join(parts, ","), "]"]);
+}
+
+Sources :: (folder: string) -> string[] {
+    paths: string[] = [];
+    for (directory in build.list_directory(folder)) {
+        path := Join([folder, "/", directory]);
+        if (build.file_kind(path) != "directory") { continue; }
+        for (file in build.list_directory(path)) {
+            if (strings.HasSuffix(file, ".chibi")) { paths.append(Join([directory, "/", file])); }
+        }
+    }
+    return paths;
+}
+
+Read :: (root: string, paths: string[]) -> string[] {
+    sources: string[] = [];
+    for (path in paths) {
+        if (strings.HasPrefix(path, "/sdk/core/")) {
+            sources.append(build.read_file(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
+        } else if (strings.HasPrefix(path, "/sdk/game/")) {
+            sources.append(build.read_file(Join([root, "/packages/game/", strings.Slice(path, 10, strings.ByteLength(path))])));
+        } else {
+            sources.append(build.read_file(Join([root, "/tools/compiler/", path])));
+        }
+    }
+    return sources;
+}
+
+Request :: (first: string, paths: string[], sources: string[], target: string) -> string {
+    ordered_paths := [first];
+    ordered_sources: string[] = [];
+    index: int = 0;
+    while (index < length(paths)) {
+        if (paths[index] == first) { ordered_sources.append(sources[index]); }
+        index += 1;
+    }
+    if (length(ordered_sources) != 1) { return ""; }
+    index = 0;
+    while (index < length(paths)) {
+        if (paths[index] != first) {
+            ordered_paths.append(paths[index]);
+            ordered_sources.append(sources[index]);
+        }
+        index += 1;
+    }
+    target = build.trim(target);
+    if (!strings.HasPrefix(target, "[") || !strings.HasSuffix(target, "]")) { return ""; }
+    return Join(["[\"/project\",[\"core\",\"game\"],[\"/sdk/core\",\"/sdk/game\"],", Array(ordered_paths), ",", Array(ordered_sources),
+                 ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
+}
+
+Invoke :: (host: string, artifact: string, callable: string, input: string, output: string) -> bool {
+    if (build.run([host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit",
+                   "--budget", "10000000000", "--timeout-ms", "180000", "--output-bytes", output]) != 0) {
+        build.report(Join(["asset compiler generation failed: ", build.last_stderr()]));
+        if (callable == "0x140a9546d9e8c296") {
+            build.run([host, "--artifact", artifact, "--entry", "0x19dfb0cfc681eb4b", "--input", input,
+                       "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", "180000"]);
+            build.report(build.last_stdout());
+        }
+        return false;
+    }
+    return true;
+}
+
+// Explicit filesystem snapshots and atomic products; source compilation and
+// resource generation execute ordinary Chibi in the prepared compiler host.
+pub Generate :: (root: string, host: string, folder: string, target: string) -> bool {
+    native_facts := Join([folder, "/native_target.json"]);
+    if (!build.make_directory(folder) || build.run([host, "--target-json", native_facts]) != 0) { return false; }
+    native_target := build.trim(build.read_file(native_facts));
+    if (target == "") { target = native_target; }
+    paths: string[] = [];
+    for (path in build.lines(build.read_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
+        if (path != "") { paths.append(path); }
+    }
+    for (directory in ["package_compiler"]) {
+        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
+            path := Join([directory, "/", file]);
+            found := false;
+            for (item in paths) { if (item == path) { found = true; } }
+            if (!found && strings.HasSuffix(file, ".chibi")) { paths.append(path); }
+        }
+    }
+    for (relative in Sources(Join([root, "/packages/core"]))) {
+        path := Join(["/sdk/core/", relative]);
+        found := false;
+        for (item in paths) { if (item == path) { found = true; } }
+        if (!found) { paths.append(path); }
+    }
+    bootstrap_paths := paths;
+    bootstrap_sources := Read(root, bootstrap_paths);
+    for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
+        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
+            if (strings.HasSuffix(file, ".chibi")) { paths.append(Join([directory, "/", file])); }
+        }
+    }
+    for (path in Sources(Join([root, "/packages/game"]))) { paths.append(Join(["/sdk/game/", path])); }
+    sources := Read(root, paths);
+    inputs := Join([folder, "/input.json"]);
+    compiler := Join([folder, "/compiler.chibip"]);
+    facade := Join([folder, "/native_facade.chibip"]);
+    artifact := Join([folder, "/asset_compiler.chibip"]);
+    seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
+    closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
+    if (!build.write_file(inputs, Request("package_compiler/Compile.chibi", bootstrap_paths, bootstrap_sources, native_target)) ||
+        !Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"])) ||
+        !build.rename(Join([compiler, ".tmp"]), compiler)) { return false; }
+    if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, native_target)) ||
+        !Invoke(host, compiler, closure_entry, inputs, Join([facade, ".tmp"])) ||
+        !build.rename(Join([facade, ".tmp"]), facade)) { return false; }
+    if (target == native_target) {
+        if (!build.copy_file(facade, artifact)) { return false; }
+    } else {
+        if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, target)) ||
+            !Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"])) ||
+            !build.rename(Join([artifact, ".tmp"]), artifact)) { return false; }
+    }
+    library_paths: string[] = [];
+    library_sources: string[] = [];
+    index: int = 0;
+    while (index < length(paths)) {
+        if (strings.HasPrefix(paths[index], "/sdk/core/") || strings.HasPrefix(paths[index], "/sdk/game/")) {
+            library_paths.append(paths[index]);
+            library_sources.append(sources[index]);
+        }
+        index += 1;
+    }
+    if (!build.write_file(inputs, Join(["[", Array(library_paths), ",", Array(library_sources), "]"]))) { return false; }
+    // The same stable package-symbol hash used by all prepared entry IDs.
+    id := uint64(14695981039346656037);
+    for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
+        id = (id ^ uint64(value)) * uint64(1099511628211);
+    }
+    if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"])) ||
+        !build.rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) { return false; }
+    records: string[] = [];
+    stamps: string[] = [];
+    index = 0;
+    while (index < length(paths)) {
+        path := paths[index];
+        disk := Join(["tools/compiler/", path]);
+        if (strings.HasPrefix(path, "/sdk/")) { disk = Join(["packages/", strings.Slice(path, 5, strings.ByteLength(path))]); }
+        stamps.append(Join([build.hash_text(sources[index]), " ", disk, "\n"]));
+        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(build.hash_text(sources[index])), "}"]));
+        index += 1;
+    }
+    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json"]) {
+        checksum := build.hash_file(Join([root, "/", path]));
+        records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
+        stamps.append(Join([checksum, " ", path, "\n"]));
+    }
+    records.append(Join(["{\"path\":\"tools/compiler/asset_compiler/CompilerSources.txt\",\"sha256\":",
+                         Quote(build.hash_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"]))), "}"]));
+    stamps.append(Join([build.hash_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])), " tools/compiler/asset_compiler/CompilerSources.txt\n"]));
+    stamps.append(Join([build.hash_file(Join([root, "/tools/graph/AssetCompiler.chibi"])), " tools/graph/AssetCompiler.chibi\n"]));
+    stamps.append(Join([build.hash_file(Join([root, "/tools/graph/asset_compiler/Stage.chibi"])), " tools/graph/asset_compiler/Stage.chibi\n"]));
+    records.append(Join(["{\"path\":\"tools/graph/asset_compiler/Stage.chibi\",\"sha256\":",
+                         Quote(build.hash_file(Join([root, "/tools/graph/asset_compiler/Stage.chibi"]))), "}"]));
+    records.append(Join(["{\"path\":\"tools/graph/AssetCompiler.chibi\",\"sha256\":",
+                         Quote(build.hash_file(Join([root, "/tools/graph/AssetCompiler.chibi"]))), "}"]));
+    manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
+                      Quote(build.hash_file(artifact)), ",\"resource_sha256\":",
+                      Quote(build.hash_file(Join([folder, "/asset_compiler_packaged.c"]))),
+                      ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
+    if (!build.write_file(Join([folder, "/sources.sha256"]), Join(stamps)) ||
+        !build.write_file(Join([folder, "/manifest.json"]), manifest) ||
+        !build.write_file(Join([folder, "/target.json"]), target) ||
+        !build.embed_file(artifact, Join([folder, "/asset_compiler_blob.inc"]), "asset_compiler_blob")) { return false; }
+    build.remove(inputs);
+    build.remove(compiler);
+    build.remove(facade);
+    build.remove(native_facts);
+    return true;
+}
+
+pub Build :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) < 2 || length(arguments) > 3) {
+        build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON]");
+        return 2;
+    }
+    target := "";
+    if (length(arguments) == 3) { target = build.read_file(arguments[2]); }
+    if (!Generate(build.root(), arguments[0], arguments[1], target)) { return 1; }
+    return 0;
+}

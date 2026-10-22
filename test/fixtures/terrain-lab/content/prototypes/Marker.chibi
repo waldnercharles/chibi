@@ -1,0 +1,22 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Marker")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("color", data.Value.UInt(1927992575)),
+                    data.Field.Named("height", data.Value.Real(18.0)),
+                    data.Field.Named("layer", data.Value.UInt(2)),
+                    data.Field.Named("width", data.Value.Real(2.0))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("y", data.Value.Real(-9.0))
+                ]))
+            ]))
+        ])
+    );
+}

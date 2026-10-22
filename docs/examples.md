@@ -8,51 +8,101 @@ Put behavior files in `content/behaviors` and prototype files in `content/protot
 For the first movement recipe, create these files in an empty project directory.
 Save its behavior as `content/behaviors/MovePlayer.chibi`.
 
-`project.kdl`:
+`project.chibi`:
 
-```kdl
-version 29
-name "Movement"
-content "content"
-start_scene "scenes/Main.kdl"
-```
+```chibi
+package asset
 
-`content/prototypes/Player.kdl`:
+import data "game:assets"
 
-```kdl
-name "Player"
-components {
-    Appearance color=0x72ead4ff height=16.0 width=16.0
-    (object)Input
-    (object)Transform
-}
-(array)behaviors "MovePlayer"
-```
-
-`content/prototypes/View.kdl`:
-
-```kdl
-name "View"
-components {
-    Camera height=360.0 width=640.0
-    (object)Transform
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Project("Movement", 33, "content", "scenes/Main.chibi", [])
+    );
 }
 ```
 
-`content/scenes/Main.kdl`:
+`content/prototypes/Player.chibi`:
 
-```kdl
-version 1
-name "Main"
-(array)entities {
-    - name="Player" prototype="Player"
-    - name="View" prototype="View"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Player")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("color", data.Value.UInt(1927992575)),
+                    data.Field.Named("height", data.Value.Real(16.0)),
+                    data.Field.Named("width", data.Value.Real(16.0))
+                ])),
+                data.Field.Named("Input", data.Object([])),
+                data.Field.Named("Transform", data.Object([]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("MovePlayer")
+            ]))
+        ])
+    );
+}
+```
+
+`content/prototypes/View.chibi`:
+
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("View")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Camera", data.Object([
+                    data.Field.Named("height", data.Value.Real(360.0)),
+                    data.Field.Named("width", data.Value.Real(640.0))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}
+```
+
+`content/scenes/Main.chibi`:
+
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Main")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Player")),
+                    data.Field.Named("prototype", data.Value.Text("Player"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("View")),
+                    data.Field.Named("prototype", data.Value.Text("View"))
+                ])
+            ]))
+        ])
+    );
 }
 ```
 
 The scene contains a visible player and a camera.
 For another recipe, change the prototype's behavior name and add the components that recipe needs.
-To add another prototype, add an entity with its name under `(array)entities`.
+To add another prototype, append an entity value to the scene's `entities` array.
 
 ## Move with input
 
@@ -82,11 +132,23 @@ The second version also needs `Velocity` and a configured physics body.
 
 ## React to a button press
 
-Declare an action in `content/input.kdl`:
+Declare an action in `content/input.chibi`:
 
-```kdl
-Shoot {
-    (array)sources "Space"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("Shoot", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("Space")
+                ]))
+            ]))
+        ])
+    );
 }
 ```
 
@@ -116,10 +178,22 @@ Drift :: system(position: Transform, velocity: Velocity) on Tick :: (dt: s) {
 Save it in `content/systems/Drift.chibi`.
 Register it on an entity with the `EngineSystem` component:
 
-```kdl
-name "MovementSystem"
-components {
-    EngineSystem asset="Drift"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("MovementSystem")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("EngineSystem", data.Object([
+                    data.Field.Named("asset", data.Value.Text("Drift"))
+                ]))
+            ]))
+        ])
+    );
 }
 ```
 
@@ -172,9 +246,20 @@ Expire :: behavior {
 Give a prototype a two-second lifetime in `content/prototypes/TimedObject.chibi`:
 
 ```chibi
-TimedObject :: prototype {
-    Lifetime { remaining: 2 }
-    behaviors: [Expire]
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(data.Object([
+        data.Field.Named("name", data.Value.Text("TimedObject")),
+        data.Field.Named("components", data.Object([
+            data.Field.Named("Lifetime", data.Object([
+                data.Field.Named("remaining", data.Value.Real(2.0))
+            ]))
+        ])),
+        data.Field.Named("behaviors", data.List([data.Value.Text("Expire")]))
+    ]));
 }
 ```
 
@@ -254,15 +339,29 @@ Create `content/ui/Hud.rml` with an element whose ID is `score`:
 <span id="score">Score: 0</span>
 ```
 
-Create a UI prototype in `content/prototypes/Hud.kdl`:
+Create a UI prototype in `content/prototypes/Hud.chibi`:
 
-```kdl
-name "Hud"
-components {
-    (object)Transform
-    Ui document="Hud"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Hud")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Transform", data.Object([])),
+                data.Field.Named("Ui", data.Object([
+                    data.Field.Named("document", data.Value.Text("Hud"))
+                ]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("ScoreLabel")
+            ]))
+        ])
+    );
 }
-(array)behaviors "ScoreLabel"
 ```
 
 Define `content/behaviors/ScoreLabel.chibi`:

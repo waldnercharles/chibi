@@ -1,0 +1,23 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RenderSolid")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(50.0)),
+                    data.Field.Named("elevation", data.Value.Real(25.0)),
+                    data.Field.Named("height", data.Value.Real(50.0)),
+                    data.Field.Named("width", data.Value.Real(50.0))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(3503874303))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

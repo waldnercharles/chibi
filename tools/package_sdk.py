@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path('share/chibi/package.json')
 CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
-COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'compiler_syntax', 'compiler_json', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
+COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'compiler_syntax', 'compiler_json', 'compiler_host', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_documents', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
@@ -38,7 +38,6 @@ PRIVATE_TOOL_PATHS = {
 }
 PRIVATE_OBJECT_OWNERS = {
     'chibi_build_host': 'chibi-build-host',
-    'chibi_compiler_host': 'chibi-compiler-host',
 }
 
 
@@ -633,7 +632,7 @@ def check_exports(stage, kind, cache, build):
         text = path.read_text()
         if str(ROOT) in text or str(build) in text:
             raise ValueError(f'Installed CMake file retains a source/build path: {path.name}')
-        if kind == 'runtime' and re.search(r'Chibi::(?:syntax_runtime|language\w*|compiler|authoring|asset_text|asset_kdl)\b|tree.sitter', text, re.I):
+        if kind == 'runtime' and re.search(r'Chibi::(?:syntax_runtime|language\w*|compiler|authoring|asset_documents)\b|tree.sitter', text, re.I):
             raise ValueError(f'Runtime export contains a compiler/parser dependency: {path.name}')
     includes = stage / 'include/chibi'
     header_owners = CORE_TARGETS | (COMPILER_TARGETS if kind == 'sdk' else set())
@@ -661,7 +660,7 @@ def check_exports(stage, kind, cache, build):
             if path.is_dir() and path.name in ('language', 'authoring', 'tree_sitter', 'editor', 'graph'):
                 raise ValueError(f'Runtime package unexpectedly exports {path.name} headers')
         for path in (stage / 'lib').glob('*'):
-            if path.is_file() and re.search(r'(syntax|language|compiler|authoring|tree.sitter|asset_text|asset_kdl)', path.name, re.I):
+            if path.is_file() and re.search(r'(syntax|language|compiler|authoring|tree.sitter|asset_documents)', path.name, re.I):
                 raise ValueError(f'Runtime package unexpectedly contains {path.name}')
     else:
         for header in ('language_syntax/language/syntax.h', 'compiler/language/lower.h', 'authoring/authoring/source_prepare.h'):

@@ -1,4 +1,4 @@
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -31,17 +31,21 @@ static bool copy(const char *relative)
     return !tool_run(parents, root, log_path) && !tool_run(files, root, log_path);
 }
 
-/* docs/site.kdl and every page, package folder and grammar it lists. A
+/* docs/site.chibi and every page, package folder and grammar it lists. A
  * manifest that does not read copies no pages, and an input that leaves the
  * root is not copied; the compiler says why it refuses either. */
 static bool copy_site()
 {
     char manifest[PATH_MAX], error[256];
-    int length = snprintf(manifest, sizeof manifest, "%s/docs/site.kdl", root);
+    int length = snprintf(manifest, sizeof manifest, "%s/docs/site.chibi", root);
     assert(length > 0 && length < (int)sizeof manifest);
-    bool copied = copy("docs/site.kdl");
+    bool copied = copy("docs/site.chibi");
     char *text = copied ? tool_read(manifest) : NULL;
-    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    copied = copied && doc;
+    if (text && !doc) {
+        fprintf(stderr, "%s: %s\n", manifest, error);
+    }
     const av_value *sections = av_obj_get(av_doc_root(doc), "sections");
     for (size_t i = 0; copied && i < av_arr_size(sections); i++) {
         const av_value *pages = av_obj_get(av_arr_get(sections, i), "pages");

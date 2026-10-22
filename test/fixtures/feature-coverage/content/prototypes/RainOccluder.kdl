@@ -1,8 +1,0 @@
-name "RainOccluder"
-components {
-    Geometry3D depth=25.0 height=30.0 width=25.0
-    Material scene=0x607890ff
-    Transform3D {
-        scale x=1.0 y=1.0 z=1.0
-    }
-}

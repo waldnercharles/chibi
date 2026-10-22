@@ -1,0 +1,140 @@
+package asset_compiler
+
+import compiler "project:package_compiler"
+import routes "project:package_routes"
+import binding "project:lexical_binding"
+import source "project:asset_source"
+import packaging "project:asset_packaging"
+import strings "core:strings"
+
+// A union result admits owned arrays/text on both bootstrap and authored
+// compiler paths. Named aggregate results are not supported by stage one yet.
+pub Result :: union {
+    Completed(ok: bool, entry_id: uint64, prepared: byte[], document: int, start: int,
+              end: int, line: int, column: int, message: string)
+}
+
+pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+    return source.Write(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
+}
+
+pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+                   signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+    return source.Expression(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
+}
+
+pub Inspect :: (text: string, function_name: string) -> source.Inspection {
+    return source.Inspect(text, function_name);
+}
+
+pub Classify :: (text: string) -> bool {
+    return source.Classify(text);
+}
+
+pub Field :: (text: string, component: string, field_path: string) -> source.FieldSource {
+    return source.Field(text, component, field_path);
+}
+
+pub Packaged :: (paths: string[], sources: string[]) -> byte[] {
+    return packaging.Packaged(paths, sources);
+}
+
+pub Parameters :: (text: string) -> byte[] {
+    return source.Parameters(text);
+}
+
+pub SetParameter :: (text: string, name: string, kind: int, value_text: string,
+                     signed: int64, unsigned: uint64, real: double, boolean: bool) -> byte[] {
+    return source.SetParameter(text, name, kind, value_text, signed, unsigned, real, boolean);
+}
+
+pub Reconcile :: (text: string, old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
+                  old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                  new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                  new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+    return source.Reconcile(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
+                            old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
+                            new_signed, new_unsigned, new_reals, new_booleans);
+}
+
+pub Materialize :: (text: string, kinds: int[], parents: int[], keys: string[], texts: string[],
+                    signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+    return source.Materialize(text, kinds, parents, keys, texts, signed, unsigned, reals, booleans);
+}
+
+Entry :: (project: string, collection_names: string[], collection_paths: string[], path: string) -> uint64 {
+    collections: routes.Collection[] = [];
+    index: int = 0;
+    while (index < length(collection_names)) {
+        collections.append({name: collection_names[index], path: collection_paths[index],
+                            has_name: true, has_path: true});
+        index += 1;
+    }
+    switch routes.RootSet(project, true, collections) {
+        case .Rejected(diagnostic): return 0;
+        case .Accepted(roots):
+            switch routes.FileRoute(roots, path, true, 0) {
+                case .Rejected(diagnostic): return 0;
+                case .Accepted(file):
+                    return binding.ID("package-symbol", format_text("{}:1:Build:callable", file.identity));
+            }
+    }
+}
+
+// Asset packages use the normal authored compiler, imports and type checker.
+// The embedding host supplies its explicit source snapshot and target/catalog
+// facts. This facade preserves compile diagnostics without JSON interpretation
+// or generated source. The compiled public Build entry returns owned byte[].
+pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                sources: string[], debug: bool, target: compiler.Target, abi: uint64, names: string[],
+                natives: compiler.Native[], ports: compiler.Port[], identities: uint64[]) -> Result {
+    switch compiler.Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                            names, natives, ports, identities) {
+        case .Rejected(diagnostic):
+            return Result.Completed(false, 0, [], diagnostic.document, diagnostic.start, diagnostic.end,
+                                    diagnostic.line, diagnostic.column, diagnostic.message);
+        case .Compiled(module, bytes):
+            entry_id := Entry(project, collection_names, collection_paths, paths[0]);
+            return Result.Completed(true, entry_id, bytes, -1, 0, 0, 0, 0, "");
+    }
+}
+
+// Native transport envelope: status byte, entry uint64 LE, five int32 LE
+// source fields (document/start/end/line/column), then prepared bytes or UTF-8
+// diagnostic text. The native adapter only decodes this fixed 29-byte header.
+pub CompileBytes :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                     sources: string[], debug: bool, target: compiler.Target, abi: uint64, names: string[],
+                     natives: compiler.Native[], ports: compiler.Port[], identities: uint64[]) -> byte[] {
+    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                   names, natives, ports, identities) {
+        case .Completed(ok, entry_id, prepared, document, start, end, line, column, message):
+            out: byte[] = [0];
+            if (ok) { out[0] = 1; }
+            wide := entry_id;
+            index: int = 0;
+            while (index < 8) {
+                out.append(byte(wide & 255));
+                wide = wide >> 8;
+                index += 1;
+            }
+            positions: int[] = [document, start, end, line, column];
+            for (position in positions) {
+                bits := uint(wrap: position);
+                index = 0;
+                while (index < 4) {
+                    out.append(byte(bits & 255));
+                    bits = bits >> 8;
+                    index += 1;
+                }
+            }
+            if (ok) {
+                max_prepared: int = 16777187;
+                assert(length(prepared) <= max_prepared, "Compiled asset exceeds transport byte quota");
+                out.extend(prepared);
+            } else {
+                for (part in strings.Bytes(message)) { out.append(byte(part)); }
+            }
+            return out;
+    }
+}

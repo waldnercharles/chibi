@@ -1,0 +1,30 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("MaterialStudyWorld")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("HRC2D", data.Object([
+                    data.Field.Named("ambient", data.Value.Real(0.29999999999999999)),
+                    data.Field.Named("bounce_hysteresis", data.Value.Real(0.80000000000000004)),
+                    data.Field.Named("falloff", data.Value.Real(1.0)),
+                    data.Field.Named("intensity", data.Value.Real(1.0)),
+                    data.Field.Named("radiance_hysteresis", data.Value.Real(0.80000000000000004)),
+                    data.Field.Named("resolution", data.Value.Real(0.5)),
+                    data.Field.Named("shadow_floor", data.Value.Real(0.00050000000000000001)),
+                    data.Field.Named("specular", data.Value.Real(1.0)),
+                    data.Field.Named("surface_bevel", data.Value.Real(1.0)),
+                    data.Field.Named("surface_radius", data.Value.Real(24.0)),
+                    data.Field.Named("surface_relief", data.Value.Real(1.5)),
+                    data.Field.Named("target_fps", data.Value.Real(60.0))
+                ])),
+                data.Field.Named("MaterialDestructionWorld", data.Object([
+                    data.Field.Named("fragment_limit", data.Value.UInt(64))
+                ]))
+            ]))
+        ])
+    );
+}

@@ -40,7 +40,7 @@ three directly traced cascades, a 64-world-unit margin, and no independent
 luminance solve. It is not a uniformly half-resolution renderer. Material
 rasterization and final composition remain full resolution. See
 [the current measurements](../neon-hrc-optimization.md#feature-costs-and-follow-up-experiments-september-26)
-and [authored settings](../../projects/arena2d/content/prototypes/HRC.kdl).
+and [authored settings](../../projects/arena2d/content/prototypes/HRC.chibi).
 
 | Existing measurement | Result | Interpretation |
 | --- | ---: | --- |

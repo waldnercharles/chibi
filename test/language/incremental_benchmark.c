@@ -212,8 +212,8 @@ TEST_CASE(incremental_preparation_benchmark)
             REQUIRE(value_is(previous, "Caller", 3));
             printf(
                 "INCREMENTAL mode=%s trial=%d sources=%d reused=%d "
-                "prepare_ms=%.6f "
-                "xalloc_calls=%llu requested_bytes=%llu arena_blocks=%llu\n",
+                "prepare_ms=%.6f xalloc_calls=%llu requested_bytes=%llu "
+                "arena_blocks=%llu\n",
                 modes[mode],
                 trial,
                 SOURCE_COUNT,

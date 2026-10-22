@@ -1481,7 +1481,7 @@ EntityCondition;
  * Physics, vision and aim compute the same world placement on demand. */
 
 /* Local 3D placement in project units. rotation is a unit quaternion; a zero
- * one reads as identity. KDL loads omitted fields as zero, so author scale. */
+ * one reads as identity. Asset loading initializes omitted fields to zero, so author scale. */
 typedef NODE_COMPONENT_TYPE_DENSE(Transform3D)
 {
     CF_V3 position;

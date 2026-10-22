@@ -33,7 +33,7 @@ NATIVE = {
     ('--preview-components',): 'Independently reviewed first CPU measurement: four tiny project files, one declared float component and entity, two previews with two steps each, missing-scene and invalid-declaration cleanup, no GPU/process/network; shared60s',
     ('--studio-scene-move',): 'Reviewed installed SDK hierarchy move integration: bounded 2D picking and two-object 3D model/checkpoint cases, atomic moves, history and collaboration; two hidden frames, shared60s',
     ('--studio-outliner-move',): 'Reviewed installed Studio pointer and keyboard hierarchy moves: one three-object 2D scene, before/inside/after/root, grouped selection and rejection; twenty-one hidden frames, shared60s',
-    ('--tilemap',): 'Independently reviewed eight fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, two <=4KiB KDL texts, three 64x16 PNG preparations and one rejected 128x128 map, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
+    ('--tilemap',): 'Independently reviewed eight fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, two <=4KiB Chibi asset sources, three 64x16 PNG preparations and one rejected 128x128 map, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
@@ -88,14 +88,13 @@ NATIVE = {
     ('--material-render',): 'Material coefficient extraction and level of detail; 6 cases, CPU only; docs/testing.md',
     ('--material-benchmark',): 'Fixed DDR, MPM, thermal and gas workloads; serial and four-worker hashes must match, energy conserved; CPU only; docs/testing.md',
     ('--contact-benchmark',): 'Fixed 2D contact workload with its timing; 2 cases, CPU only; docs/testing.md',
-    ('--asset-values',): 'KDL asset text and native value trees: limits, ranges, malformed documents, snapshots and equality; 9 in-memory cases, CPU only; docs/testing.md',
+    ('--asset-values',): 'Compiled asset source and native value trees: limits, ranges, malformed documents, snapshots and equality; 9 in-memory cases, CPU only; docs/testing.md',
     ('--ui-document',): 'UI documents and RCSS: composition, widgets, slots, scoping, events, nesting and line maps; 15 cases on a few temporary files, CPU only; docs/testing.md',
     ('--text-files',): 'File watch, text overlay and text edits; 3 cases on temporary files, CPU only; docs/testing.md',
     ('--fmt',): 'Vendored fmt arguments and the Format Text specifier path; 2 cases, CPU only; docs/testing.md',
     ('--particles',): 'Particle bursts without a renderer: curves, determinism, limits and expiry; 3 cases, CPU only; docs/testing.md',
     ('--png-encoding',): 'Cute PNG encoder window and pixel round trip; one case, no window or GPU; docs/testing.md',
     ('--project-document',): 'Project manifest versions, new projects and fixture content roots; 3 cases on temporary projects, CPU only; docs/testing.md',
-    ('--project-declarations',): 'Bounded compatibility check: one pico case, exact two Studio sources totaling 7147 bytes plus two fixed call/unary control snippets under 1 KiB, six declaration migrations/ten later-step migrations to the current grammar/three explicit current parses/two transactions; updated exact-source admission required, two then three file inputs including one 32-byte malformed source, at most four content/staging files; no authored execution/backend/children/render/network/extra corpus; shared 60s; docs/testing.md',
     ('--prototype-documents',): 'Prototype and scene documents with retained components; 8 in-memory cases, CPU only; docs/testing.md',
     ('--reference-index',): 'Reference index over prototypes, scenes and UI pages; 5 cases, CPU only; docs/testing.md',
     ('--asset-source',): 'Asset source edits, completion and hover over reflected components; 6 cases, CPU only; docs/testing.md',
@@ -124,7 +123,7 @@ NATIVE = {
     ('--terrain-storage-commands',): 'Bounded controller save/load commands in fresh children on a tiny terrain fixture under one shared60s deadline; no GPU.',
     ('--terrain-playable',): 'Authored terrain-lab controls and restart restore in VM and SLJIT fresh children under one shared60s deadline; no GPU.',
     ('--terrain-checkpoint',): 'Bounded finite and streamed terrain snapshots, malformed input refusal and one fresh-process restore child under shared60s; no GPU.',
-    ('--game-equivalence',): 'The test/stories projects rebuilt by a reference and a candidate compiler (both chibi-compile until stage one compiles them), each artifact played on the CPU under its Story.kdl and the traces compared by test/tools/GameEquivalence.chibi; 3 cases, about 20 children, no GPU.',
+    ('--game-equivalence',): 'The test/stories projects rebuilt by a reference and a candidate compiler (both chibi-compile until stage one compiles them), each artifact played on the CPU under its Story.chibi and the traces compared by test/tools/GameEquivalence.chibi; 3 cases, about 20 children, no GPU.',
     ('--game-equivalence-stage-one',): 'Every story rebuilt by chibi-compile and by tools/toolchain/StageOne.chibi, which recovers stage one with a Release compiler host (kept under .chibi/stage-one), compiles the behaviors with it and assembles the artifact; both played on the CPU and compared as game-equivalence does; no GPU.',
     ('--terrain-playable-render',): 'One installed player child, four hidden 640x360 frames with bounded PNG readback under shared60s; compilation occurs before the test.',
     ('--surface-transport',): 'One hidden 64x64 draw of twelve mesh/SDF actors, two bounded texture readbacks checking absorption/filter and opacity; shared60s.',
@@ -260,7 +259,7 @@ TOOLS = {
                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
     # Seven cases: the compiler host's bootstrap mode refuses bad options, a
-    # missing or invalid bootstrap.kdl, other formats, versions older than the
+    # invalid compiled bootstrap contract metadata, other formats, versions older than the
     # minimum, a closure its manifest does not record (four SHA-256 vectors),
     # a missing source, a package that gained a file, another target and a
     # seed whose sources are not on disk, all before any compile runs. About
@@ -537,7 +536,7 @@ TOOLS = {
     'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--publication'],
     # Two reviewed scene lifecycle cases, isolated public SDK consumer, no GPU.
     'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene'],
-    # KDL asset text and native value trees: typed scalars, exact reals, ownership, errors.
+    # Compiled asset source and native value trees: typed scalars, exact reals, ownership, errors.
     'asset-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-values'],
     # UI documents and RCSS: composition, widgets, source lines, scoping, events and imports.
     'ui-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ui-document'],
@@ -552,7 +551,6 @@ TOOLS = {
     # Project manifests: version gates, creation and the two contract fixture projects.
     'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
     # One exact-real-input migration diagnostic; deliberately outside all aggregates.
-    'project-declarations': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-declarations'],
     # Prototype rebases, detached components, includes and scene documents in memory.
     'prototype-documents': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-documents'],
     # Reference index over assets, graphs, documents and calls; scene UI page renames.

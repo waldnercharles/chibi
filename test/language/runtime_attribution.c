@@ -1638,8 +1638,7 @@ void test_language_runtime_attribution()
 {
     printf(
         "runtime-attribution engine_base=%s fixture_sha256=%s build=%s "
-        "coverage=selected "
-        "timings=raw-noop-hooks-control-not-run\n",
+        "coverage=selected timings=raw-noop-hooks-control-not-run\n",
         CHIBI_ATTRIBUTION_BASE,
         CHIBI_ATTRIBUTION_FIXTURE_SHA,
         CHIBI_ATTRIBUTION_BUILD

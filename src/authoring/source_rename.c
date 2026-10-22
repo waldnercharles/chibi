@@ -1,7 +1,6 @@
 #include "authoring/source_rename.h"
 
 #include "support/array.h"
-#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -318,7 +317,7 @@ static char *quoted(const char *name)
 }
 
 static char *replacement(
-    const authoring_document *document,
+    const authoring_document *,
     source_text_kind kind,
     const authoring_reference *r,
     const char *source,
@@ -328,14 +327,10 @@ static char *replacement(
     if (kind == SOURCE_TEXT_RML) {
         return identifier(name) ? xstrdup(name) : NULL;
     }
-    if (document->syntax) {
-        return identifier(name) ? xstrdup(name) : NULL;
-    }
     if (source[r->location.range.start] == '"') {
         return quoted(name);
     }
-    /* A bare KDL name, like an input map action's node, stays bare. */
-    return identifier(name) ? xstrdup(name) : quoted(name);
+    return identifier(name) ? xstrdup(name) : NULL;
 }
 
 static int compare_edits(const void *left, const void *right)
@@ -405,7 +400,6 @@ static bool syntax_valid(const authoring_navigation *index, const authoring_rena
 {
     for (int first = 0; first < plan->count;) {
         int document = plan->edits[first].document;
-        const authoring_document *input = authoring_navigation_document_at(index, document);
         const char *source = authoring_navigation_document_text(index, document);
         char *text = authoring_rename_document(plan, document, source, NULL, 0);
         if (!text) {
@@ -417,15 +411,10 @@ static bool syntax_valid(const authoring_navigation *index, const authoring_rena
              * binding separator or markup delimiter can change. The complete
              * project candidate still requires semantic validation. */
             valid = true;
-        } else if (input->syntax || authoring_navigation_document_kind(index, document) == SOURCE_TEXT_CHIBI) {
+        } else {
             script_syntax *syntax = script_parse(text);
             valid = !syntax->diagnostic_count;
             script_syntax_free(syntax);
-        } else {
-            char error[192];
-            av_doc *value = asset_text_read(text, error, sizeof error);
-            valid = value != NULL;
-            av_doc_free(value);
         }
         free(text);
         if (!valid) {

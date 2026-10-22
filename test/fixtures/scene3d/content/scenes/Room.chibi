@@ -1,0 +1,184 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Room")),
+            data.Field.Named("presentation", data.Value.Text("3d")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Environment")),
+                    data.Field.Named("prototype", data.Value.Text("Environment")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Environment", data.Object([
+                            data.Field.Named("global_illumination", data.Value.Text("Medium"))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("Camera")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform3D", data.Object([
+                            data.Field.Named("position", data.Object([
+                                data.Field.Named("x", data.Value.Real(320.0)),
+                                data.Field.Named("y", data.Value.Real(380.0)),
+                                data.Field.Named("z", data.Value.Real(420.0))
+                            ])),
+                            data.Field.Named("rotation", data.Object([
+                                data.Field.Named("x", data.Value.Real(-0.24249999999999999)),
+                                data.Field.Named("y", data.Value.Real(0.0)),
+                                data.Field.Named("z", data.Value.Real(0.0)),
+                                data.Field.Named("w", data.Value.Real(0.97009999999999996))
+                            ])),
+                            data.Field.Named("scale", data.Object([
+                                data.Field.Named("x", data.Value.Real(1.0)),
+                                data.Field.Named("y", data.Value.Real(1.0)),
+                                data.Field.Named("z", data.Value.Real(1.0))
+                            ]))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Sun")),
+                    data.Field.Named("prototype", data.Value.Text("Sun")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Floor")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(320.0)),
+                            data.Field.Named("y", data.Value.Real(-180.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(0)),
+                            data.Field.Named("width", data.Value.Real(600.0)),
+                            data.Field.Named("depth", data.Value.Real(400.0)),
+                            data.Field.Named("height", data.Value.Real(4.0)),
+                            data.Field.Named("elevation", data.Value.Real(-2.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(3233857791))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Red")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(30.0)),
+                            data.Field.Named("y", data.Value.Real(-180.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(0)),
+                            data.Field.Named("width", data.Value.Real(20.0)),
+                            data.Field.Named("depth", data.Value.Real(400.0)),
+                            data.Field.Named("height", data.Value.Real(240.0)),
+                            data.Field.Named("elevation", data.Value.Real(120.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(3491766527))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Green")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(610.0)),
+                            data.Field.Named("y", data.Value.Real(-180.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(0)),
+                            data.Field.Named("width", data.Value.Real(20.0)),
+                            data.Field.Named("depth", data.Value.Real(400.0)),
+                            data.Field.Named("height", data.Value.Real(240.0)),
+                            data.Field.Named("elevation", data.Value.Real(120.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(549462271))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Back")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(320.0)),
+                            data.Field.Named("y", data.Value.Real(-370.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(0)),
+                            data.Field.Named("width", data.Value.Real(600.0)),
+                            data.Field.Named("depth", data.Value.Real(20.0)),
+                            data.Field.Named("height", data.Value.Real(240.0)),
+                            data.Field.Named("elevation", data.Value.Real(120.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(3233857791))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lamp")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(500.0)),
+                            data.Field.Named("y", data.Value.Real(-300.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(1)),
+                            data.Field.Named("width", data.Value.Real(40.0)),
+                            data.Field.Named("depth", data.Value.Real(40.0)),
+                            data.Field.Named("height", data.Value.Real(40.0)),
+                            data.Field.Named("elevation", data.Value.Real(20.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(4292915455)),
+                            data.Field.Named("emission_color", data.Value.UInt(4288692479)),
+                            data.Field.Named("emission_intensity", data.Value.Real(6.0)),
+                            data.Field.Named("emission_multiplier", data.Value.Real(1.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Block")),
+                    data.Field.Named("prototype", data.Value.Text("Solid")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(320.0)),
+                            data.Field.Named("y", data.Value.Real(-200.0))
+                        ])),
+                        data.Field.Named("Geometry3D", data.Object([
+                            data.Field.Named("primitive", data.Value.UInt(0)),
+                            data.Field.Named("width", data.Value.Real(120.0)),
+                            data.Field.Named("depth", data.Value.Real(120.0)),
+                            data.Field.Named("height", data.Value.Real(120.0)),
+                            data.Field.Named("elevation", data.Value.Real(60.0))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(3233857791))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ])
+            ]))
+        ])
+    );
+}

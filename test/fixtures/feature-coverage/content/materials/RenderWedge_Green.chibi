@@ -1,0 +1,116 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("RenderWedge_Green")),
+            data.Field.Named("domain", data.Value.Text("material")),
+            data.Field.Named("id_counter", data.Value.UInt(21)),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(1)),
+                            data.Field.Named("type", data.Value.Text("Shader Surface Output")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Base Color", data.Object([
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(1.0)),
+                                        data.Field.Named("y", data.Value.Real(1.0)),
+                                        data.Field.Named("z", data.Value.Real(1.0))
+                                    ]))
+                                ])),
+                                data.Field.Named("Emission", data.Object([
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.0)),
+                                        data.Field.Named("y", data.Value.Real(0.0)),
+                                        data.Field.Named("z", data.Value.Real(0.0))
+                                    ]))
+                                ])),
+                                data.Field.Named("Normal", data.Object([
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.0)),
+                                        data.Field.Named("y", data.Value.Real(0.0)),
+                                        data.Field.Named("z", data.Value.Real(0.0))
+                                    ]))
+                                ])),
+                                data.Field.Named("Alpha Mode", data.Value.UInt(1))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(13)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("reference_name", data.Value.Text("Base Color")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Object([
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3")),
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.12)),
+                                        data.Field.Named("y", data.Value.Real(0.55000000000000004)),
+                                        data.Field.Named("z", data.Value.Real(0.29999999999999999))
+                                    ]))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(15)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("reference_id", data.Value.UInt(2)),
+                            data.Field.Named("reference_name", data.Value.Text("Metallic"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(17)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("reference_id", data.Value.UInt(3)),
+                            data.Field.Named("reference_name", data.Value.Text("Roughness")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Value.Real(0.65000000000000002))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(19)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("reference_id", data.Value.UInt(4)),
+                            data.Field.Named("reference_name", data.Value.Text("Emission")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Object([
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3")),
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.0)),
+                                        data.Field.Named("y", data.Value.Real(0.0)),
+                                        data.Field.Named("z", data.Value.Real(0.0))
+                                    ]))
+                                ]))
+                            ]))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("13.Value")),
+                            data.Field.Named("to", data.Value.Text("1.Base Color"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("15.Value")),
+                            data.Field.Named("to", data.Value.Text("1.Metallic"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("17.Value")),
+                            data.Field.Named("to", data.Value.Text("1.Roughness"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("19.Value")),
+                            data.Field.Named("to", data.Value.Text("1.Emission"))
+                        ])
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

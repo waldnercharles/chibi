@@ -3,7 +3,7 @@
 Each story is a small project that shows one language or engine feature. The
 stage-one compiler is checked against them one at a time, as Storybook shows
 one component per story. Every story compiles on its own and is played by its
-`content/scenarios/Story.kdl`.
+`content/scenarios/Story.chibi`.
 
 `python3 tools/test_policy.py tool game-equivalence` rebuilds every story with
 a reference and a candidate compiler and compares the two artifacts'
@@ -20,6 +20,6 @@ The stories are listed in the order stage one is expected to reach them.
 | [Results](Results/content/behaviors/Fold.chibi) | Member procedures with one result and with named results |
 | [Follow](Follow/content/behaviors/Trail.chibi) | Reading another entity's component through a scene global |
 
-To add a story, make a project here with one scenario named `Story.kdl`. Add
+To add a story, make a project here with one scenario named `Story.chibi`. Add
 its name to `story_names` in `test/tools/game_equivalence.c` and a row above.
 Format its assets with `chibi_ctl --format`.

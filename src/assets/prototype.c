@@ -2,7 +2,7 @@
 
 #include "ecs/component_catalog.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -864,7 +864,7 @@ static prototype *load_document(
 {
     av_doc *doc = registry->decode
                     ? registry->decode(text, registry, error, error_size)
-                    : asset_text_read(text, error, error_size);
+                    : asset_document_read(text, error, error_size);
     prototype *result = doc
                           ? load_value_document(av_doc_root(doc), registry, false, stack, stack_count, error, error_size)
                           : NULL;
@@ -899,7 +899,7 @@ prototype *prototype_load_authored(
 {
     av_doc *doc = registry->decode
                     ? registry->decode(text, registry, error, error_size)
-                    : asset_text_read(text, error, error_size);
+                    : asset_document_read(text, error, error_size);
     prototype *result = doc
                           ? load_value_document(av_doc_root(doc), registry, true, NULL, 0, error, error_size)
                           : NULL;
@@ -1325,7 +1325,7 @@ av_value *prototype_to_value(const prototype *document)
 char *prototype_save(const prototype *document)
 {
     av_value *value = prototype_to_value(document);
-    char *text = value ? asset_text_write(value) : NULL;
+    char *text = value ? asset_document_write(value) : NULL;
     av_value_free(value);
     return text;
 }

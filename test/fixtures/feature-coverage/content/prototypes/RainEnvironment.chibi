@@ -1,0 +1,20 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RainEnvironment")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Environment", data.Object([
+                    data.Field.Named("ambient_ground", data.Value.UInt(809521407)),
+                    data.Field.Named("ambient_intensity", data.Value.Real(1.0)),
+                    data.Field.Named("ambient_sky", data.Value.UInt(2156962047)),
+                    data.Field.Named("fog_resolution", data.Value.Real(0.25)),
+                    data.Field.Named("fog_steps", data.Value.UInt(4))
+                ]))
+            ]))
+        ])
+    );
+}

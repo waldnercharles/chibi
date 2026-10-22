@@ -1,0 +1,7 @@
+*/asset_compiler_blob.inc
+*/asset_compiler_blob.inc.lock
+*/input.json
+*/compiler.chibip
+*/native_facade.chibip
+*/native_target.json
+*/*.tmp

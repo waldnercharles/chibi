@@ -2,6 +2,7 @@
 
 #include "assets/scene_document.h"
 #include "support/array.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -137,8 +138,26 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
 
     char error[192];
     loaded = prototype_load(
-        "name \"Partial\"\ncomponents { test.DefaultRow { nested "
-        "label=\"document\"; }; }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Partial\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"test.DefaultRow\", data.Object([\n"
+        "                    data.Field.Named(\"nested\", data.Object([\n"
+        "                        data.Field.Named(\"label\", "
+        "data.Value.Text(\"document\"))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -187,7 +206,23 @@ TEST_CASE(derived_components_are_never_authored_or_captured)
                                           .component_count = 3 };
     char error[256];
     loaded = prototype_load(
-        "name \"Computed\"\ncomponents {\n    Derived count=1\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Computed\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Derived\", data.Object([\n"
+        "                    data.Field.Named(\"count\", data.Value.UInt(1))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -217,11 +252,41 @@ TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
 {
     char error[192];
     scene = scene_document_load(
-        "version 1\nname \"Start\"\n(array)entities {\n"
-        "    - name=\"Inherits\" prototype=\"Mover\"\n"
-        "    - name=\"Replaces\" prototype=\"Mover\" { (array)behaviors "
-        "\"Steer\"; }\n"
-        "    - name=\"Opts out\" prototype=\"Mover\" { (array)behaviors; }\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Inherits\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Mover\"))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Replaces\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Mover\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Steer\")\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", data.Value.Text(\"Opts "
+        "out\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Mover\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
         "}\n",
         error,
         sizeof error
@@ -253,15 +318,56 @@ static bool at_path(const scene_document *document, const char *path, const char
 TEST_CASE(scene_children_nest_by_path)
 {
     char error[192];
-    const char
-        *text = "version 1\nname \"Fleet\"\n(array)entities {\n"
-                "    - name=\"Ship\" prototype=\"Hull\" { (array)children {\n"
-                "        - name=\"Turret\" prototype=\"Gun\" { (array)children "
-                "{\n"
-                "            - name=\"Barrel\" prototype=\"Tube\"; }; }\n"
-                "        - name=\"Light\" prototype=\"Lamp\"; }; }\n"
-                "    - name=\"Turret\" prototype=\"Gun\"\n"
-                "}\n";
+    const char *text =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Fleet\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Ship\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"children\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Gun\")),\n"
+        "                            data.Field.Named(\"children\", "
+        "data.List([\n"
+        "                                data.Object([\n"
+        "                                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Barrel\")),\n"
+        "                                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Tube\"))\n"
+        "                                ])\n"
+        "                            ]))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Light\")),\n"
+        "                            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Lamp\"))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Gun\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
     scene = scene_document_load(text, error, sizeof error);
     REQUIRE(scene && acount(scene->entities) == 5);
     REQUIRE(at_path(scene, "Ship", "Hull") && at_path(scene, "Ship.Turret.Barrel", "Tube"));
@@ -291,23 +397,23 @@ TEST_CASE(scene_children_nest_by_path)
 /* A chain of one object per level, `depth` levels deep. */
 static char *nested_scene(int depth)
 {
-    static const char
-        header[] = "version 1\nname \"Deep\"\n(array)entities {\n",
-        open[] = "- name=\"N\" prototype=\"P\" { (array)children {\n",
-        leaf[] = "- name=\"N\" prototype=\"P\"\n", close[] = "}\n}\n";
-    size_t size = sizeof header + (size_t)depth * (sizeof open + sizeof close) +
-                  sizeof leaf + 2;
-    char *text = xmalloc(size);
-    strcpy(text, header);
-    for (int i = 1; i < depth; i++) {
-        strcat(text, open);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_int(doc, root, "version", 1);
+    av_obj_add_str(doc, root, "name", "Deep");
+    av_value *entries = av_obj_add_arr(doc, root, "entities");
+    for (int i = 0; i < depth; i++) {
+        av_value *entity = av_arr_add_obj(doc, entries);
+        av_obj_add_str(doc, entity, "name", "N");
+        av_obj_add_str(doc, entity, "prototype", "P");
+        if (i + 1 < depth) {
+            entries = av_obj_add_arr(doc, entity, "children");
+        }
     }
-    strcat(text, leaf);
-    for (int i = 1; i < depth; i++) {
-        strcat(text, close);
-    }
-    strcat(text, "}\n");
-    return text;
+    char *source = asset_document_write(root);
+    av_doc_free(doc);
+    return source;
 }
 
 TEST_CASE(scene_children_nest_at_most_the_depth_limit)
@@ -332,31 +438,181 @@ TEST_CASE(scene_children_nest_at_most_the_depth_limit)
 }
 
 static const char ship_text
-    [] = "name \"Ship\"\n"
-         "components {\n    test.DefaultRow count=5\n}\n"
-         "(array)behaviors \"Fly\"\n"
-         "(array)children {\n"
-         "    - name=\"Left\" prototype=\"Turret\" {\n"
-         "        components {\n            test.DefaultRow count=2\n        "
-         "}\n"
-         "        (array)children {\n"
-         "            - name=\"Muzzle\" prototype=\"Barrel\"\n"
-         "        }\n"
-         "    }\n"
-         "    - name=\"Right\" prototype=\"Turret\" { (array)behaviors; }\n"
+    [] = "package asset\n"
+         "\n"
+         "import data \"game:assets\"\n"
+         "\n"
+         "pub Build :: () -> byte[] {\n"
+         "    return data.Encode(\n"
+         "        data.Object([\n"
+         "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+         "            data.Field.Named(\"components\", data.Object([\n"
+         "                data.Field.Named(\"test.DefaultRow\", data.Object([\n"
+         "                    data.Field.Named(\"count\", data.Value.UInt(5))\n"
+         "                ]))\n"
+         "            ])),\n"
+         "            data.Field.Named(\"behaviors\", data.List([\n"
+         "                data.Value.Text(\"Fly\")\n"
+         "            ])),\n"
+         "            data.Field.Named(\"children\", data.List([\n"
+         "                data.Object([\n"
+         "                    data.Field.Named(\"name\", "
+         "data.Value.Text(\"Left\")),\n"
+         "                    data.Field.Named(\"prototype\", "
+         "data.Value.Text(\"Turret\")),\n"
+         "                    data.Field.Named(\"components\", data.Object([\n"
+         "                        data.Field.Named(\"test.DefaultRow\", "
+         "data.Object([\n"
+         "                            data.Field.Named(\"count\", "
+         "data.Value.UInt(2))\n"
+         "                        ]))\n"
+         "                    ])),\n"
+         "                    data.Field.Named(\"children\", data.List([\n"
+         "                        data.Object([\n"
+         "                            data.Field.Named(\"name\", "
+         "data.Value.Text(\"Muzzle\")),\n"
+         "                            data.Field.Named(\"prototype\", "
+         "data.Value.Text(\"Barrel\"))\n"
+         "                        ])\n"
+         "                    ]))\n"
+         "                ]),\n"
+         "                data.Object([\n"
+         "                    data.Field.Named(\"name\", "
+         "data.Value.Text(\"Right\")),\n"
+         "                    data.Field.Named(\"prototype\", "
+         "data.Value.Text(\"Turret\")),\n"
+         "                    data.Field.Named(\"behaviors\", data.List([]))\n"
+         "                ])\n"
+         "            ]))\n"
+         "        ])\n"
+         "    )\n"
          "}\n";
 static const char *const library[][2] = {
     { "Ship", ship_text },
-    { "Turret", "name \"Turret\"\ncomponents {\n    test.DefaultRow count=1\n}\n(array)behaviors \"Aim\"\n" },
-    { "Barrel", "name \"Barrel\"\ncomponents {\n    test.DefaultNested label=\"steel\"\n}\n" },
-    { "Loop", "name \"Loop\"\n(array)children {\n    - name=\"Again\" prototype=\"Loop\"\n}\n" },
-    { "Lost", "name \"Lost\"\n(array)children {\n    - name=\"Gone\" prototype=\"Nope\"\n}\n" },
+    { "Turret",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Turret\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.DefaultRow\", data.Object([\n"
+      "                    data.Field.Named(\"count\", data.Value.UInt(1))\n"
+      "                ]))\n"
+      "            ])),\n"
+      "            data.Field.Named(\"behaviors\", data.List([\n"
+      "                data.Value.Text(\"Aim\")\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Barrel",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Barrel\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.DefaultNested\", data.Object([\n"
+      "                    data.Field.Named(\"label\", "
+      "data.Value.Text(\"steel\"))\n"
+      "                ]))\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Loop",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Loop\")),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Again\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Loop\"))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Lost",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Lost\")),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Gone\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Nope\"))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
     { "Escort",
-      "name \"Escort\"\n(array)includes \"Ship\"\n"
-      "(array)children {\n    - name=\"Rear\" prototype=\"Turret\"\n}\n" },
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Escort\")),\n"
+      "            data.Field.Named(\"includes\", data.List([\n"
+      "                data.Value.Text(\"Ship\")\n"
+      "            ])),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Rear\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Turret\"))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
     { "Clash",
-      "name \"Clash\"\n(array)includes \"Ship\"\n"
-      "(array)children {\n    - name=\"Left\" prototype=\"Barrel\"\n}\n" },
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Clash\")),\n"
+      "            data.Field.Named(\"includes\", data.List([\n"
+      "                data.Value.Text(\"Ship\")\n"
+      "            ])),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Left\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Barrel\"))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
 };
 static const char *find_prototype(const char *name, void *)
 {
@@ -453,31 +709,188 @@ static const ecs_component_desc *const linked[] = { &link, &inner };
  * Hook in place of the one Weight gives it, to its own Inside. */
 static const char *const links_library[][2] = {
     { "Pendulum",
-      "name \"Pendulum\"\ncomponents {\n    test.Link other=\"Bob\"\n}\n"
-      "(array)children {\n"
-      "    - name=\"Hook\" prototype=\"Weight\"\n"
-      "    - name=\"Bob\" prototype=\"Weight\" {\n"
-      "        components {\n            test.Link other=\"Hook\"\n        }\n"
-      "    }\n"
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Pendulum\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.Link\", data.Object([\n"
+      "                    data.Field.Named(\"other\", "
+      "data.Value.Text(\"Bob\"))\n"
+      "                ]))\n"
+      "            ])),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Hook\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Weight\"))\n"
+      "                ]),\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Bob\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Weight\")),\n"
+      "                    data.Field.Named(\"components\", data.Object([\n"
+      "                        data.Field.Named(\"test.Link\", data.Object([\n"
+      "                            data.Field.Named(\"other\", "
+      "data.Value.Text(\"Hook\"))\n"
+      "                        ]))\n"
+      "                    ]))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
       "}\n" },
     { "Weight",
-      "name \"Weight\"\ncomponents {\n    test.Link other=\"Inside\"\n}\n"
-      "(array)children {\n    - name=\"Inside\" prototype=\"Plain\"\n}\n" },
-    { "Plain", "name \"Plain\"\n" },
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Weight\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.Link\", data.Object([\n"
+      "                    data.Field.Named(\"other\", "
+      "data.Value.Text(\"Inside\"))\n"
+      "                ]))\n"
+      "            ])),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Inside\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Plain\"))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Plain",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Plain\"))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
     /* Bob's path names Lure's Inside, not the one Weight's names. */
     { "Lure",
-      "name \"Lure\"\n(array)children {\n"
-      "    - name=\"Inside\" prototype=\"Plain\"\n"
-      "    - name=\"Bob\" prototype=\"Weight\" {\n"
-      "        components {\n            test.Link other=\"Inside\"\n        "
-      "}\n"
-      "    }\n"
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Lure\")),\n"
+      "            data.Field.Named(\"children\", data.List([\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Inside\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Plain\"))\n"
+      "                ]),\n"
+      "                data.Object([\n"
+      "                    data.Field.Named(\"name\", "
+      "data.Value.Text(\"Bob\")),\n"
+      "                    data.Field.Named(\"prototype\", "
+      "data.Value.Text(\"Weight\")),\n"
+      "                    data.Field.Named(\"components\", data.Object([\n"
+      "                        data.Field.Named(\"test.Link\", data.Object([\n"
+      "                            data.Field.Named(\"other\", "
+      "data.Value.Text(\"Inside\"))\n"
+      "                        ]))\n"
+      "                    ]))\n"
+      "                ])\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
       "}\n" },
     /* Parked's Link is detached, so its path doesn't reach Weight's. */
-    { "Parked", "name \"Parked\"\ndetached_components {\n    test.Link other=\"Nowhere\"\n}\n" },
-    { "Composite", "name \"Composite\"\n(array)includes \"Weight\" \"Parked\"\n" },
-    { "Stray", "name \"Stray\"\ncomponents {\n    test.Link other=\"Nowhere\"\n}\n" },
-    { "Deep", "name \"Deep\"\ncomponents {\n    test.Link {\n        inner entity=\"Plain\"\n    }\n}\n" },
+    { "Parked",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Parked\")),\n"
+      "            data.Field.Named(\"detached_components\", data.Object([\n"
+      "                data.Field.Named(\"test.Link\", data.Object([\n"
+      "                    data.Field.Named(\"other\", "
+      "data.Value.Text(\"Nowhere\"))\n"
+      "                ]))\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Composite",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", "
+      "data.Value.Text(\"Composite\")),\n"
+      "            data.Field.Named(\"includes\", data.List([\n"
+      "                data.Value.Text(\"Weight\"),\n"
+      "                data.Value.Text(\"Parked\")\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Stray",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Stray\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.Link\", data.Object([\n"
+      "                    data.Field.Named(\"other\", "
+      "data.Value.Text(\"Nowhere\"))\n"
+      "                ]))\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
+    { "Deep",
+      "package asset\n"
+      "\n"
+      "import data \"game:assets\"\n"
+      "\n"
+      "pub Build :: () -> byte[] {\n"
+      "    return data.Encode(\n"
+      "        data.Object([\n"
+      "            data.Field.Named(\"name\", data.Value.Text(\"Deep\")),\n"
+      "            data.Field.Named(\"components\", data.Object([\n"
+      "                data.Field.Named(\"test.Link\", data.Object([\n"
+      "                    data.Field.Named(\"inner\", data.Object([\n"
+      "                        data.Field.Named(\"entity\", "
+      "data.Value.Text(\"Plain\"))\n"
+      "                    ]))\n"
+      "                ]))\n"
+      "            ]))\n"
+      "        ])\n"
+      "    )\n"
+      "}\n" },
 };
 static const char *find_linked(const char *name, void *)
 {
@@ -691,18 +1104,51 @@ TEST_CASE(prototype_children_spawn_with_it)
  * load would read two million documents. */
 static const char *find_fan(const char *name, void *)
 {
-    static char texts[21][160];
+    static char texts[21][2048];
     int level = atoi(name + 3);
     assert(!strncmp(name, "Fan", 3) && level >= 0 && level <= 20);
     if (level == 20) {
-        return "name \"Fan20\"\n";
+        return "package asset\n"
+               "\n"
+               "import data \"game:assets\"\n"
+               "\n"
+               "pub Build :: () -> byte[] {\n"
+               "    return data.Encode(\n"
+               "        data.Object([\n"
+               "            data.Field.Named(\"name\", "
+               "data.Value.Text(\"Fan20\"))\n"
+               "        ])\n"
+               "    )\n"
+               "}\n";
     }
     snprintf(
         texts[level],
         sizeof texts[level],
-        "name \"Fan%d\"\n(array)children {\n    - name=\"A\" "
-        "prototype=\"Fan%d\"\n"
-        "    - name=\"B\" prototype=\"Fan%d\"\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Fan%d\")),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"A\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Fan%d\"))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"B\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Fan%d\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         level,
         level + 1,
         level + 1
@@ -729,14 +1175,20 @@ TEST_CASE(prototype_expansion_is_bounded)
 static char *wide_leaf;
 static const char *find_wide(const char *name, void *)
 {
-    static char texts[6][160];
+    static char texts[6][2048];
     char *leaf = wide_leaf;
     int level = atoi(name + 4);
     assert(!strncmp(name, "Wide", 4) && level >= 0 && level <= 6);
     if (level == 6 && !leaf) {
         size_t size = 1024 * 1024;
         leaf = wide_leaf = xmalloc(size + 1);
-        int n = snprintf(leaf, size, "name \"Wide6\"\n/* ");
+        int n = snprintf(
+            leaf,
+            size,
+            "package asset\nimport data \"game:assets\"\n"
+            "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+            "data.Field.Named(\"name\", data.Value.Text(\"Wide6\"))])) }\n/* "
+        );
         memset(leaf + n, 'x', size - (size_t)n - 3);
         memcpy(leaf + size - 3, "*/\n", 4);
     }
@@ -746,9 +1198,31 @@ static const char *find_wide(const char *name, void *)
     snprintf(
         texts[level],
         sizeof texts[level],
-        "name \"Wide%d\"\n(array)children {\n    - name=\"A\" "
-        "prototype=\"Wide%d\"\n"
-        "    - name=\"B\" prototype=\"Wide%d\"\n}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Wide%d\")),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"A\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Wide%d\"))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"B\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Wide%d\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         level,
         level + 1,
         level + 1
@@ -825,7 +1299,24 @@ TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values)
     prototype_registry registry = { .components = descs, .component_count = 1 };
     char error[256];
     document = prototype_load(
-        "name \"Ranges\"\ncomponents { Ranged amount=-4 hint=20; }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ranges\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Ranged\", data.Object([\n"
+        "                    data.Field.Named(\"amount\", "
+        "data.Value.Int(-4)),\n"
+        "                    data.Field.Named(\"hint\", data.Value.UInt(20))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -838,8 +1329,27 @@ TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values)
     );
     REQUIRE(row->amount == 2.75);
     loaded = prototype_load(
-        "name \"Ranges\"\ncomponents { Ranged amount=200 positive=-30 "
-        "count=18446744073709551615; }\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ranges\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Ranged\", data.Object([\n"
+        "                    data.Field.Named(\"amount\", "
+        "data.Value.UInt(200)),\n"
+        "                    data.Field.Named(\"positive\", "
+        "data.Value.Int(-30)),\n"
+        "                    data.Field.Named(\"count\", "
+        "data.Value.UInt(18446744073709551615))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -850,7 +1360,7 @@ TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values)
     prototype_free(loaded);
     loaded = NULL;
     /* The typed asset-value entry point and prepared streams can receive
-     * nonfinite numeric payloads even though KDL text rejects #nan/#inf. */
+     * nonfinite numeric payloads even though compiled asset values reject them. */
     av_doc *input = av_doc_new();
     av_value *root = av_obj(input);
     av_doc_set_root(input, root);

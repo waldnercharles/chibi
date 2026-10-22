@@ -1,0 +1,46 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Sparks")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("ParticleEmitter", data.Object([
+                    data.Field.Named("active", data.Value.Bool(true)),
+                    data.Field.Named("burst_count", data.Value.UInt(4)),
+                    data.Field.Named("direction", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0))
+                    ])),
+                    data.Field.Named("lifetime", data.Object([
+                        data.Field.Named("x", data.Value.Real(0.20000000000000001)),
+                        data.Field.Named("y", data.Value.Real(0.40000000000000002))
+                    ])),
+                    data.Field.Named("rate", data.Value.Real(20.0)),
+                    data.Field.Named("size", data.Object([
+                        data.Field.Named("end", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.5)),
+                            data.Field.Named("y", data.Value.Real(1.0))
+                        ])),
+                        data.Field.Named("exponent", data.Value.Real(1.0)),
+                        data.Field.Named("start", data.Object([
+                            data.Field.Named("x", data.Value.Real(2.0)),
+                            data.Field.Named("y", data.Value.Real(3.0))
+                        ]))
+                    ])),
+                    data.Field.Named("speed", data.Object([
+                        data.Field.Named("x", data.Value.Real(20.0)),
+                        data.Field.Named("y", data.Value.Real(40.0))
+                    ])),
+                    data.Field.Named("spread", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Trail", data.Object([
+                    data.Field.Named("lifetime", data.Value.Real(0.5)),
+                    data.Field.Named("width", data.Value.Real(2.0))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

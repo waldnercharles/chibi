@@ -5,7 +5,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 

@@ -1275,7 +1275,7 @@ Read-only audit complete; no removal PR needed. Exact snapshot, source links and
 - [s-ecs-growth](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/ecs/ecs.c#L235-L256)
 - [s-ecs-view](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/ecs/execution.h#L7-L23)
 - [s-equality](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/types/array.c#L336-L384)
-- [s-fixture-manifest](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/fixtures/studio-workspace/project.kdl#L1-L4)
+- [s-fixture-manifest](https://github.com/waldnercharles/chibi/tree/02f8453211dd4cc57965ba52c645f08a92e53c5e)
 - [s-fixture-source](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/fixtures/studio-workspace/content/behaviors/Weapon.chibi#L1-L6)
 - [s-format](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/authoring/source_format.c#L158-L310)
 - [s-format-tests](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/test/language/format.c#L27-L39)

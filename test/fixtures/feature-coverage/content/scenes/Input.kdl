@@ -1,9 +1,0 @@
-version 1
-name "Input"
-(array)entities {
-    - {
-        name "Pilot"
-        prototype "Pilot"
-        (array)behaviors "InputProbe"
-    }
-}

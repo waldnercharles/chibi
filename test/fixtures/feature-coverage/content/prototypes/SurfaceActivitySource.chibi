@@ -1,0 +1,21 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("SurfaceActivitySource")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("SurfaceInfluence", data.Object([
+                    data.Field.Named("color", data.Value.UInt(549486847)),
+                    data.Field.Named("inner_radius", data.Value.Real(8.0)),
+                    data.Field.Named("linger", data.Value.Real(0.20000000000000001)),
+                    data.Field.Named("radius", data.Value.Real(48.0)),
+                    data.Field.Named("strength", data.Value.Real(2.0))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

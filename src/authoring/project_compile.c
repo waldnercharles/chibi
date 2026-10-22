@@ -1,5 +1,6 @@
 #include "authoring/project_compile.h"
 
+#include "authoring/asset_compiler_host.h"
 #include "authoring/graph_catalog.h"
 #include "authoring/native_bindings.h"
 #include "authoring/package_tests.h"
@@ -15,8 +16,8 @@
 #include "runtime/component_catalog.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
+#include "support/asset_document.h"
 #include "support/asset_format.h"
-#include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_json.h"
@@ -413,7 +414,9 @@ static char *source_file(const char *root, const char *source)
     return resolved;
 }
 
-/* The pages docs/site.kdl lists, in navigation order, borrowed from doc. */
+/* Decode the document transport defensively. game:documentation owns the typed
+ * schema and authored output policy; the host also validates untrusted bytes
+ * before filesystem work, including asset sources that bypass that helper. */
 static bool read_site(const av_doc *doc, const char **site, docs_page **pages, char *error, size_t size)
 {
     const av_value *root = av_doc_root(doc);
@@ -894,8 +897,9 @@ static bool check_package_examples(
     return valid;
 }
 
-/* Every chibi fence parses. Complete packages also resolve imports and compile
- * together, using the same package APIs and natives as standalone tests. */
+/* Every chibi fence parses. Asset modules compile and evaluate independently
+ * against the packaged asset libraries. Other complete packages compile
+ * together using the same package APIs and natives as standalone tests. */
 static bool check_examples(
     const docs_generator *generator,
     const char *source,
@@ -918,6 +922,26 @@ static bool check_examples(
             valid = !syntax->diagnostic_count;
             if (!valid) {
                 example_error(source, fence, &syntax->diagnostics[0], error, size);
+            } else if (asset_document_source(code)) {
+                asset_compiler_diagnostic failure = { 0 };
+                av_doc *document = asset_source_read(code, NULL, NULL, &failure);
+                valid = document != NULL;
+                av_doc_free(document);
+                if (!valid) {
+                    script_diagnostic diagnostic = {
+                        .range = { .start = failure.start,
+                                   .end = failure.end,
+                                   .line = failure.line > 0 ? failure.line : 1,
+                                   .column = failure.column > 0 ? failure.column : 1 }
+                    };
+                    snprintf(
+                        diagnostic.message,
+                        sizeof diagnostic.message,
+                        "%s",
+                        failure.message
+                    );
+                    example_error(source, fence, &diagnostic, error, size);
+                }
             } else {
                 TSNode header = ts_node_child_by_field_name(
                     ts_tree_root_node(syntax->tree),
@@ -1209,9 +1233,9 @@ static bool write_site(
 int authoring_project_docs(const char *root, const char *generator_root, const char *core)
 {
     char error[512] = { 0 };
-    char *manifest = join(root, "docs/site.kdl");
+    char *manifest = join(root, "docs/site.chibi");
     char *text = file_read_text(manifest);
-    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
     const char *site = NULL;
     docs_page *pages = NULL;
     if (!text) {

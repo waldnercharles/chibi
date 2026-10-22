@@ -1,3 +1,8 @@
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
 #include "runtime/text_format.h"
 
 #include "fmt.h"
@@ -7,11 +12,66 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <locale.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #define FMT_TEXT_MAX_ARGS 12
 #define FMT_RENDER_BUF 256
+
+#ifdef _WIN32
+typedef _locale_t number_locale;
+#else
+typedef locale_t number_locale;
+#endif
+
+/* One immutable C numeric locale is shared by all formatting threads. Creating
+ * it never changes the process locale or the caller's thread locale. */
+static number_locale numeric_locale()
+{
+    static _Atomic(number_locale) cached;
+    number_locale value = atomic_load(&cached);
+    if (!value) {
+#ifdef _WIN32
+        number_locale fresh = _create_locale(LC_NUMERIC, "C");
+#else
+        number_locale fresh = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+#endif
+        if (!fresh) {
+            return NULL;
+        }
+        if (atomic_compare_exchange_strong(&cached, &value, fresh)) {
+            value = fresh;
+        } else {
+#ifdef _WIN32
+            _free_locale(fresh);
+#else
+            freelocale(fresh);
+#endif
+        }
+    }
+    return value;
+}
+static bool format_float(char *buffer, size_t capacity, const char *format, double value)
+{
+    number_locale locale = numeric_locale();
+    if (!locale) {
+        return false;
+    }
+#ifdef _WIN32
+    _snprintf_l(buffer, capacity, format, locale, value);
+#else
+    locale_t previous = uselocale(locale);
+    if (!previous) {
+        return false;
+    }
+    snprintf(buffer, capacity, format, value);
+    uselocale(previous);
+#endif
+    buffer[capacity - 1] = 0;
+    return true;
+}
 
 static const char *fmt_text_of(const pin_value *v)
 {
@@ -21,6 +81,15 @@ static const char *fmt_text_of(const pin_value *v)
     }
     if (v->type == PIN_FLOW && v->container == PIN_CONTAINER_SINGLE) {
         return ""; /* unconnected Generic argument */
+    }
+    if (v->container == PIN_CONTAINER_SINGLE &&
+        (v->type == PIN_F32 || v->type == PIN_F64)) {
+        static _Thread_local char ring[8][64];
+        static _Thread_local unsigned slot;
+        char *buffer = ring[slot++ % 8];
+        return format_float(buffer, 64, "%g", v->type == PIN_F32 ? (double)v->f : v->d)
+                 ? buffer
+                 : "";
     }
     return pin_value_to_string(v);
 }
@@ -190,8 +259,8 @@ static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t m
         if (!fmt_numeric_as_double(v, &value)) {
             return fmt_arena_strdup(a, fmt_text_of(v));
         }
-        snprintf(buf, sizeof buf, conv, value);
-        return fmt_arena_strdup(a, buf);
+        return format_float(buf, sizeof buf, conv, value) ? fmt_arena_strdup(a, buf)
+                                                          : NULL;
     }
     bool signed_conversion = letter == 'd' || letter == 'i' || letter == 'c';
     switch (v->type) {

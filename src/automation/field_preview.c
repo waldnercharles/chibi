@@ -5,8 +5,8 @@
 #include "platform/cute.h"
 #include "render/field_image.h"
 #include "runtime/material_field.h"
+#include "support/asset_document.h"
 #include "support/asset_json.h"
-#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -38,7 +38,7 @@ bool automation_field_preview(
     yyjson_val *overrides = yyjson_obj_get(request, "parameters");
     av_doc *parameter_doc = av_doc_new();
     char *parameters = overrides
-                         ? av_value_write(av_from_json(parameter_doc, overrides))
+                         ? asset_document_write(av_from_json(parameter_doc, overrides))
                          : NULL;
     av_doc_free(parameter_doc);
     material_fields *fields = material_fields_new();

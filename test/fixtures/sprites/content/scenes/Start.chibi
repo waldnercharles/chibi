@@ -1,0 +1,179 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Lantern Yard")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lighting")),
+                    data.Field.Named("prototype", data.Value.Text("Lighting")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("Camera")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Yard")),
+                    data.Field.Named("prototype", data.Value.Text("Yard")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lantern")),
+                    data.Field.Named("prototype", data.Value.Text("Lantern")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(-10.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-70.0)),
+                            data.Field.Named("y", data.Value.Real(20.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(1)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Mossy Crate")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-50.0)),
+                            data.Field.Named("y", data.Value.Real(20.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(1)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(2682298623)),
+                            data.Field.Named("albedo", data.Value.UInt(2682298623))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Arrow")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(50.0)),
+                            data.Field.Named("y", data.Value.Real(-30.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(2)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Flipped Arrow")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(50.0)),
+                            data.Field.Named("y", data.Value.Real(-10.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(2)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("flip_x", data.Value.Bool(true)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Turned Arrow")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(80.0)),
+                            data.Field.Named("y", data.Value.Real(-20.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(2)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ])),
+                        data.Field.Named("Orientation", data.Object([
+                            data.Field.Named("radians", data.Value.Real(0.78539999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Gem")),
+                    data.Field.Named("prototype", data.Value.Text("Prop")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-80.0)),
+                            data.Field.Named("y", data.Value.Real(-40.0))
+                        ])),
+                        data.Field.Named("Sprite", data.Object([
+                            data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                            data.Field.Named("frame", data.Value.UInt(3)),
+                            data.Field.Named("frame_width", data.Value.UInt(16)),
+                            data.Field.Named("frame_height", data.Value.UInt(16)),
+                            data.Field.Named("layer", data.Value.UInt(1))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(4294967295)),
+                            data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                            data.Field.Named("emission_color", data.Value.UInt(1088475391)),
+                            data.Field.Named("emission_intensity", data.Value.Real(0.25)),
+                            data.Field.Named("emission_multiplier", data.Value.Real(1.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Sheet")),
+                    data.Field.Named("prototype", data.Value.Text("Sheet")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(55.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Decorative Mosaic")),
+                    data.Field.Named("prototype", data.Value.Text("TileMosaic")),
+                    data.Field.Named("behaviors", data.List([]))
+                ])
+            ]))
+        ])
+    );
+}

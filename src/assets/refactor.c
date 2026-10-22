@@ -12,7 +12,7 @@
 #include "graph/model/registry.h"
 #include "runtime/declared_components.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 
@@ -212,7 +212,7 @@ static char *saved_text(
         return xstrdup(l->rml);
     }
     char *emitted = saved_source(project, kind, l);
-    av_doc *doc = emitted ? av_doc_read(emitted, why, size) : NULL;
+    av_doc *doc = emitted ? asset_document_read(emitted, why, size) : NULL;
     char *text = doc
                    ? asset_source_reconcile(project->texts[l->asset], av_doc_root(doc), why, size)
                    : NULL;
@@ -272,7 +272,7 @@ static bool mesh_parts(const reference *r)
 /* Parts code with each part's material `from` renamed; NULL without one. */
 static char *parts_renamed(const char *parts, const char *from, const char *to, int *count)
 {
-    av_doc *read = parts ? av_value_read(parts, NULL, 0) : NULL;
+    av_doc *read = parts ? asset_document_read(parts, NULL, 0) : NULL;
     av_doc *doc = read ? av_doc_clone_value(av_doc_root(read)) : NULL;
     av_doc_free(read);
     size_t i, max;
@@ -286,7 +286,7 @@ static char *parts_renamed(const char *parts, const char *from, const char *to, 
             ++*count;
         }
     }
-    char *text = *count ? av_value_write(av_doc_root(doc)) : NULL;
+    char *text = *count ? asset_document_write(av_doc_root(doc)) : NULL;
     av_doc_free(doc);
     return text;
 }
@@ -513,11 +513,11 @@ static bool rename_override(
 }
 
 /* A scene's page: its own ui: follows; the project's default is
- * project.kdl's, which the plan does not reach. */
+ * project.chibi's, which the plan does not reach. */
 static bool rename_page(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
 {
     if (strcmp(r->component, REFERENCE_SCENE_PAGE)) {
-        return fail(w, "project.kdl names %s as its scenes' page; point it at another first", from);
+        return fail(w, "project.chibi names %s as its scenes' page; point it at another first", from);
     }
     bool named = same_text(l->scene->ui, from);
     scene_document_set_ui(l->scene, to);
@@ -1163,7 +1163,7 @@ static void scan_mentions(const refactor_project *project, const char *name, ref
             text = plan->edits[i].asset == asset ? plan->edits[i].text : text;
         }
         char why[160];
-        av_doc *doc = text ? asset_text_read(text, why, sizeof why) : NULL;
+        av_doc *doc = text ? asset_document_read(text, why, sizeof why) : NULL;
         char path[MENTION_PATH] = "";
         scan(doc ? av_doc_root(doc) : NULL, name, path, 0, asset, plan);
         av_doc_free(doc);

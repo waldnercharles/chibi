@@ -1,0 +1,40 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Physics3D")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Ground")),
+                    data.Field.Named("prototype", data.Value.Text("Ground3D"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate")),
+                    data.Field.Named("prototype", data.Value.Text("Crate3D")),
+                    data.Field.Named("behaviors", data.List([
+                        data.Value.Text("Physics3DProbe")
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Walker")),
+                    data.Field.Named("prototype", data.Value.Text("Walker3D")),
+                    data.Field.Named("behaviors", data.List([
+                        data.Value.Text("WalkerProbe")
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Spinner")),
+                    data.Field.Named("prototype", data.Value.Text("Spinner3D"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Gravity")),
+                    data.Field.Named("prototype", data.Value.Text("Gravity3D"))
+                ])
+            ]))
+        ])
+    );
+}

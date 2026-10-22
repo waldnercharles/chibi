@@ -225,7 +225,7 @@ TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
     };
     for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
         REQUIRE(run("cpu-route", selectors[i]) == 0);
-        char expected[128];
+        char expected[16384];
         snprintf(expected, sizeof expected, "test_tools %s\n", selectors[i]);
         char *output = tool_read(logpath);
         bool exact = output && !strcmp(output, expected);
@@ -278,13 +278,20 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     }
     REQUIRE(run_group("projects") == 0);
     char *output = tool_read(commands);
-    const char
-        *expected = "--mesh-files\n--model-import\n--validate-project\n"
-                    "--prototype-expansion\n--controller\n--feature-coverage\n"
-                    "--render-fixture\n--material-bake\n--environment-"
-                    "authoring\n"
-                    "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n--published-docs\n--chibi-cli\n";
+    const char *expected = "--mesh-files\n"
+                           "--model-import\n"
+                           "--validate-project\n"
+                           "--prototype-expansion\n"
+                           "--controller\n"
+                           "--feature-coverage\n"
+                           "--render-fixture\n"
+                           "--material-bake\n"
+                           "--environment-authoring\n"
+                           "--terrain-checkpoint\n"
+                           "--terrain-storage-commands\n"
+                           "--terrain-playable\n"
+                           "--published-docs\n"
+                           "--chibi-cli\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -480,8 +487,8 @@ enum
     STUDIO_SOURCE_OVERSIZE_BYTES = 262145
 };
 static const char *const studio_source_members[] = {
-    "main.c",    "host.c",      "application.c", "debugger.c", "debugger.h",
-    "README.md", "project.kdl", "Counter.chibi", "Start.kdl"
+    "main.c",    "host.c",        "application.c", "debugger.c", "debugger.h",
+    "README.md", "project.chibi", "Counter.chibi", "Start.chibi"
 };
 
 static void studio_source_path(char *output, const char *member)

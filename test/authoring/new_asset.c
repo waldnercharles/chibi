@@ -56,7 +56,7 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
     REQUIRE(errno == EEXIST && strstr(error, "already exists"));
 
     path = new_asset_create(content, NEW_ASSET_SCENE, "Level", error, sizeof error);
-    REQUIRE(path && strstr(path, "/scenes/Level.kdl"));
+    REQUIRE(path && strstr(path, "/scenes/Level.chibi"));
     expected = new_asset_text(NEW_ASSET_SCENE, "Level");
     REQUIRE(expected && !strcmp(read_text(path), expected));
     free(expected);
@@ -77,15 +77,45 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
 
     snprintf(expected_path, sizeof expected_path, "%s/prototypes", content);
     REQUIRE(!mkdir(expected_path, 0755));
-    snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.kdl", content);
+    snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.chibi", content);
     FILE *legacy = fopen(expected_path, "wb");
     REQUIRE(legacy);
-    REQUIRE(fputs("name \"Existing\"\n", legacy) >= 0);
+    REQUIRE(
+        fputs(
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"name\", "
+            "data.Value.Text(\"Existing\"))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
+            legacy
+        ) >= 0
+    );
     REQUIRE(!fclose(legacy));
     errno = 0;
     REQUIRE(!new_asset_create(content, NEW_ASSET_PROTOTYPE, "Existing", error, sizeof error));
-    REQUIRE(errno == EEXIST && strstr(error, "Existing.kdl already exists"));
-    REQUIRE(!strcmp(read_text(expected_path), "name \"Existing\"\n"));
+    REQUIRE(errno == EEXIST && strstr(error, "Existing.chibi already exists"));
+    REQUIRE(!strcmp(
+        read_text(expected_path),
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Existing\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
     snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.chibi", content);
     REQUIRE(access(expected_path, F_OK) != 0);
 

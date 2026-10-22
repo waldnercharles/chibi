@@ -22,13 +22,13 @@ static yyjson_mut_doc *request;
 static yyjson_mut_val *input;
 
 static const char *const paths[] = {
-    "project.kdl",
+    "project.chibi",
     "content/behaviors/Probe.chibi",
     "content/libraries/Helpers.chibi",
     "content/systems/Drift.chibi",
-    "content/prototypes/Actor.kdl",
-    "content/prototypes/Driver.kdl",
-    "content/scenes/Proof.kdl",
+    "content/prototypes/Actor.chibi",
+    "content/prototypes/Driver.chibi",
+    "content/scenes/Proof.chibi",
     "content/relationships/DifferentFile.chibi",
 };
 static char *sources[sizeof paths / sizeof *paths];
@@ -166,8 +166,29 @@ static void setup()
         path(file, sizeof file, directories[i]);
         assert(!mkdir(file, 0700));
     }
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Controller proof\"\ncontent \"content\"\nstart_scene \"scenes/Proof.kdl\"\n", CHIBI_PROJECT_VERSION);
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Controller "
+        "proof\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\")),\n"
+        "            data.Field.Named(\"start_scene\", "
+        "data.Value.Text(\"scenes/Proof.chibi\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        CHIBI_PROJECT_VERSION
+    );
     write_file(paths[MANIFEST], manifest);
     write_file(
         paths[PROBE],
@@ -190,15 +211,77 @@ static void setup()
         "    position.x += dt\n"
         "}\n"
     );
-    write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)Transform\n    (object)Input\n    (object)Aim\n}\n");
-    write_file(paths[5], "name \"Driver\"\ncomponents {\n    EngineSystem asset=\"Drift\"\n}\n");
+    write_file(
+        paths[4],
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Actor\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([])),\n"
+        "                data.Field.Named(\"Input\", data.Object([])),\n"
+        "                data.Field.Named(\"Aim\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        paths[5],
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Driver\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"EngineSystem\", data.Object([\n"
+        "                    data.Field.Named(\"asset\", "
+        "data.Value.Text(\"Drift\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_file(paths[7], "Targets :: relationship { exclusive: true }\n");
     write_file(
         paths[6],
-        "version 1\nname \"Proof\"\n(array)entities {\n"
-        "    - name=\"Actor\" prototype=\"Actor\" { (array)behaviors "
-        "\"Probe\"; }\n"
-        "    - name=\"Driver\" prototype=\"Driver\"\n}\n"
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Proof\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Actor\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Actor\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Probe\")\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Driver\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Driver\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     const char *args[] = { program, "--project-root", root, "--format", NULL };
     assert(tool_run(args, root, log_path) == 0);
@@ -492,7 +575,20 @@ TEST_CASE(controller_inspection_and_execution_status)
     /* A prototype file matching the requested name must not hide a second
      * declaration. Keep relationships valid: duplicate relationship schemas
      * fail project admission before asset lookup. No scenario frames run. */
-    write_file("content/prototypes/OtherActor.kdl", "name \"Actor\"\n");
+    write_file(
+        "content/prototypes/OtherActor.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Actor\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     const char *duplicate_kinds[] = { "relationship", "prototype" };
     const char *duplicate_names[] = { "Targets", "Actor" };
     for (int n = 0; n < 2; n++) {

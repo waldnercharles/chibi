@@ -1,0 +1,47 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("scene", data.Value.Text("Main")),
+            data.Field.Named("frames", data.Value.UInt(40)),
+            data.Field.Named("keys", data.List([
+                data.Object([
+                    data.Field.Named("frame", data.Value.UInt(0)),
+                    data.Field.Named("movement", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0)),
+                        data.Field.Named("y", data.Value.Real(0.0))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("frame", data.Value.UInt(10)),
+                    data.Field.Named("movement", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0)),
+                        data.Field.Named("y", data.Value.Real(0.0))
+                    ])),
+                    data.Field.Named("controls", data.List([
+                        data.Value.Text("Space")
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("frame", data.Value.UInt(12)),
+                    data.Field.Named("movement", data.Object([
+                        data.Field.Named("x", data.Value.Real(-1.0)),
+                        data.Field.Named("y", data.Value.Real(0.0))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("frame", data.Value.UInt(25)),
+                    data.Field.Named("controls", data.List([
+                        data.Value.Text("Space")
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("frame", data.Value.UInt(26))
+                ])
+            ]))
+        ])
+    );
+}

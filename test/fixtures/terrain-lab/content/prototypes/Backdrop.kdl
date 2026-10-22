@@ -1,5 +1,0 @@
-name "Backdrop"
-components {
-    Appearance color=0x132733ff height=560.0 layer=-10 width=1600.0
-    (object)Transform
-}

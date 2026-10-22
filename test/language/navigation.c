@@ -782,6 +782,25 @@ TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context)
     return true;
 }
 
+static script_range fixture_range(const char *text, const char *needle)
+{
+    const char *found = strstr(text, needle);
+    assert(found);
+    script_range range = { .start = (int)(found - text),
+                           .end = (int)(found - text + strlen(needle)),
+                           .line = 1,
+                           .column = 1 };
+    for (const char *at = text; at < found; at++) {
+        if (*at == '\n') {
+            range.line++;
+            range.column = 1;
+        } else {
+            range.column++;
+        }
+    }
+    return range;
+}
+
 static bool external_project()
 {
     cleanup();
@@ -822,26 +841,61 @@ static bool external_project()
           .completion_outcome = -1 },
         { .id = 404, .name = "Taken", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 },
     };
-    static const source_catalog_definition definitions[] = {
+    static source_catalog_definition definitions[] = {
         { .id = 400,
           .kind = SCRIPT_CAPABILITY_PROTOTYPE,
           .name = "Spark",
-          .path = "prototypes/Spark.kdl",
-          .text = "name \"Spark\"\n",
+          .path = "prototypes/Spark.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Spark\"))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 5, 12, 1, 6, 0 } },
         { .id = 401,
           .kind = SCRIPT_CAPABILITY_EVENT,
           .name = "Pulse",
-          .path = "events/Pulse.kdl",
-          .text = "name \"Pulse\"\n",
+          .path = "events/Pulse.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Pulse\"))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 5, 12, 1, 6, 0 } },
     };
-    static const source_catalog_reference references[] = {
+    static source_catalog_reference references[] = {
         { .id = 400,
           .kind = SOURCE_REFERENCE_PROTOTYPE,
           .name = "Spark",
-          .path = "scenes/Start.kdl",
-          .text = "prototype \"Spark\"\nnote \"Spark\"\n",
+          .path = "scenes/Start.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"prototype\", "
+                  "data.Value.Text(\"Spark\")),\n"
+                  "            data.Field.Named(\"note\", "
+                  "data.Value.Text(\"Spark\"))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 10, 17, 1, 11, 0 } },
     };
     catalog = (script_catalog){ .types = &component_type,
@@ -864,6 +918,9 @@ static bool external_project()
     for (int i = 0; i < analysis->diagnostic_count; i++) {
         fprintf(stderr, "external navigation: %s\n", analysis->diagnostics[i].message);
     }
+    definitions[0].range = fixture_range(definitions[0].text, "\"Spark\"");
+    definitions[1].range = fixture_range(definitions[1].text, "\"Pulse\"");
+    references[0].range = fixture_range(references[0].text, "\"Spark\"");
     navigation = authoring_navigation_new_project(documents, 1, &catalog, definitions, 2, references, 1);
     return analysis->valid && !documents[0].syntax->diagnostic_count;
 }
@@ -892,9 +949,28 @@ TEST_CASE(navigation_resolves_external_definitions_and_selected_references)
         !authoring_navigation_document_at(navigation, 1)->syntax &&
         !authoring_navigation_document_at(navigation, 1)->analysis
     );
-    REQUIRE(!strcmp(authoring_navigation_document_text(navigation, 1), "name \"Spark\"\n"));
-    REQUIRE(definition->location.range.start == 5 && definition->location.range.end == 12);
-    const authoring_reference *scene = authoring_navigation_at(navigation, 3, 12);
+    REQUIRE(!strcmp(
+        authoring_navigation_document_text(navigation, 1),
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Spark\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    ));
+    const char *definition_text = authoring_navigation_document_text(navigation, 1);
+    REQUIRE(!memcmp(definition_text + definition->location.range.start, "\"Spark\"", 7));
+    const char *scene_text = authoring_navigation_document_text(navigation, 3);
+    const authoring_reference *scene = authoring_navigation_at(
+        navigation,
+        3,
+        (int)(strstr(scene_text, "\"Spark\"") - scene_text) + 1
+    );
     REQUIRE(scene && authoring_target_equal(scene->target, prototype->target));
     REQUIRE(references(prototype->target) == 3);
     REQUIRE(!authoring_navigation_definition(navigation, component->target));
@@ -944,7 +1020,23 @@ TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity)
         error,
         sizeof error
     );
-    REQUIRE(edited && !strcmp(edited, "name \"BrightSpark\"\n"));
+    REQUIRE(
+        edited && !strcmp(
+                      edited,
+                      "package asset\n"
+                      "\n"
+                      "import data \"game:assets\"\n"
+                      "\n"
+                      "pub Build :: () -> byte[] {\n"
+                      "    return data.Encode(\n"
+                      "        data.Object([\n"
+                      "            data.Field.Named(\"name\", "
+                      "data.Value.Text(\"BrightSpark\"))\n"
+                      "        ])\n"
+                      "    )\n"
+                      "}\n"
+                  )
+    );
     free(edited);
     edited = authoring_rename_document(
         plan,
@@ -953,8 +1045,44 @@ TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity)
         error,
         sizeof error
     );
-    REQUIRE(edited && !strcmp(edited, "prototype \"BrightSpark\"\nnote \"Spark\"\n"));
-    char *stale = authoring_rename_document(plan, 3, "prototype \"Other\"\nnote \"Spark\"\n", error, sizeof error);
+    REQUIRE(
+        edited && !strcmp(
+                      edited,
+                      "package asset\n"
+                      "\n"
+                      "import data \"game:assets\"\n"
+                      "\n"
+                      "pub Build :: () -> byte[] {\n"
+                      "    return data.Encode(\n"
+                      "        data.Object([\n"
+                      "            data.Field.Named(\"prototype\", "
+                      "data.Value.Text(\"BrightSpark\")),\n"
+                      "            data.Field.Named(\"note\", "
+                      "data.Value.Text(\"Spark\"))\n"
+                      "        ])\n"
+                      "    )\n"
+                      "}\n"
+                  )
+    );
+    char *stale = authoring_rename_document(
+        plan,
+        3,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Other\")),\n"
+        "            data.Field.Named(\"note\", data.Value.Text(\"Spark\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        error,
+        sizeof error
+    );
     bool rejected = !stale && error[0];
     free(stale);
     REQUIRE(rejected);
@@ -991,12 +1119,23 @@ static bool spawn_project(const char *const *source, int count)
         .type = { .storage = PIN_NAME },
         .reference_kind = SCRIPT_REFERENCE_PROTOTYPE
     };
-    static const source_catalog_definition definitions[] = {
+    static source_catalog_definition definitions[] = {
         { .id = 400,
           .kind = SCRIPT_CAPABILITY_PROTOTYPE,
           .name = "Spark",
-          .path = "prototypes/Spark.kdl",
-          .text = "name \"Spark\"\n",
+          .path = "prototypes/Spark.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Spark\"))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 5, 12, 1, 6, 0 } },
     };
     base_catalog();
@@ -1110,14 +1249,25 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
                                                      .name = "Pulse",
                                                      .kind = SCRIPT_CAPABILITY_EVENT,
                                                      .completion_outcome = -1 };
-    static const source_catalog_definition definition = {
+    static source_catalog_definition definition = {
         .id = 401,
         .kind = SCRIPT_CAPABILITY_EVENT,
         .name = "Pulse",
-        .path = "events/Pulse.kdl",
-        .text = "name \"Pulse\"\n",
+        .path = "events/Pulse.chibi",
+        .text = "package asset\n"
+                "\n"
+                "import data \"game:assets\"\n"
+                "\n"
+                "pub Build :: () -> byte[] {\n"
+                "    return data.Encode(\n"
+                "        data.Object([\n"
+                "            data.Field.Named(\"name\", "
+                "data.Value.Text(\"Pulse\"))\n"
+                "        ])\n"
+                "    )\n"
+                "}\n",
         .range = { 5, 12, 1, 6, 0 },
-        .text_kind = SOURCE_TEXT_KDL
+        .text_kind = SOURCE_TEXT_CHIBI
     };
     static const char
         rml[] = "<button onclick=\"emit Pulse\" data-keys=\"Space:Pulse\" "
@@ -1158,6 +1308,7 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
         documents[0].path
     );
     REQUIRE(documents[0].analysis->valid);
+    definition.range = fixture_range(definition.text, "\"Pulse\"");
     navigation = authoring_navigation_new_project(documents, 1, &catalog, &definition, 1, rml_references, 3);
     const authoring_reference *event = at(0, "Pulse ::");
     REQUIRE(event && event->target.kind == AUTHORING_CALLABLE && event->target.id == 401);
@@ -1197,7 +1348,7 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
     return true;
 }
 
-/* The project catalog reads content/input.kdl, so `input.Jump`, `on Jump` and
+/* The project catalog reads content/input.chibi, so `input.Jump`, `on Jump` and
  * the map's `Jump` node name one action. */
 static bool input_map_project()
 {
@@ -1232,7 +1383,29 @@ static bool input_map_project()
     snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
     FILE *file = fopen(path, "wb");
     REQUIRE(file);
-    fputs("Jump {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n", file);
+    fputs(
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Jump\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Space\")\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Dash\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"X\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        file
+    );
     fclose(file);
     input_catalog = source_catalog_new(root, &catalog);
     unlink(path);
@@ -1283,13 +1456,22 @@ TEST_CASE(navigation_connects_input_actions_to_the_input_map)
     const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
     REQUIRE(definition && definition->location.document == 1);
     const char *map = authoring_navigation_document_text(navigation, 1);
-    REQUIRE(authoring_navigation_document_kind(navigation, 1) == SOURCE_TEXT_KDL);
-    REQUIRE(definition->location.range.start == 0 && definition->location.range.end == 4);
-    REQUIRE(definition->location.range.line == 1 && definition->location.range.column == 1);
-    REQUIRE(!strncmp(map, "Jump {", 6));
+    REQUIRE(authoring_navigation_document_kind(navigation, 1) == SOURCE_TEXT_CHIBI);
+    script_range expected = fixture_range(map, "\"Jump\"");
+    REQUIRE(
+        definition->location.range.start == expected.start &&
+        definition->location.range.end == expected.end
+    );
+    REQUIRE(
+        definition->location.range.line == expected.line &&
+        definition->location.range.column == expected.column
+    );
     const authoring_reference
         *dash = authoring_navigation_at(navigation, 1, (int)(strstr(map, "Dash") - map));
-    REQUIRE(dash && dash->kind == AUTHORING_DEFINE && dash->location.range.line == 4);
+    REQUIRE(
+        dash && dash->kind == AUTHORING_DEFINE &&
+        dash->location.range.line == fixture_range(map, "\"Dash\"").line
+    );
     REQUIRE(references(use->target) == 4);
     return true;
 }
@@ -1322,7 +1504,30 @@ TEST_CASE(rename_input_action_edits_the_input_map_and_scripts)
         sizeof error
     );
     REQUIRE(
-        edited && !strcmp(edited, "Leap {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n")
+        edited &&
+        !strcmp(
+            edited,
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"Leap\", data.Object([\n"
+            "                data.Field.Named(\"sources\", data.List([\n"
+            "                    data.Value.Text(\"Space\")\n"
+            "                ]))\n"
+            "            ])),\n"
+            "            data.Field.Named(\"Dash\", data.Object([\n"
+            "                data.Field.Named(\"sources\", data.List([\n"
+            "                    data.Value.Text(\"X\")\n"
+            "                ]))\n"
+            "            ]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n"
+        )
     );
     return true;
 }
@@ -1361,27 +1566,69 @@ static bool scene_globals_project()
           .name = "globals",
           .type = { .storage = PIN_STR, .nominal = 30, .flags = SCRIPT_TYPE_NAMESPACE } },
     };
-    static const source_catalog_definition definitions[] = {
+    static source_catalog_definition definitions[] = {
         { .id = 40,
           .field = true,
           .owner = 30,
           .name = "Level",
-          .path = "scenes/First.kdl",
-          .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
+          .path = "scenes/First.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"GlobalBinder\", "
+                  "data.Object([\n"
+                  "                data.Field.Named(\"Name\", "
+                  "data.Value.Text(\"Level\"))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 24, 31, 2, 10, 0 } },
         { .id = 40,
           .field = true,
           .owner = 30,
           .name = "Level",
-          .path = "scenes/Second.kdl",
-          .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
+          .path = "scenes/Second.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"GlobalBinder\", "
+                  "data.Object([\n"
+                  "                data.Field.Named(\"Name\", "
+                  "data.Value.Text(\"Level\"))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 24, 31, 2, 10, 0 } },
         { .id = 41,
           .field = true,
           .owner = 30,
           .name = "Camera",
-          .path = "scenes/Camera.kdl",
-          .text = "GlobalBinder {\n    Name \"Camera\"\n}\n",
+          .path = "scenes/Camera.chibi",
+          .text = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "pub Build :: () -> byte[] {\n"
+                  "    return data.Encode(\n"
+                  "        data.Object([\n"
+                  "            data.Field.Named(\"GlobalBinder\", "
+                  "data.Object([\n"
+                  "                data.Field.Named(\"Name\", "
+                  "data.Value.Text(\"Camera\"))\n"
+                  "            ]))\n"
+                  "        ])\n"
+                  "    )\n"
+                  "}\n",
           .range = { 24, 32, 2, 10, 0 } },
     };
     const char *sources[] = {
@@ -1458,7 +1705,26 @@ TEST_CASE(rename_scene_global_updates_all_binders_and_qualified_uses)
             error,
             sizeof error
         );
-        REQUIRE(edited && !strcmp(edited, "GlobalBinder {\n    Name \"World\"\n}\n"));
+        REQUIRE(
+            edited &&
+            !strcmp(
+                edited,
+                "package asset\n"
+                "\n"
+                "import data \"game:assets\"\n"
+                "\n"
+                "pub Build :: () -> byte[] {\n"
+                "    return data.Encode(\n"
+                "        data.Object([\n"
+                "            data.Field.Named(\"GlobalBinder\", data.Object([\n"
+                "                data.Field.Named(\"Name\", "
+                "data.Value.Text(\"World\"))\n"
+                "            ]))\n"
+                "        ])\n"
+                "    )\n"
+                "}\n"
+            )
+        );
     }
     REQUIRE(!plan_rename(level->target, "Main Level"));
     REQUIRE(plan_rename(level->target, "MainLevel"));

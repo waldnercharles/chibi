@@ -1,4 +1,0 @@
-name "Stage"
-components {
-    (object)Transform
-}

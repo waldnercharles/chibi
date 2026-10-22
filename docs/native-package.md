@@ -14,11 +14,10 @@ repository. Games have their own repositories. Engine tests retain focused
 fixtures, listed in [examples](examples.md). Product packaging does not discover
 or ship `projects/*`.
 
-Project format 10 uses `.chibi` as complete executable source for behaviors,
-callable libraries and systems. Declarative assets use KDL. The compiler resolves
-source against explicit capability tables and produces verified prepared modules
-and asset records. The player loads those records without syntax, compiler,
-graph authoring or Studio dependencies. There is no MCP product or setup step.
+Project format 33 uses executable Chibi declarations for behaviors, callable
+libraries and systems. Other asset families use ordinary Chibi modules importing
+`game:assets` and exporting `Build() -> byte[]`. The compiler prepares their
+values and executable definitions before the player loads them.
 
 ```sh
 make package-sdk SDK_PREFIX=dist/sdk
@@ -52,17 +51,31 @@ tracked separately from package integrity and installed-consumer linking.
 
 ## Window and icon
 
-An optional `application` block in `project.kdl` sets how the shipped game's
+An optional `application` block in `project.chibi` sets how the shipped game's
 window looks. Every field is optional: the title defaults to the project name,
 the size to 1280×720, and the icon is a PNG path relative to the project root.
 
-```kdl
-application {
-    title "My Game"
-    width 1600
-    height 900
-    fullscreen #false
-    icon "icon.png"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(33)),
+            data.Field.Named("name", data.Value.Text("My Game")),
+            data.Field.Named("content", data.Value.Text("content")),
+            data.Field.Named("start_scene", data.Value.Text("scenes/Main.chibi")),
+            data.Field.Named("application", data.Object([
+                data.Field.Named("title", data.Value.Text("My Game")),
+                data.Field.Named("width", data.Value.UInt(1600)),
+                data.Field.Named("height", data.Value.UInt(900)),
+                data.Field.Named("fullscreen", data.Value.Bool(false)),
+                data.Field.Named("icon", data.Value.Text("icon.png"))
+            ]))
+        ])
+    );
 }
 ```
 
@@ -116,22 +129,33 @@ whole package together when moving or distributing it.
 
 ## Use a separate game workspace
 
-A game repository contains `project.kdl` and its `content` directory. For
-example, `project.kdl` can select an empty starting scene:
+A game repository contains `project.chibi` and its `content` directory. For
+example, `project.chibi` can select an empty starting scene:
 
-```kdl
-version 21
-name "My Game"
-content "content"
-start_scene "scenes/Main.kdl"
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Project("My Game", 33, "content", "scenes/Main.chibi", [])
+    );
+}
 ```
 
-Create `content/scenes/Main.kdl`:
+Create `content/scenes/Main.chibi`:
 
-```kdl
-version 1
-name "Main"
-(array)entities
+```chibi
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Scene("Main", [], [])
+    );
+}
 ```
 
 Check the project, or build and run it, with the installed launcher:
@@ -141,7 +165,7 @@ Check the project, or build and run it, with the installed launcher:
 /path/to/chibi/bin/chibi run /path/to/my-game
 ```
 
-Edit `.chibi` executable source and KDL declarative assets directly or through
+Edit `.chibi` executable source and compiled Chibi declarative assets directly or through
 Studio. Format and validate saved content through `bin/chibi_ctl`, then inspect
 or run a bounded scenario. The [asset workflow](runtime-authoring.md) gives
 native request examples. A project must use the selected engine's project
@@ -176,7 +200,7 @@ make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=/absol
 make web-serve STUDIO_SOURCE=/absolute/path/to/chibi-studio WEB_OUTPUT=/absolute/path/to/studio-web
 ```
 
-The external game owns its `project.kdl` and `content/`. Native Studio opens that
+The external game owns its `project.chibi` and `content/`. Native Studio opens that
 project directly. The browser workspace owns its imported project files. Use
 `chibi_ctl --project-root` for native inspection and validation, or prepare an
 artifact with `chibi-compile` and run it with the installed `chibi-player`.

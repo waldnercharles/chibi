@@ -1,0 +1,82 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("MovingPlatforms3D")),
+            data.Field.Named("presentation", data.Value.Text("3d")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("View")),
+                    data.Field.Named("prototype", data.Value.Text("MovingPlatformsView"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Gravity")),
+                    data.Field.Named("prototype", data.Value.Text("Gravity3D"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("TranslatingPlatform")),
+                    data.Field.Named("prototype", data.Value.Text("MovingPlatform3D")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform3D", data.Object([
+                            data.Field.Named("position", data.Object([
+                                data.Field.Named("x", data.Value.Real(-120.0))
+                            ]))
+                        ])),
+                        data.Field.Named("Body3D", data.Object([
+                            data.Field.Named("linear_velocity", data.Object([
+                                data.Field.Named("x", data.Value.Real(24.0))
+                            ]))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("TranslatingRider")),
+                    data.Field.Named("prototype", data.Value.Text("PlatformRider3D")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform3D", data.Object([
+                            data.Field.Named("position", data.Object([
+                                data.Field.Named("x", data.Value.Real(-120.0)),
+                                data.Field.Named("y", data.Value.Real(28.0))
+                            ]))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("RotatingPlatform")),
+                    data.Field.Named("prototype", data.Value.Text("MovingPlatform3D")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform3D", data.Object([
+                            data.Field.Named("position", data.Object([
+                                data.Field.Named("x", data.Value.Real(120.0))
+                            ]))
+                        ])),
+                        data.Field.Named("Body3D", data.Object([
+                            data.Field.Named("angular_velocity", data.Object([
+                                data.Field.Named("y", data.Value.Real(0.5))
+                            ]))
+                        ])),
+                        data.Field.Named("Material", data.Object([
+                            data.Field.Named("scene", data.Value.UInt(1621129471))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("RotatingRider")),
+                    data.Field.Named("prototype", data.Value.Text("PlatformRider3D")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform3D", data.Object([
+                            data.Field.Named("position", data.Object([
+                                data.Field.Named("x", data.Value.Real(168.0)),
+                                data.Field.Named("y", data.Value.Real(28.0))
+                            ]))
+                        ]))
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

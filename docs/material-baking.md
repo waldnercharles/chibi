@@ -1,7 +1,7 @@
 # Offline material channel baking
 
 `chibi_ctl` accepts `bake_material` through its ordinary JSON-lines interface.
-This operation evaluates a saved, library-linked KDL material on the CPU. It
+This operation evaluates a saved, library-linked compiled Chibi material on the CPU. It
 creates no files, starts no GPU context, and does not modify the source.
 
 ```sh

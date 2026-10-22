@@ -298,11 +298,11 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 `graph:engine`'s `Targets.chibi` lists the 110 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
-over ckdl) and the libraries over them, and three header-only libraries
+the vendored formatting and JSON libraries (`chibi_fmt`, `chibi_json` over yyjson)
+and the libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
 `chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, `chibi_save_runtime`, and
+engine component Chibi modules are embedded sources, `chibi_save_runtime`, and
 `chibi_execution` with SLJIT and the header-only `chibi_math` from the
 third-party archive, with the libraries that need only those (the behavior,
 scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
@@ -567,7 +567,8 @@ folder). It runs in two steps:
 `bootstrap.json` records these fields:
 
 - `format`: the manifest format this host reads, 1.
-- `version` and `minimum`: copied from `tools/compiler/bootstrap.kdl`.
+- `version` and `minimum`: evaluated from the compiled `BootstrapContract` in
+  `tools/compiler/package_compiler/Bootstrap.chibi`.
 - `revision`: the tree's `git describe --dirty` revision.
 - `entry`: `CompileClosure`'s entry ID.
 - `closure`: its file, length and SHA-256.
@@ -581,8 +582,8 @@ folder). It runs in two steps:
   - the natives and their ports;
   - each native's identity and signature ABI.
 
-`tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
-the bootstrap version a compiler built from them has. `minimum` is the oldest
+`tools/compiler/package_compiler/Bootstrap.chibi` defines the sources' compiled
+bootstrap contract. `version` is the bootstrap version a compiler built from them has. `minimum` is the oldest
 version that can compile them. Language dependencies follow the two-step rule in
 `PLAN.md` M5:
 1. When the compiler gains a feature, raise `version` and produce an artifact.
@@ -593,13 +594,21 @@ compiler from the artifact. Before compiling, it rejects each of the following
 with its own message:
 
 - a manifest format it doesn't read;
-- a version older than the sources' minimum;
+- invalid artifact version/minimum metadata;
 - a closure other than the recorded one;
 - a missing source, or a package folder holding a `.chibi` file the manifest
   doesn't record;
 - a target other than the host's own (`compiler_host_target_json`), compared
   in full: value layout, prepared ABI, instruction names, natives, their
   ports and native identities.
+
+After compilation it invokes the recovered compiler's `BootstrapContract` and
+rejects an artifact older than that current minimum before accepting or writing
+the recovered compiler. Early selection reads only existing JSON artifact
+metadata; it does not parse Chibi source or execute the compiler being selected.
+Artifact export invokes the same compiled contract and records its version and
+minimum. The contract's `.chibi` source participates in ordinary compiler source
+checksums and stage-one cache identity.
 
 It then compiles the recorded sources from disk with the artifact:
 - If they are the recorded sources, the result must be the artifact's own bytes.

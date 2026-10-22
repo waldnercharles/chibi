@@ -1,6 +1,0 @@
-name "Solid"
-components {
-    Geometry3D depth=100.0 elevation=50.0 height=100.0 width=100.0
-    Material scene=0xffffffff
-    (object)Transform
-}

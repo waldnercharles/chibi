@@ -1,16 +1,19 @@
 # Architecture
 
 Chibi separates executable source, prepared definitions, live execution and
-authoring views. The engine repository owns their shared C implementations and
-SDK contracts. Studio is a separate application built against an installed SDK.
+authoring views. The engine repository owns their shared implementations and
+SDK contracts. Chibi packages own compiler and authoring policy; native code
+owns runtime services and ABI adapters. Studio is a separate application built against an installed SDK.
 Game repositories own composition, rules and tuning. Engine regression tests use
 focused fixtures, which double as the [examples](examples.md).
 
 ## Source and execution authority
 
-Project format 10 uses `.chibi` as complete executable source for behaviors,
-callable libraries and systems. Declarative scenes, prototypes, events, shaders,
-models and fields use KDL; UI uses RML and RCSS.
+Project format 33 uses executable Chibi declarations for behaviors, callable
+libraries and systems. Project configuration, scenes, prototypes, events, shaders,
+models and fields are ordinary Chibi modules compiled against `game:assets`.
+Each data module exports `Build() -> byte[]`; the typed value library encodes
+its result for native family validation. UI uses RML and RCSS.
 
 `Chibi::language_syntax` retains source bytes and Tree-sitter syntax snapshots.
 `Chibi::language` resolves typed declarations, symbols, expressions, events,

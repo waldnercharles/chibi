@@ -5,7 +5,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/value_document.h"
@@ -685,7 +685,7 @@ char *graph_save_nodes(const graph *g, node *const *subset, int count)
     }
     av_doc *doc = av_doc_new();
     av_doc_set_root(doc, write_graph(doc, g, subset, count));
-    char *text = av_doc_write(doc);
+    char *text = asset_document_write(av_doc_root(doc));
     av_doc_free(doc);
     return text;
 }
@@ -978,7 +978,7 @@ char *behavior_asset_save(const behavior_asset *asset)
     av_doc *doc = av_doc_new();
     av_value *value = behavior_asset_to_disk_value(doc, asset);
     av_doc_set_root(doc, value);
-    char *text = value ? av_doc_write(doc) : NULL;
+    char *text = value ? asset_document_write(av_doc_root(doc)) : NULL;
     av_doc_free(doc);
     return text;
 }

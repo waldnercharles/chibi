@@ -1,0 +1,31 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Floor")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                    data.Field.Named("edge_light", data.Value.Real(1.0)),
+                    data.Field.Named("scene", data.Value.UInt(4294967295))
+                ])),
+                data.Field.Named("Tilemap", data.Object([
+                    data.Field.Named("cells", data.Value.Text("0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0")),
+                    data.Field.Named("columns", data.Value.UInt(20)),
+                    data.Field.Named("frame_height", data.Value.UInt(16)),
+                    data.Field.Named("frame_width", data.Value.UInt(16)),
+                    data.Field.Named("image", data.Value.Text("content/images/court.png")),
+                    data.Field.Named("normal_map", data.Value.Text("content/images/court_normal.png")),
+                    data.Field.Named("rows", data.Value.UInt(12))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(-160.0)),
+                    data.Field.Named("y", data.Value.Real(-96.0))
+                ]))
+            ]))
+        ])
+    );
+}

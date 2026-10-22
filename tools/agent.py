@@ -169,15 +169,8 @@ def clone_project(source, target):
 
 
 def external_project(data):
-    """Whether `data` is Studio's fixture project.kdl at a version the engine
-    upgrades when it opens it. Studio's projects lag the engine's version."""
-    header = (ROOT / 'src/assets/project.h').read_text()
-    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
-                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
-    line, _, rest = data.partition(b'\n')
-    version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
-    return (version is not None and oldest <= int(version[1]) <= current and
-            rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
+    """The reviewed compiled-source fixture, pinned without a source parser."""
+    return hashlib.sha256(data).hexdigest() == '5479c26d026cffafafad832ab09a1f13dce6ed79e1209b07c0abe69018a593e6'
 
 
 def bounded_read(path, limit):
@@ -246,19 +239,19 @@ def studio_acceptance_preflight(selector):
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
+        'content/scenes/Start.chibi': b'package asset\n\nimport data "game:assets"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        data.Object([\n            data.Field.Named("version", data.Value.UInt(1)),\n            data.Field.Named("name", data.Value.Text("Start")),\n            data.Field.Named("entities", data.List([]))\n        ])\n    )\n}\n',
         'content/behaviors/Counter.chibi': b'Counter :: behavior {\n    count: retain int = 1\n    on Tick :: () {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
-    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.kdl', *expected}:
+    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.chibi', *expected}:
         raise ValueError('studio_acceptance_fixture_membership_changed')
-    if not external_project(bounded_read(fixture / 'project.kdl', 1024)):
+    if not external_project(bounded_read(fixture / 'project.chibi', 1024)):
         raise ValueError('studio_acceptance_fixture_changed')
     for name, value in expected.items():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
     studio_resource_preflight(build, evidence.get('resources'))
-    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=220, frames=frames, window=[1920,1080])
+    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=sum(len(value) for value in expected.values()) + (fixture / 'project.chibi').stat().st_size, frames=frames, window=[1920,1080])
 
 
 def studio_acceptance_output(selector, output):

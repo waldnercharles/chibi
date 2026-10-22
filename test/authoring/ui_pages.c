@@ -32,8 +32,8 @@ static void cleanup()
 TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
 {
     refs = reference_index_new();
-    int dock = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
-    int bay = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.kdl", NULL);
+    int dock = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.chibi", NULL);
+    int bay = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.chibi", NULL);
     int shell = reference_index_add_asset(refs, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.rml", NULL);
     int page = reference_index_add_asset(refs, REFERENCE_ASSET_UI, "Page", "content/ui/Page.rml", NULL);
     reference_index_add_page(refs, dock, "Shell", "Page");
@@ -49,13 +49,33 @@ TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
     REQUIRE(edges);
 
     const char *texts[] = {
-        "version 1\n"
-        "name \"Dock\"\n"
-        "ui \"Shell\"\n"
-        "(array)entities\n",
-        "version 1\n"
-        "name \"Bay\"\n"
-        "(array)entities\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Dock\")),\n"
+        "            data.Field.Named(\"ui\", data.Value.Text(\"Shell\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Bay\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
         "<slot/>\n",
         "<slot/>\n",
     };
@@ -78,7 +98,7 @@ TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
     symbol.asset = page;
     bool refused = refactor_rename(&project, symbol, "Frame", &plan, error, sizeof error) !=
                        0 &&
-                   strstr(error, "project.kdl");
+                   strstr(error, "project.chibi");
     /* Renaming a page rewrites the scenes naming it and refuses the project's default. */
     REQUIRE(followed && refused);
     return true;

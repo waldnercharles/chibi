@@ -54,7 +54,7 @@ const script_catalog *source_catalog_view(const source_catalog *);
 /* Owned by this snapshot, sorted by canonical specialization identity. The
  * requested-analysis API selects requests belonging to its document key. */
 const script_specialization_request *source_catalog_requests(const source_catalog *, int *count);
-/* The project's input map, content/input.kdl, as a support/array.h vector. */
+/* The project's input map, content/input.chibi, as a support/array.h vector. */
 const input_action *source_catalog_input(const source_catalog *);
 int source_catalog_source_count(const source_catalog *);
 const source_catalog_source *source_catalog_source_at(const source_catalog *, int index);

@@ -1,5 +1,6 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
+#include "support/asset_document.h"
 #include "test/tools/fixture.h"
 #if CHIBI_TEST_MODEL_IMPORT
 #include "test/support/gltf_fixture.h"
@@ -47,7 +48,7 @@ static void write_file(const char *relative, const char *text)
     path(file, sizeof file, relative);
     tool_write(file, text);
 }
-/* A legacy-loader fixture replaces the authored prototype the scaffold made. */
+/* A fixture replaces the authored prototype the scaffold made. */
 static bool remove_authored_prototype(const char *name)
 {
     char relative[128], file[256];
@@ -138,21 +139,32 @@ static const char *first_message(yyjson_val *diagnostics)
     return message_at(diagnostics, 0);
 }
 
-/* Sets the manifest's `key`, a line the scaffold writes, to `value`. */
+static av_doc *read_asset(const char *file)
+{
+    char *text = tool_read(file);
+    char error[256];
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    free(text);
+    return doc;
+}
+
+static void write_asset(const char *file, const av_doc *doc)
+{
+    char *text = asset_document_write(av_doc_root(doc));
+    assert(text);
+    tool_write(file, text);
+    free(text);
+}
+
 static void set_manifest(const char *key, const char *value)
 {
-    char manifest[256], prefix[64];
-    path(manifest, sizeof manifest, "game/project.kdl");
-    snprintf(prefix, sizeof prefix, "\n%s ", key);
-    char *text = tool_read(manifest);
-    char *line = text ? strstr(text, prefix) : NULL;
-    assert(line);
-    char *rest = strchr(line + 1, '\n');
-    line[1] = '\0';
-    char updated[1024];
-    snprintf(updated, sizeof updated, "%s%s \"%s\"%s", text, key, value, rest ? rest : "\n");
-    free(text);
-    tool_write(manifest, updated);
+    char manifest[256];
+    path(manifest, sizeof manifest, "game/project.chibi");
+    av_doc *doc = read_asset(manifest);
+    assert(doc);
+    av_obj_set(doc, av_doc_root(doc), key, av_str(doc, value));
+    write_asset(manifest, doc);
+    av_doc_free(doc);
 }
 
 static void set_start_scene(const char *scene)
@@ -160,16 +172,16 @@ static void set_start_scene(const char *scene)
     set_manifest("start_scene", scene);
 }
 
-static void append_manifest(const char *line)
+static void set_application(const char *key, const char *value)
 {
     char manifest[256];
-    path(manifest, sizeof manifest, "game/project.kdl");
-    char *text = tool_read(manifest);
-    assert(text);
-    char updated[1024];
-    snprintf(updated, sizeof updated, "%s%s", text, line);
-    free(text);
-    tool_write(manifest, updated);
+    path(manifest, sizeof manifest, "game/project.chibi");
+    av_doc *doc = read_asset(manifest);
+    assert(doc);
+    av_value *application = av_obj_add_obj(doc, av_doc_root(doc), "application");
+    av_obj_add_str(doc, application, key, value);
+    write_asset(manifest, doc);
+    av_doc_free(doc);
 }
 
 static void setup()
@@ -242,29 +254,66 @@ TEST_CASE(ui_style_problems_are_listed)
 
 TEST_CASE(start_scene_outside_scenes_is_parsed)
 {
-    write_file("broken.kdl", "version 1\nname \"Broken\"\n(array)entities {\n");
-    set_start_scene("../../broken.kdl");
+    write_file("broken.chibi", "package asset\npub Build :: () -> byte[] {\n");
+    set_start_scene("../../broken.chibi");
     REQUIRE(validate() != 0 && errors() == 1 && !yyjson_arr_size(result("problems")));
     REQUIRE(yyjson_arr_size(result("project")) == 1);
     const char *message = first_message(result("project"));
-    REQUIRE(strstr(message, "start scene ../../broken.kdl: ") == message);
-    REQUIRE(strstr(message, "Unexpected end of data"));
+    REQUIRE(strstr(message, "start scene ../../broken.chibi: ") == message);
+    REQUIRE(strstr(message, "line ") && strstr(message, "column "));
 
-    write_file("unknown_prototype.kdl", "version 1\nname \"Out\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
-    set_start_scene("../../unknown_prototype.kdl");
+    write_file(
+        "unknown_prototype.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Out\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hero\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    set_start_scene("../../unknown_prototype.chibi");
     REQUIRE(validate() != 0 && errors() == 1);
     REQUIRE(strstr(first_message(result("project")), "Hero"));
 
-    write_file("empty.kdl", "version 1\nname \"Empty\"\n(array)entities\n");
-    set_start_scene("../../empty.kdl");
+    write_file(
+        "empty.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Empty\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    set_start_scene("../../empty.chibi");
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     return true;
 }
 
 TEST_CASE(cataloged_start_scene_is_reported_once)
 {
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n");
-    set_start_scene("../content/scenes/Start.kdl");
+    write_file("game/content/scenes/Start.chibi", "package asset\npub Build :: () -> byte[] {\n");
+    set_start_scene("../content/scenes/Start.chibi");
     REQUIRE(validate() != 0 && !yyjson_arr_size(result("project")));
     yyjson_val *problem = yyjson_arr_get_first(result("problems"));
     REQUIRE(yyjson_arr_size(result("problems")) == 1);
@@ -275,8 +324,24 @@ TEST_CASE(cataloged_start_scene_is_reported_once)
 
 TEST_CASE(missing_ui_documents_are_reported)
 {
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\nui \"Pause\"\n(array)entities\n");
-    append_manifest("ui \"Hud\"\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"ui\", data.Value.Text(\"Pause\")),\n"
+        "            data.Field.Named(\"entities\", data.List([]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    set_manifest("ui", "Hud");
     REQUIRE(validate() != 0 && errors() == 2);
     REQUIRE(!strcmp(first_message(result("project")), "Unknown UI document 'Hud'"));
     yyjson_val *problem = yyjson_arr_get_first(result("problems"));
@@ -319,8 +384,49 @@ TEST_CASE(missing_ui_documents_are_reported)
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Menu\"}") == 0
     );
     REQUIRE(remove_authored_prototype("Menu"));
-    write_file("game/content/prototypes/Menu.kdl", "name \"Menu\"\ncomponents {\n    Ui document=\"../ui/Hud\"\n}\n");
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Menu\" prototype=\"Menu\"\n}\n");
+    write_file(
+        "game/content/prototypes/Menu.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Menu\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Ui\", data.Object([\n"
+        "                    data.Field.Named(\"document\", "
+        "data.Value.Text(\"../ui/Hud\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Menu\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Menu\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
     size_t index, count;
     yyjson_arr_foreach(result("problems"), index, count, problem)
@@ -333,7 +439,29 @@ TEST_CASE(missing_ui_documents_are_reported)
 
 TEST_CASE(catalog_errors_are_reported_once)
 {
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hero\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 1);
     yyjson_val *diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(yyjson_arr_size(diagnostics) == 1);
@@ -342,7 +470,32 @@ TEST_CASE(catalog_errors_are_reported_once)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hero\"}") == 0
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\" {\n        (array)behaviors \"Ghost\"\n    }\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Ghost\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 1);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(yyjson_arr_size(diagnostics) == 1);
@@ -357,7 +510,29 @@ TEST_CASE(catalog_errors_are_reported_once)
     REQUIRE(!strcmp(first_message(diagnostics), "Unknown behavior or system 'Ghost'"));
 
     /* A source's syntax errors come once, from the catalog, with their lines. */
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hero\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Broken\"}") == 0
     );
@@ -396,26 +571,48 @@ TEST_CASE(catalog_errors_are_reported_once)
 TEST_CASE(other_project_versions_are_not_opened)
 {
     char manifest[256];
-    path(manifest, sizeof manifest, "game/project.kdl");
+    path(manifest, sizeof manifest, "game/project.chibi");
     char *text = tool_read(manifest);
-    int version = 0;
-    REQUIRE(text && sscanf(text, "version %d", &version) == 1);
-    char old[1024];
-    snprintf(old, sizeof old, "version %d%s", version - 1, strchr(text, '\n'));
+    char error[256];
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    REQUIRE(doc);
+    int version = av_get_int(av_obj_get(av_doc_root(doc), "version"));
+    av_obj_set(doc, av_doc_root(doc), "version", av_sint(doc, version - 1));
+    char *old = asset_document_write(av_doc_root(doc));
+    av_doc_free(doc);
     free(text);
+    REQUIRE(old);
     tool_write(manifest, old);
     REQUIRE(validate() != 0 && errors() == 1);
     const char *message = first_message(result("project"));
-    REQUIRE(message && strstr(message, "--migrate"));
+    REQUIRE(message && strstr(message, "needs an older build"));
     /* Validation leaves the old project as it was. */
     text = tool_read(manifest);
     bool kept = text && !strcmp(text, old);
     free(text);
     REQUIRE(kept);
+    free(old);
+    char newer[16384];
     /* A newer build's project needs that build, whatever its fields mean
      * there. */
-    snprintf(old, sizeof old, "version %d\nname 5\n", version + 1);
-    tool_write(manifest, old);
+    snprintf(
+        newer,
+        sizeof newer,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", data.Value.UInt(5))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        version + 1
+    );
+    tool_write(manifest, newer);
     REQUIRE(validate() != 0 && errors() == 1);
     message = first_message(result("project"));
     REQUIRE(message && strstr(message, "needs a newer build"));
@@ -426,7 +623,7 @@ TEST_CASE(application_settings_are_checked)
 {
     /* Preparation decodes the icon, so one that is missing or not a PNG
      * fails validation too. */
-    append_manifest("application {\n    icon \"icon.png\"\n}\n");
+    set_application("icon", "icon.png");
     REQUIRE(validate() != 0 && errors() == 1);
     const char *message = first_message(result("project"));
     REQUIRE(
@@ -450,19 +647,10 @@ TEST_CASE(application_settings_are_checked)
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
 
     /* The window shows the project name unless a title replaces it. */
-    static const char NAME_LINE[] = "name \"Game\"\n";
-    char manifest[256], name[CHIBI_APPLICATION_TEXT_MAX + 2],
-        updated[2 * CHIBI_APPLICATION_TEXT_MAX];
-    path(manifest, sizeof manifest, "game/project.kdl");
-    char *text = tool_read(manifest);
-    char *line = text ? strstr(text, NAME_LINE) : NULL;
-    REQUIRE(line);
+    char name[CHIBI_APPLICATION_TEXT_MAX + 2];
     memset(name, 'G', sizeof name - 1);
     name[sizeof name - 1] = '\0';
-    *line = '\0';
-    snprintf(updated, sizeof updated, "%sname \"%s\"\n%s", text, name, line + strlen(NAME_LINE));
-    free(text);
-    tool_write(manifest, updated);
+    set_manifest("name", name);
     REQUIRE(validate() != 0 && errors() == 1);
     REQUIRE(strstr(first_message(result("project")), "set a shorter application title"));
     return true;
@@ -473,12 +661,80 @@ TEST_CASE(prototype_includes_resolve)
     char folder[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Health current=3 maximum=3\n}\n(array)behaviors \"Spin\"\n");
+    write_file(
+        "game/content/prototypes/Hull.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.UInt(3)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.UInt(3))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Spin\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Spin\"}") == 0
     );
-    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    Transform x=1 y=2\n}\n");
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Drone\" prototype=\"Drone\"\n}\n");
+    write_file(
+        "game/content/prototypes/Drone.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Drone\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Hull\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Drone\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Drone\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
@@ -493,10 +749,17 @@ TEST_CASE(prototype_includes_resolve)
     const char *args[] = { program, "--project-root", "game", "--format", NULL };
     REQUIRE(tool_run(args, root, log_path) == 0);
     char drone[256];
-    path(drone, sizeof drone, "game/content/prototypes/Drone.kdl");
+    path(drone, sizeof drone, "game/content/prototypes/Drone.chibi");
     char *text = tool_read(drone);
-    bool kept = text && strstr(text, "(array)includes \"Hull\"") &&
-                !strstr(text, "Health");
+    char error[256];
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    av_value *value = av_doc_root(doc);
+    av_value *includes = av_obj_get(value, "includes");
+    const char *include = av_get_str(av_arr_get(includes, 0));
+    bool kept = doc && av_arr_size(includes) == 1 && include &&
+                !strcmp(include, "Hull") &&
+                !av_obj_get(av_obj_get(value, "components"), "Health");
+    av_doc_free(doc);
     free(text);
     REQUIRE(kept);
     /* The include is an edge from Drone to Hull, and only Drone's. Hull's
@@ -522,7 +785,7 @@ TEST_CASE(prototype_includes_resolve)
     /* One controller first finds Drone's include missing, then sees the Hull
      * it creates, so only its last reply is checked. */
     char hull[256];
-    path(hull, sizeof hull, "game/content/prototypes/Hull.kdl");
+    path(hull, sizeof hull, "game/content/prototypes/Hull.chibi");
     REQUIRE(unlink(hull) == 0);
     ctl(true,
         "{\"contract\":1,\"operation\":\"validate_project\"}\n"
@@ -531,7 +794,23 @@ TEST_CASE(prototype_includes_resolve)
         "{\"contract\":1,\"operation\":\"validate_project\"}");
     REQUIRE(yyjson_get_bool(result("valid")));
 
-    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Nope\"\n");
+    write_file(
+        "game/content/prototypes/Drone.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Drone\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Nope\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
     yyjson_val *problem;
     size_t index, count;
@@ -541,11 +820,27 @@ TEST_CASE(prototype_includes_resolve)
         REQUIRE(!strcmp(message, "prototype include Nope is unavailable"));
     }
     /* An include names a prototype, not its file. */
-    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull.kdl\"\n");
+    write_file(
+        "game/content/prototypes/Drone.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Drone\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Hull.chibi\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 2);
     problem = yyjson_arr_get_first(result("problems"));
     const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
-    REQUIRE(!strcmp(message, "prototype include Hull.kdl is unavailable"));
+    REQUIRE(!strcmp(message, "prototype include Hull.chibi is unavailable"));
     return true;
 }
 
@@ -558,7 +853,29 @@ TEST_CASE(scenarios_load_graph_assets)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
@@ -575,40 +892,101 @@ static const char *const
                      "}\n";
 
 /* A field that samples Shapes.Disc at its coordinates. */
-static const char *const
-    DISC_FIELD = "version 3\n"
-                 "name \"Disc\"\n"
-                 "domain \"field\"\n"
-                 "id_counter 21\n"
-                 "(array)graphs {\n"
-                 "    - {\n"
-                 "        kind \"event\"\n"
-                 "        name \"\"\n"
-                 "        (array)nodes {\n"
-                 "            - id=10 type=\"Field X\"\n"
-                 "            - id=12 type=\"Field Y\"\n"
-                 "            - {\n"
-                 "                id 14\n"
-                 "                type \"Call Pure Function\"\n"
-                 "                reference_name \"Disc\"\n"
-                 "                reference_asset \"Shapes\"\n"
-                 "                inputs {\n"
-                 "                    X id=15 type=\"float\"\n"
-                 "                    Y id=16 type=\"float\"\n"
-                 "                }\n"
-                 "                outputs {\n"
-                 "                    Value id=17 type=\"float\"\n"
-                 "                }\n"
-                 "            }\n"
-                 "            - id=18 type=\"Field Output\"\n"
-                 "        }\n"
-                 "        (array)edges {\n"
-                 "            - from=\"10.Value\" to=\"14.X\"\n"
-                 "            - from=\"12.Value\" to=\"14.Y\"\n"
-                 "            - from=\"14.Value\" to=\"18.Value\"\n"
-                 "        }\n"
-                 "    }\n"
-                 "}\n";
+static const char *const DISC_FIELD =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"version\", data.Value.UInt(3)),\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Disc\")),\n"
+    "            data.Field.Named(\"domain\", data.Value.Text(\"field\")),\n"
+    "            data.Field.Named(\"id_counter\", data.Value.UInt(21)),\n"
+    "            data.Field.Named(\"graphs\", data.List([\n"
+    "                data.Object([\n"
+    "                    data.Field.Named(\"kind\", "
+    "data.Value.Text(\"event\")),\n"
+    "                    data.Field.Named(\"name\", data.Value.Text(\"\")),\n"
+    "                    data.Field.Named(\"nodes\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(10)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Field X\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(12)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Field Y\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(14)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Call Pure Function\")),\n"
+    "                            data.Field.Named(\"reference_name\", "
+    "data.Value.Text(\"Disc\")),\n"
+    "                            data.Field.Named(\"reference_asset\", "
+    "data.Value.Text(\"Shapes\")),\n"
+    "                            data.Field.Named(\"inputs\", data.Object([\n"
+    "                                data.Field.Named(\"X\", data.Object([\n"
+    "                                    data.Field.Named(\"id\", "
+    "data.Value.UInt(15)),\n"
+    "                                    data.Field.Named(\"type\", "
+    "data.Value.Text(\"float\"))\n"
+    "                                ])),\n"
+    "                                data.Field.Named(\"Y\", data.Object([\n"
+    "                                    data.Field.Named(\"id\", "
+    "data.Value.UInt(16)),\n"
+    "                                    data.Field.Named(\"type\", "
+    "data.Value.Text(\"float\"))\n"
+    "                                ]))\n"
+    "                            ])),\n"
+    "                            data.Field.Named(\"outputs\", data.Object([\n"
+    "                                data.Field.Named(\"Value\", "
+    "data.Object([\n"
+    "                                    data.Field.Named(\"id\", "
+    "data.Value.UInt(17)),\n"
+    "                                    data.Field.Named(\"type\", "
+    "data.Value.Text(\"float\"))\n"
+    "                                ]))\n"
+    "                            ]))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"id\", "
+    "data.Value.UInt(18)),\n"
+    "                            data.Field.Named(\"type\", "
+    "data.Value.Text(\"Field Output\"))\n"
+    "                        ])\n"
+    "                    ])),\n"
+    "                    data.Field.Named(\"edges\", data.List([\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"10.Value\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"14.X\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"12.Value\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"14.Y\"))\n"
+    "                        ]),\n"
+    "                        data.Object([\n"
+    "                            data.Field.Named(\"from\", "
+    "data.Value.Text(\"14.Value\")),\n"
+    "                            data.Field.Named(\"to\", "
+    "data.Value.Text(\"18.Value\"))\n"
+    "                        ])\n"
+    "                    ]))\n"
+    "                ])\n"
+    "            ]))\n"
+    "        ])\n"
+    "    )\n"
+    "}\n";
 
 TEST_CASE(fields_call_source_libraries)
 {
@@ -620,7 +998,7 @@ TEST_CASE(fields_call_source_libraries)
         REQUIRE(mkdir(folder, 0700) == 0);
     }
     write_file("game/content/libraries/Shapes.chibi", SHAPES_LIBRARY);
-    write_file("game/content/fields/Disc.kdl", DISC_FIELD);
+    write_file("game/content/fields/Disc.chibi", DISC_FIELD);
     REQUIRE(validate() == 0 && errors() == 0);
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"preview_field\",\"kind\":\"field\",\"name\":\"Disc\",\"width\":16,\"height\":16}") ==
@@ -634,9 +1012,30 @@ TEST_CASE(fields_call_source_libraries)
     path(folder, sizeof folder, "game/content/shader-libraries");
     REQUIRE(mkdir(folder, 0700) == 0);
     write_file(
-        "game/content/shader-libraries/Different.kdl",
-        "version 3\nname \"Shapes\"\ndomain \"shader-library\"\nid_counter 1\n"
-        "(array)graphs { - kind=\"event\" name=\"Functions\"; }\n"
+        "game/content/shader-libraries/Different.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(3)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Shapes\")),\n"
+        "            data.Field.Named(\"domain\", "
+        "data.Value.Text(\"shader-library\")),\n"
+        "            data.Field.Named(\"id_counter\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"graphs\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"kind\", "
+        "data.Value.Text(\"event\")),\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Functions\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     static const char
         refusal[] = "Native graph declaration shares a source library's name";
@@ -648,7 +1047,7 @@ TEST_CASE(fields_call_source_libraries)
         0
     );
     REQUIRE(failure_code() && !strcmp(failure_code(), "validation_failed"));
-    path(collision, sizeof collision, "game/content/shader-libraries/Different.kdl");
+    path(collision, sizeof collision, "game/content/shader-libraries/Different.chibi");
     REQUIRE(unlink(collision) == 0);
     REQUIRE(validate() == 0 && errors() == 0);
     /* Without the function, the field's call has nothing to resolve. */
@@ -674,28 +1073,120 @@ TEST_CASE(particle_shader_bindings_resolve_library_functions)
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Rain\"}") == 0
     );
     char fixture[4096];
-    snprintf(fixture, sizeof fixture, "%s/test/fixtures/feature-coverage/content/shader-libraries/RainParticles.kdl", tool_root());
+    snprintf(fixture, sizeof fixture, "%s/test/fixtures/feature-coverage/content/shader-libraries/RainParticles.chibi", tool_root());
     char *source = tool_read(fixture);
     REQUIRE(source);
-    write_file("game/content/shader-libraries/RainParticles.kdl", source);
+    write_file("game/content/shader-libraries/RainParticles.chibi", source);
     free(source);
     REQUIRE(remove_authored_prototype("Rain"));
     write_file(
-        "game/content/prototypes/Rain.kdl",
-        "name \"Rain\"\ncomponents {\n"
-        " ParticleField3D count=128 seed=7 time=1.0 additive=#true\n"
-        " Geometry3D primitive=5 width=0.6 height=4.0 depth=0.6\n"
-        " Shader material=\"RainParticles.Fall\"\n"
-        " Transform3D { scale x=1.0 y=1.0 z=1.0; }\n}\n"
+        "game/content/prototypes/Rain.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Rain\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"ParticleField3D\", data.Object([\n"
+        "                    data.Field.Named(\"count\", "
+        "data.Value.UInt(128)),\n"
+        "                    data.Field.Named(\"seed\", data.Value.UInt(7)),\n"
+        "                    data.Field.Named(\"time\", "
+        "data.Value.Real(1.0)),\n"
+        "                    data.Field.Named(\"additive\", "
+        "data.Value.Bool(true))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Geometry3D\", data.Object([\n"
+        "                    data.Field.Named(\"primitive\", "
+        "data.Value.UInt(5)),\n"
+        "                    data.Field.Named(\"width\", "
+        "data.Value.Real(0.6)),\n"
+        "                    data.Field.Named(\"height\", "
+        "data.Value.Real(4.0)),\n"
+        "                    data.Field.Named(\"depth\", "
+        "data.Value.Real(0.6))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Shader\", data.Object([\n"
+        "                    data.Field.Named(\"material\", "
+        "data.Value.Text(\"RainParticles.Fall\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Transform3D\", data.Object([\n"
+        "                    data.Field.Named(\"scale\", data.Object([\n"
+        "                        data.Field.Named(\"x\", "
+        "data.Value.Real(1.0)),\n"
+        "                        data.Field.Named(\"y\", "
+        "data.Value.Real(1.0)),\n"
+        "                        data.Field.Named(\"z\", "
+        "data.Value.Real(1.0))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\npresentation \"3d\"\n(array)entities {\n - name=\"Rain\" prototype=\"Rain\"\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"presentation\", "
+        "data.Value.Text(\"3d\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Rain\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Rain\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     write_file(
-        "game/content/prototypes/Rain.kdl",
-        "name \"Rain\"\ncomponents {\n"
-        " ParticleField3D count=128\n"
-        " Geometry3D primitive=5 width=1.0 height=1.0 depth=1.0\n"
-        " Shader material=\"RainParticles.Missing\"\n}\n"
+        "game/content/prototypes/Rain.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Rain\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"ParticleField3D\", data.Object([\n"
+        "                    data.Field.Named(\"count\", "
+        "data.Value.UInt(128))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Geometry3D\", data.Object([\n"
+        "                    data.Field.Named(\"primitive\", "
+        "data.Value.UInt(5)),\n"
+        "                    data.Field.Named(\"width\", "
+        "data.Value.Real(1.0)),\n"
+        "                    data.Field.Named(\"height\", "
+        "data.Value.Real(1.0)),\n"
+        "                    data.Field.Named(\"depth\", "
+        "data.Value.Real(1.0))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Shader\", data.Object([\n"
+        "                    data.Field.Named(\"material\", "
+        "data.Value.Text(\"RainParticles.Missing\"))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(validate() != 0 && errors() > 0);
     return true;
@@ -745,7 +1236,29 @@ TEST_CASE(sounds_must_decode)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_bytes("game/content/sounds/Tone.ogg", tone, length);
     REQUIRE(!tone_refusal());
     REQUIRE(validate() == 0);
@@ -765,12 +1278,12 @@ TEST_CASE(sounds_must_decode)
     REQUIRE(message && !strcmp(message, refusal));
     /* even beside another asset's problems, which keep preparation from
      * reaching the sounds. */
-    write_file("game/content/prototypes/Broken.kdl", "name \"Broken\"\n(array)components {\n");
+    write_file("game/content/prototypes/Broken.chibi", "package asset\npub Build :: () -> byte[] {\n");
     REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
     message = first_message(result("project"));
     REQUIRE(message && !strcmp(message, refusal));
     char broken[256];
-    path(broken, sizeof broken, "game/content/prototypes/Broken.kdl");
+    path(broken, sizeof broken, "game/content/prototypes/Broken.chibi");
     REQUIRE(unlink(broken) == 0);
 
     /* Every header intact, but its one audio page, the last ~200 bytes,
@@ -858,50 +1371,165 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     char folder[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/hull_base.kdl", "name \"Hull\"\ncomponents {\n    Health current=3 maximum=3\n}\n");
-    write_file("game/content/prototypes/Hull.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    Transform x=1 y=2\n}\n");
+    write_file(
+        "game/content/prototypes/hull_base.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Health\", data.Object([\n"
+        "                    data.Field.Named(\"current\", "
+        "data.Value.UInt(3)),\n"
+        "                    data.Field.Named(\"maximum\", "
+        "data.Value.UInt(3))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/prototypes/Hull.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Drone\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Hull\")\n"
+        "            ])),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     /* Nor need a name be one a file could take. */
-    write_file("game/content/prototypes/grunt.kdl", "name \"enemies/grunt\"\n(array)includes \"Hull\"\n");
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hull\" prototype=\"Hull\"\n    - name=\"Drone\" prototype=\"Drone\"\n    - name=\"Grunt\" prototype=\"enemies/grunt\"\n}\n");
+    write_file(
+        "game/content/prototypes/grunt.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"enemies/grunt\")),\n"
+        "            data.Field.Named(\"includes\", data.List([\n"
+        "                data.Value.Text(\"Hull\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\"))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Drone\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Drone\"))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Grunt\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"enemies/grunt\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
         0
     );
     REQUIRE(yyjson_get_int(result("components")) == 2);
-    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hull.kdl"));
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hull.chibi"));
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"enemies/grunt\"}") ==
         0
     );
-    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/grunt.kdl"));
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/grunt.chibi"));
     /* Or one longer than a file name can be. */
-    char long_name[301], text[400], request[600];
+    char long_name[301], text[16384], request[600];
     memset(long_name, 'L', sizeof long_name - 1);
     long_name[sizeof long_name - 1] = '\0';
-    snprintf(text, sizeof text, "name \"%s\"\n", long_name);
-    write_file("game/content/prototypes/long.kdl", text);
+    snprintf(
+        text,
+        sizeof text,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"%s\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        long_name
+    );
+    write_file("game/content/prototypes/long.chibi", text);
     snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"%s\"}", long_name);
     REQUIRE(ctl(true, request) == 0 && reads(yyjson_get_str(result("name")), long_name));
     /* But not one longer than the player takes, which a shorter copy would
      * misname. */
-    char huge[PROTOTYPE_NAME_MAX + 2], huge_text[PROTOTYPE_NAME_MAX + 16],
-        huge_file[256];
+    char huge[PROTOTYPE_NAME_MAX + 2], huge_file[256];
     memset(huge, 'H', sizeof huge - 1);
     huge[sizeof huge - 1] = '\0';
-    snprintf(huge_text, sizeof huge_text, "name \"%s\"\n", huge);
-    write_file("game/content/prototypes/huge.kdl", huge_text);
+    av_doc *huge_doc = av_doc_new();
+    av_value *huge_value = av_obj(huge_doc);
+    av_doc_set_root(huge_doc, huge_value);
+    av_obj_add_str(huge_doc, huge_value, "name", huge);
+    char *huge_text = asset_document_write(huge_value);
+    assert(huge_text);
+    write_file("game/content/prototypes/huge.chibi", huge_text);
+    free(huge_text);
+    av_doc_free(huge_doc);
     REQUIRE(
-        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/huge.kdl\"}") !=
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/huge.chibi\"}") !=
         0
     );
-    REQUIRE(reads(failure(), "content/prototypes/huge.kdl declares a name longer than 1024 bytes"));
+    REQUIRE(reads(failure(), "content/prototypes/huge.chibi declares a name longer than 1024 bytes"));
     /* And a new prototype waits until every prototype can be read. */
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Wing\"}") != 0
     );
     REQUIRE(reads(failure_code(), "validation_failed"));
-    path(huge_file, sizeof huge_file, "game/content/prototypes/huge.kdl");
+    path(huge_file, sizeof huge_file, "game/content/prototypes/huge.chibi");
     REQUIRE(unlink(huge_file) == 0);
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
@@ -914,7 +1542,7 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     yyjson_arr_foreach(result("assets"), index, count, asset)
     {
         const char *name = yyjson_get_str(yyjson_obj_get(asset, "name"));
-        listed += reads(yyjson_get_str(yyjson_obj_get(asset, "path")), "content/prototypes/hull_base.kdl") &&
+        listed += reads(yyjson_get_str(yyjson_obj_get(asset, "path")), "content/prototypes/hull_base.chibi") &&
                   reads(name, "Hull");
     }
     REQUIRE(listed == 1);
@@ -923,9 +1551,24 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hull\"}") != 0
     );
-    REQUIRE(reads(failure(), "content/prototypes/hull_base.kdl already declares the prototype 'Hull'"));
+    REQUIRE(
+        reads(failure(), "content/prototypes/hull_base.chibi already declares the prototype 'Hull'")
+    );
     /* Two that declare one name are refused, as the player refuses them. */
-    write_file("game/content/prototypes/hull_copy.kdl", "name \"Hull\"\n");
+    write_file(
+        "game/content/prototypes/hull_copy.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Hull\"}") !=
         0
@@ -936,9 +1579,22 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     /* Even when one of them is the file named after it, which a lookup
      * reads first, the project is refused. */
     char copy[256];
-    path(copy, sizeof copy, "game/content/prototypes/hull_copy.kdl");
+    path(copy, sizeof copy, "game/content/prototypes/hull_copy.chibi");
     REQUIRE(unlink(copy) == 0);
-    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n");
+    write_file(
+        "game/content/prototypes/Drone.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Drone\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 1);
     /* A search that cannot read the folder, or a file in it, fails rather
      * than finding no declaration, since what it missed could declare the
@@ -1004,9 +1660,9 @@ TEST_CASE(models_import_into_the_project)
     );
     REQUIRE(reads(yyjson_get_str(result("prototype")), "Crate"));
     static const char *const files[] = { "content/textures/Crate/grain.png",
-                                         "content/materials/Crate_Wood.kdl",
+                                         "content/materials/Crate_Wood.chibi",
                                          "content/meshes/Crate.mesh",
-                                         "content/prototypes/Crate.kdl" };
+                                         "content/prototypes/Crate.chibi" };
     REQUIRE(yyjson_arr_size(result("files")) == 4 && yyjson_arr_size(result("warnings")) == 0);
     for (int i = 0; i < 4; i++) {
         REQUIRE(reads(yyjson_get_str(yyjson_arr_get(result("files"), (size_t)i)), files[i]));
@@ -1020,7 +1676,7 @@ TEST_CASE(models_import_into_the_project)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"Crate.glb\"}") != 0
     );
-    REQUIRE(reads(failure(), "content/prototypes/Crate.kdl already declares the prototype 'Crate'"));
+    REQUIRE(reads(failure(), "content/prototypes/Crate.chibi already declares the prototype 'Crate'"));
     REQUIRE(reads(failure_code(), "asset_conflict"));
     /* A file name that is no asset name needs a name of its own, which no
      * prototype may already declare, whatever its file is called. */
@@ -1031,12 +1687,25 @@ TEST_CASE(models_import_into_the_project)
         reads(failure(), "Name the import with name; 'old barrel' is not an asset name: Start with a letter; use letters, digits, - and _")
     );
     REQUIRE(reads(failure_code(), "invalid_request"));
-    write_file("game/content/prototypes/props.kdl", "name \"Barrel\"\n");
+    write_file(
+        "game/content/prototypes/props.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Barrel\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"old barrel.glb\",\"name\":\"Barrel\"}") !=
         0
     );
-    REQUIRE(reads(failure(), "content/prototypes/props.kdl already declares the prototype 'Barrel'"));
+    REQUIRE(reads(failure(), "content/prototypes/props.chibi already declares the prototype 'Barrel'"));
     REQUIRE(!holds("game/content/meshes/Barrel.mesh") && !holds("game/content/textures/Barrel"));
     /* A model it cannot read writes nothing. */
     REQUIRE(
@@ -1060,21 +1729,21 @@ TEST_CASE(manifest_content_folder_is_used)
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     /* Only the content folder is read before a request, so the manifest's
      * other problems are still listed with the project's. */
-    char kdl[256];
-    path(kdl, sizeof kdl, "game/project.kdl");
-    char *saved = tool_read(kdl);
+    char manifest_file[256];
+    path(manifest_file, sizeof manifest_file, "game/project.chibi");
+    char *saved = tool_read(manifest_file);
     assert(saved);
-    append_manifest("application {\n    fullscreen \"yes\"\n}\n");
+    set_application("fullscreen", "yes");
     REQUIRE(validate() != 0 && errors() == 1);
     const char *listed = first_message(result("project"));
     REQUIRE(listed && strstr(listed, "fullscreen a boolean"));
-    tool_write(kdl, saved);
+    tool_write(manifest_file, saved);
     free(saved);
     /* A start scene's content/ path stays relative to the project root, as
      * earlier builds read it, so with the content in assets/ it is missing. */
-    set_start_scene("content/scenes/Start.kdl");
+    set_start_scene("content/scenes/Start.chibi");
     REQUIRE(validate() != 0 && errors() == 1);
-    set_start_scene("scenes/Start.kdl");
+    set_start_scene("scenes/Start.chibi");
     ctl(true, "{\"contract\":1,\"operation\":\"status\"}");
     REQUIRE(reads(yyjson_get_str(result("content_root")), "assets"));
 
@@ -1087,7 +1756,29 @@ TEST_CASE(manifest_content_folder_is_used)
     path(hero, sizeof hero, "game/assets/prototypes/Hero.chibi");
     REQUIRE(access(hero, F_OK) == 0);
     write_file("game/assets/prototypes/Hero.chibi", "Hero :: prototype { Transform { x: 1, y: 2 } }\n");
-    write_file("game/assets/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    write_file(
+        "game/assets/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Hero\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hero\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/Hero.chibi\"}") ==
         0
@@ -1098,12 +1789,46 @@ TEST_CASE(manifest_content_folder_is_used)
         0
     );
     /* The input map is formatted where the content is too. */
-    write_file("game/assets/input.kdl", "Dash {\n  (array)sources \"Aim Stick\"\n}\n");
+    write_file(
+        "game/assets/input.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Dash\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Aim Stick\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
     char map[256];
-    path(map, sizeof map, "game/assets/input.kdl");
+    path(map, sizeof map, "game/assets/input.chibi");
     char *formatted = tool_read(map);
-    bool canonical = reads(formatted, "Dash {\n    (array)sources \"Aim Stick\"\n}\n");
+    bool canonical = reads(
+        formatted,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Dash\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Aim Stick\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     free(formatted);
     REQUIRE(canonical);
 
@@ -1115,17 +1840,23 @@ TEST_CASE(manifest_content_folder_is_used)
     yyjson_val *use = yyjson_arr_get_first(result("uses"));
     REQUIRE(reads(yyjson_get_str(yyjson_obj_get(use, "path")), "content/ui/Hud.rml"));
 
-    write_file("game/assets/prototypes/Broken.kdl", "name \"Broken\"\ncomponents {\n");
+    write_file("game/assets/prototypes/Broken.chibi", "package asset\npub Build :: () -> byte[] {\n");
     REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
     yyjson_val *problem = yyjson_arr_get_first(result("problems"));
-    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(problem, "path")), "content/prototypes/Broken.kdl"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(problem, "path")), "content/prototypes/Broken.chibi"));
 
     /* A project too old to open still names where its content is. */
-    char manifest[256], old[1024];
-    path(manifest, sizeof manifest, "game/project.kdl");
+    char manifest[256];
+    path(manifest, sizeof manifest, "game/project.chibi");
     char *text = tool_read(manifest);
     assert(text);
-    snprintf(old, sizeof old, "version 1%s", strchr(text, '\n'));
+    char error[256];
+    av_doc *doc = asset_document_read(text, error, sizeof error);
+    assert(doc);
+    av_obj_set(doc, av_doc_root(doc), "version", av_sint(doc, 1));
+    char *old = asset_document_write(av_doc_root(doc));
+    assert(old);
+    av_doc_free(doc);
     free(text);
     tool_write(manifest, old);
     REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"status\"}") == 0);
@@ -1133,6 +1864,7 @@ TEST_CASE(manifest_content_folder_is_used)
     text = tool_read(manifest);
     REQUIRE(text && !strcmp(text, old));
     free(text);
+    free(old);
     return true;
 }
 
@@ -1154,23 +1886,48 @@ TEST_CASE(scenes_run_under_their_own_name)
         "    }\n"
         "}\n"
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Again\"\n    }\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Again\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(
-        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start.kdl\",\"frames\":2}") ==
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start.chibi\",\"frames\":2}") ==
         0
     );
-    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Start.kdl"));
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Start.chibi"));
 
     /* Only a name that ends with the extension names the file. */
     char start[256], boss[256];
-    path(start, sizeof start, "game/content/scenes/Start.kdl");
-    path(boss, sizeof boss, "game/content/scenes/Boss.kdl.v2.kdl");
+    path(start, sizeof start, "game/content/scenes/Start.chibi");
+    path(boss, sizeof boss, "game/content/scenes/Boss.chibi.v2.chibi");
     REQUIRE(rename(start, boss) == 0);
     REQUIRE(
-        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Boss.kdl.v2\",\"frames\":2}") ==
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Boss.chibi.v2\",\"frames\":2}") ==
         0
     );
-    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Boss.kdl.v2.kdl"));
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Boss.chibi.v2.chibi"));
     return true;
 }
 
@@ -1205,23 +1962,94 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     char folder[256], scene[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Transform x=0 y=0\n}\n");
+    write_file(
+        "game/content/prototypes/Hull.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(0))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     /* A root and a child may share a name; siblings may not. */
     write_file(
-        "game/content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n"
-        "    - name=\"Ship\" prototype=\"Hull\" { components { Transform "
-        "x=100 y=5; }; "
-        "(array)children { - name=\"Turret\" prototype=\"Hull\" { components { "
-        "Transform x=10 y=0; }; }; }; }\n"
-        "    - name=\"Turret\" prototype=\"Hull\"\n}\n"
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Ship\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.UInt(100)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(5))\n"
+        "                        ]))\n"
+        "                    ])),\n"
+        "                    data.Field.Named(\"children\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                            data.Field.Named(\"components\", "
+        "data.Object([\n"
+        "                                data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                                    data.Field.Named(\"x\", "
+        "data.Value.UInt(10)),\n"
+        "                                    data.Field.Named(\"y\", "
+        "data.Value.UInt(0))\n"
+        "                                ]))\n"
+        "                            ]))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
-    path(scene, sizeof scene, "game/content/scenes/Start.kdl");
+    path(scene, sizeof scene, "game/content/scenes/Start.chibi");
     char *text = tool_read(scene);
-    bool nested = text &&
-                  strstr(text, "        (array)children {\n            - {\n                name \"Turret\"");
+    char error[256];
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    av_value *ship = av_arr_get(av_obj_get(av_doc_root(doc), "entities"), 0);
+    av_value *turret = av_arr_get(av_obj_get(ship, "children"), 0);
+    const char *name = av_get_str(av_obj_get(turret, "name"));
+    bool nested = doc && name && !strcmp(name, "Turret");
+    av_doc_free(doc);
     free(text);
     REQUIRE(nested);
     REQUIRE(
@@ -1232,11 +2060,41 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     /* The catalog lists a child by its path. */
     REQUIRE(catalog_lists("Start", "Ship.Turret"));
     write_file(
-        "game/content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "
-        "prototype=\"Hull\" { "
-        "(array)children { - name=\"Turret\" prototype=\"Hull\"; - "
-        "name=\"Turret\" prototype=\"Hull\"; }; }\n}\n"
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Ship\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"children\", data.List([\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\"))\n"
+        "                        ]),\n"
+        "                        data.Object([\n"
+        "                            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Turret\")),\n"
+        "                            data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\"))\n"
+        "                        ])\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(validate() != 0);
     return true;
@@ -1250,30 +2108,144 @@ TEST_CASE(scene_joints_name_their_other_by_path)
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
     write_file(
-        "game/content/prototypes/Post.kdl",
-        "name \"Post\"\ncomponents {\n    (object)Body\n"
-        "    Collider category=1 mask=1 radius=4.0\n    "
-        "(object)Transform\n}\n"
+        "game/content/prototypes/Post.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Post\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Body\", data.Object([])),\n"
+        "                data.Field.Named(\"Collider\", data.Object([\n"
+        "                    data.Field.Named(\"category\", "
+        "data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"mask\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"radius\", "
+        "data.Value.Real(4.0))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Transform\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     write_file(
-        "game/content/prototypes/Weight.kdl",
-        "name \"Weight\"\ncomponents {\n    Body type=\"Dynamic\"\n"
-        "    Collider category=2 mask=2 radius=4.0\n    "
-        "Joint kind=\"Distance\"\n"
-        "    (object)Orientation\n    (object)Transform\n    "
-        "(object)Velocity\n}\n"
+        "game/content/prototypes/Weight.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Weight\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Body\", data.Object([\n"
+        "                    data.Field.Named(\"type\", "
+        "data.Value.Text(\"Dynamic\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Collider\", data.Object([\n"
+        "                    data.Field.Named(\"category\", "
+        "data.Value.UInt(2)),\n"
+        "                    data.Field.Named(\"mask\", data.Value.UInt(2)),\n"
+        "                    data.Field.Named(\"radius\", "
+        "data.Value.Real(4.0))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Joint\", data.Object([\n"
+        "                    data.Field.Named(\"kind\", "
+        "data.Value.Text(\"Distance\"))\n"
+        "                ])),\n"
+        "                data.Field.Named(\"Orientation\", data.Object([])),\n"
+        "                data.Field.Named(\"Transform\", data.Object([])),\n"
+        "                data.Field.Named(\"Velocity\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
-    write_file("game/content/prototypes/Fall.kdl", "name \"Fall\"\ncomponents {\n    Gravity {\n        acceleration y=-320.0\n    }\n}\n");
-    const char *scene = "version 1\nname \"Start\"\n(array)entities {\n"
-                        "    - name=\"Anchor\" prototype=\"Post\" { components "
-                        "{ Transform x=-200 y=0; }; }\n"
-                        "    - name=\"Swing\" prototype=\"Weight\" { "
-                        "components { Joint other=\"%s\"; "
-                        "Transform x=-200 y=-50; }; }\n"
-                        "    - name=\"Fall\" prototype=\"Fall\"\n}\n";
-    char text[1024];
+    write_file(
+        "game/content/prototypes/Fall.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Fall\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Gravity\", data.Object([\n"
+        "                    data.Field.Named(\"acceleration\", data.Object([\n"
+        "                        data.Field.Named(\"y\", "
+        "data.Value.Real(-320.0))\n"
+        "                    ]))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    const char *scene =
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Anchor\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Post\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.Int(-200)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(0))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Swing\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Weight\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Joint\", data.Object([\n"
+        "                            data.Field.Named(\"other\", "
+        "data.Value.Text(\"%s\"))\n"
+        "                        ])),\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.Int(-200)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.Int(-50))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ]),\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Fall\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Fall\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n";
+    char text[16384];
     snprintf(text, sizeof text, scene, "Anchor");
-    write_file("game/content/scenes/Start.kdl", text);
+    write_file("game/content/scenes/Start.chibi", text);
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":60}") ==
@@ -1282,7 +2254,7 @@ TEST_CASE(scene_joints_name_their_other_by_path)
     REQUIRE(fabs(global_x("Swing") + 200) < 1);
     /* A path no entity has is a problem, and the scenario refuses it. */
     snprintf(text, sizeof text, scene, "Anchors");
-    write_file("game/content/scenes/Start.kdl", text);
+    write_file("game/content/scenes/Start.chibi", text);
     REQUIRE(validate() != 0 && errors() == 1);
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") !=
@@ -1298,26 +2270,108 @@ TEST_CASE(prototype_children_come_with_their_instance)
     char folder[256], ship[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Transform x=0 y=0\n}\n");
     write_file(
-        "game/content/prototypes/Ship.kdl",
-        "name \"Ship\"\ncomponents { Transform x=0 y=0; }\n"
-        "(array)children { - name=\"Gun\" prototype=\"Hull\" { components { "
-        "Transform x=4 y=0; }; }; }\n"
+        "game/content/prototypes/Hull.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hull\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(0))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     write_file(
-        "game/content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Flagship\" "
-        "prototype=\"Ship\" { components { Transform x=100 y=0; }; }\n}\n"
+        "game/content/prototypes/Ship.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(0)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(0))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Gun\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.UInt(4)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(0))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Flagship\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Ship\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Transform\", "
+        "data.Object([\n"
+        "                            data.Field.Named(\"x\", "
+        "data.Value.UInt(100)),\n"
+        "                            data.Field.Named(\"y\", "
+        "data.Value.UInt(0))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(format(NULL) == 0 && format("--check") == 0);
-    path(ship, sizeof ship, "game/content/prototypes/Ship.kdl");
+    path(ship, sizeof ship, "game/content/prototypes/Ship.chibi");
     char *text = tool_read(ship);
     /* A prototype with children is formatted too: Transform's zero fields go. */
-    bool nested = text &&
-                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"") &&
-                  strstr(text, "(object)Transform");
+    char error[256];
+    av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
+    av_value *gun = av_arr_get(av_obj_get(av_doc_root(doc), "children"), 0);
+    const char *name = av_get_str(av_obj_get(gun, "name"));
+    av_value *transform = av_obj_get(av_obj_get(gun, "components"), "Transform");
+    bool nested = doc && name && !strcmp(name, "Gun") && av_is_obj(transform) &&
+                  av_obj_size(transform) == 0;
+    av_doc_free(doc);
     free(text);
     REQUIRE(nested);
     REQUIRE(
@@ -1341,9 +2395,29 @@ TEST_CASE(prototype_children_come_with_their_instance)
     );
     /* A child's own behaviors are checked with the scene that spawns it. */
     write_file(
-        "game/content/prototypes/Ship.kdl",
-        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
-        "(array)behaviors \"Missing\"; }; }\n"
+        "game/content/prototypes/Ship.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Gun\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Missing\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"scene\",\"name\":\"Start\"}") !=
@@ -1353,9 +2427,32 @@ TEST_CASE(prototype_children_come_with_their_instance)
     REQUIRE(missing && strstr(missing, "Missing"));
     /* So are the bindings a child's overrides add. */
     write_file(
-        "game/content/prototypes/Ship.kdl",
-        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
-        "components { Ui document=\"Nowhere\"; }; }; }\n"
+        "game/content/prototypes/Ship.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Gun\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Hull\")),\n"
+        "                    data.Field.Named(\"components\", data.Object([\n"
+        "                        data.Field.Named(\"Ui\", data.Object([\n"
+        "                            data.Field.Named(\"document\", "
+        "data.Value.Text(\"Nowhere\"))\n"
+        "                        ]))\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Ship\"}") !=
@@ -1363,7 +2460,28 @@ TEST_CASE(prototype_children_come_with_their_instance)
     );
     missing = first_message(result("diagnostics"));
     REQUIRE(missing && !strcmp(missing, "Unknown UI document 'Nowhere'"));
-    write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
+    write_file(
+        "game/content/prototypes/Ship.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Ship\")),\n"
+        "            data.Field.Named(\"children\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Again\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Ship\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0);
     return true;
 }
@@ -1373,23 +2491,28 @@ TEST_CASE(prototype_children_come_with_their_instance)
 static void write_fans(const char *prefix, int levels)
 {
     for (int i = 0; i < levels; i++) {
-        char file[128], text[256];
-        snprintf(file, sizeof file, "game/content/prototypes/%s%d.kdl", prefix, i);
-        int n = snprintf(text, sizeof text, "name \"%s%d\"\n", prefix, i);
+        char file[128], name[128];
+        snprintf(file, sizeof file, "game/content/prototypes/%s%d.chibi", prefix, i);
+        snprintf(name, sizeof name, "%s%d", prefix, i);
+        av_doc *doc = av_doc_new();
+        av_value *value = av_obj(doc);
+        av_doc_set_root(doc, value);
+        av_obj_add_str(doc, value, "name", name);
         if (i + 1 < levels) {
-            snprintf(
-                text + n,
-                sizeof text - n,
-                "(array)children { - name=\"L\" prototype=\"%s%d\"; - "
-                "name=\"R\" "
-                "prototype=\"%s%d\"; }\n",
-                prefix,
-                i + 1,
-                prefix,
-                i + 1
-            );
+            av_value *children = av_obj_add_arr(doc, value, "children");
+            snprintf(name, sizeof name, "%s%d", prefix, i + 1);
+            const char *names[] = { "L", "R" };
+            for (int j = 0; j < 2; j++) {
+                av_value *child = av_arr_add_obj(doc, children);
+                av_obj_add_str(doc, child, "name", names[j]);
+                av_obj_add_str(doc, child, "prototype", name);
+            }
         }
+        char *text = asset_document_write(value);
+        assert(text);
         write_file(file, text);
+        free(text);
+        av_doc_free(doc);
     }
 }
 
@@ -1403,14 +2526,37 @@ TEST_CASE(prototype_expansion_is_shared)
     REQUIRE(mkdir(folder, 0700) == 0);
     write_fans("Fan", 11);
     for (int i = 0; i < 4; i++) {
-        char file[64], text[160];
-        snprintf(file, sizeof file, "game/content/prototypes/Pair%d.kdl", i);
+        char file[64], text[16384];
+        snprintf(file, sizeof file, "game/content/prototypes/Pair%d.chibi", i);
         snprintf(
             text,
             sizeof text,
-            "name \"Pair%d\"\n(array)children { - name=\"L\" "
-            "prototype=\"Fan0\"; "
-            "- name=\"R\" prototype=\"Fan0\"; }\n",
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"name\", "
+            "data.Value.Text(\"Pair%d\")),\n"
+            "            data.Field.Named(\"children\", data.List([\n"
+            "                data.Object([\n"
+            "                    data.Field.Named(\"name\", "
+            "data.Value.Text(\"L\")),\n"
+            "                    data.Field.Named(\"prototype\", "
+            "data.Value.Text(\"Fan0\"))\n"
+            "                ]),\n"
+            "                data.Object([\n"
+            "                    data.Field.Named(\"name\", "
+            "data.Value.Text(\"R\")),\n"
+            "                    data.Field.Named(\"prototype\", "
+            "data.Value.Text(\"Fan0\"))\n"
+            "                ])\n"
+            "            ]))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
             i
         );
         write_file(file, text);
@@ -1432,13 +2578,24 @@ TEST_CASE(scene_instances_share_the_expansion)
     REQUIRE(mkdir(folder, 0700) == 0);
     write_fans("Bush", 9);
     REQUIRE(validate() == 0);
-    static char scene[PROTOTYPE_EXPANSION_MAX];
-    int n = snprintf(scene, sizeof scene, "version 1\nname \"Start\"\n(array)entities {\n");
+    av_doc *doc = av_doc_new();
+    av_value *scene = av_obj(doc);
+    av_doc_set_root(doc, scene);
+    av_obj_add_int(doc, scene, "version", 1);
+    av_obj_add_str(doc, scene, "name", "Start");
+    av_value *entities = av_obj_add_arr(doc, scene, "entities");
     for (int i = 0; i < PROTOTYPE_EXPANSION_MAX / 512; i++) {
-        n += snprintf(scene + n, sizeof scene - n, "    - name=\"B%d\" prototype=\"Bush0\"\n", i);
+        char name[32];
+        snprintf(name, sizeof name, "B%d", i);
+        av_value *entity = av_arr_add_obj(doc, entities);
+        av_obj_add_str(doc, entity, "name", name);
+        av_obj_add_str(doc, entity, "prototype", "Bush0");
     }
-    snprintf(scene + n, sizeof scene - n, "}\n");
-    write_file("game/content/scenes/Start.kdl", scene);
+    char *text = asset_document_write(scene);
+    assert(text);
+    write_file("game/content/scenes/Start.chibi", text);
+    free(text);
+    av_doc_free(doc);
     REQUIRE(validate_expansion() != 0);
     const char *message = first_message(result("project"));
     REQUIRE(message && strstr(message, "through their includes and children"));
@@ -1625,9 +2782,42 @@ TEST_CASE(scenarios_hold_input_actions)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Jumper\"}") == 0
     );
-    write_file("game/content/input.kdl", "Jump {\n    (array)sources \"Mouse Left\"\n}\n");
+    write_file(
+        "game/content/input.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Jump\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Mouse Left\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(remove_authored_prototype("Dot"));
-    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)Transform\n}\n");
+    write_file(
+        "game/content/prototypes/Dot.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Dot\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_file(
         "game/content/behaviors/Jumper.chibi",
         "Jumper :: behavior {\n"
@@ -1638,7 +2828,32 @@ TEST_CASE(scenarios_hold_input_actions)
         "    }\n"
         "}\n"
     );
-    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Jumper\"\n    }\n}\n");
+    write_file(
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Jumper\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     /* 1 is CONTROL_MOUSE_LEFT, the first Control. */
     const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
                           "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2,"
@@ -1661,12 +2876,52 @@ TEST_CASE(scenarios_hold_controller_slots)
         REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
     }
     write_file(
-        "game/content/input.kdl",
-        "Left {\n (array)sources \"Z\"\n controller 0\n"
-        " (array)buttons \"Dpad Left\"\n}\n"
-        "Confirm {\n controller 1\n (array)buttons \"A\"\n}\n"
+        "game/content/input.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Left\", data.Object([\n"
+        "                data.Field.Named(\"sources\", data.List([\n"
+        "                    data.Value.Text(\"Z\")\n"
+        "                ])),\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(0)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"Dpad Left\")\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Confirm\", data.Object([\n"
+        "                data.Field.Named(\"controller\", "
+        "data.Value.UInt(1)),\n"
+        "                data.Field.Named(\"buttons\", data.List([\n"
+        "                    data.Value.Text(\"A\")\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
-    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
+    write_file(
+        "game/content/prototypes/Dot.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Dot\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_file(
         "game/content/behaviors/Controls.chibi",
         "Controls :: behavior {\n"
@@ -1681,10 +2936,30 @@ TEST_CASE(scenarios_hold_controller_slots)
         "}\n"
     );
     write_file(
-        "game/content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n"
-        " - name=\"Dot\" prototype=\"Dot\" {\n"
-        " (array)behaviors \"Controls\"\n }\n}\n"
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Controls\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     /* A sparse sample holds both devices across fixed steps. */
     const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
@@ -1736,7 +3011,23 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
         path(directory, sizeof directory, folders[i]);
         REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
     }
-    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
+    write_file(
+        "game/content/prototypes/Dot.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Dot\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     write_file(
         "game/content/behaviors/Pointer.chibi",
         "Pointer :: behavior { on Tick :: () {\n"
@@ -1749,10 +3040,30 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
         " } }\n"
     );
     write_file(
-        "game/content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n"
-        " - name=\"Dot\" prototype=\"Dot\" {\n"
-        " (array)behaviors \"Pointer\"\n }\n}\n"
+        "game/content/scenes/Start.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Start\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Dot\")),\n"
+        "                    data.Field.Named(\"behaviors\", data.List([\n"
+        "                        data.Value.Text(\"Pointer\")\n"
+        "                    ]))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
     const char *base = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
                        "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"

@@ -74,41 +74,59 @@ Old graphs keep their generated nodes, and the editor presents them in the new v
 
 ## Documents
 
-The setting implies each pin's type, so documents write only the key or type, the field inputs a Set shows, and defaults:
+The setting implies each pin's type, so records keep the key or type, field inputs and defaults. This ordinary helper constructs a nodes value to embed in a complete graph document:
 
-```kdl
-(array)nodes {
-    - {
-        id 4
-        type "Get Component"
-        inputs Component="Velocity"
-        outputs {
-            (object)Value.x
-        }
-    }
-    - {
-        id 10
-        type "Set Component"
-        inputs {
-            Component "Transform"
-            x id=18
-        }
-    }
-    - {
-        id 19
-        type "Set Component"
-        inputs {
-            Component "Health"
-            Value {
-                default current=5 maximum=9
-            }
-        }
-    }
-    - {
-        id 24
-        type "Make Struct"
-        inputs current=5 maximum=9 Type="Health"
-    }
+```chibi
+package asset
+
+import data "game:assets"
+
+// Embed this value in a complete graph's nodes field.
+pub NodeRecords :: () -> data.Value {
+    return data.List([
+        data.Object([
+            data.Field.Named("id", data.Value.UInt(4)),
+            data.Field.Named("type", data.Value.Text("Get Component")),
+            data.Field.Named("inputs", data.Object([
+                data.Field.Named("Component", data.Value.Text("Velocity"))
+            ])),
+            data.Field.Named("outputs", data.Object([
+                data.Field.Named("Value.x", data.Object([]))
+            ]))
+        ]),
+        data.Object([
+            data.Field.Named("id", data.Value.UInt(10)),
+            data.Field.Named("type", data.Value.Text("Set Component")),
+            data.Field.Named("inputs", data.Object([
+                data.Field.Named("Component", data.Value.Text("Transform")),
+                data.Field.Named("x", data.Object([
+                    data.Field.Named("id", data.Value.UInt(18))
+                ]))
+            ]))
+        ]),
+        data.Object([
+            data.Field.Named("id", data.Value.UInt(19)),
+            data.Field.Named("type", data.Value.Text("Set Component")),
+            data.Field.Named("inputs", data.Object([
+                data.Field.Named("Component", data.Value.Text("Health")),
+                data.Field.Named("Value", data.Object([
+                    data.Field.Named("default", data.Object([
+                        data.Field.Named("current", data.Value.UInt(5)),
+                        data.Field.Named("maximum", data.Value.UInt(9))
+                    ]))
+                ]))
+            ]))
+        ]),
+        data.Object([
+            data.Field.Named("id", data.Value.UInt(24)),
+            data.Field.Named("type", data.Value.Text("Make Struct")),
+            data.Field.Named("inputs", data.Object([
+                data.Field.Named("current", data.Value.UInt(5)),
+                data.Field.Named("maximum", data.Value.UInt(9)),
+                data.Field.Named("Type", data.Value.Text("Health"))
+            ]))
+        ])
+    ]);
 }
 ```
 
@@ -142,7 +160,7 @@ This is the test registry, which adds a few test-only nodes to the application's
   - Its Properties panel can offer the Component or Type setting through `ed_pin_choices`. The choices are a name catalog, so the selected item compares `editor_choice.name` with the pin's string, and the choice commits with `graph_set_pin_default`.
   - Write toggles call `component_node_show_field` and `component_node_split_value`.
 - **Saved source:** edit component access in `.chibi` behavior/system source,
-  or declarative KDL where the asset uses a graph. Format and validate the saved
+  or declarative compiled Chibi where the asset uses a graph. Format and validate the saved
   asset through the [native controller](runtime-authoring.md). The former MCP
   `add_node`, `split_pin`, and `remove_pin` transport is retired.
 

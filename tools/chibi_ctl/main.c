@@ -39,8 +39,8 @@ static void usage(const char *program)
         "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n"
-        "With --migrate, upgrade a project saved by an earlier build in "
-        "place.\n",
+        "With --migrate, validate the current project source baseline; "
+        "earlier formats require offline conversion.\n",
         program,
         program,
         program,

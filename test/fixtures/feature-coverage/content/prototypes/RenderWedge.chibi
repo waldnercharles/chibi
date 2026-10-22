@@ -1,0 +1,31 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RenderWedge")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(1.0)),
+                    data.Field.Named("height", data.Value.Real(1.0)),
+                    data.Field.Named("width", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("MeshAsset", data.Object([
+                    data.Field.Named("source", data.Value.Text("content/meshes/RenderWedge.mesh"))
+                ])),
+                data.Field.Named("Transform3D", data.Object([
+                    data.Field.Named("rotation", data.Object([
+                        data.Field.Named("w", data.Value.Real(1.0))
+                    ])),
+                    data.Field.Named("scale", data.Object([
+                        data.Field.Named("x", data.Value.Real(1.0)),
+                        data.Field.Named("y", data.Value.Real(1.0)),
+                        data.Field.Named("z", data.Value.Real(1.0))
+                    ]))
+                ]))
+            ]))
+        ])
+    );
+}

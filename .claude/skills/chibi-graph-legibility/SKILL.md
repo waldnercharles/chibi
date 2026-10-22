@@ -5,7 +5,7 @@ description: Make Chibi behavior, shader and field graphs read like code. Use wh
 
 A legible graph uses expressions for formulas, named values for shared reads,
 and explicit control flow. Executable behavior, library and system source lives
-in `.chibi`; declarative assets live in KDL. Edit these files directly. Optional
+in `.chibi`; data assets are ordinary compiled Chibi modules importing `game:assets`. Edit these sources directly. Optional
 graph layout and debug metadata never define execution.
 
 ## Passes

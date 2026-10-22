@@ -23,6 +23,7 @@
 
 static const char *host_path, *producer_path, *artifact_path;
 static char root[64], log_path[128], compiler[128], core[128];
+static int source_minimum = 1;
 
 static void path(char *out, const char *relative)
 {
@@ -75,8 +76,9 @@ static unsigned char *read_bytes(const char *path, size_t *length)
 static void contract(int version, int minimum)
 {
     char text[128];
-    snprintf(text, sizeof text, "version %d\nminimum %d\n", version, minimum);
-    write_file("compiler/bootstrap.kdl", text);
+    source_minimum = minimum;
+    snprintf(text, sizeof text, "package package_compiler\npub BootstrapContract :: () -> int[] { return [%d, %d] }\n", version, minimum);
+    write_file("compiler/Bootstrap.chibi", text);
 }
 
 /* The manifest of artifact folder name, recording format, version, a
@@ -95,13 +97,15 @@ static void manifest(
     snprintf(
         text,
         sizeof text,
-        "{\"format\": %d, \"version\": %d, \"minimum\": 1, \"revision\": \"\", "
+        "{\"format\": %d, \"version\": %d, \"minimum\": %d, \"revision\": "
+        "\"\", "
         "\"closure\": {\"file\": \"compiler.chibip\", \"bytes\": %zu, "
         "\"sha256\": \"%s\"}, "
         "\"project\": \"/project\", \"core\": \"/sdk/core\", \"sources\": %s, "
         "\"target\": %s}\n",
         format,
         version,
+        source_minimum,
         length,
         digest,
         sources,
@@ -160,29 +164,26 @@ TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options)
     return true;
 }
 
-/* The sources' bootstrap.kdl must exist and hold a minimum from 1 to its
- * version. */
+/* Early recovery reads the compiled source contract from artifact metadata. */
 TEST_CASE(bootstrap_needs_the_sources_contract)
 {
-    artifact("plain", 1, 1, "abc", ABC_SHA256, NOTHING);
-    REQUIRE(check("plain") == 1 && log_has("bootstrap.kdl: it cannot be read"));
     contract(1, 2);
-    REQUIRE(check("plain") == 1 && log_has("needs a version and a minimum"));
+    artifact("invalid-contract", 1, 1, "abc", ABC_SHA256, NOTHING);
+    REQUIRE(check("invalid-contract") == 1 && log_has("needs a version and a minimum"));
+    contract(1, 0);
+    artifact("zero-contract", 1, 1, "abc", ABC_SHA256, NOTHING);
+    REQUIRE(check("zero-contract") == 1 && log_has("needs a version and a minimum"));
     return true;
 }
 
-/* An artifact of another format, or older than the sources' minimum, is
- * refused before anything loads. */
-TEST_CASE(bootstrap_rejects_unknown_formats_and_old_versions)
+/* An artifact of another format is refused before any closure loads. */
+TEST_CASE(bootstrap_rejects_unknown_formats_and_invalid_contracts)
 {
     contract(3, 2);
     artifact("future", 2, 3, "abc", ABC_SHA256, NOTHING);
     REQUIRE(check("future") == 1 && log_has("bootstrap.json has format 2; this host reads format 1"));
     artifact("old", 1, 1, "abc", ABC_SHA256, NOTHING);
-    REQUIRE(
-        check("old") == 1 &&
-        log_has("bootstrap version 1, older than 2, the oldest these compiler sources support")
-    );
+    REQUIRE(check("old") == 1 && log_has("needs a version and a minimum"));
     folder("empty");
     REQUIRE(check("empty") == 1 && log_has("holds no readable bootstrap.json"));
     return true;
@@ -326,7 +327,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     folder("core");
     RUN_TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options);
     RUN_TEST_CASE(bootstrap_needs_the_sources_contract);
-    RUN_TEST_CASE(bootstrap_rejects_unknown_formats_and_old_versions);
+    RUN_TEST_CASE(bootstrap_rejects_unknown_formats_and_invalid_contracts);
     RUN_TEST_CASE(bootstrap_checks_the_recorded_closure);
     RUN_TEST_CASE(bootstrap_reads_every_recorded_source);
     RUN_TEST_CASE(bootstrap_rejects_another_target);

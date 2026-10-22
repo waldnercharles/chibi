@@ -5,7 +5,7 @@
 > projects.
 
 The authored sandbox is preserved in the extracted Voidweaver repository. Its
-startup scene is `content/scenes/Sandbox.kdl`. Open the external project with
+startup scene is `content/scenes/Sandbox.chibi`. Open the external project with
 installed-SDK Studio:
 
 ```sh
@@ -167,7 +167,7 @@ hardware. The new dense fluid renderer requires native compute; no GLES fluid
 fallback is implemented. Far fluid sleeps with a camera buffer, while far rigid
 bodies and behavior schedules are not yet a fully streamed world scheduler.
 
-Edit the `.chibi` and KDL assets in that external repository, then format and
+Edit the `.chibi` assets in that external repository, then format and
 validate them with `build/bin/chibi_ctl --project-root /absolute/path/to/chibi-voidweaver`; see the
 [saved-file workflow](runtime-authoring.md) for request examples. Native runtime
 changes require rebuilding and relaunching an already-open game/editor.

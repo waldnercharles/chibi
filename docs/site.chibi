@@ -1,0 +1,18 @@
+package asset
+
+import docs "game:documentation"
+
+// The complete public allowlist. Research, evidence and internal records are
+// published only when explicitly named here.
+pub Build :: () -> byte[] {
+    return docs.Encode("Chibi", [
+        docs.Section.Group("Overview", [docs.Page.Markdown("Chibi", "README.md", "index.html")]),
+        docs.Section.Group("Learn", [docs.Page.Markdown("The Chibi language", "docs/code-language.md", "language.html")]),
+        docs.Section.Group("Testing", [docs.Page.Markdown("Testing", "docs/guide/testing.md", "testing.html")]),
+        docs.Section.Group("Packages", [docs.Page.Packages("Core packages", "packages/core", "core", "packages.html")]),
+        docs.Section.Group("Examples", [docs.Page.Markdown("Examples", "docs/examples.md", "examples.html")]),
+        docs.Section.Group("FAQ", [docs.Page.Markdown("FAQ", "docs/guide/faq.md", "faq.html")]),
+        docs.Section.Group("Grammar", [docs.Page.Grammar("Grammar", "src/language/grammar.js", "grammar.html")]),
+        docs.Section.Group("Toolchain", [docs.Page.Markdown("Toolchain", "docs/guide/toolchain.md", "toolchain.html")])
+    ]);
+}

@@ -306,7 +306,22 @@ TEST_CASE(runtime_snapshots)
     render_shader_model_stats_reset();
     for (int i = 0; i < COUNT; i++) {
         entities[i] = ecs_world_create_entity(world);
-        snprintf(text[i], sizeof text[i], "Radius %.8g\n", 1 + i / 16.0);
+        snprintf(
+            text[i],
+            sizeof text[i],
+            "package asset\n"
+            "\n"
+            "import data \"game:assets\"\n"
+            "\n"
+            "pub Build :: () -> byte[] {\n"
+            "    return data.Encode(\n"
+            "        data.Object([\n"
+            "            data.Field.Named(\"Radius\", data.Value.Real(%.8g))\n"
+            "        ])\n"
+            "    )\n"
+            "}\n",
+            1 + i / 16.0
+        );
         Shader binding = { .shape = asset->name, .parameters = text[i] };
         REQUIRE(
             ecs_world_record_add(world, entities[i], COMPONENT_Shader.id, &binding, 0) == ECS_OK
@@ -343,11 +358,43 @@ TEST_CASE(runtime_snapshots)
     memcpy(previous_min, min, sizeof previous_min);
     memcpy(previous_max, max, sizeof previous_max);
     /* Preparation refuses a radius past its range, so no snapshot reads it. */
-    REQUIRE(!render_shader_parameters_validate(id, "Radius 100\n", &error));
+    REQUIRE(!render_shader_parameters_validate(
+        id,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(100))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        &error
+    ));
     REQUIRE(error.node == radius->id);
-    REQUIRE(
-        !render_shader_model_snapshot(id, world, entities[1], "Radius 100\n", payload, min, max, &empty, &error)
-    );
+    REQUIRE(!render_shader_model_snapshot(
+        id,
+        world,
+        entities[1],
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(100))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        payload,
+        min,
+        max,
+        &empty,
+        &error
+    ));
     REQUIRE(!memcmp(previous_snapshot, payload, sizeof previous_snapshot));
     REQUIRE(!memcmp(previous_min, min, sizeof previous_min));
     REQUIRE(!memcmp(previous_max, max, sizeof previous_max));
@@ -388,7 +435,19 @@ TEST_CASE(runtime_snapshots)
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     ecs_entity reused = ecs_world_create_entity(world);
     REQUIRE(reused.slot == old.slot && ecs_entity_to_u64(reused) != ecs_entity_to_u64(old));
-    Shader binding = { .shape = asset->name, .parameters = "Radius 6\n" };
+    Shader binding = { .shape = asset->name,
+                       .parameters = "package asset\n"
+                                     "\n"
+                                     "import data \"game:assets\"\n"
+                                     "\n"
+                                     "pub Build :: () -> byte[] {\n"
+                                     "    return data.Encode(\n"
+                                     "        data.Object([\n"
+                                     "            data.Field.Named(\"Radius\", "
+                                     "data.Value.UInt(6))\n"
+                                     "        ])\n"
+                                     "    )\n"
+                                     "}\n" };
     REQUIRE(render_shader_parameters_validate(id, binding.parameters, &error));
     REQUIRE(ecs_world_record_add(world, reused, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);

@@ -8,7 +8,7 @@ to the 2.5D height/shadow representation.
 
 The `PolaroidSurfaceDetail` study this page describes was retired with the
 example projects on 2026-10-17 ([examples](examples.md)). Edit a project's
-model, material, prototype and scene KDL directly, or use Studio. The former
+model, material, prototype and scene compiled Chibi directly, or use Studio. The former
 `author-detail.mjs` recipe and MCP transport are retired as well.
 
 Format and validate saved assets with the native controller:
@@ -139,4 +139,4 @@ slots, eight image variants and 512 ramp vec4s. Geometry uses its separate
 The saved 64 by 64 RGBA8 maps are example data. `DetailHeight` and `DetailNormal`
 are linear data maps; `DetailChecker` and `DetailLabel` are color examples. The
 former `--refresh-new-materials` recipe is retired. Edit the saved
-`DetailPolaroid*` material KDL and validate those assets to change their detail.
+`DetailPolaroid*` material compiled Chibi and validate those assets to change their detail.

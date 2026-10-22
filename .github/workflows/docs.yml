@@ -1,6 +1,6 @@
 name: Documentation site
 
-# Builds the public site that docs/site.kdl lists, uploads it as the Pages
+# Builds the public site that docs/site.chibi lists, uploads it as the Pages
 # artifact and deploys it. Run it by hand; the repository's Pages source must
 # be GitHub Actions, and the github-pages environment decides which branches
 # may deploy.

@@ -293,7 +293,7 @@ void test_tool_transforms();
 #endif
 
 #ifdef CHIBI_TEST_ASSET_VALUES
-void test_asset_text();
+void test_asset_document();
 void test_asset_value();
 #endif
 #ifdef CHIBI_TEST_UI_DOCUMENT
@@ -314,9 +314,7 @@ void test_png_encoding();
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
 void test_project_document();
 #endif
-#ifdef CHIBI_TEST_PROJECT_DECLARATIONS
-void test_tool_project_declarations();
-#endif
+
 #ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
 void test_prototype_documents();
 void test_reference_index();
@@ -335,25 +333,15 @@ void test_field_library();
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--player-url",
-    "--audio-analysis",
-    "--audio-browser",
-    "--shader-webgpu",
-    "--asset-values",
-    "--ui-document",
-    "--text-files",
-    "--fmt",
-    "--particles",
-    "--png-encoding",
-    "--project-document",
-    "--project-declarations",
-    "--prototype-documents",
-    "--reference-index",
-    "--asset-source",
-    "--behavior-loader",
-    "--engine-clock",
-    "--preview-layout",
-    "--fields",
+    "--player-url",       "--audio-analysis",
+    "--audio-browser",    "--shader-webgpu",
+    "--asset-values",     "--ui-document",
+    "--text-files",       "--fmt",
+    "--particles",        "--png-encoding",
+    "--project-document", "--prototype-documents",
+    "--reference-index",  "--asset-source",
+    "--behavior-loader",  "--engine-clock",
+    "--preview-layout",   "--fields",
     "--player-clock",
 };
 
@@ -406,7 +394,7 @@ static bool run_document_suites(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_ASSET_VALUES
     if (selected(argc, argv, "--asset-values")) {
-        test_asset_text();
+        test_asset_document();
         test_asset_value();
         return true;
     }
@@ -636,7 +624,7 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
-        fprintf(stderr, "%s requires the KDL asset reader\n", argv[1]);
+        fprintf(stderr, "%s requires the compiled asset reader\n", argv[1]);
         return 2;
 #endif
     }
@@ -1213,7 +1201,7 @@ int main(int argc, char **argv)
             "--player-clock | --audio-analysis | --audio-browser | "
             "--shader-webgpu | "
             "--player-url | "
-            "--png-encoding | --project-document | --project-declarations | "
+            "--png-encoding | --project-document | "
             "--prototype-documents | "
             "--reference-index | --asset-source | --behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",

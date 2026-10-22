@@ -1288,10 +1288,8 @@ TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
 #endif
                     printf(
                         "SCALAR_READ path=%s field=%s backend=%s inspected=%d "
-                        "trial=%d "
-                        "calls=%d assertion_inclusive_seconds=%.9f "
-                        "host_bytes=%zu arena_bytes=%zu "
-                        "arena_capacity=%zu "
+                        "trial=%d calls=%d assertion_inclusive_seconds=%.9f "
+                        "host_bytes=%zu arena_bytes=%zu arena_capacity=%zu "
                         "alloc_calls=%llu requested_bytes=%llu "
                         "arena_blocks=%llu bank_allocs=%llu vm_allocs=%llu\n",
                         getter ? "native-metadata" : "snapshot",
@@ -1345,8 +1343,8 @@ TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery)
         REQUIRE(origin->line == 1 && origin->column == origin->start + 1);
         printf(
             "SCALAR_READ_FAILURE path=%s cases=9 modes=4 status=%d reason=%d "
-            "frame=%d source=%d stack=%d pin=%d steps=%llu "
-            "asset=%s span=%d:%d line=%d column=%d\n",
+            "frame=%d source=%d stack=%d pin=%d steps=%llu asset=%s span=%d:%d "
+            "line=%d column=%d\n",
             getter ? "native-metadata" : "snapshot",
             FLOW_ERR_INVALID_GRAPH,
             BEHAVIOR_FUNCTION_HOST_DATA,

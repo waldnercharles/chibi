@@ -1,0 +1,746 @@
+#include "authoring/asset_compiler_host.h"
+
+#include "support/array.h"
+#include "support/asset_json.h"
+#include "support/xalloc.h"
+#include "toolchain/compiler_host.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <yyjson.h>
+
+#define ASSET_COMPILE_BUDGET UINT64_C(1000000000)
+#define ASSET_EVALUATION_BUDGET UINT64_C(10000000)
+#define ASSET_CACHE_ENTRIES 128
+#define ASSET_CACHE_BYTES (128u * 1024u * 1024u)
+
+static av_doc *inspect(const char *source, const char *function, const asset_compiler_options *options)
+{
+    av_doc *args = av_doc_new();
+    av_value *values = av_arr(args);
+    av_doc_set_root(args, values);
+    av_arr_add_strcpy(args, values, source);
+    av_arr_add_strcpy(args, values, function);
+    asset_compiler_diagnostic diagnostic = { 0 };
+    av_doc *result = asset_source_invoke(
+        "project:asset_compiler:1:Inspect:callable",
+        values,
+        options,
+        &diagnostic
+    );
+    av_doc_free(args);
+    return result;
+}
+
+static const av_value *bindings(const av_doc *result)
+{
+    const av_value *values = av_obj_get(av_arr_get(av_doc_root(result), 0), "values");
+    if (av_arr_size(values) != 2) {
+        return NULL;
+    }
+    return av_arr_get(values, 0);
+}
+
+static size_t offset(const av_value *binding, const char *name)
+{
+    int value = av_get_int(av_obj_get(binding, name));
+    return value < 0 ? SIZE_MAX : (size_t)value;
+}
+
+static void attach(const char *source, const char *function, av_value *root, const asset_compiler_options *options)
+{
+    if (!root) {
+        return;
+    }
+    av_doc *result = inspect(source, function, options);
+    const av_value *items = result ? bindings(result) : NULL;
+    av_value **mapped = NULL;
+    int *ordinals = NULL;
+    for (size_t i = 0; i < av_arr_size(items); i++) {
+        const av_value *binding = av_arr_get(items, i);
+        int parent = av_get_int(av_obj_get(binding, "parent"));
+        av_value *value = NULL;
+        if (parent < 0) {
+            value = root;
+        } else if (parent < acount(mapped) && mapped[parent]) {
+            av_value *owner = mapped[parent];
+            value = av_is_obj(owner)
+                      ? av_obj_get(owner, av_get_str(av_obj_get(binding, "key")))
+                      : av_arr_get(owner, (size_t)ordinals[parent]);
+            ordinals[parent]++;
+        }
+        apush(mapped, value);
+        apush(ordinals, 0);
+        if (value) {
+            size_t start = offset(binding, "literal_start");
+            size_t end = offset(binding, "literal_end");
+            if (start == SIZE_MAX) {
+                start = offset(binding, "start");
+                end = offset(binding, "end");
+            }
+            av_set_source(
+                value,
+                (av_source){ start, end, offset(binding, "name_start"), offset(binding, "name_end") }
+            );
+        }
+    }
+    afree(mapped);
+    afree(ordinals);
+    av_doc_free(result);
+}
+
+static void metadata_attach(const char *source, av_value *root, const asset_compiler_options *options)
+{
+    attach(source, "Build", root, options);
+    attach(source, "Parameters", av_obj_get(root, "parameters"), options);
+    attach(source, "Overrides", av_obj_get(root, "overrides"), options);
+}
+
+void asset_source_metadata_attach(const char *source, av_value *root)
+{
+    metadata_attach(source, root, NULL);
+}
+
+typedef struct
+{
+    char *path, *source;
+    unsigned char *bytes;
+    size_t length, charge;
+    uint64_t entry, used;
+} compiled_asset;
+static _Thread_local struct
+{
+    asset_compiler_options snapshot;
+    compiler_host *compiler;
+    compiled_asset assets[ASSET_CACHE_ENTRIES];
+    size_t bytes;
+    uint64_t clock;
+} cache;
+
+static const asset_compiler_options *defaults;
+static void clear_asset(compiled_asset *asset)
+{
+    cache.bytes -= asset->charge;
+    free(asset->path);
+    free(asset->source);
+    free(asset->bytes);
+    *asset = (compiled_asset){ 0 };
+}
+void asset_source_release_thread()
+{
+    for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+        clear_asset(&cache.assets[i]);
+    }
+    compiler_host_free(cache.compiler);
+    memset(&cache, 0, sizeof cache);
+}
+void asset_source_set_default(const asset_compiler_options *options)
+{
+    asset_source_release_thread();
+    defaults = options;
+}
+static bool same_snapshot(const asset_compiler_options *options)
+{
+    return cache.snapshot.compiler == options->compiler &&
+           cache.snapshot.compiler_length == options->compiler_length &&
+           cache.snapshot.libraries == options->libraries &&
+           cache.snapshot.library_count == options->library_count &&
+           cache.snapshot.collections == options->collections &&
+           cache.snapshot.collection_count == options->collection_count;
+}
+static compiled_asset *find_asset(const char *source, const char *path)
+{
+    for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+        compiled_asset *asset = &cache.assets[i];
+        if (asset->bytes && !strcmp(asset->source, source) &&
+            !strcmp(asset->path, path)) {
+            asset->used = ++cache.clock;
+            return asset;
+        }
+    }
+    return NULL;
+}
+static bool keep_asset(const char *source, const char *path, unsigned char *bytes, size_t length, uint64_t entry)
+{
+    size_t key_bytes = strlen(source) + strlen(path) + 2;
+    if (length > ASSET_CACHE_BYTES || key_bytes > ASSET_CACHE_BYTES - length) {
+        return false;
+    }
+    size_t charge = length + key_bytes;
+    while (charge > ASSET_CACHE_BYTES - cache.bytes) {
+        int oldest = -1;
+        for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+            if (cache.assets[i].bytes &&
+                (oldest < 0 || cache.assets[i].used < cache.assets[oldest].used)) {
+                oldest = i;
+            }
+        }
+        clear_asset(&cache.assets[oldest]);
+    }
+    int oldest = 0;
+    for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+        if (!cache.assets[i].bytes) {
+            oldest = i;
+            break;
+        }
+        if (cache.assets[i].used < cache.assets[oldest].used) {
+            oldest = i;
+        }
+    }
+    clear_asset(&cache.assets[oldest]);
+    cache.assets[oldest] = (compiled_asset){ .source = xstrdup(source),
+                                             .path = xstrdup(path),
+                                             .bytes = bytes,
+                                             .length = length,
+                                             .charge = charge,
+                                             .entry = entry,
+                                             .used = ++cache.clock };
+    cache.bytes += charge;
+    return true;
+}
+static void failure(asset_compiler_diagnostic *diagnostic, const char *message)
+{
+    snprintf(diagnostic->message, sizeof diagnostic->message, "%s", message);
+}
+static void runtime_failure(
+    asset_compiler_diagnostic *diagnostic,
+    const char *message,
+    const compiler_host_source *source
+)
+{
+    failure(diagnostic, message);
+    if (source->present) {
+        diagnostic->start = source->start;
+        diagnostic->end = source->end;
+        diagnostic->line = source->line;
+        diagnostic->column = source->column;
+        memcpy(diagnostic->source, source->asset, sizeof diagnostic->source);
+        diagnostic->source_truncated = source->truncated;
+    }
+}
+static uintptr_t host_budget(uint64_t budget)
+{
+    return budget > UINTPTR_MAX ? UINTPTR_MAX : (uintptr_t)budget;
+}
+static const asset_compiler_options *effective_options(const asset_compiler_options *options)
+{
+    return options  ? options
+         : defaults ? defaults
+                    : asset_compiler_packaged_options();
+}
+const asset_compiler_options *asset_source_default_options()
+{
+    return effective_options(NULL);
+}
+static compiler_host *compiler_for(const asset_compiler_options *options, asset_compiler_diagnostic *diagnostic)
+{
+    if (!options || !options->compiler || !options->compiler_length) {
+        failure(diagnostic, "The packaged Chibi asset compiler is unavailable");
+        return NULL;
+    }
+    if (!same_snapshot(options)) {
+        asset_source_release_thread();
+        cache.snapshot = *options;
+    }
+    if (!cache.compiler) {
+        cache.compiler = compiler_host_load(
+            options->compiler,
+            options->compiler_length,
+            BEHAVIOR_BYTECODE,
+            diagnostic->message,
+            sizeof diagnostic->message
+        );
+    }
+    return cache.compiler;
+}
+static char *request(
+    const char *source,
+    const char *path,
+    const asset_compiler_options *options,
+    size_t *length,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    size_t target_length;
+    char *target = compiler_host_values_target_json(
+        &target_length,
+        diagnostic->message,
+        sizeof diagnostic->message
+    );
+    yyjson_doc *decoded = target ? yyjson_read(target, target_length, 0) : NULL;
+    free(target);
+    if (!decoded) {
+        failure(diagnostic, "Pure asset target could not be described");
+        return NULL;
+    }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *args = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, args);
+    yyjson_mut_arr_add_str(doc, args, "/project");
+    yyjson_mut_val *names = yyjson_mut_arr(doc), *roots = yyjson_mut_arr(doc);
+    yyjson_mut_arr_add_val(args, names);
+    yyjson_mut_arr_add_val(args, roots);
+    for (int i = 0; i < options->collection_count; i++) {
+        yyjson_mut_arr_add_str(doc, names, options->collections[i].name);
+        yyjson_mut_arr_add_str(doc, roots, options->collections[i].path);
+    }
+    yyjson_mut_val *paths = yyjson_mut_arr(doc), *sources = yyjson_mut_arr(doc);
+    yyjson_mut_arr_add_val(args, paths);
+    yyjson_mut_arr_add_val(args, sources);
+    yyjson_mut_arr_add_str(doc, paths, path);
+    yyjson_mut_arr_add_str(doc, sources, source);
+    for (int i = 0; i < options->library_count; i++) {
+        yyjson_mut_arr_add_str(doc, paths, options->libraries[i].path);
+        yyjson_mut_arr_add_str(doc, sources, options->libraries[i].source);
+    }
+    yyjson_mut_arr_add_bool(doc, args, false);
+    yyjson_val *item;
+    size_t i, count;
+    yyjson_arr_foreach(yyjson_doc_get_root(decoded), i, count, item)
+    {
+        yyjson_mut_arr_add_val(args, yyjson_val_mut_copy(doc, item));
+    }
+    char *json = yyjson_mut_write(doc, 0, length);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(decoded);
+    return json;
+}
+#define COMPILE_HEADER_BYTES 29
+static uint64_t read_le(const unsigned char *bytes, int count)
+{
+    uint64_t value = 0;
+    for (int i = 0; i < count; i++) {
+        value |= (uint64_t)bytes[i] << (8 * i);
+    }
+    return value;
+}
+static int read_position(const unsigned char *bytes)
+{
+    uint32_t bits = (uint32_t)read_le(bytes, 4);
+    return bits <= INT32_MAX ? (int)bits : (int)((int64_t)bits - INT64_C(4294967296));
+}
+static unsigned char *compiled_bytes(
+    compiler_host_bytes *result,
+    uint64_t *entry,
+    size_t *length,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    if (result->length < COMPILE_HEADER_BYTES || result->bytes[0] > 1) {
+        failure(diagnostic, "Asset compiler returned an invalid byte envelope");
+        return NULL;
+    }
+    unsigned char *bytes = result->bytes;
+    *entry = read_le(bytes + 1, 8);
+    *length = result->length - COMPILE_HEADER_BYTES;
+    if (bytes[0]) {
+        if (!*entry || !*length) {
+            failure(diagnostic, "Asset compiler produced an empty artifact or entry");
+            return NULL;
+        }
+        memmove(bytes, bytes + COMPILE_HEADER_BYTES, *length);
+        result->bytes = NULL;
+        return bytes;
+    }
+    if (*entry || !*length || memchr(bytes + COMPILE_HEADER_BYTES, 0, *length)) {
+        failure(diagnostic, "Asset compiler returned an invalid rejection envelope");
+        return NULL;
+    }
+    diagnostic->document = read_position(bytes + 9);
+    diagnostic->start = read_position(bytes + 13);
+    diagnostic->end = read_position(bytes + 17);
+    diagnostic->line = read_position(bytes + 21);
+    diagnostic->column = read_position(bytes + 25);
+    if (diagnostic->document < -1 || diagnostic->start < -1 ||
+        diagnostic->end < -1 || diagnostic->line < -1 || diagnostic->column < -1 ||
+        (diagnostic->start >= 0 && diagnostic->end >= 0 &&
+         diagnostic->end < diagnostic->start)) {
+        failure(diagnostic, "Asset compiler returned invalid diagnostic positions");
+        return NULL;
+    }
+    size_t copied = *length < sizeof diagnostic->message - 1
+                      ? *length
+                      : sizeof diagnostic->message - 1;
+    memcpy(diagnostic->message, bytes + COMPILE_HEADER_BYTES, copied);
+    diagnostic->message[copied] = 0;
+    return NULL;
+}
+
+av_doc *asset_source_read(
+    const char *source,
+    const char *path,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    if (!source || strnlen(source, COMPILER_HOST_MAX_OUTPUT_BYTES + 1) >
+                       COMPILER_HOST_MAX_OUTPUT_BYTES) {
+        failure(diagnostic, "Asset source must be non-null and at most 16 MiB");
+        return NULL;
+    }
+    if (path && strnlen(path, 4097) > 4096) {
+        failure(diagnostic, "Asset source path exceeds 4096 bytes");
+        return NULL;
+    }
+    options = effective_options(options);
+    if (!options || !options->compiler || !options->compiler_length) {
+        failure(diagnostic, "The packaged Chibi asset compiler is unavailable");
+        return NULL;
+    }
+    if (options->cancelled && options->cancelled(options->user)) {
+        failure(diagnostic, "Asset compilation cancelled");
+        return NULL;
+    }
+    path = path ? path : "/project/asset/Asset.chibi";
+    size_t request_length;
+    char *json = request(source, path, options, &request_length, diagnostic);
+    if (!json) {
+        return NULL;
+    }
+    compiler_host *compiler = compiler_for(options, diagnostic);
+    compiler_host_bytes compiled = { 0 };
+    compiler_host *asset = NULL;
+    compiler_host_bytes result = { 0 };
+    unsigned char *bytes = NULL;
+    bool owned_bytes = true;
+    av_doc *doc = NULL;
+    uint64_t compile_budget = options->compile_budget ? options->compile_budget
+                                                      : ASSET_COMPILE_BUDGET;
+    uint64_t evaluation_budget = options->evaluation_budget
+                                   ? options->evaluation_budget
+                                   : ASSET_EVALUATION_BUDGET;
+    compiled_asset *cached = find_asset(source, path);
+    uint64_t entry = cached ? cached->entry : 0;
+    size_t length = cached ? cached->length : 0;
+    if (cached) {
+        bytes = cached->bytes;
+        owned_bytes = false;
+    } else {
+        if (!compiler) {
+            goto done;
+        }
+        behavior_execution_scope compilation = { .remaining = compile_budget,
+                                                 .cancelled = options->cancelled,
+                                                 .user = options->user };
+        behavior_execution_scope_begin(&compilation);
+        bool compiled_ok = compiler_host_invoke_bytes(
+            compiler,
+            compiler_host_entry("project:asset_compiler:1:CompileBytes:callable"),
+            json,
+            request_length,
+            host_budget(compile_budget),
+            COMPILER_HOST_MAX_OUTPUT_BYTES,
+            &compiled
+        );
+        behavior_execution_scope_end(&compilation);
+        if (!compiled_ok) {
+            runtime_failure(diagnostic, compiled.diagnostic, &compiled.source);
+            goto done;
+        }
+    }
+    if (!cached) {
+        bytes = compiled_bytes(&compiled, &entry, &length, diagnostic);
+    }
+    if (!bytes) {
+        goto done;
+    }
+    if (!cached && keep_asset(source, path, bytes, length, entry)) {
+        owned_bytes = false;
+    }
+    asset = compiler_host_load_values(
+        bytes,
+        length,
+        BEHAVIOR_BYTECODE,
+        diagnostic->message,
+        sizeof diagnostic->message
+    );
+    if (!asset) {
+        goto done;
+    }
+    behavior_execution_scope execution = { .remaining = evaluation_budget,
+                                           .cancelled = options->cancelled,
+                                           .user = options->user,
+                                           .pure = true };
+    behavior_execution_scope_begin(&execution);
+    bool invoked = compiler_host_invoke_bytes(
+        asset,
+        entry,
+        "[]",
+        2,
+        host_budget(evaluation_budget),
+        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        &result
+    );
+    behavior_execution_scope_end(&execution);
+    if (!invoked) {
+        runtime_failure(diagnostic, result.diagnostic, &result.source);
+        goto done;
+    }
+    if (memchr(result.bytes, 0, result.length)) {
+        failure(diagnostic, "Asset Build returned a transport containing NUL bytes");
+        goto done;
+    }
+    char *text = xmalloc(result.length + 1);
+    memcpy(text, result.bytes, result.length);
+    text[result.length] = 0;
+    doc = av_json_read(text);
+    free(text);
+    if (!doc) {
+        failure(diagnostic, "Asset Build returned invalid JSON transport");
+    }
+done:
+    free(json);
+    if (owned_bytes) {
+        free(bytes);
+    }
+    free(compiled.bytes);
+    free(result.bytes);
+    compiler_host_free(asset);
+    if (doc) {
+        metadata_attach(source, av_doc_root(doc), options);
+    }
+    return doc;
+}
+
+av_doc *asset_source_invoke(
+    const char *entry,
+    const av_value *arguments,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    options = effective_options(options);
+    compiler_host *host = compiler_for(options, diagnostic);
+    if (!host) {
+        return NULL;
+    }
+    char *json = av_json_write(arguments);
+    if (!json) {
+        failure(diagnostic, "Asset facade arguments cannot be encoded");
+        return NULL;
+    }
+    uint64_t budget = options->compile_budget ? options->compile_budget
+                                              : ASSET_COMPILE_BUDGET;
+    behavior_execution_scope scope = { .remaining = budget,
+                                       .cancelled = options->cancelled,
+                                       .user = options->user };
+    compiler_host_result result = { 0 };
+    behavior_execution_scope_begin(&scope);
+    bool ok = compiler_host_invoke(
+        host,
+        compiler_host_entry(entry),
+        json,
+        strlen(json),
+        host_budget(budget),
+        &result
+    );
+    behavior_execution_scope_end(&scope);
+    free(json);
+    av_doc *doc = ok ? av_json_read(result.json) : NULL;
+    if (!doc) {
+        runtime_failure(
+            diagnostic,
+            ok ? "Asset facade returned invalid transport" : result.diagnostic,
+            &result.source
+        );
+    }
+    free(result.json);
+    return doc;
+}
+
+typedef struct
+{
+    const av_value *value;
+    const char *key;
+    int parent, depth;
+} document_item;
+av_doc *asset_source_value_columns(const av_value *root, asset_compiler_diagnostic *diagnostic)
+{
+    av_doc *doc = av_doc_new();
+    av_value *args = av_arr(doc);
+    av_doc_set_root(doc, args);
+    av_value *values[8];
+    for (int i = 0; i < 8; i++) {
+        values[i] = av_arr(doc);
+        av_arr_append(args, values[i]);
+    }
+    document_item *pending = NULL;
+    apush(pending, ((document_item){ .value = root, .key = "", .parent = -1 }));
+    int count = 0;
+    while (acount(pending)) {
+        document_item item = pending[acount(pending) - 1];
+        asetlen(pending, acount(pending) - 1);
+        if (item.depth >= 64 || count == COMPILER_HOST_MAX_VALUES) {
+            failure(diagnostic, "Asset document exceeds value/depth limits");
+            afree(pending);
+            av_doc_free(doc);
+            return NULL;
+        }
+        int at = count++;
+        av_type type = av_get_type(item.value);
+        av_arr_append(values[0], av_sint(doc, type));
+        av_arr_append(values[1], av_sint(doc, item.parent));
+        av_arr_append(values[2], av_str(doc, item.key));
+        av_arr_append(values[3], av_str(doc, type == AV_STRING ? av_get_str(item.value) : ""));
+        av_arr_append(values[4], av_sint(doc, type == AV_SINT ? av_get_sint(item.value) : 0));
+        av_arr_append(values[5], av_uint(doc, type == AV_UINT ? av_get_uint(item.value) : 0));
+        av_arr_append(values[6], av_real(doc, type == AV_REAL ? av_get_num(item.value) : 0));
+        av_arr_append(values[7], av_bool(doc, type == AV_BOOL && av_get_bool(item.value)));
+        size_t children = type == AV_OBJECT ? av_obj_size(item.value)
+                        : type == AV_ARRAY  ? av_arr_size(item.value)
+                                            : 0;
+        if (children > (size_t)(COMPILER_HOST_MAX_VALUES - count) -
+                           (size_t)acount(pending)) {
+            failure(diagnostic, "Asset document exceeds value limits");
+            afree(pending);
+            av_doc_free(doc);
+            return NULL;
+        }
+        for (size_t i = children; i > 0; i--) {
+            const av_value *child = type == AV_OBJECT
+                                      ? av_obj_value_at(item.value, i - 1)
+                                      : av_arr_get(item.value, i - 1);
+            const char *key = type == AV_OBJECT
+                                ? av_get_str(av_obj_key_at(item.value, i - 1))
+                                : "";
+            apush(
+                pending,
+                ((
+                    document_item
+                ){ .value = child, .key = key, .parent = at, .depth = item.depth + 1 })
+            );
+        }
+    }
+    afree(pending);
+    return doc;
+}
+char *asset_source_write(
+    const av_value *root,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    av_doc *args = asset_source_value_columns(root, diagnostic);
+    if (!args) {
+        return NULL;
+    }
+    char *text = asset_source_invoke_bytes(
+        "project:asset_compiler:1:Write:callable",
+        av_doc_root(args),
+        options,
+        diagnostic
+    );
+    av_doc_free(args);
+    return text;
+}
+
+char *asset_source_invoke_bytes(
+    const char *entry,
+    const av_value *arguments,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    options = effective_options(options);
+    compiler_host *host = compiler_for(options, diagnostic);
+    if (!host) {
+        return NULL;
+    }
+    char *json = av_json_write(arguments);
+    if (!json) {
+        failure(diagnostic, "Asset facade arguments cannot be encoded");
+        return NULL;
+    }
+    uint64_t budget = options->compile_budget ? options->compile_budget
+                                              : ASSET_COMPILE_BUDGET;
+    behavior_execution_scope scope = { .remaining = budget,
+                                       .cancelled = options->cancelled,
+                                       .user = options->user };
+    compiler_host_bytes result = { 0 };
+    behavior_execution_scope_begin(&scope);
+    bool ok = compiler_host_invoke_bytes(
+        host,
+        compiler_host_entry(entry),
+        json,
+        strlen(json),
+        host_budget(budget),
+        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        &result
+    );
+    behavior_execution_scope_end(&scope);
+    free(json);
+    char *text = NULL;
+    if (ok && !memchr(result.bytes, 0, result.length)) {
+        text = xmalloc(result.length + 1);
+        memcpy(text, result.bytes, result.length);
+        text[result.length] = 0;
+    } else {
+        runtime_failure(
+            diagnostic,
+            ok ? "Asset facade returned a NUL byte" : result.diagnostic,
+            &result.source
+        );
+    }
+    free(result.bytes);
+    return text;
+}
+av_doc *asset_source_invoke_document(
+    const char *entry,
+    const av_value *arguments,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    char *json = asset_source_invoke_bytes(entry, arguments, options, diagnostic);
+    av_doc *doc = json ? av_json_read(json) : NULL;
+    if (json && !doc) {
+        failure(diagnostic, "Asset facade returned invalid document transport");
+    }
+    free(json);
+    return doc;
+}
+
+char *asset_source_reconcile_compiled(
+    const char *source,
+    const av_value *old_value,
+    const av_value *new_value,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    av_doc *before = asset_source_value_columns(old_value, diagnostic);
+    if (!before) {
+        return NULL;
+    }
+    av_doc *after = asset_source_value_columns(new_value, diagnostic);
+    if (!after) {
+        av_doc_free(before);
+        return NULL;
+    }
+    av_doc *request = av_doc_new();
+    av_value *args = av_arr(request);
+    av_doc_set_root(request, args);
+    av_arr_append(args, av_str(request, source));
+    for (size_t i = 0; i < 8; i++) {
+        av_arr_append(args, av_clone(request, av_arr_get(av_doc_root(before), i)));
+    }
+    for (size_t i = 0; i < 8; i++) {
+        av_arr_append(args, av_clone(request, av_arr_get(av_doc_root(after), i)));
+    }
+    char *text = asset_source_invoke_bytes(
+        "project:asset_compiler:1:Reconcile:callable",
+        args,
+        options,
+        diagnostic
+    );
+    av_doc_free(before);
+    av_doc_free(after);
+    av_doc_free(request);
+    return text;
+}

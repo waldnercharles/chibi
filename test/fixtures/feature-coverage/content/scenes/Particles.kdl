@@ -1,9 +1,0 @@
-version 1
-name "Particles"
-(array)entities {
-    - {
-        name "Sparks"
-        prototype "Sparks"
-        (array)behaviors "SparkProbe"
-    }
-}

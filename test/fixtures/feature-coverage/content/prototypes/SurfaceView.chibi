@@ -1,0 +1,25 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("SurfaceView")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Camera", data.Object([
+                    data.Field.Named("height", data.Value.Real(84.0)),
+                    data.Field.Named("width", data.Value.Real(112.0))
+                ])),
+                data.Field.Named("SurfaceQuality", data.Object([
+                    data.Field.Named("resolution", data.Value.Text("Full")),
+                    data.Field.Named("sdf_normal_mode", data.Value.Text("Tetrahedral")),
+                    data.Field.Named("sdf_pixel_error", data.Value.Real(0.25))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("y", data.Value.Real(4.0))
+                ]))
+            ]))
+        ])
+    );
+}

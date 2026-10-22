@@ -1,0 +1,18 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Sheet")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Sprite", data.Object([
+                    data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                    data.Field.Named("layer", data.Value.UInt(1))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

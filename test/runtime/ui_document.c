@@ -453,7 +453,8 @@ TEST_CASE(ui_scoped_styles)
           "body:not(.dark) [data-ui=\"Hud\"] .row {} "
           "body:not(.a, .b) [data-ui=\"Hud\"] p {}",
           "a negated class asks the page's body alone" },
-        { "body.a\n.b {}",
+        { "body.a\n"
+          ".b {}",
           "[data-ui=\"Hud\"].a\n.b, body.a [data-ui=\"Hud\"] .b {}",
           "a selector's lines stay as many with the page's copy" },
         { "bodyguard {}",

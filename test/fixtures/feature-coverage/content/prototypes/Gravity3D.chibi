@@ -1,0 +1,18 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Gravity3D")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Gravity3D", data.Object([
+                    data.Field.Named("acceleration", data.Object([
+                        data.Field.Named("y", data.Value.Real(-320.0))
+                    ]))
+                ]))
+            ]))
+        ])
+    );
+}

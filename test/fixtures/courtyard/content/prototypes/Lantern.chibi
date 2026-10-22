@@ -1,0 +1,29 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Lantern")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                    data.Field.Named("emission_color", data.Value.UInt(4291322111)),
+                    data.Field.Named("emission_intensity", data.Value.Real(0.59999999999999998)),
+                    data.Field.Named("emission_multiplier", data.Value.Real(1.0)),
+                    data.Field.Named("scene", data.Value.UInt(4294967295))
+                ])),
+                data.Field.Named("Sprite", data.Object([
+                    data.Field.Named("frame", data.Value.UInt(3)),
+                    data.Field.Named("frame_height", data.Value.UInt(16)),
+                    data.Field.Named("frame_width", data.Value.UInt(16)),
+                    data.Field.Named("image", data.Value.Text("content/images/court.png")),
+                    data.Field.Named("layer", data.Value.UInt(3)),
+                    data.Field.Named("relief", data.Value.Real(24.0))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

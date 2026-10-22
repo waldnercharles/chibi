@@ -545,8 +545,14 @@ TEST_CASE(executables_stage_no_headers)
  * owned copy the caller splits into tokens. */
 static char *ninja_variable(const char *ninja, const char *name, const char *variable)
 {
-    char head[256], key[128];
-    snprintf(head, sizeof head, "\nbuild %s: ", name);
+    char head[16384], key[128];
+    snprintf(
+        head,
+        sizeof head,
+        "\n"
+        "build %s: ",
+        name
+    );
     snprintf(key, sizeof key, "\n  %s = ", variable);
     const char *block = strstr(ninja, head);
     assert(block);
@@ -590,7 +596,13 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
          *libraries = ninja_variable(ninja, path, "LINK_LIBRARIES"),
          *theirs[GRAPH_TOKENS];
     char head[GRAPH_PATH];
-    snprintf(head, sizeof head, "\nbuild %s: ", path);
+    snprintf(
+        head,
+        sizeof head,
+        "\n"
+        "build %s: ",
+        path
+    );
     const char *statement = strstr(ninja, head);
     assert(statement);
     /* CMake links with the C++ compiler when a library has C++ sources. */
@@ -654,7 +666,13 @@ TEST_CASE(links_match_cmake)
         const char *const directories[] = { "sdk/", "bin/", "test/tools/", "" };
         for (int i = 0; i < 4; i++) {
             snprintf(cmake_path, sizeof cmake_path, "%s%s", directories[i], name);
-            snprintf(head, sizeof head, "\nbuild %s: ", cmake_path);
+            snprintf(
+                head,
+                sizeof head,
+                "\n"
+                "build %s: ",
+                cmake_path
+            );
             if (strstr(ninja, head)) {
                 break;
             }

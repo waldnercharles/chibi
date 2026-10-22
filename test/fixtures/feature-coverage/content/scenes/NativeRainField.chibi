@@ -1,0 +1,31 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("NativeRainField")),
+            data.Field.Named("presentation", data.Value.Text("3d")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Rain")),
+                    data.Field.Named("prototype", data.Value.Text("NativeRain"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Opaque block")),
+                    data.Field.Named("prototype", data.Value.Text("RainOccluder"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("RainCamera"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Environment")),
+                    data.Field.Named("prototype", data.Value.Text("RainEnvironment"))
+                ])
+            ]))
+        ])
+    );
+}

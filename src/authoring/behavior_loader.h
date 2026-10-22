@@ -9,7 +9,7 @@
 int authoring_graph_fixtures_prepare(preview_world *, const char *content_root);
 
 /* Loads the canonical behavior fixtures used by the shipped app and headless
- * authoring sessions. Native KDL render assets load in dependency order;
+ * authoring sessions. Compiled Chibi render assets load in dependency order;
  * executable sources prepare as one complete collection. With a preview, its
  * live world, which must not be `world`, takes them too. Both preview worlds
  * stage before either publishes, preserving prior source generations on error.

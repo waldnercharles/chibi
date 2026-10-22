@@ -1,5 +1,8 @@
 # Coordinated performance implementation
 
+> Historical record: these measurements and plans describe a retired asset format.
+> Current authoring uses ordinary compiled Chibi modules.
+
 ## Current delivery note, 2026-10-01
 
 The [runtime ready batch](runtime-ready-20261001.md) records no-map source
@@ -13,7 +16,7 @@ default after its complete matched matrix; gas p50 regresses 29.23%. The
 accepted internal Wasm and native-loop checks. External LuaJIT, V8 and
 JavaScriptCore comparisons remain deferred. The
 [gas activation report](gas-activation-20261001.md) accepts existing-grid cell-ID
-reuse at `4490156b`, tested against current KDL main `897dd6de`. All six native
+reuse at `4490156b`, tested against current the former document format main `897dd6de`. All six native
 timing cases and eight native/scalar/four-worker parity cases pass their audits;
 gas-flow kernel gains do not establish frame-tail improvement. The separate
 unused-index skips remain unmerged after a targeted liquid case regressed in
@@ -24,7 +27,7 @@ profiling source `4e7a09bb`: ordinary behavior execution can be preserved while
 collecting frame diagnostics, with audited native batch and worker participation.
 The compact-fluid and empty-proxy candidates pass correctness checks but remain
 unmerged without complete accepted timing. Preserved attempts and the repaired
-timing setup are identified in its [evidence JSON](performance-next-wave-20261001.json).
+timing setup are identified in its [evidence JSON](https://github.com/waldnercharles/chibi/blob/f2d9718625736d2ca02e2861cb4c42745893a954/docs/research/performance-next-wave-20261001.json).
 Those candidates are independent of beginning liquid PIC/FLIP or calibrated SPH;
 the report identifies the first solver deliverable and physical checks. No new
 solver or GPU simulation backend is implemented.

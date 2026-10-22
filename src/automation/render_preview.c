@@ -20,8 +20,8 @@
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
 #include "support/array.h"
+#include "support/asset_document.h"
 #include "support/asset_json.h"
-#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL_error.h>
@@ -324,7 +324,7 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
         *slash = 0;
         out->family = family_by_folder(copy);
         if (!out->family || !valid_filename(slash + 1)) {
-            set_error(error, error_size, "path must name a material, shape, or shader library KDL asset");
+            set_error(error, error_size, "path must name a material, shape, or shader library Chibi asset");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", slash + 1);
@@ -343,7 +343,7 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
     const char *name = yyjson_get_str(name_value);
     if (strstr(name, DECLARATIVE_ASSET_EXTENSION)) {
         if (!valid_filename(name)) {
-            set_error(error, error_size, "name is not a valid KDL asset filename");
+            set_error(error, error_size, "name is not a valid Chibi asset filename");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
@@ -1263,7 +1263,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     char *png = NULL;
     av_doc *parameter_doc = av_doc_new();
     char *parameters_json = parameters
-                              ? av_value_write(av_from_json(parameter_doc, parameters))
+                              ? asset_document_write(av_from_json(parameter_doc, parameters))
                               : NULL;
     av_doc_free(parameter_doc);
     if (parameters && !parameters_json) {

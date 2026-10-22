@@ -255,7 +255,7 @@ static bool seam_ray(world *world, float x, float y, bool expected)
 
 TEST_CASE(environment_physics_opens_passage_across_chunk_seam)
 {
-    REQUIRE(prepare_scene("scenes/SeamStudy.kdl"));
+    REQUIRE(prepare_scene("scenes/SeamStudy.chibi"));
     world *world = player_world(runtime);
     ecs_world *ecs = world_ecs(world);
     physics *physics = world_modules(world)->physics;

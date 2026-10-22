@@ -284,6 +284,11 @@ target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
 install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
     DESTINATION share/chibi/core/strings)
+# Authored assets share their typed constructors with installed consumers.
+install(FILES "${CHIBI_SDK_ROOT}/packages/game/assets/Assets.chibi"
+    "${CHIBI_SDK_ROOT}/packages/game/assets/Schemas.chibi" DESTINATION share/chibi/game/assets)
+install(FILES "${CHIBI_SDK_ROOT}/packages/game/documentation/Documentation.chibi"
+    DESTINATION share/chibi/game/documentation)
 # chibi doc's site generator is authored package source the SDK compiles.
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
@@ -414,7 +419,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_headers(chibi_asset_json PUBLIC support/asset_json.h)
     target_link_libraries(chibi_asset_json PUBLIC chibi_asset_values chibi_json)
     list(APPEND CHIBI_SDK_TARGETS chibi_asset_json)
-    include(asset_text.cmake)
+    include(asset_documents.cmake)
     include(graph.cmake)
     add_library(chibi_studio_capabilities STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_native.c"
         "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c")
@@ -443,10 +448,10 @@ if(CHIBI_SDK_BUILD_COMPILER)
     endif()
     set(engine_components "${CMAKE_CURRENT_BINARY_DIR}/generated/authoring/engine_components.c")
     add_custom_command(OUTPUT "${engine_components}"
-        COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
-            "-DOUTPUT=${engine_components}" "-DSYMBOL=component_presentation_engine_kdl"
+        COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.chibi"
+            "-DOUTPUT=${engine_components}" "-DSYMBOL=component_presentation_engine_source"
             -P "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
-        DEPENDS "${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
+        DEPENDS "${CHIBI_SDK_ROOT}/src/authoring/engine_components.chibi"
             "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
             "${CHIBI_SDK_ROOT}/cmake/generated_file.cmake" VERBATIM)
     add_library(chibi_component_presentation STATIC
@@ -454,46 +459,21 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(Chibi::component_presentation ALIAS chibi_component_presentation)
     set_target_properties(chibi_component_presentation PROPERTIES EXPORT_NAME component_presentation)
     chibi_sdk_headers(chibi_component_presentation PUBLIC authoring/component_presentation.h)
-    target_link_libraries(chibi_component_presentation PUBLIC chibi_ecs PRIVATE chibi_asset_text)
+    target_link_libraries(chibi_component_presentation PUBLIC chibi_ecs PRIVATE chibi_asset_documents)
     list(APPEND CHIBI_SDK_TARGETS chibi_component_presentation)
     add_library(chibi_input_map STATIC "${CHIBI_SDK_ROOT}/src/assets/input_map.c")
     add_library(Chibi::input_map ALIAS chibi_input_map)
     set_target_properties(chibi_input_map PROPERTIES EXPORT_NAME input_map)
     chibi_sdk_headers(chibi_input_map PUBLIC assets/input_map.h)
     target_link_libraries(chibi_input_map PUBLIC chibi_input_action
-        PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
+        PRIVATE chibi_types chibi_asset_values chibi_asset_documents chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
-    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate26.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate29.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate30.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate31.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c")
-    target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
-    set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
-        PROPERTIES COMPILE_OPTIONS "-w")
+    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
-    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
-    target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
-        chibi_language_syntax chibi_json chibi_support)
+    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h)
+    target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_documents
+        chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)
@@ -506,7 +486,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     set_target_properties(chibi_prototype_document PROPERTIES EXPORT_NAME prototype_document)
     chibi_sdk_headers(chibi_prototype_document PUBLIC assets/prototype.h)
     target_link_libraries(chibi_prototype_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_document
-        PRIVATE chibi_asset_text)
+        PRIVATE chibi_asset_documents)
     list(APPEND CHIBI_SDK_TARGETS chibi_prototype_document)
     add_library(chibi_scene_document STATIC "${CHIBI_SDK_ROOT}/src/assets/scene_document.c"
         "${CHIBI_SDK_ROOT}/src/assets/physics_settings.c")
@@ -514,7 +494,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     set_target_properties(chibi_scene_document PROPERTIES EXPORT_NAME scene_document)
     chibi_sdk_headers(chibi_scene_document PUBLIC assets/scene_document.h assets/physics_settings.h)
     target_link_libraries(chibi_scene_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_runtime
-        PRIVATE chibi_asset_text chibi_support)
+        PRIVATE chibi_asset_documents chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_scene_document)
     set(tree_sitter_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter")
     configure_file("${tree_sitter_root}/lib/include/tree_sitter/api.h"
@@ -562,7 +542,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_authoring PUBLIC chibi_compiler chibi_native_capabilities chibi_reference_index
-        PRIVATE chibi_json chibi_asset_text chibi_input_action)
+        PRIVATE chibi_json chibi_asset_documents chibi_input_action)
     list(APPEND CHIBI_SDK_TARGETS chibi_syntax_runtime chibi_language_syntax
         chibi_language chibi_compiler chibi_authoring)
     include(source_authoring.cmake)
@@ -600,10 +580,10 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
         DESTINATION share/chibi/tools/toolchain)
     install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)
 endif()
-# Private prepared-compiler runtime. Its link closure excludes source authoring,
+# Portable prepared-compiler runtime. Its link closure excludes source authoring,
 # semantic analysis and lowering; Tree-sitter supplies raw syntax facts only.
-if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
-    add_library(chibi_compiler_host OBJECT
+if(TARGET chibi_language_syntax)
+    add_library(chibi_compiler_host STATIC
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
@@ -616,26 +596,42 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
     endforeach()
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/sha256.h" COPYONLY)
-    target_include_directories(chibi_compiler_host PUBLIC
+    target_include_directories(chibi_compiler_host PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
         chibi_value_document chibi_asset_json chibi_language_syntax)
     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
-    # Bootstrap artifacts are the executable's own: no other compiler-host
-    # consumer reads their KDL contract.
+    add_library(Chibi::compiler_host ALIAS chibi_compiler_host)
+    set_target_properties(chibi_compiler_host PROPERTIES EXPORT_NAME compiler_host)
+    chibi_sdk_headers(chibi_compiler_host PUBLIC toolchain/compiler_host.h)
+    list(APPEND CHIBI_SDK_TARGETS chibi_compiler_host)
+endif()
+set(compiler_host_command_default ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(compiler_host_command_default OFF)
+endif()
+option(CHIBI_BUILD_COMPILER_HOST_COMMAND "Build the compiler runtime command" ${compiler_host_command_default})
+if(TARGET chibi_compiler_host AND CHIBI_BUILD_COMPILER_HOST_COMMAND AND
+   CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Emscripten)$")
+    # Bootstrap recovery and process I/O belong to the native CLI.
     add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c" "${CHIBI_SDK_ROOT}/src/support/sha256.c")
-    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
-        chibi_json)
-    target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_support chibi_json)
+    target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
     target_compile_options(chibi-compiler-host PRIVATE -Wall -Wextra -Werror)
-    if(APPLE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set_target_properties(chibi-compiler-host PROPERTIES SUFFIX ".js")
+        target_link_options(chibi-compiler-host PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=1048576" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sASSERTIONS=1" "-sNODERAWFS=1")
+    elseif(APPLE)
         target_link_options(chibi-compiler-host PRIVATE -Wl,-dead_strip)
     else()
         target_link_options(chibi-compiler-host PRIVATE -Wl,--gc-sections)
     endif()
-    install(TARGETS chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        install(TARGETS chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
+    endif()
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)
@@ -651,14 +647,14 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     endif()
     target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
-    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
+    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json chibi_types)
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
     chibi_windows_manifest(chibi)
     chibi_install_product(chibi)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)

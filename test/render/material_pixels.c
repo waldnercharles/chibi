@@ -43,8 +43,36 @@ TEST_CASE(material_parameters_override_one_entity_until_cleared)
 {
     REQUIRE(test_register_tint(TINT, (float[3]){ 1, 0, 0 }));
     int id = render_shader_find(TINT);
-    const char *green = "(array)Tint 0 1 0\n";
-    char edited[] = "(array)Tint 1 0 0\n";
+    const char *green = "package asset\n"
+                        "\n"
+                        "import data \"game:assets\"\n"
+                        "\n"
+                        "pub Build :: () -> byte[] {\n"
+                        "    return data.Encode(\n"
+                        "        data.Object([\n"
+                        "            data.Field.Named(\"Tint\", data.List([\n"
+                        "                data.Value.UInt(0),\n"
+                        "                data.Value.UInt(1),\n"
+                        "                data.Value.UInt(0)\n"
+                        "            ]))\n"
+                        "        ])\n"
+                        "    )\n"
+                        "}\n";
+    char edited[] = "package asset\n"
+                    "\n"
+                    "import data \"game:assets\"\n"
+                    "\n"
+                    "pub Build :: () -> byte[] {\n"
+                    "    return data.Encode(\n"
+                    "        data.Object([\n"
+                    "            data.Field.Named(\"Tint\", data.List([\n"
+                    "                data.Value.UInt(1),\n"
+                    "                data.Value.UInt(0),\n"
+                    "                data.Value.UInt(0)\n"
+                    "            ]))\n"
+                    "        ])\n"
+                    "    )\n"
+                    "}\n";
     shader_error error = { 0 };
     REQUIRE(render_shader_parameters_validate(id, green, &error));
     REQUIRE(render_shader_parameters_validate(id, edited, &error));
@@ -72,7 +100,25 @@ TEST_CASE(material_parameters_override_one_entity_until_cleared)
     REQUIRE(a[0][1] == 1 && a[0][2] == 0);
     render_shader_parameters(id, world, second, edited, b);
     REQUIRE(b[0][0] == 1 && b[0][1] == 0);
-    memcpy(edited, "(array)Tint 0 0 1\n", sizeof edited);
+    memcpy(
+        edited,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(1)\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        sizeof edited
+    );
     REQUIRE(render_shader_parameters_validate(id, edited, &error));
     render_shader_parameters(id, world, second, edited, b);
     REQUIRE(b[0][0] == 0 && b[0][2] == 1);
@@ -347,19 +393,109 @@ static bool holds(CF_Texture texture, int x, int y, const float expected[4])
 TEST_CASE(mixed_batches_upload_only_what_they_draw)
 {
     REQUIRE(test_register_parameters(PARAMETERS) && test_register_radius_shape(RADIUS, 12));
-    const char *materials[] = { "(array)Tint 0 1 0\n"
-                                "(array)Glow 0.1 0.2 0.3\n"
-                                "Roughness 0.2\n"
-                                "Height 2\n",
-                                "(array)Tint 0.7 0 0.6\n"
-                                "(array)Glow 0.4 0.5 0.6\n"
-                                "Roughness 0.4\n"
-                                "Height 4\n",
-                                "(array)Tint 0 0.5 1\n"
-                                "(array)Glow 0.7 0.8 0.9\n"
-                                "Roughness 0.6\n"
-                                "Height 6\n" };
-    const char *shapes[] = { "Radius 10\n", "Radius 10\n", "Radius 6\n" };
+    const char *materials[] = {
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.UInt(1),\n"
+        "                data.Value.UInt(0)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Glow\", data.List([\n"
+        "                data.Value.Real(0.1),\n"
+        "                data.Value.Real(0.2),\n"
+        "                data.Value.Real(0.3)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.Real(0.2)),\n"
+        "            data.Field.Named(\"Height\", data.Value.UInt(2))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.Real(0.7),\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.Real(0.6)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Glow\", data.List([\n"
+        "                data.Value.Real(0.4),\n"
+        "                data.Value.Real(0.5),\n"
+        "                data.Value.Real(0.6)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.Real(0.4)),\n"
+        "            data.Field.Named(\"Height\", data.Value.UInt(4))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Tint\", data.List([\n"
+        "                data.Value.UInt(0),\n"
+        "                data.Value.Real(0.5),\n"
+        "                data.Value.UInt(1)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Glow\", data.List([\n"
+        "                data.Value.Real(0.7),\n"
+        "                data.Value.Real(0.8),\n"
+        "                data.Value.Real(0.9)\n"
+        "            ])),\n"
+        "            data.Field.Named(\"Roughness\", data.Value.Real(0.6)),\n"
+        "            data.Field.Named(\"Height\", data.Value.UInt(6))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    };
+    const char *shapes[] = {
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(10))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(10))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"Radius\", data.Value.UInt(6))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    };
     shader_error error = { 0 };
     for (int i = 0; i < 3; i++) {
         REQUIRE(

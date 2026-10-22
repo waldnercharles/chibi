@@ -1,5 +1,8 @@
 # Graph language: lessons from Unreal and Blender
 
+> Historical record: these measurements and plans describe a retired asset format.
+> Current authoring uses ordinary compiled Chibi modules.
+
 Research for the behavior graph, shader graph and fields, 2026-09-23. It compares Unreal Engine 5 (Blueprints, the Material Editor, Niagara, PCG, RigVM) and Blender 5.x (Geometry, Shader and Compositor nodes) with an inventory of our own graph system. Editor interaction contracts are in [Node editor references](../editor-graph-references.md).
 
 ## Direction
@@ -214,7 +217,7 @@ These live in the RmlUi graph editor ([contract](../editor-graph-references.md))
 
 ## Coordination
 
-- **`asset-storage-format` (merged, PR #93):** authored assets are KDL, and MCP tool schemas are trimmed.
+- **`asset-storage-format` (merged, PR #93):** authored assets are the former document format, and MCP tool schemas are trimmed.
   - New asset fields can land now: prototype icons and colors, node versioning, tags, input actions.
   - The editor must not assume `.json`; scene titles already strip any extension.
 - **`vigilant-mclean` (merged, PR #94):** made `graph/authoring/arrange.c` faster and routes long wires through lanes. Routing styles build on it in their own PR. The graph editor consumes arrange; it doesn't modify it.
@@ -225,5 +228,5 @@ These live in the RmlUi graph editor ([contract](../editor-graph-references.md))
 1. **The RmlUi graph editor at parity**, built to the interaction contract, together with conversion chips, link-error reasons and the editor legibility work above. In parallel, three separate PRs: inline by default, routing styles with event bands, and component access in three nodes.
 2. **Safety rails that need only compiler analysis:** lazy Select/Switch, dominance errors, usage graying, total math, warning IDs.
 3. **Catalog curation:** parameterized component nodes, one Real type, a single struct presentation. The descriptors stay, so this is mostly search and presentation.
-4. **One vocabulary across behavior, shader and field graphs,** after the KDL format lands, since node identities change.
+4. **One vocabulary across behavior, shader and field graphs,** after the the former document format format lands, since node identities change.
 5. **New nodes in the ranked order above,** each validated in a second scene per `AGENTS.md`.

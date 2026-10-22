@@ -1,18 +1,21 @@
 # Behavior code and declarative assets
 
-[CUT-70](https://linear.app/cute-engine/issue/CUT-70/replace-kdl-with-canonical-code-assets-and-first-class-graph-authoring)
-and [CUT-71](https://linear.app/cute-engine/issue/CUT-71/build-the-shared-c-code-frontend-and-direct-behavior-graph)
+> Historical record: this document describes an earlier source format and toolchain.
+> Use the current language and authoring guides for executable instructions.
+> Suffixes in prose follow current conventions; linked Git revisions retain the exact historical files.
+
+[CUT-70](https://linear.app/cute-engine/issue/CUT-70)
+and [CUT-71](https://linear.app/cute-engine/issue/CUT-71)
 provide the shared native source frontend and direct behavior graph authoring.
-The current requirement keeps declarative content in KDL and makes readable
+The requirement at that revision keeps declarative content in the former document format and makes readable
 `.chibi` the authority for executable behavior. LuaJIT is not part of this
 implementation.
 
 ## Persistence contract
 
-Project manifests are `project.kdl`, with project version 24 (the current
-`CHIBI_PROJECT_VERSION` in `src/assets/project.h`). Scenes, prototypes,
+Project manifests are `project.chibi`, with project version 24 (the version at that revision). Scenes, prototypes,
 event declarations, models, shapes, materials, fields, shader libraries,
-scenarios and editor configuration use KDL 2. Behaviors, behavior libraries and
+scenarios and editor configuration use the former document format. Behaviors, behavior libraries and
 systems use `.chibi`. RML and RCSS remain separate formats.
 
 Source text owns executable operations, declarations and comments. The shared
@@ -49,7 +52,7 @@ drafts and applied generations remain separate; publication stages a complete
 valid candidate before replacement. Studio and the controller consume these
 shared services through public SDK interfaces.
 
-`src/support/asset_text.*` implements declarative KDL values. Native shader,
+`src/support/asset_document.*` implements declarative values in the former format values. Native shader,
 model and field graphs have their own preparation paths under `src/graph`.
 Those paths reject executable behavior domains. The offline compiler prepares
 source modules and declarative assets; the standalone player consumes prepared
@@ -71,9 +74,9 @@ values rather than restoring repository files, preserving edits made since the
 original snapshot.
 
 511 declarative documents were converted from the intermediate code storage to
-KDL. Their emitted KDL was parsed and compared semantically before activation.
+the former document format. Their emitted documents was parsed and compared semantically before activation.
 313 nested parameter/mesh-part payloads were converted and compared separately.
-All nine manifests were updated to version 7 and KDL start-scene paths. The
+All nine manifests were updated to version 7 and the former document format start-scene paths. The
 105 executable source documents were reserved for the separate readable source
 migration below. Original declarative documents contained no lexical comments;
 authored graph comment/layout metadata remains in their native model fields.

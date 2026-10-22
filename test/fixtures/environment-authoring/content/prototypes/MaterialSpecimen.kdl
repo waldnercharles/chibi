@@ -1,9 +1,0 @@
-name "MaterialSpecimen"
-components {
-    Appearance color=0x4bafbdff
-    Material albedo=0x4bafbdff emission_color=0x4bafbdff emission_multiplier=1.0 scene=0x4bafbdff
-    MaterialBreakProfile chip_speed=8.0 dust_lifetime_max=0.4 dust_lifetime_min=0.2 dust_limit=4 dust_size_max=0.6 dust_size_min=0.3 dust_speed_max=6.0 dust_speed_min=3.0 fragment_speed=10.0 release_speed=6.0
-    MaterialTerrain category=8 cell_size=2.0 field="MaterialIslands" height=224.0 mask=15 min_fragment_cells=10 parameters="" seed=7 width=384.0
-    Substance blast_multiplier=1.0 hardness=1.0 retain_chips=#true
-    (object)Transform
-}

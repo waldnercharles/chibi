@@ -333,7 +333,7 @@ restore and settings, and nested fragments).
   `Field X/Y/Z`, one library call and `Field Output`. Still open: arithmetic
   operators and local bindings in lowered functions, so expressions nest
   `field_add` calls.
-- Hand-edited KDL graphs need generated IDs: an added node whose ID collides
+- Hand-edited compiled Chibi graphs need generated IDs: an added node whose ID collides
   with another node's implicit pin IDs fails to load. Expression-form material
   and field sources would remove this whole class of error.
 - Done: cellular field ops (`Field Cell X/Y/Edge`).

@@ -337,7 +337,12 @@ TEST_CASE(original_workflow_preserves_order_and_failure_on_real_host)
                                                  : mode == 2 ? 38
                                                              : 0);
             valid &= result.steps == (mode == 1 ? 1 : 2);
-            valid &= !strcmp(result.stdout_text, mode == 1 ? "configure\n" : "configure\nbuild\n");
+            valid &= !strcmp(
+                result.stdout_text,
+                mode == 1 ? "configure\n"
+                          : "configure\n"
+                            "build\n"
+            );
             valid &= !result.stderr_size && !result.stdout_truncated &&
                      !result.stderr_truncated;
             valid &= !result.counts.overflow &&

@@ -1,0 +1,74 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("SurfaceRing")),
+            data.Field.Named("domain", data.Value.Text("shape")),
+            data.Field.Named("bounds_x", data.Value.Real(12.0)),
+            data.Field.Named("bounds_y", data.Value.Real(12.0)),
+            data.Field.Named("id_counter", data.Value.UInt(1000)),
+            data.Field.Named("description", data.Value.Text("A horizontal ring with an open center; local Y is the tube's height.")),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(100)),
+                            data.Field.Named("type", data.Value.Text("Shader ObjectPosition")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(200)),
+                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
+                            data.Field.Named("x", data.Value.Real(250.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("reference_name", data.Value.Text("length(vec2(length(position.xz) - 8, position.y)) - 2.5")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("position", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(201)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ]))
+                            ])),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Result", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(202)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(300)),
+                            data.Field.Named("type", data.Value.Text("Shader Shape Output")),
+                            data.Field.Named("x", data.Value.Real(750.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Value")),
+                            data.Field.Named("to", data.Value.Text("200.position"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("200.Result")),
+                            data.Field.Named("to", data.Value.Text("300.Distance"))
+                        ])
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("id", data.Value.UInt(500)),
+                    data.Field.Named("kind", data.Value.Text("function")),
+                    data.Field.Named("math_expression", data.Value.Text("length(vec2(length(position.xz) - 8, position.y)) - 2.5")),
+                    data.Field.Named("expression_mode", data.Value.UInt(1)),
+                    data.Field.Named("entry_id", data.Value.UInt(501))
+                ])
+            ]))
+        ])
+    );
+}

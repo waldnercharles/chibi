@@ -279,7 +279,7 @@ target_link_libraries(test_language PRIVATE Chibi::math_capabilities)
 set_source_files_properties(generic.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 if(TARGET Chibi::project_compilation)
     target_sources(test_language PRIVATE source_assets.c)
-    target_link_libraries(test_language PRIVATE Chibi::project_compilation Chibi::asset_text)
+    target_link_libraries(test_language PRIVATE Chibi::project_compilation Chibi::asset_documents)
     target_compile_definitions(test_language PRIVATE CHIBI_TEST_SOURCE_ASSETS)
 endif()
 target_link_libraries(test_language PRIVATE Chibi::value_document Chibi::array_capabilities Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::field_capabilities Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::arithmetic_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
@@ -314,11 +314,6 @@ foreach(root IN LISTS corpus_roots)
     file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CHIBI_LANGUAGE_TEST_ROOT}/${root}/*.chibi")
     list(APPEND corpus ${sources})
 endforeach()
-# These originals intentionally retain historical declarations for the dedicated
-# project_declarations.c migration checks; they are not canonical corpus inputs.
-list(REMOVE_ITEM corpus
-    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/OutlinerRows.chibi"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/VirtualList.chibi")
 foreach(root IN LISTS CHIBI_LANGUAGE_CORPUS_PROJECTS)
     if(NOT IS_ABSOLUTE "${root}" OR NOT IS_DIRECTORY "${root}")
         message(FATAL_ERROR "Language corpus project must be an existing absolute directory: ${root}")

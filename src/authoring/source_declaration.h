@@ -4,9 +4,8 @@
 
 typedef enum
 {
-    SOURCE_TEXT_KDL,
-    SOURCE_TEXT_RML,
     SOURCE_TEXT_CHIBI,
+    SOURCE_TEXT_RML,
 } source_text_kind;
 
 typedef struct

@@ -1,6 +1,0 @@
-name "Walls"
-components {
-    Material absorption=1.0 albedo=0xffffffff edge_light=1.0 scene=0xffffffff
-    Tilemap cells="1 1 1 1 1 1 1 1 1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 1" columns=9 frame_height=16 frame_width=16 height_map="content/images/court_height.png" image="content/images/court.png" layer=1 normal_map="content/images/court_normal.png" relief=40.0 rows=6
-    Transform x=-112.0 y=-56.0
-}

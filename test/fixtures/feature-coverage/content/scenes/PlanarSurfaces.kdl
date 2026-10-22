@@ -1,9 +1,0 @@
-version 1
-name "PlanarSurfaces"
-(array)entities {
-    - name="View" prototype="SurfaceView"
-    - name="Raymarched ring" prototype="SurfaceSdf"
-    - name="Tilted mesh" prototype="SurfaceMesh"
-    - name="Mirror receiver" prototype="SurfaceMirror"
-    - name="Destructible relief slab" prototype="SurfaceDestructible"
-}

@@ -31,7 +31,7 @@ int authoring_project_compile_modules(
  * the default backend. 0 when every test passes, 1 for a failure or an invalid
  * package. */
 int authoring_project_test(const char *root, const char *core);
-/* chibi doc: writes the site root/docs/site.kdl lists into root/build/docs:
+/* chibi doc: writes the site root/docs/site.chibi lists into root/build/docs:
  * each page's Markdown, package reference or grammar rendered and laid out by
  * the generator packages at generator_root (markdown, reference, grammar and
  * site), whose imports of core: resolve to core. Every path is absolute. 0

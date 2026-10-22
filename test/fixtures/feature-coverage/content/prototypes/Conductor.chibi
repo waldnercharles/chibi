@@ -1,0 +1,18 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Conductor")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Rhythm", data.Object([
+                    data.Field.Named("bpm", data.Value.Real(120.0)),
+                    data.Field.Named("pulse_width", data.Value.Real(0.25))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

@@ -1,0 +1,23 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Prop")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Sprite", data.Object([
+                    data.Field.Named("frame_height", data.Value.UInt(16)),
+                    data.Field.Named("frame_width", data.Value.UInt(16)),
+                    data.Field.Named("height_map", data.Value.Text("content/images/props_height.png")),
+                    data.Field.Named("image", data.Value.Text("content/images/props.png")),
+                    data.Field.Named("layer", data.Value.UInt(1)),
+                    data.Field.Named("normal_map", data.Value.Text("content/images/props_normal.png")),
+                    data.Field.Named("relief", data.Value.Real(4.0))
+                ])),
+                data.Field.Named("Transform", data.Object([]))
+            ]))
+        ])
+    );
+}

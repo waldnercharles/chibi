@@ -1,0 +1,122 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("The seam quarry")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("World")),
+                    data.Field.Named("prototype", data.Value.Text("World"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Backdrop")),
+                    data.Field.Named("prototype", data.Value.Text("Backdrop"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Distant ridge west")),
+                    data.Field.Named("prototype", data.Value.Text("Scenery")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Appearance", data.Object([
+                            data.Field.Named("height", data.Value.Real(78.0)),
+                            data.Field.Named("width", data.Value.Real(280.0)),
+                            data.Field.Named("color", data.Value.UInt(456409599))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-260.0)),
+                            data.Field.Named("y", data.Value.Real(-36.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Distant ridge east")),
+                    data.Field.Named("prototype", data.Value.Text("Scenery")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Appearance", data.Object([
+                            data.Field.Named("height", data.Value.Real(54.0)),
+                            data.Field.Named("width", data.Value.Real(330.0)),
+                            data.Field.Named("color", data.Value.UInt(591481599))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(250.0)),
+                            data.Field.Named("y", data.Value.Real(-26.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Moon")),
+                    data.Field.Named("prototype", data.Value.Text("Scenery")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Appearance", data.Object([
+                            data.Field.Named("color", data.Value.UInt(2763634175)),
+                            data.Field.Named("height", data.Value.Real(30.0)),
+                            data.Field.Named("width", data.Value.Real(30.0)),
+                            data.Field.Named("shape", data.Value.Text("Circle"))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(250.0)),
+                            data.Field.Named("y", data.Value.Real(-115.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Quarry terrain")),
+                    data.Field.Named("prototype", data.Value.Text("Terrain"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Explorer")),
+                    data.Field.Named("prototype", data.Value.Text("Explorer"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Explorer visor")),
+                    data.Field.Named("prototype", data.Value.Text("Visor"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Dig outline")),
+                    data.Field.Named("prototype", data.Value.Text("Target"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("Camera"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("128-cell seam marker")),
+                    data.Field.Named("prototype", data.Value.Text("Marker"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("128-cell seam flag")),
+                    data.Field.Named("prototype", data.Value.Text("Flag"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Untouched reference marker")),
+                    data.Field.Named("prototype", data.Value.Text("Marker")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Appearance", data.Object([
+                            data.Field.Named("color", data.Value.UInt(4291003391))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(256.0)),
+                            data.Field.Named("y", data.Value.Real(-9.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Untouched reference flag")),
+                    data.Field.Named("prototype", data.Value.Text("Flag")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Appearance", data.Object([
+                            data.Field.Named("color", data.Value.UInt(4291003391))
+                        ])),
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(263.0)),
+                            data.Field.Named("y", data.Value.Real(-16.0))
+                        ]))
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

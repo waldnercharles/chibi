@@ -1,6 +1,6 @@
 #include "authoring/parts_prepare.h"
 
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -49,7 +49,7 @@ bool authoring_parts_parse(const char *text, scene3d_parts *parts, char *error, 
     if (!text || !*text) {
         return true;
     }
-    av_doc *doc = av_value_read(text, NULL, 0);
+    av_doc *doc = asset_document_read(text, NULL, 0);
     av_value *root = av_doc_root(doc);
     if (!av_is_arr(root) || av_arr_size(root) > SCENE3D_PART_LIMIT) {
         snprintf(error, size, "Mesh Parts needs an array of at most %d parts.", SCENE3D_PART_LIMIT);
@@ -119,7 +119,7 @@ char *authoring_parts_write(const scene3d_parts *parts)
         }
         av_arr_append(root, object);
     }
-    char *text = av_value_write(av_doc_root(doc));
+    char *text = asset_document_write(av_doc_root(doc));
     av_doc_free(doc);
     return text;
 }

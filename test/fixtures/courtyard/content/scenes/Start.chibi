@@ -1,0 +1,375 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("Courtyard")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lighting")),
+                    data.Field.Named("prototype", data.Value.Text("Lighting")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Camera")),
+                    data.Field.Named("prototype", data.Value.Text("Camera")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Floor")),
+                    data.Field.Named("prototype", data.Value.Text("Floor")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Walls")),
+                    data.Field.Named("prototype", data.Value.Text("Walls")),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lantern 1")),
+                    data.Field.Named("prototype", data.Value.Text("Lantern")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-40.0)),
+                            data.Field.Named("y", data.Value.Real(-8.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Lantern 2")),
+                    data.Field.Named("prototype", data.Value.Text("Lantern")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(100.0)),
+                            data.Field.Named("y", data.Value.Real(-50.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate 1")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-70.0)),
+                            data.Field.Named("y", data.Value.Real(12.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate 2")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-14.0)),
+                            data.Field.Named("y", data.Value.Real(24.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate 3")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(70.0)),
+                            data.Field.Named("y", data.Value.Real(-20.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate 4")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(110.0)),
+                            data.Field.Named("y", data.Value.Real(14.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Crate 5")),
+                    data.Field.Named("prototype", data.Value.Text("Crate")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-20.0)),
+                            data.Field.Named("y", data.Value.Real(-24.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 1")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(66.200000000000003)),
+                            data.Field.Named("y", data.Value.Real(59.899999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 2")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(80.700000000000003)),
+                            data.Field.Named("y", data.Value.Real(63.200000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 3")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(108.8)),
+                            data.Field.Named("y", data.Value.Real(33.600000000000001))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 4")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(41.399999999999999)),
+                            data.Field.Named("y", data.Value.Real(76.099999999999994))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 5")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(68.5)),
+                            data.Field.Named("y", data.Value.Real(42.899999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 6")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(149.5)),
+                            data.Field.Named("y", data.Value.Real(55.899999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 7")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(132.0)),
+                            data.Field.Named("y", data.Value.Real(56.200000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 8")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(110.3)),
+                            data.Field.Named("y", data.Value.Real(38.299999999999997))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 9")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(109.8)),
+                            data.Field.Named("y", data.Value.Real(77.700000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 10")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(97.5)),
+                            data.Field.Named("y", data.Value.Real(70.799999999999997))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 11")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(113.90000000000001)),
+                            data.Field.Named("y", data.Value.Real(33.5))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 12")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(123.40000000000001)),
+                            data.Field.Named("y", data.Value.Real(62.5))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 13")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(73.099999999999994)),
+                            data.Field.Named("y", data.Value.Real(31.699999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 14")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(135.19999999999999)),
+                            data.Field.Named("y", data.Value.Real(56.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 15")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(119.09999999999999)),
+                            data.Field.Named("y", data.Value.Real(78.299999999999997))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 16")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(118.59999999999999)),
+                            data.Field.Named("y", data.Value.Real(80.700000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 17")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(83.400000000000006)),
+                            data.Field.Named("y", data.Value.Real(74.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 18")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(88.900000000000006)),
+                            data.Field.Named("y", data.Value.Real(81.5))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 19")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(136.69999999999999)),
+                            data.Field.Named("y", data.Value.Real(35.399999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 20")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(55.0)),
+                            data.Field.Named("y", data.Value.Real(41.899999999999999))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 21")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(146.19999999999999)),
+                            data.Field.Named("y", data.Value.Real(54.0))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 22")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(108.90000000000001)),
+                            data.Field.Named("y", data.Value.Real(46.600000000000001))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 23")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(95.799999999999997)),
+                            data.Field.Named("y", data.Value.Real(51.200000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Glow 24")),
+                    data.Field.Named("prototype", data.Value.Text("Glow")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(78.599999999999994)),
+                            data.Field.Named("y", data.Value.Real(62.200000000000003))
+                        ]))
+                    ])),
+                    data.Field.Named("behaviors", data.List([]))
+                ])
+            ]))
+        ])
+    );
+}

@@ -1,0 +1,24 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Sun")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("DirectionalLight", data.Object([
+                    data.Field.Named("angular_diameter", data.Value.Real(3.0)),
+                    data.Field.Named("color", data.Value.UInt(4294967295)),
+                    data.Field.Named("direction", data.Object([
+                        data.Field.Named("x", data.Value.Real(0.45000000000000001)),
+                        data.Field.Named("y", data.Value.Real(-0.84999999999999998)),
+                        data.Field.Named("z", data.Value.Real(-0.40000000000000002))
+                    ])),
+                    data.Field.Named("intensity", data.Value.Real(2.7999999999999998)),
+                    data.Field.Named("shadows", data.Value.Bool(true))
+                ]))
+            ]))
+        ])
+    );
+}

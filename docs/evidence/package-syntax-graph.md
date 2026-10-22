@@ -181,7 +181,7 @@ The formatted parser is 1185542 bytes (SHA256
 Canonical formatting walks all CST leaves, but these eleven cases do not provide
 dedicated package-format round-trip coverage. A source-derived CR-only package
 header separator edge is tracked separately as
-[CUT-81](https://linear.app/cute-engine/issue/CUT-81/preserve-cr-only-package-header-separators-in-canonical-formatting)
+[CUT-81](https://linear.app/cute-engine/issue/CUT-81)
 and engine issue #432. It has not been executed here. Package/import stay
 contextual rather than becoming global reserved words; the four legacy specimens
 cover both names at old root/inner positions. No legacy keyword regression has

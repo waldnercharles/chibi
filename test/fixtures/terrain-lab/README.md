@@ -6,7 +6,7 @@ cave on the left is part of the authored field; the circular cuts you make are
 live terrain edits. The amber flag at x=256 marks an untouched reference patch.
 
 All game behavior is in `content/behaviors/Explorer.chibi`. The terrain recipe is
-`content/libraries/QuarryShapes.chibi`, connected by `fields/QuarryField.kdl`.
+`content/libraries/QuarryShapes.chibi`, connected by `fields/QuarryField.chibi`.
 Dynamic Body physics and raycasts use the generated terrain colliders, including
 holes restored from a save.
 

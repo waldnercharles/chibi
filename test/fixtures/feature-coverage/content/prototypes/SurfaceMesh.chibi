@@ -1,0 +1,40 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("SurfaceMesh")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("depth", data.Value.Real(18.0)),
+                    data.Field.Named("elevation", data.Value.Real(12.0)),
+                    data.Field.Named("height", data.Value.Real(18.0)),
+                    data.Field.Named("width", data.Value.Real(18.0))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("absorption", data.Value.Real(1.0)),
+                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                    data.Field.Named("scene", data.Value.UInt(4294967295))
+                ])),
+                data.Field.Named("MeshSurface2D", data.Object([
+                    data.Field.Named("enabled", data.Value.Bool(true))
+                ])),
+                data.Field.Named("Shader", data.Object([
+                    data.Field.Named("material", data.Value.Text("SurfaceBands"))
+                ])),
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(22.0)),
+                    data.Field.Named("y", data.Value.Real(-18.0))
+                ])),
+                data.Field.Named("VisualTransform", data.Object([
+                    data.Field.Named("pitch", data.Value.Real(0.29999999999999999)),
+                    data.Field.Named("roll", data.Value.Real(0.25)),
+                    data.Field.Named("scale", data.Value.Real(1.0)),
+                    data.Field.Named("yaw", data.Value.Real(0.40000000000000002))
+                ]))
+            ]))
+        ])
+    );
+}

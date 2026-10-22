@@ -1,0 +1,35 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("Jump", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("Space")
+                ]))
+            ])),
+            data.Field.Named("Dig", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("F")
+                ]))
+            ])),
+            data.Field.Named("Save", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("S")
+                ]))
+            ])),
+            data.Field.Named("Load", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("L")
+                ]))
+            ])),
+            data.Field.Named("Respawn", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("R")
+                ]))
+            ]))
+        ])
+    );
+}

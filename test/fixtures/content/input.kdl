@@ -1,7 +1,0 @@
-Dash {
-    (array)sources "Shift"
-}
-Fire {
-    (array)sources "Space"
-    firing #true
-}

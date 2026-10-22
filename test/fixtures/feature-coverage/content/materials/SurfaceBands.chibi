@@ -1,0 +1,113 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("SurfaceBands")),
+            data.Field.Named("domain", data.Value.Text("material")),
+            data.Field.Named("id_counter", data.Value.UInt(1000)),
+            data.Field.Named("description", data.Value.Text("Local height colors the ring and box. A small emission gain keeps them visible in the planar scene.")),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(100)),
+                            data.Field.Named("type", data.Value.Text("Shader ObjectPosition")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(200)),
+                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
+                            data.Field.Named("x", data.Value.Real(250.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("reference_name", data.Value.Text("mix(vec3(0.05, 0.5, 0.75), vec3(0.95, 0.5, 0.12), clamp((position.y + 10) / 20, 0, 1))")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("position", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(201)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ]))
+                            ])),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Result", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(202)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(300)),
+                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
+                            data.Field.Named("x", data.Value.Real(650.0)),
+                            data.Field.Named("y", data.Value.Real(180.0)),
+                            data.Field.Named("reference_name", data.Value.Text("color * 0.125")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("color", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(301)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ]))
+                            ])),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Result", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(302)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(400)),
+                            data.Field.Named("type", data.Value.Text("Shader Surface Output")),
+                            data.Field.Named("x", data.Value.Real(900.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Roughness", data.Value.Real(0.40000000000000002)),
+                                data.Field.Named("Unlit", data.Value.Bool(true))
+                            ]))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Value")),
+                            data.Field.Named("to", data.Value.Text("200.position"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("200.Result")),
+                            data.Field.Named("to", data.Value.Text("300.color"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("200.Result")),
+                            data.Field.Named("to", data.Value.Text("400.Base Color"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("300.Result")),
+                            data.Field.Named("to", data.Value.Text("400.Emission"))
+                        ])
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("id", data.Value.UInt(500)),
+                    data.Field.Named("kind", data.Value.Text("function")),
+                    data.Field.Named("math_expression", data.Value.Text("mix(vec3(0.05, 0.5, 0.75), vec3(0.95, 0.5, 0.12), clamp((position.y + 10) / 20, 0, 1))")),
+                    data.Field.Named("expression_mode", data.Value.UInt(1)),
+                    data.Field.Named("entry_id", data.Value.UInt(501))
+                ]),
+                data.Object([
+                    data.Field.Named("id", data.Value.UInt(600)),
+                    data.Field.Named("kind", data.Value.Text("function")),
+                    data.Field.Named("math_expression", data.Value.Text("color * 0.125")),
+                    data.Field.Named("expression_mode", data.Value.UInt(1)),
+                    data.Field.Named("entry_id", data.Value.UInt(601))
+                ])
+            ]))
+        ])
+    );
+}

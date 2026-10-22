@@ -149,7 +149,7 @@ void authoring_source_references_add(reference_index *index, const authoring_nav
             fact->location.document
         );
         if (!document->analysis) {
-            continue; /* Native declarations are indexed by their owning KDL adapters. */
+            continue; /* Native declarations are indexed by their owning Chibi adapters. */
         }
         int source = source_asset(index, document, fact->target, catalog);
         if (source < 0) {

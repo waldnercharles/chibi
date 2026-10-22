@@ -1,0 +1,34 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("PlanarSurfaces")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("View")),
+                    data.Field.Named("prototype", data.Value.Text("SurfaceView"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Raymarched ring")),
+                    data.Field.Named("prototype", data.Value.Text("SurfaceSdf"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Tilted mesh")),
+                    data.Field.Named("prototype", data.Value.Text("SurfaceMesh"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Mirror receiver")),
+                    data.Field.Named("prototype", data.Value.Text("SurfaceMirror"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Destructible relief slab")),
+                    data.Field.Named("prototype", data.Value.Text("SurfaceDestructible"))
+                ])
+            ]))
+        ])
+    );
+}

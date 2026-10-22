@@ -1,17 +1,21 @@
-Summary: Implement the corrected CUT-70/CUT-71 authoring requirements agreed on 2026-10-06. KDL defines declarative assets; readable .code is the complete executable source for behaviors, callable libraries and systems. Studio text and graph views share that source and the existing native/WASM runtime backends. LuaJIT is out of scope.
+Summary: Implement the corrected CUT-70/CUT-71 authoring requirements agreed on 2026-10-06. the former document format defines declarative assets; readable .code is the complete executable source for behaviors, callable libraries and systems. Studio text and graph views share that source and the existing native/WASM runtime backends. LuaJIT is out of scope.
 
-Context: Fresh main is 0e515e5453ea81a762c7885fbb2ec9481ad0b9bf, project version 5. asset_text owns KDL syntax over av_value; graph serialization already constructs models from values. The JavaScript behavior bridge is separate from native loading. Studio has source drafts, Zep standard/Vim editing, graph history, diagnostics and live generations, but unsaved graph/text changes are not synchronized.
+> Historical record: this document describes an earlier source format and toolchain.
+> Use the current language and authoring guides for executable instructions.
+> Suffixes in prose follow current conventions; linked Git revisions retain the exact historical files.
 
-System impact: Restore project.kdl and KDL for scenes, prototypes, event definitions, materials, shaders, fields, shapes, models and scenarios. Project version 7 records the changed contract. Executable source owns state, calls, events, functions, control flow and suspension. Graphs are derived compiler/editor models. Optional identity/layout metadata cannot supply executable values, operations or connections. Invalid source preserves the last valid document and runtime.
+Context: Fresh main is 0e515e5453ea81a762c7885fbb2ec9481ad0b9bf, project version 5. asset_text owns the earlier document syntax over av_value; graph serialization already constructs models from values. The JavaScript behavior bridge is separate from native loading. Studio has source drafts, Zep standard/Vim editing, graph history, diagnostics and live generations, but unsaved graph/text changes are not synchronized.
+
+System impact: Restore project.chibi and the former document format for scenes, prototypes, event definitions, materials, shaders, fields, shapes, models and scenarios. Project version 7 records the changed contract. Executable source owns state, calls, events, functions, control flow and suspension. Graphs are derived compiler/editor models. Optional identity/layout metadata cannot supply executable values, operations or connections. Invalid source preserves the last valid document and runtime.
 
 Approach:
 - Complete the shared C behavior compiler and readable graph-to-source printer through existing graph/expression APIs. Cover every supported behavior graph operation without explicit graph records or a serialization fallback. Prefer structured statements; labels are available for control flow that cannot be nested without changing execution.
 - Retain drafts/comments, reconcile visual edits through ranges, preserve unambiguous identity, and validate before replacing models.
-- Restore declarative KDL from current values, preserving authored changes and migrating domain-specific references. Rewrite all executable corpus assets into readable source and verify semantics independently of optional metadata. Retain KDL dependencies; keep the obsolete JavaScript compiler and required sidecars removed.
+- Restore declarative values in the former format from current values, preserving authored changes and migrating domain-specific references. Rewrite all executable corpus assets into readable source and verify semantics independently of optional metadata. Retain the former document format dependencies; keep the obsolete JavaScript compiler and required sidecars removed.
 - Extend editor/controller language services, simultaneous views, shared undo, navigation, diagnostics, debugging and safe generation/state replacement.
 
 Changes:
-- src/support/asset_text.* and ckdl build integration: KDL parsing/writing. code_lex remains the behavior lexer.
+- src/support/asset_document.* and retired-parser build integration: the former document format parsing/writing. code_lex remains the behavior lexer.
 - src/assets/code_source.*: structured parse, resolution, graph construction, formatting, identity and diagnostics.
 - src/assets/asset_source.* and reference/navigation services: completion, hover, range edits and reconciliation.
 - src/assets/behavior_loader.c, project.*, graph/document/serialize.c: loading, discovery and format contract.
@@ -33,7 +37,7 @@ Preservation: build/requirements-restart-baseline records the existing uncommitt
 Progress:
 - Requirements settled; source and validation ownership split across frontend, asset format, corpus, shared services and editor work.
 - Baseline preserved before edits.
-- Declarative KDL restoration is complete, including embedded payloads and project manifests. Native semantic comparisons cover the restored documents.
+- Declarative the former document format restoration is complete, including embedded payloads and project manifests. Native semantic comparisons cover the restored documents.
 - The shared readable frontend, source intelligence, metadata preservation, controller publication and Studio integration are implemented. Current source, precision, aggregate-capture and complete/incomplete-source navigation regressions pass.
 - All 105 executable assets are active as readable source. The final1277 comparison verifies original raw document facts, executable semantics without metadata, independently reopened metadata-bearing source, native compilation and query parity for every asset. Every activation checked current bytes, preserved a backup and verified the written hash. Earlier baseline proofs are superseded.
 - Studio browser checks cover simultaneous views, source/graph editing, standard/Vim navigation and history, debugging, invalid drafts, saved-file repair, quoted cross-file calls and creation of all three executable asset kinds. The migrated MovementSystem passes its independent movement oracle on generic, typed bytecode and SLJIT backends.
@@ -56,7 +60,7 @@ Authoring ergonomics continuation (2026-10-07):
 - Final 744adbdc integration builds pass for native Studio/controller/tests and serial WebAssembly Studio/source tests. Approved language/editor/indentation/expression-geometry checks plus WASM source checks pass under one 60-second deadline in 4.270 seconds; the admitted document-tabs workflow passes in 3.004 seconds. Earlier focused refactor checks passed in 34.720 seconds. Full native/render suites remain quarantined. Work remains uncommitted.
 
 ECS language continuation (2026-10-07):
-- User approved implementation of the discussed language direction. Keep declarative KDL and the existing JIT; preserve dirty work and prior recovery snapshots. Current HEAD is 744adbdc. Additional working-source recovery is under build/ecs-language/baseline.
+- User approved implementation of the discussed language direction. Keep declarative values in the former format and the existing JIT; preserve dirty work and prior recovery snapshots. Current HEAD is 744adbdc. Additional working-source recovery is under build/ecs-language/baseline.
 - Make entity component and field paths first-class typed expressions and assignment targets. Infer the entity owner and native event payload types. Canonical source uses bare names, readable statements, and actual events with `on`; irreducible action completions use `after`.
 - Systems select entities through `name: Component` parameters, optional `Component?`, and `without Component, Component`. Their body implies Tick and supplies dt. Optional presence tests, including `if component`, narrow safely without introducing numeric truthiness.
 - Ordinary block locals capture once at their execution point. Explicit `state name := value` persists per matching entity; `shared name := value` persists per registered system. Query exit cancels work and drops private state; reentry starts fresh. Suspension keeps one invocation per entity without an update backlog, and reacquires component data on resumption.

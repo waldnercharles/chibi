@@ -76,8 +76,8 @@
 #include "runtime/transform_propagation.h"
 #include "runtime/ui.h"
 #include "support/array.h"
+#include "support/asset_document.h"
 #include "support/asset_json.h"
-#include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/text_file.h"
 #include "support/text_search.h"
@@ -141,7 +141,7 @@ typedef struct
 {
     const char *kind;
     const char *folder;
-    const char *extension; /* of its files: KDL, code, or UI markup */
+    const char *extension; /* of its files: assets, code, or UI markup */
     asset_loader loader;
     reference_asset_kind reference; /* KIND_COUNT for assets nothing references */
 } asset_family;
@@ -316,7 +316,7 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
 };
 static const contract_field CONTRACT_NEW_PROJECT[] = {
     { "path", "string", true, "New project directory; it must not exist and its parent must." },
-    { "name", "string", true, "Project name written to project.kdl." },
+    { "name", "string", true, "Project name written to project.chibi." },
 };
 static const contract_field CONTRACT_NEW_ASSET[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -705,7 +705,7 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "new_project",
-        "Create a project directory with project.kdl and an empty start "
+        "Create a project directory with project.chibi and an empty start "
         "scene.",
         CONTRACT_NEW_PROJECT,
         CONTRACT_FIELD_COUNT(CONTRACT_NEW_PROJECT),
@@ -1016,7 +1016,7 @@ static bool valid_asset_filename(const asset_family *family, const char *filenam
     return (length > extension &&
             !strcmp(filename + length - extension, family->extension)) ||
            (family->loader == ASSET_PROTOTYPE &&
-            ((length > 4 && !strcmp(filename + length - 4, ".kdl")) ||
+            ((length > 6 && !strcmp(filename + length - 6, ".chibi")) ||
              code_filename(filename)));
 }
 
@@ -1028,7 +1028,7 @@ static const char *name_asset_file(asset_ref *ref, const char *name)
     size_t length = strlen(name), suffix = strlen(extension);
     if ((length >= suffix && !strcmp(name + length - suffix, extension)) ||
         (ref->family->loader == ASSET_PROTOTYPE &&
-         ((length > 4 && !strcmp(name + length - 4, ".kdl")) || code_filename(name)))) {
+         ((length > 6 && !strcmp(name + length - 6, ".chibi")) || code_filename(name)))) {
         if (!valid_asset_filename(ref->family, name) || length >= sizeof ref->filename) {
             return "asset name is invalid";
         }
@@ -2096,13 +2096,13 @@ static void catalog_reference_add(
     apush(*references, reference);
 }
 
-/* An owned string from project.kdl, or NULL for none. */
+/* An owned string from project.chibi, or NULL for none. */
 static char *manifest_string(const char *root, const char *key)
 {
     char path[1024], error[128];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     char *text = text_file_read(path);
-    av_doc *manifest = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_doc *manifest = text ? asset_document_read(text, error, sizeof error) : NULL;
     free(text);
     const char *value = av_get_str(av_obj_get(av_doc_root(manifest), key));
     char *copy = value && value[0] ? xstrdup(value) : NULL;
@@ -2299,11 +2299,11 @@ static int catalog_index_references(
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
-/* Inspect KDL documents or executable source through native asset values. */
+/* Inspect Chibi asset modules or executable source through native asset values. */
 static yyjson_doc *parse_project_asset_text(const char *, const char *text)
 {
     char error[160];
-    av_doc *native = av_doc_read(text, error, sizeof error);
+    av_doc *native = asset_document_read(text, error, sizeof error);
     char *json = native ? av_json_write(av_doc_root(native)) : NULL;
     yyjson_doc *document = json ? yyjson_read(json, strlen(json), 0) : NULL;
     free(json);
@@ -2350,7 +2350,8 @@ static yyjson_doc *parse_project_asset_path(const char *root, const char *relati
         return document;
     }
     const char *extension = strrchr(relative, '.');
-    if (!extension || strcmp(extension, CODE_ASSET_EXTENSION)) {
+    if (!extension || strcmp(extension, CODE_ASSET_EXTENSION) ||
+        asset_document_source(text)) {
         return parse_project_asset_text(root, text);
     }
     yyjson_mut_doc *request = yyjson_mut_doc_new(NULL);
@@ -7285,7 +7286,7 @@ static char *scenario_prototype_text(const char *text, uint64_t hash)
     char identity[32];
     snprintf(identity, sizeof identity, "scenario-%016llx", (unsigned long long)hash);
     av_obj_add_strcpy(document, root, "identity", identity);
-    char *copy = av_doc_write(document);
+    char *copy = asset_source_reconcile(text, av_doc_root(document), error, sizeof error);
     av_doc_free(document);
     return copy;
 }

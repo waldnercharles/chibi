@@ -28,7 +28,7 @@ typedef enum
 
 /* The folder under the content directory that holds the kind's files. */
 const char *new_asset_folder(new_asset_kind kind);
-/* Executable definitions use .chibi; declarative documents use .kdl. */
+/* Executable definitions use .chibi; declarative documents use .chibi. */
 const char *new_asset_extension(new_asset_kind kind);
 /* The longest name a new asset may have, in bytes. */
 #define NEW_ASSET_NAME_MAX 63

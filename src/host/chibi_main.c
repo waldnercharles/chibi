@@ -6,6 +6,7 @@
 #endif
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "types/catalog.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -18,6 +19,17 @@
 #include <time.h>
 #include <unistd.h>
 #include <yyjson.h>
+/* The launcher evaluates project configuration without engine-native types. */
+int type_catalog_pack_count()
+{
+    return 0;
+}
+type_catalog_pack type_catalog_pack_at(int index)
+{
+    (void)index;
+    return (type_catalog_pack){ 0 };
+}
+
 #ifdef _WIN32
 /* The Windows runtime's access takes only existence, write and read modes. */
 #define RUNNABLE F_OK
@@ -43,7 +55,7 @@ extern char **environ;
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
  * chibi fmt [--check] [PATH...]: rewrites each project's assets, or the
- * package sources of a folder without a project.kdl, in their canonical form,
+ * package sources of a folder without a project.chibi, in their canonical form,
  * or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
@@ -51,7 +63,7 @@ extern char **environ;
  * chibi web [PROJECT] --player PLAYER [--port PORT]: exports the static site
  * into a temporary folder and serves it on loopback until interrupted.
  * chibi doc [ROOT] [--serve] [--port PORT]: writes ROOT/build/docs from
- * ROOT/docs/site.kdl and, with --serve, serves it on loopback. */
+ * ROOT/docs/site.chibi and, with --serve, serves it on loopback. */
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
@@ -171,8 +183,9 @@ static int usage(const char *program)
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "       %s web [PROJECT] --player PLAYER [--port PORT]\n"
         "       %s doc [ROOT] [--serve] [--port PORT]\n"
-        "PROJECT is a project directory or its project.kdl. Without one, the\n"
-        "nearest project.kdl at or above the working directory is used.\n"
+        "PROJECT is a project directory or its project.chibi. Without one, "
+        "the\n"
+        "nearest project.chibi at or above the working directory is used.\n"
         "version prints the SDK, build, compiler and artifact-format "
         "identity.\n"
         "doctor reports the SDK, compiler, player, platform, native backend "
@@ -187,9 +200,9 @@ static int usage(const char *program)
         "test runs each @test function of the packages below ROOT, the\n"
         "working directory without one, and fails when one fails. ROOT holds\n"
         "only package files.\n"
-        "fmt rewrites each project's sources and KDL assets as their savers\n"
+        "fmt rewrites each project's sources and Chibi assets as their savers\n"
         "write them; --check writes nothing and fails when one would change.\n"
-        "A PATH that is a folder without a project.kdl has the package\n"
+        "A PATH that is a folder without a project.chibi has the package\n"
         "sources below it formatted instead, as test reads them.\n"
         "run prepares and starts the player.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
@@ -202,7 +215,7 @@ static int usage(const char *program)
         "web exports the browser site into a temporary folder, serves it at\n"
         "http://127.0.0.1:PORT/ (8000 by default; 0 picks a free port) until\n"
         "interrupted, then removes the folder. Windows does not serve yet.\n"
-        "doc writes the documentation site that ROOT/docs/site.kdl lists, "
+        "doc writes the documentation site that ROOT/docs/site.chibi lists, "
         "ROOT\n"
         "being the working directory without one, into ROOT/build/docs;\n"
         "--serve then serves it like web until interrupted. Windows does not\n"
@@ -226,7 +239,7 @@ static bool open_project(chibi_project *project, const char *requested, bool mig
 {
     char *found = requested ? NULL : chibi_project_find(".");
     if (!requested && !found) {
-        fprintf(stderr, "No project.kdl in this directory or any parent\n");
+        fprintf(stderr, "No project.chibi in this directory or any parent\n");
         return false;
     }
     char error[512];
@@ -965,7 +978,7 @@ static int build_game(int argc, char **argv)
 }
 
 /* Has the compiler format the package sources below a requested folder
- * without a project.kdl, or else the project at or above `requested`. */
+ * without a project.chibi, or else the project at or above `requested`. */
 static int format_game(char *compiler, char *requested, bool check)
 {
     chibi_project project = { 0 };

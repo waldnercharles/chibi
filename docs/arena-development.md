@@ -5,13 +5,13 @@
 > archived repositories. See [examples](examples.md) for maintained projects.
 
 Arena3D and Voidweaver now live in separate game repositories. A project is a
-directory containing `project.kdl` and its own `content` tree. Engine regression
+directory containing `project.chibi` and its own `content` tree. Engine regression
 fixtures stay under `test/fixtures`.
 
 Open an authored project with the external Studio consumer:
 
 ```sh
-make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=/absolute/path/to/chibi-arena3d SCENE=scenes/Arena3D.kdl
+make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=/absolute/path/to/chibi-arena3d SCENE=scenes/Arena3D.chibi
 ```
 
 For standalone playback, prepare the selected project into an explicit artifact
@@ -23,7 +23,7 @@ make player-run ARTIFACT=/output/arena.chibip
 ```
 
 In Studio, Play from the scene toolbar and focus the viewport to control the
-player. Voidweaver's authored scene is `content/scenes/Sandbox.kdl` in its own
+player. Voidweaver's authored scene is `content/scenes/Sandbox.chibi` in its own
 repository. Move with WASD or arrows, aim with the mouse, and hold the primary
 mouse button or Space to fire. Controller bindings use the left stick for
 movement and right stick for aiming/firing. Escape releases scene focus. Stop
@@ -222,7 +222,7 @@ already-visible input changes between automatic, constant and connected values.
 EnergyCells is an eleven-node material with a small tiling line image, Mapping,
 Time, Color Ramp and emission. Intensity, Scroll Speed and Tiling are named
 instance controls. ShaderImageDemo shows it on a box, prism and sphere using the
-shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.kdl`.
+shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.chibi`.
 This is a material-authoring example; the arena's lighting and combat-effect
 acceptance remains open.
 

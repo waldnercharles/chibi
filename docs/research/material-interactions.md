@@ -128,7 +128,7 @@ thermal energy identical, reject invalid grain radii without mutating particles,
 and preserve matter when fuel becomes smoke.
 
 ```sh
-make play PROJECT=projects/arena2d SCENE=scenes/MaterialDetail.kdl
+make play PROJECT=projects/arena2d SCENE=scenes/MaterialDetail.chibi
 python3 tools/material_detail_scenario.py --build build-release --profile
 # Recreate the fine scenes through Chibi MCP:
 python3 tools/material_detail_scenario.py --build build-release --author
@@ -195,7 +195,7 @@ Those means do not sum to the frame percentile. This small demonstration meets t
 16.67 ms frame budget on this machine; it does not establish large-world or browser
 performance. The cold kernel savings are not a claim of an equal whole-game FPS gain.
 
-[Retained numeric results and provenance](material-thermal-results.json) include all
+[Retained numeric results and provenance](https://github.com/waldnercharles/chibi/blob/60d58df57666732a3f6a9ff759195b091c6b05d8/docs/research/material-thermal-results.json) include all
 kernel runs, scene measurements, hashes and the canonicalization audit. Current
 kernel results can be reproduced with the CMake `material_thermal_benchmark` target:
 

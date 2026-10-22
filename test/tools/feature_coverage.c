@@ -16,7 +16,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/components.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -282,7 +282,7 @@ static int compare_paths(const void *a, const void *b)
     return strcmp(*(char *const *)a, *(char *const *)b);
 }
 
-/* The KDL files in content/<folder> in name order, owned by the caller. */
+/* The Chibi asset files in content/<folder> in name order, owned by the caller. */
 static char **directory_files(const char *folder)
 {
     char path[MAX_PATH];
@@ -292,12 +292,12 @@ static char **directory_files(const char *folder)
     if (!directory) {
         return NULL;
     }
-    /* The files chibi_ctl enumerates as assets: visible, regular .kdl files. */
+    /* The files chibi_ctl enumerates as assets: visible, regular .chibi files. */
     for (struct dirent *item; (item = readdir(directory));) {
         const char *name = item->d_name;
         size_t length = strlen(name);
         if (name[0] == '.' || strchr(name, '\\') || strstr(name, "..") ||
-            length <= 4 || strcmp(name + length - 4, ".kdl")) {
+            length <= 4 || strcmp(name + length - 4, ".chibi")) {
             continue;
         }
         char *file = xmalloc(MAX_PATH);
@@ -406,7 +406,7 @@ static bool reach_prototype(const char *name, bool spawned)
 static char **prototype_includes(const char *text)
 {
     char error[256];
-    av_doc *document = av_doc_read(text, error, sizeof error);
+    av_doc *document = asset_document_read(text, error, sizeof error);
     assert(document); /* project_prepare_prototypes already read it. */
     const av_value *includes = av_obj_get(av_doc_root(document), "includes");
     char **names = NULL;
@@ -790,11 +790,11 @@ TEST_CASE(test_catalog_coverage)
  * frame without a behavior failure. */
 static bool run_scene(const char *path)
 {
-    /* A scene's name is its file name without ".kdl"; the scene runs under it,
-     * as current_scene() reports. */
+    /* A scene's name is its file name without ".chibi"; the scene runs under
+     * it, as current_scene() reports. */
     const char *file = strrchr(path, '/') + 1;
     char name[MAX_PATH], request_path[MAX_PATH], log_path[MAX_PATH];
-    snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - strlen(".kdl")), file);
+    snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - strlen(".chibi")), file);
     yyjson_mut_doc *message = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(message);
     yyjson_mut_doc_set_root(message, root);

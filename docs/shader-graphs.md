@@ -34,10 +34,10 @@ In a 3D scene, **3D Geometry** supplies the solid: box, sphere, capsule, cone or
 triangle prism or octahedron. Materials shade both paths. A 2D Shape graph does not turn into a 3D solid.
 Without a material graph, ordinary material/appearance colors remain available.
 
-To explore the example, open `scenes/ShaderDemo.kdl`, then open
-`materials/PulseRing.kdl`. Its preview shows the material in isolation. Open the
+To explore the example, open `scenes/ShaderDemo.chibi`, then open
+`materials/PulseRing.chibi`. Its preview shows the material in isolation. Open the
 `ShaderMath.Pulse` call to inspect the shared calculation. Open
-`shapes/SmoothUnion.kdl` to inspect geometry instead of color. Select an actor
+`shapes/SmoothUnion.chibi` to inspect geometry instead of color. Select an actor
 in the scene to change its Shader parameter values; the material defaults stay
 shared while the selected instance's override is independent.
 
@@ -328,4 +328,4 @@ Speed drive Mapping; Image Texture feeds a charcoal/cyan Color Ramp; Intensity
 controls Emission. Tiling sets repetition. The 128-pixel grayscale source is
 `content/textures/EnergyCells.png`. Open `ShaderImageDemo` to see the material on a
 box, prism and sphere with independent instance parameters, or run
-`make play PROJECT=. SCENE=scenes/ShaderImageDemo.kdl`.
+`make play PROJECT=. SCENE=scenes/ShaderImageDemo.chibi`.

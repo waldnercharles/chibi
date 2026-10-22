@@ -125,7 +125,7 @@ TEST_CASE(native_queries_and_cache_lifecycle)
 TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells)
 {
     char text[4096];
-    FILE *file = fopen(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content/prototypes/TileMosaic.kdl", "rb");
+    FILE *file = fopen(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content/prototypes/TileMosaic.chibi", "rb");
     REQUIRE(file);
     size_t length = fread(text, 1, sizeof text - 1, file);
     bool complete = !ferror(file) && feof(file);
@@ -204,11 +204,35 @@ TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells)
 TEST_CASE(mismatched_maps_fail_preparation)
 {
     static const char
-        text[] = "name \"Mismatched\"\n"
-                 "components {\n"
-                 "    Tilemap cells=\"1\" columns=1 frame_height=16 "
-                 "frame_width=16 image=\"content/images/props.png\" "
-                 "normal_map=\"content/textures/EnergyCells.png\" rows=1\n"
+        text[] = "package asset\n"
+                 "\n"
+                 "import data \"game:assets\"\n"
+                 "\n"
+                 "pub Build :: () -> byte[] {\n"
+                 "    return data.Encode(\n"
+                 "        data.Object([\n"
+                 "            data.Field.Named(\"name\", "
+                 "data.Value.Text(\"Mismatched\")),\n"
+                 "            data.Field.Named(\"components\", data.Object([\n"
+                 "                data.Field.Named(\"Tilemap\", data.Object([\n"
+                 "                    data.Field.Named(\"cells\", "
+                 "data.Value.Text(\"1\")),\n"
+                 "                    data.Field.Named(\"columns\", "
+                 "data.Value.UInt(1)),\n"
+                 "                    data.Field.Named(\"frame_height\", "
+                 "data.Value.UInt(16)),\n"
+                 "                    data.Field.Named(\"frame_width\", "
+                 "data.Value.UInt(16)),\n"
+                 "                    data.Field.Named(\"image\", "
+                 "data.Value.Text(\"content/images/props.png\")),\n"
+                 "                    data.Field.Named(\"normal_map\", "
+                 "data.Value.Text(\"content/textures/EnergyCells.png\")),\n"
+                 "                    data.Field.Named(\"rows\", "
+                 "data.Value.UInt(1))\n"
+                 "                ]))\n"
+                 "            ]))\n"
+                 "        ])\n"
+                 "    )\n"
                  "}\n";
     const ecs_component_desc *components[] = { &COMPONENT_Tilemap };
     prototype_registry registry = { .components = components, .component_count = 1 };

@@ -7,7 +7,7 @@
 #include "authoring/source_catalog_snapshot.h"
 #include "support/arena.h"
 #include "support/array.h"
-#include "support/asset_text.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/scalar.h"
@@ -435,11 +435,7 @@ static void project_references(
 static void declarative(source_catalog *c, const char *path, const char *text, bool event)
 {
     char message[192];
-    size_t length = strlen(path);
-    bool source = !event && length > 6 && !strcmp(path + length - 6, ".chibi");
-    av_doc *document = source
-                         ? authoring_prototype_source_read(text, NULL, message, sizeof message)
-                         : asset_text_read(text, message, sizeof message);
+    av_doc *document = asset_document_read(text, message, sizeof message);
     if (!document) {
         error(c, path, (script_range){ 0 }, message);
         return;
@@ -481,7 +477,6 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
         value.parameter_count = (int)count;
     }
     capability(c, path, value);
-    int first_reference = acount(c->references);
     const char *owned_path = own(c, path), *owned_text = own(c, text);
     apush(
         c->definitions,
@@ -491,8 +486,7 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
                                       .path = owned_path,
                                       .text = owned_text,
                                       .range = value_range(text, name_value),
-                                      .text_kind = source ? SOURCE_TEXT_CHIBI
-                                                          : SOURCE_TEXT_KDL })
+                                      .text_kind = SOURCE_TEXT_CHIBI })
     );
     if (!event) {
         project_references(c, owned_path, owned_text, root, 0);
@@ -500,11 +494,6 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
         const av_value *includes = av_obj_get(root, "includes");
         for (size_t i = 0; i < av_arr_size(includes); i++) {
             value_reference(c, owned_path, owned_text, av_arr_get(includes, i), SOURCE_REFERENCE_PROTOTYPE);
-        }
-    }
-    if (source) {
-        for (int i = first_reference; i < acount(c->references); i++) {
-            c->references[i].text_kind = SOURCE_TEXT_CHIBI;
         }
     }
     av_doc_free(document);
@@ -610,7 +599,7 @@ static void load_file(source_catalog *c, const char *path, declaration_kind kind
     }
     if (kind == DECLARATION_SCENE) {
         char message[192];
-        av_doc *document = asset_text_read(text, message, sizeof message);
+        av_doc *document = asset_document_read(text, message, sizeof message);
         if (document) {
             project_references(c, own(c, path), own(c, text), av_doc_root(document), true);
             av_doc_free(document);
@@ -622,6 +611,11 @@ static void load_file(source_catalog *c, const char *path, declaration_kind kind
     }
     if (kind != DECLARATION_SOURCE) {
         declarative(c, path, text, kind == DECLARATION_EVENT);
+        free(text);
+        return;
+    }
+    if (asset_document_source(text)) {
+        error(c, path, (script_range){ 0 }, "Data assets belong in their domain folder, not an executable source folder");
         free(text);
         return;
     }
@@ -667,10 +661,7 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
         }
         return;
     }
-    const char *suffix = kind == DECLARATION_SOURCE || kind == DECLARATION_RELATIONSHIP
-                           ? ".chibi"
-                       : kind == DECLARATION_UI ? ".rml"
-                                                : ".kdl";
+    const char *suffix = kind == DECLARATION_UI ? ".rml" : ".chibi";
     struct dirent *entry;
     while (c->entries < MAX_ENTRIES && (entry = readdir(directory))) {
         c->entries++;
@@ -693,10 +684,8 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
             continue;
         }
         size_t size = strlen(child), end = strlen(suffix);
-        if (S_ISREG(info.st_mode) &&
-            ((size >= end && !strcmp(child + size - end, suffix)) ||
-             (kind == DECLARATION_PROTOTYPE && size > 6 &&
-              !strcmp(child + size - 6, ".chibi")))) {
+        if (S_ISREG(info.st_mode) && size >= end &&
+            !strcmp(child + size - end, suffix)) {
             load_file(c, child, kind);
         }
     }
@@ -827,22 +816,25 @@ static char *input_text(source_catalog *c, const char *path)
  * input_map_read accepted. */
 static void input_definitions(source_catalog *c, const char *path, const char *text)
 {
-    av_doc *document = asset_text_read(text, NULL, 0);
+    av_doc *document = asset_document_read(text, NULL, 0);
     assert(document);
     const av_value *root = av_doc_root(document);
     for (size_t i = 0; i < av_obj_size(root); i++) {
         const char *name = own(c, av_get_str(av_obj_key_at(root, i)));
         av_source at = av_get_source(av_obj_value_at(root, i));
-        assert(at.name_start < at.name_end && at.name_end != SIZE_MAX);
+        script_range range = { .start = -1, .end = -1 };
+        if (at.name_start != SIZE_MAX && at.name_end != SIZE_MAX) {
+            range = text_range(text, (int)at.name_start, (int)at.name_end);
+        }
         apush(
             c->definitions,
-            ((source_catalog_definition){
-                .id = script_catalog_id("event", name),
-                .kind = SCRIPT_CAPABILITY_EVENT,
-                .name = name,
-                .path = path,
-                .text = text,
-                .range = text_range(text, (int)at.name_start, (int)at.name_end) })
+            ((source_catalog_definition){ .id = script_catalog_id("event", name),
+                                          .kind = SCRIPT_CAPABILITY_EVENT,
+                                          .name = name,
+                                          .path = path,
+                                          .text = text,
+                                          .range = range,
+                                          .text_kind = SOURCE_TEXT_CHIBI })
         );
     }
     av_doc_free(document);
@@ -857,7 +849,7 @@ static bool has_global(const source_catalog *c, const char *name)
     return false;
 }
 /* Named entity bindings are project declarations. Discover them from authored
- * KDL, without expanding a scene or depending on the running world. */
+ * Chibi, without expanding a scene or depending on the running world. */
 static void global_declarations(source_catalog *c)
 {
     script_catalog_field *fields = NULL;
@@ -1857,8 +1849,7 @@ bool source_catalog_edit_path(const char *root, const char *path)
                                        : DECLARATIVE_ASSET_EXTENSION;
         size_t size = strlen(relative), suffix = strlen(extension);
         if (!strncmp(relative, folders[i], strlen(folders[i])) &&
-            ((size > suffix && !strcmp(relative + size - suffix, extension)) ||
-             (i == 1 && size > 6 && !strcmp(relative + size - 6, ".chibi")))) {
+            size > suffix && !strcmp(relative + size - suffix, extension)) {
             return true;
         }
     }

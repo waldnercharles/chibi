@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 
-/* A project's input map, content/input.kdl. Each action names the Control
+/* A project's input map, content/input.chibi. Each action names the Control
  * labels that hold it, and may also hold Aim firing:
  *
  *     Fire {
@@ -22,10 +22,10 @@
  *
  * Maps are support/array.h vectors of actions in file order, whose names they
  * own. */
-#define INPUT_MAP_FILE "input.kdl"
+#define INPUT_MAP_FILE "input.chibi"
 
 bool input_map_read(const char *text, input_action **out, char *error, size_t size);
-/* Reads <content>/input.kdl; a project without one has no actions. */
+/* Reads <content>/input.chibi; a project without one has no actions. */
 bool input_map_load(const char *content, input_action **out, char *error, size_t size);
 char *input_map_write(const input_action *map);
 /* Adds controls to the named action, appending the action when it is new. */

@@ -236,17 +236,78 @@ TEST_CASE(preview_loads_declared_components_before_sources_and_keeps_them_alive)
         snprintf(path, sizeof path, "%s/%s", root, folders[i]);
         REQUIRE(!mkdir(path, 0700));
     }
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Preview\"\ncontent \"content\"\nstart_scene \"Test\"\n", CHIBI_PROJECT_VERSION);
-    write_file("project.kdl", manifest);
+    char manifest[16384];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.Int(%d)),\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Preview\")),\n"
+        "            data.Field.Named(\"content\", "
+        "data.Value.Text(\"content\")),\n"
+        "            data.Field.Named(\"start_scene\", "
+        "data.Value.Text(\"Test\"))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n",
+        CHIBI_PROJECT_VERSION
+    );
+    write_file("project.chibi", manifest);
     write_file("content/components/PreviewCounter.chibi", "PreviewCounter :: component { value:int }\n");
     write_file("content/behaviors/Count.chibi", "Count :: behavior { on Begin :: () { self.PreviewCounter.value += 2; } on Tick :: () { self.PreviewCounter.value += 1; } }\n");
     write_file(
-        "content/prototypes/Counter.kdl",
-        "name \"Counter\"\ncomponents { PreviewCounter value=7; }\n"
-        "(array)behaviors \"Count\"\n"
+        "content/prototypes/Counter.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", "
+        "data.Value.Text(\"Counter\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"PreviewCounter\", data.Object([\n"
+        "                    data.Field.Named(\"value\", data.Value.UInt(7))\n"
+        "                ]))\n"
+        "            ])),\n"
+        "            data.Field.Named(\"behaviors\", data.List([\n"
+        "                data.Value.Text(\"Count\")\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
     );
-    write_file("content/scenes/Test.kdl", "version 1\nname \"Test\"\n(array)entities { - name=\"Counter\" prototype=\"Counter\"; }\n");
+    write_file(
+        "content/scenes/Test.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Test\")),\n"
+        "            data.Field.Named(\"entities\", data.List([\n"
+        "                data.Object([\n"
+        "                    data.Field.Named(\"name\", "
+        "data.Value.Text(\"Counter\")),\n"
+        "                    data.Field.Named(\"prototype\", "
+        "data.Value.Text(\"Counter\"))\n"
+        "                ])\n"
+        "            ]))\n"
+        "        ])\n"
+        "    )\n"
+        "}\n"
+    );
     REQUIRE(!type_catalog_find("PreviewCounter"));
     char error[512] = { 0 };
     const char *requests[] = { "{\"kind\":\"scene\",\"name\":\"Test\","

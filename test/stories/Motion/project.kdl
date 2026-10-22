@@ -1,4 +1,0 @@
-version 32
-name "Motion story"
-content "content"
-start_scene "scenes/Main.kdl"

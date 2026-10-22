@@ -137,7 +137,8 @@ Files :: (target: string) -> string[] {
         return [
             "src/runtime/shaders/bake.c", "src/runtime/shaders/program.c", "src/runtime/shaders/prepared.c",
             "src/runtime/shaders/detail.c", "src/runtime/shaders/effects.c", "src/runtime/shaders/image.c",
-            "src/runtime/shaders/volume.c", "src/runtime/shaders/inspection.c"
+            "src/runtime/shaders/volume.c", "src/runtime/shaders/inspection.c",
+            "src/runtime/shaders/source_debug.c"
         ];
     }
     if (target == "chibi_model_runtime") {
@@ -769,7 +770,7 @@ Files :: (target: string) -> string[] {
         return ["test/tools/scene.c", "test/tools/scene_prepared.c"];
     }
     if (target == "chibi_shader_bake_consumer") {
-        return ["test/tools/shader_bake.c"];
+        return ["test/tools/shader_bake.c", "test/tools/shader_source_debug.c"];
     }
     if (target == "chibi_scene_authoring_consumer") {
         return ["test/authoring/scene_hierarchy.c"];
@@ -990,7 +991,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return [
             "runtime/shaders/bake.h", "runtime/shaders/detail.h", "runtime/shaders/effects.h",
             "runtime/shaders/image.h", "runtime/shaders/inspection.h", "runtime/shaders/prepared.h",
-            "runtime/shaders/program.h", "runtime/shaders/volume.h"
+            "runtime/shaders/program.h", "runtime/shaders/volume.h", "runtime/shaders/source_debug.h"
         ];
     }
     if (target == "chibi_model_runtime") {

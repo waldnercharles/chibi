@@ -3846,6 +3846,28 @@ pub Resources :: (target: string) -> string[] {
     return [];
 }
 
+// Source lists a target's tests read, `OUTPUT=ROOT`: every .chibi file below
+// ROOT, by absolute path, sorted, except Unlisted ones, as
+// test/language/CMakeLists.txt writes the language corpus.
+pub SourceLists :: (target: string) -> string[] {
+    if (target == "test_language") {
+        return ["build/test/language/corpus.txt=test/fixtures"];
+    }
+    return [];
+}
+
+// Sources a target's lists leave out: the originals that keep historical
+// declarations for project_declarations.c's migration checks.
+pub Unlisted :: (target: string) -> string[] {
+    if (target == "test_language") {
+        return [
+            "test/fixtures/studio-declarations/OutlinerRows.chibi",
+            "test/fixtures/studio-declarations/VirtualList.chibi"
+        ];
+    }
+    return [];
+}
+
 // The artifact formats the build identity records, as
 // sdk/artifact_formats.cmake lists them: `NAME SOURCE HEADER MACRO`,
 // then VALUE_WIRE for a format that encodes through types/value_wire and

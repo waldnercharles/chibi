@@ -734,8 +734,11 @@ graph writes the build identity (`engine.json`) as
 `sdk/artifact_formats.cmake` does and installs the launcher's `share/chibi`
 (identity, core and documentation sources, shaders) and `chibi_ctl`'s
 resources: 213 files, equal to CMake's.
+Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
+`corpus.txt`, every fixture source by absolute path, equal to CMake's.
 Next: moving profile selection from `Build.chibi`'s CMake arguments into the
-graph; then packaging the SDK from the graph's build.
+graph, which makes `make build` build with it (awaiting the owner's
+decision); then packaging the SDK from the graph's build.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

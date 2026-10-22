@@ -425,6 +425,67 @@ CopyChanged :: (from: string, to: string) -> bool {
     return build.copy_file(from, to);
 }
 
+// The .chibi files below a directory, by path.
+ChibiSources :: (directory: string) -> string[] {
+    sources: string[] = [];
+    for (name in build.list_directory(directory)) {
+        path := Join([directory, "/", name]);
+        if (build.file_kind(path) == "directory") {
+            sources.extend(ChibiSources(path));
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            sources.append(path);
+        }
+    }
+    return sources;
+}
+
+// Paths in byte order, as CMake's list(SORT) orders them.
+Sorted :: (paths: string[]) -> string[] {
+    sorted: string[] = [];
+    for (path in paths) {
+        at := length(sorted);
+        while (at > 0 && strings.Compare(sorted[at - 1], path) > 0) {
+            at -= 1;
+        }
+        next: string[] = [];
+        for (i in 0..<at) {
+            next.append(sorted[i]);
+        }
+        next.append(path);
+        for (i in at..<length(sorted)) {
+            next.append(sorted[i]);
+        }
+        sorted = next;
+    }
+    return sorted;
+}
+
+// Writes each of a target's source lists (SourceLists) when its text changed.
+WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> bool {
+    unlisted: string[] = [];
+    for (path in Unlisted(target)) {
+        unlisted.append(Join([source_root, "/", path]));
+    }
+    for (source_list in SourceLists(target)) {
+        listed: string[] = [];
+        for (source in ChibiSources(Join([source_root, "/", build.after(source_list, "=")]))) {
+            if (!Listed(unlisted, source)) {
+                listed.append(source);
+            }
+        }
+        text := Join([strings.Join(Sorted(listed), "\n"), "\n"]);
+        output := Resolve(source_root, build_dir, "", build.before(source_list, "="));
+        if (build.file_exists(output) && build.read_file(output) == text) {
+            continue;
+        }
+        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+        if (!build.write_file(output, text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
@@ -855,7 +916,8 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         return -1;
     }
     for (target in targets) {
-        if (!Install(source_root, build_dir, profile.third_party, target)) {
+        if (!Install(source_root, build_dir, profile.third_party, target) ||
+            !WriteSourceLists(source_root, build_dir, target)) {
             build.report(Join(["graph: installing ", target, "'s resources failed"]));
             return -1;
         }

@@ -1,3 +1,12 @@
+## Chibi-only migration
+
+- The target is all first-party implementation in Chibi, including the compiler, runtime, engine, tools, build logic and tests. C/C++ libraries are third-party dependencies accessed through interop, not permanent first-party host or shim exceptions. Native output means machine code, not generated C. See [native migration boundaries](docs/native-migration.md).
+- During this migration, the C-only and pico_unit directions below apply to remaining legacy paths, not new Chibi replacements. Preserve existing checks as differential oracles until their replacements cover the affected contracts. Do not delete a legacy path merely because a compiler bytecode artifact self-reproduces.
+- Keep unfinished standard-library APIs internal and narrow, add a concrete consumer before generalizing, and consolidate shared utilities as language features arrive rather than preserving accidental interfaces.
+- Frequent remote checkpoints may be explicitly marked WIP to preserve work. A checkpoint is not merge-ready evidence; exact-candidate independent review, required tests, protections and explicit holds still apply before landing.
+
+## Existing implementation rules
+
 - When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` only when an existing project would load wrong or fail to load and a migration step would rewrite it: a project in this repository or `chibi-studio` uses the changed contract. Don't bump for additive changes, for a contract no project uses yet, for a change to what the engine does with a value, or when loading already treats the old data correctly; say in the PR how to fix a hand-made project instead. When you do bump, add the step that upgrades them in `src/assets/project_migrate.c` and migrate this repository's projects with `build/bin/chibi_ctl --project-root <root> --migrate` in the same PR. Projects in other repositories (Studio, games) upgrade when opened; never open a PR whose only change is their version number (see `.claude/skills/chibi-recipes/SKILL.md`).
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.

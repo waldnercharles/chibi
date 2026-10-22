@@ -155,7 +155,9 @@ machine. Without a current host, `make stage-zero-build` builds the first
 one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
 graph-reference` configures that tree with the sanitizer profile and builds
 what the build-graph checks compare with. Linux, the SDK, web and Studio
-builds still use CMake as below.
+builds still use CMake as below, so a source, define or library CMake gains
+belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
+the graph's commands equal CMake's again.
 
 Elsewhere `make build` uses this program when its private host reports protocol version 7
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever

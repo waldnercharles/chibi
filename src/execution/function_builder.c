@@ -511,7 +511,7 @@ static bool index_valid(int index, int count)
 static bool scalar_type(pin_type type)
 {
     return (type >= PIN_BOOL && type <= PIN_HANDLE) || type == PIN_ENUM ||
-           type == PIN_TASK || type == PIN_UNION;
+           type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER;
 }
 static bool same_type(pin_value a, pin_value b)
 {
@@ -1116,7 +1116,8 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    );
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
             return count == 2 && OUTPUT(PIN_BOOL) &&
-                   (map_bank(values[0].initial) ||
+                   (scalar_bank(values[0].initial, PIN_POINTER) ||
+                    map_bank(values[0].initial) ||
                     (values[0].initial.type == PIN_STRUCT &&
                      values[0].initial.container == PIN_CONTAINER_SINGLE &&
                      values[0].initial.record)) &&
@@ -1234,6 +1235,22 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    INPUT(1, PIN_U64) && INPUT(2, PIN_F64) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
+                   same_type(values[1].initial, values[2].initial) &&
+                   OUTPUT(PIN_POINTER);
+        case EXECUTION_INTRINSIC_POINTER_READ:
+            return count == 2 && INPUT(0, PIN_POINTER) &&
+                   same_type(values[1].initial, output);
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+            return count == 2 && INPUT(0, PIN_POINTER) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+            return count == 5 && INPUT(0, PIN_POINTER) && INPUT(2, PIN_U64) &&
+                   INPUT(3, PIN_BOOL) && values[4].initial.type == PIN_STRUCT &&
+                   values[4].initial.container == PIN_CONTAINER_SINGLE &&
+                   value_type_valid(values[4].initial) && OUTPUT(PIN_POINTER);
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+            return count == 1 && INPUT(0, PIN_POINTER) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
             return count == 9 && INPUT(0, BF_POINTER_TYPE) && INPUT(2, PIN_I32) &&
                    INPUT(3, PIN_I32) && INPUT(4, BF_POINTER_TYPE) &&
@@ -1664,6 +1681,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
+                case EXECUTION_INTRINSIC_POINTER_MAKE:
                 case EXECUTION_INTRINSIC_REFERENCE_MAKE:
                 case EXECUTION_INTRINSIC_ACTION_READ:
                 case EXECUTION_INTRINSIC_ACTION_COMPLETE:
@@ -1695,7 +1713,8 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
     if (id == EXECUTION_INTRINSIC_STRING_CURSOR) {
         return result == BEHAVIOR_STRING_CURSOR;
     }
-    return result == (id == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+    return result == (id == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
+                              id == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
                               id == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
                               id == EXECUTION_INTRINSIC_REFERENCE_KEY
                           ? BEHAVIOR_REFERENCE

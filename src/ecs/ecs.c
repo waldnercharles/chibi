@@ -1947,6 +1947,7 @@ static bool field_size_valid(const type_field *field, type_resolver resolver)
         }
         case PIN_FLOW:
         case PIN_TASK:
+        case PIN_POINTER:
         case PIN_UNION: return false;
     }
     return field->size == size;

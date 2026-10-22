@@ -38,6 +38,14 @@ static inline bool behavior_jit_hardware_math(behavior_function_op op)
     return false;
 #endif
 }
+static inline bool behavior_jit_pointer_comparison(
+    const behavior_function *function,
+    const behavior_function_instruction *instruction
+)
+{
+    return (instruction->op == BF_EQ || instruction->op == BF_NE) &&
+           function->slots[instruction->left] == PIN_POINTER;
+}
 static inline bool behavior_jit_call(behavior_function_op op)
 {
     return behavior_function_call(op) && !behavior_jit_hardware_math(op);

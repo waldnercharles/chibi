@@ -79,10 +79,14 @@ static size_t field_bytes(const type_field *field)
         [PIN_NAME] = sizeof(char *),
         [PIN_HANDLE] = sizeof(uint64_t),
         [PIN_ENUM] = sizeof(int32_t),
+        [PIN_POINTER] = sizeof(void *),
     };
     if (field->type == PIN_STRUCT) {
         const type_desc *type = type_catalog_find(field->type_name);
         return type && field->size == type->size ? type->size : SIZE_MAX;
+    }
+    if (field->type == PIN_POINTER) {
+        return sizeof(void *);
     }
     return field->type >= PIN_FLOW && field->type <= PIN_ENUM ? sizes[field->type]
                                                               : SIZE_MAX;
@@ -360,6 +364,13 @@ static int read_single(
         return -1;
     }
     switch (t) {
+        case PIN_POINTER:
+            if (!av_is_null(v)) {
+                read_error(reader, "Managed pointers cannot be persisted");
+                return -1;
+            }
+            out->ptr = NULL;
+            break;
         case PIN_BOOL:
             if (!av_is_bool(v)) {
                 return -1;
@@ -585,7 +596,7 @@ int pin_value_read_document(
         }
     }
     pin_value value = { 0 };
-    if (declaration.type < PIN_FLOW || declaration.type > PIN_UNION ||
+    if (declaration.type < PIN_FLOW || declaration.type > PIN_POINTER ||
         declaration.type == PIN_TASK ||
         (declaration.type == PIN_UNION && declaration.container == PIN_CONTAINER_SINGLE)) {
         read_error(&reader, "invalid document value type");
@@ -628,7 +639,7 @@ static int read_shape(
     }
     *out = (pin_value){ 0 };
     int kind;
-    for (kind = PIN_BOOL; kind <= PIN_UNION; kind++) {
+    for (kind = PIN_BOOL; kind <= PIN_POINTER; kind++) {
         if (!strcmp(pin_type_name(kind), av_get_str(storage))) {
             break;
         }
@@ -641,7 +652,7 @@ static int read_shape(
             break;
         }
     }
-    if (kind > PIN_UNION || kind == PIN_TASK || collection > PIN_CONTAINER_MAP ||
+    if (kind > PIN_POINTER || kind == PIN_TASK || collection > PIN_CONTAINER_MAP ||
         (kind == PIN_UNION && collection == PIN_CONTAINER_SINGLE) ||
         av_obj_size(document) != 2u + (name != NULL) + (id != NULL) + (layout != NULL)) {
         read_error(reader, "unsupported collection type descriptor");

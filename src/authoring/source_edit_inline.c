@@ -305,6 +305,9 @@ bool source_edit_inline(
     }
     for (int i = 0; i < function->parameter_count; i++) {
         const script_symbol *parameter = &a->symbols[function->parameters[i]];
+        if (parameter->type.flags & SCRIPT_TYPE_REFERENCE) {
+            return source_refactor_fail(error, size, "Inlining reference parameters requires local reference aliases");
+        }
         bool supplied = false;
         for (int j = 0; j < call->argument_count; j++) {
             supplied |= call->arguments[j].parameter == i;

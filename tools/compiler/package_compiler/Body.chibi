@@ -439,7 +439,8 @@ Expression :: (kind: string) -> bool {
     return kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
-           kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression";
+           kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression" ||
+           kind == "address_expression" || kind == "dereference_expression";
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -636,6 +637,8 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         target: int = -1;
         if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
             target = Field(forest, at, "target");
+        } else if (Is(forest, at, "reference_argument")) {
+            target = Field(forest, at, "value");
         } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
                    ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
             target = Field(forest, at, "function");
@@ -1550,7 +1553,7 @@ Start :: union {
     Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], code: Code[], points: SourcePoint[], named: int)
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
-             key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[],
+             key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[], addressed: string[],
              ops: Ops) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
@@ -1569,6 +1572,8 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
             name: Name = {name: param.name, place: ReferencePlace, index: index, storage: param.storage,
                           container: param.container, record: param.record, writable: true, node: param.node};
             names.append(name);
+        } else if (Holds(addressed, param.name)) {
+            work.append(Resume(callable.node, PointerParameterPhase, index, 0));
         } else if (Holds(referenced, param.name) && !Pointer(param.storage, param.container)) {
             work.append(Resume(callable.node, 0, index, 1));
         } else if (Pointer(param.storage, param.container) && Holds(mutated, param.name)) {
@@ -1639,7 +1644,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, ops);
+    addressed := AddressedNames(forest, text, Field(forest, callable.node, "body"));
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops);
     switch begun {
         case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_code, begun_points, begun_named):
             work = begun_work;
@@ -2243,9 +2249,14 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
         } else if (item.phase == CombinePhase) {
-            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+            step = OperatorStep(forest, text, document, types, values, value_top, item, ops, at);
+        } else if (PointerWork(item, kind)) {
+            step = PointerStep(forest, text, document, types, members, names, params, callable.first,
+                               values, value_top, item, ops, target, at);
         } else if (item.phase == ReferencePhase) {
             step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
+        } else if (kind == "reference_argument") {
+            step = Fail(forest, item.node, document, "ref argument requires a reference parameter");
         } else if (item.phase == AggregatePhase) {
             step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
                                  target, at);
@@ -2253,7 +2264,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    kind == "return_statement" || kind == "delete_statement") {
             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
-                                 referenced, mutated, built, item, ops, target, at);
+                                 referenced, mutated, built, addressed, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
@@ -2270,7 +2281,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = CallStep(forest, text, document, callables, params, types, members, constants, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, built, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
-            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+            step = OperatorStep(forest, text, document, types, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
@@ -2388,7 +2399,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         // The value an expression produced is watched as its output; the
         // step that gives a number literal its type watches it.
-        if (ops.debug && produced.storage > 0 && Expression(kind) && !negated &&
+        transient_pointer := length(next) > 0 && next[length(next) - 1].phase == PointerMemberReadPhase;
+        if (ops.debug && produced.storage > 0 && Expression(kind) && !negated && !transient_pointer &&
             !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
             code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
                                   0, true, node, target));

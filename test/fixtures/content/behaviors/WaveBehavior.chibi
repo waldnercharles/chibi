@@ -4,12 +4,12 @@ WaveBehavior :: behavior {
     // The last frame step, for actions and functions.
     Step: float = 0
     // Wave
-    CountLimit: int = 8
+    CountLimit := 8
     Interval: float = 1.5
     SpawnDistance: float = 260.0
     // State
     Elapsed: float = 0.0
-    Spawned: int = 0
+    Spawned := 0
     Side: float = -1.0
     on Tick :: (dt: float s) {
         Step = dt
@@ -25,7 +25,7 @@ WaveBehavior :: behavior {
             } else {
                 Elapsed = Elapsed - max(Interval, B: float = 0.01)
                 await Spawn_Enemy(Player_Position)
-                Spawned = add(Spawned, B: int = 1)
+                Spawned = add(Spawned, 1)
                 Side = Side * -1.0
             }
         }

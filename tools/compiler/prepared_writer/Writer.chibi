@@ -2,7 +2,7 @@ package prepared_writer
 
 import strings "core:strings"
 
-// Prepared format v20, written exactly as execution_prepared_write encodes a
+// Prepared format v21, written exactly as execution_prepared_write encodes a
 // module of authored functions, or of a behavior's states and event handlers.
 // Every 64-bit payload (ids, layouts, scalar bits, union tags) is an index into
 // the module's `wide` pool, whose entry 0 is zero for an absent payload.
@@ -14,7 +14,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: uint64 : 0x4348494249505245;
-Version: int : 20;
+Version: int : 21;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),

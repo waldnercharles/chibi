@@ -11,6 +11,7 @@
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/union.h"
 
@@ -483,6 +484,7 @@ typedef struct
 {
     task_root *index;
     execution_task **pending;
+    const pin_pointer **pointers;
     uint64_t lookup_steps;
 } task_roots;
 static int compare_roots(const void *left, const void *right)
@@ -530,7 +532,7 @@ static void mark_fields(task_roots *roots, const type_desc *type, const void *da
             value.ptr = (void *)member;
         } else if (field->type == PIN_TASK) {
             memcpy(&value.u64, member, sizeof value.u64);
-        } else if (field->type == PIN_UNION) {
+        } else if (field->type == PIN_UNION || field->type == PIN_POINTER) {
             memcpy(&value.ptr, member, sizeof value.ptr);
         } else {
             continue;
@@ -541,6 +543,23 @@ static void mark_fields(task_roots *roots, const type_desc *type, const void *da
 static void mark_value(void *user, const pin_value *value)
 {
     task_roots *roots = user;
+    if (value->type == PIN_POINTER && value->container == PIN_CONTAINER_SINGLE) {
+        const pin_pointer *pointer = value->ptr;
+        if (!pointer) {
+            return;
+        }
+        while (pointer->base) {
+            pointer = pointer->base;
+        }
+        for (int i = 0; i < acount(roots->pointers); i++) {
+            if (roots->pointers[i] == pointer) {
+                return;
+            }
+        }
+        apush(roots->pointers, pointer);
+        mark_value(roots, &pointer->value);
+        return;
+    }
     if (value->container == PIN_CONTAINER_MAP) {
         const pin_map *map = value->ptr;
         for (int i = 0; map && i < map->count; i++) {
@@ -551,9 +570,10 @@ static void mark_value(void *user, const pin_value *value)
     }
     if (value->container != PIN_CONTAINER_SINGLE) {
         const pin_array *array = value->ptr;
-        /* Packed layouts contain only plain data. Boxed values can contain
-         * nested collections, including maps whose outer storage is scalar. */
-        if (array && array->stride) {
+        /* Packed pointer and record arrays can reach managed task handles. */
+        if (array && array->stride && value->type != PIN_POINTER &&
+            value->type != PIN_STRUCT && value->type != PIN_TASK &&
+            value->type != PIN_UNION) {
             return;
         }
         for (int i = 0; array && i < array->count; i++) {
@@ -637,6 +657,14 @@ void program_tasks_collect(execution_program *p)
                 mark_value(&roots, &program->events[i].arguments[j]);
             }
         }
+        for (const queued_event_batch *batch = program->dispatch_events; batch;
+             batch = batch->previous) {
+            for (int i = batch->first; i < acount(batch->events); i++) {
+                for (int j = 0; j < batch->events[i].count; j++) {
+                    mark_value(&roots, &batch->events[i].arguments[j]);
+                }
+            }
+        }
         for (int i = 0; i < acount(program->instances); i++) {
             execution_instance *instance = program->instances[i];
             for (int j = 0; j < program->module->plan.state_count; j++) {
@@ -645,6 +673,11 @@ void program_tasks_collect(execution_program *p)
             for (int j = 0; j < acount(instance->activations); j++) {
                 mark_activation(&roots, instance->activations[j]);
             }
+        }
+    }
+    for (const behavior_managed_heap *heap = p->managed; heap; heap = heap->previous) {
+        for (int i = 0; i < acount(heap->roots); i++) {
+            mark_value(&roots, heap->roots[i]);
         }
     }
     /* A result can itself contain task handles. Iterate instead of recursing
@@ -663,6 +696,7 @@ void program_tasks_collect(execution_program *p)
     }
     p->task_lookup_steps = roots.lookup_steps;
     afree(roots.pending);
+    afree(roots.pointers);
     afree(roots.index);
 }
 

@@ -436,7 +436,7 @@ TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], o
 // Whether stage zero evaluates a node of `kind` as an expression, with a
 // point. Parentheses only group.
 Expression :: (kind: string) -> bool {
-    return kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
+    return kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
            kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression";
@@ -2254,7 +2254,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
                                  referenced, mutated, built, item, ops, target, at);
-        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
+        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
                              names, callable.package, values, value_top, item, ops, target, at);

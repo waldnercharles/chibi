@@ -79,6 +79,7 @@ Ops :: struct {
     select: int;
     variable: int;
     store: int;
+    store_value: int;
     owner: int;
     convert: int;
     source_point: int;
@@ -278,7 +279,8 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
-            store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
+            store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
+            owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
             debug: debug};
 }
@@ -289,7 +291,7 @@ Complete :: (ops: Ops) -> bool {
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point,
+                   ops.select, ops.variable, ops.store, ops.store_value, ops.owner, ops.convert, ops.source_point,
                    ops.source_watch];
     for (op in used) {
         if (op < 0) {
@@ -1545,7 +1547,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 // A behavior's states are each function's variables.
                 spans.append(Range(length(values), length(kept_states)));
                 for (kept in kept_states) {
-                    values.append(ScalarValue(kept.storage, length(wide)));
+                    values.append(StateValue(kept, types, layouts, length(wide)));
                     wide.append(kept.bits);
                 }
                 spans.append(Range(length(ints), length(body_slots)));
@@ -1799,7 +1801,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     }
     states: writer.State[] = [];
     for (kept in kept_states) {
-        values.append(ScalarValue(kept.storage, length(wide)));
+        values.append(StateValue(kept, types, layouts, length(wide)));
         wide.append(kept.bits);
         wide.append(kept.id);
         row: writer.State = {id: length(wide) - 1, initial: length(values) - 1, shared: false, contains_tasks: false};

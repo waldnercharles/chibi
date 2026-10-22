@@ -74,36 +74,67 @@ pub CheckAccepted :: () -> int {
     return 0;
 }
 
-pub Rejection :: (text: string, expected_code: string, expected_start: int) -> bool {
+pub Rejection :: (text: string, expected_code: string, expected_start: int, expected_line: int, expected_column: int) -> bool {
     switch parser.Parse(text) {
         case .Parsed(nodes, fields, named, extra, root):
             return false;
         case .Rejected(code, diagnostic):
             return code == expected_code && diagnostic.start == expected_start &&
-                diagnostic.line >= 1 && diagnostic.column >= 1 && diagnostic.message != "";
+                diagnostic.line == expected_line && diagnostic.column == expected_column && diagnostic.message != "";
     }
 }
 
 pub CheckRejected :: () -> int {
-    if (!Rejection("package", "syntax", 7)) { return 1; }
-    if (!Rejection("package sample\nimport", "syntax", 21)) { return 2; }
-    if (!Rejection("package sample\nimport x", "syntax", 23)) { return 3; }
-    if (!Rejection("package sample\nA ::", "syntax", 19)) { return 4; }
-    if (!Rejection("package sample\npub pub A :: 1", "syntax", 19)) { return 5; }
-    if (!Rejection("package sample\nF :: () {}", "unsupported", 20)) { return 6; }
-    if (!Rejection("package sample\nA :: 1 + 2", "unsupported", 22)) { return 7; }
-    if (!Rejection("package sample\nA: int : 1", "unsupported", 16)) { return 8; }
-    if (!Rejection("package sample\nA :: \"oops", "lexical", 20)) { return 9; }
-    if (!Rejection("package sample\n/*oops", "lexical", 15)) { return 10; }
+    if (!Rejection("package", "syntax", 7, 1, 8)) { return 1; }
+    if (!Rejection("package sample\nimport", "syntax", 21, 2, 7)) { return 2; }
+    if (!Rejection("package sample\nimport x", "syntax", 23, 2, 9)) { return 3; }
+    if (!Rejection("package sample\nA ::", "syntax", 19, 2, 5)) { return 4; }
+    if (!Rejection("package sample\npub pub A :: 1", "syntax", 19, 2, 5)) { return 5; }
+    if (!Rejection("package sample\nF :: () {}", "unsupported", 20, 2, 6)) { return 6; }
+    if (!Rejection("package sample\nA :: 1 + 2", "unsupported", 22, 2, 8)) { return 7; }
+    if (!Rejection("package sample\nA: int : 1", "unsupported", 16, 2, 2)) { return 8; }
+    if (!Rejection("package sample\nA :: \"oops", "lexical", 20, 2, 6)) { return 9; }
+    if (!Rejection("package sample\n/*oops", "lexical", 15, 2, 1)) { return 10; }
+    if (!Rejection("package sample\nA :: \"a\u0000b\";", "input", 22, 2, 8)) { return 11; }
+    if (!Rejection("package sample\nA :: \"é\u0000\";", "input", 23, 2, 9)) { return 12; }
     return 0;
 }
 
-@test
-AcceptedFacts :: () {
-    assert(CheckAccepted() == 0, "authored parser differs from raw syntax facts");
+
+// Every byte prefix of one fixed 65-byte source is either an explicit
+// rejection or an exact raw-fact match; incomplete UTF-8 prefixes are included.
+pub CheckPrefixes :: () -> int {
+    text := "// é\npackage p\nimport x \"core:strings\"\npub A :: true\nB :: \"雪\"\n";
+    count := text_byte_length(text);
+    end: int = 0;
+    while (end <= count) {
+        prefix := text_slice(text, 0, end);
+        switch parser.Parse(prefix) {
+            case .Parsed(nodes, fields, named, extra, root):
+                if (Parity(prefix) != 0) { return end + 1; }
+            case .Rejected(code, diagnostic):
+                if (diagnostic.start < 0 || diagnostic.end < diagnostic.start ||
+                    diagnostic.end > end || diagnostic.line < 1 || diagnostic.column < 1) {
+                    return end + 1;
+                }
+        }
+        end += 1;
+    }
+    return 0;
 }
 
-@test
-AtomicRejection :: () {
-    assert(CheckRejected() == 0, "authored parser must reject incomplete and unsupported sources");
+pub Check :: () -> int {
+    accepted := CheckAccepted();
+    if (accepted != 0) {
+        return accepted;
+    }
+    rejected := CheckRejected();
+    if (rejected != 0) {
+        return 100 + rejected;
+    }
+    prefixes := CheckPrefixes();
+    if (prefixes != 0) {
+        return 200 + prefixes;
+    }
+    return 0;
 }

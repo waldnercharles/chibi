@@ -64,6 +64,22 @@ Assemble :: (count: int, kinds: string[], starts: int[], ends: int[], rows: int[
 }
 
 pub Parse :: (text: string) -> Result {
+    // The raw parser rejects NUL even inside a quoted token or comment.
+    // Tokenize alone only reports illegal bytes outside those tokens.
+    bytes := text_bytes(text);
+    at: int = 0;
+    line: int = 0;
+    row: int = 0;
+    while (at < length(bytes)) {
+        if (bytes[at] == 0) {
+            return Reject("input", "Syntax source contains NUL bytes", at, at + 1, row, at - line);
+        }
+        if (bytes[at] == 10) {
+            row += 1;
+            line = at + 1;
+        }
+        at += 1;
+    }
     scanned := tokenizer.Tokenize(text);
     switch (scanned) {
         case .Scanned(tokens, token_starts, token_ends, token_rows, token_columns,

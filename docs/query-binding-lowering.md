@@ -77,14 +77,14 @@ same-context recoveries, inside its existing single compiler child and 128 KiB
 source cap. Tests assert actual native inspection code and generated Wasm entry
 execution, rather than inferring backend coverage from configuration.
 
-All execution uses `tools/test_policy.py` and its shared 60-second deadline.
+All execution uses the `tools/test_policy.py` supervisor.
 Independent affected-contract review selected the native language group,
 Node Wasm group, generated-C selector and prepared producer/runtime consumer.
 Native correctness uses Clang 19.1.7 Debug with AddressSanitizer and
 UndefinedBehaviorSanitizer. LeakSanitizer cannot start under this environment's
 tracing, so `ASAN_OPTIONS=detect_leaks=0` is explicit: leak detection is unrun.
 
-The admitted Node run is a reviewed replacement for this generated-IR semantic
+The selected Node run is a reviewed replacement for this generated-IR semantic
 contract only. During the original validation, Chromium could not start because
 socket creation was denied; the sanctioned elevated attempt failed before
 execution. Browser execution was not attempted during the main/schema refresh.

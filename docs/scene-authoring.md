@@ -74,8 +74,8 @@ ownership closes and the last snapshot releases it. This boundary adds no
 project format change and no authored record declaration.
 
 The `scene-hierarchy` entry in `tools/test_policy.py` runs the finite C/pico_unit
-14 contract cases in `test_tools --scene-hierarchy` under the shared 60-second
-deadline. They cover grouped moves, stable handles, ordering, invalid moves,
+14 contract cases in `test_tools --scene-hierarchy` through the production
+supervisor. They cover grouped moves, stable handles, ordering, invalid moves,
 depth, 2D transformless groups, mirrored 3D placement, singular/shear rejection,
 local preservation, nested scene persistence, copied name/data lifetime, owner
 isolation, invalidated generations and atomic capture rejection. Studio owns interaction,

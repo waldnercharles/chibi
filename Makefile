@@ -1,11 +1,3 @@
-# Each measured validation command owns one deadline; aggregates are unmeasured.
-CHIBI_TEST_GOALS := $(filter test% agent-test agent-gpu-test benchmark,$(MAKECMDGOALS))
-ifneq ($(strip $(CHIBI_TEST_GOALS)),)
-ifneq ($(words $(MAKECMDGOALS)),1)
-$(error Temporary 60-second policy: use one validation goal per invocation; aggregate is unadmitted)
-endif
-endif
-
 # Convenience wrapper around the build. `make` builds: with the Chibi build
 # graph on macOS, otherwise by configuring CMake.
 BUILD_DIR ?= build
@@ -93,21 +85,24 @@ help:
 		'make package-studio Package the external Studio distribution' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
-		'make agent-list     List runnable classified selectors and admission status' \
+		'make agent-list     List runnable CPU and explicit GPU selectors' \
 		'make agent-test AGENT_SELECTOR=--source-edit' \
 		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
-		'make test / test-short  Six C execution-policy checks, one 60s deadline' \
-		'make test-tools     C tooling integrations, one shared 60s deadline' \
+		'make test / test-short  Six C execution-policy checks' \
+		'make test-tools     Standalone C tooling integrations' \
 		'make test-build     Build chibi_ctl and the full test drivers in BUILD_DIR' \
-		'make test-native    Other CPU test_tools selectors, one shared 60s deadline' \
-		'make test-materials Material simulation selectors, one shared 60s deadline' \
-		'make test-projects  Project, asset import and chibi_ctl selectors, one shared 60s deadline' \
-		'make test-language-all  Admitted native language aggregate, one shared 60s deadline' \
+		'make test-native    CPU test_tools selectors' \
+		'make test-materials Material simulation selectors' \
+		'make test-projects  Project, asset import and chibi_ctl selectors' \
+		'make test-language-all  Native language aggregate' \
 		'make test-wasm         C language checks on WebAssembly in Node' \
 		'make test-wasm-browser C language checks in Chrome (WEB_THREADS=1 for workers)' \
 		'make language-build Build the public language C consumer' \
 		'make test-language-{semantic,execution,program,headless,prepared,format}' \
-		'make test-list      Report admitted checks and quarantined coverage' \
+		'make test-full      CPU native, material, project, language and tooling groups' \
+		'make test-render    Explicit GPU render assertions' \
+		'make test-fast TEST_ARGS=--selector [TEST_BINARY=/path/to/driver]' \
+		'make test-list      List command selectors and explicit groups' \
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
 		'make package-web-player  Build the browser player for chibi export --web' \
@@ -115,13 +110,13 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 7 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 8 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build graph-reference
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
-	@$(QUIET) third-party -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -132,7 +127,7 @@ stage-zero-build:
 	@$(MAKE) toolchain-build BUILD_HOST="$(CMAKE_REFERENCE_DIR)/sdk/chibi-build-host"
 else
 toolchain-build:
-	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 
 # Recovery also creates the private host used by subsequent builds.
 stage-zero-build:
@@ -245,8 +240,8 @@ package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
 	@$(QUIET) package_player.py -- python3 tools/package_player.py --sdk "$(RUNTIME_SDK_PREFIX)" --output "$(PLAYER_OUTPUT)"
 
-benchmark:
-	@python3 tools/test_policy.py disabled benchmark
+benchmark: test-build
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group benchmarks
 
 # Browser Studio consumes a separately packaged Emscripten SDK generation.
 .PHONY: web-sdk-build package-web-sdk
@@ -299,7 +294,7 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
-# Test configuration and compilation run outside the measured test deadline.
+# Agent selectors run existing drivers; use test-build to build them.
 .PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build test-stage-one
 agent-list:
 	@python3 tools/agent.py list
@@ -317,16 +312,11 @@ test-build:
 test-native: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group native
 
-# The material simulation suites take most of a deadline on their own.
 test-materials: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials
 
-# validate-project starts chibi_ctl dozens of times, and each start builds the
-# authoring catalog, which sanitizers make too slow for one 60-second deadline.
-# The project selectors run against an unsanitized Release chibi_ctl instead, and
-# published-docs and chibi-cli against the Release chibi launcher and the
-# chibi-compile and chibi-player it builds: their --docs runs take about a
-# second each where sanitized ones take five or more.
+# Project commands repeatedly load the authoring catalog. Use Release products
+# for these integrations; the native driver retains its sanitizer coverage.
 test-projects: test-build
 	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi'
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
@@ -416,12 +406,18 @@ test-short: tools-build
 test-tools: tools-build
 	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
 
-test-full test-slow test-render test-compiler-parity:
-	@python3 tools/test_policy.py disabled $@
+test-full test-slow: test-tools test-native test-materials test-projects test-language-all
 
-test-fast:
-	@python3 tools/test_policy.py admit-env TEST_ARGS
-	@python3 tools/test_policy.py disabled 'retired native test_suite; use admitted test-language/tool selectors'
+test-render: test-build
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group render
+
+test-compiler-parity:
+	@$(MAKE) build-release BUILD_TARGET=test_language
+	@CHIBI_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py group compiler
+
+TEST_BINARY ?= $(abspath $(TOOLS_BUILD_DIR))/test_tools
+test-fast: tools-build
+	@python3 tools/test_policy.py native-env TEST_ARGS "$(TEST_BINARY)"
 
 test-list test-policy-inventory:
 	@python3 tools/test_policy.py inventory

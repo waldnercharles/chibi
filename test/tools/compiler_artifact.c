@@ -12,7 +12,6 @@
 #include "toolchain/compiler_host.h"
 
 #include <inttypes.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +46,6 @@ static unsigned char *tiny_blob, *tiny_artifact;
 static compiler_host_result invocation;
 static compiler_host_bytes byte_result;
 static unsigned char *byte_input, *binary_artifact;
-static char **child_environment;
 static char binary_entries[4][32];
 static uint64_t binary_ids[4];
 extern char **environ;
@@ -60,8 +58,6 @@ static void cleanup_case()
     byte_input = NULL;
     free(binary_artifact);
     binary_artifact = NULL;
-    free(child_environment);
-    child_environment = NULL;
     free(changed);
     changed = NULL;
     if (builder) {
@@ -109,26 +105,17 @@ static bool read_bytes(const char *name, size_t cap, unsigned char **result, siz
     *size = (size_t)length;
     return true;
 }
-static bool capture(const char *const *argv, int expected_status, const char *const *environment)
+static bool capture(const char *const *argv, int expected_status)
 {
     REQUIRE(argv[0] && argv[0][0] == '/');
     double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        double shared = strtod(inherited, &end);
-        REQUIRE(end != inherited && !*end && isfinite(shared) && shared > 0);
-        if (shared < deadline) {
-            deadline = shared;
-        }
-    }
     out = (chibi_process_output){ .data = output, .capacity = sizeof output };
     err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
     chibi_process_capture_result result = chibi_process_capture(
         argv[0],
         argv,
         directory,
-        environment ? environment : (const char *const *)environ,
+        (const char *const *)environ,
         deadline,
         NULL,
         &out,
@@ -155,7 +142,7 @@ static bool product(const char *filename, const char *backend, int status)
                            "requests.json", "--backend",  backend,
                            "--budget",      "3000000",    "--timeout-ms",
                            "10000",         "--batch",    NULL };
-    REQUIRE(capture(argv, status, NULL));
+    REQUIRE(capture(argv, status));
     return true;
 }
 TEST_CASE(actual_compiler_artifact_runs_both_product_backends)
@@ -164,7 +151,7 @@ TEST_CASE(actual_compiler_artifact_runs_both_product_backends)
     REQUIRE(mkdtemp(directory));
     directory_created = true;
     const char *argv[] = { producer_path, "--compiler-artifact-write", directory, NULL };
-    REQUIRE(capture(argv, 0, NULL));
+    REQUIRE(capture(argv, 0));
     REQUIRE(read_bytes("compiler.artifact", ARTIFACT_CAP, &artifact, &artifact_size));
     REQUIRE(read_bytes("expected.json", OUTPUT_CAP, &golden, &golden_size));
     unsigned char *id = NULL;
@@ -553,14 +540,7 @@ TEST_CASE(binary_budget_failure_has_no_output)
     }
     return true;
 }
-static bool binary_output(
-    const char *option,
-    const char *input,
-    const char *destination,
-    int backend,
-    int status,
-    const char *const *environment
-)
+static bool binary_output(const char *option, const char *input, const char *destination, int backend, int status)
 {
     const char *argv[] = { host_path,
                            "--artifact",
@@ -578,19 +558,13 @@ static bool binary_output(
                            option,
                            destination,
                            NULL };
-    REQUIRE(capture(argv, status, environment));
+    REQUIRE(capture(argv, status));
     REQUIRE(!out.size);
     return true;
 }
-static bool binary_product(
-    const char *input,
-    const char *destination,
-    int backend,
-    int status,
-    const char *const *environment
-)
+static bool binary_product(const char *input, const char *destination, int backend, int status)
 {
-    return binary_output("--output-artifact", input, destination, backend, status, environment);
+    return binary_output("--output-artifact", input, destination, backend, status);
 }
 static bool binary_counters(int backend)
 {
@@ -650,7 +624,7 @@ TEST_CASE(binary_publication_reloads_both_backends)
     const char *name = "published bytes.artifact";
     for (int b = 0; b < 2; b++) {
         REQUIRE(write_bytes(name, sentinel, sizeof sentinel));
-        REQUIRE(binary_product("binary-input.json", name, b, 0, NULL));
+        REQUIRE(binary_product("binary-input.json", name, b, 0));
         REQUIRE(
             binary_counters(b) && file_equals(name, binary_artifact, length) &&
             no_staging(name)
@@ -738,7 +712,7 @@ TEST_CASE(binary_invalid_artifact_preserves_destination)
     const char *name = "preserved bytes.artifact";
     for (int i = 0; i < 3; i++) {
         REQUIRE(write_bytes(name, sentinel, sizeof sentinel));
-        REQUIRE(binary_product(inputs[i], name, 0, 1, NULL));
+        REQUIRE(binary_product(inputs[i], name, 0, 1));
         REQUIRE(err.size && file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
         if (i == 2) {
             REQUIRE(strstr(errors, "prepared target ABI differs"));
@@ -752,12 +726,12 @@ TEST_CASE(binary_raw_output_writes_bytes_that_are_no_compiler)
 {
     const char *name = "raw bytes";
     REQUIRE(write_bytes(name, sentinel, sizeof sentinel));
-    REQUIRE(binary_output("--output-bytes", "empty.json", name, 0, 1, NULL));
+    REQUIRE(binary_output("--output-bytes", "empty.json", name, 0, 1));
     REQUIRE(strstr(errors, "the compiler entry returned no bytes"));
     REQUIRE(file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
-    REQUIRE(binary_output("--output-bytes", "octets.json", name, 0, 0, NULL));
+    REQUIRE(binary_output("--output-bytes", "octets.json", name, 0, 0));
     REQUIRE(!file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
-    REQUIRE(binary_product("octets.json", name, 0, 1, NULL));
+    REQUIRE(binary_product("octets.json", name, 0, 1));
     return true;
 }
 TEST_CASE(binary_rename_failure_preserves_directory)
@@ -767,7 +741,7 @@ TEST_CASE(binary_rename_failure_preserves_directory)
     REQUIRE(path(filename, sizeof filename, name));
     REQUIRE(mkdir(filename, 0700) == 0);
     REQUIRE(write_bytes("output directory/sentinel", sentinel, sizeof sentinel));
-    REQUIRE(binary_product("binary-input.json", name, 0, 1, NULL));
+    REQUIRE(binary_product("binary-input.json", name, 0, 1));
     struct stat info;
     REQUIRE(stat(filename, &info) == 0 && S_ISDIR(info.st_mode));
     REQUIRE(
@@ -777,34 +751,27 @@ TEST_CASE(binary_rename_failure_preserves_directory)
     REQUIRE(strstr(errors, "compiler output could not be published"));
     return true;
 }
-TEST_CASE(binary_deadline_and_usage_preserve_destination)
+TEST_CASE(binary_usage_preserves_destination)
 {
-    const char *name = "deadline output.artifact";
+    const char *name = "usage output.artifact";
     REQUIRE(write_bytes(name, sentinel, sizeof sentinel));
-    size_t count = 0;
-    while (environ[count]) {
-        count++;
-    }
-    child_environment = malloc((count + 2) * sizeof *child_environment);
-    REQUIRE(child_environment);
-    size_t used = 0;
-    for (size_t i = 0; i < count; i++) {
-        if (strncmp(environ[i], "CHIBI_TEST_DEADLINE=", sizeof "CHIBI_TEST_DEADLINE=" - 1)) {
-            child_environment[used++] = environ[i];
-        }
-    }
-    double expired = chibi_process_now() - 1;
-    REQUIRE(expired > 0);
-    char deadline[96];
-    int n = snprintf(deadline, sizeof deadline, "CHIBI_TEST_DEADLINE=%.9f", expired);
-    REQUIRE(n > 0 && (size_t)n < sizeof deadline);
-    child_environment[used++] = deadline;
-    child_environment[used] = NULL;
-    /* capture still derives its supervisor deadline from unchanged parent env. */
-    REQUIRE(binary_product("binary-input.json", name, 0, 1, (const char *const *)child_environment));
-    REQUIRE(err.size && file_equals(name, sentinel, sizeof sentinel) && no_staging(name));
-    free(child_environment);
-    child_environment = NULL;
+    const char *missing_timeout[] = { host_path,
+                                      "--artifact",
+                                      "binary.artifact",
+                                      "--entry",
+                                      binary_entries[0],
+                                      "--input",
+                                      "binary-input.json",
+                                      "--backend",
+                                      "bytecode",
+                                      "--budget",
+                                      "10000",
+                                      "--output-artifact",
+                                      name,
+                                      NULL };
+    REQUIRE(capture(missing_timeout, 1));
+    REQUIRE(!out.size && strstr(errors, "usage:") && file_equals(name, sentinel, sizeof sentinel));
+    REQUIRE(no_staging(name));
     const char *duplicate[] = { host_path,
                                 "--artifact",
                                 "binary.artifact",
@@ -840,9 +807,9 @@ TEST_CASE(binary_deadline_and_usage_preserve_destination)
                             "--output-artifact",
                             name,
                             NULL };
-    REQUIRE(capture(duplicate, 1, NULL));
+    REQUIRE(capture(duplicate, 1));
     REQUIRE(!out.size && strstr(errors, "usage:") && file_equals(name, sentinel, sizeof sentinel));
-    REQUIRE(capture(batch, 1, NULL));
+    REQUIRE(capture(batch, 1));
     REQUIRE(!out.size && strstr(errors, "usage:") && file_equals(name, sentinel, sizeof sentinel));
     REQUIRE(no_staging(name));
     return true;
@@ -867,7 +834,7 @@ void test_tool_compiler_artifact(const char *producer, const char *host)
     RUN_TEST_CASE(binary_invalid_artifact_preserves_destination);
     RUN_TEST_CASE(binary_raw_output_writes_bytes_that_are_no_compiler);
     RUN_TEST_CASE(binary_rename_failure_preserves_directory);
-    RUN_TEST_CASE(binary_deadline_and_usage_preserve_destination);
+    RUN_TEST_CASE(binary_usage_preserves_destination);
     pu_clear_setup();
     free(artifact);
     artifact = NULL;

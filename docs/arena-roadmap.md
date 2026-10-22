@@ -8,7 +8,7 @@ Tracked in [the game and editor milestone](https://github.com/waldnercharles/c-b
 > [chibi-arena3d](https://github.com/waldnercharles/chibi-arena3d) repository.
 > Start at [current status](status.md) for engine gaps and active owners.
 > Test commands and measurements below are historical; use the current
-> [admission policy](testing.md#temporary-60-second-policy).
+> [testing instructions](testing.md).
 
 ## Scoped goal, September 9, 2026
 

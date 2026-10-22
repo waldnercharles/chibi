@@ -135,6 +135,20 @@ char *compiler_target_json(const script_catalog *catalog, size_t *length)
     add_target(doc, target, catalog);
     return written(doc, length);
 }
+
+char *compiler_target_effects_json(const script_catalog *catalog, size_t *length)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *capability = &catalog->capabilities[i];
+        if (callable(capability)) {
+            yyjson_mut_arr_add_uint(doc, root, capability->effects);
+        }
+    }
+    return written(doc, length);
+}
 /* Each event, with a range of payload fields, then the fields. */
 static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
 {

@@ -131,17 +131,18 @@ Current `ref` uses cover more locations than managed pointers currently do:
 | Local, value parameter, flat authored field | Managed address-taking works | Migrate parameter types, calls and body accesses. |
 | Existing alias parameter | Scoped forwarding works | Pass its replacement pointer directly; add a pointer level when rebinding a pointer. |
 | Array element or map entry | Logical index/key reference | Define address identity across CoW, resize, removal and replacement. |
-| State or engine component field | Checked external write with publication callbacks | Define scoped versus escaping pointers and owner invalidation. |
+| State or other external field without a durable resolver | Checked external write with publication callbacks | Implement approved scoped direct mutation and owner-invalidation checks. |
+| Query component | Draft logical component cell | Preserve original incarnation across suspension; invalidate on removal; finish typed recovery API. |
 | `for item: ref in values` | Mutates the selected collection item | Agree on pointer iteration or explicit indexed mutation; ordinary value iteration is not equivalent. |
-| Mutable retained view | Earlier shared-array design retains an owner and range | Reconcile with value collections and explicit pointer sharing before implementing. |
+| Mutable retained view | Pointer-backed view approved in the array chat | Follow the array currently stored at the pointer, with fixed indices and current full-range checks. |
 
 Never turn the address of external storage into a detached local copy without
 making the changed behavior explicit. Engine writes must retain validation,
 effects and change publication. A managed pointer keeping bytes alive does not
 by itself make a destroyed entity or replaced catalog valid.
 
-Approved on 2026-10-22: engine-owned locations use scoped direct mutation with
-the same `^T` and `&value` syntax. Infer whether a parameter or a derived pointer
+Approved on 2026-10-22: external locations without a durable resolver use scoped
+direct mutation with the same `^T` and `&value` syntax. Infer whether a parameter or a derived pointer
 can escape or cross suspension, and accept an external address only at a call
 proven safe for that origin. Ordinary managed pointers retain their existing
 escape guarantees. The runtime must use checked logical locations and preserve
@@ -150,6 +151,112 @@ call. Static nonescape analysis alone cannot prove that an entity remains alive.
 Unknown callback/retention contracts must not be assumed safe. The owner
 selected this checked direct-mutation model over mandatory read/modify/write
 helpers. It is approved but not implemented at this checkpoint.
+
+The same helper may accept either kind of origin:
+
+```chibi
+Heal :: (health: ^Health) {
+    health.current += 10
+}
+Heal(&localHealth)  // Ordinary owned local.
+Heal(&health)       // Engine location, when the call is proven scoped.
+```
+
+The compiler must follow derived origins through forwarding calls and aggregate
+values. Unknown retention, returning or publishing an external pointer, and
+crossing suspension are not accepted as scoped use. Summaries must reach a
+fixed point across recursive calls and imported functions; checking only the
+immediate function body is insufficient. Runtime publication boundaries must
+also reject scoped pointers that were not admitted by trusted compiled code.
+
+Also approved on 2026-10-22: query-produced component pointers may survive
+suspension by automatically resolving the same logical target. Storage movement
+does not change source behavior:
+
+```chibi
+saved := row.health
+await Delay(1)
+saved.current -= 1
+```
+
+The query prototype already resolves attached cells through world, full entity
+identity and component identity on each dereference. Its removal policy retains
+a detached final value; that implementation choice is now superseded. A logical
+component handle retains its original component incarnation, resolving the
+current storage while that target exists. Removal, entity destruction or world
+destruction permanently invalidates the target. A later replacement component
+is a different target and never revives or redirects the old pointer. The owner
+selected recoverable invalid-target failure for subsequent access. The query
+owner is implementing this policy; its concrete failure representation and
+public recovery API must be documented before claiming full recovery support.
+
+Recovery audit: authored Chibi currently has tagged unions and `switch`, but no
+general `try`/`catch` or result-producing runtime failure boundary. A checked
+dereference failure stops the activation and reports structured diagnostics to
+the host. Task cancellation can reach an existing waiter as `Cancelled`, without
+the underlying failure reason, and is not a general recovery mechanism. Merely
+using that runtime failure path does not fulfill source-level recovery.
+
+The owner explicitly ruled out introducing `try`/`catch`, ever. Recovery must use
+typed values/results. Discuss checked pointer operations and a possible result
+that exposes scoped mutable access, so ordinary mutation need not require a
+manual copy/write-back cycle. Neither API has been adopted. A separate validity
+precheck is insufficient; validation must accompany the actual access, or a
+scoped access contract must prevent invalidation for its entire use.
+
+One API sketch for that discussion, not adopted syntax:
+
+```chibi
+switch saved.access() {
+    case .Available(health):
+        health.current -= 1
+    case .InvalidTarget:
+        return
+}
+```
+
+The available case would expose scoped mutable access, not a copied component.
+It must not escape or cross suspension. Its validity must hold throughout the
+use, including calls that could remove or replace the component; a one-time
+check followed by an unprotected pointer does not meet this contract. Those
+invalidation rules need a concrete discussion before implementation.
+Rust's [`Weak::upgrade`](https://doc.rust-lang.org/std/rc/struct.Weak.html#method.upgrade)
+is a precedent for reporting target availability as a typed value. Its successful
+result is an owning `Rc`, so its ownership and lifetime rules are not this scoped
+Chibi proposal and must not be copied wholesale.
+
+The optimization is separate from the lifetime contract. A cached address can
+be reused while a checked storage/layout version is unchanged. Relocation
+invalidates that cache; ordinary value changes need not. Suspension discards a
+compiler proof of address stability, but does not necessarily require a full
+lookup if runtime versions still match. Proofs may also eliminate repeated
+checks inside a region where structural mutation cannot occur.
+
+Flecs provides an open-source precedent: its MIT-licensed
+[`ecs_ref_update` implementation](https://github.com/SanderMertens/flecs/blob/a141ad44b57e5ca481b3b477bdd2ff8107b1b5fc/src/ref.c)
+uses table versions to avoid resolving unchanged references. Its entity/component
+pair contract is not evidence for Chibi's proposed incarnation-preserving
+contract. Port only the applicable cache algorithm after auditing the pinned
+source and retaining its license notice.
+
+Correct lookup-per-access comes before caching. The cache needs a stable world
+control block, entity generation, component incarnation and retained or checked
+layout metadata. Current query membership revisions and component publication
+versions do not establish address stability. Every relocation and schema
+replacement must participate in the cache's invalidation protocol. A version
+check alone cannot prevent a concurrent free between checking and using the
+address; execution must retain its structural-mutation exclusion or use another
+verified synchronization mechanism. A logical handle supports escape and
+suspension; a raw external location without a durable resolver remains scoped.
+The lifetime extension is approved; its implementation is not yet validated.
+Caching remains a separate optimization after correct lookup-per-access behavior.
+
+The owner approved pointer-backed mutable views in the array chat: `p := &a;
+v := p.view(range)`. A view follows the array currently stored at `p`, even
+after reassignment, at fixed numeric indices. Ordinary copies of `a` remain
+independent. The array implementation owns this protocol and validates the
+current complete range on access. A view must not extend a scoped external
+pointer's lifetime; that origin must participate in escape checking.
 
 Rust's [reference lifetime checks](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html#dangling-references)
 provide a precedent for diagnosing invalid borrowed access during compilation.

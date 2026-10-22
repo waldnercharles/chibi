@@ -129,16 +129,16 @@ for r in rows:
   assert primary,p
   feature=additional.get(stem,'');note='Retire with consumers or replace by narrow authored/public SDK contract; do not recreate a global script header.'
  elif cat=='BUILD_TOOLING':
-  primary='P38';feature='K09;B00;B01;B06';note='Preserve packaging/toolchain role and pins; update exact native allowlist, public SDK boundary, authored assets and provenance. Do not run quarantined coverage.'
+  primary='P38';feature='K09;B00;B01;B06';note='Preserve packaging/toolchain role and pins; update exact native allowlist, public SDK boundary, authored assets and provenance. Record the affected checks and their actual results.'
  elif cat=='PROVENANCE': primary='P38';feature='B01;K09';note='Update extraction/SDK ownership records; prevent source-sync tools from restoring removed C policy.'
  elif cat=='BROWSER_HOST': primary='P36';feature='K03;K06;K07;P31;P34;P35';note='Body-audit browser-only mechanism versus application policy; retain narrow browser ABI only.'
  elif cat in {'TEST_ORACLE','ACCEPTANCE_TEST'}:
   primary='B02';feature='B03'
-  # Relevant feature affinity supplements explicit admission ownership. Historical tests are never marked passing.
+  # Relevant feature affinity supplements explicit test ownership. Historical tests are never marked passing.
   keywords=[('outliner','P04'),('gizmo','P29'),('collider','P29'),('camera','P28'),('scene_view','P28'),('movement','L24'),('collab','P35'),('checkpoint','P15'),('scene_disk','P13'),('scene_history','P02'),('refactor','P17'),('designer','P25'),('inspector','P26'),('debug','P21'),('graph','P22'),('flow','P22'),('code','P19'),('members','P06'),('output','P07'),('palette','P10'),('settings','P08'),('thumbnail','P33'),('model','P32'),('asset','P16'),('shell','P09'),('chrome','P09'),('panel_idle','B04'),('bench','B04'),('documents','P12'),('scene','P27'),('runtime','K05'),('kit','P05'),('labels','P10')]
   affinity=next((owner for k,owner in keywords if k in p),'')
   if affinity:feature+=';'+affinity
-  note='Coverage source/fixture only; no current admission, runnable target or passing result inferred. Preserve assertions/provenance, adapt only through admitted C/pico_unit selectors.'
+  note='Coverage source/fixture only; no runnable target or passing result inferred. Preserve assertions/provenance and adapt through the owning C/pico_unit selectors.'
  elif cat=='AUTHORED_STUDIO':
   primary='B01';feature='F02;P38'
   if p.endswith('.chibi'):
@@ -168,7 +168,7 @@ lines=['# Dependency-ordered PR checklist','', 'Only coordinator-verified merged
 byid={p['id']:p for p in packages}
 for i in order:
  p=byid[i]
- lines += [f"## [{'x' if i in {'R397','R398','R399','RCAP','RWRITE','RSCHEMA','RFMT','B06'} else ' '}] {i}: {p['name']}", '',f"Stage: {p['stage']} · Repository: {p['repository']} · Scope: {p['classification']}",f"Dependencies: {p['dependencies'] or 'none (preparation can start)'}",f"Decision gate: {p['decisions'] or 'none beyond existing contracts and applicable admission'}",'',p['scope'],'',f"Acceptance: {p['acceptance']}",'',f"Plan evidence: {p['plan_refs']}", ('PR #397 / merged integration head 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 / exact tested head 6524d3fc090e27943e4bc3942e6b528ba311ae6c; consult PR evidence.' if i == 'R397' else 'PR #398 / merged integration head b1ada743d978a25ff8b0d5d677b491291eb4ddf5 / exact tested head cdf9adc540f1c1c0c9c8468820a1bf5b706629e4; consult PR evidence.' if i == 'R398' else 'PR #408 / merged integration head 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 / exact tested head 982e736e4f2d5922c2308f0b6017dcfd30dbd869; consult PR evidence.' if i == 'RWRITE' else 'PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / merge verified by coordinator; consult PR evidence for exact validation.' if i == 'R399' else 'PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.' if i == 'RCAP' else 'PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.' if i == 'RSCHEMA' else 'PR #402 / merged integration head 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 / independently tested head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b / LF-only foundation; F00/F01/F02 remain open.' if i == 'RFMT' else 'Read-only audit complete; no removal PR needed. Exact snapshot, source links and limits in native-reload-audit.md; no product runtime test claimed.' if i == 'B06' else 'PR / exact head / review / tests / remaining blocker: **unrecorded**'),'']
+ lines += [f"## [{'x' if i in {'R397','R398','R399','RCAP','RWRITE','RSCHEMA','RFMT','B06'} else ' '}] {i}: {p['name']}", '',f"Stage: {p['stage']} · Repository: {p['repository']} · Scope: {p['classification']}",f"Dependencies: {p['dependencies'] or 'none (preparation can start)'}",f"Decision gate: {p['decisions'] or 'existing contracts and explicit holds'}",'',p['scope'],'',f"Acceptance: {p['acceptance']}",'',f"Plan evidence: {p['plan_refs']}", ('PR #397 / merged integration head 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 / exact tested head 6524d3fc090e27943e4bc3942e6b528ba311ae6c; consult PR evidence.' if i == 'R397' else 'PR #398 / merged integration head b1ada743d978a25ff8b0d5d677b491291eb4ddf5 / exact tested head cdf9adc540f1c1c0c9c8468820a1bf5b706629e4; consult PR evidence.' if i == 'R398' else 'PR #408 / merged integration head 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 / exact tested head 982e736e4f2d5922c2308f0b6017dcfd30dbd869; consult PR evidence.' if i == 'RWRITE' else 'PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / merge verified by coordinator; consult PR evidence for exact validation.' if i == 'R399' else 'PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.' if i == 'RCAP' else 'PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.' if i == 'RSCHEMA' else 'PR #402 / merged integration head 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 / independently tested head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b / LF-only foundation; F00/F01/F02 remain open.' if i == 'RFMT' else 'Read-only audit complete; no removal PR needed. Exact snapshot, source links and limits in native-reload-audit.md; no product runtime test claimed.' if i == 'B06' else 'PR / exact head / review / tests / remaining blocker: **unrecorded**'),'']
 lines+=['## Immutable source reference index','']
 for k,u in sorted(refs.items()):lines.append(f'- [{k}]({u})')
 (root/'roadmap.md').write_text('\n'.join(lines)+'\n')
@@ -187,7 +187,11 @@ validation={
  'product_dispositions':dict(collections.Counter(r['disposition'] for r in prod)),
  'all_product_sources_and_headers_explicitly_owned':True,'all_867_paths_have_tracking_owner':True,
  'original_inventory_sha256':'76d710e88e0a2d2ecb35a9bf895b3b8223a1fbf96b9029e51f185f2106089d87',
- 'inventory_normalization':'CRLF to LF only; CSV row/field content retained',
+ 'inventory_normalization':'CRLF to LF; retired test-policy build-membership wording replaced with factual unrun coverage; source paths, identities and other fields retained',
+ 'original_source_plan_sha256':'ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31',
+ 'original_source_plan_url':'https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md',
+ 'source_plan_sha256':hashlib.sha256((root/'source/plan.md').read_bytes()).hexdigest(),
+ 'source_plan_edit':'Curated copy: obsolete test-gate prose omitted; original scope, contracts and results retained.',
  'input_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((root/'source').iterdir())},
  'external_mutations':'none; no PR publication or merges',
 }

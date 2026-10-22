@@ -124,13 +124,13 @@ owned by the language reference.
 Exercise boundary values for each supported signed/unsigned width, including
 zero, minimum, maximum, multiplication, compound assignment, negative values,
 division, remainder and shifts. Compare literals with equivalent runtime input,
-stage zero with stage one, and the admitted execution backends. Cover lexical
+stage zero with stage one, and the supported execution backends. Cover lexical
 wrapping around a call whose own body still checks arithmetic.
 
 Use a real hash/checksum reference vector to prove intentional wrapping and a
 buffer-size consumer to prove overflow cannot become a smaller allocation.
-Extend the owning C/pico_unit tests under [testing policy](testing.md), retaining
-the 60-second execution ceiling and explicit unrun target coverage.
+Extend the owning C/pico_unit tests using the [testing instructions](testing.md)
+and report unrun target coverage explicitly.
 
 Shift counts and shifted-out bits are settled. The next semantic review must
 settle the remaining recommendations, including nested conversion boundaries

@@ -24,8 +24,7 @@ static void marker(const char *directory, const char *name)
     assert(length > 0 && length < (int)sizeof path);
     FILE *file = fopen(path, "w");
     assert(file);
-    const char *deadline = getenv("CHIBI_TEST_DEADLINE");
-    fprintf(file, "%d %s\n", getpid(), deadline ? deadline : "0");
+    fprintf(file, "%d\n", getpid());
     assert(!fclose(file));
 }
 
@@ -335,6 +334,17 @@ int main(int argc, char **argv)
         }
     }
     assert(argc >= 3);
+    if (!strcmp(argv[1], "build-blocked-signals")) {
+        sigset_t blocked;
+        sigemptyset(&blocked);
+        sigaddset(&blocked, SIGINT);
+        sigaddset(&blocked, SIGTERM);
+        sigaddset(&blocked, SIGALRM);
+        assert(!sigprocmask(SIG_BLOCK, &blocked, NULL));
+        execv(argv[2], argv + 2);
+        perror(argv[2]);
+        return 127;
+    }
     if (!strcmp(argv[1], "release") && !strcmp(argv[2], "download")) {
         return release_download(argc, argv);
     }
@@ -365,7 +375,6 @@ int main(int argc, char **argv)
         printf("cwd=%s\n", cwd);
         printf("allowed=%s\n", getenv("CHIBI_BUILD_ALLOWED") ? getenv("CHIBI_BUILD_ALLOWED") : "");
         printf("secret=%s\n", getenv("CHIBI_BUILD_SECRET") ? getenv("CHIBI_BUILD_SECRET") : "");
-        printf("deadline=%s\n", getenv("CHIBI_TEST_DEADLINE") ? getenv("CHIBI_TEST_DEADLINE") : "");
         for (int i = 2; i < argc; i++) {
             printf("arg=%zu:%s\n", strlen(argv[i]), argv[i]);
         }

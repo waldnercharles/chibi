@@ -9,7 +9,6 @@
   "configuration": {
     "native": "macOS arm64, Clang 23.1.1, Debug, assertions, ASan+UBSan",
     "web": "Emscripten 6.0.9, Release, serial and four-worker threads, CHIBI_WEB_PROFILING=OFF",
-    "test_deadline_seconds": 60,
     "rendering": "none in native focused commands"
   },
   "checks": [

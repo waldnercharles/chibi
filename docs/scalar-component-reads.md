@@ -60,7 +60,7 @@ The pre-optimization fixture is preserved in commit
 `54320bd1309ef406261e997ec68283cf5a76e2cd`. It uses the actual production reference
 callbacks and authored lowering, before changing production code. Native and Node
 Wasm baseline selectors passed respectively 18 cases / 7,191 assertions and
-18 cases / 7,411 assertions, in 0.062 s and 0.195 s under the production 60-second
+18 cases / 7,411 assertions, in 0.062 s and 0.195 s under the production
 supervisor. Builds/configuration were separate.
 
 Six small source functions compare member/getter paths for signed I32 (including
@@ -107,15 +107,14 @@ VM's own storage has been eliminated.
 
 ## Validation scope
 
-The independently admitted refreshed validation uses the existing native
+The independently reviewed refreshed validation uses the existing native
 language and Node Wasm groups,
 plus explicit native/Wasm query-program selectors for the shared SLJIT
 entity/column guard refactor. Generated C is compiled and executed by
 `c-export-alias`; the prepared producer/runtime-only consumer is exercised by
 `language-prepared`; the bounded native tooling group checks schema identity and
-shared runtime contracts. Independent admission and a runtime slot are required
-before executing these combined workloads. Every test command retains its
-shared 60-second deadline.
+shared runtime contracts. Run the combined workloads on the reviewed candidate and report their actual
+results.
 
 The scalar fixture covers typed copies, invalid IR, missing/stale storage,
 recovery, bool layout checks, occupancy word boundaries, hash collisions, live
@@ -145,7 +144,7 @@ configuration are excluded from the production supervisor's wall times.
 | Generated C (ASan/UBSan driver) | 1 | 2,249 | 0.602 s |
 | Prepared producer/runtime-only consumer | 19 | 833 | 0.210 s |
 
-The refreshed committed head must pass the independently admitted checks before
+The refreshed committed head must pass the independently reviewed checks before
 landing; its exact-head review and results will be reported in the pull request.
 Browser execution, full-engine/Studio suites, GPU behavior, other architectures
 and leak detection are not established by Node and focused SDK checks. The
@@ -156,7 +155,7 @@ original tracing setup; no fresh leak-detection coverage is claimed.
 
 ## Refreshed integration author validation
 
-The independently admitted matrix passed on clean local merge
+The independently reviewed matrix passed on clean local merge
 `6b6369f89d2301c127b2f01068fa2e58ccee5e46`, source tree
 `7bd613ffc2772b307cc1dd22a6e2d59557aaf75a`. Its parents are the original scalar
 candidate `b26d743f64b2a1c2b103c9a65bc8907925ec006c` and eligible main
@@ -174,8 +173,7 @@ are still required before landing.
 | Prepared producer/runtime-only consumer | 19 | 833 | 0.265 s |
 | Native ASan/UBSan tooling group | 116 | 29,566 | 24.118 s |
 
-Each invocation used the unchanged production `tools/test_policy.py` shared
-60-second deadline; configuration and builds were separate. Native language and
+Each invocation used the production `tools/test_policy.py` supervisor; configuration and builds were separate. Native language and
 tools used Clang 19.1.7 Debug ASan/UBSan with leak detection disabled. Generated
 Wasm used Emscripten 6.0.10 Release and Node 24.19.0. All three currency builds
 reported no work before execution, and the tracked checkout remained clean.

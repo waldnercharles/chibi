@@ -118,7 +118,6 @@ unchanged specimen then passed inside the complete durable gates at
 | Serial Wasm, 22 members | 267 | 140,923 | 4.131 |
 | Compiler-enabled native-tools | 117 | 35,617 | 22.918 |
 
-Each command retained its own shared 60-second deadline including children.
 The total is 809 case executions and 321,730 assertions. All 10,347 pre/post
 identities remained unchanged. Both language groups include the new selector
 exactly once, and the existing same-child tooling assertion now guards that

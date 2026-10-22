@@ -1,4 +1,4 @@
-name: Compiler recovery
+name: Compiler self-build
 
 on:
   workflow_dispatch:
@@ -16,13 +16,22 @@ concurrency:
 
 jobs:
   recover:
-    name: Compiler recovery (${{ matrix.os }})
+    name: Compiler self-build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, ubuntu-24.04, windows-2022]
+        include:
+          - os: macos-15
+            platform: macos-arm64
+            arch: ARM64
+          - os: ubuntu-24.04
+            platform: linux-x64
+            arch: X64
+          - os: windows-2022
+            platform: windows-x64
+            arch: X64
     defaults:
       run:
         shell: pwsh
@@ -32,170 +41,208 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Set up the native build tools
+      - name: Download the checksum-pinned native runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($IsWindows) {
-            $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-            if (!$vs) { throw 'Visual Studio C tools were not found' }
-            cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
-              if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
-            }
-            if ($LASTEXITCODE) { throw 'Activating the Visual Studio C tools failed' }
-            'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
-          } elseif ($IsMacOS) {
-            brew install llvm
-            if ($LASTEXITCODE) { throw 'Installing LLVM for the native runtime failed' }
-            $llvm = & brew --prefix llvm
-            "$llvm/bin" >> $env:GITHUB_PATH
+          if ($env:RUNNER_ARCH -ne '${{ matrix.arch }}' -or
+              [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToUpperInvariant() -ne '${{ matrix.arch }}' -or
+              [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToUpperInvariant() -ne '${{ matrix.arch }}') {
+            throw 'The runner architecture differs from this runtime seed'
           }
-          $python = if ($IsWindows) { 'python' } else { 'python3' }
-          $venv = Join-Path $env:RUNNER_TEMP 'compiler-recovery-build-tools'
-          & $python -m venv $venv
-          if ($LASTEXITCODE) { throw 'Creating the native build-tools environment failed' }
-          $bin = Join-Path $venv $(if ($IsWindows) { 'Scripts' } else { 'bin' })
-          & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
-          $bin >> $env:GITHUB_PATH
-      - name: Configure the native runtime
-        id: configure
-        run: |
-          $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-          if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
-          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
-      - name: Build the native runtime
-        id: build
-        run: |
-          $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake --build runtime-build --target chibi-compiler-host --parallel 4
-          if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
-          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
-      - name: Copy the recovery inputs into an isolated directory
-        run: |
-          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content tools/compiler/runtime.json -Raw | ConvertFrom-Json
+          $runtime = $manifest.platforms.'${{ matrix.platform }}'
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          $asset = 'chibi-compiler-host-${{ matrix.platform }}' + $suffix
+          if ($manifest.format -ne 1 -or !$manifest.repository -or !$manifest.tag -or
+              $manifest.source_revision -notmatch '^[a-f0-9]{40}$' -or
+              $manifest.source_tree -notmatch '^[a-f0-9]{40}$' -or
+              $runtime.asset -ne $asset -or $runtime.bytes -le 0 -or
+              $runtime.sha256 -notmatch '^[a-f0-9]{64}$') {
+            throw 'The native runtime manifest has no complete pin for this platform'
+          }
+          $download = Join-Path $env:RUNNER_TEMP 'compiler-runtime-download'
+          New-Item -ItemType Directory -Path $download | Out-Null
+          gh release download $manifest.tag --repo $manifest.repository --pattern $asset --dir $download
+          if ($LASTEXITCODE) { throw 'Downloading the native runtime seed failed' }
+          $file = Get-Item (Join-Path $download $asset)
+          $digest = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($file.Length -ne $runtime.bytes -or $digest -ne $runtime.sha256) {
+            throw 'The native runtime seed differs from its checked-in size or SHA-256'
+          }
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           New-Item -ItemType Directory -Path "$proof/tools", "$proof/packages" | Out-Null
-          $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          Copy-Item "runtime-build/$hostName" $proof
+          $hostPath = Join-Path $proof ('chibi-compiler-host' + $suffix)
+          Copy-Item $file.FullName $hostPath
+          if (!$IsWindows) {
+            $mode = [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute -bor
+                    [IO.UnixFileMode]::GroupRead -bor [IO.UnixFileMode]::GroupExecute -bor
+                    [IO.UnixFileMode]::OtherRead -bor [IO.UnixFileMode]::OtherExecute
+            [IO.File]::SetUnixFileMode($hostPath, $mode)
+          }
           Copy-Item tools/compiler "$proof/tools/compiler" -Recurse
           Copy-Item packages/core "$proof/packages/core" -Recurse
           $nativeSources = Get-ChildItem $proof -Recurse -File | Where-Object { $_.Extension -in '.c', '.h', '.cc', '.cpp', '.cxx', '.m', '.mm' }
-          if ($nativeSources) { throw 'The recovery input directory contains native sources' }
-      - name: Recover the compiler without a native toolchain (60-second ceiling)
-        timeout-minutes: 1
-        env:
-          CONFIGURE_SECONDS: ${{ steps.configure.outputs.seconds }}
-          BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
+          if ($nativeSources) { throw 'The self-build input directory contains native sources' }
+      - name: Build and execute both compiler stages
         run: |
           $ErrorActionPreference = 'Stop'
-          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
-          $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          $inputs = @(Get-ChildItem $proof -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($proof, $_.FullName).Replace('\', '/') } | Sort-Object)
-          $start = [Diagnostics.ProcessStartInfo]::new()
-          $start.FileName = Join-Path $proof $hostName
-          $start.WorkingDirectory = $proof
-          $start.UseShellExecute = $false
-          $start.RedirectStandardOutput = $true
-          $start.RedirectStandardError = $true
-          $arguments = @('--bootstrap', 'tools/compiler/bootstrap', '--compiler', 'tools/compiler', '--core', 'packages/core', '--recover', (Join-Path $proof 'compiler.chibip'))
-          foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
-          $start.Environment.Clear()
-          # Windows needs its system directory for system DLLs. No compiler or
-          # build-tool directories, repository paths or inherited credentials.
-          if ($IsWindows) { $start.Environment['SystemRoot'] = $env:SystemRoot }
-          $start.Environment['PATH'] = ''
-          $start.Environment['CC'] = 'unavailable-in-recovery-proof'
-          $start.Environment['CXX'] = 'unavailable-in-recovery-proof'
-          $start.Environment['TEMP'] = $proof
-          $start.Environment['TMP'] = $proof
-          $start.Environment['TMPDIR'] = $proof
-          $childEnvironment = [ordered]@{}
-          foreach ($key in $start.Environment.Keys | Sort-Object) { $childEnvironment[$key] = $start.Environment[$key] }
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          $process = [Diagnostics.Process]::Start($start)
-          $stdout = $process.StandardOutput.ReadToEndAsync()
-          $stderr = $process.StandardError.ReadToEndAsync()
-          # Leave one second for failure reporting inside the step's ceiling.
-          $finished = $process.WaitForExit(59000)
-          if (!$finished) { $process.Kill($true); $process.WaitForExit() }
-          $timer.Stop()
-          $out = $stdout.GetAwaiter().GetResult()
-          $err = $stderr.GetAwaiter().GetResult()
-          $out | Set-Content "$proof/recovery.stdout.txt" -NoNewline
-          $err | Set-Content "$proof/recovery.stderr.txt" -NoNewline
-          Write-Host $out
-          if ($err) { Write-Host $err }
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          $hostPath = Join-Path $proof ('chibi-compiler-host' + $suffix)
           $evidence = [ordered]@{
             revision = $env:GITHUB_SHA
             runner_os = $env:RUNNER_OS
             runner_arch = $env:RUNNER_ARCH
-            runtime_sha256 = (Get-FileHash "$proof/$hostName" -Algorithm SHA256).Hash.ToLowerInvariant()
-            native_configure_seconds = $env:CONFIGURE_SECONDS
-            native_build_seconds = $env:BUILD_SECONDS
-            proof_seconds = $timer.Elapsed.TotalSeconds
-            proof_timeout = !$finished
-            proof_exit_code = $process.ExitCode
-            command = "$hostName $($arguments -join ' ')"
-            child_environment = $childEnvironment
-            input_files = $inputs
+            platform = '${{ matrix.platform }}'
+            stages = @()
           }
-          $evidence | ConvertTo-Json -Depth 4 | Set-Content "$proof/evidence.json"
-          if (!$finished) { throw 'Compiler recovery exceeded its 59-second process budget' }
-          if ($process.ExitCode) { throw "Compiler recovery failed with exit code $($process.ExitCode)" }
-          $artifact = Get-Item "$proof/compiler.chibip"
-          if (!$artifact.Length) { throw 'Compiler recovery produced an empty artifact' }
-          $sha256 = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          $evidence['compiler_bytes'] = $artifact.Length
-          $evidence['compiler_sha256'] = $sha256
-          $evidence | ConvertTo-Json -Depth 4 | Set-Content "$proof/evidence.json"
-          "$sha256  compiler.chibip" | Set-Content "$proof/compiler.chibip.sha256"
-          "Recovered $($artifact.Length) bytes, SHA-256 $sha256, in $($timer.Elapsed.TotalSeconds) seconds" >> $env:GITHUB_STEP_SUMMARY
-      - name: Upload the recovered compiler and evidence
+          try {
+            $runtimeManifest = Get-Content "$proof/tools/compiler/runtime.json" -Raw | ConvertFrom-Json
+            $runtime = $runtimeManifest.platforms.'${{ matrix.platform }}'
+            $runtimeDigest = (Get-FileHash $hostPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($runtimeDigest -ne $runtime.sha256) { throw 'The isolated runtime differs from its pin' }
+            $evidence['runtime_sha256'] = $runtimeDigest
+            $evidence['runtime_source_revision'] = $runtimeManifest.source_revision
+            $evidence['runtime_source_tree'] = $runtimeManifest.source_tree
+            $evidence['runtime_release'] = "$($runtimeManifest.repository)/$($runtimeManifest.tag)"
+            $evidence['input_files'] = @(Get-ChildItem $proof -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($proof, $_.FullName).Replace('\', '/') } | Sort-Object)
+            function Recover-Stage($name, $bootstrap, $output) {
+              $record = [ordered]@{
+                stage = $name
+                input_compiler_sha256 = (Get-FileHash (Join-Path $bootstrap 'compiler.chibip') -Algorithm SHA256).Hash.ToLowerInvariant()
+                input_manifest_sha256 = (Get-FileHash (Join-Path $bootstrap 'bootstrap.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+              $evidence.stages += $record
+              $start = [Diagnostics.ProcessStartInfo]::new()
+              $start.FileName = $hostPath
+              $start.WorkingDirectory = $proof
+              $start.UseShellExecute = $false
+              $start.RedirectStandardOutput = $true
+              $start.RedirectStandardError = $true
+              $arguments = @('--bootstrap', $bootstrap, '--compiler', 'tools/compiler', '--core', 'packages/core', '--recover', $output)
+              foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+              $start.Environment.Clear()
+              if ($IsWindows) { $start.Environment['SystemRoot'] = $env:SystemRoot }
+              $start.Environment['PATH'] = ''
+              $start.Environment['CC'] = 'unavailable-in-self-build'
+              $start.Environment['CXX'] = 'unavailable-in-self-build'
+              $start.Environment['TEMP'] = $proof
+              $start.Environment['TMP'] = $proof
+              $start.Environment['TMPDIR'] = $proof
+              $record['arguments'] = $arguments
+              $record['child_environment'] = [ordered]@{}
+              foreach ($key in $start.Environment.Keys | Sort-Object) { $record.child_environment[$key] = $start.Environment[$key] }
+              $process = [Diagnostics.Process]::Start($start)
+              $stdout = $process.StandardOutput.ReadToEndAsync()
+              $stderr = $process.StandardError.ReadToEndAsync()
+              $process.WaitForExit()
+              $out = $stdout.GetAwaiter().GetResult()
+              $err = $stderr.GetAwaiter().GetResult()
+              $out | Set-Content "$proof/$name.stdout.txt" -NoNewline
+              $err | Set-Content "$proof/$name.stderr.txt" -NoNewline
+              Write-Host $out
+              if ($err) { Write-Host $err }
+              $record['exit_code'] = $process.ExitCode
+              $record['elapsed_total_seconds'] = $timer.Elapsed.TotalSeconds
+              if ($process.ExitCode) { throw "$name failed with exit code $($process.ExitCode)" }
+              $artifact = Get-Item $output
+              if (!$artifact.Length) { throw "$name produced an empty compiler" }
+              $record['output_bytes'] = $artifact.Length
+              $record['output_compiler_sha256'] = (Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            New-Item -ItemType Directory -Path "$proof/stage1", "$proof/stage2" | Out-Null
+            Recover-Stage 'stage1' "$proof/tools/compiler/bootstrap" "$proof/stage1/compiler.chibip"
+            # Preserve every original source hash and target ABI value. Only the
+            # closure's size/hash change so the next call loads the new compiler.
+            # JsonNode retains integer precision in untouched native identities.
+            $manifest = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText("$proof/tools/compiler/bootstrap/bootstrap.json"))
+            $closure = $manifest['closure'].AsObject()
+            $closure['bytes'] = [System.Text.Json.Nodes.JsonNode]::Parse([string]$evidence.stages[0].output_bytes)
+            $closure['sha256'] = [System.Text.Json.Nodes.JsonNode]::Parse('"' + $evidence.stages[0].output_compiler_sha256 + '"')
+            [IO.File]::WriteAllText("$proof/stage1/bootstrap.json", $manifest.ToJsonString())
+            Recover-Stage 'stage2' "$proof/stage1" "$proof/stage2/compiler.chibip"
+            $first = $evidence.stages[0]
+            $second = $evidence.stages[1]
+            if ($second.input_compiler_sha256 -ne $first.output_compiler_sha256 -or
+                $second.output_bytes -ne $first.output_bytes -or
+                $second.output_compiler_sha256 -ne $first.output_compiler_sha256) {
+              throw 'The newly built compiler did not reproduce itself'
+            }
+            $evidence['compiler_bytes'] = $second.output_bytes
+            $evidence['compiler_sha256'] = $second.output_compiler_sha256
+            "$($first.output_compiler_sha256)  stage1/compiler.chibip`n$($second.output_compiler_sha256)  stage2/compiler.chibip" | Set-Content "$proof/compiler.sha256"
+            "Both compiler stages reproduced $($second.output_bytes) bytes, SHA-256 $($second.output_compiler_sha256), in $($timer.Elapsed.TotalSeconds) seconds" >> $env:GITHUB_STEP_SUMMARY
+          } catch {
+            $evidence['error'] = $_.Exception.Message
+            throw
+          } finally {
+            $timer.Stop()
+            $evidence['proof_seconds'] = $timer.Elapsed.TotalSeconds
+            $evidence | ConvertTo-Json -Depth 8 | Set-Content "$proof/evidence.json"
+          }
+      - name: Upload both compiler stages and evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: compiler-recovery-${{ matrix.os }}
+          name: compiler-self-build-${{ matrix.os }}
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip
-            ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip.sha256
+            ${{ runner.temp }}/compiler-recovery-proof/stage1/compiler.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/stage1/bootstrap.json
+            ${{ runner.temp }}/compiler-recovery-proof/stage2/compiler.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/compiler.sha256
             ${{ runner.temp }}/compiler-recovery-proof/evidence.json
-            ${{ runner.temp }}/compiler-recovery-proof/recovery.stdout.txt
-            ${{ runner.temp }}/compiler-recovery-proof/recovery.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage1.stdout.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage1.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage2.stdout.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage2.stderr.txt
 
   compare:
-    name: Compiler recovery across platforms
+    name: Compiler self-build across platforms
     needs: recover
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require successful recovery on every platform
+      - name: Require successful self-build on every platform
         shell: pwsh
         env:
           RECOVERY_RESULT: ${{ needs.recover.result }}
         run: |
           if ($env:RECOVERY_RESULT -ne 'success') {
-            throw "Compiler recovery matrix did not pass: $env:RECOVERY_RESULT"
+            throw "Compiler self-build matrix did not pass: $env:RECOVERY_RESULT"
           }
       - uses: actions/download-artifact@v4
         with:
-          pattern: compiler-recovery-*
+          pattern: compiler-self-build-*
           path: recovered
-      - name: Require identical compiler bytes on all three platforms
+      - name: Require identical compiler stages on all three platforms
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $digests = @()
           foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
-            $artifact = "recovered/compiler-recovery-$platform/compiler.chibip"
-            $digest = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
-            $recorded = (Get-Content "$artifact.sha256").Split(' ')[0]
-            if ($digest -ne $recorded) { throw "$platform artifact does not match its recorded SHA-256" }
-            $digests += $digest
-            "$platform`: $digest" >> $env:GITHUB_STEP_SUMMARY
+            $root = "recovered/compiler-self-build-$platform"
+            $evidence = Get-Content "$root/evidence.json" -Raw | ConvertFrom-Json
+            if ($evidence.error -or $evidence.stages.Count -ne 2 -or
+                $evidence.stages[1].input_compiler_sha256 -ne $evidence.stages[0].output_compiler_sha256) {
+              throw "$platform did not execute the compiler it built"
+            }
+            foreach ($stage in 1, 2) {
+              $artifact = Get-Item "$root/stage$stage/compiler.chibip"
+              $digest = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($digest -ne $evidence.compiler_sha256 -or
+                  $digest -ne $evidence.stages[$stage - 1].output_compiler_sha256 -or
+                  $artifact.Length -ne $evidence.stages[$stage - 1].output_bytes) {
+                throw "$platform stage$stage differs from its recorded output"
+              }
+              $digests += $digest
+              "$platform stage$stage`: $digest" >> $env:GITHUB_STEP_SUMMARY
+            }
           }
           if (@($digests | Select-Object -Unique).Count -ne 1) {
-            throw 'The recovered compiler bytes differ across platforms with the validated bootstrap ABI'
+            throw 'The compiler stages differ across platforms with the validated bootstrap ABI'
           }

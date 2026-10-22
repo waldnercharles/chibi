@@ -609,27 +609,48 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     endif()
 endif()
 # Private executable and authored orchestration; no build capabilities in game catalogs.
-if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
+   CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     add_library(chibi_build_host OBJECT "${CHIBI_SDK_ROOT}/src/host/build_host.c"
         "${CHIBI_SDK_ROOT}/src/host/build_catalog.c"
         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
         "${CHIBI_SDK_ROOT}/src/host/build_io.c"
-        "${CHIBI_SDK_ROOT}/src/support/sha256.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c")
     foreach(header build_host build_host_internal build_values build_io process)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
     endforeach()
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
+    configure_file("${CHIBI_SDK_ROOT}/src/authoring/source_package_io.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/authoring/source_package_io.h" COPYONLY)
     target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
-    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_source_catalog
-        chibi_text_capabilities chibi_array_capabilities chibi_support)
+    target_include_directories(chibi_build_host PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host"
+        "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_link_libraries(chibi_build_host PUBLIC chibi_compiler_host PRIVATE
+        chibi_native_prepared chibi_text_capabilities chibi_array_capabilities chibi_support)
     target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
     add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c"
         "${CHIBI_SDK_ROOT}/src/host/process.c")
-    target_link_libraries(chibi-build-host PRIVATE chibi_build_host chibi_support)
+    target_link_libraries(chibi-build-host PRIVATE chibi_build_host chibi_compiler_host chibi_support)
     target_compile_options(chibi-build-host PRIVATE -Wall -Wextra -Werror)
     install(TARGETS chibi-build-host RUNTIME DESTINATION libexec/chibi)
+    # The host validates and loads this compiler generation at invocation.
+    file(GLOB_RECURSE build_compiler_inputs CONFIGURE_DEPENDS
+        RELATIVE "${CHIBI_SDK_ROOT}/tools/compiler" "${CHIBI_SDK_ROOT}/tools/compiler/*")
+    foreach(source IN LISTS build_compiler_inputs)
+        configure_file("${CHIBI_SDK_ROOT}/tools/compiler/${source}"
+            "${CMAKE_BINARY_DIR}/share/chibi/compiler/${source}" COPYONLY)
+    endforeach()
+    file(GLOB_RECURSE build_core_inputs CONFIGURE_DEPENDS
+        RELATIVE "${CHIBI_SDK_ROOT}/packages/core" "${CHIBI_SDK_ROOT}/packages/core/*.chibi")
+    foreach(source IN LISTS build_core_inputs)
+        configure_file("${CHIBI_SDK_ROOT}/packages/core/${source}"
+            "${CMAKE_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
+    endforeach()
+    install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
+    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+        FILES_MATCHING PATTERN "*.chibi")
     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
         DESTINATION share/chibi/tools/toolchain)
     install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)
@@ -642,7 +663,9 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c")
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c"
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_SDK_ROOT}/src/support/sha256.c")
     foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax
             compiler_target)
         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
@@ -652,14 +675,12 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_compiler_host PUBLIC
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
+    target_include_directories(chibi_compiler_host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
-        chibi_value_document chibi_asset_json chibi_language_syntax)
+        chibi_value_document chibi_asset_json chibi_language_syntax chibi_asset_text chibi_json)
     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
-    # Bootstrap artifacts are the executable's own: no other compiler-host
-    # consumer reads their KDL contract.
-    add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c" "${CHIBI_SDK_ROOT}/src/support/sha256.c")
+    add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c")
     target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
         chibi_json)
     target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")

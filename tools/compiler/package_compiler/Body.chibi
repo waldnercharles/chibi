@@ -436,11 +436,11 @@ TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], o
 // Whether stage zero evaluates a node of `kind` as an expression, with a
 // point. Parentheses only group.
 Expression :: (kind: string) -> bool {
-    return kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
+    return kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
            kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression" ||
-           kind == "address_expression" || kind == "dereference_expression" || kind == "nil";
+           kind == "address_expression" || kind == "dereference_expression";
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -2265,8 +2265,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
                                  referenced, mutated, built, addressed, item, ops, target, at);
-        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
-                   kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression" || kind == "nil") {
+        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
+                   kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
                              names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {

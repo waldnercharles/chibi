@@ -545,7 +545,7 @@ references to elements and entries. Keep ownership transfers automatic:
 ordinary library users should never need a `move` keyword. Resource-handle
 sharing and cleanup still need their own API decisions.
 
-### Library growth spends the compiler tests' budgets
+### Library growth increases compiler-test execution time
 
 Toolchain. At #503 the 16 KB package prepared to an 837 KB module, about 52
 times its source, mostly per-function debug metadata. Harnesses embed the
@@ -553,8 +553,7 @@ shipped `core:strings`: writing it with the authored writer on bytecode under
 ASan took 22 s, and stage one compiling it in the package compiler's imports
 sample added about 24 s of CPU. The writer now writes modules above 512 KiB on
 the compiled backend only, and the imports sample has its own selector, but
-each further core package spends more of the compiler tests' 60-second
-budgets.
+each further core package adds to compiler-test execution time.
 
 - Odin, Go, Rust and Zig keep debug information beside the code (DWARF, PDB)
   rather than in it, and release builds strip it.
@@ -963,9 +962,8 @@ source loading with `build source could not be read`.
 
 The installed `/opt/homebrew/bin/python3.12` used the same clock epoch as the
 native host. Selecting its `libexec/bin` directory in the task's PATH allowed
-the documented bootstrap workflow to finish inside one shared 60-second
-deadline. Emscripten also needed `EMSDK_PYTHON` set to that interpreter. No
-global interpreter or deadline limits were changed.
+the documented bootstrap workflow to finish. Emscripten also needed
+`EMSDK_PYTHON` set to that interpreter. No global interpreter settings were changed.
 
 Suggestion: toolchain startup should validate the supported Python clock
 contract and diagnose an expired inherited deadline separately from a source
@@ -1062,3 +1060,40 @@ once per nonempty invocation. This remains linear, but same-owner retention
 could remove redundant copies.
 Review it with shared slices and escaped-value lifetimes; keeping an arbitrary
 borrowed pointer would not preserve the ownership contract.
+
+### Pointer boundary checks rescan boxed compiler arrays
+
+Runtime checkpoint (2026-10-22). While integrating managed-pointer checkpoint
+`f04d9d378` with main `1bc97b730`, a Release compiler recovery process spent most
+of a one-second sample inside `behavior_function_host_arguments` and
+`managed_boundary_error`. The hot loop in `src/types/trace.c` reads each boxed
+element, compares its type name and checks record identity, even when the
+declared layout is pointer-free. The scan repeats before native callbacks.
+The sample is saved locally in `.chibi/logs/value-main-build-sample.txt`; it
+establishes a hot scan, not a controlled benchmark or a measured quadratic
+growth curve. Other builds were running on the machine.
+
+Each scan is linear in the array's current length. Repeated calls over growing
+arrays can therefore accumulate quadratic work. Skipping the loop based only
+on the declared schema is unsafe: boxed arrays may contain mismatched dynamic
+headers, and existing foreign-ingress tests deliberately hide a pointer that
+way. The collection owner reports an unvalidated draft with explicit trusted
+language-value callback contracts and owned-root checks. Reconcile and validate
+that contract with the collection/query integration; preserve deep rejection at
+ordinary foreign boundaries. Do not duplicate its ABI policy in this checkpoint.
+
+### Invalid targets need authored recovery
+
+Language checkpoint (2026-10-22). The owner approved logical component pointers
+that survive storage movement and suspension, with a recoverable invalid-target
+error after removal of the original component, entity or world. Chibi currently
+reports runtime failures to the host and stops the affected activation. It has
+tagged union results but no general authored recovery boundary. Task cancellation
+does not preserve the failure reason and is not a substitute for recovery.
+
+The query owner is implementing invalidation checks; that alone does not complete
+the approved recovery contract. The owner permanently ruled out `try`/`catch`.
+Discuss checked operations returning typed cases or scoped mutable access before
+adopting a public API. Validation must accompany access, or scoped access must
+prevent invalidation throughout use; a separate validity check cannot make a
+later access safe across suspension or mutation.

@@ -187,6 +187,54 @@ MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item:
     return [Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, item), write];
 }
 
+// A literal without context takes its storage from its spelling, as stage zero
+// does. Other expressions supply their own type. Hexadecimal e is a digit;
+// only decimal spellings have an exponent.
+InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    literal := Unparenthesized(forest, node);
+    digits := literal;
+    if (Is(forest, digits, "unary_expression")) {
+        digits = Field(forest, digits, "operand");
+        operator := Text(forest, text, Field(forest, literal, "operator"));
+        if (operator != "-" && operator != "+") {
+            return 0;
+        }
+        if (operator == "+") {
+            literal = digits;
+        }
+    }
+    if (!Is(forest, digits, "number")) {
+        return 0;
+    }
+    spelling := Text(forest, text, digits);
+    size := strings.ByteLength(spelling);
+    hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
+                   (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);
+    if (!hexadecimal) {
+        index: int = 0;
+        while (index < size) {
+            character := strings.ByteAt(spelling, index);
+            if (character == 46 || character == 101 || character == 69) {
+                return DoubleStorage;
+            }
+            index += 1;
+        }
+    }
+    switch ParseNumber(forest, text, literal) {
+        case .Number(negative, magnitude):
+            if (Fits(negative, magnitude, IntStorage)) {
+                return IntStorage;
+            }
+            if (Fits(negative, magnitude, Int64Storage)) {
+                return Int64Storage;
+            }
+        case .Invalid:
+            return WordStorage;
+    }
+    // The constant emitter diagnoses a value beyond uint64's range.
+    return WordStorage;
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -223,9 +271,6 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (kind == "delete_statement" ||
             (kind == "expression_statement" && MapMethod(forest, text, names, value, "delete"))) {
             return MapDeleteStep(forest, text, document, types, names, item, ops, node);
-        }
-        if (kind == "assignment" && PointerDestination(forest, text, names, StatementTarget(forest, item.node))) {
-            return PointerAssignmentStart(forest, text, document, types, members, names, item, ops, target, at);
         }
         expected := Visit(value);
         if (kind == "local_declaration") {
@@ -265,6 +310,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                         NoValue(), NoValue(), []);
                 }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
+            } else {
+                inferred := InferredNumberStorage(forest, text, value);
+                if (inferred > 0) {
+                    expected = Expect(value, inferred, 0, -1);
+                }
             }
         } else if (kind == "return_statement") {
             expected = Expect(value, callable.result, callable.result_container, callable.result_record);
@@ -275,6 +325,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             owned: int = -1;
             if (Is(forest, destination, "member_expression")) {
                 owned = SelfComponent(forest, text, types, names, Field(forest, destination, "object"));
+            }
+            // Component writes keep their existing owner/reference lowering.
+            if (kind == "assignment" && whole < 0 && owned < 0 && PointerDestination(forest, text, names, destination)) {
+                return PointerAssignmentStart(forest, text, document, types, members, names, item, ops, target, at);
             }
             if (Is(forest, destination, "identifier")) {
                 found := Lookup(names, Text(forest, text, destination));
@@ -444,7 +498,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             local := result;
             if (declared < 0 && result.storage == NumberStorage) {
                 return Fail(forest, Field(forest, item.node, "value"), document,
-                            "an untyped number is a double; give the local an integer type");
+                            "local initializer has no concrete numeric type");
             }
             if (declared >= 0) {
                 resolved := ReadType(forest, text, types, names, package, declared);
@@ -581,7 +635,19 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 next.append(Resume(item.node, RetainedPhase, binding.index, 0));
             } else if (binding.place == StatePlace) {
-                code.append(Instruction(ops.store, binding.storage, 0, stored.slot, 0, binding.index, node));
+                if (binding.storage == TextStorage) {
+                    // STORE_VALUE snapshots the descriptor and its bytes into
+                    // the instance's storage, beyond this invocation's arena.
+                    initial: Cell = {storage: TextStorage, container: 0, record: -1, constant: 0,
+                                     variant: -1, kind: ValueKind};
+                    cells.append(initial);
+                    slots.append(AddressSlot(target));
+                    code.extend(CellWrite(TextStorage, stored.slot, at.cell, ops, target,
+                                          at.slot + length(slots) - 1, node));
+                    code.append(Instruction(ops.store_value, 0, 0, at.cell, 0, binding.index, node));
+                } else {
+                    code.append(Instruction(ops.store, binding.storage, 0, stored.slot, 0, binding.index, node));
+                }
             } else {
                 code.append(Instruction(ops.save, binding.storage, 0, stored.slot, 0, binding.index, node));
             }
@@ -846,8 +912,8 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    if (kind == "nil") {
-        if (item.storage != PointerStorage || item.container != 0 || item.record < 0 || types[item.record].key == 0) {
+    if (kind == "nil" && item.storage == PointerStorage) {
+        if (item.container != 0 || item.record < 0 || types[item.record].key == 0) {
             return Fail(forest, item.node, document, "nil requires a nullable pointer type");
         }
         constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);
@@ -860,6 +926,30 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (hidden >= 0) {
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
         }
+    }
+    if (kind == "nil" || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
+        empty := kind == "nil" && Text(forest, text, item.node) == "null";
+        if (kind == "number") {
+            switch NumberBits(forest, text, item.node) {
+                case .Finite(double_bits, float_fits, float_bits):
+                    empty = (double_bits & 0x7fffffffffffffff) == 0;
+                case .OutOfRange:
+                    return Fail(forest, item.node, document, "Numeric literal is outside the range of its type");
+            }
+        }
+        if (item.storage != HandleStorage || item.container != 0 || !empty) {
+            if (kind == "number") {
+                return Fail(forest, item.node, document, "entity value requires null or zero");
+            }
+            return Fail(forest, item.node, document, "unsupported nil or null value");
+        }
+        slots.append(ValueLocal(HandleStorage));
+        code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
+        if (kind == "number") {
+            code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, item.node));
+        }
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                            Typed(at.slot, HandleStorage, 0, item.record), NoValue(), marks);
     }
     if (kind == "number" && Floating(item.storage)) {
         // A literal where a floating value is expected is one.
@@ -1456,10 +1546,22 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
+        // An unbound prefix names a native namespace. An import alias or a
+        // local receiver keeps its package or array-method meaning.
+        qualified_native: bool = false;
+        native_name: string = "";
+        if (Is(forest, callee, "member_expression")) {
+            prefix := Field(forest, callee, "object");
+            if (Is(forest, prefix, "identifier") && Lookup(names, Text(forest, text, prefix)) < 0) {
+                qualified_native = true;
+                native_name = format_text("{}.{}", Text(forest, text, prefix),
+                                          Text(forest, text, Field(forest, callee, "member")));
+            }
+        }
         // `xs.f(...)` calls the array function f with xs first. A method that
         // changes its array is a statement on the array's name.
         method: int = -1;
-        if (Is(forest, callee, "member_expression") &&
+        if (!qualified_native && Is(forest, callee, "member_expression") &&
             QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0) {
             method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
         }
@@ -1501,19 +1603,24 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        // `F(...)` calls this package's F or a native; `alias.F(...)` calls an
-        // imported package's F.
+        // `F(...)` calls this package's F or a native; a bound alias calls an
+        // imported package's F; an unbound prefix qualifies a native's name.
         qualifier: int = -1;
         if (Is(forest, callee, "member_expression")) {
             qualifier = Field(forest, callee, "object");
             callee = Field(forest, callee, "member");
         }
         home := QualifierOf(forest, text, names, package, qualifier);
-        if (home < 0 || !Is(forest, callee, "identifier")) {
+        if ((!qualified_native && home < 0) || !Is(forest, callee, "identifier")) {
             return Fail(forest, Field(forest, item.node, "function"), document, "call needs a function name");
         }
         callee_name := Text(forest, text, callee);
-        found := FindCallable(callables, home, callee_name);
+        found: int = -1;
+        if (qualified_native) {
+            callee_name = native_name;
+        } else {
+            found = FindCallable(callables, home, callee_name);
+        }
         conversion: int = 0;
         if (qualifier < 0 && found < 0) {
             conversion = ScalarStorage(callee_name);
@@ -1612,7 +1719,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         expected_count: int = 0;
         if (found >= 0) {
             expected_count = callables[found].count;
-        } else if (qualifier >= 0) {
+        } else if (qualifier >= 0 && !qualified_native) {
             return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name));
         } else {
             if (marked >= 0) {
@@ -1634,7 +1741,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     count += 1;
                     argument = NextMember(forest, argument);
                 }
-                choose := Resume(item.node, 1, -1, count);
+                choose := Resume(item.node, 1, native, count);
                 choose.c = 4;
                 next.append(choose);
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
@@ -1872,7 +1979,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.c == 4) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, "function");
-        chosen = Overload(natives, ports, Text(forest, text, callee), values, first, count);
+        chosen = Overload(natives, ports, natives[item.a].name, values, first, count);
         if (chosen < 0) {
             return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
         }
@@ -2128,10 +2235,30 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
             if (operator == "+") {
                 literal = operand;
             }
+            if (item.storage == HandleStorage && item.container == 0) {
+                switch NumberBits(forest, text, literal.record) {
+                    case .Finite(double_bits, float_fits, float_bits):
+                        if ((double_bits & 0x7fffffffffffffff) != 0) {
+                            return Fail(forest, item.node, document, "entity value requires null or zero");
+                        }
+                    case .OutOfRange:
+                        return Fail(forest, item.node, document, "Numeric literal is outside the range of its type");
+                }
+                slots.append(ValueLocal(HandleStorage));
+                code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
+                code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, literal.record));
+                if (operator == "+") {
+                    code.append(ScalarWatch(ops, at.slot, HandleStorage, 0, true, node));
+                }
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                    Typed(at.slot, HandleStorage, 0, item.record), NoValue(), marks);
+            }
             if (Integer(item.storage) || Floating(item.storage)) {
-                typed := ConstantStep(forest, text, document, literal, item.storage, ops, at, node);
+                typed := Fail(forest, item.node, document, "");
                 if (Floating(item.storage)) {
                     typed = FloatConstantStep(forest, text, document, literal, item.storage, ops, at, node);
+                } else {
+                    typed = ConstantStep(forest, text, document, literal, item.storage, ops, at, node);
                 }
                 switch typed {
                     case .Failed(diagnostic):
@@ -2219,9 +2346,11 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
             }
             shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local, cell: at.cell,
                               host: at.host, call: at.call};
-            typed := ConstantStep(forest, text, document, operands[side], wanted, ops, shifted, node);
+            typed := Fail(forest, item.node, document, "");
             if (Floating(wanted)) {
                 typed = FloatConstantStep(forest, text, document, operands[side], wanted, ops, shifted, node);
+            } else {
+                typed = ConstantStep(forest, text, document, operands[side], wanted, ops, shifted, node);
             }
             switch typed {
                 case .Failed(diagnostic):
@@ -2282,7 +2411,9 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     }
     numeric := Single(left, left.storage) && Single(right, left.storage) && Numeric(left.storage);
     equality := op == ops.eq || op == ops.ne;
-    same := Single(right, left.storage) && (Single(left, BoolStorage) || Single(left, TextStorage));
+    same := Single(right, left.storage) &&
+            (Single(left, BoolStorage) || Single(left, TextStorage) ||
+             (Single(left, HandleStorage) && left.record == right.record));
     if (Single(left, PointerStorage) && Single(right, PointerStorage) && left.record >= 0 && right.record >= 0) {
         same = types[left.record].id == types[right.record].id;
     }

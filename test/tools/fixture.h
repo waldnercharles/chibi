@@ -8,8 +8,8 @@ const char *tool_root();
 #define TOOL_RUN_SECONDS 10
 
 /* Runs argv from cwd with its output in logpath, stopping it after
- * TOOL_RUN_SECONDS, or `allowed` seconds for tool_run_within, and before the
- * aggregate deadline. Returns its exit status, or 124 when it was stopped. */
+ * TOOL_RUN_SECONDS, or `allowed` seconds for tool_run_within.
+ * Returns its exit status, or 124 when it was stopped. */
 int tool_run(const char *const argv[], const char *cwd, const char *logpath);
 int tool_run_within(const char *const argv[], const char *cwd, const char *logpath, double allowed);
 void tool_write(const char *path, const char *text);

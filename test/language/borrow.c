@@ -1903,8 +1903,8 @@ TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
     }
     return true;
 }
-/* A function that builds results in its caller's storage still copies an
- * argument it returns, which the caller shared rather than copied: the
+/* A function that returns an argument the caller shared rather than copied
+ * builds no results in the caller's storage, so its result is a copy: the
  * caller's later push leaves the result as it was. */
 TEST_CASE(borrow_shared_argument_returned_is_copied)
 {
@@ -2026,11 +2026,93 @@ TEST_CASE(borrow_shared_argument_returned_is_copied)
     behavior_function_prepare_borrows(function);
     behavior_function_prepare_borrows(helper_function);
     REQUIRE(
-        helper_function->builds_results && helper_function->argument_sharing == BEHAVIOR_SHARING_SAFE
+        !helper_function->builds_results && helper_function->argument_sharing == BEHAVIOR_SHARING_SAFE
     );
     pin_value output = { .type = PIN_I32 };
     REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
     REQUIRE(output.i == 1);
+    return true;
+}
+/* A result read through an argument may be part of the caller's data, as an
+ * inner array of a shared nested array is, so moving it would let the caller's
+ * result share it: such a function builds no results. */
+TEST_CASE(borrow_result_reached_through_argument_builds_nothing)
+{
+    enum
+    {
+        BUILT,
+        ARGUMENT,
+        THROUGH_ARGUMENT,
+        KINDS
+    };
+    for (int kind = 0; kind < KINDS; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, &array_shape, 1, &array_shape, 1, NULL, 0);
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        int returned = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        );
+        if (kind != BUILT) {
+            returned = value(
+                (behavior_function_instruction){ .op = BF_ARRAY,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .target = BF_ARGUMENT,
+                                                 .value = array_shape },
+                true
+            );
+        }
+        if (kind == THROUGH_ARGUMENT) {
+            returned = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = returned,
+                                                 .offset = offsetof(pin_array, data) },
+                true
+            );
+        }
+        int name = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = BF_POINTER_TYPE,
+                                             .value = { .type = BF_POINTER_TYPE } },
+            true
+        );
+        emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                              .type = PIN_F64,
+                                              .left = returned,
+                                              .right = name,
+                                              .value = array_shape });
+        emit((behavior_function_instruction){ .op = BF_RETURN });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "reached result %d: %s\n", kind, error);
+        }
+        REQUIRE(function);
+        REQUIRE(function->builds_results == (kind == BUILT));
+    }
     return true;
 }
 /* A value a function built in its caller's storage and returns in two
@@ -2153,6 +2235,7 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
     RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
+    RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);
     RUN_TEST_CASE(borrow_aliased_results_stay_independent);
     pu_clear_setup();
 }

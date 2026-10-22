@@ -1695,6 +1695,8 @@ typedef struct
     /* Small nonnegative integer constants a slot or cell holds. */
     int *literals, *cell_literals;
     bool memory, results, text_memory, retyped, unsafe, changed;
+    /* Whether a result may be written from a value that reaches the caller's. */
+    bool returned;
     /* Whether values built in the caller's storage count as the caller's:
      * then only updates that run there may change them. */
     bool built;
@@ -1892,9 +1894,19 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
-            /* A kept payload keeps what the inputs reach. */
-            case EXECUTION_INTRINSIC_UNION_KEEP:
             case EXECUTION_INTRINSIC_UNION_GET: break;
+            case EXECUTION_INTRINSIC_UNION_KEEP: {
+                /* A payload value it keeps keeps what it reaches; it copies
+                 * those its mask leaves out, as a snapshot does. */
+                int steps = EFFECT_STEPS;
+                origin keep = bank_origin(f, pc, host->first + 1, 0, &steps);
+                output = s->retyped && inputs;
+                for (int k = 0; k < host->result_first - host->first - 2; k++) {
+                    bool kept = !keep.constant || (k < 64 && (keep.bits >> k & 1));
+                    output |= kept && share_cell(s, host->first + 2 + k);
+                }
+                break;
+            }
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 output = share_cell(s, host->first);
                 root = s->contents[host->first];
@@ -2064,11 +2076,13 @@ static void share_instruction(share_flow *s, int pc)
         case BF_RESULT:
             s->unsafe |= i->indirect;
             share_taint(s, &s->results, s->slots[i->left]);
+            share_taint(s, &s->returned, s->slots[i->left]);
             break;
         case BF_RESULT_PRESENT:
         case BF_RESULT_TYPE_NAME:
         case BF_RESULT_ARRAY:
             share_taint(s, &s->results, s->slots[i->left]);
+            share_taint(s, &s->returned, s->slots[i->left]);
             break;
         case BF_HOST_CALL: share_host(s, pc); break;
         case BF_INVOKE: {
@@ -2169,8 +2183,9 @@ static int *share_column(int count)
 }
 /* One definition's own rules, ignoring what its callees do. Results start
  * tainted: they hold the caller's result cells until written. With `built`,
- * what the definition builds in its caller's storage is tainted too. */
-static bool share_local(const behavior_function *f, bool built)
+ * what the definition builds in its caller's storage is tainted too.
+ * `returned`, when given, says whether a result may reach the caller's. */
+static bool share_local(const behavior_function *f, bool built, bool *returned)
 {
     int slots = acount(f->slots), cells = acount(f->data_values),
         locals = acount(f->locals);
@@ -2202,6 +2217,9 @@ static bool share_local(const behavior_function *f, bool built)
         }
     } while (s.changed && !s.unsafe && ++passes < SHARE_PASSES);
     bool safe = !s.unsafe && !s.changed;
+    if (returned) {
+        *returned = s.returned;
+    }
     free(s.slots);
     free(s.cells);
     free(s.locals);
@@ -2220,9 +2238,13 @@ static int by_definition(const void *a, const void *b)
     uintptr_t y = (uintptr_t)(*(behavior_function *const *)b);
     return (x > y) - (x < y);
 }
+/* Without `built`, what the definition builds is its own, so a result that
+ * reaches the caller's came from its arguments or other data: moving it would
+ * let the caller's results share that data. */
 bool execution_builds_safely(const behavior_function *f)
 {
-    return share_local(f, true);
+    bool returned = true;
+    return share_local(f, true, NULL) && share_local(f, false, &returned) && !returned;
 }
 void execution_prepare_argument_sharing(behavior_function *root)
 {
@@ -2238,7 +2260,7 @@ void execution_prepare_argument_sharing(behavior_function *root)
     apush(pending, root);
     for (int at = 0; at < acount(pending); at++) {
         behavior_function *f = pending[at];
-        f->argument_sharing = f->frozen && share_local(f, false)
+        f->argument_sharing = f->frozen && share_local(f, false, NULL)
                                 ? BEHAVIOR_SHARING_PENDING_SAFE
                                 : BEHAVIOR_SHARING_PENDING_COPY;
         for (int i = 0; i < acount(f->calls); i++) {

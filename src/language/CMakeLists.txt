@@ -8,6 +8,9 @@ chibi_sdk_headers(chibi_language_syntax PUBLIC language/syntax.h)
 target_include_directories(chibi_language_syntax PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(chibi_language_syntax PUBLIC chibi_support chibi_syntax_runtime)
 set_source_files_properties(src/parser.c PROPERTIES COMPILE_OPTIONS "-w")
+if(CHIBI_SDK_COMPILER_HOST_ONLY)
+    return()
+endif()
 
 add_library(chibi_language STATIC semantic.c semantic_context.c identity.c component.c
     semantic_expression.c semantic_calls.c semantic_statement.c semantic_declaration.c semantic_effects.c semantic_units.c

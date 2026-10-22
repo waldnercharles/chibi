@@ -12,8 +12,12 @@
 #   share/chibi/licenses/vendor/   their licences
 #   source/cute_framework/         Cute headers and decoders, with its licence
 cmake_minimum_required(VERSION 3.25)
-project(chibi_third_party LANGUAGES C CXX)
-if(APPLE)
+if(CHIBI_SDK_COMPILER_HOST_ONLY)
+    project(chibi_compiler_dependencies LANGUAGES C)
+else()
+    project(chibi_third_party LANGUAGES C CXX)
+endif()
+if(APPLE AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     enable_language(OBJC)
 endif()
 get_filename_component(CHIBI_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
@@ -58,6 +62,22 @@ function(chibi_third_party name repository commit)
 endfunction()
 
 # Patches are described in third_party/README.md.
+chibi_third_party(sljit https://github.com/zherczeg/sljit.git
+    a0020dd49a21020434ff838fc308626c48cd8f05 arm64-immediate-negation)
+chibi_third_party(tree_sitter https://github.com/tree-sitter/tree-sitter.git
+    da6fe9beb4f7f67beb75914ca8e0d48ae48d6406)
+if(CHIBI_SDK_COMPILER_HOST_ONLY)
+    # Only portable sources are needed to provision the native compiler runtime.
+    # Reuse the archive's source layout and the pins/patches above; no desktop
+    # libraries or platform archive are involved.
+    set(compiler_sources "${CMAKE_CURRENT_BINARY_DIR}/compiler-sources")
+    file(COPY "${sljit_SOURCE}/sljit_src" "${sljit_SOURCE}/LICENSE"
+        DESTINATION "${compiler_sources}/source/sljit")
+    file(COPY "${tree_sitter_SOURCE}/lib" "${tree_sitter_SOURCE}/LICENSE"
+        DESTINATION "${compiler_sources}/source/tree_sitter")
+    set(CHIBI_THIRD_PARTY_DIR "${compiler_sources}" PARENT_SCOPE)
+    return()
+endif()
 chibi_third_party(cute_framework https://github.com/RandyGaul/cute_framework.git
     96e6034aa6bc44665856ee480962a9ddab0b87cc
     interior-border imgui-render-target eight-targets web-no-asyncify gles-ubo-instance-scope
@@ -77,11 +97,7 @@ chibi_third_party(rmlui https://github.com/mikke89/RmlUi.git
     suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when
     event-propagation variable-line-height move-keeps-data data-template context-update-profile
     document-source document-layout)
-chibi_third_party(sljit https://github.com/zherczeg/sljit.git
-    a0020dd49a21020434ff838fc308626c48cd8f05 arm64-immediate-negation)
 chibi_third_party(enkits https://github.com/dougbinks/enkiTS.git 4cba61a045d8e759bd35e5d85691bf9f7271f822)
-chibi_third_party(tree_sitter https://github.com/tree-sitter/tree-sitter.git
-    da6fe9beb4f7f67beb75914ca8e0d48ae48d6406)
 chibi_third_party(tree_sitter_css https://github.com/tree-sitter/tree-sitter-css.git
     dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f scanner-create-prototype)
 chibi_third_party(tree_sitter_html https://github.com/tree-sitter/tree-sitter-html.git

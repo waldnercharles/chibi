@@ -463,7 +463,7 @@ Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
 references to elements and entries. Consider marking reference arguments at
 the call site.
 
-### Library growth spends the compiler tests' budgets
+### Library growth increases compiler-test execution time
 
 Toolchain. At #503 the 16 KB package prepared to an 837 KB module, about 52
 times its source, mostly per-function debug metadata. Harnesses embed the

@@ -28,7 +28,7 @@ uses the existing Vision component; it does not exercise the `Visibility At`
 behavior function.
 
 All three scenes own their cameras. The four-frame catalog coverage check runs
-simulation only. Use the admitted `scene3d` and `sdf-visibility` GPU checks for
+simulation only. Use the `scene3d` and `sdf-visibility` GPU checks for
 renderer assertions and bounded scene previews to inspect these compositions.
 One output image does not prove temporal stability.
 

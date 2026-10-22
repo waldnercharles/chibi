@@ -179,7 +179,7 @@ For each selected package or prerequisite:
   is part of the contract; correctness tests alone do not establish performance.
 - Inspect the combined diff and generated documentation before publication.
 
-Library growth already consumes compiler-test budgets. Select bounded,
+Library growth increases compiler-test execution time. Select bounded,
 representative acceptance workloads and retain full-package import coverage
 through the owning checks. Unrun suites and deferred host bootstrap runs
 remain unverified. This program does not change the toolchain's host acceptance

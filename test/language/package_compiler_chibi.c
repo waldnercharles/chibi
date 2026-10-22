@@ -66,11 +66,10 @@ typedef struct
     const char *function, *arguments, *expected;
     const char *diagnostic;
 } sample_call;
-/* Each group of samples runs under its own selector, so each selector stays
- * within its time ceiling: unions, constants, patterns and integer types
- * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
- * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare, and the moves, reads in place and array methods
+/* Separate selectors cover unions, constants, patterns and integer types
+ * (TYPE_SAMPLES); the imports sample, which compiles all of core:strings,
+ * the samples that link the core pack, whose oracle costs seconds more to
+ * prepare, and moves, reads in place and array methods
  * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
  * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum

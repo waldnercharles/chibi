@@ -60,6 +60,7 @@ void test_build_graph_reflect(const char *host);
 void test_build_graph_archive(const char *host);
 void test_build_graph_generated(const char *host);
 void test_build_graph_programs(const char *host);
+void test_build_graph_resources(const char *host);
 #endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
@@ -533,7 +534,8 @@ int main(int argc, char **argv)
                       !strcmp(argv[1], "--build-graph-reflect") ||
                       !strcmp(argv[1], "--build-graph-archive") ||
                       !strcmp(argv[1], "--build-graph-generated") ||
-                      !strcmp(argv[1], "--build-graph-programs"))) {
+                      !strcmp(argv[1], "--build-graph-programs") ||
+                      !strcmp(argv[1], "--build-graph-resources"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
@@ -547,6 +549,8 @@ int main(int argc, char **argv)
             test_build_graph_archive(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-programs")) {
             test_build_graph_programs(argv[2]);
+        } else if (!strcmp(argv[1], "--build-graph-resources")) {
+            test_build_graph_resources(argv[2]);
         } else {
             test_build_graph_generated(argv[2]);
         }

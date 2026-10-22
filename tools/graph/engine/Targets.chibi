@@ -3818,6 +3818,59 @@ pub ProgramDirectory :: (target: string) -> string {
     return "";
 }
 
+// Files a target installs into the build tree, `DESTINATION=SOURCE`, as root
+// CMakeLists.txt configures them: a directory SOURCE copies every file below
+// it. The launcher's players, `chibi version`, `chibi test` and `chibi doc`
+// read ../share/chibi as installed ones do; chibi_ctl reads its own resources.
+// build/sdk/chibi_engine_metadata.json is the build identity (Identity).
+pub Resources :: (target: string) -> string[] {
+    if (target == "chibi") {
+        return [
+            "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
+            "build/share/chibi/core/strings/Strings.chibi=packages/core/strings/Strings.chibi",
+            "build/share/chibi/docs/markdown/Markdown.chibi=tools/docs/markdown/Markdown.chibi",
+            "build/share/chibi/docs/site/Site.chibi=tools/docs/site/Site.chibi",
+            "build/share/chibi/docs/reference/Reference.chibi=tools/docs/reference/Reference.chibi",
+            "build/share/chibi/docs/grammar/Grammar.chibi=tools/docs/grammar/Grammar.chibi",
+            "build/share/chibi/docs/compiler_syntax/Syntax.chibi=tools/compiler/compiler_syntax/Syntax.chibi",
+            "build/share/chibi/docs/syntax_diagnostics/Diagnostics.chibi=tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+            "build/share/chibi/shaders=src/render/shaders"
+        ];
+    }
+    if (target == "chibi_ctl") {
+        return [
+            "build/controller_resources/engine.json=build/sdk/chibi_engine_metadata.json",
+            "build/controller_resources/shaders=src/render/shaders"
+        ];
+    }
+    return [];
+}
+
+// The artifact formats the build identity records, as
+// sdk/artifact_formats.cmake lists them: `NAME SOURCE HEADER MACRO`,
+// then VALUE_WIRE for a format that encodes through types/value_wire and
+// EXECUTION_CODECS for the prepared function and record codecs. Paths are
+// below src/.
+pub ArtifactFormats :: () -> string[] {
+    return [
+        "execution execution/prepared.c execution/prepared.h EXECUTION_PREPARED_VERSION VALUE_WIRE EXECUTION_CODECS",
+        "player runtime/player_prepared.c runtime/player_prepared.h PLAYER_PREPARED_VERSION VALUE_WIRE",
+        "events runtime/event_catalog.c runtime/event_catalog.h EVENT_CATALOG_VERSION VALUE_WIRE",
+        "field runtime/fields/prepared.c runtime/fields/prepared.h FIELD_PREPARED_VERSION",
+        "material_fields runtime/material_field_prepared.c runtime/material_field_prepared.h MATERIAL_FIELDS_PREPARED_VERSION",
+        "scene runtime/scenes/prepared.c runtime/scenes/prepared.h SCENE_PREPARED_VERSION VALUE_WIRE",
+        "ui runtime/ui/documents.c runtime/ui/documents.h UI_DOCUMENT_VERSION VALUE_WIRE",
+        "font runtime/ui/font.c runtime/ui/font.h UI_FONT_PREPARED_VERSION VALUE_WIRE",
+        "shader runtime/shaders/prepared.c runtime/shaders/prepared.h SHADER_PREPARED_VERSION VALUE_WIRE",
+        "model runtime/models/prepared.c runtime/models/prepared.h MODEL_PREPARED_VERSION VALUE_WIRE",
+        "mesh runtime/geometry/mesh_prepared.c runtime/geometry/mesh_prepared.h RENDER_MESH_PREPARED_VERSION VALUE_WIRE",
+        "image runtime/images/catalog.c runtime/images/catalog.h RENDER_IMAGE_PREPARED_VERSION VALUE_WIRE",
+        "sky runtime/images/sky.c runtime/images/sky.h RENDER_SKY_PREPARED_VERSION VALUE_WIRE",
+        "parts render/scene3d_parts.c render/scene3d_parts.h RENDER_PARTS_PREPARED_VERSION VALUE_WIRE",
+        "shader_values render/shader_values.c render/shader_catalog.h SHADER_VALUES_PREPARED_VERSION"
+    ];
+}
+
 // The programs an executable runs, built with it as CMake's add_dependencies
 // builds them: test_tools runs the workers and tools whose paths it compiles
 // in.

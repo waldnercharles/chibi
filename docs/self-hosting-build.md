@@ -393,7 +393,12 @@ then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
 as it records compiles. An object library (`ObjectLibrary`, as
 `chibi_build_host`) compiles but is not archived; an executable's
-`LinkedObjects` put its objects before the executable's own. Every run
+`LinkedObjects` put its objects before the executable's own. On macOS the
+graph also compiles the tooling tests' SDK contract consumers, object
+libraries over staged SDK headers and the fixtures it copies to
+`BUILD/test/tools/testing/include`, as `test/tools/CMakeLists.txt` does. A
+target's defines take the same `{source_root}` placeholder as a source's.
+Every run
 writes `BUILD/link_commands.json` beside the compile commands. Naming a
 program with `--target` also builds the libraries it links. `reflect` takes libclang from the profile
 (`--libclang-include`, `--libclang-library`), and the graph finds clang's

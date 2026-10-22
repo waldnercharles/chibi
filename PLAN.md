@@ -718,7 +718,11 @@ source its own defines, with the source root, build type and a file's
 SHA-256 filled in. On macOS it builds and links `test_language` over its
 object library: 850 compile commands and twelve link commands, equal to
 CMake's, and 28 generated headers equal to CMake's.
-Next: `test_tools` and the SDK contract consumers; an install layout, which
+Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
+compiles the 21 object libraries `test/tools` declares over staged SDK
+headers and the fixtures it copies beside pico_unit, and expands a target's
+own defines: 949 compile commands, equal to CMake's.
+Next: linking `test_tools` over them; an install layout, which
 `chibi version` reads; then moving profile selection from `Build.chibi`'s
 CMake arguments into the graph.
 

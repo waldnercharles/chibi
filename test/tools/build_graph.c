@@ -18,6 +18,8 @@
 #define GRAPH_PATH 4096
 #define GRAPH_RUN_SECONDS 50
 #define GRAPH_TOKENS 512
+#define GRAPH_OWNERS 256
+#define GRAPH_HEADERS 8
 
 static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
@@ -337,7 +339,7 @@ TEST_CASE(commands_match_cmake)
     REQUIRE(graph_doc && cmake_doc);
     yyjson_val *ours = yyjson_doc_get_root(graph_doc);
     /* The libraries the graph owns are those its objects belong to. */
-    char owners[128][128];
+    char owners[GRAPH_OWNERS][128];
     int owner_count = 0;
     yyjson_val *entry;
     yyjson_arr_iter mine_iter = yyjson_arr_iter_with(ours);
@@ -352,7 +354,7 @@ TEST_CASE(commands_match_cmake)
             seen |= !strcmp(owners[i], owner);
         }
         if (!seen) {
-            assert(owner_count < 128);
+            assert(owner_count < GRAPH_OWNERS);
             strcpy(owners[owner_count++], owner);
         }
     }
@@ -916,40 +918,78 @@ TEST_CASE(rewritten_codec_headers_match_cmake)
     return true;
 }
 
+#ifdef __APPLE__
+/* Building only TARGET, one source over a header set, writes each of its
+ * headers below DIRECTORY equal to CMake's, and an unchanged run compiles
+ * nothing and leaves their stamps. */
+static bool configures_as_cmake(
+    const char *target,
+    const char *directory,
+    const char *const *headers,
+    int count
+)
+{
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH],
+        header[GRAPH_PATH];
+    join(build_dir, suite, target);
+    const char *const target_only[] = { "--target", target, NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, target_only) == 1);
+    struct stat before[GRAPH_HEADERS], after;
+    assert(count <= GRAPH_HEADERS);
+    for (int i = 0; i < count; i++) {
+        snprintf(header, sizeof header, "%s/%s", directory, headers[i]);
+        join(ours, build_dir, header);
+        join(theirs, reference, header);
+        char *mine = tool_read(ours), *cmake = tool_read(theirs);
+        bool same = mine && cmake && !strcmp(mine, cmake) && !stat(ours, &before[i]);
+        free(mine);
+        free(cmake);
+        REQUIRE(same);
+    }
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, target_only) == 0);
+    for (int i = 0; i < count; i++) {
+        snprintf(header, sizeof header, "%s/%s", directory, headers[i]);
+        join(ours, build_dir, header);
+        REQUIRE(!stat(ours, &after) && after.st_ino == before[i].st_ino);
+    }
+    return true;
+}
+#endif
+
 /* The language tests' generated headers, as CMake configures them: Chibi
  * sources as byte initializers, the build workflow as C string lines and plain
- * copies, each equal to CMake's. Building only the object library over them
- * writes them all, and an unchanged run leaves their stamps. */
+ * copies. */
 TEST_CASE(configured_headers_match_cmake)
 {
 #ifdef __APPLE__
-    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH];
-    join(build_dir, suite, "configured");
-    const char *const consumer_only[] = { "--target", "test_behavior_consumer", NULL };
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, consumer_only) == 1);
     const char *const headers[] = { "package_core_source.h",
                                     "build_workflow_source.h",
                                     "package_compiler_chibi_source.h",
                                     "third_party/pico_headers/pico_unit.h",
                                     "test/prepared_fixture.h" };
-    struct stat before[5], after;
-    for (int i = 0; i < 5; i++) {
-        char header[GRAPH_PATH];
-        snprintf(header, sizeof header, "test/language/testing/include/%s", headers[i]);
-        join(ours, build_dir, header);
-        join(theirs, reference, header);
-        char *mine = tool_read(ours), *cmake = tool_read(theirs);
-        REQUIRE(mine && cmake && !strcmp(mine, cmake) && !stat(ours, &before[i]));
-        free(mine);
-        free(cmake);
-    }
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, consumer_only) == 0);
-    for (int i = 0; i < 5; i++) {
-        char header[GRAPH_PATH];
-        snprintf(header, sizeof header, "test/language/testing/include/%s", headers[i]);
-        join(ours, build_dir, header);
-        REQUIRE(!stat(ours, &after) && after.st_ino == before[i].st_ino);
-    }
+    REQUIRE(
+        configures_as_cmake("test_behavior_consumer", "test/language/testing/include", headers, 5)
+    );
+#endif
+    return true;
+}
+
+/* The tooling tests' SDK contract consumers see only staged SDK headers and
+ * the fixtures copied beside pico_unit. */
+TEST_CASE(tool_testing_headers_match_cmake)
+{
+#ifdef __APPLE__
+    const char *const headers[] = { "third_party/pico_headers/pico_unit.h",
+                                    "test/prepared_fixture.h",
+                                    "test/tools/fixture.h",
+                                    "test/graph/packs.h",
+                                    "test/graph/fixture.h",
+                                    "test/render/hidden_app.h",
+                                    "test/support/reflected_types.h",
+                                    "test/support/gltf_fixture.h" };
+    REQUIRE(
+        configures_as_cmake("chibi_prepared_consumer", "test/tools/testing/include", headers, 8)
+    );
 #endif
     return true;
 }
@@ -1038,5 +1078,6 @@ void test_build_graph_generated(const char *host)
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);
+    RUN_TEST_CASE(tool_testing_headers_match_cmake);
     tool_remove_tree(suite);
 }

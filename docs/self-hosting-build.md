@@ -691,48 +691,61 @@ operating system, so one artifact serves every host with that ABI.
 
 ### Three-platform compiler recovery proof
 
-`.github/workflows/compiler-recovery.yml` runs on every pull request into `main`,
-push to `main` and manual dispatch. Its macOS 15, Ubuntu 24.04 and Windows 2022
-jobs each provision a Release native runtime separately from the compiler proof:
+The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`
+runs on every pull request into `main`, push to `main` and manual dispatch.
+Its macOS 15, Ubuntu 24.04 and Windows 2022 jobs download an existing runtime
+binary from the release pinned in `tools/compiler/runtime.json`. The manifest
+records each binary's filename, byte length and SHA-256, plus the source
+revision, tree and CI run that produced it. Downloaded bytes are checked before
+execution. No job installs or invokes a C compiler or CMake, and none depends
+on a native build job. A missing or incompatible seed fails the job rather
+than silently building a replacement.
 
-```sh
-cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-cmake --build runtime-build --target chibi-compiler-host
-```
+The runtime binary is an explicit bootstrap input, alongside the checked-in
+Chibi compiler artifact. It executes prepared Chibi code using SLJIT and
+exposes native services, including raw Tree-sitter syntax facts. It excludes
+the C semantic frontend. The authored compiler performs semantic analysis and
+code generation; its output is a prepared `compiler.chibip` artifact executed
+by the same runtime. This proof rebuilds the compiler, retaining the native
+runtime as an external binary dependency.
 
-This SDK mode builds only the native compiler runtime and its pinned
-Tree-sitter and SLJIT dependencies. It needs a platform C compiler and native
-build tools. It excludes the C semantic frontend and desktop third-party
-archives. Building this executable remains a native prerequisite; the authored
-Chibi compiler produces `compiler.chibip`.
-
-The proof copies only that executable, `tools/compiler` and `packages/core`
-into a directory outside the checkout. It rejects native source files there,
-clears the child environment, gives it an empty `PATH` and unavailable `CC`
-and `CXX`, then launches the copied executable directly:
+The proof copies only the runtime executable, `tools/compiler` and
+`packages/core` into a directory outside the checkout. It rejects native source
+files there, clears the child environment, gives it an empty `PATH` and
+unavailable `CC` and `CXX`. After creating the `stage1` output directory,
+it launches the copied executable directly:
 
 ```sh
 ./chibi-compiler-host --bootstrap tools/compiler/bootstrap \
-  --compiler tools/compiler --core packages/core --recover "$PWD/compiler.chibip"
+  --compiler tools/compiler --core packages/core --recover "$PWD/stage1/compiler.chibip"
 ```
 
 On Windows the executable is `chibi-compiler-host.exe`; the workflow passes an
-absolute output path with native separators. The runtime loads and executes
-the checked-in authored compiler artifact, which compiles the current compiler
-sources. Recovery must satisfy the byte comparisons described above.
-The proof invokes no Make target, CMake, build host, Python or C compiler. This
-input and environment isolation does not restrict the runner's filesystem.
+absolute output path with native separators. After this invocation succeeds,
+the workflow copies the original bootstrap manifest beside that exact output,
+updating only its closure length and SHA-256. The inherited revision and source
+hashes continue to identify the original seed's provenance. It then invokes
+the runtime with `--bootstrap stage1` to produce stage two. This second
+process loads and executes the compiler just built, and the outputs must have
+identical hashes. Each invocation also performs the recovery checks above,
+including an internal fixed-point compile when recorded sources changed.
 
-Each proof step has a hard 60-second ceiling, with a 59-second process deadline
-and process-tree termination on timeout. Native configuration and build times
-are recorded separately. Each job uploads the recovered artifact, its SHA-256,
-stdout, stderr and JSON evidence with the runtime digest, input inventory,
-revision, platform, child environment and timings. After all three jobs pass,
-`Compiler recovery across platforms` requires identical recovered compiler
-bytes. A platform that rejects the manifest's target ABI fails its own proof
-before this comparison. Every job is nonadvisory; skipped or failed platform
-proofs cannot satisfy the comparison job.
+The two invocations and manifest promotion share one 59-second deadline inside
+a hard 60-second step. Timeout terminates the active process tree. Each job
+uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
+with seed/runtime identities, input inventory, revision, platform, cleared
+environment and timings. The comparison job requires matching compiler bytes
+across all three platforms. Every job is nonadvisory; skipped or failed
+platform proofs cannot satisfy the comparison job. Environment and input
+isolation do not restrict the runner's filesystem.
+
+`.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
+route for preparing replacement runtime binaries. It uses the source-only SDK
+mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
+the recovery proof and provenance with each binary. Publish a fresh release
+and review new manifest pins when changing the runtime ABI; routine compiler
+self-builds continue to consume the pinned release. The initial runtime seeds
+were produced by the predecessor recovery workflow at the recorded revision.
 
 Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;

@@ -100,16 +100,20 @@ they stay out of the group; run them with
 
 CI runs the build, the four groups and `make test-tools` on Linux and macOS.
 The general Windows engine and Studio jobs are paused pending desktop archives.
-The independent `Compiler recovery` workflow runs nonadvisory macOS, Linux and
-Windows proofs on every PR into `main` and push to `main`. Each directly runs
-the native runtime with the checked-in Chibi compiler artifact and current
-compiler/core sources in an isolated input directory with no native toolchain
-in the child environment. Native runtime provisioning is a separate build;
-recovery has a hard 60-second step ceiling and a 59-second process deadline.
-The three recovered artifacts must have identical bytes. See the
+The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
+Windows proofs on every PR into `main` and push to `main`. Each downloads a
+checksum-pinned runtime seed and uses the checked-in Chibi compiler to compile
+the current compiler/core sources. It then executes that output to compile them
+again. This workflow installs and invokes neither a C compiler nor CMake, and
+has no native-build job dependency. Both compiler processes use an isolated
+input directory and an empty tool search path under one shared 59-second
+deadline inside a 60-second step. The two stages must agree locally and the
+three platforms must produce identical compiler bytes. See the
 [compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
 for the exact command, isolation and uploaded evidence. This workflow does not
 call `make test-bootstrap`, which prepares stage one through stage zero.
+The separate manual runtime-seed workflow retains the C/CMake recovery route
+for updating the explicitly prebuilt runtime dependency.
 
 ## Feature coverage
 

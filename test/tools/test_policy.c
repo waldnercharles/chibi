@@ -218,11 +218,10 @@ static void reset_markers()
 
 TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
 {
-    const char *selectors[] = {
-        "--material-destruction", "--material-fluids",     "--material-mpm",
-        "--material-thermal",     "--material-simulation", "--material-ecs",
-        "--material-render",      "--material-benchmark",  "--contact-benchmark"
-    };
+    const char *selectors[] = { "--material-fluids",    "--material-mpm",
+                                "--material-thermal",   "--material-simulation",
+                                "--material-ecs",       "--material-render",
+                                "--material-benchmark", "--contact-benchmark" };
     for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
         REQUIRE(run("cpu-route", selectors[i]) == 0);
         char expected[16384];
@@ -232,6 +231,7 @@ TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
         free(output);
         REQUIRE(exact);
     }
+    REQUIRE(run("cpu-route", "--material-destruction") == 2);
     REQUIRE(run("cpu-route", "--material-unknown") == 2);
     REQUIRE(run("cpu-route", "--material-pixels") == 2);
     return true;
@@ -264,7 +264,7 @@ static int run_group(const char *group)
     return status;
 }
 
-TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
+TEST_CASE(migrated_asset_groups_refuse_before_launching_children)
 {
     char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
     path(commands, "group-commands");
@@ -276,48 +276,16 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
         tool_write(child, source);
         REQUIRE(!chmod(child, 0700));
     }
-    REQUIRE(run_group("projects") == 0);
-    char *output = tool_read(commands);
-    const char *expected = "--mesh-files\n"
-                           "--model-import\n"
-                           "--validate-project\n"
-                           "--prototype-expansion\n"
-                           "--controller\n"
-                           "--feature-coverage\n"
-                           "--render-fixture\n"
-                           "--material-bake\n"
-                           "--environment-authoring\n"
-                           "--terrain-checkpoint\n"
-                           "--terrain-storage-commands\n"
-                           "--terrain-playable\n"
-                           "--published-docs\n"
-                           "--chibi-cli\n";
-    bool exact = output && !strcmp(output, expected);
-    free(output);
-    REQUIRE(exact);
-    REQUIRE(!unlink(commands));
-    REQUIRE(run_group("native") == 0);
-    output = tool_read(commands);
-    bool separate = output && *output;
-    const char *selectors[] = { "--mesh-files\n",
-                                "--model-import\n",
-                                "--validate-project\n",
-                                "--prototype-expansion\n",
-                                "--controller\n",
-                                "--feature-coverage\n",
-                                "--render-fixture\n",
-                                "--material-bake\n",
-                                "--environment-authoring\n",
-                                "--terrain-checkpoint\n",
-                                "--terrain-storage-commands\n",
-                                "--published-docs\n",
-                                "--chibi-cli\n" };
-    for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
-        separate = !strstr(output, selectors[i]);
+    const char *groups[] = { "native", "projects", "materials", "language", "wasm" };
+    for (int i = 0; i < 5; i++) {
+        REQUIRE(run_group(groups[i]) == 2);
+        REQUIRE(access(commands, F_OK) != 0);
+        char *output = tool_read(logpath);
+        bool explained = output && strstr(output, "historical admission retained") &&
+                         strstr(output, "not admitted or passed");
+        free(output);
+        REQUIRE(explained);
     }
-    free(output);
-    REQUIRE(separate);
-    REQUIRE(!unlink(commands));
     for (int i = 0; i < 2; i++) {
         path(child, drivers[i]);
         REQUIRE(!unlink(child));
@@ -756,7 +724,7 @@ void test_tool_test_policy()
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
-    RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
+    RUN_TEST_CASE(migrated_asset_groups_refuse_before_launching_children);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);

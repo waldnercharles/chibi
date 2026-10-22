@@ -623,6 +623,10 @@ The build graph's `c` package (M6) named a parameter `library`, the legacy
 declaration keyword; four functions failed with only "Unexpected syntax"
 until bisecting found it, and it became `target`. Its next slice hit it twice
 more, as a record field and as a local, which became `owner` and `built`.
+The build identity's version reader named a parameter `macro`; the graph
+failed with only "Unexpected syntax", and `chibi fmt --check` only said the
+file had syntax errors, until bisecting copies of the file found it; it
+became `define` (#650).
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,

@@ -2,6 +2,8 @@
 
 #include "support/array.h"
 #include "support/asset_json.h"
+#include "support/binary_cache.h"
+#include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_host.h"
 
@@ -14,6 +16,7 @@
 #define ASSET_EVALUATION_BUDGET UINT64_C(10000000)
 #define ASSET_CACHE_ENTRIES 128
 #define ASSET_CACHE_BYTES (128u * 1024u * 1024u)
+#define ASSET_DOCUMENT_MAX_DEPTH 1024
 
 static av_doc *inspect(const char *source, const char *function, const asset_compiler_options *options)
 {
@@ -113,10 +116,22 @@ static _Thread_local struct
 {
     asset_compiler_options snapshot;
     compiler_host *compiler;
+    char compiler_sha[65];
     compiled_asset assets[ASSET_CACHE_ENTRIES];
     size_t bytes;
     uint64_t clock;
+    asset_compiler_cache_stats stats;
 } cache;
+asset_compiler_cache_stats asset_source_cache_stats()
+{
+    return cache.stats;
+}
+static void cache_count(uint64_t *counter)
+{
+    if (*counter != UINT64_MAX) {
+        (*counter)++;
+    }
+}
 
 static const asset_compiler_options *defaults;
 static void clear_asset(compiled_asset *asset)
@@ -203,6 +218,95 @@ static void failure(asset_compiler_diagnostic *diagnostic, const char *message)
 {
     snprintf(diagnostic->message, sizeof diagnostic->message, "%s", message);
 }
+typedef struct
+{
+    yyjson_val *value;
+    int depth;
+} json_document_item;
+
+/* Match game:assets.Encode before recursive native value construction. Object
+ * keys are visited values too, at the same depth as their member values. */
+static bool document_json_quota(yyjson_val *root, asset_compiler_diagnostic *diagnostic)
+{
+    json_document_item *pending = NULL;
+    apush(pending, ((json_document_item){ root, 0 }));
+    size_t visited = 0;
+    bool valid = true;
+    while (acount(pending)) {
+        json_document_item current = pending[acount(pending) - 1];
+        asetlen(pending, acount(pending) - 1);
+        yyjson_val *value = current.value;
+        if (current.depth > ASSET_DOCUMENT_MAX_DEPTH ||
+            ++visited > COMPILER_HOST_MAX_VALUES) {
+            failure(diagnostic, "Asset document exceeds value/depth limits");
+            valid = false;
+            break;
+        }
+        if (yyjson_is_str(value) &&
+            memchr(yyjson_get_str(value), 0, yyjson_get_len(value))) {
+            failure(diagnostic, "Asset document text contains unsupported NUL bytes");
+            valid = false;
+            break;
+        }
+        bool object = yyjson_is_obj(value);
+        size_t children = object               ? yyjson_obj_size(value)
+                        : yyjson_is_arr(value) ? yyjson_arr_size(value)
+                                               : 0;
+        size_t remaining = COMPILER_HOST_MAX_VALUES - visited - (size_t)acount(pending);
+        if (children > remaining / (object ? 2u : 1u) ||
+            (children && current.depth == ASSET_DOCUMENT_MAX_DEPTH)) {
+            failure(diagnostic, "Asset document exceeds value/depth limits");
+            valid = false;
+            break;
+        }
+        size_t index, count;
+        yyjson_val *key, *child;
+        if (object) {
+            yyjson_obj_foreach(value, index, count, key, child)
+            {
+                if (memchr(yyjson_get_str(key), 0, yyjson_get_len(key))) {
+                    failure(diagnostic, "Asset document key contains unsupported NUL bytes");
+                    valid = false;
+                    break;
+                }
+                visited++;
+                apush(pending, ((json_document_item){ child, current.depth + 1 }));
+            }
+            if (!valid) {
+                break;
+            }
+        } else if (yyjson_is_arr(value)) {
+            yyjson_arr_foreach(value, index, count, child)
+            {
+                apush(pending, ((json_document_item){ child, current.depth + 1 }));
+            }
+        }
+    }
+    afree(pending);
+    return valid;
+}
+
+static av_doc *read_document_transport(const char *json, size_t length, asset_compiler_diagnostic *diagnostic)
+{
+    if (length > COMPILER_HOST_MAX_OUTPUT_BYTES) {
+        failure(diagnostic, "Asset document transport exceeds 16 MiB");
+        return NULL;
+    }
+    yyjson_doc *decoded = yyjson_read(json, length, 0);
+    if (!decoded) {
+        failure(diagnostic, "Asset document transport is invalid JSON");
+        return NULL;
+    }
+    av_doc *document = NULL;
+    yyjson_val *root = yyjson_doc_get_root(decoded);
+    if (document_json_quota(root, diagnostic)) {
+        document = av_doc_new();
+        av_doc_set_root(document, av_from_json(document, root));
+    }
+    yyjson_doc_free(decoded);
+    return document;
+}
+
 static void runtime_failure(
     asset_compiler_diagnostic *diagnostic,
     const char *message,
@@ -242,6 +346,7 @@ static compiler_host *compiler_for(const asset_compiler_options *options, asset_
     if (!same_snapshot(options)) {
         asset_source_release_thread();
         cache.snapshot = *options;
+        sha256_hex(options->compiler, options->compiler_length, cache.compiler_sha);
     }
     if (!cache.compiler) {
         cache.compiler = compiler_host_load(
@@ -367,6 +472,151 @@ static unsigned char *compiled_bytes(
     return NULL;
 }
 
+static char *persistent_directory(const asset_compiler_options *options)
+{
+    const char *path = options->cache_directory;
+    if (!path) {
+        path = getenv("CHIBI_ASSET_CACHE_DIR");
+    }
+    if (path) {
+        return *path && strnlen(path, 4097) <= 4096 ? xstrdup(path) : NULL;
+    }
+#ifdef __EMSCRIPTEN__
+    return xstrdup("/cache/chibi-assets");
+#else
+    const char *base;
+    const char *suffix;
+#ifdef _WIN32
+    base = getenv("LOCALAPPDATA");
+    suffix = "/Chibi/assets";
+#elif defined(__APPLE__)
+    base = getenv("HOME");
+    suffix = "/Library/Caches/Chibi/assets";
+#else
+    base = getenv("XDG_CACHE_HOME");
+    suffix = "/chibi/assets";
+    if (!base || !*base) {
+        base = getenv("HOME");
+        suffix = "/.cache/chibi/assets";
+    }
+#endif
+    if (!base || !*base || strnlen(base, 4097) > 4096) {
+        return NULL;
+    }
+    size_t size = strlen(base) + strlen(suffix) + 1;
+    char *directory = xmalloc(size);
+    snprintf(directory, size, "%s%s", base, suffix);
+    return directory;
+#endif
+}
+static char *persistent_key(const char *json, size_t length, const asset_compiler_options *options)
+{
+    char digest[65];
+    sha256_hex(json, length, digest);
+    av_doc *args = av_doc_new();
+    av_value *values = av_arr(args);
+    av_doc_set_root(args, values);
+    av_arr_add_strcpy(args, values, cache.compiler_sha);
+    av_arr_add_strcpy(args, values, digest);
+    asset_compiler_diagnostic ignored = { 0 };
+    av_doc *result = asset_source_invoke(
+        "project:asset_compiler:1:CacheKey:callable",
+        values,
+        options,
+        &ignored
+    );
+    const av_value *key = result ? av_arr_get(av_doc_root(result), 0) : NULL;
+    char *text = av_is_str(key) && av_get_str(key)[0] ? xstrdup(av_get_str(key)) : NULL;
+    av_doc_free(result);
+    av_doc_free(args);
+    return text;
+}
+static bool persistent_accept(const unsigned char *bytes, size_t length, const asset_compiler_options *options)
+{
+    if (length < COMPILE_HEADER_BYTES) {
+        return false;
+    }
+    av_doc *args = av_doc_new();
+    av_value *values = av_arr(args);
+    av_doc_set_root(args, values);
+    av_arr_append(values, av_sint(args, bytes[0]));
+    av_arr_append(values, av_uint(args, read_le(bytes + 1, 8)));
+    av_arr_append(values, av_uint(args, length - COMPILE_HEADER_BYTES));
+    asset_compiler_diagnostic ignored = { 0 };
+    av_doc *result = asset_source_invoke(
+        "project:asset_compiler:1:CacheAccept:callable",
+        values,
+        options,
+        &ignored
+    );
+    bool accepted = result && av_get_bool(av_arr_get(av_doc_root(result), 0));
+    av_doc_free(result);
+    av_doc_free(args);
+    return accepted;
+}
+static void persistent_publish(
+    const char *directory,
+    const char *key,
+    const unsigned char *bytes,
+    size_t length,
+    const asset_compiler_options *options
+)
+{
+    if (!directory || !key || !bytes || !persistent_accept(bytes, length, options) ||
+        (options->cancelled && options->cancelled(options->user))) {
+        return;
+    }
+    int lock = binary_cache_lock(directory);
+    if (lock < 0) {
+        return;
+    }
+    binary_cache_entry *entries = NULL;
+    int count = 0;
+    av_doc *args = NULL, *result = NULL;
+    if (!binary_cache_remove(directory, key) ||
+        !binary_cache_list(directory, &entries, &count)) {
+        goto done;
+    }
+    args = av_doc_new();
+    av_value *values = av_arr(args), *sizes = av_arr(args), *stamps = av_arr(args);
+    av_doc_set_root(args, values);
+    av_arr_append(values, sizes);
+    av_arr_append(values, stamps);
+    for (int i = 0; i < count; i++) {
+        av_arr_append(sizes, av_uint(args, entries[i].bytes));
+        av_arr_append(stamps, av_uint(args, entries[i].stamp));
+    }
+    av_arr_append(values, av_uint(args, length + BINARY_CACHE_HEADER_BYTES));
+    asset_compiler_diagnostic ignored = { 0 };
+    result = asset_source_invoke("project:asset_compiler:1:CacheEvict:callable", values, options, &ignored);
+    const av_value *plan = result
+                             ? av_obj_get(av_arr_get(av_doc_root(result), 0), "values")
+                             : NULL;
+    if (av_arr_size(plan) != 2 || !av_get_bool(av_arr_get(plan, 0))) {
+        goto done;
+    }
+    const av_value *remove = av_arr_get(plan, 1);
+    if (!av_is_arr(remove) || av_arr_size(remove) > (size_t)count) {
+        goto done;
+    }
+    for (size_t i = 0; i < av_arr_size(remove); i++) {
+        const av_value *index = av_arr_get(remove, i);
+        if (!av_is_int(index) || av_get_sint(index) < 0 ||
+            av_get_uint(index) >= (uint64_t)count ||
+            !binary_cache_remove(directory, entries[av_get_int(index)].key)) {
+            goto done;
+        }
+    }
+    if (!options->cancelled || !options->cancelled(options->user)) {
+        binary_cache_write(directory, key, bytes, length, COMPILER_HOST_MAX_OUTPUT_BYTES);
+    }
+done:
+    av_doc_free(result);
+    av_doc_free(args);
+    free(entries);
+    binary_cache_unlock(lock);
+}
+
 av_doc *asset_source_read(
     const char *source,
     const char *path,
@@ -406,6 +656,10 @@ av_doc *asset_source_read(
     unsigned char *bytes = NULL;
     bool owned_bytes = true;
     av_doc *doc = NULL;
+    char *directory = persistent_directory(options);
+    char *key = NULL;
+    unsigned char *publication = NULL;
+    size_t publication_length = 0;
     uint64_t compile_budget = options->compile_budget ? options->compile_budget
                                                       : ASSET_COMPILE_BUDGET;
     uint64_t evaluation_budget = options->evaluation_budget
@@ -414,10 +668,33 @@ av_doc *asset_source_read(
     compiled_asset *cached = find_asset(source, path);
     uint64_t entry = cached ? cached->entry : 0;
     size_t length = cached ? cached->length : 0;
+    bool from_cache = cached != NULL;
     if (cached) {
         bytes = cached->bytes;
         owned_bytes = false;
-    } else {
+    } else if (compiler && directory) {
+        key = persistent_key(json, request_length, options);
+        compiler_host_bytes stored = { 0 };
+        if (key) {
+            stored.bytes = binary_cache_read(
+                directory,
+                key,
+                COMPILER_HOST_MAX_OUTPUT_BYTES,
+                &stored.length
+            );
+        }
+        if (stored.bytes && persistent_accept(stored.bytes, stored.length, options)) {
+            asset_compiler_diagnostic ignored = { 0 };
+            bytes = compiled_bytes(&stored, &entry, &length, &ignored);
+            from_cache = bytes != NULL;
+        }
+        free(stored.bytes);
+        if (!bytes && key) {
+            binary_cache_remove(directory, key);
+        }
+    }
+prepare:
+    if (!bytes) {
         if (!compiler) {
             goto done;
         }
@@ -425,6 +702,7 @@ av_doc *asset_source_read(
                                                  .cancelled = options->cancelled,
                                                  .user = options->user };
         behavior_execution_scope_begin(&compilation);
+        cache_count(&cache.stats.compile_attempts);
         bool compiled_ok = compiler_host_invoke_bytes(
             compiler,
             compiler_host_entry("project:asset_compiler:1:CompileBytes:callable"),
@@ -439,15 +717,19 @@ av_doc *asset_source_read(
             runtime_failure(diagnostic, compiled.diagnostic, &compiled.source);
             goto done;
         }
-    }
-    if (!cached) {
+        if (key && persistent_accept(compiled.bytes, compiled.length, options)) {
+            publication_length = compiled.length;
+            publication = xmalloc(publication_length);
+            memcpy(publication, compiled.bytes, publication_length);
+        }
         bytes = compiled_bytes(&compiled, &entry, &length, diagnostic);
+        if (!bytes) {
+            goto done;
+        }
     }
-    if (!bytes) {
+    if (options->cancelled && options->cancelled(options->user)) {
+        failure(diagnostic, "Asset evaluation cancelled");
         goto done;
-    }
-    if (!cached && keep_asset(source, path, bytes, length, entry)) {
-        owned_bytes = false;
     }
     asset = compiler_host_load_values(
         bytes,
@@ -456,9 +738,46 @@ av_doc *asset_source_read(
         diagnostic->message,
         sizeof diagnostic->message
     );
+    if (asset && !compiler_host_accepts_byte_entry(
+                     asset,
+                     entry,
+                     0,
+                     diagnostic->message,
+                     sizeof diagnostic->message
+                 )) {
+        compiler_host_free(asset);
+        asset = NULL;
+    }
+    if (!asset && from_cache) {
+        if (owned_bytes) {
+            free(bytes);
+        }
+        if (cached) {
+            clear_asset(cached);
+            cached = NULL;
+        }
+        if (!key && directory) {
+            key = persistent_key(json, request_length, options);
+        }
+        if (key) {
+            binary_cache_remove(directory, key);
+        }
+        bytes = NULL;
+        owned_bytes = true;
+        from_cache = false;
+        *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+        goto prepare;
+    }
     if (!asset) {
         goto done;
     }
+    if (from_cache) {
+        cache_count(cached ? &cache.stats.memory_hits : &cache.stats.persistent_hits);
+    }
+    if (!cached && keep_asset(source, path, bytes, length, entry)) {
+        owned_bytes = false;
+    }
+    persistent_publish(directory, key, publication, publication_length, options);
     behavior_execution_scope execution = { .remaining = evaluation_budget,
                                            .cancelled = options->cancelled,
                                            .user = options->user,
@@ -482,15 +801,11 @@ av_doc *asset_source_read(
         failure(diagnostic, "Asset Build returned a transport containing NUL bytes");
         goto done;
     }
-    char *text = xmalloc(result.length + 1);
-    memcpy(text, result.bytes, result.length);
-    text[result.length] = 0;
-    doc = av_json_read(text);
-    free(text);
-    if (!doc) {
-        failure(diagnostic, "Asset Build returned invalid JSON transport");
-    }
+    doc = read_document_transport((const char *)result.bytes, result.length, diagnostic);
 done:
+    free(directory);
+    free(key);
+    free(publication);
     free(json);
     if (owned_bytes) {
         free(bytes);
@@ -570,17 +885,26 @@ av_doc *asset_source_value_columns(const av_value *root, asset_compiler_diagnost
     document_item *pending = NULL;
     apush(pending, ((document_item){ .value = root, .key = "", .parent = -1 }));
     int count = 0;
+    size_t visited = 0;
     while (acount(pending)) {
         document_item item = pending[acount(pending) - 1];
         asetlen(pending, acount(pending) - 1);
-        if (item.depth >= 64 || count == COMPILER_HOST_MAX_VALUES) {
+        if (item.depth > ASSET_DOCUMENT_MAX_DEPTH || visited == COMPILER_HOST_MAX_VALUES) {
             failure(diagnostic, "Asset document exceeds value/depth limits");
             afree(pending);
             av_doc_free(doc);
             return NULL;
         }
+        visited++;
         int at = count++;
         av_type type = av_get_type(item.value);
+        if (type == AV_STRING &&
+            memchr(av_get_str(item.value), 0, av_get_len(item.value))) {
+            failure(diagnostic, "Asset document text contains unsupported NUL bytes");
+            afree(pending);
+            av_doc_free(doc);
+            return NULL;
+        }
         av_arr_append(values[0], av_sint(doc, type));
         av_arr_append(values[1], av_sint(doc, item.parent));
         av_arr_append(values[2], av_str(doc, item.key));
@@ -592,8 +916,9 @@ av_doc *asset_source_value_columns(const av_value *root, asset_compiler_diagnost
         size_t children = type == AV_OBJECT ? av_obj_size(item.value)
                         : type == AV_ARRAY  ? av_arr_size(item.value)
                                             : 0;
-        if (children > (size_t)(COMPILER_HOST_MAX_VALUES - count) -
-                           (size_t)acount(pending)) {
+        size_t remaining = COMPILER_HOST_MAX_VALUES - visited - (size_t)acount(pending);
+        if (children > remaining / (type == AV_OBJECT ? 2u : 1u) ||
+            (children && item.depth == ASSET_DOCUMENT_MAX_DEPTH)) {
             failure(diagnostic, "Asset document exceeds value limits");
             afree(pending);
             av_doc_free(doc);
@@ -603,9 +928,18 @@ av_doc *asset_source_value_columns(const av_value *root, asset_compiler_diagnost
             const av_value *child = type == AV_OBJECT
                                       ? av_obj_value_at(item.value, i - 1)
                                       : av_arr_get(item.value, i - 1);
-            const char *key = type == AV_OBJECT
-                                ? av_get_str(av_obj_key_at(item.value, i - 1))
-                                : "";
+            const char *key = "";
+            if (type == AV_OBJECT) {
+                const av_value *name = av_obj_key_at(item.value, i - 1);
+                key = av_get_str(name);
+                if (memchr(key, 0, av_get_len(name))) {
+                    failure(diagnostic, "Asset document key contains unsupported NUL bytes");
+                    afree(pending);
+                    av_doc_free(doc);
+                    return NULL;
+                }
+                visited++;
+            }
             apush(
                 pending,
                 ((
@@ -697,10 +1031,7 @@ av_doc *asset_source_invoke_document(
 )
 {
     char *json = asset_source_invoke_bytes(entry, arguments, options, diagnostic);
-    av_doc *doc = json ? av_json_read(json) : NULL;
-    if (json && !doc) {
-        failure(diagnostic, "Asset facade returned invalid document transport");
-    }
+    av_doc *doc = json ? read_document_transport(json, strlen(json), diagnostic) : NULL;
     free(json);
     return doc;
 }

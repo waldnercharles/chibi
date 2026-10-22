@@ -5582,9 +5582,6 @@ TEST_CASE(program_scene_bindings_are_typed_names_before_play)
     return true;
 }
 
-/* Removes obsolete motion from a version 17 project while preserving an
- * unrelated SdfMotion scene name. */
-
 TEST_CASE(program_constant_definitions_execute)
 {
     const char *source =

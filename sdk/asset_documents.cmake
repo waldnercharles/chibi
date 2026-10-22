@@ -1,14 +1,6 @@
 # Compiler-enabled document transport and compiled Chibi asset entry points.
 # Recovery builds embed compiler-produced bootstrap resources; the authored graph
-# regenerates changed source snapshots through tools/graph/AssetCompiler.chibi.
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    set(asset_compiler_variant wasm32)
-elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(asset_compiler_variant native64)
-else()
-    message(FATAL_ERROR "No asset compiler bootstrap resource for this target")
-endif()
-set(asset_compiler_resource "${CHIBI_SDK_ROOT}/tools/compiler/asset_compiler/bootstrap/${asset_compiler_variant}")
+# regenerates changed source snapshots through tools/toolchain/AssetCompiler.chibi.
 file(READ "${asset_compiler_resource}/manifest.json" asset_compiler_manifest)
 foreach(product artifact resource)
     string(JSON expected GET "${asset_compiler_manifest}" "${product}_sha256")
@@ -22,6 +14,11 @@ foreach(product artifact resource)
         message(FATAL_ERROR "Asset compiler bootstrap checksum mismatch: ${asset_product}")
     endif()
 endforeach()
+# Build-time verification lets the independent compiler host bootstrap when
+# authored inputs changed, while refusing a stale asset service or installation.
+add_custom_target(chibi_asset_compiler_freshness
+    COMMAND ${CMAKE_COMMAND} "-DROOT=${CHIBI_SDK_ROOT}" "-DRESOURCE=${asset_compiler_resource}"
+        -P "${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake" VERBATIM)
 set(asset_compiler_generated "${CMAKE_CURRENT_BINARY_DIR}/generated/assets")
 file(MAKE_DIRECTORY "${asset_compiler_generated}")
 configure_file("${asset_compiler_resource}/asset_compiler_packaged.c"
@@ -37,6 +34,9 @@ set_source_files_properties("${asset_compiler_generated}/asset_compiler_packaged
 add_library(chibi_asset_documents STATIC "${CHIBI_SDK_ROOT}/src/support/asset_document.c"
     "${CHIBI_SDK_ROOT}/src/authoring/asset_compiler_host.c"
     "${asset_compiler_generated}/asset_compiler_packaged.c")
+if(NOT CHIBI_ASSET_COMPILER_RECOVERY)
+    add_dependencies(chibi_asset_documents chibi_asset_compiler_freshness)
+endif()
 add_library(Chibi::asset_documents ALIAS chibi_asset_documents)
 set_target_properties(chibi_asset_documents PROPERTIES EXPORT_NAME asset_documents)
 chibi_sdk_headers(chibi_asset_documents PUBLIC support/asset_document.h authoring/asset_compiler_host.h)
@@ -46,4 +46,5 @@ target_include_directories(chibi_asset_documents PRIVATE "${CHIBI_SDK_ROOT}/thir
 list(APPEND CHIBI_SDK_TARGETS chibi_asset_documents)
 install(FILES "${asset_compiler_resource}/asset_compiler.chibip" "${asset_compiler_resource}/manifest.json"
     "${asset_compiler_resource}/target.json" "${asset_compiler_resource}/sources.sha256"
+    "${asset_compiler_resource}/inventory.txt" "${asset_compiler_resource}/inventory-directories.txt"
     DESTINATION share/chibi/assets/compiler)

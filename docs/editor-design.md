@@ -1,7 +1,7 @@
 # Editor design and implementation plan
 
 The September 6 usability review and proposed next refactor are in
-[Editor usability review](/Users/cwaldner/Personal/c-blueprints/docs/reviews/editor-ux-2026-09-06/review.md).
+[Editor usability review](reviews/editor-ux-2026-09-06/review.md).
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 

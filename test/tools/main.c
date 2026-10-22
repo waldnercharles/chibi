@@ -6,7 +6,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#if defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
+#if defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB) ||     \
+    defined(CHIBI_TEST_ASSET_CACHE_WEB)
+#ifdef CHIBI_TEST_ASSET_CACHE_WEB
+int test_asset_cache_browser_start(int phase);
+#endif
 #ifdef CHIBI_TEST_WEBGPU_STAGING
 int test_webgpu_staging_start();
 #endif
@@ -15,6 +19,12 @@ int test_web_audio_start();
 #endif
 int main(int argc, char **argv)
 {
+#ifdef CHIBI_TEST_ASSET_CACHE_WEB
+    if (argc == 3 && !strcmp(argv[1], "--asset-cache-browser-worker") &&
+        strlen(argv[2]) == 1) {
+        return test_asset_cache_browser_start(argv[2][0] - '0');
+    }
+#endif
 #ifdef CHIBI_TEST_AUDIO_WEB
     if (argc == 2 && !strcmp(argv[1], "--audio-browser")) {
         return test_web_audio_start();
@@ -59,6 +69,8 @@ void test_build_graph_support(const char *host);
 void test_build_graph_reflect(const char *host);
 void test_build_graph_archive(const char *host);
 void test_build_graph_generated(const char *host);
+void test_build_graph_programs(const char *host);
+void test_build_graph_resources(const char *host);
 #endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
@@ -75,6 +87,7 @@ void test_tool_shader_webgpu();
 #endif
 void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
+void test_tool_asset_cache_browser();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -320,6 +333,9 @@ void test_prototype_documents();
 void test_reference_index();
 void test_ui_pages();
 void test_asset_source();
+void test_asset_transport();
+void test_asset_cache(const char *executable);
+int test_asset_cache_worker(const char *directory);
 #endif
 #ifdef CHIBI_TEST_PROJECT_PREPARATION
 void test_behavior_loader();
@@ -340,9 +356,9 @@ static const char *const document_selectors[] = {
     "--particles",        "--png-encoding",
     "--project-document", "--prototype-documents",
     "--reference-index",  "--asset-source",
-    "--behavior-loader",  "--engine-clock",
-    "--preview-layout",   "--fields",
-    "--player-clock",
+    "--asset-transport",  "--behavior-loader",
+    "--engine-clock",     "--preview-layout",
+    "--fields",           "--player-clock",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -453,6 +469,10 @@ static bool run_document_suites(int argc, char **argv)
         test_ui_pages();
         return true;
     }
+    if (selected(argc, argv, "--asset-transport")) {
+        test_asset_transport();
+        return true;
+    }
     if (selected(argc, argv, "--asset-source")) {
         test_asset_source();
         return true;
@@ -519,7 +539,9 @@ int main(int argc, char **argv)
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
                       !strcmp(argv[1], "--build-graph-archive") ||
-                      !strcmp(argv[1], "--build-graph-generated"))) {
+                      !strcmp(argv[1], "--build-graph-generated") ||
+                      !strcmp(argv[1], "--build-graph-programs") ||
+                      !strcmp(argv[1], "--build-graph-resources"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
@@ -531,6 +553,10 @@ int main(int argc, char **argv)
             test_build_graph_reflect(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-archive")) {
             test_build_graph_archive(argv[2]);
+        } else if (!strcmp(argv[1], "--build-graph-programs")) {
+            test_build_graph_programs(argv[2]);
+        } else if (!strcmp(argv[1], "--build-graph-resources")) {
+            test_build_graph_resources(argv[2]);
         } else {
             test_build_graph_generated(argv[2]);
         }
@@ -731,6 +757,26 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
+    if (argc == 2 && !strcmp(argv[1], "--asset-cache-browser")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_asset_cache_browser();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
+    if (argc == 3 && !strcmp(argv[1], "--asset-cache-worker")) {
+        tool_init();
+        return test_asset_cache_worker(argv[2]);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--asset-cache")) {
+        tool_init();
+        pu_display_time(true);
+        test_asset_cache(argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (document_selector(argc, argv)) {
         tool_init();
         pu_display_time(true);
@@ -1203,7 +1249,9 @@ int main(int argc, char **argv)
             "--player-url | "
             "--png-encoding | --project-document | "
             "--prototype-documents | "
-            "--reference-index | --asset-source | --behavior-loader | "
+            "--reference-index | --asset-source | --asset-transport | "
+            "--asset-cache | "
+            "--behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",
             argv[0]
         );

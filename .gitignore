@@ -1,6 +1,7 @@
 build/
 build-code-language/
 build-sdk/
+build-sdk-release/
 build-language/
 .worktrees/
 # A second build tree, so verifying a build cannot relink the binary a manual
@@ -19,6 +20,7 @@ build-web-asan/
 build-reflect/
 build-tracy/
 build-tools/
+build-tools-release/
 generated/
 .pi-lens/
 .cache/
@@ -54,11 +56,13 @@ projects/local-game
 .playwright-mcp/
 build-sdk-reflect/
 build-studio/
+build-studio-release/
 build-asan/
 build-install-sdk/
 build-install-studio/
 build-web-player/
 build-webgpu-test/
+build-web-cache-browser/
 build-web-sdk/
 build-web-sdk-threads/
 build-studio-web/

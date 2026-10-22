@@ -46,7 +46,11 @@ pub Targets :: () -> string[] {
     // The executables that link the macOS desktop archive; Linux's links wait
     // for its archive.
     if (build.platform() == "Darwin") {
-        targets.extend(["chibi-player", "chibi-compile", "chibi_ctl"]);
+        // test_language's object library, which it links.
+        targets.extend(["chibi-player", "chibi-compile", "chibi_ctl", "test_behavior_consumer", "test_language"]);
+        // The tooling tests' consumers, several over the archive's headers.
+        targets.extend(ToolConsumers());
+        targets.append("test_tools");
     }
     targets.extend(["test_host", "concurrent_runner", "policy_worker", "benchmark_trials", "reflect"]);
     return targets;
@@ -91,6 +95,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_support") {
         return [
+            "src/support/binary_cache.c", "src/support/sha256.c",
             "src/support/arena.c", "src/support/file_io.c", "src/support/text_edit.c", "src/support/xalloc.c",
             "src/support/rcss_map.c"
         ];
@@ -752,6 +757,213 @@ Files :: (target: string) -> string[] {
     if (target == "benchmark_trials") {
         return ["tools/benchmark.c", "src/host/process.c"];
     }
+    if (target == "test_behavior_consumer") {
+        return ["test/language/headless_consumer.c"];
+    }
+    if (target == "test_language") {
+        return [
+            "test/language/main.c", "test/language/inferred_string_arrays.c",
+            "test/language/build_workflow.c", "test/language/record_publication.c",
+            "test/language/outliner_projection.c", "test/language/row_array.c",
+            "test/language/record_compatibility.c", "test/language/record_state.c",
+            "test/language/record_document.c", "test/language/record_producer.c",
+            "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
+            "test/language/record_semantic.c", "test/language/record_values.c",
+            "test/language/record_prepared.c", "test/language/runtime_attribution.c",
+            "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
+            "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
+            "test/language/query_boundary.c", "test/language/incremental.c", "test/language/modules.c",
+            "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
+            "test/language/component_write_source.c", "test/language/component_write_ir.c",
+            "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
+            "test/language/activation_cache.c", "test/language/activation_benchmark.c",
+            "test/language/binding_benchmark.c", "test/language/borrow_benchmark.c",
+            "test/language/incremental_benchmark.c", "test/language/wasm.c", "test/language/headless.c",
+            "test/language/prepared.c", "test/language/format.c", "test/language/navigation.c",
+            "test/language/publication.c", "test/language/field_runtime.c", "test/language/prototype.c",
+            "test/language/ui.c", "test/language/text_format.c", "test/language/graph_model.c",
+            "test/language/graph_authoring.c", "test/authoring/model_runtime.c",
+            "test/language/packages.c", "test/language/package_syntax.c",
+            "test/language/package_execution.c", "test/language/package_resolution.c",
+            "test/language/package_imports.c", "test/language/package_files.c",
+            "test/language/package_core.c", "test/language/package_tests.c",
+            "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
+            "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
+            "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
+            "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
+            "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
+            "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
+            "test/language/compiler_artifact_chibi.c", "src/toolchain/compiler_artifact.c",
+            "test/language/bounded_compiler_chibi.c", "src/toolchain/compiler_host.c",
+            "src/toolchain/compiler_target.c", "test/language/prepared_writer_chibi.c",
+            "test/language/package_compiler_chibi.c", "test/language/scalar_lowering_chibi.c",
+            "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
+            "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
+            "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
+            "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
+            "test/language/signature_fixture.c", "test/language/signature_reader_chibi.c",
+            "test/language/callable_headers_chibi.c", "test/language/unit_analysis_chibi.c",
+            "test/language/union_members_chibi.c", "test/language/effect_analysis_chibi.c",
+            "test/language/record_members_chibi.c", "test/language/numeric.c", "src/language/numeric.c",
+            "test/language/effects.c", "test/language/maps.c", "test/language/generic.c",
+            "test/language/symbol_references.c", "test/language/packed.c", "test/language/iteration.c",
+            "test/language/source_assets.c", "test/language/record_services.c"
+        ];
+    }
+    if (target == "chibi_sdk_contracts") {
+        return [
+            "test/tools/types.c", "test/tools/ecs.c", "test/tools/ecs_relationship.c",
+            "test/tools/ecs_hierarchy.c", "test/tools/ecs_world.c", "test/tools/ecs_query.c",
+            "test/tools/ecs_query_benchmark.c"
+        ];
+    }
+    if (target == "chibi_prepared_consumer") {
+        return ["test/tools/prepared_runtime.c"];
+    }
+    if (target == "chibi_record_consumer") {
+        return ["test/tools/record_runtime.c"];
+    }
+    if (target == "chibi_scene_consumer") {
+        return ["test/tools/scene.c", "test/tools/scene_prepared.c"];
+    }
+    if (target == "chibi_shader_bake_consumer") {
+        return ["test/tools/shader_bake.c"];
+    }
+    if (target == "chibi_scene_authoring_consumer") {
+        return ["test/authoring/scene_hierarchy.c"];
+    }
+    if (target == "chibi_scene_snapshot_read_consumer") {
+        return ["test/authoring/scene_snapshot_read.c"];
+    }
+    if (target == "chibi_native_consumer") {
+        return [
+            "test/tools/native.c", "test/tools/native_values.c", "test/tools/native_catalog.c",
+            "test/tools/physics.c", "test/tools/physics3d.c", "test/tools/transforms.c",
+            "test/tools/tilemap_native.c", "test/tools/terrain_seams.c",
+            "test/tools/terrain_checkpoint.c", "test/tools/terrain_storage.c",
+            "test/tools/material_surface_mesh.c", "test/tools/terrain_volume.c"
+        ];
+    }
+    if (target == "chibi_asset_values_consumer") {
+        return ["test/support/asset_document.c", "test/support/asset_value.c"];
+    }
+    if (target == "chibi_ui_document_consumer") {
+        return [
+            "test/runtime/ui_document.c", "test/support/rcss.c", "test/support/file_watch.c",
+            "test/support/text_overlay.c"
+        ];
+    }
+    if (target == "chibi_particle_consumer") {
+        return ["test/runtime/particles.c"];
+    }
+    if (target == "chibi_png_consumer") {
+        return ["test/render/png_encoding.c"];
+    }
+    if (target == "chibi_project_document_consumer") {
+        return ["test/authoring/project_document.c"];
+    }
+    if (target == "chibi_render_consumer") {
+        return [
+            "test/authoring/render_resources.c", "test/render/hidden_app.c",
+            "test/render/memory_images.c", "test/render/radiance.c", "test/render/radiance_depth.c",
+            "test/render/material_borders.c", "test/render/material_sampling.c",
+            "test/render/material_coefficients.c", "test/render/material_lod.c",
+            "test/render/scene2d.c", "test/render/scene3d.c", "test/render/material_terrain_seams.c",
+            "test/tools/device_controls.c", "test/render/interior_border.c",
+            "test/render/viewport_resize.c", "test/draw_backend.cpp", "test/tools/scene3d_camera.c",
+            "test/tools/scene3d_terrain.c", "test/tools/scene3d_volume.c",
+            "test/tools/terrain_cut_benchmark.c", "test/render/material_graphs.c",
+            "test/render/material_ramps.c", "test/render/material_pixels.c", "test/sdf_visibility.c",
+            "test/tools/surface_transport.c", "test/tools/material_mesh_cache.c",
+            "test/tools/hrc_spot.c"
+        ];
+    }
+    if (target == "chibi_image_preparation_consumer") {
+        return ["test/authoring/sky_files.c"];
+    }
+    if (target == "chibi_mesh_preparation_consumer") {
+        return ["test/authoring/mesh_files.c"];
+    }
+    if (target == "chibi_model_import_consumer") {
+        return ["test/authoring/model_import.c", "test/support/gltf_fixture.c"];
+    }
+    if (target == "chibi_source_runtime_consumer") {
+        return [
+            "test/runtime/whole_math.c", "test/runtime/whole_integer.c",
+            "test/runtime/whole_conversion.c", "test/runtime/owned_tick.c",
+            "test/runtime/parallel_tick.c", "test/runtime/whole_alias.c",
+            "test/runtime/persistent_store.c", "test/authoring/new_asset.c",
+            "test/authoring/asset_refactor.c", "test/support/reflected_types.c"
+        ];
+    }
+    if (target == "chibi_source_features_consumer") {
+        return [
+            "test/runtime/source_features.c", "test/runtime/source_input_save.c",
+            "test/authoring/source_presentation.c", "test/runtime/system_schedule.c",
+            "test/runtime/source_reductions.c", "test/tools/scheduler_benchmark.c",
+            "test/code_system_runtime.c", "test/authoring/source_edit.c",
+            "test/authoring/shader_parameters.c", "test/authoring/component_presentation.c",
+            "test/language/corpus_semantic.c"
+        ];
+    }
+    if (target == "chibi_graph_consumer") {
+        return [
+            "test/graph/fixture.c", "test/graph/comments.c", "test/graph/model.c",
+            "test/graph/inline.c", "test/graph/find.c", "test/graph/describe.c",
+            "test/graph/functions.c", "test/graph/signature.c", "test/graph/collapse.c",
+            "test/graph/problems.c", "test/graph/vectors.c"
+        ];
+    }
+    if (target == "test_tools") {
+        return [
+            "test/tools/main.c", "test/tools/graph_dispatch.c", "test/tools/prepared.c",
+            "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
+            "test/tools/chibi_cli.c", "test/tools/package_ownership.c",
+            "test/tools/desktop_dependencies.c", "test/tools/collab.c", "test/tools/validate_project.c",
+            "test/tools/fixture_format.c", "test/tools/controller.c", "test/tools/render_fixture.c",
+            "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
+            "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
+            "test/tools/wasm_browser.c", "test/tools/asset_cache_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
+            "src/host/process.c", "third_party/yyjson/yyjson.c", "test/tools/build_process.c",
+            "test/tools/build_toolchain.c", "test/tools/build_graph.c",
+            "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
+            "test/tools/c_export.c", "test/tools/record_c_export.c", "test/tools/audio_analysis.c",
+            "test/tools/tilemap.c", "test/tools/shader_webgpu.c", "test/tools/published_docs.c",
+            "test/support/fmt.c", "test/tools/box3d.c", "test/tools/terrain_playable_render.c",
+            "test/tools/particle_fields.c", "test/tools/audio_output.c", "test/tools/player_clock.c",
+            "test/render/appearance_geometry.c", "test/render/mesh_surface.c",
+            "test/render/scene3d_post.c", "test/render/scene3d_shapes.c", "test/graph/packs.c",
+            "test/graph/modeling.c", "test/graph/model_constructive.c", "test/graph/model_profiles.c",
+            "test/graph/model_reuse.c", "test/graph/model_inspection.c", "test/graph/model_sampled.c",
+            "test/graph/model_parameters.c", "test/graph/model_material_scope.c",
+            "test/graph/model_validation.c", "test/graph/model_materials.c",
+            "test/graph/model_preview.c", "test/graph/model_surface.c", "test/graph/shader_detail.c",
+            "test/render/shader_effects.c", "test/render/shader_image.c", "test/render/shader_parity.c",
+            "test/render/shader_program.c", "test/render/shader_image_routes.c",
+            "test/render/camera_orbit.c", "test/render/camera_plane.c",
+            "test/render/camera_centered_orbit.c", "test/render/camera_emitter_orbit.c",
+            "test/render/mesh_material.c", "test/render/sdf_quality.c", "test/render/sdf_spatial.c",
+            "test/tools/feature_coverage.c", "test/tools/environment_authoring.c",
+            "test/tools/material_bake.c", "test/tools/terrain_storage_commands.c",
+            "test/tools/terrain_playable.c", "test/tools/game_equivalence.c",
+            "test/tools/preview_components.c", "test/tools/preview.c", "test/runtime/materials.c",
+            "test/runtime/material_fixture.c", "test/runtime/material_mask_damage.c",
+            "test/runtime/material_cave_terrain.c", "test/runtime/material_fluids.c",
+            "test/runtime/material_destruction.c", "test/runtime/material_fragments.c",
+            "test/runtime/material_debris.c", "test/runtime/reference_cave.c",
+            "test/runtime/material_blast.c", "test/runtime/material_constitutive.c",
+            "test/runtime/material_detail.c", "test/runtime/material_impulse.c",
+            "test/runtime/material_mixed.c", "test/runtime/material_mpm.c",
+            "test/runtime/material_obstacles.c", "test/runtime/material_particle_index.c",
+            "test/runtime/material_reactions.c", "test/runtime/material_simulation.c",
+            "test/runtime/material_thermal.c", "test/runtime/material_benchmark.c",
+            "test/runtime/contact_benchmark.c", "test/authoring/prototype_documents.c",
+            "test/authoring/reference_index.c", "test/authoring/ui_pages.c",
+            "test/authoring/asset_source.c", "test/support/graph_packs.c",
+            "test/authoring/behavior_loader.c", "test/runtime/engine_clock.c",
+            "test/authoring/preview_layout.c", "test/runtime/fields.c", "test/runtime/field_library.c"
+        ];
+    }
     return [];
 }
 
@@ -785,6 +997,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_support") {
         return [
+            "support/binary_cache.h", "support/sha256.h",
             "support/arena.h", "support/array.h", "support/cos_sin.h", "support/enum.h", "support/file_io.h",
             "support/math.h", "support/rcss_map.h", "support/text_edit.h", "support/xalloc.h"
         ];
@@ -1405,7 +1618,29 @@ pub PrivateDirectory :: (target: string) -> string {
     if (target == "chibi_host_tests") {
         return "build/testing/host/include";
     }
+    if (target == "chibi_language_testing") {
+        return "build/test/language/testing/include";
+    }
+    if (target == "chibi_tools_testing") {
+        return "build/test/tools/testing/include";
+    }
     return "";
+}
+
+// The tooling tests' SDK contract consumers, object libraries that compile
+// against staged SDK headers and pico_unit alone, as test/tools/CMakeLists.txt
+// declares them, so a header that leaks a private include fails here.
+ToolConsumers :: () -> string[] {
+    return [
+        "chibi_sdk_contracts", "chibi_prepared_consumer", "chibi_record_consumer",
+        "chibi_scene_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
+        "chibi_scene_snapshot_read_consumer", "chibi_native_consumer", "chibi_asset_values_consumer",
+        "chibi_ui_document_consumer", "chibi_particle_consumer", "chibi_png_consumer",
+        "chibi_project_document_consumer",
+        "chibi_render_consumer", "chibi_image_preparation_consumer", "chibi_mesh_preparation_consumer",
+        "chibi_model_import_consumer", "chibi_source_runtime_consumer",
+        "chibi_source_features_consumer", "chibi_graph_consumer"
+    ];
 }
 
 // The header set staged in a `build/` include directory, or empty.
@@ -1415,6 +1650,12 @@ pub DirectorySet :: (include: string) -> string {
     }
     if (include == "build/testing/host/include") {
         return "chibi_host_tests";
+    }
+    if (include == "build/test/language/testing/include") {
+        return "chibi_language_testing";
+    }
+    if (include == "build/test/tools/testing/include") {
+        return "chibi_tools_testing";
     }
     return "";
 }
@@ -2344,6 +2585,294 @@ pub Includes :: (target: string) -> string[] {
     if (target == "benchmark_trials") {
         return ["src"];
     }
+    if (target == "test_behavior_consumer") {
+        return [
+            "build/test/language/testing/include", "public/behavior_runtime", "public/execution",
+            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/events"
+        ];
+    }
+    if (target == "test_language") {
+        return [
+            "build/test/language/testing/include", "public/json", "public/language_syntax",
+            "public/support", "public/syntax_runtime", "public/asset_json", "public/asset_values",
+            "public/native_prepared", "public/native_capabilities", "public/capabilities",
+            "public/types", "public/execution_contract", "public/behavior_runtime", "public/execution",
+            "public/ecs", "public/tasks", "public/events", "public/math_capabilities",
+            "public/project_compilation", "public/source_catalog", "public/authoring",
+            "public/compiler", "public/language", "public/reference_index", "public/input_map",
+            "public/input_action", "public/prototype_document", "public/scene_document",
+            "public/scene_runtime", "public/project_document", "public/player", "public/engine",
+            "public/entity_runtime", "public/native_types", "public/scheduling",
+            "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+            "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+            "public/audio_runtime", "public/url_runtime", "public/ui_runtime", "public/save_runtime",
+            "public/input_runtime", "public/declared_components", "public/shader_preparation",
+            "public/visual_catalog", "public/shader_runtime", "public/model_runtime",
+            "public/graph_model", "public/asset_documents", "public/value_document",
+            "public/array_capabilities", "public/source_presentation", "public/text_source",
+            "public/text_search", "public/field_capabilities", "public/ui_authoring",
+            "public/ui_document", "public/ui_document_values", "public/text_capabilities",
+            "public/state_capabilities", "public/arithmetic_capabilities", "public/core_capabilities",
+            "public/graph_authoring", "public/graph_compilation", "public/ui_documents"
+        ];
+    }
+    if (target == "chibi_sdk_contracts") {
+        return [
+            "build/test/tools/testing/include", "public/execution_contract", "public/types",
+            "public/support", "public/ecs", "public/value_document", "public/asset_values",
+            "public/native_types", "public/studio_capabilities", "public/native_capabilities",
+            "public/capabilities"
+        ];
+    }
+    if (target == "chibi_prepared_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
+            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/events"
+        ];
+    }
+    if (target == "chibi_record_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
+            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/events"
+        ];
+    }
+    if (target == "chibi_scene_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/scene_runtime", "public/behavior_runtime",
+            "public/execution", "public/types", "public/support", "public/execution_contract",
+            "public/ecs", "public/tasks", "public/events"
+        ];
+    }
+    if (target == "chibi_shader_bake_consumer") {
+        return ["build/test/tools/testing/include", "public/shader_runtime", "public/support"];
+    }
+    if (target == "chibi_scene_authoring_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
+            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/scene_document", "public/asset_values", "public/scene_runtime",
+            "public/behavior_runtime", "public/execution", "public/tasks", "public/events"
+        ];
+    }
+    if (target == "chibi_scene_snapshot_read_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
+            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/source_catalog", "public/authoring", "public/compiler", "public/language",
+            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
+            "public/input_map", "public/input_action", "public/prototype_document",
+            "public/asset_values", "public/scene_document", "public/scene_runtime",
+            "public/behavior_runtime", "public/events"
+        ];
+    }
+    if (target == "chibi_native_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/player", "public/engine",
+            "public/behavior_runtime", "public/execution", "public/types", "public/support",
+            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/entity_runtime", "public/native_types", "public/scene_runtime",
+            "public/native_capabilities", "public/capabilities", "public/scheduling",
+            "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+            "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+            "public/audio_runtime", "public/url_runtime", "public/ui_runtime", "public/asset_values",
+            "public/save_runtime", "public/input_runtime", "public/input_action",
+            "public/declared_components", "public/comparison_capabilities",
+            "public/conversion_capabilities", "public/host_native_default",
+            "public/host_native_catalog", "public/spatial_runtime", "public/tilemap_runtime",
+            "public/project_compilation", "public/source_catalog", "public/authoring",
+            "public/compiler", "public/language", "public/language_syntax", "public/syntax_runtime",
+            "public/reference_index", "public/input_map", "public/prototype_document",
+            "public/scene_document", "public/project_document", "public/native_prepared",
+            "public/shader_preparation", "public/visual_catalog", "public/shader_runtime",
+            "public/model_runtime", "public/graph_model", "public/image_preparation",
+            "public/image_catalog", "public/scenario_document"
+        ];
+    }
+    if (target == "chibi_asset_values_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/asset_documents", "public/asset_values",
+            "public/support", "public/asset_json", "public/json"
+        ];
+    }
+    if (target == "chibi_ui_document_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/ui_document", "public/text_source",
+            "public/support", "public/text_search", "public/ui_document_values"
+        ];
+    }
+    if (target == "chibi_particle_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/particle_runtime", "public/native_types",
+            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/native_capabilities", "public/capabilities"
+        ];
+    }
+    if (target == "chibi_png_consumer") {
+        return ["build/test/tools/testing/include", "public/platform"];
+    }
+    if (target == "chibi_project_document_consumer") {
+        return [
+            "public/asset_documents",
+            "build/test/tools/testing/include", "public/project_document", "public/text_source",
+            "public/support", "public/text_search"
+        ];
+    }
+    if (target == "chibi_render_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/render", "public/platform", "public/ui",
+            "public/json", "public/ui_document_values", "public/support", "public/ui_documents",
+            "public/text_search", "public/engine", "public/behavior_runtime", "public/execution",
+            "public/types", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/entity_runtime", "public/native_types", "public/scene_runtime",
+            "public/native_capabilities", "public/capabilities", "public/scheduling",
+            "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+            "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+            "public/audio_runtime", "public/url_runtime", "public/ui_runtime", "public/asset_values",
+            "public/save_runtime", "public/input_runtime", "public/input_action", "public/player",
+            "public/declared_components", "public/shader_runtime", "public/model_runtime",
+            "public/spatial_runtime", "public/visual_catalog", "public/image_catalog",
+            "public/shader_preparation", "public/graph_model", "public/graph_compilation",
+            "public/graph_authoring", "public/model_import", "public/image_preparation"
+        ];
+    }
+    if (target == "chibi_image_preparation_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/image_preparation", "public/image_catalog",
+            "public/shader_runtime", "public/support"
+        ];
+    }
+    if (target == "chibi_mesh_preparation_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/model_authoring", "public/graph_model",
+            "public/types", "public/support", "public/execution_contract", "public/model_bake",
+            "public/model_runtime", "public/shader_runtime", "public/mesh_runtime",
+            "public/shader_preparation", "public/visual_catalog", "public/native_types", "public/ecs",
+            "public/native_capabilities", "public/capabilities", "public/player", "public/engine",
+            "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+            "public/entity_runtime", "public/scene_runtime", "public/scheduling",
+            "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/fields", "public/task_pool_runtime", "public/physics3d_runtime",
+            "public/visibility_runtime", "public/particle_runtime", "public/audio_runtime",
+            "public/url_runtime", "public/ui_runtime", "public/asset_values", "public/save_runtime",
+            "public/input_runtime", "public/input_action", "public/declared_components",
+            "public/graph_authoring", "public/graph_compilation"
+        ];
+    }
+    if (target == "chibi_model_import_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/model_import", "public/graph_model",
+            "public/types", "public/support", "public/execution_contract", "public/shader_runtime",
+            "public/mesh_runtime", "public/graph_authoring", "public/ecs", "public/events",
+            "public/asset_values", "public/graph_compilation", "public/model_runtime", "public/fields",
+            "public/tasks", "public/field_catalog", "public/native_types", "public/asset_documents",
+            "public/platform"
+        ];
+    }
+    if (target == "chibi_source_runtime_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/authoring", "public/compiler",
+            "public/language", "public/language_syntax", "public/support", "public/syntax_runtime",
+            "public/capabilities", "public/types", "public/execution", "public/execution_contract",
+            "public/ecs", "public/tasks", "public/native_capabilities", "public/reference_index",
+            "public/asset_authoring", "public/prototype_document", "public/asset_values",
+            "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/events",
+            "public/graph_model", "public/field_catalog", "public/fields",
+            "public/arithmetic_capabilities", "public/host_native_default",
+            "public/host_native_catalog", "public/graph_authoring", "public/native_types"
+        ];
+    }
+    if (target == "chibi_source_features_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/project_preparation",
+            "public/project_compilation", "public/source_catalog", "public/authoring",
+            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
+            "public/reference_index", "public/input_map", "public/input_action",
+            "public/prototype_document", "public/asset_values", "public/scene_document",
+            "public/scene_runtime", "public/behavior_runtime", "public/events",
+            "public/project_document", "public/player", "public/engine", "public/entity_runtime",
+            "public/native_types", "public/scheduling", "public/physics_runtime",
+            "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+            "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+            "public/particle_runtime", "public/audio_runtime", "public/url_runtime",
+            "public/ui_runtime", "public/save_runtime", "public/input_runtime",
+            "public/declared_components", "public/native_prepared", "public/shader_preparation",
+            "public/visual_catalog", "public/shader_runtime", "public/model_runtime",
+            "public/graph_model", "public/source_presentation", "public/text_source",
+            "public/text_search", "public/ui", "public/platform", "public/json",
+            "public/ui_document_values", "public/ui_documents", "public/render",
+            "public/spatial_runtime", "public/image_catalog", "public/graph_compilation",
+            "public/graph_authoring", "public/component_presentation", "public/graph_catalog",
+            "public/host_native_default", "public/host_native_catalog", "public/math_capabilities"
+        ];
+    }
+    if (target == "chibi_graph_consumer") {
+        return [
+            "build/test/tools/testing/include", "public/project_preparation",
+            "public/project_compilation", "public/source_catalog", "public/authoring",
+            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
+            "public/reference_index", "public/input_map", "public/input_action",
+            "public/prototype_document", "public/asset_values", "public/scene_document",
+            "public/scene_runtime", "public/behavior_runtime", "public/events",
+            "public/project_document", "public/player", "public/engine", "public/entity_runtime",
+            "public/native_types", "public/scheduling", "public/physics_runtime",
+            "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+            "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+            "public/particle_runtime", "public/audio_runtime", "public/url_runtime",
+            "public/ui_runtime", "public/save_runtime", "public/input_runtime",
+            "public/declared_components", "public/native_prepared", "public/shader_preparation",
+            "public/visual_catalog", "public/shader_runtime", "public/model_runtime",
+            "public/graph_model", "public/source_presentation", "public/text_source",
+            "public/text_search", "public/ui", "public/platform", "public/json",
+            "public/ui_document_values", "public/ui_documents", "public/render",
+            "public/spatial_runtime", "public/image_catalog", "public/graph_compilation",
+            "public/graph_authoring", "public/graph_catalog", "public/asset_documents",
+            "public/arithmetic_capabilities", "public/vector_capabilities"
+        ];
+    }
+    if (target == "test_tools") {
+        return [
+            ".", "src", "third_party/yyjson", "third-party/source/cute_framework/tools",
+            "public/behavior_runtime", "public/execution", "public/types", "public/support",
+            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/scene_runtime", "public/value_document", "public/asset_values",
+            "private/build-host", "public/authoring", "public/compiler", "public/language",
+            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/native_capabilities", "public/reference_index", "private/compiler-host",
+            "public/shader_runtime", "public/array_capabilities", "public/audio_runtime",
+            "public/scene_authoring", "public/native_types", "public/scene_document",
+            "public/source_catalog", "public/input_map", "public/input_action",
+            "public/prototype_document", "public/project_compilation", "public/project_document",
+            "public/player", "public/engine", "public/entity_runtime", "public/scheduling",
+            "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+            "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+            "public/url_runtime", "public/ui_runtime", "public/save_runtime", "public/input_runtime",
+            "public/declared_components", "public/native_prepared", "public/shader_preparation",
+            "public/visual_catalog", "public/model_runtime", "public/graph_model",
+            "public/image_preparation", "public/image_catalog", "public/scenario_document",
+            "public/comparison_capabilities", "public/conversion_capabilities",
+            "public/host_native_default", "public/host_native_catalog", "public/spatial_runtime",
+            "public/tilemap_runtime", "public/platform", "public/asset_documents", "public/asset_json",
+            "public/json", "public/ui_document", "public/text_source", "public/text_search",
+            "public/ui_document_values", "third-party/source/box3d/include", "public/render",
+            "public/ui", "public/ui_documents", "public/graph_compilation", "public/graph_authoring",
+            "public/project_preparation", "public/source_presentation", "public/model_authoring",
+            "public/model_bake", "public/model_import", "public/asset_authoring",
+            "public/arithmetic_capabilities", "public/component_presentation", "public/graph_catalog",
+            "public/math_capabilities", "public/studio_capabilities", "public/vector_capabilities"
+        ];
+    }
     return [];
 }
 
@@ -2545,6 +3074,102 @@ pub SystemIncludes :: (target: string) -> string[] {
             "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
         ];
     }
+    if (target == "test_language") {
+        return ["public/math"];
+    }
+    if (target == "chibi_sdk_contracts") {
+        return ["public/math"];
+    }
+    if (target == "chibi_scene_authoring_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_scene_snapshot_read_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_native_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_particle_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_png_consumer") {
+        return [
+            "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+        ];
+    }
+    if (target == "chibi_render_consumer") {
+        return [
+            "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2", "public/math"
+        ];
+    }
+    if (target == "chibi_mesh_preparation_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_model_import_consumer") {
+        return [
+            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+        ];
+    }
+    if (target == "chibi_source_runtime_consumer") {
+        return ["public/math"];
+    }
+    if (target == "chibi_source_features_consumer") {
+        return [
+            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+        ];
+    }
+    if (target == "chibi_graph_consumer") {
+        return [
+            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+        ];
+    }
+    if (target == "test_tools") {
+        return [
+            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
+            "third-party/include/chibi/desktop_vendor/cute/2",
+            "third-party/include/chibi/desktop_vendor/cute/3",
+            "third-party/include/chibi/desktop_vendor/cute/4",
+            "third-party/include/chibi/desktop_vendor/cute/5",
+            "third-party/include/chibi/desktop_vendor/physfs_static/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
+            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+        ];
+    }
     return [];
 }
 
@@ -2603,6 +3228,88 @@ pub Defines :: (target: string) -> string[] {
     }
     if (target == "benchmark_trials") {
         return ["_POSIX_C_SOURCE=200809L"];
+    }
+    if (target == "test_language") {
+        return ["CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS"];
+    }
+    if (target == "chibi_sdk_contracts") {
+        return [
+            "CHIBI_TEST_MATERIAL_GRAPHS=1", "CHIBI_TEST_MODEL_GRAPHS=1", "CHIBI_TEST_MODEL_IMPORT=1",
+            "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_SOURCE_FEATURES=1", "CHIBI_TEST_SOURCE_RUNTIME=1"
+        ];
+    }
+    if (target == "chibi_native_consumer") {
+        return [
+            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_NATIVE_RUNTIME=1",
+            "CHIBI_TEST_PREPARATION=1"
+        ];
+    }
+    if (target == "chibi_ui_document_consumer") {
+        return ["_DARWIN_C_SOURCE", "_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
+    }
+    if (target == "chibi_png_consumer") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int"
+        ];
+    }
+    if (target == "chibi_project_document_consumer") {
+        return [
+            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
+            "_POSIX_C_SOURCE=200809L"
+        ];
+    }
+    if (target == "chibi_render_consumer") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "CHIBI_SOURCE_ROOT=\"{source_root}\"",
+            "CHIBI_TEST_MATERIAL_GRAPHS=1", "CHIBI_TEST_MODEL_IMPORT=1", "IMGUI_USE_WCHAR32",
+            "ImDrawIdx=unsigned int"
+        ];
+    }
+    if (target == "chibi_image_preparation_consumer") {
+        return ["_DARWIN_C_SOURCE", "_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
+    }
+    if (target == "chibi_mesh_preparation_consumer") {
+        return ["_DARWIN_C_SOURCE", "_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
+    }
+    if (target == "chibi_model_import_consumer") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int",
+            "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"
+        ];
+    }
+    if (target == "chibi_source_features_consumer") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "CHIBI_SOURCE_ROOT=\"{source_root}\"",
+            "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int"
+        ];
+    }
+    if (target == "chibi_graph_consumer") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int"
+        ];
+    }
+    if (target == "test_tools") {
+        return [
+            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "CHIBI_CTL_PATH=\"{program:chibi_ctl}\"",
+            "CHIBI_POLICY_WORKER_PATH=\"{program:policy_worker}\"",
+            "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
+            "CHIBI_TEST_AUDIO_ANALYSIS=1", "CHIBI_TEST_AUTHORING_DOCUMENTS=1", "CHIBI_TEST_BOX3D=1",
+            "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1", "CHIBI_TEST_C_EXPORT=1",
+            "CHIBI_TEST_FEATURE_COVERAGE=1", "CHIBI_TEST_FMT=1", "CHIBI_TEST_GRAPH_AUTHORING=1",
+            "CHIBI_TEST_IMAGE_PREPARATION=1", "CHIBI_TEST_MATERIAL_GRAPHS=1",
+            "CHIBI_TEST_MATERIAL_RUNTIME=1", "CHIBI_TEST_MESH_PREPARATION=1",
+            "CHIBI_TEST_MODEL_GRAPHS=1", "CHIBI_TEST_MODEL_IMPORT=1", "CHIBI_TEST_NATIVE_RUNTIME=1",
+            "CHIBI_TEST_PARTICLES=1", "CHIBI_TEST_PNG_ENCODING=1", "CHIBI_TEST_PREVIEW=1",
+            "CHIBI_TEST_PREVIEW_COMPONENTS=1", "CHIBI_TEST_PREVIEW_GRAPHS=1",
+            "CHIBI_TEST_PROJECT_DOCUMENT=1",
+            "CHIBI_TEST_PROJECT_PREPARATION=1", "CHIBI_TEST_PUBLISHED_DOCS=1",
+            "CHIBI_TEST_RENDER_GEOMETRY=1", "CHIBI_TEST_RENDER_RUNTIME=1",
+            "CHIBI_TEST_SCENE_AUTHORING=1", "CHIBI_TEST_SCENE_SNAPSHOT_READ=1",
+            "CHIBI_TEST_SHADER_BAKE=1", "CHIBI_TEST_SHADER_WEBGPU=1", "CHIBI_TEST_SOURCE_FEATURES=1",
+            "CHIBI_TEST_SOURCE_RUNTIME=1", "CHIBI_TEST_TILEMAP=1", "CHIBI_TEST_UI_DOCUMENT=1",
+            "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
+            "_POSIX_C_SOURCE=200809L"
+        ];
     }
     return [];
 }
@@ -2665,6 +3372,75 @@ pub Options :: (target: string) -> string[] {
     if (target == "policy_worker") {
         return ["-UNDEBUG"];
     }
+    if (target == "test_language") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "test_behavior_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_sdk_contracts") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_prepared_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_record_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_scene_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_shader_bake_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_scene_authoring_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_scene_snapshot_read_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_native_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_asset_values_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_ui_document_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_particle_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_png_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_project_document_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_render_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_image_preparation_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_mesh_preparation_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_model_import_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_source_runtime_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_source_features_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_graph_consumer") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "test_tools") {
+        return ["-UNDEBUG"];
+    }
     return [];
 }
 
@@ -2691,15 +3467,74 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
     return [];
 }
 
+// The language tests' sources that include private headers below src/, as
+// test/language/CMakeLists.txt gives them.
+LanguageTestsOverSource :: () -> string[] {
+    return [
+        "src/language/numeric.c", "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
+        "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
+        "src/toolchain/compiler_target.c", "test/language/binding_benchmark.c",
+        "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
+        "test/language/callable_headers_chibi.c", "test/language/capture.c",
+        "test/language/compiler_artifact_chibi.c", "test/language/component_write.c",
+        "test/language/component_write_ir.c", "test/language/component_write_source.c",
+        "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
+        "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
+        "test/language/execution.c", "test/language/generic.c",
+        "test/language/inferred_string_arrays.c", "test/language/lexical_binding_chibi.c",
+        "test/language/maps.c", "test/language/named_binding_chibi.c",
+        "test/language/nominal_binding_chibi.c", "test/language/numeric.c",
+        "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
+        "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
+        "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
+        "test/language/package_syntax_chibi.c", "test/language/prepared_writer_chibi.c",
+        "test/language/program.c", "test/language/query_boundary.c", "test/language/ranges.c",
+        "test/language/record_members_chibi.c", "test/language/record_prepared.c",
+        "test/language/record_prepared_runtime.c", "test/language/record_publication.c",
+        "test/language/record_runtime.c", "test/language/record_semantic.c",
+        "test/language/record_state.c", "test/language/row_array.c",
+        "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
+        "test/language/scalarize.c", "test/language/signature_fixture.c",
+        "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
+        "test/language/type_constructors_chibi.c", "test/language/type_relations_chibi.c",
+        "test/language/union_members_chibi.c", "test/language/unit_algebra_chibi.c",
+        "test/language/unit_analysis_chibi.c", "test/language/wasm.c"
+    ];
+}
+
+// Defines one source adds after its target's, as CMake's COMPILE_DEFINITIONS
+// source property adds them; Expand fills {source_root}, {build_type},
+// {sha256:PATH} and {program:NAME}.
+pub SourceDefines :: (target: string, file: string) -> string[] {
+    if (target == "test_language" && file == "test/language/runtime_attribution.c") {
+        return [
+            "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
+            "CHIBI_ATTRIBUTION_BUILD=\"{build_type}\"",
+            "CHIBI_ATTRIBUTION_FIXTURE_SHA=\"{sha256:test/language/runtime_attribution.c}\""
+        ];
+    }
+    if (target == "test_language" && file == "test/language/source_tokenizer_chibi.c") {
+        return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
+    }
+    return [];
+}
+
 // Include directories one source adds before its target's, as CMake's
 // INCLUDE_DIRECTORIES source property adds them: each tree-sitter grammar
-// includes its own parser headers.
+// includes its own parser headers, and test_tools' C export cases the
+// testing headers.
 pub SourceIncludes :: (target: string, file: string) -> string[] {
     if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_css/")) {
         return ["third-party/source/tree_sitter_css/src"];
     }
     if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_html/")) {
         return ["third-party/source/tree_sitter_html/src"];
+    }
+    if (target == "test_language" && Listed(LanguageTestsOverSource(), file)) {
+        return ["src"];
+    }
+    if (target == "test_tools" && (file == "test/tools/c_export.c" || file == "test/tools/record_c_export.c")) {
+        return ["build/test/tools/testing/include"];
     }
     return [];
 }
@@ -2764,6 +3599,122 @@ pub PositionIndependent :: (target: string) -> bool {
     return target == "chibi_box2d" || target == "chibi_box3d" || target == "chibi_task_scheduler";
 }
 
+// Headers a header set configures below its private root, `HEADER=INPUT`, as
+// CMake's configure_file writes them: a `.in` INPUT with its Substitutions,
+// any other copied. The language tests embed the Chibi sources they compile;
+// the tooling tests copy the fixtures their consumers include.
+pub Configures :: (target: string) -> string[] {
+    if (target == "chibi_language_testing") {
+        return [
+            "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
+            "test/prepared_fixture.h=test/prepared_fixture.h",
+            "package_core_source.h=test/language/package_core_source.h.in",
+            "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
+            "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
+            "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
+            "source_tokenizer_chibi_source.h=test/language/source_tokenizer_chibi_source.h.in",
+            "package_syntax_chibi_source.h=test/language/package_syntax_chibi_source.h.in",
+            "package_paths_chibi_source.h=test/language/package_paths_chibi_source.h.in",
+            "package_routes_chibi_source.h=test/language/package_routes_chibi_source.h.in",
+            "package_snapshot_chibi_source.h=test/language/package_snapshot_chibi_source.h.in",
+            "constant_proof_chibi_source.h=test/language/constant_proof_chibi_source.h.in",
+            "constant_scalar_chibi_source.h=test/language/constant_scalar_chibi_source.h.in",
+            "scalar_lowering_chibi_source.h=test/language/scalar_lowering_chibi_source.h.in",
+            "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
+            "nominal_binding_chibi_source.h=test/language/nominal_binding_chibi_source.h.in",
+            "named_binding_chibi_source.h=test/language/named_binding_chibi_source.h.in",
+            "type_constructors_chibi_source.h=test/language/type_constructors_chibi_source.h.in",
+            "type_relations_chibi_source.h=test/language/type_relations_chibi_source.h.in",
+            "unit_algebra_chibi_source.h=test/language/unit_algebra_chibi_source.h.in",
+            "signature_reader_chibi_source.h=test/language/signature_reader_chibi_source.h.in",
+            "callable_headers_chibi_source.h=test/language/callable_headers_chibi_source.h.in",
+            "unit_analysis_chibi_source.h=test/language/unit_analysis_chibi_source.h.in",
+            "union_members_chibi_source.h=test/language/union_members_chibi_source.h.in",
+            "effect_analysis_chibi_source.h=test/language/effect_analysis_chibi_source.h.in",
+            "record_members_chibi_source.h=test/language/record_members_chibi_source.h.in",
+            "build_workflow_source.h=test/language/build_workflow_source.h.in",
+            "bounded_compiler_chibi_source.h=test/language/bounded_compiler_chibi_source.h.in",
+            "prepared_writer_chibi_source.h=test/language/prepared_writer_chibi_source.h.in",
+            "package_compiler_chibi_source.h=test/language/package_compiler_chibi_source.h.in"
+        ];
+    }
+    if (target == "chibi_tools_testing") {
+        return [
+            "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
+            "test/prepared_fixture.h=test/prepared_fixture.h",
+            "test/tools/fixture.h=test/tools/fixture.h", "test/graph/packs.h=test/graph/packs.h",
+            "test/graph/fixture.h=test/graph/fixture.h",
+            "test/render/hidden_app.h=test/render/hidden_app.h",
+            "test/support/reflected_types.h=test/support/reflected_types.h",
+            "test/support/gltf_fixture.h=test/support/gltf_fixture.h",
+            "export_compiler.h=test/tools/export_compiler.h.in"
+        ];
+    }
+    return [];
+}
+
+// The values of a target's `@NAME@` placeholders, `NAME=KIND:VALUE`: `bytes:PATH`
+// as CMake's file(READ ... HEX) initializer, `cstring:PATH` as C string lines,
+// and `compiler:ARGUMENT` as C string initializer lines of the profile's C
+// compiler, its C flags and then ARGUMENT, as test/tools writes the compiler
+// its exported C builds with.
+pub Substitutions :: (target: string) -> string[] {
+    if (target == "chibi_language_testing") {
+        return [
+            "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
+            "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",
+            "CHIBI_BOUNDED_EXPRESSION_BYTES=bytes:tools/compiler/bounded_compiler/Expression.chibi",
+            "CHIBI_BOUNDED_PREPARE_BYTES=bytes:tools/compiler/bounded_compiler/Prepare.chibi",
+            "CHIBI_CALLABLE_HEADERS_BYTES=bytes:tools/compiler/callable_headers/Headers.chibi",
+            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
+            "CHIBI_CONSTANT_FOLDING_BYTES=bytes:tools/compiler/constant_folding/Fold.chibi",
+            "CHIBI_CONSTANT_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
+            "CHIBI_CONSTANT_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
+            "CHIBI_CONSTANT_SCALAR_BYTES=bytes:tools/compiler/constant_scalar/Scalar.chibi",
+            "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
+            "CHIBI_DOCS_GRAMMAR_BYTES=bytes:tools/docs/grammar/Grammar.chibi",
+            "CHIBI_DOCS_MARKDOWN_BYTES=bytes:tools/docs/markdown/Markdown.chibi",
+            "CHIBI_DOCS_REFERENCE_BYTES=bytes:tools/docs/reference/Reference.chibi",
+            "CHIBI_DOCS_SITE_BYTES=bytes:tools/docs/site/Site.chibi",
+            "CHIBI_EFFECT_ANALYSIS_BYTES=bytes:tools/compiler/effect_analysis/Effects.chibi",
+            "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
+            "CHIBI_NAMED_BINDING_BYTES=bytes:tools/compiler/named_binding/Binding.chibi",
+            "CHIBI_NOMINAL_BINDING_BYTES=bytes:tools/compiler/nominal_binding/Nominal.chibi",
+            "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
+            "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",
+            "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
+            "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
+            "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
+            "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
+            "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
+            "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",
+            "CHIBI_PACKAGE_GRAPH_BYTES=bytes:tools/compiler/package_graph/Graph.chibi",
+            "CHIBI_PACKAGE_PATHS_BYTES=bytes:tools/compiler/package_paths/Paths.chibi",
+            "CHIBI_PACKAGE_ROUTES_BYTES=bytes:tools/compiler/package_routes/Routes.chibi",
+            "CHIBI_PACKAGE_SNAPSHOT_BYTES=bytes:tools/compiler/source_snapshot/Snapshot.chibi",
+            "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
+            "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
+            "CHIBI_RECORD_MEMBERS_BYTES=bytes:tools/compiler/record_members/Members.chibi",
+            "CHIBI_SCALAR_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
+            "CHIBI_SCALAR_LOWERING_BYTES=bytes:tools/compiler/scalar_lowering/Lower.chibi",
+            "CHIBI_SCALAR_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
+            "CHIBI_SIGNATURE_READER_BYTES=bytes:tools/compiler/signature_reader/Reader.chibi",
+            "CHIBI_SOURCE_TOKENIZER_BYTES=bytes:tools/compiler/source_tokenizer/Tokenizer.chibi",
+            "CHIBI_SYNTAX_DIAGNOSTICS_BYTES=bytes:tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+            "CHIBI_TYPE_CONSTRUCTORS_BYTES=bytes:tools/compiler/type_constructors/Constructors.chibi",
+            "CHIBI_TYPE_RELATIONS_BYTES=bytes:tools/compiler/type_relations/Relations.chibi",
+            "CHIBI_UNION_MEMBERS_BYTES=bytes:tools/compiler/union_members/Members.chibi",
+            "CHIBI_UNIT_ALGEBRA_BYTES=bytes:tools/compiler/unit_algebra/Units.chibi",
+            "CHIBI_UNIT_ANALYSIS_BYTES=bytes:tools/compiler/unit_analysis/Analysis.chibi",
+            "CHIBI_BUILD_WORKFLOW_SOURCE=cstring:test/language/BuildWorkflow.chibi"
+        ];
+    }
+    if (target == "chibi_tools_testing") {
+        return ["CHIBI_EXPORT_COMPILER_ARGUMENTS=compiler:-UNDEBUG"];
+    }
+    return [];
+}
+
 // The program that writes a target's `build/` sources before it compiles, or
 // empty: reflect writes the native type and binding tables.
 pub Generator :: (target: string) -> string {
@@ -2806,6 +3757,101 @@ pub Embeds :: (target: string) -> string[] {
     return [];
 }
 
+// The directory below the build directory CMake writes an executable to, as
+// the CMake subdirectory that declares it or its RUNTIME_OUTPUT_DIRECTORY
+// places it; empty for the build directory itself.
+pub ProgramDirectory :: (target: string) -> string {
+    if (target == "chibi-player" || target == "chibi-compile" || target == "chibi-build-host" ||
+        target == "chibi-compiler-host" || target == "chibi") {
+        return "sdk";
+    }
+    if (target == "chibi_ctl") {
+        return "bin";
+    }
+    if (target == "test_language") {
+        return "test/language";
+    }
+    if (target == "policy_worker" || target == "test_tools" || target == "benchmark_trials") {
+        return "test/tools";
+    }
+    return "";
+}
+
+// Files a target installs into the build tree, `DESTINATION=SOURCE`, as root
+// CMakeLists.txt configures them: a directory SOURCE copies every file below
+// it. The launcher's players, `chibi version`, `chibi test` and `chibi doc`
+// read ../share/chibi as installed ones do; chibi_ctl reads its own resources.
+// build/sdk/chibi_engine_metadata.json is the build identity (Identity).
+pub Resources :: (target: string) -> string[] {
+    if (target == "chibi") {
+        return [
+            "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
+            "build/share/chibi/core/strings/Strings.chibi=packages/core/strings/Strings.chibi",
+            "build/share/chibi/docs/markdown/Markdown.chibi=tools/docs/markdown/Markdown.chibi",
+            "build/share/chibi/docs/site/Site.chibi=tools/docs/site/Site.chibi",
+            "build/share/chibi/docs/reference/Reference.chibi=tools/docs/reference/Reference.chibi",
+            "build/share/chibi/docs/grammar/Grammar.chibi=tools/docs/grammar/Grammar.chibi",
+            "build/share/chibi/docs/compiler_syntax/Syntax.chibi=tools/compiler/compiler_syntax/Syntax.chibi",
+            "build/share/chibi/docs/syntax_diagnostics/Diagnostics.chibi=tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+            "build/share/chibi/shaders=src/render/shaders"
+        ];
+    }
+    if (target == "chibi_ctl") {
+        return [
+            "build/controller_resources/engine.json=build/sdk/chibi_engine_metadata.json",
+            "build/controller_resources/shaders=src/render/shaders"
+        ];
+    }
+    return [];
+}
+
+// Source lists a target's tests read, `OUTPUT=ROOT`: every .chibi file below
+// ROOT, by absolute path, sorted, except Unlisted ones, as
+// test/language/CMakeLists.txt writes the language corpus.
+pub SourceLists :: (target: string) -> string[] {
+    if (target == "test_language") {
+        return ["build/test/language/corpus.txt=test/fixtures"];
+    }
+    return [];
+}
+
+pub Unlisted :: (target: string) -> string[] { return []; }
+
+// The artifact formats the build identity records, as
+// sdk/artifact_formats.cmake lists them: `NAME SOURCE HEADER MACRO`,
+// then VALUE_WIRE for a format that encodes through types/value_wire and
+// EXECUTION_CODECS for the prepared function and record codecs. Paths are
+// below src/.
+pub ArtifactFormats :: () -> string[] {
+    return [
+        "execution execution/prepared.c execution/prepared.h EXECUTION_PREPARED_VERSION VALUE_WIRE EXECUTION_CODECS",
+        "player runtime/player_prepared.c runtime/player_prepared.h PLAYER_PREPARED_VERSION VALUE_WIRE",
+        "events runtime/event_catalog.c runtime/event_catalog.h EVENT_CATALOG_VERSION VALUE_WIRE",
+        "field runtime/fields/prepared.c runtime/fields/prepared.h FIELD_PREPARED_VERSION",
+        "material_fields runtime/material_field_prepared.c runtime/material_field_prepared.h MATERIAL_FIELDS_PREPARED_VERSION",
+        "scene runtime/scenes/prepared.c runtime/scenes/prepared.h SCENE_PREPARED_VERSION VALUE_WIRE",
+        "ui runtime/ui/documents.c runtime/ui/documents.h UI_DOCUMENT_VERSION VALUE_WIRE",
+        "font runtime/ui/font.c runtime/ui/font.h UI_FONT_PREPARED_VERSION VALUE_WIRE",
+        "shader runtime/shaders/prepared.c runtime/shaders/prepared.h SHADER_PREPARED_VERSION VALUE_WIRE",
+        "model runtime/models/prepared.c runtime/models/prepared.h MODEL_PREPARED_VERSION VALUE_WIRE",
+        "mesh runtime/geometry/mesh_prepared.c runtime/geometry/mesh_prepared.h RENDER_MESH_PREPARED_VERSION VALUE_WIRE",
+        "image runtime/images/catalog.c runtime/images/catalog.h RENDER_IMAGE_PREPARED_VERSION VALUE_WIRE",
+        "sky runtime/images/sky.c runtime/images/sky.h RENDER_SKY_PREPARED_VERSION VALUE_WIRE",
+        "parts render/scene3d_parts.c render/scene3d_parts.h RENDER_PARTS_PREPARED_VERSION VALUE_WIRE",
+        "shader_values render/shader_values.c render/shader_catalog.h SHADER_VALUES_PREPARED_VERSION"
+    ];
+}
+
+// The programs an executable runs, built with it as CMake's add_dependencies
+// builds them: test_tools runs the workers and tools whose paths it compiles
+// in.
+pub Runs :: (target: string) -> string[] {
+    if (target == "test_tools") {
+        return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
+    }
+    return [];
+}
+
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
     programs := [
@@ -2815,7 +3861,7 @@ pub Programs :: () -> string[] {
     // Their links name the macOS desktop archive's libraries and frameworks;
     // Linux's follow its archive.
     if (build.platform() == "Darwin") {
-        programs.extend(["chibi-player", "chibi-compile", "chibi_ctl"]);
+        programs.extend(["chibi-player", "chibi-compile", "chibi_ctl", "test_language", "test_tools"]);
     }
     return programs;
 }
@@ -2823,13 +3869,14 @@ pub Programs :: () -> string[] {
 // Whether an executable links with the C++ compiler, as CMake does when a
 // library it links has C++ sources.
 pub LinksCxx :: (target: string) -> bool {
-    return target == "chibi-player" || target == "chibi-compile" || target == "chibi_ctl";
+    return target == "chibi-player" || target == "chibi-compile" || target == "chibi_ctl" || target == "test_language" ||
+           target == "test_tools";
 }
 
 // The libraries whose objects executables link directly, as CMake's OBJECT
 // libraries, rather than archive.
 pub ObjectLibrary :: (target: string) -> bool {
-    return target == "chibi_build_host";
+    return target == "chibi_build_host" || target == "test_behavior_consumer" || Listed(ToolConsumers(), target);
 }
 
 // The object libraries an executable links, whose objects come before its
@@ -2838,20 +3885,37 @@ pub LinkedObjects :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return ["chibi_build_host"];
     }
+    if (target == "test_language") {
+        return ["test_behavior_consumer"];
+    }
+    if (target == "test_tools") {
+        return [
+            "chibi_record_consumer", "chibi_prepared_consumer", "chibi_scene_consumer",
+            "chibi_sdk_contracts", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
+            "chibi_scene_snapshot_read_consumer", "chibi_native_consumer",
+            "chibi_asset_values_consumer", "chibi_ui_document_consumer", "chibi_particle_consumer",
+            "chibi_png_consumer", "chibi_project_document_consumer",
+            "chibi_render_consumer",
+            "chibi_image_preparation_consumer", "chibi_mesh_preparation_consumer",
+            "chibi_model_import_consumer", "chibi_source_runtime_consumer",
+            "chibi_source_features_consumer", "chibi_graph_consumer", "chibi_build_host"
+        ];
+    }
+
     return [];
 }
 
 // Options an executable's link adds after the profile's, its CMake
 // LINK_OPTIONS: the compiler host drops what it does not call.
 pub LinkOptions :: (target: string) -> string[] {
-    if (target == "chibi-compiler-host" && build.platform() == "Darwin") {
+    if ((target == "chibi-compiler-host" || target == "test_language") && build.platform() == "Darwin") {
         return ["-Wl,-dead_strip"];
     }
     if (target == "chibi-compiler-host") {
         return ["-Wl,--gc-sections"];
     }
     // SDL's interface link option, which CMake puts among the link flags.
-    if (target == "chibi-player" || target == "chibi_ctl") {
+    if (target == "chibi-player" || target == "chibi_ctl" || target == "test_tools") {
         return ["-lpthread"];
     }
     return [];
@@ -3023,6 +4087,124 @@ pub Links :: (target: string) -> string[] {
             "chibi_native_capabilities", "chibi_capabilities", "chibi_native_types", "chibi_ecs",
             "chibi_image_catalog", "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_types",
             "chibi_support", "-lm", "-framework", "Metal", "-framework", "Foundation"
+        ];
+    }
+    if (target == "test_language" && build.platform() == "Darwin") {
+        return [
+            "chibi_compiler_host",
+            "chibi_json", "chibi_language_syntax", "chibi_asset_json", "chibi_native_prepared",
+            "chibi_native_prepared", "chibi_math_capabilities", "chibi_project_compilation",
+            "chibi_asset_documents", "chibi_value_document", "chibi_array_capabilities", "chibi_authoring",
+            "chibi_source_catalog", "chibi_input_map", "chibi_source_presentation",
+            "chibi_behavior_runtime", "chibi_field_catalog", "chibi_field_capabilities",
+            "chibi_project_document", "chibi_prototype_document", "chibi_scene_document",
+            "chibi_ui_authoring", "chibi_ui_document", "chibi_text_capabilities",
+            "chibi_state_capabilities", "chibi_arithmetic_capabilities", "chibi_core_capabilities",
+            "chibi_graph_model", "chibi_graph_authoring", "chibi_graph_compilation",
+            "chibi_mesh_runtime", "chibi_ui_documents", "chibi_entity_runtime", "chibi_ui_runtime",
+            "chibi_native_prepared", "chibi_ui_syntax", "chibi_shader_preparation", "chibi_player",
+            "chibi_engine", "chibi_scheduling", "chibi_visual_catalog", "chibi_graph_catalog",
+            "chibi_source_presentation", "chibi_host_native_default", "chibi_ui_runtime",
+            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_audio_runtime",
+            "chibi_url_runtime", "chibi_rhythm_runtime", "chibi_visual_motion_runtime",
+            "chibi_physics3d_runtime", "chibi_box3d", "chibi_visibility_runtime",
+            "chibi_physics_runtime", "chibi_material_runtime", "chibi_mesh_runtime",
+            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime",
+            "chibi_save_runtime", "chibi_task_pool_runtime", "chibi_task_scheduler", "-lc++",
+            "chibi_box2d", "chibi_input_runtime", "chibi_spatial_runtime", "chibi_asset_authoring",
+            "chibi_authoring", "chibi_compiler", "chibi_language", "chibi_prototype_document",
+            "chibi_scene_document", "chibi_scene_runtime", "chibi_ui_document",
+            "chibi_ui_document_values", "chibi_graph_compilation", "chibi_field_catalog",
+            "chibi_field_capabilities", "chibi_graph_authoring", "chibi_math_capabilities",
+            "chibi_asset_documents", "chibi_value_document", "chibi_array_capabilities",
+            "chibi_text_capabilities", "chibi_fmt", "chibi_state_capabilities",
+            "chibi_arithmetic_capabilities", "chibi_core_capabilities", "chibi_graph_model",
+            "chibi_asset_values", "chibi_conversion_capabilities", "chibi_comparison_capabilities",
+            "chibi_vector_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
+            "chibi_fields", "chibi_model_runtime", "chibi_reference_index", "chibi_declared_components",
+            "chibi_native_types", "chibi_text_source", "chibi_text_search", "chibi_builtin_fonts",
+            "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog",
+            "chibi_shader_runtime", "chibi_compiler_syntax", "chibi_language_syntax",
+            "chibi_syntax_runtime", "chibi_compiler_json", "chibi_json", "chibi_native_capabilities",
+            "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "chibi_execution_sljit", "chibi_events", "chibi_types", "chibi_support", "-lm"
+        ];
+    }
+    if (target == "test_tools" && build.platform() == "Darwin") {
+        return [
+            "chibi_compiler_host",
+            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document",
+            "chibi_shader_runtime", "chibi_authoring", "chibi_execution", "chibi_array_capabilities",
+            "chibi_audio_runtime", "chibi_scene_authoring", "chibi_scene_document",
+            "chibi_scene_authoring", "chibi_source_catalog", "chibi_authoring",
+            "chibi_project_compilation", "chibi_image_preparation", "chibi_scenario_document",
+            "chibi_player", "chibi_engine", "chibi_entity_runtime", "chibi_comparison_capabilities",
+            "chibi_conversion_capabilities", "chibi_host_native_default", "chibi_physics_runtime",
+            "chibi_physics3d_runtime", "chibi_material_runtime", "chibi_task_pool_runtime",
+            "chibi_spatial_runtime", "chibi_tilemap_runtime", "chibi_mesh_runtime",
+            "chibi_tilemap_runtime", "chibi_shader_runtime", "chibi_platform", "chibi_asset_documents",
+            "chibi_asset_json", "chibi_asset_documents", "chibi_ui_document", "chibi_fmt",
+            "chibi_particle_runtime", "chibi_platform", "chibi_project_document", "chibi_text_source",
+            "chibi_project_document", "chibi_language_syntax", "chibi_authoring", "chibi_json",
+            "chibi_box3d", "chibi_renderer", "chibi_shader_preparation", "chibi_graph_compilation",
+            "chibi_graph_authoring", "chibi_project_preparation", "chibi_image_preparation",
+            "chibi_model_authoring", "chibi_shader_preparation", "chibi_mesh_runtime",
+            "chibi_graph_authoring", "chibi_graph_compilation", "chibi_graph_model",
+            "chibi_model_import", "chibi_mesh_runtime", "chibi_graph_authoring",
+            "chibi_graph_compilation", "chibi_native_types", "chibi_asset_documents", "chibi_platform",
+            "chibi_authoring", "chibi_asset_authoring", "chibi_arithmetic_capabilities",
+            "chibi_project_preparation", "chibi_component_presentation", "chibi_graph_catalog",
+            "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_particle_runtime",
+            "chibi_save_runtime", "chibi_studio_capabilities", "chibi_graph_authoring",
+            "chibi_graph_compilation", "chibi_asset_documents", "chibi_vector_capabilities",
+            "chibi_automation", "chibi_project_preparation", "chibi_renderer", "chibi_graph_catalog",
+            "chibi_graph_authoring", "chibi_reference_index", "chibi_prototype_document",
+            "chibi_scene_document", "chibi_native_types", "chibi_project_preparation",
+            "chibi_asset_json", "chibi_renderer", "chibi_studio_catalog", "chibi_model_authoring",
+            "chibi_model_bake", "chibi_model_import", "chibi_ui_host", "chibi_platform",
+            "third-party/lib/chibi-vendor/libchibi_desktop_cute.a", "-framework", "IOKit", "-framework",
+            "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework", "Network",
+            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo",
+            "-framework", "CoreFoundation",
+            "third-party/lib/chibi-vendor/libchibi_desktop_physfs_static.a", "-framework", "IOKit",
+            "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_desktop_SDL3_static.a",
+            "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker",
+            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit",
+            "-framework", "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio",
+            "-framework", "AudioToolbox", "-framework", "AVFoundation", "-framework", "Foundation",
+            "-framework", "GameController", "-framework", "Metal", "-framework", "QuartzCore",
+            "-Xlinker", "-weak_framework", "-Xlinker", "CoreHaptics",
+            "third-party/lib/chibi-vendor/libchibi_desktop_rmlui_core.a",
+            "third-party/lib/chibi-vendor/libchibi_desktop_freetype.a", "-framework", "Metal",
+            "-framework", "Foundation", "chibi_project_format", "chibi_project_compilation",
+            "chibi_source_catalog", "chibi_image_preparation", "chibi_host_native_default",
+            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_rhythm_runtime",
+            "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_audio_runtime",
+            "chibi_physics3d_runtime", "chibi_box3d", "chibi_scheduling", "chibi_visibility_runtime",
+            "chibi_physics_runtime", "chibi_material_runtime", "chibi_entity_runtime",
+            "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime",
+            "chibi_task_pool_runtime", "chibi_task_scheduler", "-lc++", "chibi_box2d",
+            "chibi_url_runtime", "chibi_ui_runtime", "chibi_visual_motion_runtime",
+            "chibi_visual_catalog", "chibi_mesh_runtime", "chibi_image_catalog",
+            "chibi_asset_authoring", "chibi_graph_catalog", "chibi_native_prepared",
+            "chibi_ui_authoring", "chibi_ui_document", "chibi_ui_document_values", "chibi_ui_syntax",
+            "chibi_builtin_fonts", "chibi_ui_documents", "chibi_compiler_syntax", "chibi_compiler_json",
+            "chibi_scenario_document", "chibi_input_runtime", "chibi_spatial_runtime",
+            "chibi_project_document", "chibi_component_presentation", "chibi_prototype_document",
+            "chibi_scene_document", "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_input_map",
+            "chibi_source_presentation", "chibi_authoring", "chibi_reference_index", "chibi_compiler",
+            "chibi_language", "chibi_language_syntax", "chibi_syntax_runtime", "chibi_text_source",
+            "chibi_text_search", "chibi_json", "chibi_declared_components", "chibi_native_types",
+            "chibi_studio_graph", "chibi_graph_compilation", "chibi_graph_authoring",
+            "chibi_value_document", "chibi_array_capabilities", "chibi_comparison_capabilities",
+            "chibi_conversion_capabilities", "chibi_asset_documents", "chibi_graph_model",
+            "chibi_arithmetic_capabilities", "chibi_math_capabilities", "chibi_vector_capabilities",
+            "chibi_events", "chibi_asset_values", "chibi_text_capabilities", "chibi_fmt",
+            "chibi_core_capabilities", "chibi_state_capabilities", "chibi_selection_capabilities",
+            "chibi_set_capabilities", "chibi_field_catalog", "chibi_field_capabilities",
+            "chibi_model_runtime", "chibi_shader_runtime", "chibi_fields", "chibi_studio_capabilities",
+            "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_native_capabilities",
+            "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];
     }
     return [];

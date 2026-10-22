@@ -4,8 +4,8 @@
 > Use the current language and authoring guides for executable instructions.
 > Suffixes in prose follow current conventions; linked Git revisions retain the exact historical files.
 
-[CUT-70](https://linear.app/cute-engine/issue/CUT-70)
-and [CUT-71](https://linear.app/cute-engine/issue/CUT-71)
+CUT-70
+and CUT-71
 provide the shared native source frontend and direct behavior graph authoring.
 The requirement at that revision keeps declarative content in the former document format and makes readable
 `.chibi` the authority for executable behavior. LuaJIT is not part of this

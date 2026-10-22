@@ -260,8 +260,11 @@ ReferenceFieldIntrinsic: int : 4;
 ReferenceReadIntrinsic: int : 5;
 ReferenceWriteIntrinsic: int : 6;
 UnionMakeIntrinsic: int : 20;
-// union_make for a returned union, whose payload keeps the values themselves.
-UnionMoveIntrinsic: int : 44;
+// union_make in the caller's storage, keeping the payload values it names.
+UnionKeepIntrinsic: int : 45;
+// Added to an intrinsic, runs it in the caller's storage, where a function
+// builds the locals it returns.
+InResult: int : 256;
 UnionTestIntrinsic: int : 21;
 UnionGetIntrinsic: int : 22;
 // Statement phases after the value is ready.
@@ -602,8 +605,8 @@ Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], 
     return CalledFunction(forest, text, callables, names, package, value) >= 0 ||
            (Is(forest, callee, "member_expression") && UnionOf(forest, text, types, names, package, callee) >= 0);
 }
-// Whether a value is the one a return statement returns, so nothing reads or
-// changes what it is made of before the return copies it to the caller.
+// Whether a value is the one a return statement returns, which the function
+// may build in its caller's storage.
 Returned :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     at := node;
     while (Is(forest, forest[at].parent, "parenthesized_expression")) {
@@ -680,6 +683,151 @@ Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
     found := Lookup(names, Text(forest, text, root));
     return found >= 0 && (names[found].place == CellPlace || names[found].place == ParameterPlace ||
                           names[found].place == ResultsPlace);
+}
+// Whether a value is a local its function builds in its caller's storage.
+BuiltName :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], built: int[], value: int) -> bool {
+    at := Unparenthesized(forest, value);
+    if (!Is(forest, at, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, at));
+    return found >= 0 && names[found].place == CellPlace && built.contains(names[found].node);
+}
+// Whether an array literal initializes a local its function builds in its
+// caller's storage.
+BuiltLiteral :: (forest: snapshot.SnapshotNode[], built: int[], literal: int) -> bool {
+    at := literal;
+    while (Is(forest, forest[at].parent, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
+    declaration := forest[at].parent;
+    return Is(forest, declaration, "local_declaration") && Field(forest, declaration, "value") == at &&
+           built.contains(Field(forest, declaration, "name"));
+}
+// The position of a spelling in a list of names, or -1.
+NamePosition :: (spellings: string[], name: string) -> int {
+    index: int = 0;
+    while (index < length(spellings)) {
+        if (spellings[index] == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Whether an identifier declares a name rather than reads one.
+Declares :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    parent := forest[node].parent;
+    if (Is(forest, parent, "pattern_bindings")) {
+        return true;
+    }
+    field := forest[node].field;
+    return ((Is(forest, parent, "local_declaration") || Is(forest, parent, "constant_declaration") ||
+             Is(forest, parent, "parameter")) && field == "name") ||
+           (Is(forest, parent, "for_statement") && (field == "name" || field == "key")) || field == "binding";
+}
+// The names a returned value is made of: itself, or a returned variant's
+// payload values.
+ReturnedNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                  value: int) -> string[] {
+    at := Unparenthesized(forest, value);
+    if (Is(forest, at, "identifier")) {
+        return [Text(forest, text, at)];
+    }
+    callee := Field(forest, at, "function");
+    found: string[] = [];
+    if (!Is(forest, at, "call_expression") || !Is(forest, callee, "member_expression") ||
+        UnionOf(forest, text, types, aliases, package, callee) < 0) {
+        return found;
+    }
+    argument := FirstMember(forest, Field(forest, at, "arguments"));
+    while (argument >= 0) {
+        if (Is(forest, Unparenthesized(forest, argument), "identifier")) {
+            found.append(Text(forest, text, Unparenthesized(forest, argument)));
+        }
+        argument = NextMember(forest, argument);
+    }
+    return found;
+}
+// The array locals a function builds in its caller's storage, by the nodes
+// that name them. Each is declared once, at the top of the body, from an
+// array literal; changed only by `append`, `extend` and element stores; never
+// assigned, deleted from or reached by a ref argument; and returned, itself or
+// as a payload of a returned variant, so the return need not copy it.
+BuiltLocals :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                body: int, referenced: string[]) -> int[] {
+    spellings: string[] = [];
+    nodes: int[] = [];
+    statement := FirstMember(forest, body);
+    while (statement >= 0) {
+        name := Field(forest, statement, "name");
+        if (Is(forest, statement, "local_declaration") &&
+            Is(forest, Unparenthesized(forest, Field(forest, statement, "value")), "array_expression") &&
+            !Holds(referenced, Text(forest, text, name))) {
+            spellings.append(Text(forest, text, name));
+            nodes.append(name);
+        }
+        statement = NextMember(forest, statement);
+    }
+    returned := resize([false], length(spellings));
+    rejected := resize([false], length(spellings));
+    pending: int[] = [body];
+    top: int = 1;
+    while (top > 0 && length(spellings) > 0) {
+        top -= 1;
+        at := pending[top];
+        changed: int = -1;
+        if (Is(forest, at, "identifier") && Declares(forest, at)) {
+            index := NamePosition(spellings, Text(forest, text, at));
+            if (index >= 0 && nodes[index] != at) {
+                rejected[index] = true;
+            }
+        } else if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
+            target := Unparenthesized(forest, Field(forest, at, "target"));
+            element := Is(forest, at, "assignment") && Is(forest, target, "index_expression") &&
+                       Is(forest, Unparenthesized(forest, Field(forest, target, "object")), "identifier");
+            if (!element) {
+                changed = RootOf(forest, target);
+            }
+        } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression")) {
+            method := Text(forest, text, Field(forest, Field(forest, at, "function"), "member"));
+            if (ChangingMethod(method) && !NameMatches(method, "append") && !NameMatches(method, "extend")) {
+                changed = RootOf(forest, Field(forest, at, "function"));
+            }
+        } else if (Is(forest, at, "return_statement")) {
+            for (made in ReturnedNames(forest, text, types, aliases, package, Field(forest, at, "value"))) {
+                index := NamePosition(spellings, made);
+                if (index >= 0) {
+                    returned[index] = true;
+                }
+            }
+        }
+        if (Is(forest, changed, "identifier")) {
+            index := NamePosition(spellings, Text(forest, text, changed));
+            if (index >= 0) {
+                rejected[index] = true;
+            }
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending.append(child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    built: int[] = [];
+    index: int = 0;
+    while (index < length(nodes)) {
+        if (returned[index] && !rejected[index]) {
+            built.append(nodes[index]);
+        }
+        index += 1;
+    }
+    return built;
 }
 // Records and arrays are pointers to their storage.
 Pointer :: (storage: int, container: int) -> bool {
@@ -1409,7 +1557,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
-             mutated: string[], ops: Ops, target: Target) -> Body {
+             mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
@@ -2039,13 +2187,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    kind == "return_statement" || kind == "delete_statement") {
             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
-                                 referenced, mutated, item, ops, target, at);
+                                 referenced, mutated, built, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
                              names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
-            step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
+            step = LiteralStep(forest, text, document, types, members, values, value_top, built, item, ops, target, at);
         } else if (kind == "map_expression") {
             step = MapLiteralStep(forest, document, types, values, value_top, item, ops, target, at);
         } else if ((kind == "binary_expression" && (operator == "in" || NotIn(forest, item.node, operator))) ||
@@ -2054,7 +2202,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
             step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
-                            make_fields, names, callable.package, values, value_top, item, ops, target, at);
+                            make_fields, names, callable.package, values, value_top, built, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {

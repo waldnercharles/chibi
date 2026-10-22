@@ -5,6 +5,27 @@ endif()
 
 set_directory_properties(PROPERTIES INCLUDE_DIRECTORIES "")
 get_filename_component(CHIBI_TOOL_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(CHIBI_TEST_ASSET_CACHE_ADAPTER "" CACHE FILEPATH
+    "Production Studio asset_cache.js pre-js for focused real-browser cache checks")
+if(EMSCRIPTEN AND CHIBI_TEST_ASSET_CACHE_ADAPTER)
+    if(NOT EXISTS "${CHIBI_TEST_ASSET_CACHE_ADAPTER}")
+        message(FATAL_ERROR "Production asset cache adapter does not exist")
+    endif()
+    find_package(Chibi REQUIRED CONFIG COMPONENTS support)
+    add_executable(test_tools main.c asset_cache_browser.c)
+    target_include_directories(test_tools PRIVATE "${CHIBI_TOOL_ROOT}" "${CHIBI_TOOL_ROOT}/src")
+    target_compile_features(test_tools PRIVATE c_std_11)
+    target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_CACHE_WEB=1)
+    target_link_libraries(test_tools PRIVATE Chibi::support)
+    target_link_options(test_tools PRIVATE "-lidbfs.js" "-sFORCE_FILESYSTEM=1"
+        "-sEXPORTED_RUNTIME_METHODS=['FS']" "-sALLOW_MEMORY_GROWTH=1"
+        "-sSTACK_SIZE=1048576" "-sEXIT_RUNTIME=0" "-sENVIRONMENT=web"
+        "--pre-js=${CHIBI_TEST_ASSET_CACHE_ADAPTER}")
+    set_target_properties(test_tools PROPERTIES SUFFIX ".js"
+        LINK_DEPENDS "${CHIBI_TEST_ASSET_CACHE_ADAPTER}")
+    return()
+endif()
 if(EMSCRIPTEN)
     enable_language(CXX)
     set(CHIBI_TEST_CUTE_SOURCE "" CACHE PATH "Isolated Cute source for browser regression")
@@ -55,9 +76,11 @@ endif()
 
 option(CHIBI_INSTALLED_SDK "Link tooling contract checks against an installed SDK" OFF)
 if(CHIBI_INSTALLED_SDK)
-    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document)
+    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document asset_documents)
 elseif(NOT TARGET Chibi::types)
-    set(CHIBI_SDK_BUILD_COMPILER OFF CACHE BOOL "Build language, compiler and source authoring packages")
+    # Common project fixtures read/write compiled asset documents even when
+    # the selected runtime checks do not exercise compiler-specific cases.
+    set(CHIBI_SDK_BUILD_COMPILER ON)
     add_subdirectory("${CHIBI_TOOL_ROOT}/sdk" sdk)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/languages.cmake")
@@ -92,7 +115,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c package_ownership.c desktop_dependencies.c collab.c
-    validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
+    validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c asset_cache_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -105,7 +128,8 @@ target_compile_definitions(test_tools PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_S
 add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document
+    Chibi::asset_documents)
 if(TARGET chibi_build_host)
     target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c)
     target_link_libraries(test_tools PRIVATE chibi_build_host)

@@ -14,7 +14,7 @@ Add a declarative modeling layer that preserves named parts, parameters, and con
 
 ## Context
 
-The SDF experiments are in `/Users/cwaldner/.codex/worktrees/sdf-scenes/c-blueprints`, inspected at HEAD `631f9a710bfccbf2b0843017304322d71798a46d` with additional working changes possible. Implementation must establish its own current source baseline and coordinate with that work before integrating dependencies.
+The SDF experiments are in `<local-evidence>/c-blueprints`, inspected at HEAD `631f9a710bfccbf2b0843017304322d71798a46d` with additional working changes possible. Implementation must establish its own current source baseline and coordinate with that work before integrating dependencies.
 
 The current system already stores shapes, materials, functions, parameters, prototypes, and scenes as compiled Chibi graphs. The lab authors sphere, rounded-box, torus, Boolean, and animated examples through the existing public graph operations. The runtime compiles shape graphs into shader code and evaluates their distance outputs inside bounded proxies.
 

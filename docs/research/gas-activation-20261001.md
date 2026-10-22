@@ -63,7 +63,7 @@ The v1 native-audit adapter emitted a diagnostic `KeyError` for a snapshot entit
 
 ## Frozen evidence
 
-The files below are retained under `/Users/cwaldner/Documents/Codex/2026-09-30/is-x20/outputs`. SHA-256 values bind the reports to the exact artifacts.
+The files below are retained under `<local-evidence>/outputs`. SHA-256 values bind the reports to the exact artifacts.
 
 | Evidence | Retained path | SHA-256 |
 |---|---|---|

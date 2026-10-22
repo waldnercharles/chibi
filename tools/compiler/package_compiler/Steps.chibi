@@ -193,8 +193,8 @@ MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item:
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
                   params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
                   identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
-                  function: int, named: int, referenced: string[], mutated: string[], item: Work, ops: Ops,
-                  target: Target, at: Bases) -> Step {
+                  function: int, named: int, referenced: string[], mutated: string[], built: int[], item: Work,
+                  ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
     kind := node.kind;
@@ -543,8 +543,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
             if (Pointer(result.storage, result.container) &&
-                Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value"))) {
-                // A fresh value is already the copy a return would make.
+                (Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value")) ||
+                 BuiltName(forest, text, names, built, Field(forest, item.node, "value")))) {
+                // A fresh value is already the copy a return would make, and
+                // a built local already lies in the caller's storage.
                 cells.append(MovedCell(result));
                 slots.append(AddressSlot(target));
                 code.extend(MoveCode(result, ops, target, at.slot + length(slots) - 1,
@@ -737,6 +739,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             write.offset = target.payload_offset;
             code.append(write);
             argument += 1;
+        }
+        // A local the function returns grows in its caller's storage.
+        if (built.contains(binding.node)) {
+            intrinsic += InResult;
         }
         host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                       result_count: 1, written: false};
@@ -1090,7 +1096,7 @@ InferPhase: int : 2;
 // header, then each array item, or each field as an offset cell and a value
 // cell; it returns the new value.
 LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                members: TypeMember[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+                members: TypeMember[], values: Value[], top: int, built: int[], item: Work, ops: Ops, target: Target,
                 at: Bases) -> Step {
     node := forest[item.node];
     array := node.kind == "array_expression";
@@ -1220,7 +1226,13 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
         member = NextMember(forest, member);
     }
     cells.append(header);
-    host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    // A literal the function returns, or one that starts a local it returns,
+    // is built in the caller's storage.
+    intrinsic := ConstructIntrinsic;
+    if ((array && BuiltLiteral(forest, built, item.node)) || Returned(forest, item.node)) {
+        intrinsic += InResult;
+    }
+    host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     hosts.append(host);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -1252,7 +1264,7 @@ Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
              params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
-             item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+             built: int[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     code: Code[] = [];
     slots: Slot[] = [];
@@ -1609,10 +1621,32 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
     }
     if (item.c == 2) {
-        // The constructor takes the variant's tag, then each payload field.
+        // The constructor takes the variant's tag, then each payload field. A
+        // returned variant is built in the caller's storage, so the return
+        // need not copy it, with a mask of the payload values it keeps there:
+        // the locals the function builds there. It copies the others.
         variant := types[item.a];
+        returned := Returned(forest, item.node);
+        keep: int64 = 0;
+        argument_node := FirstMember(forest, Field(forest, item.node, "arguments"));
+        position: int = 0;
+        while (returned && count <= 64 && argument_node >= 0) {
+            if (BuiltName(forest, text, names, built, argument_node)) {
+                keep = keep | (int64(1) << int64(position));
+            }
+            position += 1;
+            argument_node = NextMember(forest, argument_node);
+        }
         tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: 0, variant: item.a, kind: ValueKind};
         cells.append(tag);
+        kept := returned && count <= 64;
+        shift: int = 0;
+        if (kept) {
+            mask: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(wrap: keep), variant: -1,
+                          kind: ValueKind};
+            cells.append(mask);
+            shift = 1;
+        }
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         index: int = 0;
         while (index < count) {
@@ -1625,8 +1659,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                           constant: 0, variant: -1, kind: ValueKind};
             cells.append(cell);
             slots.append(address);
-            code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + index, at.cell + 1 + index,
-                                    0, 0, node));
+            code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + index,
+                                    at.cell + 1 + shift + index, 0, 0, node));
             write := Instruction(ops.write, SlotStorage(argument.storage, argument.container, target), 0, argument.slot,
                                  at.slot + index, 0, node);
             write.offset = target.payload_offset;
@@ -1636,17 +1670,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         made: Cell = {storage: UnionStorage, container: 0, record: variant.parent, constant: 0, variant: -1,
                       kind: ValueKind};
         cells.append(made);
-        // A returned variant keeps its payload values: the return copies it.
         intrinsic := UnionMakeIntrinsic;
-        if (Returned(forest, item.node)) {
-            intrinsic = UnionMoveIntrinsic;
+        if (kept) {
+            intrinsic = UnionKeepIntrinsic + InResult;
         }
-        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + count,
+        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + shift + count,
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         slots.append(address);
-        code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + count, at.cell + 1 + count,
+        code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + count, at.cell + 1 + shift + count,
                                 0, 0, node));
         value: Slot = {storage: UnionStorage, kind: ValueKind};
         slots.append(value);

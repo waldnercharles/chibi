@@ -2347,7 +2347,7 @@ static const char *typed_enemy =
     "}\n"
     "HealthForLevel :: (level: int, base: int) -> int {\n"
     "    total := base\n"
-    "    i := 0\n"
+    "    i: int = 0\n"
     "    while i < level {\n"
     "        if i == 1 { total += Twice(5) } else { total += 5 }\n"
     "        i += 1\n"
@@ -2575,19 +2575,21 @@ static bool typed_cancelled(void *user)
 TEST_CASE(typed_prototype_budget_and_cancellation_bound_runtime)
 {
     prototype_registry registry = bridge_registry();
-    const char *source =
-        "package asset\n"
-        "\n"
-        "import data \"game:assets\"\n"
-        "\n"
-        "Spin :: (n: int) -> int { i := 0; while i < n { i += 1 } return i }\n"
-        "pub Build :: () -> byte[] { return "
-        "data.Encode(data.Object([data.Field.Named(\"name\", "
-        "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "
-        "data.Object([data.Field.Named(\"Health\", "
-        "data.Object([data.Field.Named(\"current\", "
-        "data.Value.Int(int64(Spin(1000)))), data.Field.Named(\"maximum\", "
-        "data.Value.Int(int64(Spin(1000))))]))]))])) }\n";
+    const char *source = "package asset\n"
+                         "\n"
+                         "import data \"game:assets\"\n"
+                         "\n"
+                         "Spin :: (n: int) -> int { i: int = 0; while i < n { "
+                         "i += 1 } return i }\n"
+                         "pub Build :: () -> byte[] { return "
+                         "data.Encode(data.Object([data.Field.Named(\"name\", "
+                         "data.Value.Text(\"Enemy\")), "
+                         "data.Field.Named(\"components\", "
+                         "data.Object([data.Field.Named(\"Health\", "
+                         "data.Object([data.Field.Named(\"current\", "
+                         "data.Value.Int(int64(Spin(1000)))), "
+                         "data.Field.Named(\"maximum\", "
+                         "data.Value.Int(int64(Spin(1000))))]))]))])) }\n";
     authoring_prototype_source_options options = { .instruction_budget = 100 };
     document = authoring_prototype_source_read_with_options(source, &registry, &options, error, sizeof error);
     REQUIRE(!document && strstr(error, "budget"));
@@ -2600,25 +2602,26 @@ TEST_CASE(typed_prototype_budget_and_cancellation_bound_runtime)
     REQUIRE(remaining <= 0);
     /* Find a sufficient single-field budget without asserting an opcode count.
      * The same budget must be shared by both fields in the second document. */
-    const char *single = "package asset\n"
-                         "\n"
-                         "import data \"game:assets\"\n"
-                         "\n"
-                         "Count :: () -> int { i := 0; while i < 8 { i += 1 } "
-                         "return i }\n"
-                         "pub Build :: () -> byte[] { return "
-                         "data.Encode(data.Object([data.Field.Named(\"name\", "
-                         "data.Value.Text(\"Enemy\")), "
-                         "data.Field.Named(\"components\", "
-                         "data.Object([data.Field.Named(\"Health\", "
-                         "data.Object([data.Field.Named(\"current\", "
-                         "data.Value.Int(int64(Count())))]))]))])) }\n";
+    const char
+        *single = "package asset\n"
+                  "\n"
+                  "import data \"game:assets\"\n"
+                  "\n"
+                  "Count :: () -> int { i: int = 0; while i < 8 { i += 1 } "
+                  "return i }\n"
+                  "pub Build :: () -> byte[] { return "
+                  "data.Encode(data.Object([data.Field.Named(\"name\", "
+                  "data.Value.Text(\"Enemy\")), "
+                  "data.Field.Named(\"components\", "
+                  "data.Object([data.Field.Named(\"Health\", "
+                  "data.Object([data.Field.Named(\"current\", "
+                  "data.Value.Int(int64(Count())))]))]))])) }\n";
     const char *double_field =
         "package asset\n"
         "\n"
         "import data \"game:assets\"\n"
         "\n"
-        "Count :: () -> int { i := 0; while i < 8 { i += 1 } return i }\n"
+        "Count :: () -> int { i: int = 0; while i < 8 { i += 1 } return i }\n"
         "pub Build :: () -> byte[] { return "
         "data.Encode(data.Object([data.Field.Named(\"name\", "
         "data.Value.Text(\"Enemy\")), data.Field.Named(\"components\", "

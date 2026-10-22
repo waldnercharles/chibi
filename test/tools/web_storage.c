@@ -14,6 +14,7 @@ static char driver_path[1024], log_path[1024];
 static yyjson_doc *result;
 
 /* Node runs the production browser bridge with only browser/FS seams replaced.
+ * Project contents are opaque transport markers, never compiler inputs.
  * Scenarios and assertions belong to the C dispatcher, not a second JS suite. */
 static const char *driver =
     "const vm=require('node:vm'), host=require('node:fs');\n"
@@ -26,8 +27,7 @@ static const char *driver =
     "const files=new Map(), dirs=new "
     "Set(['/','/projects','/projects/starter']);\n"
     "files.set('/projects/starter/project.chibi',new "
-    "TextEncoder().encode('name "
-    "Starter'));\n"
+    "TextEncoder().encode('starter-project-marker'));\n"
     "let held=false,active,maxSyncs=0;const durable=new Map(),syncs=[];\n"
     "const finish=(job,error)=>{if(!error){durable.clear();for(const [p,data] "
     "of job.files)"
@@ -54,7 +54,7 @@ static const char *driver =
     "let downloads=0,revision='a'.repeat(40),checksum,archive;\n";
 
 static const char *driver_launch =
-    "async launch :: fn(search=''){\n"
+    "async function launch(search=''){\n"
     " let ready,aborted='',released=false;const done=new Promise(r=>ready=r);\n"
     " const "
     "location={origin:'https://example.test',href:'https://example.test/game/"
@@ -95,7 +95,7 @@ static const char *driver_launch =
     "Object.assign(Module,{FS,chibiPublishedProject:'project.json'});"
     "vm.runInContext(code,context);\n"
     " if(!archive){archive=await Module.chibiZipFiles([['project.chibi',new "
-    "TextEncoder().encode('name Celeste')],\n"
+    "TextEncoder().encode('published-project-marker')],\n"
     " [mode==='traversal'?'../outside':'content/scene.chibi',new "
     "TextEncoder().encode('original')]]).arrayBuffer();\n"
     " checksum=require('node:crypto').createHash('sha256').update(Buffer.from("
@@ -106,10 +106,10 @@ static const char *driver_launch =
     "return "
     "{root:Module.arguments[1],aborted,released};\n"
     "}\n"
-    "async startImport :: fn(){const "
+    "async function startImport(){const "
     "{Module,inputs}=active,encode=text=>new TextEncoder().encode(text);"
-    "const buffer=await Module.chibiZipFiles([['project.chibi',encode('name "
-    "Imported')],"
+    "const buffer=await "
+    "Module.chibiZipFiles([['project.chibi',encode('imported-project-marker')],"
     "['content/scene.chibi',encode('imported')]]).arrayBuffer();"
     "Module.chibiImportProject();const input=inputs.at(-1);"
     "input.files=[{name:'imported.zip',arrayBuffer:async()=>buffer}];"
@@ -119,13 +119,14 @@ static const char *driver_run =
     "(async()=>{\n"
     " if(mode==='explicit'||saving){FS.mkdirTree('/workspace/"
     "saved');FS.writeFile('/"
-    "workspace/saved/project.chibi','name Saved');}\n"
+    "workspace/saved/project.chibi','saved-project-marker');}\n"
     " if(saving){FS.writeFile('/workspace/.last','saved');"
     "FS.writeFile('/workspace/saved/content/scene.chibi','original');"
     "for(const [p,data] of files)durable.set(p,data);}\n"
     " if(mode==='conflict'){FS.mkdirTree('/workspace/"
     "published-celeste-'+revision);FS.writeFile('/workspace/"
-    "published-celeste-'+revision+'/project.chibi','name Existing');}\n"
+    "published-celeste-'+revision+'/"
+    "project.chibi','existing-project-marker');}\n"
     " let outcome=await "
     "launch(mode==='explicit'||saving?'?project=saved':mode==='sample'?'?"
     "project-root="
@@ -152,7 +153,11 @@ static const char *driver_run =
     " held=true;let created='';if(mode==='save-import-failure'){created=await "
     "startImport();await settle();}"
     "else if(mode==='save-open-failure'){"
-    "created=JSON.parse(Module.chibiCreateProject('Created',1)).root;"
+    "created=JSON.parse(Module.chibiCreateProject('Created')).root;"
+    // The native SDK writes files between the browser's reservation and finish.
+    "FS.mkdirTree(created);FS.writeFile(created+'project.chibi','created-"
+    "project-marker');"
+    "Module.chibiFinishCreateProject(created,true);"
     "Module.chibiOpenProject(created,false);}else save('edited');const "
     "before=warning(),pendingStatus=status.textContent;"
     "timer();await settle();const during=warning();\n"
@@ -246,7 +251,7 @@ TEST_CASE(published_source_opens_instead_of_starter)
     REQUIRE(run("initial"));
     REQUIRE(yyjson_get_bool(field("released")));
     REQUIRE(!*text("aborted"));
-    REQUIRE(!strcmp(text("project"), "name Celeste"));
+    REQUIRE(!strcmp(text("project"), "published-project-marker"));
     REQUIRE(!strcmp(text("content"), "original"));
     REQUIRE(strstr(text("root"), "/workspace/published-celeste-") == text("root"));
     return true;
@@ -273,7 +278,7 @@ TEST_CASE(explicit_workspace_overrides_published_default)
 {
     REQUIRE(run("explicit"));
     REQUIRE(!strcmp(text("root"), "/workspace/saved/"));
-    REQUIRE(!strcmp(text("project"), "name Saved"));
+    REQUIRE(!strcmp(text("project"), "saved-project-marker"));
     REQUIRE(yyjson_get_int(field("downloads")) == 0);
     return true;
 }
@@ -298,7 +303,7 @@ TEST_CASE(download_failure_stops_startup)
 TEST_CASE(explicit_sample_overrides_published_default)
 {
     REQUIRE(run("sample"));
-    REQUIRE(!strcmp(text("project"), "name Starter"));
+    REQUIRE(!strcmp(text("project"), "starter-project-marker"));
     REQUIRE(yyjson_get_int(field("downloads")) == 0);
     return true;
 }
@@ -306,7 +311,7 @@ TEST_CASE(explicit_sample_overrides_published_default)
 TEST_CASE(new_project_overrides_published_default)
 {
     REQUIRE(run("new"));
-    REQUIRE(!strcmp(text("project"), "name Starter"));
+    REQUIRE(!strcmp(text("project"), "starter-project-marker"));
     REQUIRE(yyjson_get_int(field("downloads")) == 0);
     return true;
 }

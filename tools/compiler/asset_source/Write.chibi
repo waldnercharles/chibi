@@ -150,8 +150,8 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
             }
         }
         kind := kinds[at];
+        assert(length(stack) <= MaxDepth, "Asset source exceeds depth quota");
         if (kind == 6 || kind == 7) {
-            assert(length(stack) < MaxDepth, "Asset source exceeds depth quota");
             if (kind == 6) { parts.append(format_text("{}.Object([", alias)); }
             else { parts.append(format_text("{}.List([", alias)); }
             stack.append(at);

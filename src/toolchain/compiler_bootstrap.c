@@ -148,13 +148,19 @@ static bool compiled_contract(compiler_host *host, contract *c, char *error, siz
     yyjson_val *version = yyjson_arr_get(values, 0),
                *minimum = yyjson_arr_get(values, 1);
     int64_t v = yyjson_get_sint(version), m = yyjson_get_sint(minimum);
-    bool valid = yyjson_arr_size(results) == 1 && yyjson_arr_size(values) == 2 && yyjson_is_int(version) &&
+    bool valid = yyjson_arr_size(results) == 1 &&
+                 yyjson_arr_size(values) == 2 && yyjson_is_int(version) &&
                  yyjson_is_int(minimum) && m >= 1 && v >= m && v <= INT32_MAX;
     if (valid) {
         *c = (contract){ .version = (int)v, .minimum = (int)m };
     } else {
-        snprintf(error, size, "Compiled BootstrapContract needs a version and a minimum from 1 to it: %.140s",
-                 called ? (result.json ? result.json : "execution failed") : result.diagnostic);
+        snprintf(
+            error,
+            size,
+            "Compiled BootstrapContract needs a version and a minimum from 1 "
+            "to it: %.140s",
+            called ? (result.json ? result.json : "execution failed") : result.diagnostic
+        );
     }
     yyjson_doc_free(doc);
     free(result.json);
@@ -401,12 +407,7 @@ static yyjson_mut_val *record_sources(
 }
 
 /* The manifest of the seed's closure, its sources and its target. */
-static yyjson_mut_doc *manifest(
-    const compiler_bootstrap *b,
-    const seed *s,
-    char *error,
-    size_t size
-)
+static yyjson_mut_doc *manifest(const compiler_bootstrap *b, const seed *s, char *error, size_t size)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *sources = record_sources(b, s, doc, error, size);
@@ -547,7 +548,8 @@ static bool read_artifact(const compiler_bootstrap *b, artifact *a, char *error,
             error,
             size,
             "the artifact has bootstrap version %" PRId64
-            " and minimum %" PRId64 "; it needs a version and a minimum from 1 to it",
+            " and minimum %" PRId64
+            "; it needs a version and a minimum from 1 to it",
             version,
             minimum
         );
@@ -669,9 +671,15 @@ static bool recover(
     bool compatible = next && compiled_contract(next, &current, report, size);
     int64_t artifact_version = yyjson_get_sint(yyjson_obj_get(a->root, "version"));
     if (compatible && artifact_version < current.minimum) {
-        snprintf(report, size, "the artifact has bootstrap version %" PRId64
-                 ", older than %d, the oldest these compiler sources support; produce a newer one from stage zero",
-                 artifact_version, current.minimum);
+        snprintf(
+            report,
+            size,
+            "the artifact has bootstrap version %" PRId64
+            ", older than %d, the oldest these compiler sources support; "
+            "produce a newer one from stage zero",
+            artifact_version,
+            current.minimum
+        );
         compatible = false;
     }
     if (!compatible) {

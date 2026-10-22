@@ -37,7 +37,7 @@ asset_source_span *asset_source_highlight(const char *text)
                                   highlights[i].cls })
         );
     }
-    afree(highlights);
+    free(highlights);
     script_syntax_free(syntax);
     return spans;
 }

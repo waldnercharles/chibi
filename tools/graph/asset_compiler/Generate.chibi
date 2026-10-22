@@ -1,8 +1,6 @@
-package asset_compiler_build
+package asset_compiler_stage
 
 import strings "core:strings"
-
-Join :: (parts: string[]) -> string { return strings.Join(parts, ""); }
 
 Quote :: (text: string) -> string {
     parts := ["\""];
@@ -39,14 +37,29 @@ Array :: (values: string[]) -> string {
 
 Sources :: (folder: string) -> string[] {
     paths: string[] = [];
-    for (directory in build.list_directory(folder)) {
-        path := Join([folder, "/", directory]);
-        if (build.file_kind(path) != "directory") { continue; }
-        for (file in build.list_directory(path)) {
-            if (strings.HasSuffix(file, ".chibi")) { paths.append(Join([directory, "/", file])); }
-        }
+    for (name in build.list_directory(folder)) {
+        path := Join([folder, "/", name]);
+        if (build.file_kind(path) == "directory") {
+            for (nested in Sources(path)) { paths.append(Join([name, "/", nested])); }
+        } else if (strings.HasSuffix(name, ".chibi")) { paths.append(name); }
     }
     return paths;
+}
+
+pub InventoryDirectories :: () -> string[] {
+    return ["tools/compiler/package_compiler", "tools/compiler/asset_compiler",
+            "tools/compiler/asset_source", "tools/compiler/asset_packaging", "packages/core", "packages/game",
+            "tools/graph/asset_compiler"];
+}
+
+pub Inventory :: (root: string) -> string {
+    entries: string[] = [];
+    for (directory in InventoryDirectories()) {
+        for (path in Sources(Join([root, "/", directory]))) {
+            entries.append(Join([directory, "/", path, "\n"]));
+        }
+    }
+    return Join(entries);
 }
 
 Read :: (root: string, paths: string[]) -> string[] {
@@ -103,6 +116,7 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // Explicit filesystem snapshots and atomic products; source compilation and
 // resource generation execute ordinary Chibi in the prepared compiler host.
 pub Generate :: (root: string, host: string, folder: string, target: string) -> bool {
+    inventory := Inventory(root);
     native_facts := Join([folder, "/native_target.json"]);
     if (!build.make_directory(folder) || build.run([host, "--target-json", native_facts]) != 0) { return false; }
     native_target := build.trim(build.read_file(native_facts));
@@ -182,7 +196,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
         records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(build.hash_text(sources[index])), "}"]));
         index += 1;
     }
-    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json"]) {
+    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json", "tools/graph/asset_compiler/Generate.chibi"]) {
         checksum := build.hash_file(Join([root, "/", path]));
         records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
         stamps.append(Join([checksum, " ", path, "\n"]));
@@ -190,17 +204,23 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
     records.append(Join(["{\"path\":\"tools/compiler/asset_compiler/CompilerSources.txt\",\"sha256\":",
                          Quote(build.hash_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"]))), "}"]));
     stamps.append(Join([build.hash_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])), " tools/compiler/asset_compiler/CompilerSources.txt\n"]));
-    stamps.append(Join([build.hash_file(Join([root, "/tools/graph/AssetCompiler.chibi"])), " tools/graph/AssetCompiler.chibi\n"]));
+    stamps.append(Join([build.hash_file(Join([root, "/tools/toolchain/AssetCompiler.chibi"])), " tools/toolchain/AssetCompiler.chibi\n"]));
     stamps.append(Join([build.hash_file(Join([root, "/tools/graph/asset_compiler/Stage.chibi"])), " tools/graph/asset_compiler/Stage.chibi\n"]));
     records.append(Join(["{\"path\":\"tools/graph/asset_compiler/Stage.chibi\",\"sha256\":",
                          Quote(build.hash_file(Join([root, "/tools/graph/asset_compiler/Stage.chibi"]))), "}"]));
-    records.append(Join(["{\"path\":\"tools/graph/AssetCompiler.chibi\",\"sha256\":",
-                         Quote(build.hash_file(Join([root, "/tools/graph/AssetCompiler.chibi"]))), "}"]));
+    records.append(Join(["{\"path\":\"tools/toolchain/AssetCompiler.chibi\",\"sha256\":",
+                         Quote(build.hash_file(Join([root, "/tools/toolchain/AssetCompiler.chibi"]))), "}"]));
     manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
                       Quote(build.hash_file(artifact)), ",\"resource_sha256\":",
                       Quote(build.hash_file(Join([folder, "/asset_compiler_packaged.c"]))),
                       ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
-    if (!build.write_file(Join([folder, "/sources.sha256"]), Join(stamps)) ||
+    if (Inventory(root) != inventory) {
+        build.report("asset compiler source inventory changed during generation");
+        return false;
+    }
+    if (!build.write_file(Join([folder, "/inventory.txt"]), inventory) ||
+        !build.write_file(Join([folder, "/inventory-directories.txt"]), Join([strings.Join(InventoryDirectories(), "\n"), "\n"])) ||
+        !build.write_file(Join([folder, "/sources.sha256"]), Join(stamps)) ||
         !build.write_file(Join([folder, "/manifest.json"]), manifest) ||
         !build.write_file(Join([folder, "/target.json"]), target) ||
         !build.embed_file(artifact, Join([folder, "/asset_compiler_blob.inc"]), "asset_compiler_blob")) { return false; }
@@ -211,14 +231,3 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
     return true;
 }
 
-pub Build :: () -> int {
-    arguments := build.arguments();
-    if (length(arguments) < 2 || length(arguments) > 3) {
-        build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON]");
-        return 2;
-    }
-    target := "";
-    if (length(arguments) == 3) { target = build.read_file(arguments[2]); }
-    if (!Generate(build.root(), arguments[0], arguments[1], target)) { return 1; }
-    return 0;
-}

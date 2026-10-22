@@ -56,6 +56,9 @@ compiler_host *compiler_host_load(const void *, size_t, behavior_backend, char *
  * parsing remain capabilities of the separately loaded compiler artifact. */
 compiler_host *compiler_host_load_values(const void *, size_t, behavior_backend, char *, size_t);
 void compiler_host_free(compiler_host *);
+/* Resolve an owned-value callable without executing it. Requires the specified
+ * argument count and exactly one primitive byte[] result. */
+bool compiler_host_accepts_byte_entry(compiler_host *, uint64_t entry, int arguments, char *, size_t);
 /* Compile's last six arguments for this host, which a compile for it takes:
  * the value layout, prepared ABI, instruction names, the natives it may call
  * (data functions with no flow, outcomes or suspension), their ports, and each

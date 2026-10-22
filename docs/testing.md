@@ -17,18 +17,118 @@ requirements or clear a PR hold. The broad suites below still need migration.
 
 ## Run the checks
 
+### Compiled asset stabilization hold (2026-10-21)
+
+The `native`, `projects`, `materials`, `language` and `wasm` aggregates are
+quarantined. Migrated asset routes now compile and evaluate Chibi; their previous
+parse-only workload descriptions and timing evidence do not admit this cold work.
+The policy retains historical records and group membership, reports each hold,
+and refuses execution before starting a child. A successful build means these
+checks compiled; it does not mean their migrated assertions ran.
+
+Affected standalone document, prototype, graph, project and scene routes are
+also held in `HELD_TOOLS`. Existing Studio acceptance routes, including their
+agent GPU entrypoints, are held because cold startup now compiles migrated UI
+assets before their scene fixtures begin. `material-destruction` loads the migrated
+CaveField module; the language program and prototype cases serialize or load compiled
+assets. These dependencies also make `make test-materials` and
+`make test-language-all` stale. Pure C and semantic selectors without these
+routes remain available individually. `make test` / `make test-short` and the
+bare C tooling aggregate `make test-tools` retain their separate admissions.
+The complete bare tooling check passed 127 cases and 34,870 assertions in
+21.128 seconds (`.chibi/asset-stabilization-test-tools-second.log`). It does not
+dispatch the standalone browser-storage cases. The separately reviewed complete
+`web-storage` check passed 19 cases and 97 assertions in 1.934 seconds
+(`.chibi/asset-stabilization-web-storage-second.log`): 18 project storage scenarios
+with tiny fake browser/FS seams and one browser-export C syntax check. This
+exercises the production project bridge, not the separate compiled-cache browser
+adapter. Clear each hold only after reviewing its complete changed workload and
+recording one supervised measurement within the existing 60-second ceiling.
+
+The standalone cache check is admitted as
+`python3 tools/test_policy.py tool asset-cache`: two cases, 36 assertions,
+25.669 seconds, Debug with sanitizers off and bytecode, recorded in
+`.chibi/asset-cache-second.log`. It uses four cold compilations, one fresh worker
+with a 15-second child limit, tiny framing records and retention metadata.
+This result covers neither browser storage nor transport or aggregate checks.
+The separate real-browser cache check is admitted as
+`python3 tools/test_policy.py tool asset-cache-browser`. Four fresh Wasm page
+sessions cover persistence, reload with removal and corrupt-record repair, actual
+IndexedDB version failure with memory fallback, and blocked restore with the
+five-second startup deadline and late-callback isolation. The complete command
+passed five C cases and 32 assertions in 9.121 seconds
+(`.chibi/asset-cache-browser-four-first.log`); exact reviewed source, adapter,
+Wasm and Chrome hashes are in `.chibi/asset-cache-browser-four-hashes.log`.
+It uses four-byte records, no compiler calls, GPU work or rendered frames. This
+standalone result does not admit an aggregate or Studio startup.
+
+The native tooling driver launches a support-only Release Wasm consumer, built
+against installed `dist/web-sdk` (measured SDK identity
+`7409ee8abcd06e2edd55d965f690c82c5e4c107ef5c6cc76877bad4d5b0faab6`).
+Build that consumer separately, with the production adapter supplied explicitly:
+
+```sh
+emcmake cmake -S test/tools -B build-web-cache-browser \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DChibi_DIR="$PWD/dist/web-sdk/lib/cmake/Chibi" \
+  -DCHIBI_TEST_ASSET_CACHE_ADAPTER="$PWD/../chibi-studio/web/asset_cache.js"
+cmake --build build-web-cache-browser --target test_tools
+CHIBI_TOOLS_BUILD_DIR=build-tools python3 tools/test_policy.py tool asset-cache-browser
+```
+
+The tool route defaults `CHIBI_ASSET_CACHE_BROWSER_ROOT` to the absolute
+`build-web-cache-browser` directory; set it explicitly for another reviewed
+consumer. Adapter SHA-256 for this measurement is
+`18fc3b173c77a7294e1cfdb22e8cd4793038665f78d89fc0dd178778059363ac`.
+
+The default Debug `--asset-transport` command timed out after 60.094 seconds
+with no final case summary (`.chibi/asset-transport-third.log`); it remains held.
+A separately reviewed installed Release run passed three cases and 1039 assertions
+in 27.318 seconds (`.chibi/asset-transport-release-current.log`) after the SDK
+was rebuilt for the highlight ownership fix. The earlier 28.742-second pass is
+retained in `.chibi/asset-transport-release.log`. Only
+`python3 tools/test_policy.py tool asset-transport-release` admits that exact
+consumer: it checks Release configuration, installed SDK identity, compiler
+artifact, test fixture and executable hashes, with persistent cache disabled.
+Changed identities require renewed admission. This focused Release result does
+not clear Debug or aggregate holds. Keep the complete workload and deadline.
+
+
+The CPU Studio model check is separately admitted as
+`python3 tools/test_policy.py tool compiled-asset-edit-model`. Its fixed Release
+binary exercises UInt parameter edits, computed field overrides, Reset, exact
+Undo/Redo, Save/Reload and external-source merge/conflict preservation. The
+final registered route passed one case and 73 assertions in 12.145 seconds
+(`.chibi/asset-final-model-tool.log`) against Release SDK
+`c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325`.
+With disk cache disabled by `CHIBI_ASSET_CACHE_DIR=''`, it made eight cold
+compilation attempts, 39 RAM cache hits and no persistent cache hits. Exact
+binary, fixture and configuration evidence is in
+`.chibi/asset-final-model-tool-evidence.json`. The earlier fresh-private-cache
+measurement passed in 14.466 seconds with eight optional persistent writes
+([model4 native log](/Users/cwaldner/.codex/visualizations/2026/10/21/01a160a6-7daa-74e1-b595-8af541a773eb/compiled-asset-edit/model4/native.log)).
+The policy checks the exact Release configuration, SDK identity, executable and
+acceptance fixture hashes; changed identities need renewed admission. This CPU model result admits no Studio app
+startup, rendering, Debug configuration or aggregate.
+
+The model regression exposed a heap ownership error in
+`asset_source_highlight`: the canonical syntax API returns a normal heap array,
+but the adapter freed it as a stretchy array. The adapter now calls `free`;
+the successful model measurement used the rebuilt SDK containing that fix.
+
 The engine build compiles the full test drivers, `test_tools` and
-`test_language`, with every native, compiler and renderer package. CI runs each
-group below on every push to `main` and every pull request into it that changes
-more than documentation, and `make build` links `chibi`, `chibi-compile` and
+`test_language`, with every native, compiler and renderer package. CI is
+configured to request the historical group routes below on pushes to `main`
+and pull requests that change more than documentation; the current holds above
+apply. `make build` links `chibi`, `chibi-compile` and
 `chibi-player` in the same tree.
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # admitted native group, one 60-second deadline
-make test-materials      # the material simulation selectors, one 60-second deadline
-make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
-make test-language-all   # admitted native language aggregate, one 60-second deadline
+make test-native         # HELD: migrated cold asset work lacks aggregate admission
+make test-materials      # HELD: CaveField now compiles as an asset
+make test-projects       # HELD: migrated projects and assets
+make test-language-all   # HELD: compiled asset program/prototype routes
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
 make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
 make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
@@ -98,7 +198,9 @@ window, which needs a display and a GPU driver the CI job does not set up, so
 they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, the four groups and `make test-tools` on Linux and macOS. On
+CI is configured to request the build, four groups and `make test-tools` on
+Linux and macOS. During the stabilization hold above, the supervisor refuses
+those groups; these refusals are not passes. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
@@ -2130,7 +2232,8 @@ most two seconds, with shorter deliberate timeout/cancellation budgets; every
 native case clamps its budget to the inherited deadline.
 
 Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
+errors, timeout, active cancellation,
 and descendants whose leader exits first. The private host executes both the
 controlled source and unchanged recording workflow on bytecode and SLJIT, with
 actual backend counters and failure-path assertions. Compiler-enabled full
@@ -2175,16 +2278,31 @@ debug directory, which depends on where a build is), the graph finds the
 rest of its profile on the machine and writes the compile commands of every
 target it owns, including the third-party archive's sources and include
 directories, the options of single sources and C++ and Objective-C sources,
-and each of them (745 on macOS) must equal `compile_commands.json`'s for the same source
+and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
 in the same target, split as the shell splits it, apart from the object path
 and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (eleven on macOS,
-eight elsewhere) to equal its executable's `build.ninja` statement, with the
+requires each link command it writes in `link_commands.json` (thirteen on macOS,
+eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
 C++ compiler for an executable CMake links as C++, apart from where objects, the
 output and archives sit. A third builds the `chibi` launcher with a compiler
 that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
-are compared, and a manual full build links and runs them. About 23 s.
+are compared, and a manual full build links and runs them. About 25 s.
+
+`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`--commands-only on --target test_tools`: its link commands name
+`test_tools` and the programs it runs (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, the build and compiler hosts), where CMake writes them, and
+no other test driver. macOS only. About 15 s.
+
+`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+the launcher and `chibi_ctl` with a compiler that always fails: before any
+compile it writes `share/chibi` and `controller_resources`, all 213 files equal
+to CMake's (the build identity `engine.json` and the core and documentation
+sources) or, for the shaders, which CMake copies to `controller_resources`
+only when it configures, to `src/render/shaders`; an unchanged run leaves
+the identity's stamps. A second case runs it for `test_language`, whose
+`corpus.txt` must equal CMake's. macOS only. About 32 s.
 
 `python3 tools/test_policy.py tool build-graph-support` runs three cases in a
 copy of the sources: about ten runs that build only `chibi_support` check
@@ -2222,8 +2340,14 @@ equal CMake's byte for byte, an unchanged run neither reruns reflect nor
 compiles, and losing an output reruns it. Another builds
 `chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
 with private symbols: they equal CMake's, staging keeps them, and an
-unchanged run compiles nothing and leaves their stamps. About 19 s at a load
-average of 12.
+unchanged run compiles nothing and leaves their stamps. On macOS a third
+builds `test_behavior_consumer`, which writes the language tests' configured
+headers (byte initializers, C string lines and copies); they equal CMake's
+and keep their stamps when unchanged. A fourth builds
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
+and `export_compiler.h`, the profile's compiler and C flags; they equal
+CMake's and keep their stamps when unchanged. About 34 s at a load
+average of 4.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

@@ -31,6 +31,17 @@ option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
+option(CHIBI_ASSET_COMPILER_RECOVERY "Permit bootstrap resources while recovering build tools; disables installation" OFF)
+# Preflight is registered before every install rule, including notices/headers,
+# so rejected recovery or stale snapshots cannot alter the destination prefix.
+if(CHIBI_ASSET_COMPILER_RECOVERY)
+    install(CODE "message(FATAL_ERROR \"Recovery builds cannot be installed; regenerate resources and disable CHIBI_ASSET_COMPILER_RECOVERY\")" ALL_COMPONENTS)
+endif()
+if(CHIBI_SDK_BUILD_COMPILER)
+    include(asset_compiler_resource.cmake)
+    install(CODE "set(ROOT \"${CHIBI_SDK_ROOT}\")\nset(RESOURCE \"${asset_compiler_resource}\")\ninclude(\"${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake\")" ALL_COMPONENTS)
+endif()
+include(licenses.cmake)
 # Prebuilt libraries and the third-party sources the SDK compiles.
 include("${CHIBI_SDK_ROOT}/cmake/third_party.cmake")
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
@@ -90,6 +101,8 @@ function(chibi_sdk_headers target visibility)
 endfunction()
 
 add_library(chibi_support STATIC
+    "${CHIBI_SDK_ROOT}/src/support/binary_cache.c"
+    "${CHIBI_SDK_ROOT}/src/support/sha256.c"
     "${CHIBI_SDK_ROOT}/src/support/arena.c"
     "${CHIBI_SDK_ROOT}/src/support/file_io.c"
     "${CHIBI_SDK_ROOT}/src/support/text_edit.c"
@@ -105,7 +118,7 @@ if(CHIBI_WEB_THREADS)
         "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}" -sPTHREAD_POOL_SIZE_STRICT=2
         -sALLOW_MEMORY_GROWTH=1)
 endif()
-set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h support/text_edit.h
+set(support_headers support/binary_cache.h support/sha256.h support/arena.h support/array.h support/xalloc.h support/rcss_map.h support/text_edit.h
     support/enum.h support/cos_sin.h support/file_io.h support/math.h)
 if(WIN32)
     # C sources that use the SDK get the POSIX calls the Microsoft runtime lacks.

@@ -711,11 +711,6 @@ def assemble(build, output, kind):
         docs = stage / 'share/chibi/docs'
         docs.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'sdk/README.md', docs / 'sdk.md')
-        for name in ('LICENSE', 'LICENSE.md', 'LICENSE.txt'):
-            if (ROOT / name).is_file():
-                licenses = stage / 'share/chibi/licenses/chibi'
-                licenses.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(ROOT / name, licenses / name)
         engine = engine_manifest(stage, compiled)
         files = package_files(stage)
         vendor = stage / 'lib/cmake/Chibi/ChibiDesktopDependencies.cmake'

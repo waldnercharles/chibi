@@ -396,6 +396,32 @@ static bool byte_type(const pin_value *value, pin_container container)
     return value->type == PIN_U8 && value->container == container &&
            !value->record && !value->type_name;
 }
+bool compiler_host_accepts_byte_entry(
+    compiler_host *host,
+    uint64_t entry,
+    int arguments,
+    char *error,
+    size_t error_size
+)
+{
+    if (!host || !entry || arguments < 0) {
+        message(error, error_size, "invalid compiler byte entry query");
+        return false;
+    }
+    const behavior_function *function = entry_function(host, entry, error, error_size);
+    if (!function) {
+        return false;
+    }
+    int argument_count, result_count;
+    behavior_function_arguments(function, &argument_count);
+    const pin_value *results = behavior_function_results(function, &result_count);
+    if (argument_count != arguments || result_count != 1 ||
+        !byte_type(&results[0], PIN_CONTAINER_ARRAY)) {
+        message(error, error_size, "compiler byte entry has an incompatible signature");
+        return false;
+    }
+    return true;
+}
 /* A byte result's storage: its header, its items as values with growth's spare
  * capacity, and the copy of its octets. */
 #define OUTPUT_STORAGE                                                         \

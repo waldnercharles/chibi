@@ -19,6 +19,9 @@ typedef struct
     int library_count;
     const asset_source_collection *collections;
     int collection_count;
+    /* NULL selects CHIBI_ASSET_CACHE_DIR or the platform user cache. Empty
+     * disables persistent storage. The caller retains explicit paths. */
+    const char *cache_directory;
     uint64_t compile_budget, evaluation_budget;
     bool (*cancelled)(void *user);
     void *user;
@@ -33,7 +36,15 @@ typedef struct
 /* Register one immutable packaged artifact/source snapshot. Caller retains it
  * for subsequent default reads. Set before concurrent reads; NULL clears it. */
 void asset_source_set_default(const asset_compiler_options *);
-/* Releases this thread's compiler and bounded prepared-source cache. */
+typedef struct
+{
+    uint64_t memory_hits, persistent_hits, compile_attempts;
+} asset_compiler_cache_stats;
+/* Hits count validated prepared-code reuse; attempts count CompileBytes calls.
+ * Reading statistics does not change execution or enable runtime observers. */
+asset_compiler_cache_stats asset_source_cache_stats();
+/* Releases this thread's compiler/memory cache and resets its statistics.
+ * Persistent storage remains available to subsequent calls and processes. */
 void asset_source_release_thread();
 /* Generated SDK resource adapter, target-compatible and immutable. */
 const asset_compiler_options *asset_compiler_packaged_options();

@@ -81,7 +81,8 @@ Missing allowed names read as empty strings; other names are capability errors.
 `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
 1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
-256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
+1,023 arguments totaling at most 64 KiB, as many as the process layer passes
+and about twice the 497 of `test_tools`' link. A step's own stdout and stderr each hold up to
 1 MiB for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
@@ -216,6 +217,7 @@ interprocess lock they needed, went away rather than moved.
 | `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
 | `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
 | `build.replace(text, find, with) -> string` | Text with every occurrence of a non-empty `find` replaced by `with`, left to right, in one native pass; `core:strings.ReplaceAll` scans byte by byte in the interpreter, and rewriting Cute's 96 KB of codec headers took it 11 s. A result past the text limit fails the program. |
+| `build.byte_list(path) -> string` | A regular file's bytes as `0xHH,` for each, the C initializer CMake writes from `file(READ ... HEX)` and its `0x\\1,` replacement, so embedding a source needs no Chibi loop. At most 3.2 MiB of input, a fifth of the text limit. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -343,7 +345,15 @@ standard (`gnu23`, or `gnu17` for Box2D and Box3D's `C_STANDARD 17`), whether it
 is position-independent (`-fPIC`) and embedded files. A generated source is a
 `build/` path, below the build directory where CMake writes it. An
 `Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT with
-`build.embed_file`, before any compile. A target whose `Generator` is
+`build.embed_file`, before any compile. A header set's `Configures` entry
+`HEADER=INPUT` writes HEADER below its private root as CMake's
+`configure_file` does when its text changed, and staging keeps it: a
+`.in` INPUT with each `@NAME@` of the target's `Substitutions` replaced
+(`bytes:PATH` through `build.byte_list`, `cstring:PATH` as C string lines),
+any other INPUT copied; the language tests embed the Chibi sources they
+compile this way. A source's own defines (`SourceDefines`, CMake's
+`COMPILE_DEFINITIONS` source property) follow the target's, with
+`{source_root}`, `{build_type}` and `{sha256:PATH}` filled in. A target whose `Generator` is
 `reflect` first makes the graph build `reflect` and stage the math headers,
 then run it as root `CMakeLists.txt`'s `generate_runtime_registry` does, to
 write `BUILD/generated/native_types.c` and `native_capabilities.c`; `c.Step`
@@ -353,11 +363,14 @@ instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree;
-`build-graph-support` compiles only `chibi_support`. Building every library
-the graph owns is a manual check, about 280 s with sanitizers at a load average of 12;
+`build-graph-support` compiles only `chibi_support`. Building everything the
+graph owns, `test_tools` included, is a manual check, about 32 minutes with
+sanitizers and no compiler cache at a load average of 5;
 `build-graph-archive` compiles SLJIT and a math-header library from the
-archive, and `build-graph-generated` generates the native type sources and
-rewrites the codec headers.
+archive, `build-graph-generated` generates the native type sources and
+rewrites the codec headers, `build-graph-programs` checks that naming
+`test_tools` also builds the programs it runs, and `build-graph-resources`
+that the launcher's and `chibi_ctl`'s resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -373,7 +386,8 @@ The graph also links executables. `engine.Programs` lists them (the
 reflection tool `reflect`, the build host, the compiler host, the `chibi`
 launcher and the host, concurrency, policy-worker and benchmark test drivers,
 the first two over the header set the graph stages below
-`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
+player, `chibi-compile`, `chibi_ctl`, `test_language` and `test_tools`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
@@ -383,9 +397,36 @@ then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
 as it records compiles. An object library (`ObjectLibrary`, as
 `chibi_build_host`) compiles but is not archived; an executable's
-`LinkedObjects` put its objects before the executable's own. Every run
+`LinkedObjects` put its objects before the executable's own. On macOS the
+graph also compiles the tooling tests' SDK contract consumers, object
+libraries over staged SDK headers and the fixtures it copies to
+`BUILD/test/tools/testing/include`, as `test/tools/CMakeLists.txt` does,
+and links `test_tools` over them. A target's defines take the same
+placeholders as a source's, and `{program:NAME}` names where an executable
+is written: below the build directory where CMake writes it
+(`ProgramDirectory`: `sdk/` for the SDK's programs, `bin/chibi_ctl`, and the
+test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
+writes the profile's C compiler and C flags, then ARGUMENT, as C string
+initializer lines; `test_tools` exports C with them. An include of `.` is
+the source root.
+A target's `Resources` (`DESTINATION=SOURCE`; a directory copies every file
+below it) are written before any compile, as root `CMakeLists.txt`
+configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
+`chibi test`, `chibi doc` and the players read as installed ones do, and
+`chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
+identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
+`sdk/artifact_formats.cmake` does: the SDK version from
+`sdk/CMakeLists.txt`, the project version from `src/assets/project.h`, the
+platform, processors and backends, and each of `ArtifactFormats`' versions
+with the SHA-256 of the sources and headers that own it. A target's
+`SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
+ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+`test/language/CMakeLists.txt` writes the language corpus `test_language`
+reads.
+Every run
 writes `BUILD/link_commands.json` beside the compile commands. Naming a
-program with `--target` also builds the libraries it links. `reflect` takes libclang from the profile
+program with `--target` also builds the libraries it links and the programs
+it runs (`Runs`, CMake's `add_dependencies`), with theirs. `reflect` takes libclang from the profile
 (`--libclang-include`, `--libclang-library`), and the graph finds clang's
 builtin headers as `tools/reflect/resource.cmake` does, by asking that
 libclang's `clang -print-resource-dir`.
@@ -409,6 +450,42 @@ quote in it, because `core:strings.ReplaceAll` scans byte by byte in the
 interpreter: with 218 commands it took 7 s, and then 2.4 s.
 
 Windows keeps CMake: the build host has no Windows process support yet.
+
+## Compiled asset resources
+
+`tools/toolchain/AssetCompiler.chibi` is the build-host entry point. Run it with
+`--collection graph=tools/graph`; `graph:asset_compiler` owns the shared generator
+and staging code. It recovers the authored Compiler, compiles the asset facade
+for exact host-exported target facts, and invokes the authored `Packaged` writer.
+The SDK embeds the matching `native64` or `wasm32` artifact and immutable library
+sources. Regeneration commands are in
+[`tools/compiler/asset_compiler/bootstrap/README.md`](../tools/compiler/asset_compiler/bootstrap/README.md).
+
+Source fingerprints cover every captured file. An authored directory inventory
+also detects added modules. The graph builds its independent compiler host before
+regenerating stale resources in process. CMake verifies the recorded files and
+inventory before compiling the asset service and before any installation rule.
+`CHIBI_ASSET_COMPILER_RECOVERY=ON` permits the previous checksum-verified snapshot
+only to recover missing build tools; installation is rejected before modifying
+the prefix. Turn recovery off after regeneration.
+
+On the local integration tree on 2026-10-22, native engine/test-driver compilation,
+native and Web SDK packaging, native and Web Studio builds, and installed and
+APFS-relocated SDK public-header consumers passed. Native SDK identity:
+`60ca0af147227a0e71f8b3ffcd12b8fca02d16be83b1e922a3d49535680bd41b`;
+Web SDK identity:
+`ade4f33742460f11730a5f538e735268d55bdf25f54d646308f08b78a90a8fba`.
+These are build results, not full runtime/UI suite results.
+
+A separate production-supervised guard check passed in 2.670 seconds under one
+60-second deadline. It rejected recovery installation into absent and sentinel
+prefixes without creating or changing files. Both the authored readiness check
+and CMake verifier accepted a cloned snapshot, rejected one added scratch-only
+module, then accepted the restored inventory. Scratch was removed; local logs
+are `.chibi/asset-build-guards.log`, `.chibi/asset-final-build-evidence.json`,
+`.chibi/asset-final-sdk-consumer-installed.log` and
+`.chibi/asset-final-sdk-consumer-relocated.log`. This evidence does not establish the
+final installed workflow without native compiler executables or complete M6.
 
 ## Bootstrap and backend milestones
 

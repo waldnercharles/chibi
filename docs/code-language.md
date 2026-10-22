@@ -1,5 +1,11 @@
 # The Chibi language
 
+The three code blocks marked `SPDX-License-Identifier: MIT` are copy-paste
+examples under [the MIT license](../COPYING.EXAMPLES). Keep their copyright
+and permission notice when redistributing them. Other examples retain their
+[documented license](../LICENSE.md); this carveout does not cover the runtime,
+core libraries, generated scaffolding, or third-party material.
+
 Chibi uses `.chibi` files for executable functions and typed asset configuration.
 The authored compiler handles both; data modules import `game:assets` and
 export `Build() -> byte[]`.
@@ -160,6 +166,9 @@ A function names its parameters and result type. Calls pass arguments in
 parameter order.
 
 ```chibi
+// chibi-mit-example: damage-functions
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     DamageFor :: (level: int) -> int {
         return level * 2
@@ -210,6 +219,9 @@ Parameters normally receive value copies. A `ref` parameter writes to the
 caller's mutable value. A call needs no address-of operator.
 
 ```chibi
+// chibi-mit-example: reference-parameter
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     AddScore :: (score: ref int, points: int) {
         score += points
@@ -338,6 +350,9 @@ Array iteration binds the item first and an optional index second.
 Ordinary iteration takes a snapshot before the loop.
 
 ```chibi
+// chibi-mit-example: weighted-total
+// SPDX-FileCopyrightText: 2026 Charles Waldner
+// SPDX-License-Identifier: MIT
 Example :: library {
     WeightedTotal :: (scores: int[]) -> int {
         total: int = 0

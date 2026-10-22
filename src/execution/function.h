@@ -338,6 +338,9 @@ typedef struct behavior_function_context
     /* Invocation-owned copies outlive locals, suspension and returned values.
      * The caller resets this storage only after those values are released. */
     void *value_storage;
+    /* Where a function builds the locals it returns: its caller's value
+     * storage for a call, otherwise its own. */
+    void *result_storage;
     const char *(*copy_string)(void *storage, const char *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);

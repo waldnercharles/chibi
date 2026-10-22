@@ -711,10 +711,34 @@ Slice 18, 2026-10-21: the small test drivers. The graph builds and links
 which link no library, staging the host tests' headers below
 `BUILD/testing/host/include`: 745 compile commands and eleven link commands
 on macOS, equal to CMake's.
-Next: `test_tools` and `test_language`, whose generated headers embed sources
-as strings, and the SDK contract consumers; an install layout, which
-`chibi version` reads; then moving profile selection from `Build.chibi`'s
-CMake arguments into the graph.
+Slice 19, 2026-10-21: `test_language`. The graph configures files as CMake's
+`configure_file` does, from templates whose placeholders take a file's bytes
+(a new `build.byte_list` native) or its text as a C string, and gives a
+source its own defines, with the source root, build type and a file's
+SHA-256 filled in. On macOS it builds and links `test_language` over its
+object library: 850 compile commands and twelve link commands, equal to
+CMake's, and 28 generated headers equal to CMake's.
+Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
+compiles the 21 object libraries `test/tools` declares over staged SDK
+headers and the fixtures it copies beside pico_unit, and expands a target's
+own defines: 949 compile commands, equal to CMake's.
+Slice 21, 2026-10-21: `test_tools`. On macOS the graph links it over those
+consumers and writes every executable where CMake does, so the paths it
+compiles in for `chibi_ctl` and `policy_worker` (`{program:NAME}`) and the
+compiler it exports C with (`export_compiler.h`) equal CMake's: 1061
+compile commands and thirteen link commands. A build step now takes up to
+1,023 arguments, which its 497-argument link needs; the graph-built
+`test_tools` passes `make test-tools`' cases and `build-process`.
+Slice 22, 2026-10-21: the build tree's install layout. Before compiling, the
+graph writes the build identity (`engine.json`) as
+`sdk/artifact_formats.cmake` does and installs the launcher's `share/chibi`
+(identity, core and documentation sources, shaders) and `chibi_ctl`'s
+resources: 213 files, equal to CMake's.
+Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
+`corpus.txt`, every fixture source by absolute path, equal to CMake's.
+Next: moving profile selection from `Build.chibi`'s CMake arguments into the
+graph, which makes `make build` build with it (awaiting the owner's
+decision); then packaging the SDK from the graph's build.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
@@ -863,15 +887,14 @@ runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
 so the owner's instruction was to run the workflow once this branch reached
 `main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
-job ("recent account payments have failed or your spending limit needs to be
-increased"). At the owner's direction the site was instead built locally from
+job because hosted execution was unavailable. At the owner's direction the site was instead built locally from
 `main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
 the Pages source switched back to that branch. The commit, `0b17fddde`,
 replaces the old browser build, whose editor now lives on chibi-studio's own
 Pages site. To publish again, build the site from `main`, commit `build/docs`
 with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
 `gh-pages`, and push. Returning to the workflow means switching the Pages
-source back to GitHub Actions once billing allows. No published page uses an
+source back to GitHub Actions once hosted execution is available. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -1041,7 +1064,7 @@ Host status on 2026-10-20:
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
   On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
   readied M6, with these runs as M5's open gate (see M6).
-  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+  - They run when CI is back (disabled since 2026-09-25) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero
     remains the normal compiler.
@@ -1333,9 +1356,16 @@ about 4.4 s of CPU. Two runtime and emitter changes followed:
 - Owned scalar arrays stay packed while they change in place (#635), so the
   prepared writer's byte arrays cost a byte per byte rather than a
   `pin_value`. This brought recovery to 3.6 s.
-- A returned variant is now a fresh value, and is built by `union_move`, which
-  keeps the payload values held in the call's storage (this PR). This brought
-  recovery to about 3.3 s, or 57 billion instructions.
+- A returned variant is now a fresh value (#637). This brought recovery to
+  about 3.3 s, or 57 billion instructions.
+- A function now builds what it returns in its caller's storage: returned
+  literals and variants, and the array locals it returns (result locations).
+  This brought recovery to about 55.0 billion instructions. 98% of results
+  already lay wholly in the callee's storage, but callees allocate about 13
+  times their result's size, so handing the callee's storage to the caller
+  instead was ruled out. A result moves only when the argument-sharing
+  analysis shows nothing but the updates that run in the caller's storage
+  changes what the function builds there.
 
 What remains, in that run's samples:
 - The call-result copy into the caller is about 12%.
@@ -1482,6 +1512,28 @@ inventoried assets and embedded fixtures use compiled Chibi modules. Native and
 browser Studio builds, installed/relocated SDK consumers, actual native/Wasm asset
 compilation, the largest migrated asset and the installed documentation build
 passed; see the asset plan for evidence and limits. Full runtime/UI suites were
-not run, and obsolete scalar-path admissions were withdrawn. This is an
-uncommitted worktree checkpoint, not a merge or deployment, and does not mark
-all of M10 complete.
+not run, and obsolete scalar-path admissions were withdrawn. Local recovery
+commits preserve the migration; nothing has been pushed, merged into main or
+deployed. This does not mark all of M10 complete.
+
+The local integration with `origin/main` at `cb4cc339d` retains the newer M6 graph
+targets and translates their asset dependencies to `asset_documents`. The asset
+resource entry point is now `tools/toolchain/AssetCompiler.chibi`, with shared
+generation/staging in `graph:asset_compiler`. Both target resources were
+regenerated with the merged bootstrap and cache policy. Native/Web SDK and Studio
+builds and installed/relocated SDK consumer compilation passed. A bounded guard
+check proved recovery installation rejects before prefix mutation and both
+readiness implementations detect an added scratch module (2.670s, shared 60s
+ceiling). See `docs/self-hosting-build.md#compiled-asset-resources`. These checks
+do not close the remaining M6 gates.
+
+Persistent prepared-code caching now has reviewed native and real-browser
+regressions, including corruption and invalidation, current evaluation budgets,
+IndexedDB failure, blocked restore and completed late-callback preservation.
+Release transport checks cover decoded depth/NUL rejection and writer boundaries.
+Focused editor model validation passed for the production Properties and source
+document paths; full Studio startup remains held after cold Debug and Release
+commands exceeded the unchanged 60-second deadline. Migrated aggregate admissions
+are held until their complete compiler workloads are reviewed and measured.
+`docs/typed-assets/PLAN.md` records exact configurations, results and remaining
+allocation, compiler-parity, helper-discovery and platform work.

@@ -542,6 +542,43 @@ static bool primitive_backend(const chibi_build_result *result, behavior_backend
            result->counts.sljit_entries == (backend == BEHAVIOR_SLJIT ? 1u : 0u);
 }
 
+/* A step takes up to 1,023 arguments, as many as the process layer passes and
+ * twice a link of every object and library the tooling tests use, and refuses
+ * more. */
+TEST_CASE(steps_take_up_to_1023_arguments)
+{
+    static const char *const sources[] = {
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1023) { command.append(\"-\"); } "
+        "return build.run(command); }",
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1024) { command.append(\"-\"); } "
+        "return build.run(command); }",
+    };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(sources[0], backend);
+        chibi_build_result result;
+        bool success = chibi_build_invoke(&options, &result);
+        if (!success) {
+            fprintf(stderr, "step arguments: %s\n", result.diagnostic);
+        }
+        REQUIRE(
+            success && result.value == 7 && result.steps == 1 &&
+            primitive_backend(&result, backend)
+        );
+        options = primitive_options(sources[1], backend);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(
+            !strcmp(result.diagnostic, "invalid build process arguments") &&
+            result.steps == 0
+        );
+    }
+    return true;
+}
+
 TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 {
     static const char *source =
@@ -1117,6 +1154,35 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     return true;
 }
 
+/* A file's bytes as the C initializer CMake writes from file(READ ... HEX),
+ * NUL and high bytes included; a missing file fails the program. */
+TEST_CASE(private_byte_lists_write_cmake_initializers)
+{
+    primitive_file(
+        "primitive-bytes",
+        "\0\xff"
+        "a",
+        3
+    );
+    static const char *sources[] = {
+        "package bytes\nBuild :: () -> int { "
+        "if (build.byte_list(\"primitive-bytes\") != \"0x00,0xff,0x61,\") { "
+        "return 1; } return 0; }",
+        "package bytes\nBuild :: () -> int { "
+        "build.byte_list(\"primitive-absent\"); return 0; }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result) == !i);
+        REQUIRE(
+            i ? !strcmp(result.diagnostic, "build byte list input must be a regular file of at most 3.2 MiB")
+              : !result.value
+        );
+    }
+    return true;
+}
+
 /* Build values are never freed, so a program's values only grow: a build
  * graph that reads a record per source holds tens of megabytes, and a
  * program past the storage limit fails with its cause. */
@@ -1559,6 +1625,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
+    RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
@@ -1576,6 +1643,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
     RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+    RUN_TEST_CASE(private_byte_lists_write_cmake_initializers);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);

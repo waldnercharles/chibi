@@ -4,6 +4,7 @@
 #include "execution/borrow.h"
 #include "execution/component_write.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/random.h"
 #include "execution/status.h"
 #include "support/array.h"
@@ -416,7 +417,9 @@ int execution_machine_step(execution_machine *m, int pc)
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
                                : call->value
                                    ? call->value(
-                                         ctx->value_storage,
+                                         execution_intrinsic_in_result(spec->capability_id)
+                                             ? ctx->result_storage
+                                             : ctx->value_storage,
                                          ctx->data->values + spec->first,
                                          spec->result_first - spec->first,
                                          ctx->data->values + spec->result_first

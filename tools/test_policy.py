@@ -2,6 +2,7 @@
 """Temporary command-level test quarantine; remove only after timing review."""
 import argparse
 import ctypes
+import hashlib
 import json
 import math
 import os
@@ -34,7 +35,7 @@ NATIVE = {
     ('--studio-scene-move',): 'Reviewed installed SDK hierarchy move integration: bounded 2D picking and two-object 3D model/checkpoint cases, atomic moves, history and collaboration; two hidden frames, shared60s',
     ('--studio-outliner-move',): 'Reviewed installed Studio pointer and keyboard hierarchy moves: one three-object 2D scene, before/inside/after/root, grouped selection and rejection; twenty-one hidden frames, shared60s',
     ('--tilemap',): 'Independently reviewed eight fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, two <=4KiB Chibi asset sources, three 64x16 PNG preparations and one rejected 128x128 map, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
-    ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
+    ('--web-storage',): 'Current supervised pass19cases97assertions1.934s; independently reviewed18C-owned project browser storage scenarios under Node plus1cc syntax case, tiny in-memory FS and ZIP transport fixtures, no network or GPU, shared60s; supersedes historical13case record; .chibi/asset-stabilization-web-storage-second.log',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
     ('--studio-graph-pointer',): 'First supervised measurement: independently reviewed Counter node pointer selection, wire keys, Find result keys/click/focus, nineteen hidden1920x1080frames, disposable3file fixture, shared60s',
@@ -134,6 +135,25 @@ NATIVE = {
     ('--vector-nodes',): 'Vector kernels and the palette vector node bindings and defaults; two cases, CPU only; docs/testing.md',
     ('--source-presentation',): 'Independently reviewed twenty fixed source/palette cases and two component cases: tiny literal programs for ownership/layout, invalid drafts, callable scope/formulas, linear/branch/loop/await projection, Set/Get origins, Value-only setters, editable indexed/component receivers, natural handler completion and explicit End Event, named typed calls/clone/edit, pure single-result folding with watch/breakpoint/shared-use visibility, namespace field projection and keyed catalog generation, implicit empty entity/array declarations without fake Initial versus authored initializer, callable target resolution and owned hover descriptions, one eager named state-read snapshot, explicit and short-circuit effects; static palette and two in-memory component documents, CPU parse/analyze/projection only, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
 }
+# Standalone measurements do not admit or expand any aggregate.
+NATIVE[('--asset-cache',)] = (
+    'Independently reviewed two fixed cases, four cold CompileBytes attempts, '
+    'one fresh-process worker capped at15s, tiny framing/retention metadata; '
+    '2cases36asserts25.669s under shared60s, Debug sanitizersOFF bytecode; '
+    '.chibi/asset-cache-second.log; no browser/transport/aggregate coverage')
+NATIVE[('--asset-cache-browser',)] = (
+    'Independently reviewed four sequential fresh Wasm page sessions in real Chrome: '
+    'cold persistence, reload/remove/corrupt-record repair, actual IndexedDB '
+    'version failure with memory fallback, blocked restore deadline and late '
+    'callback isolation; 5Ccases32assertions9.121s under shared60s; '
+    'tiny four-byte records, zero compiler calls/GPU/frames; Release support-only '
+    'Wasm consumer with production Studio asset_cache.js; '
+    '.chibi/asset-cache-browser-four-first.log and -hashes.log; standalone only')
+NATIVE[('--asset-transport',)] = (
+    'Reviewed three cases/five cold compilations: raw JSON depth1024/1025, '
+    'escaped NUL key/text, depth65 roundtrip and scalar/empty-container writer '
+    'boundaries; complete command timed out60.094s, no final summary; '
+    '.chibi/asset-transport-third.log; DISABLED, NOT PASSED')
 TOOLS = {
     # Standalone only: fixed thirteen current-version fixture projects, CPU
     # source formatting checks, thirteen sequential children <=10s each under
@@ -307,6 +327,16 @@ TOOLS = {
     # headers with private symbols and compiles image preparation.
     'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-generated',
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: naming test_tools in a commands-only run writes the links of
+    # the programs it runs, as CMake's add_dependencies builds them.
+    'build-graph-programs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                             '--build-graph-programs',
+                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: with a compiler that always fails, the graph still writes the
+    # launcher's share/chibi and chibi_ctl's resources equal to CMake's.
+    'build-graph-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                              '--build-graph-resources',
                               str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
@@ -556,6 +586,12 @@ TOOLS = {
     # Reference index over assets, graphs, documents and calls; scene UI page renames.
     'reference-index': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--reference-index'],
     # Asset source completion, hover, navigation and reconciliation of drafts.
+    # Exact measured installed Release configuration; default Debug stays held.
+    'compiled-asset-edit-model': [str(ROOT / 'build-studio-release/bin/studio-acceptance'), '--compiled-asset-edit-model'],
+    'asset-transport-release': [str(ROOT / 'build-tools-release/test_tools'), '--asset-transport'],
+    'asset-cache': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-cache'],
+    'asset-cache-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-cache-browser'],
+    'asset-transport': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-transport'],
     'asset-source': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-source'],
     # The application source loader and a failed preview scene launch, in a temporary folder.
     'behavior-loader': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--behavior-loader'],
@@ -1099,12 +1135,109 @@ GROUPS = {
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection'],
 }
+# Keep historical NATIVE evidence and GROUPS membership above intact. Migrated
+# asset routes now compile/evaluate Chibi instead of parsing data. Old timing and
+# workload admissions do not cover that cold work; unchanged pure cases remain
+# individually available. A reviewed, measured whole workload clears its hold.
+ASSET_MIGRATION_HOLD = (
+    'compiled asset migration changed cold compilation/evaluation work; '
+    'historical admission retained, complete new workload not admitted or passed')
+HELD_TOOLS = dict.fromkeys([
+    *GROUPS['projects'],
+    'asset-values', 'project-document', 'prototype-documents', 'reference-index',
+    'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout',
+    'new-asset', 'asset-refactor', 'preview-components', 'physics', 'tilemap',
+    'fields', 'model-graphs', 'shader-graphs', 'shader-bake',
+    'graph-document', 'graph-presentation', 'graph-functions',
+    'material-destruction', 'language-program', 'prototype-document',
+    'wasm-program', 'fixture-format',
+], ASSET_MIGRATION_HOLD)
+HELD_STUDIO_TOOLS = {name for name in TOOLS if name.startswith('studio-')}
+HELD_TOOLS.update(dict.fromkeys(HELD_STUDIO_TOOLS,
+    'Studio cold startup now compiles migrated UI assets; historical full '
+    'acceptance workload/configuration requires renewed admission'))
+HELD_TOOLS['asset-transport'] = (
+    'complete focused command timed out60.094s; no splitting/retry or '
+    'budget increase; .chibi/asset-transport-third.log; DISABLED, NOT PASSED')
+HELD_GROUPS = dict.fromkeys(('native', 'projects', 'materials', 'language', 'wasm'),
+                          ASSET_MIGRATION_HOLD)
+HELD_NATIVE = {tuple(command[1:]): reason
+               for name, reason in HELD_TOOLS.items()
+               for command in (TOOLS[name],)
+               if len(command) > 1 and command[1].startswith('--')}
+HELD_NATIVE.update({('--' + name,): HELD_TOOLS[name] for name in HELD_STUDIO_TOOLS})
+
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
 
 
 def admitted(arguments):
-    return tuple(arguments) in NATIVE
+    return tuple(arguments) in NATIVE and tuple(arguments) not in HELD_NATIVE
+
+
+def asset_transport_release_ready():
+    # This exception admits one measured installed consumer, not an arbitrary
+    # Release binary or a change to the default selector's Debug admission.
+    expected = {
+        'build-tools-release/test_tools': '0fd969b2a774f592cb23b69cc98e24246e6a87320de83ad586e863ea7373cbd1',
+        'test/authoring/asset_source.c': '0aaaa6333cb947e84995a0297d3ce79ab4ff1b609eccf5d48ff43d63d51dacb0',
+        'dist/sdk-release/share/chibi/assets/compiler/asset_compiler.chibip':
+            'd95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b',
+    }
+    try:
+        cache = {}
+        for line in (ROOT / 'build-tools-release/CMakeCache.txt').read_text().splitlines():
+            if ':' in line and '=' in line and not line.startswith('//'):
+                key, value = line.split('=', 1)
+                cache[key.split(':', 1)[0]] = value
+        package = json.loads((ROOT / 'dist/sdk-release/share/chibi/package.json').read_text())
+        return (isinstance(package, dict) and
+                cache.get('CMAKE_BUILD_TYPE') == 'Release' and
+                cache.get('CHIBI_INSTALLED_SDK') == 'ON' and
+                cache.get('CMAKE_C_FLAGS_RELEASE') == '-O3 -DNDEBUG' and
+                Path(cache.get('Chibi_DIR', '')).resolve() ==
+                    (ROOT / 'dist/sdk-release/lib/cmake/Chibi').resolve() and
+                package.get('build_id') ==
+                    'c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325' and
+                all(hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+                    for path, digest in expected.items()))
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+
+def compiled_asset_edit_model_ready():
+    # CPU model-only entry: no Studio app startup, window or rendering.
+    # Exact disk-disabled route passed1case73assertions12.145s/60s:
+    # .chibi/asset-final-model-tool.log and -evidence.json.
+    expected = {
+        'build-studio-release/bin/studio-acceptance':
+            'fa7aaa3879e8bcc6e4ea678fad04f3df49824190e752076985303c5f979fa7b3',
+        '../chibi-studio/tests/acceptance/main.c':
+            'aba646b7bc55e7f735124ced885291aba4a74d32835e3d519996eadd7b892efa',
+        '../chibi-studio/tests/acceptance/compiled_asset_edit.h':
+            '2b0749937fc3cf77bc407e0d9fb48624047c2bbe5c5487b5ff80d8f91355e21a',
+    }
+    try:
+        cache = {}
+        for line in (ROOT / 'build-studio-release/CMakeCache.txt').read_text().splitlines():
+            if ':' in line and '=' in line and not line.startswith('//'):
+                key, value = line.split('=', 1)
+                cache[key.split(':', 1)[0]] = value
+        package = json.loads((ROOT / 'dist/sdk-release/share/chibi/package.json').read_text())
+        return (isinstance(package, dict) and
+                cache.get('CMAKE_BUILD_TYPE') == 'Release' and
+                cache.get('CHIBI_STUDIO_BUILD_ACCEPTANCE') == 'ON' and
+                cache.get('CMAKE_C_FLAGS_RELEASE') == '-O3 -DNDEBUG' and
+                cache.get('CMAKE_CXX_FLAGS_RELEASE') == '-O3 -DNDEBUG' and
+                Path(cache.get('Chibi_DIR', '')).resolve() ==
+                    (ROOT / 'dist/sdk-release/lib/cmake/Chibi').resolve() and
+                package.get('build_id') ==
+                    'c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325' and
+                all(hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+                    for path, digest in expected.items()))
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def selector_arguments(name):
@@ -1344,13 +1477,22 @@ def main():
     print(NOTICE, flush=True)
     if args.action == 'inventory':
         for command, evidence in NATIVE.items():
-            print('ADMITTED (60s ceiling):', ' '.join(command), '-', evidence)
+            status = 'HELD (historical evidence)' if command in HELD_NATIVE else 'ADMITTED (60s ceiling)'
+            print(status + ':', ' '.join(command), '-', evidence)
+            if command in HELD_NATIVE:
+                print('  Hold:', HELD_NATIVE[command])
         for name in TOOLS:
-            print('ADMITTED (60s ceiling): python3 tools/test_policy.py tool', name)
+            status = 'HELD' if name in HELD_TOOLS else 'ADMITTED (60s ceiling)'
+            print(status + ': python3 tools/test_policy.py tool', name)
+            if name in HELD_TOOLS:
+                print('  Hold:', HELD_TOOLS[name])
         print('ADMITTED: make test / test-short (C execution-policy units, one deadline)')
         print('ADMITTED: make test-tools (all C tooling and process integrations, one deadline)')
         for name in GROUPS:
-            print(f'ADMITTED (60s ceiling): python3 tools/test_policy.py group {name}')
+            status = 'HELD' if name in HELD_GROUPS else 'ADMITTED (60s ceiling)'
+            print(f'{status}: python3 tools/test_policy.py group {name}')
+            if name in HELD_GROUPS:
+                print('  Hold:', HELD_GROUPS[name])
         print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
@@ -1366,10 +1508,31 @@ def main():
     if args.action == 'group':
         if len(arguments) != 1 or arguments[0] not in GROUPS:
             parser.error('unknown test group')
+        if arguments[0] in HELD_GROUPS:
+            print('DISABLED:', HELD_GROUPS[arguments[0]], file=sys.stderr)
+            return 2
         return run_commands([TOOLS[name] for name in GROUPS[arguments[0]]])
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
+        if arguments[0] == 'compiled-asset-edit-model':
+            if not compiled_asset_edit_model_ready():
+                print('DISABLED: Release model-only identity/configuration changed; '
+                      'renew exact workload admission', file=sys.stderr)
+                return 2
+            os.environ['CHIBI_ASSET_CACHE_DIR'] = ''
+        if arguments[0] == 'asset-cache-browser':
+            os.environ.setdefault('CHIBI_ASSET_CACHE_BROWSER_ROOT',
+                                  str(ROOT / 'build-web-cache-browser'))
+        if arguments[0] == 'asset-transport-release':
+            if not asset_transport_release_ready():
+                print('DISABLED: installed Release transport identity/configuration changed; '
+                      'renew exact workload admission', file=sys.stderr)
+                return 2
+            os.environ['CHIBI_ASSET_CACHE_DIR'] = ''
+        if arguments[0] in HELD_TOOLS:
+            print('DISABLED:', HELD_TOOLS[arguments[0]], file=sys.stderr)
+            return 2
         if arguments[0] in ('studio-source-edit',
                             'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'studio-scene-gizmo3d', 'studio-scene-collider3d', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'material-terrain-seams', 'surface-transport', 'material-mesh-cache', 'scene3d-terrain-gpu', 'scene3d-volume-gpu', 'hrc-spot', 'scene3d',

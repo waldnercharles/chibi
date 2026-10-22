@@ -15,8 +15,8 @@ lower a deliberately bounded scalar subset to LLVM IR. LLVM must validate that
 IR and produce a native object which links and executes without a generated C
 translation unit or a first-party C helper. The first proof can use external LLVM
 tools; LLVM's C API through Chibi interop is a subsequent integration option, not
-a reason to retain a first-party C adapter. SLJIT remains available while its
-replacement has not demonstrated parity.
+a reason to retain a first-party C adapter. SLJIT may remain a third-party JIT
+backend; its first-party integration and runtime code migrate to Chibi.
 
 The first scalar slice is not the runtime migration. Its acceptance checks are:
 

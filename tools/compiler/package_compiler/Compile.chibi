@@ -1042,7 +1042,7 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
     return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
 }
 // The signature of the function `member` named `name`, its params numbered
-// from `first`. A named result is a scalar.
+// from `first`. A named result is a scalar or a single record.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], types: TypeDecl[],
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
@@ -1103,12 +1103,13 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
             declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
-            if (declared.storage == 0 || declared.storage == TextStorage ||
-                Pointer(declared.storage, declared.container)) {
+            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == UnionStorage ||
+                declared.container != 0) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
-            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
+            param: Param = {name: result_name, storage: declared.storage, container: declared.container,
+                            record: declared.record,
                             has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
                             reference: false, node: Field(forest, named, "name")};
             added.append(param);
@@ -1386,7 +1387,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             game_events = declared_events;
             game_fields = payloads;
             owner_type = entity;
-            behaving = BehaviorNames(declared_states, globals);
+            behaving = BehaviorNames(declared_states, globals, TypeWithId(types, owner_type));
             aggregates = operators;
             record_makes = makes;
             make_fields = made_fields;
@@ -1523,8 +1524,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             case .Failed(diagnostic):
                 return Assembly.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
-                          body_points, body_watches):
-                direct_effects: int = 0;
+                          body_points, body_watches, body_effects):
+                direct_effects := body_effects;
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans.append(Range(length(values), callable.count));
@@ -1556,7 +1557,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 at = 0;
                 while (at < callable.results) {
                     named := params[callable.first + callable.count + at];
-                    values.append(ScalarValue(named.storage, 0));
+                    values.append(Header(named.storage, named.container, named.record, types, layouts));
                     at += 1;
                 }
                 spans.append(Range(length(ints), result_count));

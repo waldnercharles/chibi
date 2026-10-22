@@ -191,7 +191,7 @@ void authoring_application_end(authoring_application *application)
     authoring_graph_catalog_free(application->graphs);
     native_capabilities_free(application->native);
 }
-/* Prepares the project, or assembles it from `modules` when there are any,
+/* Prepares the project, or assembles it when `modules` is nonnull,
  * and writes the artifact to `output` when there is one. */
 static int compile(
     const char *project,
@@ -243,8 +243,9 @@ int authoring_project_compile_modules(
     const char *output
 )
 {
-    assert(modules && count > 0 && output);
-    return compile(project, NULL, modules, count, output);
+    assert(count >= 0 && (!count || modules) && output);
+    static const package_module none;
+    return compile(project, NULL, count ? modules : &none, count, output);
 }
 
 static void print_diagnostic(const char *path, const script_diagnostic *diagnostic)

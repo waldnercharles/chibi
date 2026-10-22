@@ -37,7 +37,8 @@ target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contrac
 
 # The prepared reader and writer share a translation unit. Let the compiler
 # host's section-GC link discard the unused public writer entry point.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
+if((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32) AND
+   CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
     target_compile_options(chibi_execution PRIVATE -ffunction-sections -fdata-sections)
 endif()
 

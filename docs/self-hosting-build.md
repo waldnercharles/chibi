@@ -371,7 +371,11 @@ host or the archive is not unpacked.
 `objects/TARGET/third-party/`.
 The graph also links executables. `engine.Programs` lists them (the
 reflection tool `reflect`, the build host, the compiler host and the `chibi`
-launcher); `c.Link` runs CMake's executable link (the language and link
+launcher, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
+`Links` name the desktop archive's libraries as `third-party/` paths and its
+frameworks as CMake orders them; Linux's follow its archive). An executable
+over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
+executable link (the language and link
 flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
 then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it

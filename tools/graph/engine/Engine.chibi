@@ -119,15 +119,18 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
 }
 
 // What an executable links after its output, in CMake's order: the profile's
-// external libraries, then its Links, the graph's archives by name and other
-// entries, such as -lm, as they are.
+// external libraries, then its Links: the graph's archives by name, the
+// third-party archive's `third-party/` paths, and options and frameworks as
+// they are.
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        if (strings.HasPrefix(linked, "-")) {
-            libraries.append(linked);
-        } else {
+        if (strings.HasPrefix(linked, "third-party/")) {
+            libraries.append(Resolve(source_root, build_dir, profile.third_party, linked));
+        } else if (strings.HasPrefix(linked, "chibi_")) {
             libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
+        } else {
+            libraries.append(linked);
         }
     }
     return libraries;
@@ -324,9 +327,18 @@ LinkObjects :: (source_root: string, build_dir: string, third_party: string, tar
     return objects;
 }
 
+// The tools that link an executable: the C++ compiler links one over C++.
+Linker :: (tools: c.Tools, target: string) -> c.Tools {
+    linker := tools;
+    if (LinksCxx(target)) {
+        linker.compiler = tools.cxx_compiler;
+    }
+    return linker;
+}
+
 // An executable's link command.
 LinkCommand :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, target: string) -> string[] {
-    return c.LinkCommand(tools, Executable(build_dir, target),
+    return c.LinkCommand(Linker(tools, target), Executable(build_dir, target),
                          LinkObjects(source_root, build_dir, profile.third_party, target),
                          LinkFlags(profile, build_dir, target),
                          LinkLibraries(source_root, build_dir, target, profile));
@@ -475,7 +487,8 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
 }
 
 // The libraries whose headers the targets' compiles include: the targets, and
-// each library a `public/NAME` or `private/NAME` include names.
+// each library a `public/NAME` or `private/NAME` include names, or the header
+// set a `build/` include directory holds (DirectorySet).
 Staged :: (targets: string[]) -> string[] {
     staged: string[] = [];
     for (target in targets) {
@@ -488,6 +501,8 @@ Staged :: (targets: string[]) -> string[] {
         for (include in includes) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
                 staged = Add(staged, ExportTarget(build.after(include, "/")));
+            } else if (DirectorySet(include) != "") {
+                staged = Add(staged, DirectorySet(include));
             }
         }
     }
@@ -608,7 +623,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         if (!Program(target)) {
             continue;
         }
-        if (c.Link(tools, Executable(build_dir, target), LinkObjects(source_root, build_dir, profile.third_party, target),
+        if (c.Link(Linker(tools, target), Executable(build_dir, target), LinkObjects(source_root, build_dir, profile.third_party, target),
                    LinkFlags(profile, build_dir, target), LinkLibraries(source_root, build_dir, target, profile)) < 0) {
             build.report(Join(["graph: linking ", target, " failed"]));
             return -1;

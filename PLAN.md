@@ -700,10 +700,15 @@ compiler host and the `chibi` launcher beside `reflect`, with object
 libraries, per-executable link options and link libraries in CMake's order,
 and writes `link_commands.json`, whose four commands `build-graph` compares
 with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
-Next: the C++-linked executables (the players, `chibi-compile`, `chibi_ctl`),
-which link the desktop archive's libraries and frameworks; the testing
-libraries and test drivers; then moving profile selection from
-`Build.chibi`'s CMake arguments into the graph.
+Slice 17, 2026-10-21: C++-linked executables. On macOS the graph links the
+player, `chibi-compile` and `chibi_ctl` with the C++ compiler, over the
+compiler syntax and JSON libraries and the automation library, naming the
+desktop archive's libraries and frameworks in CMake's order: 122 targets, 731
+compile commands and seven link commands, equal to CMake's. Their Linux
+links wait for a Linux archive.
+Next: the testing libraries and test drivers; an install layout, which
+`chibi version` reads; then moving profile selection from `Build.chibi`'s
+CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

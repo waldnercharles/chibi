@@ -1,0 +1,60 @@
+package bootstrap_tests
+
+import resolver "bootstrap:resolver"
+
+Check :: (condition: bool, name: string) -> int {
+    if (condition) {
+        return 0;
+    }
+    build.report(format_text("bootstrap resolver failed: {}", name));
+    return 1;
+}
+
+Case :: (request: resolver.Request, kind: string, value: string, name: string) -> int {
+    selection := resolver.Select(request);
+    return Check(selection.error == "" && selection.kind == kind && selection.value == value, name);
+}
+
+Rejected :: (request: resolver.Request, name: string) -> int {
+    selection := resolver.Select(request);
+    return Check(selection.error != "" && selection.kind == "" && selection.value == "", name);
+}
+
+// A bounded authored test entry for the existing build host. No filesystem,
+// process, network, environment, publication or persistent-state operations.
+SelectionTests :: () -> int {
+    failures := 0;
+    failures += Case({command: "", has_command: false, environment: "", has_environment: false},
+                     "latest", "", "default is latest");
+    failures += Case({command: "ignored", has_command: false, environment: "ignored", has_environment: false},
+                     "latest", "", "absent values are ignored");
+    failures += Case({command: "", has_command: false, environment: "version:build-20261022.1", has_environment: true},
+                     "version", "build-20261022.1", "environment version");
+    failures += Case({command: "local:./SDK with spaces", has_command: true, environment: "version:older", has_environment: true},
+                     "local", "./SDK with spaces", "command wins and preserves local path");
+    failures += Case({command: "latest", has_command: true, environment: "local:missing", has_environment: true},
+                     "latest", "", "explicit latest wins");
+    failures += Case({command: "version:pinned", has_command: true, environment: "invalid", has_environment: true},
+                     "version", "pinned", "unused environment is not parsed");
+    failures += Case({command: "local:C:\\SDK\\chibi", has_command: true, environment: "", has_environment: false},
+                     "local", "C:\\SDK\\chibi", "Windows local path is not a URL");
+    failures += Rejected({command: "", has_command: true, environment: "latest", has_environment: true},
+                         "empty command does not fall back");
+    failures += Rejected({command: "", has_command: false, environment: "", has_environment: true},
+                         "empty environment does not fall back");
+    for (value in ["version:", "version:latest", "version:..", "version:.", "version:a/b", "version:a\\b",
+                   "version:with space", "version:tag?query", "version:tag#fragment", "version:\nnew",
+                   "local:", "local:path\nnext", "local:path\rnext", "build-20261022", " latest", "latest ",
+                   "https://github.com/waldnercharles/chibi/releases/latest"]) {
+        failures += Rejected({command: value, has_command: true, environment: "latest", has_environment: true}, value);
+    }
+    return failures;
+}
+
+Tests :: () -> int {
+    failures := SelectionTests();
+    if (failures == 0) {
+        build.report("bootstrap resolver selection tests passed");
+    }
+    return failures;
+}

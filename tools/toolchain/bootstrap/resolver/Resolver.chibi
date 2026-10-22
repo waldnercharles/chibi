@@ -1,0 +1,77 @@
+package resolver
+
+import strings "core:strings"
+
+// Presence is separate from value: an explicitly empty override is an error,
+// not a request to use the next source. The caller captures environment once.
+pub Request :: struct {
+    command: string;
+    has_command: bool;
+    environment: string;
+    has_environment: bool;
+}
+
+pub Selection :: struct {
+    kind: string;
+    value: string;
+    error: string;
+}
+
+// An identifier is one path component, never a mutable channel name. The
+// publisher is responsible for making the generation's content immutable.
+pub GenerationName :: (name: string) -> bool {
+    if (name == "" || name == "." || name == ".." || name == "latest" ||
+        strings.ByteLength(name) > 128) {
+        return false;
+    }
+    for (byte in strings.Bytes(name)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) ||
+              (byte >= 97 && byte <= 122) || byte == 45 || byte == 46 || byte == 95)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// No path normalization or filesystem reads here. The I/O boundary resolves
+// this exact path and records its digest; it must not retry a channel on error.
+PathText :: (path: string) -> bool {
+    if (path == "" || strings.ByteLength(path) >= 4096) {
+        return false;
+    }
+    for (byte in strings.Bytes(path)) {
+        if (byte == 0 || byte == 10 || byte == 13) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// This is an internal selector encoding, not a new public chibi command.
+// It deliberately does not accept URLs, bare tags or a list of fallbacks.
+pub Select :: (request: Request) -> Selection {
+    value := "latest";
+    if (request.has_command) {
+        value = request.command;
+    } else if (request.has_environment) {
+        value = request.environment;
+    }
+    if (value == "latest") {
+        return {kind: "latest", value: "", error: ""};
+    }
+    if (strings.HasPrefix(value, "version:")) {
+        generation := strings.TrimPrefix(value, "version:");
+        if (!GenerationName(generation)) {
+            return {kind: "", value: "", error: "version override requires an immutable generation identifier"};
+        }
+        return {kind: "version", value: generation, error: ""};
+    }
+    if (strings.HasPrefix(value, "local:")) {
+        path := strings.TrimPrefix(value, "local:");
+        if (!PathText(path)) {
+            return {kind: "", value: "", error: "local override requires a nonempty package path"};
+        }
+        return {kind: "local", value: path, error: ""};
+    }
+    return {kind: "", value: "", error: "expected latest, version:GENERATION or local:PACKAGE; no fallback was selected"};
+}

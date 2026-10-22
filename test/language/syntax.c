@@ -18,7 +18,7 @@ static char *formatted_text, *reformatted_text;
 
 enum
 {
-    CORPUS_MAX_FILES = 256,
+    CORPUS_MAX_FILES = 512,
     CORPUS_MAX_FILE_BYTES = 512 * 1024,
     CORPUS_MAX_TOTAL_BYTES = 8 * 1024 * 1024,
     CORPUS_MAX_PATH_BYTES = 4096,

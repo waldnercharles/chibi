@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "authoring/source_asset.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -12,6 +13,20 @@
 #include <unistd.h>
 
 #define MAX_REPLIES 16
+
+static const char *targets_source =
+    "package asset\n"
+    "\n"
+    "import data \"game:assets\"\n"
+    "\n"
+    "pub Build :: () -> byte[] {\n"
+    "    return data.Encode(\n"
+    "        data.Object([\n"
+    "            data.Field.Named(\"name\", data.Value.Text(\"Targets\")),\n"
+    "            data.Field.Named(\"exclusive\", data.Value.Bool(true))\n"
+    "        ])\n"
+    "    );\n"
+    "}\n";
 
 static const char *program;
 static char root[64], log_path[128];
@@ -250,7 +265,7 @@ static void setup()
         "    )\n"
         "}\n"
     );
-    write_file(paths[7], "Targets :: relationship { exclusive: true }\n");
+    write_file(paths[7], targets_source);
     write_file(
         paths[6],
         "package asset\n"
@@ -513,7 +528,17 @@ TEST_CASE(controller_inspection_and_execution_status)
     REQUIRE(reply_count == 11 && ok(10));
     REQUIRE(string_is(get(result(10), "name"), "Targets"));
     REQUIRE(string_is(get(result(10), "path"), paths[7]));
-    REQUIRE(strstr(yyjson_get_str(get(result(10), "source")), "Targets :: relationship"));
+    REQUIRE(string_is(get(result(10), "source"), targets_source));
+    char relationship_error[256];
+    ecs_relationship_desc *relationship = authoring_relationship_source_read(
+        yyjson_get_str(get(result(10), "source")),
+        relationship_error,
+        sizeof relationship_error
+    );
+    bool exclusive = relationship && !strcmp(relationship->name, "Targets") &&
+                     (relationship->traits & ECS_REL_EXCLUSIVE);
+    authoring_relationship_source_free(relationship);
+    REQUIRE(exclusive);
     yyjson_val *graph = get(result(0), "graph");
     uint64_t graph_id = yyjson_get_uint(get(graph, "id"));
     REQUIRE(graph_id && string_is(get(graph, "name"), "Tick"));

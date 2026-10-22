@@ -236,7 +236,7 @@ build/model-evidence/player/bin/chibi-player /absolute/output/game.chibip \
 ```
 
 Packaging leaves games untouched. Compiler preparation and package integrity do not establish
-successful rendered model behavior; use admitted bounded runtime/GPU checks.
+successful rendered model behavior; use affected runtime/GPU checks.
 See [native packages](native-package.md) for product boundaries and exact pins.
 
 The evidence below predates the separate SDK/compiler/player contract and
@@ -469,7 +469,6 @@ are recorded separately in the authoring validation document.
 
 Synchronous offline baking can be expensive, especially in a debug/ASan build
 or with concurrent CPU tasks. The retired MCP timeout settings do not apply to
-the native controller. Keep bake resource options explicit. Test/probe execution
-remains subject to the [60-second policy](testing.md#temporary-60-second-policy);
-unmeasured or slower checks remain quarantined. A failed bake does not lower
+the native controller. Keep bake resource options explicit and report the
+selected workload and actual result. A failed bake does not lower
 resolution or replace editable source.

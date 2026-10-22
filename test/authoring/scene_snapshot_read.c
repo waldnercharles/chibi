@@ -17,8 +17,8 @@
 #include <string.h>
 
 /* Disposable existing-type specimen, not a production scene/UI model. Three
- * cases, six source preparations, eighteen dispatches; all run in the selector's
- * shared deadline. No ECS world, files, processes, suspension, threads or GPU. */
+ * cases, six source preparations and eighteen dispatches. No ECS world, files,
+ * processes, suspension, threads or GPU. */
 #define READ_SERVICE "test.scene_snapshot"
 #define READ_NAME "Snapshot Read Specimen"
 #define READ_ERROR "Scene snapshot is not current"

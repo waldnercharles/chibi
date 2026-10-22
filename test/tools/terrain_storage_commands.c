@@ -205,33 +205,10 @@ static void cut_scene(bool cut)
     replace_asset(
         "content/scenes/SeamStudy.chibi",
         scene,
-        "package asset\n"
-        "\n"
-        "import data \"game:assets\"\n"
-        "\n"
-        "pub Build :: () -> byte[] {\n"
-        "    return data.Encode(\n"
-        "        data.Object([\n"
-        "            data.Field.Named(\"name\", data.Value.Text(\"Cut "
-        "slab\"))\n"
-        "        ])\n"
-        "    )\n"
-        "}\n",
-        "package asset\n"
-        "\n"
-        "import data \"game:assets\"\n"
-        "\n"
-        "pub Build :: () -> byte[] {\n"
-        "    return data.Encode(\n"
-        "        data.Object([\n"
-        "            data.Field.Named(\"name\", data.Value.Text(\"Cut "
-        "slab\")),\n"
-        "            data.Field.Named(\"behaviors\", data.List([\n"
-        "                data.Value.Text(\"CutMaterial\")\n"
-        "            ]))\n"
-        "        ])\n"
-        "    )\n"
-        "}\n"
+        "data.Field.Named(\"name\", data.Value.Text(\"Cut slab\"))",
+        "data.Field.Named(\"name\", data.Value.Text(\"Cut slab\")),\n"
+        "                    data.Field.Named(\"behaviors\", "
+        "data.List([data.Value.Text(\"CutMaterial\")]))"
     );
 }
 
@@ -454,7 +431,12 @@ TEST_CASE(terrain_storage_controller_rejects_invalid_loads_without_replacing_ter
     REQUIRE(unchanged(blob, saved, length));
     saved[length - 1] ^= 1;
     write_bytes(blob, saved, length);
-    replace_asset("content/prototypes/SeamTerrain.chibi", prototype, "seed=7", "seed=8");
+    replace_asset(
+        "content/prototypes/SeamTerrain.chibi",
+        prototype,
+        "data.Field.Named(\"seed\", data.Value.UInt(7))",
+        "data.Field.Named(\"seed\", data.Value.UInt(8))"
+    );
     begin("load_terrain", "Cut slab", "slot", save_path);
     send();
     REQUIRE(run() != 0 && !ok(0));

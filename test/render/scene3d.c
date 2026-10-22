@@ -4999,8 +4999,8 @@ void test_render_scene3d(bool gles)
     close_app();
 }
 
-/* Global illumination's cases, apart from the rest so that each selector
- * compiles and runs within the time limit with a cold shader cache. */
+/* Global illumination's dedicated selector keeps its cold-shader-cache
+ * preparation and execution separate from the other scene cases. */
 void test_render_scene3d_gi(bool gles)
 {
     open_app(gles);

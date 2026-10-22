@@ -1,5 +1,14 @@
-Targets :: relationship {
-    exclusive: true,
-    acyclic: true,
-    on_delete_target: Remove
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("Targets")),
+            data.Field.Named("exclusive", data.Value.Bool(true)),
+            data.Field.Named("acyclic", data.Value.Bool(true)),
+            data.Field.Named("on_delete_target", data.Value.Text("Remove"))
+        ])
+    );
 }

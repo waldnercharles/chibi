@@ -268,10 +268,10 @@ calls, and provides seed/cell-size controls and a field preview in Details.
 The fixture start scene is `scenes/MaterialStudy.chibi`; `scenes/SeamStudy.chibi`
 is its separate collision specimen.
 
-Build with `make build`. Select admitted checks using `make agent-list` and
+Build with `make build`. Select affected-contract checks using `make agent-list` and
 `make agent-test AGENT_SELECTOR=--<selector>`; see the
-[60-second policy](testing.md#temporary-60-second-policy). Historical benchmark
-commands in the validation report do not establish current admission.
+[testing instructions](testing.md). Historical benchmark commands in the
+validation report do not establish a pass on the current candidate.
 
 See [validation results](material-engine-validation.md) for measured parity,
 runtime evidence and the performance tradeoff of the reusable evaluator.

@@ -227,25 +227,7 @@ TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler)
         write_file("compiler", "compiler identity changed\n");
         REQUIRE(invoke(changed, 4, b, 0));
         REQUIRE(trace_count("CONFIGURE\n") == 6);
-        /* A tighter inherited supervisor deadline changes execution metadata,
-         * without granting any process additional aggregate time. */
-        const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-        char *saved_deadline = inherited ? strdup(inherited) : NULL;
-        double deadline = chibi_build_now() + 5;
-        if (inherited && strtod(inherited, NULL) < deadline) {
-            deadline = strtod(inherited, NULL);
-        }
-        char deadline_text[64];
-        snprintf(deadline_text, sizeof deadline_text, "%.9f", deadline);
-        assert(!setenv("CHIBI_TEST_DEADLINE", deadline_text, 1));
-        bool warm = invoke(changed, 4, b, 0);
-        if (saved_deadline) {
-            assert(!setenv("CHIBI_TEST_DEADLINE", saved_deadline, 1));
-        } else {
-            assert(!unsetenv("CHIBI_TEST_DEADLINE"));
-        }
-        free(saved_deadline);
-        REQUIRE(warm);
+        REQUIRE(invoke(changed, 4, b, 0));
         REQUIRE(trace_count("CONFIGURE\n") == 6 && trace_count("BUILD\n") == 8);
     }
     return true;

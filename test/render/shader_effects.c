@@ -166,10 +166,11 @@ TEST_CASE(authored_ramps_own_their_stops)
     REQUIRE(acount(pasted.nodes) == 1);
     REQUIRE(shader_node_ramp_get(pasted.nodes[0], got) == 3 && !memcmp(got, stops, sizeof stops));
     graph_free(&pasted);
-    char *color = strstr(json, "Color ");
+    char *color = strstr(json, "data.Field.Named(\"Color\",");
     REQUIRE(color);
-    char *channel = strstr(color, "x=");
+    char *channel = strstr(color, "data.Field.Named(\"x\",");
     REQUIRE(channel);
+    channel += strlen("data.Field.Named(\"");
     channel[0] = 'q';
     REQUIRE(!behavior_asset_load(json));
     REQUIRE(strstr(graph_last_error(), "ShaderVec4.x"));

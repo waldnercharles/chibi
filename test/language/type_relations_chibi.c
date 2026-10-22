@@ -19,8 +19,8 @@
 /* 111 explicit requests: 18 equal, 15 numeric, 36 assignment, 33 catalog and
  * 9 canonical, each once on VM and SLJIT = 222 direct calls. The 50,000
  * budget argument is inherited/reset per activation, not a whole-call ceiling.
- * One production 60-second supervisor bounds this fixed corpus. Five compiler
- * inputs per backend give ten parses; no extra source or combinations execute.
+ * Five compiler inputs per backend give ten parses; no extra source or
+ * combinations execute.
  * Caps: 5 definitions, 8 variants/types, 4 full-width IDs. Compiler files are
  * each below 32 KiB. The JSON primitive only admits imported named_binding;
  * these five entrypoints never call it. No IO, tasks, frames, native policy

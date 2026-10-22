@@ -21,22 +21,26 @@ source history and save must continue through the shared source path.
 
 ### Current-main integration in progress — 2026-10-22
 
-The owner approved continuing from the local stabilization checkpoints.
-Engine main is pinned at `444e5b20e60d052e9e280788eec7163ca52f8390` for this
-integration. Studio main remains `97f74c7e`. The merge preserves main's
-length-carrying strings, prepared format 20, prebuilt SDK dependencies and
-compiler self-build workflow while keeping the retired asset format removed.
+The first engine-main integration (`444e5b20e`) was resolved and checkpointed
+locally at `d46e436a0`. Integration of the newer engine main `329d8fb04` is now
+in progress. Studio was checkpointed at `1c52249`; its subsequent main integration
+at `305053fc` is also in progress. These are local integration states, not a clean
+final candidate, a main landing or a publication.
 
-1. Resolve integration conflicts, recover the descriptor-compatible Compiler
-   with its authored bootstrap contract, and regenerate both target resources.
-2. Adapt the pinned-runtime self-build proof to the generic compiler-artifact
-   protocol and isolate only its manifest-listed compiler/core inputs.
-3. Rebuild the installed SDK and paired Studio, then address cold startup cost
-   through the production compiler/asset path.
-4. Independently map affected document/project/scene/graph contracts to bounded
-   checks. Renew only reviewed complete workloads under the same 60-second
-   ceiling, preserving holds for coverage that remains unavailable.
-5. Review and commit the integrated candidate locally with exact current
+The newer main retires the global runtime timing policy. Its removal supersedes
+this document's earlier timing-based admissions, pins and quarantines. Historical
+measurements below retain the limits and configurations under which they ran;
+they do not impose current execution gates. Select checks from affected contracts
+and report unexecuted coverage under the current [testing policy](../testing.md).
+Explicit review or publication holds remain separate from that retired policy.
+
+1. Complete both current-main merges, preserving length-carrying strings,
+   prepared-format compatibility, prebuilt SDK dependencies and self-build proof.
+2. Refresh installed SDK metadata after the resource and graph integration;
+   earlier SDK identities below are historical, not current candidate identities.
+3. Review and validate affected project, source, graph and editor contracts.
+   Do not infer aggregate coverage from focused checks.
+4. Review and checkpoint the integrated candidate with exact source and build
    evidence. Main landing and publication remain separate actions.
 
 Earlier results below belong to their recorded snapshots. They do not validate
@@ -96,13 +100,14 @@ confinement and atomic publication remain platform operations.
    headers, defines, include paths, licenses and packaging references together.
 6. Check source and relocated SDK builds, Studio bootstrap and browser packaging;
    inspect final tracked files and linked/installed inventories for leftovers.
-   Use the existing production supervisor for any authorized runtime checks.
+   Select runtime checks from the affected contracts under the current testing
+   policy.
 
 A one-time ignored migration utility may read the old format while converting
 tracked data. Delete that utility and its outputs before completion. It is not a
 compatibility path or an installed dependency.
 
-## Status
+## Initial migration status — historical checkpoint
 
 The migration is checkpointed in the two worktrees. All 238 engine and 150 Studio
 assets from the initial inventory, embedded fixtures, producers and consumers
@@ -117,7 +122,7 @@ an explicit detach, value encoding, schemas and resource generation are Chibi.
 Native code supplies runtime invocation, owned transport, reflection and platform
 operations. The obsolete prototype-specific grammar changes were removed.
 
-### Initial migration validation
+### Initial migration validation — 2026-10-21
 
 These are production builds and compiler invocations, not runtime suite passes.
 All supervised runtime commands used the unchanged 60-second ceiling.
@@ -147,8 +152,9 @@ verified against the migrated files and immutable origin records.
 ### Limits and delivery state
 
 Full native, render and Studio suites were not run. The former scalar evaluator's
-three standalone prototype admissions were withdrawn; the rewritten compiler
-workloads require fresh review before execution. Existing fixtures were compiled.
+three standalone prototype admissions were withdrawn during stabilization. That
+timing-based admission system has since been retired by main. Existing fixtures
+were compiled; this does not establish runtime coverage.
 Earlier scalar-slice results do not establish replacement-path runtime behavior.
 
 Cold compilation in the native Debug configuration took about five seconds for
@@ -166,7 +172,7 @@ unpushed; they are not merged into main or deployed. Dirty primary checkouts are
 unchanged.
 
 
-## Approved stabilization follow-up
+## Approved stabilization follow-up — historical 2026-10-22 plan
 
 The owner approved starting on 2026-10-22: checkpoint this migration, integrate
 current main and its existing compiler performance work, add persistent compiled
@@ -189,10 +195,9 @@ changes remain with their existing worktrees and semantic discussion.
    valid source fail when unavailable. Respect concurrent workers and processes.
 3. Rebuild compiler/bootstrap/resource closures after compiler ABI changes and
    build the SDK, native/browser Studio and relocated public consumers. Review
-   actual compiler work and cache state before restoring standalone runtime
-   admissions. Check cold/warm behavior, key invalidation, corrupt entries,
-   parameter/override/Reset/history/save, and actual evaluated migrated values
-   under the unchanged shared 60-second runtime supervisor.
+   actual compiler work and cache state. Check cold/warm behavior, key
+   invalidation, corrupt entries, parameter/override/Reset/history/save and actual
+   evaluated migrated values with checks chosen for those contracts.
 4. Record remaining work accurately. Aggregate recoverable allocation ceilings,
    automatic project-helper snapshots and broader schema/edit patterns are next
    increments; do not fold in paused ownership semantics or legacy compatibility.
@@ -247,7 +252,7 @@ only for rebuilding tools; installation is refused in recovery mode. Resource
 generation is authored Chibi at `tools/toolchain/AssetCompiler.chibi`, with the
 shared implementation under `tools/graph/asset_compiler`.
 
-### Stabilization evidence
+### Stabilization evidence — before the current-main merge
 
 Each runtime command below used the unchanged production 60-second supervisor.
 Configuration and build time are separate. Exact artifact, source and binary
@@ -271,25 +276,25 @@ identities are retained with the focused logs.
 | Registered Studio editor-model route | Current Release SDK, disk cache disabled | 1 case / 73 assertions, 12.145s | `asset-final-model-tool.log`, `asset-final-model-tool-evidence.json` |
 | Recovery installation and source inventories | Complete temporary setup included | Passed, 2.670s | `asset-build-guards.log` |
 
-Current native Debug SDK identity:
+Historical stabilization native Debug SDK identity:
 `60ca0af147227a0e71f8b3ffcd12b8fca02d16be83b1e922a3d49535680bd41b`.
-Native Release SDK identity:
+Historical stabilization native Release SDK identity:
 `c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325`.
-Browser SDK identity:
+Historical stabilization browser SDK identity:
 `ade4f33742460f11730a5f538e735268d55bdf25f54d646308f08b78a90a8fba`.
 Both target asset compiler resources match all 36 input fingerprints. The merged
 compiler bootstrap matches all 19 compiler inputs and passed self-compilation.
 
 The complete Studio CPU-model fixture passed 1 case / 73 assertions in 14.466s
-against the current Release SDK, with an initially absent private cache: eight
+against that recorded Release SDK, with an initially absent private cache: eight
 cold compile attempts, 39 memory hits and no persistent hits. It exercises three
 production Properties actions (UInt parameter, override and Reset), exact
 Undo/Redo, formula/comment preservation, Save/Reload and external source-only
 merge/conflict handling. It uses two tiny files, no actors or checkpoints, and
 zero host frames or renders. Evidence is retained under the task artifact's
 `compiled-asset-edit/model4/{native.log,evidence.json}`. This does not prove UI
-hit testing or startup. The admitted repeatable route disables disk caching;
-14.466s is the fresh-private-cache measurement. After formatting the new fixture,
+hit testing or startup. The repeatable route in that checkpoint disabled disk
+caching; 14.466s is the fresh-private-cache measurement. After formatting the new fixture,
 the actual registered disk-disabled route passed the same complete contract in
 12.145s, with all source/binary/configuration pins matching.
 
@@ -299,30 +304,41 @@ The model regression also found and fixed a real heap ownership error:
 `free`; the unchanged source-opening regression passed after all SDK rebuilds.
 The failed run's log and crash report are retained.
 
-### Open stabilization limits
+### Current integration evidence — 2026-10-22
 
-The complete Debug transport command timed out at 60.094s; its accepted/rejected
-depth observations do not make that command a pass. The successful Release route
-has a separate configuration-specific admission.
+These focused results were reported during the current integration. They do not
+validate an eventual clean head or every affected group.
 
-Cold full Studio startup exceeded the same deadline before the editor fixture
-ran in both Debug (60.076s) and Release (60.057s). The runs committed 11 and 42
-cache records respectively; neither reached edit assertions or produced a
-screenshot. Failed-run logs, evidence and the model crash report are retained in
-the task's visualization directory; disposable project/cache copies were removed.
-Persistent caching reduces repeated compilation, but
-this checkpoint does not establish a completed cold or warm full Studio startup.
+| Check | Result | Scope |
+| --- | --- | --- |
+| Full cold Studio startup and editor flow | 62 assertions, 43.770s; 69 compilations, 161 memory hits, zero disk hits | Healthy cold session, not inferred from the smaller model fixture |
+| Studio CPU editor model | 73 assertions, 5.346s; eight cold compilations, 39 memory hits, zero disk hits | Parameter/override/Reset/history/save contract |
+| Production graph build | Passed, 31.7s | Compiler link-closure fixes and preserved boolean return contracts in resource `Stage`/`Generate` |
+| Native and Wasm packaged asset compiler | Artifact bytes unchanged; all 36 input fingerprints refreshed and checked | Resource provenance; installed SDK metadata refresh still pending |
 
-Native, project, material, language and Wasm aggregates containing newly compiled
-assets are held until their complete new workloads are reviewed and measured.
-Historical parse-only timings do not admit the replacement compiler path. The
-retained broad Studio routes are also held. Focused passes do not clear these
-holds or the full native/render/Studio quarantines.
+Guarded JIT compiler execution preserves exact instruction accounting and
+cancellation. Asset Build evaluation remains in the pure asset VM; compiler
+acceleration does not grant asset code file, process, clock or random access.
+Windows retains an uncached fallback; Windows validation is still unexecuted.
+
+### Historical failures and remaining coverage
+
+During earlier stabilization, the complete Debug transport command timed out at
+60.094s; that run remains a failure. The corresponding complete Release command
+passed as recorded above. Earlier cold full Studio startup runs also stopped at
+60.076s in Debug and 60.057s in Release after publishing 11 and 42 cache records,
+respectively, before reaching editor assertions or a screenshot. Their logs and
+the model crash report remain retained. The healthy cold result above supplies
+later evidence without changing those historical outcomes.
+
+The newer main's removal of the timing policy supersedes the former
+configuration-specific admissions and broad timing quarantines. Full native,
+project, material, language, render, Studio and Wasm coverage has not been
+established for the current integration. Focused passes do not imply it.
 
 Recoverable aggregate VM allocation limits, automatic project-helper snapshots,
 broader schema/edit shapes, exhaustive evaluation of every migrated asset, and
 Linux/Windows and threaded-browser validation remain follow-up work. Generic Bake
-remains deferred.
-The authored compiler also rejected the focused fixture's explicit
-`double(value)` call as an unknown function. The fixture uses the supported UInt
-value constructor directly; general compiler feature parity is not established.
+remains deferred. The earlier compiler rejection of explicit `double(value)` is
+retained as a language-parity limit; that fixture uses the supported UInt value
+constructor directly. General compiler feature parity is not established.

@@ -14,7 +14,6 @@
 #include <time.h>
 #include <unistd.h>
 
-static double deadline;
 static volatile sig_atomic_t owned_group;
 
 static double seconds()
@@ -24,26 +23,18 @@ static double seconds()
     return now.tv_sec + now.tv_nsec / 1000000000.0;
 }
 
-static void expired(int signal)
+static void interrupted(int signal)
 {
     if (owned_group) {
         kill(-owned_group, SIGKILL);
     }
-    static const char
-        message[] = "FAIL: native tooling aggregate exceeded 60 seconds\n";
-    if (signal == SIGALRM) {
-        write(STDERR_FILENO, message, sizeof message - 1);
-    }
-    _exit(signal == SIGALRM ? 124 : 128 + signal);
+    _exit(128 + signal);
 }
 
 void tool_init()
 {
-    deadline = seconds() + 60;
-    signal(SIGALRM, expired);
-    signal(SIGINT, expired);
-    signal(SIGTERM, expired);
-    alarm(60);
+    signal(SIGINT, interrupted);
+    signal(SIGTERM, interrupted);
 }
 
 void tool_own_process(int pid)
@@ -71,9 +62,6 @@ int tool_run(const char *const argv[], const char *cwd, const char *logpath)
 int tool_run_within(const char *const argv[], const char *cwd, const char *logpath, double allowed)
 {
     double start = seconds(), limit = start + allowed;
-    if (limit > deadline - 2) {
-        limit = deadline - 2;
-    }
     if (seconds() >= limit) {
         return 124;
     }

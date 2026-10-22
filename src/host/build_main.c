@@ -129,26 +129,11 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (!root || !path || !entry) {
+    if (!root || !path || !entry || !timeout) {
         return usage();
     }
     /* Budget starts before file IO and preparation, and every child shares it. */
-    double deadline = timeout ? chibi_build_now() + timeout / 1000.0 : INFINITY;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        double limit = strtod(inherited, &end);
-        if (end == inherited || *end || !isfinite(limit) || limit <= 0) {
-            fprintf(stderr, "invalid inherited build deadline\n");
-            return 1;
-        }
-        if (limit < deadline) {
-            deadline = limit;
-        }
-    }
-    if (!timeout && !inherited) {
-        return usage();
-    }
+    double deadline = chibi_build_now() + timeout / 1000.0;
     if (!isfinite(deadline)) {
         fprintf(stderr, "build process host failure\n");
         return 1;

@@ -17,55 +17,75 @@ requirements or clear a PR hold. The broad suites below still need migration.
 
 ## Run the checks
 
-### Compiled asset stabilization hold (2026-10-21)
+### Compiled asset migration checkpoint (2026-10-22)
 
-The `native`, `projects`, `materials`, `language` and `wasm` aggregates are
-quarantined. Migrated asset routes now compile and evaluate Chibi; their previous
-parse-only workload descriptions and timing evidence do not admit this cold work.
-The policy retains historical records and group membership, reports each hold,
-and refuses execution before starting a child. A successful build means these
-checks compiled; it does not mean their migrated assertions ran.
+Data assets now compile and evaluate as ordinary Chibi modules. The former asset parser,
+emission and automatic migrations are retired. The global timing ceiling,
+quarantine gates and configuration-hash admission rules have been removed.
+Choose checks for the affected contracts and report which configurations ran.
+Old parse-only measurements do not establish behavior of the compiled assets.
 
-Affected standalone document, prototype, graph, project and scene routes are
-also held in `HELD_TOOLS`. Existing Studio acceptance routes, including their
-agent GPU entrypoints, are held because cold startup now compiles migrated UI
-assets before their scene fixtures begin. `material-destruction` loads the migrated
-CaveField module; the language program and prototype cases serialize or load compiled
-assets. These dependencies also make `make test-materials` and
-`make test-language-all` stale. Pure C and semantic selectors without these
-routes remain available individually. `make test` / `make test-short` and the
-bare C tooling aggregate `make test-tools` retain their separate admissions.
-The complete bare tooling check passed 127 cases and 34,870 assertions in
-21.128 seconds (`.chibi/asset-stabilization-test-tools-second.log`). It does not
-dispatch the standalone browser-storage cases. The separately reviewed complete
-`web-storage` check passed 19 cases and 97 assertions in 1.934 seconds
-(`.chibi/asset-stabilization-web-storage-second.log`): 18 project storage scenarios
-with tiny fake browser/FS seams and one browser-export C syntax check. This
-exercises the production project bridge, not the separate compiled-cache browser
-adapter. Clear each hold only after reviewing its complete changed workload and
-recording one supervised measurement within the existing 60-second ceiling.
+Before merging main `329d8fb046`, native and Web SDK builds passed. The full
+cold Studio check passed 62 assertions in 43.770 seconds with a healthy UI.
+Focused engine results were:
 
-The standalone cache check is admitted as
-`python3 tools/test_policy.py tool asset-cache`: two cases, 36 assertions,
-25.669 seconds, Debug with sanitizers off and bytecode, recorded in
-`.chibi/asset-cache-second.log`. It uses four cold compilations, one fresh worker
-with a 15-second child limit, tiny framing records and retention metadata.
-This result covers neither browser storage nor transport or aggregate checks.
-The separate real-browser cache check is admitted as
-`python3 tools/test_policy.py tool asset-cache-browser`. Four fresh Wasm page
-sessions cover persistence, reload with removal and corrupt-record repair, actual
-IndexedDB version failure with memory fallback, and blocked restore with the
-five-second startup deadline and late-callback isolation. The complete command
-passed five C cases and 32 assertions in 9.121 seconds
-(`.chibi/asset-cache-browser-four-first.log`); exact reviewed source, adapter,
-Wasm and Chrome hashes are in `.chibi/asset-cache-browser-four-hashes.log`.
-It uses four-byte records, no compiler calls, GPU work or rendered frames. This
-standalone result does not admit an aggregate or Studio startup.
+| Check | Cases | Assertions |
+| --- | ---: | ---: |
+| Guarded execution scope | 2 | 120 |
+| Compiled asset cache | 2 | 44 |
+| Project documents | 3 | 4 |
+| Prototype documents | 8 | 200 |
+| Graph checks, three selectors | 14 / 18 / 14 | 252 / 182 / 128 |
+| Reference index | 6 | 77 |
+| Asset source | 3 | 15 |
+| New asset | 2 | 65 |
+| Asset refactor | 4 | 41 |
+| Compiled project formatting lifecycle | 1 | 49 |
 
-The native tooling driver launches a support-only Release Wasm consumer, built
-against installed `dist/web-sdk` (measured SDK identity
-`7409ee8abcd06e2edd55d965f690c82c5e4c107ef5c6cc76877bad4d5b0faab6`).
-Build that consumer separately, with the production adapter supplied explicitly:
+These are checkpoint results, not passes on the candidate after this merge.
+The latest transport command was interrupted by the old binary's alarm and
+has no complete passing result for the current candidate. Rebuild before
+validating the merged code. Broad groups and unexecuted platform configurations
+also need their own results.
+
+Earlier stabilization measurements remain historical evidence:
+
+- The bare tooling group passed 127 cases and 34,870 assertions in 21.128
+  seconds (`.chibi/asset-stabilization-test-tools-second.log`). The separate
+  `web-storage` check passed 19 cases and 97 assertions in 1.934 seconds
+  (`.chibi/asset-stabilization-web-storage-second.log`), covering eighteen
+  project-storage fake-browser scenarios and one C syntax check.
+- The earlier cache check passed two cases and 36 assertions in 25.669 seconds
+  (`.chibi/asset-cache-second.log`). It predates the guarded compilation checks
+  in the current 44-assertion fixture.
+- The real-browser cache check passed five C cases and 32 assertions in 9.121
+  seconds (`.chibi/asset-cache-browser-four-first.log`). Four fresh Wasm page
+  sessions covered persistence, reload/removal/corrupt-record repair, IndexedDB
+  failure with memory fallback, and the product's five-second restore deadline
+  with late-callback isolation. Reviewed source and build hashes are in
+  `.chibi/asset-cache-browser-four-hashes.log`. It used four-byte records and no
+  compiler calls, rendered frames or GPU work.
+- An earlier Release transport check passed three cases and 1039 assertions in
+  27.318 seconds (`.chibi/asset-transport-release-current.log`). The earlier
+  28.742-second pass is in `.chibi/asset-transport-release.log`; the Debug run
+  interrupted after 60.094 seconds is in `.chibi/asset-transport-third.log`.
+  Those results belong to their recorded SDK and binary revisions.
+- The CPU Studio model check passed one case and 73 assertions in 12.145 seconds
+  (`.chibi/asset-final-model-tool.log`) against SDK `c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325`.
+  With disk cache disabled it made eight cold compilation attempts, 39 RAM
+  hits and no persistent hits. Its exact configuration is in
+  `.chibi/asset-final-model-tool-evidence.json`. A previous fresh-private-cache
+  run took 14.466 seconds with eight persistent writes. These model results
+  cover UInt parameters, field overrides, Reset, history, Save/Reload and
+  external-source merge/conflict preservation.
+
+The model regression exposed an ownership error in `asset_source_highlight`:
+the syntax API returns a normal heap array, but the adapter freed it as a
+stretchy array. The adapter now uses `free`; subsequent model checks used the
+rebuilt SDK.
+
+The browser cache fixture consumes a separately built Release Wasm support
+consumer and the production Studio adapter:
 
 ```sh
 emcmake cmake -S test/tools -B build-web-cache-browser \
@@ -76,76 +96,48 @@ cmake --build build-web-cache-browser --target test_tools
 CHIBI_TOOLS_BUILD_DIR=build-tools python3 tools/test_policy.py tool asset-cache-browser
 ```
 
-The tool route defaults `CHIBI_ASSET_CACHE_BROWSER_ROOT` to the absolute
-`build-web-cache-browser` directory; set it explicitly for another reviewed
-consumer. Adapter SHA-256 for this measurement is
-`18fc3b173c77a7294e1cfdb22e8cd4793038665f78d89fc0dd178778059363ac`.
-
-The default Debug `--asset-transport` command timed out after 60.094 seconds
-with no final case summary (`.chibi/asset-transport-third.log`); it remains held.
-A separately reviewed installed Release run passed three cases and 1039 assertions
-in 27.318 seconds (`.chibi/asset-transport-release-current.log`) after the SDK
-was rebuilt for the highlight ownership fix. The earlier 28.742-second pass is
-retained in `.chibi/asset-transport-release.log`. Only
-`python3 tools/test_policy.py tool asset-transport-release` admits that exact
-consumer: it checks Release configuration, installed SDK identity, compiler
-artifact, test fixture and executable hashes, with persistent cache disabled.
-Changed identities require renewed admission. This focused Release result does
-not clear Debug or aggregate holds. Keep the complete workload and deadline.
-
-
-The CPU Studio model check is separately admitted as
-`python3 tools/test_policy.py tool compiled-asset-edit-model`. Its fixed Release
-binary exercises UInt parameter edits, computed field overrides, Reset, exact
-Undo/Redo, Save/Reload and external-source merge/conflict preservation. The
-final registered route passed one case and 73 assertions in 12.145 seconds
-(`.chibi/asset-final-model-tool.log`) against Release SDK
-`c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325`.
-With disk cache disabled by `CHIBI_ASSET_CACHE_DIR=''`, it made eight cold
-compilation attempts, 39 RAM cache hits and no persistent cache hits. Exact
-binary, fixture and configuration evidence is in
-`.chibi/asset-final-model-tool-evidence.json`. The earlier fresh-private-cache
-measurement passed in 14.466 seconds with eight optional persistent writes
-([model4 native log](/Users/cwaldner/.codex/visualizations/2026/10/21/01a160a6-7daa-74e1-b595-8af541a773eb/compiled-asset-edit/model4/native.log)).
-The policy checks the exact Release configuration, SDK identity, executable and
-acceptance fixture hashes; changed identities need renewed admission. This CPU model result admits no Studio app
-startup, rendering, Debug configuration or aggregate.
-
-The model regression exposed a heap ownership error in
-`asset_source_highlight`: the canonical syntax API returns a normal heap array,
-but the adapter freed it as a stretchy array. The adapter now calls `free`;
-the successful model measurement used the rebuilt SDK containing that fix.
+Set `CHIBI_ASSET_CACHE_BROWSER_ROOT` to use another consumer directory. Keep
+configuration/build evidence separate from fixture execution.
 
 The engine build compiles the full test drivers, `test_tools` and
 `test_language`, with every native, compiler and renderer package. CI is
 configured to request the historical group routes below on pushes to `main`
-and pull requests that change more than documentation; the current holds above
-apply. `make build` links `chibi`, `chibi-compile` and
-`chibi-player` in the same tree.
+and pull requests that change more than documentation. `make build` links
+`chibi`, `chibi-compile` and `chibi-player` in the same tree.
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # HELD: migrated cold asset work lacks aggregate admission
-make test-materials      # HELD: CaveField now compiles as an asset
-make test-projects       # HELD: migrated projects and assets
-make test-language-all   # HELD: compiled asset program/prototype routes
+make test-native         # native CPU selectors
+make test-materials      # material simulation selectors
+make test-projects       # project, asset import and chibi_ctl selectors
+make test-language-all   # native language group
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
 make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
 make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
 make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
+make test-full           # tooling, native, materials, projects and language; no GPU
+make test-render         # render checks requiring a display and GPU; excludes Studio
+make test-compiler-parity # Release package-compiler routes, including bootstrap
+make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
+
+The runner has no default global timeout.
+`make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
+case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
+passed directly to the program. For an arbitrary driver invocation, use
+`python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
+An optional timeout precedes the action, for example
+`python3 tools/test_policy.py --timeout SECONDS tool language-program`.
 
 `make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
 launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
 `chibi_ctl` for `validate-project`, `prototype-expansion`, `controller` and
 `render-fixture`, `chibi-compile` for `published-docs`, and the launcher for
 `chibi-cli`. `validate-project` starts `chibi_ctl` dozens of times; each
-start builds the authoring catalog, and under ASan those starts alone take
-longer than the deadline. The project selectors left the native group when it
-reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
-coverage, mesh files, project validation and model import alone took 33 s.
+start builds the authoring catalog. The separate project group and Release tools
+keep that repeated startup work out of the native runtime checks.
 
 `published-docs` copies `docs/site.chibi` and every page, package folder and
 grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
@@ -170,7 +162,7 @@ whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
 Those presentation checks are separate from the original-snippet validation
 above, which cannot access the generator's private parser native.
 
-`python3 tools/test_policy.py tool <name>` runs one entry of that table against
+`python3 tools/test_policy.py tool <name>` runs one mapped selector against
 the drivers `make test-build` produced and those Release tools, except
 `language-package-compiler-chibi-bootstrap`, which runs the Release
 `test_language` that `make test-bootstrap` builds; set
@@ -178,11 +170,10 @@ the drivers `make test-build` produced and those Release tools, except
 `CHIBI_COMPILE` to use another build.
 
 `python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
-checked-in fixture projects with Release `chibi_ctl --format --check`, under
-one shared 60-second deadline. It refuses outdated manifests before launching
-any child, because opening an old project can migrate it. This standalone
-admission does not enable the quarantined full gate. Other standalone admissions,
-including `language-query-program` and `language-row-array`, are also outside the
+checked-in fixture projects with Release `chibi_ctl --format --check`.
+It refuses outdated manifests before launching any child, because opening an
+old project can migrate it. Standalone selectors,
+including `language-query-program` and `language-row-array`, can be outside the
 aggregate groups; use `make test-list` for the current inventory.
 
 `make language-build` builds a standalone, faster `test_language` in
@@ -199,8 +190,7 @@ they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
 CI is configured to request the build, four groups and `make test-tools` on
-Linux and macOS. During the stabilization hold above, the supervisor refuses
-those groups; these refusals are not passes.
+Linux and macOS. A configured group is not evidence that it ran on a candidate.
 The general Windows engine and Studio jobs are paused pending desktop archives.
 The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
 Windows proofs on every PR into `main` and push to `main`. Each downloads a
@@ -208,9 +198,8 @@ checksum-pinned runtime seed and uses the checked-in Chibi compiler to compile
 the current compiler/core sources. It then executes that output to compile them
 again. This workflow installs and invokes neither a C compiler nor CMake, and
 has no native-build job dependency. Both compiler processes use an isolated
-input directory and an empty tool search path under one shared 59-second
-deadline inside a 60-second step. The two stages must agree locally and the
-three platforms must produce identical compiler bytes. See the
+input directory and an empty tool search path. The two stages must agree locally,
+and the three platforms must produce identical compiler bytes. See the
 [compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
 for the exact command, isolation and uploaded evidence. This workflow does not
 call `make test-bootstrap`, which prepares stage one through stage zero.
@@ -225,7 +214,7 @@ materials, input and entities). `test_tools --feature-coverage <project> <chibi_
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
-failure. The production policy passes the selected `CHIBI_CTL` controller,
+failure. The runner passes the selected `CHIBI_CTL` controller,
 defaulting to `build-release/bin/chibi_ctl`. Every prototype, behavior, library and system must be reachable from a
 scene: placed or attached there, spawned or called from source that runs, and
 only that source counts. A spawn reaches the prototype it names directly or
@@ -252,11 +241,10 @@ entry becomes used. A PR that adds a component, native function or event uses it
 in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 `projects` group, and so CI, runs it on the fixture.
 
-## Temporary 60-second policy
+## Focused regression coverage
 
-The length-carrying string migration adds independently reviewed, fixed CPU
-workloads under the existing 60-second deadline per selector. This is admission
-for the first measurement; it does not record a pass.
+The length-carrying string migration adds the following fixed CPU workloads.
+These counts describe coverage and do not record a pass.
 
 - `language-record-values`: thirteen cases, including eight fixed UTF-8 vectors,
   eight indexed string keys, and ownership/native-boundary checks. One tiny
@@ -292,18 +280,17 @@ for the first measurement; it does not record a pass.
   child's 64 KiB source cap remain unchanged.
 
 These extensions add no rendering, GPU or network work and no additional child
-process launches. They do not enable a quarantined aggregate.
+process launches.
 
 The independently reviewed compiler integration has 137 fixed samples: 90 base,
-13 types, 20 imports and 14 collections, with each selector under its own
-60-second deadline and imports using Release. The Release bootstrap also
-compares all 137 samples between stages and 59 fixed floating literals with
-both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+13 types, 20 imports and 14 collections, with imports using Release. The Release
+bootstrap also compares all 137 samples between stages and 59 fixed floating
+literals with both signs. Seed verification runs one fixed-point compile with a 16 MiB output
 limit and writes only its closure and manifest; a failed compile may make one
-diagnostic call. It retains one shared 60-second production deadline.
+diagnostic call.
 
 The compiled-runtime rollout passed native, language, tooling, materials and
-project groups under their shared 60-second deadlines. Browser Wasm execution
+project groups. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine
 cases; the browser audio transport passed two C cases (six assertions) in
 1.372 seconds including its native launcher. Permission and capture endpoints
@@ -316,7 +303,7 @@ Metal/Cocoa (3.630 seconds including startup). This is rendering evidence, not
 a steady-state performance measurement. The broader `scene3d` check aborts in
 the existing sky path because Metal rejects an unused 128-byte instance-buffer
 layout; the sky source, Cute revision and instance-buffer patch are unchanged.
-Full native/render/Studio coverage remains disabled, not passed.
+That rollout did not establish full native/render/Studio coverage.
 
 `player-url` runs nine C-owned URL gesture lifecycle cases through nine short
 Node invocations. It drives the production browser bridge with fake browser
@@ -367,9 +354,8 @@ do not establish production semantic or execution coverage.
 
 The production syntax dispatcher builds independently with `make language-build`.
 `make test-language` runs seven finite C syntax/recovery/incremental snapshot cases
-and the explicit `.chibi` corpus manifest under one production deadline. Corpus
-input is limited to 256 files, 512 KiB per file and 8 MiB total. Independent review
-approved first supervised measurement; a syntax pass does not establish semantic
+and the explicit `.chibi` corpus manifest. Corpus input is limited to 512 files,
+512 KiB per file and 8 MiB total. A syntax pass does not establish semantic
 or execution correctness. The dispatcher compiles against public SDK headers;
 its syntax cases use allocation support and Tree-sitter's C runtime.
 Default inputs are curated engine examples and fixtures. Extracted projects can
@@ -400,8 +386,8 @@ integer types, two directions), each run on VM and the compiled backend with
 three invalid counts: width, width plus one, and all bits set. These 96 calls
 check DATA failure and source metadata. Existing valid-shift cases cover zero,
 one and width minus one, sign extension and discarded bits. This bounded
-extension was independently reviewed before execution; the shared deadline
-and no-IO/no-process constraints are unchanged.
+extension was independently reviewed before execution; its no-IO/no-process
+constraints are unchanged.
 
 The same dispatcher adds six two-frame, ten-instruction definitions to check
 the optimizer's treatment of failing shifts. Twenty invocations, each capped at
@@ -430,9 +416,8 @@ pico_unit checks the exact result before timing and after each trial. Output
 reports monotonic elapsed time, allocation-wrapper calls/requested bytes and
 arena block allocations; requested bytes are cumulative, not live memory.
 Compilation is excluded from trial timing. This CPU-only selector has no engine
-frames, GPU, files, processes or sleeps and runs under the shared 60-second
-production supervisor deadline. The permanent selector passed 64 assertions in
-0.215 seconds on 2026-10-11 (macOS arm64, Clang 23, Release, no sanitizers).
+frames, GPU, files, processes or sleeps. The permanent selector passed 64
+assertions in 0.215 seconds on 2026-10-11 (macOS arm64, Clang 23, Release, no sanitizers).
 Set `CHIBI_LANGUAGE_BUILD_DIR` to the Release build's `test/language` directory
 when comparing performance; the default build may enable sanitizers.
 
@@ -452,9 +437,8 @@ test-wasm` also runs the package compiler's base samples on both backends
 selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
-examples, and run under the production 60-second deadline. Configuration and
-build time are separate. Node runs the Wasm, execution, program, headless,
-publication and scalar benchmark selectors. Chrome runs the same selectors
+examples. Configuration and build time are separate. Node runs the Wasm,
+execution, program, headless, publication and scalar benchmark selectors. Chrome runs the same selectors
 except headless through `test_tools --wasm-browser`, with GPU use disabled and
 a 55-second internal process deadline. The fixture owns and removes its browser
 profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
@@ -464,8 +448,8 @@ Chrome also runs `--row-array`, `--modules` and `--query-program` for packed
 numeric arrays, imported generic ownership, maps and iteration. These are fixed
 C workloads; module paths use a temporary MEMFS directory and source overlays.
 The packed loop has 64 elements and 16 trials per numeric width, representation
-and backend. The combined route retains its 55-second internal deadline and
-60-second supervisor limit. Its expanded duration needs a supervised measurement.
+and backend. The combined route retains its 55-second internal timeout. Its
+expanded duration has not been measured.
 
 Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
 helper continuations, budgets, prepared generation ownership and canonical
@@ -474,7 +458,7 @@ live and checks that repeated passes add no compilations. Separate checks cover
 retirement without recompiling unrelated functions and pthread table cleanup.
 The default-backend and scratch-capacity checks failed with their prior behavior
 restored. Linking the previous loader made both cache regressions fail on their
-compilation-count assertions. Full GPU/Studio coverage remains quarantined.
+compilation-count assertions. These runs do not establish full GPU/Studio coverage.
 
 On 2026-10-11, Chrome passed 91 cases/5,007 assertions in 0.907 seconds; its
 pthread configuration passed 92 cases/5,041 assertions in 0.943 seconds. Node
@@ -533,10 +517,10 @@ limits, values above 2^53, contextual nominal enums and five out-of-range reject
 
 `python3 tools/test_policy.py tool controller` runs five C command-response cases
 against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
-Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
-review admitted seven tiny generated files per case, two scene entities, thirteen
-owned child processes capped at ten seconds each, and twenty total fixed
-simulation steps under the shared sixty-second deadline. Each fixture is formatted
+Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. The workload
+uses seven tiny generated files per case, two scene entities, thirteen owned
+child processes capped at ten seconds each, and twenty total fixed simulation
+steps. Each fixture is formatted
 through `chibi_ctl --format`, and its files are removed after the case.
 
 The cases check canonical definitions and references, exact rename edits without
@@ -574,24 +558,24 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for seven small
+`--source-presentation` is a native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata, invalid drafts, native palette declarations,
 callable-local ownership and readable formulas. Formula coverage retains authored
 call origins and effectful operations and reparses expression replacements.
-These cases pass 7,971 assertions in 1.259 seconds under the production deadline.
+These cases pass 7,971 assertions in 1.259 seconds.
 Later document/Studio integrations are unverified.
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-camera` admits one fixed
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-camera` runs one fixed
 native Studio camera case, with one in-memory cube and thirty hidden 1920x1080
-frames at fixed 1/60 dt under one shared 60-second deadline. Queued SDL input
+frames at fixed 1/60 dt. Queued SDL input
 exercises orbit, pan, anchored dolly, same-frame right-button/W flight,
 fractional diagonal wheel pan, an above-horizon press, focus-loss cleanup and
-checkpoint lens retention. This does not admit the broader Studio acceptance
-suite or establish web input coverage.
+checkpoint lens retention. This case does not establish broader Studio acceptance
+or web input coverage.
 
 Use the existing absolute `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD` and
 `CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. The evidence must match the current
@@ -606,10 +590,10 @@ Exactly one `Studio 3D camera accepted: frames=30` line is required; incomplete,
 repeated or diagnostic-bearing output fails. C policy regressions check those
 completion requirements. The first supervised camera execution remains pending.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-gizmo3d` admits the
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-gizmo3d` runs the
 independently reviewed native gizmo fixture: six in-memory prototypes and eight
-actors, forty-two hidden 1920x1080 frames at fixed 1/60 dt under one shared
-60-second deadline. Queued SDL gestures exercise world/local movement, grid
+actors, forty-two hidden 1920x1080 frames at fixed 1/60 dt. Queued SDL gestures
+exercise world/local movement, grid
 snapping, Orientation and mirrored-parent rotation, local scaling, undo/redo,
 Escape, focus-loss and hidden-panel cancellation, and refusal beneath sheared
 or singular parents. It uses the same installed-SDK provenance, disposable
@@ -619,12 +603,12 @@ files with the shared 3D fixture and collider acceptance).
 Exactly one `Studio 3D gizmo accepted: frames=42` line is required; an older
 38-frame fixture, incomplete run, duplicate marker or runtime diagnostic fails.
 The C policy case checks completion and rejection; the first supervised GPU
-execution remains pending. This admission covers only this fixed fixture.
+execution remains pending. This description covers only this fixed fixture.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-collider3d` admits the
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-collider3d` runs the
 independently reviewed native collider fixture: three in-memory prototypes and
-three actors, twenty-six hidden 1920x1080 frames at fixed 1/60 dt under one shared
-60-second deadline. Queued SDL input edits a stretched box face, a sphere's
+three actors, twenty-six hidden 1920x1080 frames at fixed 1/60 dt. Queued SDL input
+edits a stretched box face, a sphere's
 radius and a capsule's height with typed undo/redo, rejects parallel-axis and
 nonfinite begins, refuses hidden handles, and cancels a face move with Escape or
 H-during-drag while restoring dirty/history state.
@@ -633,7 +617,7 @@ project and resource-generation checks as the gizmo route. Exactly one
 `Studio 3D collider handles accepted: frames=26` line is required; incomplete,
 repeated, unrelated or diagnostic-bearing output fails. A C policy case checks
 those requirements. The first supervised execution remains pending, and this
-route admits only the fixed collider fixture.
+route runs only the fixed collider fixture.
 
 The four graph selectors compose the application's graph palette (core, shader,
 field and native nodes over the game's components) into the registry and edit
@@ -656,21 +640,20 @@ zero scale and the palette's Direction To through a saved graph, and a vector
 of floats scaled by integers of each width on either side. It passes 54
 assertions in under a second with ASan/UBSan.
 
-`--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
+`--system-schedule` runs only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
-The scheduler benchmark and broad material aggregates remain quarantined. This
-selector currently fails: the migrated invalid-source case exposed a NULL program
-identity in lowering. The supervised debugger located the failure; its completion
+The recorded run of this selector failed: the migrated invalid-source case
+exposed a NULL program identity in lowering. The debugger located the failure; its completion
 is diagnostic evidence, not a passing test.
 
-`--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
+`--new-asset` runs one case: `new_asset_create` writes a behavior and a scene
 into one temporary content folder, creating the missing folders, and refuses an
 existing file, a model named like a shape, an invalid name, a folder blocked
 by a file, and a family folder or content folder that is a symbolic link out
 of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
-`--asset-refactor` admits one case: renaming a prototype that prototype
+`--asset-refactor` runs one case: renaming a prototype that prototype
 children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
@@ -679,8 +662,7 @@ Material tests are split by masks/damage, cave/terrain, fluids, body destruction
 fragments and debris; a shared fixture owns setup and coverage invariants.
 The fixed largest inputs are a 2048 by 768 cave, a 192 by 192 flow grid,
 and two 192-particle MPM pools of 3000 steps each. Worker cases use four workers.
-No material selector creates a window, child process or network connection;
-the group runs once under one shared 60-second deadline.
+No material selector creates a window, child process or network connection.
 
 The material simulation selectors run without a window or GPU; wall times are
 under ASan/UBSan through the production supervisor on a shared four-core host.
@@ -712,8 +694,8 @@ serial run; heat exchange over 48 by 48 parcels, conserving energy; and gas
 flow around two bodies over 64 by 64 parcels. It prints per-phase timings and
 passes 6,404 assertions in 8.2 seconds. `--contact-benchmark` times the first
 and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
-overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
-`benchmark_trials`.
+overlapping, and passes 96 assertions in 1.4 seconds. Compare builds using the
+same C selectors and identical build flags, retaining their timing output.
 
 `--asset-values` runs nine cases on compiled Chibi asset text and the native value tree:
 typed scalars at the 64-bit limits, slashdash, annotated arrays and source
@@ -756,8 +738,7 @@ with an empty start scene and is never written over, and the language and
 material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
-`--project-declarations` is one standalone pico compatibility case under the
-shared 60-second ceiling. Its two exact
+`--project-declarations` is one standalone pico compatibility case. Its two exact
 fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi` and
 `VirtualList.chibi` from Studio
 `07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (7,147 bytes total). Each source must
@@ -784,8 +765,7 @@ and no call node.
 The success-path ceiling is six declaration migration calls, ten later-step
 migration calls, three explicit current parses and two content transactions over
 two then three input files, with at most four simultaneous content/staging
-files. This updated workload requires independent exact-source
-admission before execution under the unchanged production 60-second ceiling.
+files.
 There is no authored execution, backend, renderer, child process, network or
 additional corpus. The test object consumes only explicitly linked public
 `Chibi::project_document`, `Chibi::language_syntax`, `Chibi::authoring` and
@@ -844,13 +824,13 @@ releases its entire owned world, including a disabled external Panic source.
 These additions create three in-memory player worlds with at most two live
 entities each, without frames, processes, GPU work or files.
 
-Studio's admitted `studio-source-edit` check also covers the production Undo/Redo
+Studio's `studio-source-edit` check also covers the production Undo/Redo
 dispatch for prototype and relationship source tabs, including typed reopening
 of their saved tab snapshots. One temporary file below 65 MiB verifies that the
 general asset reader accepts text larger than the prototype collection budget,
 while collection rejects it before a second read or parsing. The buffer and file
 are released before the two tiny history fixtures. These cases add no rendered
-frames to the existing four-frame check and keep its shared 60-second deadline.
+frames to the existing four-frame check.
 
 `--engine-clock` runs six cases on the engine's 60 Hz fixed clock over a
 preview engine and one kinematic body: 30, 60, 120 and 144 Hz displays all run
@@ -922,7 +902,7 @@ preparation shares: a project's prototypes, each under its own load's limit,
 and a scene's instances of one prototype tree. Each reads tens of thousands of
 small prototype documents, so they have their own selector.
 
-`--source-edit` admits nine independently reviewed cases with fixed small inline
+`--source-edit` runs nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
 effectful result reuse, lexical capture rejection, statement deletion/reordering,
 structural selections, typed values, optional-input reconnection, palette creation,
@@ -930,7 +910,7 @@ declaration edits, and comment-box/reroute preservation. The two added cases use
 four sources smaller than 200 bytes and twelve fixed edits plus clipboard checks;
 the review repairs add one tiny capture counterexample and two tuple selection
 requests. No files, runtime frames, processes or GPU work run. The first three-case
-snapshot passed one and failed two. Three more admitted cases cover extraction,
+snapshot passed one and failed two. Three more cases cover extraction,
 inline capture/default handling, signature changes and resolved binding intents
 using seven tiny sources and fixed requests. The first five-case integration hit
 an invalid-expression parser-node crash; its bounded debugger capture identified
@@ -940,13 +920,13 @@ projections to check program/path rename and persisted geometry, watches, boxes
 and routes. It also checks atomic rejection of a malformed origin table, wrong
 expected bytes and a non-name edit. Debugger completion is diagnostic evidence only.
 
-`--source-systems` admits seven isolated pico cases from `test/code_system_runtime.c`
+`--source-systems` runs seven isolated pico cases from `test/code_system_runtime.c`
 on VM and SLJIT. Fixed supplied-time steps and pumps cover membership, suspension,
 spawn cancellation, refreshed component reads, query formatting, reactive bindings,
 movement and camera globals. Each fixture has at most 259 entities, and the cases
 use no renderer, sleeps or child processes. Its exact dispatcher runs only registry
-validation and these cases. The migrated selector is independently reviewed and
-admitted for its first supervised capture.
+validation and these cases. The migrated selector has been independently
+reviewed; no execution result is recorded here.
 
 `python3 tools/test_policy.py tool tilemap` selects eight reviewed C cases for
 owned grid decoding and cache invalidation, half-open point lookup, exact rotated
@@ -966,7 +946,7 @@ imported device it recreates the app, delivers a controlled old loss continuatio
 and verifies that the new app stays healthy. A real validation error must reach
 both CF and the page's listener; a real device destruction must mark the backend
 lost. Each callback phase has at most one second, clipped to the shared 55-second
-startup/execution deadline inside the production 60-second limit.
+startup/execution timeout.
 The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
 build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing
@@ -980,7 +960,7 @@ fractional overlap, strict rectangle edge contact and half-open point inclusion.
 It retains the query snapshot while disabling, removing, restoring and destroying
 its single member. The case creates no windows, files, subprocesses or engine
 frames and uses at most 16 bounded event dispatches per backend. Independent
-review admitted the extension; its supervised run passed three cases and 722
+review covered the extension; its run passed three cases and 722
 assertions in 1.351 seconds. The room-border rules and player spawn remain
 project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
@@ -1003,8 +983,8 @@ process runs four independently reviewed cases: state/events/bindings/imports,
 seven missing or incompatible linkage failures, ten malformed wire mutations,
 and atomic package loading with reversed records and three rejection cases.
 Both execution backends are checked. Input files are capped at 512 KiB and the
-metadata file at 96 bytes. Each child has a 10-second cap within the shared
-60-second production deadline; generated inputs and logs are removed by the parent.
+metadata file at 96 bytes. Each child has a 10-second cap; generated inputs and
+logs are removed by the parent.
 The redesign adds two fixed one-function specimens on this same route: a declared
 scalar BOOL getter with its actual field capability metadata, and a separate
 payload-free native-header artifact written after catalog retirement. Each file
@@ -1027,39 +1007,37 @@ in, and the repository's fixtures are not complete projects for them, since some
 reference events and prototypes they omit or declare their own components. Run
 them on extracted game projects and keep the manifest with the evidence.
 
-Managed test executions, including aggregates, have one hard 60-second ceiling.
-Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
-it. See [the inventory](test-quarantine.md) for preserved native coverage,
-retired script coverage and exact admitted native tuples.
+The runner has no default global time limit. Use its optional `--timeout SECONDS`
+when a run needs an explicit deadline. Product operations and fixtures can retain
+their own timeout and cancellation contracts. See [the inventory](test-inventory.md)
+for native coverage and retired script coverage.
 
 `make test` and `make test-short` run six pure C execution-policy cases through
-`tools/test_policy.py`. This default checks execution-policy decisions only.
+`tools/test_policy.py`. This default checks runner and selection behavior only.
 `make test-tools` runs the complete C tooling group: execution policy,
 package/install and configure preservation, room service, publication,
-supervisor cleanup/deadlines and validation-planner regressions. Packaging,
+process cleanup, explicit deadlines and validation-planner regressions. Packaging,
 publication and room service implementations remain external programs; C tests
 own their assertions. Once `make build` has produced `build/reflect`, the
 tooling build also runs it against component manifest identity, unchanged and
 failed generation, handle pins and JIT identity; without it those cases are
 absent, not passed. Select this complete group for affected tooling contracts.
 CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
-Both modes retain one shared 60-second supervisor deadline. Retired script suites
-have not been reproduced completely.
+Retired script suites have not been reproduced completely.
 
 For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
 selects two existing C cases with unchanged assertions: numeric units and range
 generation, malformed and nonnumeric annotations, unsafe endpoints, distinct
 hints/defaults, and failed generation preserving prior outputs. The fixed sources
 are below 2 KiB; twelve reflection children retain their existing ten-second
-limits inside one shared 60-second supervisor deadline. There are no engine
-frames, GPU or network operations. This is an admission for the first supervised
-measurement, not a recorded pass. Configure the tooling driver with
+limits. There are no engine frames, GPU or network operations. This workload
+description is not a recorded pass. Configure the tooling driver with
 `CHIBI_REFLECT_EXECUTABLE` and select its directory with `CHIBI_TOOLS_BUILD_DIR`;
 the selector rejects a driver built without reflection. The complete tooling
 group retains both cases. This focused check covers reflection range metadata
 only and does not establish a complete tooling-group pass.
 
-The language follow-up admits these focused C checks under the same supervisor:
+The language follow-up adds these focused C checks:
 
 - `tool ecs-query` runs the existing ECS query correctness cases plus bounded
   membership-cache and query-planning regressions. They create at most 256
@@ -1103,11 +1081,11 @@ The language follow-up admits these focused C checks under the same supervisor:
   One combined 12-instruction scalar/query definition adds 20 calls across VM/
   compiled and inspection modes, with live integer/floating/handle values,
   distinct missing-tuple/stale-entity failures and same-context recovery. The
-  combined workload requires independent admission before execution.
+  combined workload has no recorded execution result here.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
 - The optimizer microbenchmarks below use the existing C dispatchers, five
-  small trials and the same 60-second supervisor. Setup and correctness checks
+  small trials. Setup and correctness checks
   stay outside timed loops; no elapsed-time threshold determines a pass.
   `xalloc` requested bytes measure allocation traffic through that allocator,
   not live or peak memory. Compare Release builds with identical flags and
@@ -1125,7 +1103,7 @@ The language follow-up admits these focused C checks under the same supervisor:
   of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
   failure checks. These fixtures perform no child-process, engine-frame or GPU
   work. The four language selectors also have `wasm-` variants using the same
-  C checks. Initial admissions establish bounded work, not measured speedups.
+  C checks. Workload counts alone do not establish measured speedups.
   The scheduler selector also covers unchanged owned descriptors, callback and
   effect replacement, failure retry and ordering, one recursive dispatch, and a
   129-system oversized-cache fallback. There are eight fixed cases; cached
@@ -1157,14 +1135,11 @@ The language follow-up admits these focused C checks under the same supervisor:
   assertions, 40 parses/analyses, 38 lowers/finalizations, 56 explicit maintenance
   calls and six bootstrap BYTECODE entries. The 48 evaluator calls and four
   initializer entries above are the new case's delta, not whole-route totals;
-  the original cases' query/body/failure work remains inside the same deadline.
+  the original cases' query/body/failure work remains in the complete route.
   Native runs select BYTECODE and SLJIT; the existing Wasm selector retains its
-  BYTECODE/Wasm pair. Both expanded routes need independent exact-source workload
-  admission before their first run. These are planned counts, not measured
-  passes. Run the whole selected route under its unchanged shared production
-  60-second deadline, including preparation and cleanup; configuration and build
-  timing remain separate. The benchmark workload and aggregate membership are
-  unchanged.
+  BYTECODE/Wasm pair. These are planned counts, not measured passes. Configuration
+  and build timing remain separate. The benchmark workload and aggregate
+  membership are unchanged.
 - `tool language-activation-cache` and `tool wasm-activation-cache` use five
   cases on both backends to check warm allocation counts, owner/default reset,
   nested tasks, read-only observation, reload, managed payloads, errors, suspended
@@ -1192,8 +1167,8 @@ The language follow-up admits these focused C checks under the same supervisor:
   source/debug metadata, in normal and inspected modes.
   One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
-  flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
-  deadlines apply. The existing tooling driver loads the library and compares 120
+  flags, enabled sanitizers and assertions. The existing 10-second child timeout
+  applies. The existing tooling driver loads the library and compares 120
   normal/inspection executions against the canonical VM and runs two pause/resume
   samples including negative zero, then removes all files.
   Three additional five-instruction scalar-component functions add 132 calls:
@@ -1201,15 +1176,14 @@ The language follow-up admits these focused C checks under the same supervisor:
   failures, exact metadata and alternate-world recovery despite stale cached
   columns. These coexist with the two query-variable definitions and sixteen
   query calls below, sharing the same compiler child and source-size bound.
-  The combined generated source requires independent admission before execution.
+  The combined generated source has no recorded execution result here.
   The 2026-10-21 checked-shift extension is a second pico case in the same
   dispatcher. It adds eight nine-instruction functions (eight integer types,
   a direction argument), with six counts per direction and 192 paired
   VM/generated-C calls. It checks valid values and invalid-count DATA metadata.
   Its source is capped at 64 KiB; the original case retains its 128 KiB bound.
-  Each case has one compiler child with the existing 10-second limit, and both
-  share the selector's 60-second deadline. Cleanup runs between cases. The
-  combined workload requires independent review before execution.
+  Each case has one compiler child with the existing 10-second limit. Cleanup
+  runs between cases.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -1218,7 +1192,7 @@ The language follow-up admits these focused C checks under the same supervisor:
 - `tool unit-validation` runs the existing single controller unit-diagnostic
   case with its original setup/cleanup. Tiny component/system sources cover
   project/source errors and same-layout unit changes in one retained controller.
-  Its original child deadlines and shared 60-second limit remain unchanged;
+  Its original child deadlines remain unchanged;
   it runs no gameplay frames or GPU work.
 - `tool unit-fixtures` checks six fixed measured sources from
   `declared-components` and `feature-coverage` against their native and declared
@@ -1271,10 +1245,10 @@ The call-view/reduction follow-up adds bounded affected-contract checks:
 - The component-setter source-presentation case also projects four tiny reduction
   spellings and checks receiver/value origins and reduction-mode cache identity.
 
-These are first-measurement admissions after independent workload review, not
-recorded passes. The original cases, assertions, sanitizers and 60-second limits
-remain intact. Separate semantic, syntax, formatting and prepared-boundary checks
-still cover their affected contracts; these selectors do not imply a full-suite pass.
+These descriptions record reviewed workloads, not passes. The original cases,
+assertions and sanitizers remain intact. Separate semantic, syntax, formatting
+and prepared-boundary checks still cover their affected contracts; these
+selectors do not imply a full-suite pass.
 
 The execution-storage and row-worker follow-up adds these reviewed bounds:
 
@@ -1324,19 +1298,23 @@ make test-list
 
 | Command | Current coverage |
 | --- | --- |
-| `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
-| `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
-| `test-materials` | The CPU material simulation selectors under one shared deadline. |
-| `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
-| `test-language-all` | The admitted native language aggregate under one shared deadline; standalone selectors are listed separately by `make test-list`. |
+| `test`, `test-short` | Six pure C execution-policy unit cases. |
+| `test-tools` | Complete C tooling and process integration group. |
+| `test-native` | Other CPU `test_tools` selectors with checked-in inputs. |
+| `test-materials` | The CPU material simulation selectors. |
+| `test-projects` | The project, asset import and Release `chibi_ctl` selectors. |
+| `test-language-all` | The native language group; standalone selectors are listed separately by `make test-list`. |
 | `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
 | `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
-| `agent-test` | One admitted selector routed by `tools/agent.py`. |
-| `test-list`, `agent-list` | Admission inventory without test execution. |
-| `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
+| `agent-test` | One CPU selector routed by `tools/agent.py`; use `agent-gpu-test` for GPU selectors. |
+| `test-list`, `agent-list` | Command and selector inventory without test execution. |
+| `test-fast` | Build standalone tooling and run `TEST_BINARY` with tokenized `TEST_ARGS`, without shell interpretation. |
+| `test-full`, `test-slow` | Tooling, native, material, project and language groups; excludes GPU checks. |
+| `test-render` | Render selectors requiring a display and GPU; excludes Studio. |
+| `test-compiler-parity` | All Release package-compiler routes, including bootstrap. |
+| `benchmark` | The mapped native benchmark selectors. |
 
-The `language` and `wasm` groups list their admitted members explicitly in
+The `language` and `wasm` groups list their members explicitly in
 `tools/test_policy.py`; they do not include every standalone selector. Both
 include the six-case row-array construction, alias, rejection, collection and
 in-place local array regression (200,000 appends, 100,000 record appends,
@@ -1351,21 +1329,18 @@ Other focused record routes remain standalone, as do the dedicated Wasm
 formatter and root-state routes. Use `make test-list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
-The bounded Chrome C driver also includes counted-row construction and Outliner
-projection among its ten selectors. Its internal 55-second and production
-60-second deadlines are unchanged.
+The Chrome C driver also includes counted-row construction and Outliner
+projection among its ten selectors. It retains its internal 55-second timeout.
 
-Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
-a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native
-binaries, raw CMake checks and controller captures do not universally enforce
-the ceiling; do not use them to bypass it or rebuild slow suites from chunks.
-The supervisor verifies cleanup discovery before test work. Linux subreaping
-contains escaped sessions; arbitrary already-detached descendants are not proven
-contained on macOS. Platform validation must report what actually ran.
+Exceeding an explicit timeout fails the run. The runner verifies cleanup
+discovery before test work. Linux subreaping contains escaped sessions;
+arbitrary already-detached descendants are not proven contained on macOS.
+Platform validation must report what actually ran.
 
-For repeated admitted C workloads, `benchmark_trials` accepts three or five trials
-and a total 3–60-second timeout including cleanup. It preserves workload output
-and reports elapsed time. The Make benchmark aggregate remains quarantined.
+Use `make benchmark` for the mapped native C benchmarks or
+`python3 tools/test_policy.py tool <benchmark-name>` for one fixture. Each
+fixture owns its fixed trial count and reports timings alongside correctness
+assertions. Retain the workload output and compare matching build configurations.
 Retired Python drivers' generated-C comparisons and report formats were not
 migrated individually. Research/review command transcripts, measurements and
 hashes are historical records of their revisions, not current reproduction
@@ -1384,8 +1359,8 @@ declaration discovery, source ownership and sibling records/unions/constants.
 The workload has at most three documents per snapshot, twelve fixed texts below
 1 KiB each, 32 parses, 15 analyses, twelve lowering attempts, eight backend
 finalizations and sixteen direct calls with instruction budgets of 2,000. It
-performs no filesystem, subprocess, world or GPU work. Build separately and run
-under one shared 60-second production deadline. The independent package graph
+performs no filesystem, subprocess, world or GPU work. Build separately. The
+independent package graph
 and syntax routes remain unchanged; this focused route is not in the aggregate.
 
 `python3 tools/test_policy.py tool language-package-resolution` selects eight
@@ -1394,8 +1369,8 @@ imports, located invalid paths and strings, duplicates, cycles, stable keys and
 owned input lifetimes. There are 24 snapshot constructions, at most 56 parses and
 34 import declarations, with up to five files and four imports per snapshot and
 three simultaneous owners. Each source is below 1 KiB. The route performs no
-filesystem, process, authored execution or GPU work. Build separately and use
-one shared 60-second deadline; this focused route is also outside the aggregate.
+filesystem, process, authored execution or GPU work. Build separately; this
+focused route is also outside the aggregate.
 
 `python3 tools/test_policy.py tool language-package-imports` selects thirteen
 fixed C cases for dependency execution, alias isolation, self imports, `pub`
@@ -1412,7 +1387,7 @@ direct calls with instruction budgets of 2,000.
 One catalog snapshot and one additional parse/ten semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
-Build separately and run under one shared 60-second deadline. This focused
+Build separately. This focused
 route is outside the language aggregate.
 
 ## Disk package-source checks
@@ -1436,8 +1411,7 @@ and never follows links. Ordinary sources are below 1 KiB. One sparse oversized
 file is exactly 512 KiB plus one byte; one FIFO and five symlinks are created.
 There are no subprocesses, network operations, engine frames or GPU work.
 
-Build separately and execute once under the production supervisor's shared
-60-second deadline after independent source and workload admission. This route
+Build separately. This route
 is outside the language aggregate. Windows retains the explicit unsupported
 filesystem adapter; buffer-based package APIs are unaffected. Source registration
 records no execution result.
@@ -1454,8 +1428,7 @@ and 18 imports, with at most 36 package visits before reuse and 386 direct
 calls, each with a 10,000-instruction budget. At most three owners and
 three-element arrays are live; core source is below 16 KiB and the app below
 4 KiB. There is no filesystem, process, service or GPU work. Installed consumers
-embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
-independently review before the first run under one shared 60-second deadline.
+embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately.
 This focused route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
@@ -1469,7 +1442,7 @@ on bytecode and SLJIT. A fence uses at most three parses: its original source,
 then declaration/signature contexts only when needed; synthetic context never
 reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
 There is no filesystem, process, service or GPU work. This focused route is
-outside the language aggregate and retains the shared 60-second ceiling.
+outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C
 cases for the shared runner behind `chibi test`. One preparation per backend has
@@ -1493,9 +1466,8 @@ sparse, scalar arrays contain at most 256 elements, and per-call arenas retire
 between invocations. One host observation matrix uses at most 256 squared ints.
 The fixture compares complete memberships, order, dependency cells, bindings,
 error fields and cycle indices against C, plus public queries. It performs no
-filesystem, process, service or GPU work. Build separately and independently
-review the exact workload before its first run under one shared 60-second
-ceiling. This focused route is outside the language aggregate.
+filesystem, process, service or GPU work. Build separately. This focused route
+is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-syntax-chibi` compares authored
 diagnostic traversal with the C parser using fourteen shared source texts and
@@ -1508,8 +1480,7 @@ trees at most 1,024 nodes and depth 128. The adapter transports all public
 nodes, including anonymous children and ERROR descendants; Chibi selects
 diagnostics and controls subtree pruning. Every diagnostic field and message
 is compared after producer storage retires. This route uses no filesystem,
-process, service or GPU work. Build separately and independently review the
-exact workload before first execution under one shared 60-second ceiling.
+process, service or GPU work. Build separately.
 It remains outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
@@ -1546,8 +1517,7 @@ depth 128. Complete field names accompany raw nodes, with no native selection
 of package headers or imports. Results compare header, import, path and alias
 ranges, alias presence, names, source order and diagnostics after producer and
 input storage retire. This standalone route has no runtime files, children,
-services or GPU work; independently review it before first execution, build
-separately and use one shared 60-second ceiling.
+services or GPU work. Build separately.
 
 `python3 tools/test_policy.py tool language-package-paths-chibi` selects three
 cases with 26 fixed lexical requests: twelve existing resolver inputs and
@@ -1562,8 +1532,8 @@ and input storage retire; retained 4,095-byte results survive subsequent invalid
 calls and owner teardown. Used bases and floors are canonical absolute paths.
 This corpus has at most four segments per request; it does not establish
 performance at the maximum segment count. The route has no runtime files,
-children, services or GPU work. Independently review before first execution,
-build separately and use one shared 60-second ceiling outside the aggregate.
+children, services or GPU work. Build separately; this route is outside the
+aggregate.
 
 `python3 tools/test_policy.py tool language-package-routes-chibi` compares
 thirteen collection-root requests, eleven file routes and sixteen import routes.
@@ -1579,9 +1549,8 @@ all routing and diagnostic decisions. Success results and exact first errors
 are compared; the C helper's partial root prefix on rejection is not part of
 the authored rejection payload. Results outlive producer and input storage,
 and retained root/file/import outputs also survive owner teardown. There are
-no runtime files, children, services or GPU operations. Independently review
-the fixed workload before first execution, build separately and use one shared
-60-second ceiling. This route remains outside the language aggregate.
+no runtime files, children, services or GPU operations. Build separately. This
+route remains outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-snapshot-chibi` reuses the
 eight resolver cases and adds eight validation cases: 46 snapshots and
@@ -1604,9 +1573,8 @@ observations are compared. Input and invocation
 storage retire before detached result inspection; retained valid and invalid
 results survive owner teardown. Native bindings supply raw Tree-sitter nodes
 and external JSON decoding only. There are no runtime files, children, services
-or GPU operations. Independently review the fixed workload before its first
-execution, build separately and use one shared 60-second ceiling outside the
-language aggregate. Comparison alone uses 39 C root setups, at most 72 file
+or GPU operations. Build separately; this route is outside the language
+aggregate. Comparison alone uses 39 C root setups, at most 72 file
 routes and at most 72 header/import extractions from existing trees, adding no
 parses. Each retained C tree is walked three times, with depth bounded at 128.
 The fixed corpus does not exercise the 8 MiB aggregate source limit or the
@@ -1646,9 +1614,8 @@ ordered child failures, shared DAG reuse at different depths, depth boundaries
 and a cycle without a step budget. Input and producer storage retire before
 comparison, and retained results survive owner teardown. The fixture does not
 exercise the production 65,536-visit limit at full size. There are no runtime
-files, services, children or GPU operations. Independently review before the
-first run, build separately and use one shared 60-second ceiling outside the
-language aggregate.
+files, services, children or GPU operations. Build separately; this route is
+outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
 scalar folding using 91 fixed requests and 182 authored calls across bytecode and
@@ -1666,10 +1633,9 @@ result storage and float rounding, string presence, symbols, promotion and
 Boolean short-circuiting after full admissibility. Inputs retire before result
 inspection. Explicit arena checks verify detached union and string ownership;
 retained name and null-text results survive both owner teardowns. The repeated
-DAG workload needed to exhaust 65,536 evaluations is not included or admitted.
-There are no runtime files, services, children or GPU operations. Independently
-review before the first run, build separately and use one shared 60-second
-ceiling outside the language aggregate.
+DAG workload needed to exhaust 65,536 evaluations is not included.
+There are no runtime files, services, children or GPU operations. Build
+separately; this route is outside the language aggregate.
 
 The folding interface consumes type-correct analyzer facts: literals carry their
 declared storage, comparisons and logical negation produce Boolean values, and
@@ -1724,11 +1690,10 @@ the new scalar-only differential does not establish that broader coverage.
 The oracle header remains private and is not installed as an SDK contract.
 
 There are no workload files, children, services, network requests, engine frames,
-GPU operations, sleeps or benchmark loops. Run the complete fixed fixture under
-one unchanged production 60-second supervisor deadline,
-including preparation, initializers, calls, materialization, round trips and
-cleanup. Build/configuration timing stays separate. A timeout does not authorize
-splitting the workload. Native producer verification, optimization, finalization,
+GPU operations, sleeps or benchmark loops. The complete fixture includes
+preparation, initializers, calls, materialization, round trips and cleanup.
+Build/configuration timing stays separate. Native producer verification,
+optimization, finalization,
 liveness/borrowing/runtime rewriting, parallel proof, definition snapshots,
 module publication, prepared serialization and backend emission remain required.
 The shared emitter's managed binding and dependency callers pass the five-case
@@ -1751,9 +1716,8 @@ replacement, package namespace rules, exact uint64 identities, diagnostic order,
 ranges and 191-byte truncation must match. Fixed expected hashes and message
 prefixes supplement differential comparisons. Input and producer storage retire
 before comparison; retained declaration results survive both owner teardowns.
-There are no runtime files, services, children or GPU operations. Independently
-review before the first run, build separately and use one shared 60-second
-ceiling outside the language aggregate.
+There are no runtime files, services, children or GPU operations. Build
+separately; this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-nominal-binding-chibi` compares
 record and union header admission and nominal metadata publication. Three pico
@@ -1769,8 +1733,7 @@ names and ordered diagnostics. Actual legacy and package headers supplement raw
 facts. The adapter copies input strings before execution and frees that storage
 before comparison. Retained published metadata and three diagnostics survive
 both owner teardowns. There are no runtime files, children, services or GPU
-operations. Independently review before the first run, build separately and use
-one shared 60-second ceiling outside the language aggregate.
+operations. Build separately; this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-named-binding-chibi` compares ordinary
 named annotation binding and catalog/import type lookup. Three pico cases run
@@ -1790,9 +1753,8 @@ exact matches, entity identity, modifiers, optional boxing and type-use records.
 Comparisons cover full IDs and ordered diagnostics; fixed lookup indices and
 191-byte truncation witnesses supplement C parity. Detached results and retained
 generic/diagnostic results survive input and owner retirement. There are no
-runtime files, children, services or GPU operations. Independently review before
-the first run, build separately and use one shared 60-second ceiling outside the
-language aggregate.
+runtime files, children, services or GPU operations. Build separately; this route
+is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-type-constructors-chibi` compares
 structural union, task and await construction. Three pico cases run sixteen raw
@@ -1811,8 +1773,7 @@ ordering across high and low bits, first-match deduplication, cache hits, native
 empty-result precedence, diagnostics and copied fields/defaults. Retained outputs survive source and
 module retirement. Sorting uses at most six comparisons of 64 scalar bit steps
 each. There are no runtime files, children, services or GPU work.
-Independently review before the first run, build separately and use one shared
-60-second ceiling outside the language aggregate.
+Build separately; this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-type-relations-chibi` selects four
 C/pico_unit cases for the five pure catalog type relations. The finite tables
@@ -1833,9 +1794,9 @@ cycle result per backend survives compiler-owner destruction. The imported
 named-binding closure uses the existing private JSON binding during preparation;
 these entries make no JSON calls. There are no workload files, children, host
 services, frames or GPU work. Independently review the exact wired candidate
-before first execution, build separately and use one shared 60-second production
-deadline. This route stays outside aggregates. Source registration records no
-measured pass, authored compiler dispatch or stage-one bootstrap.
+before publication. Build separately. This route stays outside aggregates.
+Source registration records no measured pass, authored compiler dispatch or
+stage-one bootstrap.
 
 `python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
 parsing, dimension equality, multiplication/division and formatting. Four pico
@@ -1850,9 +1811,8 @@ inputs are raw algebra values, independent of C parsing. Cases cover missing
 and empty annotations, integer powers, overflow before cancellation, term order,
 sticky denominators, superscript/dot UTF-8 truncation and tiny output buffers.
 Detached results and a retained unit/string survive input and owner retirement.
-There are no runtime files, children, services or GPU work. Independently review
-before the first run, build separately and use one shared 60-second ceiling
-outside the language aggregate.
+There are no runtime files, children, services or GPU work. Build separately;
+this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
 annotation and signature reading. Four pico cases run seventeen Type and eight
@@ -1872,8 +1832,8 @@ constructor selections and both returned catalog views. One task result feeds a
 later array annotation directly from the authored returned environment. Four
 retained readings produce eight before/after serialization projections, each
 below 128 KiB, checking ownership after producer retirement. No runtime files,
-children, services or GPU work occur. Independently review before the first run,
-build separately and use one shared 60-second ceiling outside the aggregate.
+children, services or GPU work occur. Build separately; this route is outside
+the aggregate.
 
 `python3 tools/test_policy.py tool language-callable-headers-chibi` compares
 callable header registration from raw syntax and analyzer tables. Two pico cases
@@ -1889,8 +1849,7 @@ Membership banks hold sixteen cells, with 64 types and 128 IDs. Comparisons cove
 registration changes, final tables, active membership spans, pending syntax
 references and both refreshed reader views. A complete measured header survives
 input, syntax and module retirement. No runtime files, children, services or GPU
-work occur. Independently review before the first run, build separately and use
-one shared 60-second ceiling outside the language aggregate.
+work occur. Build separately; this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-union-members-chibi` selects three
 C/pico_unit cases: sixteen source requests and eight raw cycle-validation
@@ -1939,10 +1898,8 @@ These union/effects routes add private C reference helpers and exact authored
 source embeddings to the existing language driver; there is no active production
 adapter, new executable, public package or language syntax. No runtime files,
 workload children, network, sleeps, services, engine frames or GPU work occur.
-Both full routes stay outside all aggregates. Independently review the exact
-combined source and finite workloads before execution on a new tree, each under
-one unchanged production 60-second deadline including preparation and cleanup;
-configuration/build timing is separate. Registration alone is not a measured
+Both full routes stay outside all aggregates. Configuration/build timing is
+separate. Registration alone is not a measured
 pass, active authored compiler dispatch or complete compiler bootstrap; the
 landed-tree evidence and new integrated-tree requirements are recorded below.
 
@@ -1966,26 +1923,22 @@ results, a caller-supplied refreshed-fact boundary, publication continuation and
 owned results after producer retirement. Defaults are neither analyzed nor run;
 layout, final publication and the production record analyzer remain unchanged.
 There are no runtime files, workload children, services, network, sleeps, engine
-frames or GPU work. This route is outside all aggregates. Independent review of
-the exact combined source and workload is required before execution on a new tree under
-one unchanged production 60-second deadline, including preparation and cleanup.
-Build/configuration timing is separate. Registration is not runtime evidence or
+frames or GPU work. This route is outside all aggregates. Build/configuration
+timing is separate. Registration is not runtime evidence or
 a compiler-bootstrap claim. The landed-tree measurement is recorded below.
 
 The corrected semantic source `b57ac78c53c170139d8f807158c076f971a2202b` passed
 all five complete union/effects/records/unit/type selectors in hosted
 [run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564).
-Their case counts were 3/4/5/3/4, and each verified its execution identity, exact
-summary and separate unchanged 60-second production supervisor. PR444 merge
+Their case counts were 3/4/5/3/4, and each verified its execution identity and
+exact summary. PR444 merge
 `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` has the same tested tree
 `09d520fe2a5723226126b0879faaee390e87b7b9`. The transport integration combines
-that landed dependency with PR445 and remains unmeasured: after independent exact
-review, rebuild the ordinary compiler-only language/tools/host products, pass the
-normal private link/ownership/symbol audit, then run both full transport selectors
-and all five full semantic selectors once each, under seven separate unchanged
-production 60-second deadlines. Configuration/build/audit timing is separate.
-Do not aggregate, split, retry, import the native-unit candidate or substitute the
-prior semantic pass for new integrated-tree evidence.
+that landed dependency with PR445 and has no integrated measurement recorded
+here. Its coverage requires the ordinary compiler-only language/tools/host
+products, the private link/ownership/symbol audit, both full transport selectors
+and all five full semantic selectors. Configuration/build/audit timing is
+separate. The prior semantic pass does not establish integrated-tree evidence.
 
 `python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
 C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
@@ -2003,10 +1956,10 @@ files, child processes, host services, engine frames or GPU operations.
 
 The focused `language-unit-analysis-zero-id` and `language-unit-analysis-deep`
 commands each select one existing raw request in two independent pico cases,
-one per backend. Each command makes two call attempts and ten preparation parses
-within one unchanged production 60-second deadline. A failure in the first
+one per backend. Each command makes two call attempts and ten preparation parses.
+A failure in the first
 backend does not suppress the second. These are negative-baseline witnesses;
-they do not replace the complete differential corpus or evade its deadline.
+they do not replace the complete differential corpus.
 C witnesses are asserted before the authored comparison. The zero-ID witness
 requires the exact argument-unit diagnostic and known `s` result. The deep
 witness requires 81 known `u` values and no diagnostics. Failure-only fixture
@@ -2016,9 +1969,9 @@ other failures. A nonzero command exit alone is not the intended red proof.
 The original baseline wired the extracted C oracle and authored draft into the
 language driver, retaining the zero-ID guard and recursive evaluator until both
 red witnesses executed. The merged repair and later full semantic regression pass
-are recorded in PLAN.md. The production analyzer remains unchanged. Independently
-review every new combined source/workload before execution; configuration/build
-timing is separate. All three routes stay standalone and outside the aggregate.
+are recorded in PLAN.md. The production analyzer remains unchanged.
+Configuration/build timing is separate. All three routes stay standalone and
+outside the aggregate.
 Prior measurements and source review do not validate a new integrated binary or
 establish a complete compiler bootstrap.
 
@@ -2225,14 +2178,14 @@ Nine added tooling cases cover these finite binary operations:
   truncated-output child; truncation remains the original direct decoder case.
 - One child targets a nonempty directory. Successful invocation/validation is
   followed by rename failure; the directory, sentinel and staging cleanup are
-  checked. One already-expired child deadline preserves its destination. Its
-  separate `envp` overrides only `CHIBI_TEST_DEADLINE`; the parent environment and
-  supervisor deadline are unchanged. Two final usage children reject duplicate
-  output switches and batch plus binary output without execution.
+  checked. A child that omits the required explicit `--timeout-ms` fails usage
+  without changing its destination or leaving staging files. Two final usage
+  children reject duplicate output switches and batch plus binary output without
+  execution.
 
 Exact workload: 15 tooling cases, two producer cases, 13 supervised children
 (original producer, two JSON products and bad input; two publications, three
-bad outputs, rename failure, expired deadline and two usage checks). There are
+bad outputs, rename failure and three usage checks). There are
 20 direct host-API attempts: the original reference-argument rejection plus ten
 new executions and nine new pre-execution rejections. The three direct malformed
 container reads and the one additional raw-syntax ABI decode are separate; the
@@ -2241,16 +2194,16 @@ original source, ten JSON product, ten new direct and six new binary product
 calls. Backend entry counters can include nested calls; this total is not their
 sum. New echo calls permit <=10,000 instructions; the two loop calls permit 100.
 Binary input JSON is <=256 KiB, artifact <=32 KiB, stderr <=4 KiB and successful
-binary stdout empty. Each child retains its <=10-second cap inside the one
-unchanged 60-second production deadline. No extra producer process, standalone
-probe, network, renderer or GPU work is admitted. The disposable directory and
+binary stdout empty. Each child retains its <=10-second timeout. There is no
+extra producer process, standalone probe, network, renderer or GPU work. The
+disposable directory and
 all fixture outputs are removed. This route remains outside the tooling aggregate.
 
 Extraction copies each `pin_array.items[i].u8`, not packed `pin_value` storage.
 The all-octet/boundary/empty cases cover this public path. The exact declaration,
 actual return header, element type, metadata, item types and count/capacity
 arithmetic are independent source-review gates. Verified authored code and
-admitted array primitives construct typed, owned arrays; the fixture cannot
+array primitives construct typed, owned arrays; the fixture cannot
 produce a forged header, negative count, missing nonempty item storage or
 wrong-typed item. Such corruption cannot be safely introduced by executing
 fabricated native pointers. The fixture's echo capacity equals its bounded input
@@ -2290,14 +2243,14 @@ analysis and lowering. Positively require `execution_prepared_write` in both
 `test_language` and `test_tools` and execute their real fixtures. Use the normal
 production target flags; validation-only section flags, stripping or hidden
 symbols do not establish the boundary. Configuration/build timing and link
-inspection are separate from the unchanged supervised runtime deadline.
+inspection are separate from test execution.
 
 The existing two-case `package-ownership` route also verifies both private host
 executables and their directly linked implementation objects under Ninja and
 Makefiles. The compiler host adds four tiny C compilations, two executable links
 and one wrong-owner inspection. The route has 22 supervised child invocations
 (six configure/build/install commands and sixteen inspections), each bounded to
-ten seconds within the shared 60-second ceiling. It compiles thirteen tiny C
+ten seconds. It compiles thirteen tiny C
 units and one precompiled header; none of those fixture executables runs. Missing
 or changed installed compiler-host bytes and linking its implementation only
 into an unrelated executable must fail provenance checks.
@@ -2307,11 +2260,10 @@ into an unrelated executable must fail provenance checks.
 `python3 tools/test_policy.py tool build-process` selects 23 C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
-fixed authored sources, at most 58 controlled process launches or failed
-spawn attempts, and one shared 60-second production deadline. It performs no
+fixed authored sources and at most 58 controlled process launches or failed
+spawn attempts. It performs no
 engine configure/build, network, renderer or GPU work. Case deadlines are at
-most two seconds, with shorter deliberate timeout/cancellation budgets; every
-native case clamps its budget to the inherited deadline.
+most two seconds, with shorter deliberate timeout/cancellation budgets.
 
 Cases cover exact argv and cwd, explicit environment and parent isolation,
 separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
@@ -2329,7 +2281,7 @@ and unreported probes, file kinds, stamps and sorted directory entries with
 their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
 vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
 files. The original eight `language-build-workflow` recording cases remain an
-independent admitted route.
+independent route.
 
 `python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
 installed authored build program, and a ninth on macOS. Six cases make 44 API
@@ -2387,7 +2339,7 @@ parser through the bytecode CLI, with one short escaped-path fixture containing
 LF and CRLF continuations, two empty or targetless texts, and one fixed
 128-header file below 16 KiB. It checks exact paths and counts without compiler
 children, frames or GPU work. At most eight host subprocesses retain the existing
-50-second child limit and one shared 60-second supervisor deadline.
+50-second child limit.
 
 `python3 tools/test_policy.py tool build-graph-resources` runs the graph for
 the launcher and `chibi_ctl` with a compiler that always fails: before any
@@ -2464,12 +2416,12 @@ unavailable full suite does not automatically block landing.
 
 1. **Review and choose checks.** Independently inspect the diff, callers, tests
    and dependency/build effects. Record which contracts changed and why the
-   selected admitted checks cover them. Include applicable backend, sanitizer,
+   selected checks cover them. Include applicable backend, sanitizer,
    load, web/UI and release validation. File extensions and selector names alone
    do not establish coverage. Resolve unknown impact before publication. When
-   affected coverage is quarantined, provide a reviewed admitted replacement;
-   otherwise that specific coverage gap blocks landing. Unaffected quarantined
-   suites remain disabled and not passed, without blocking the change.
+   affected coverage is unavailable, provide a reviewed replacement; otherwise
+   that specific coverage gap blocks landing. Report unexecuted coverage
+   without claiming a pass.
 2. **Freeze and validate.** Use a clean candidate based on freshly fetched main.
    For a batch, pin each reviewed source and review the combined interactions
    and conflict resolutions. Record the candidate commit/tree, configuration,
@@ -2491,7 +2443,6 @@ possible jobs, not mandatory execution of every matrix row. Inspect applicable
 server requirements before landing; required checks and approvals remain binding.
 An absent CI job is not a pass. Preserve existing backend and configuration
 requirements for each selected check, and report other coverage as unexecuted.
-Full native/render suites remain quarantined under the 60-second policy.
 
 A server-created merge/squash commit may have a different ID. Prove identical
 tested tree and unchanged base and source revisions, and satisfy current-head
@@ -2505,19 +2456,19 @@ merge authority.
 python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--source-edit
 ```
 
-The helper records Git identity and admitted commands; it does not execute them
+The helper records Git identity and selected commands; it does not execute them
 or certify coverage. Both `focused` and `mixed` require a review note and selected
 checks. `unknown` records unresolved scope. Use `--tools` (or
 `--tool=native-tools`) for the C tooling group and repeat `--selector=--name` for
-admitted CPU selectors. For batches, repeat `--source` and confirm eligibility
+CPU selectors. For batches, repeat `--source` and confirm eligibility
 only after checking every source's review, holds and approvals.
 `--verify <saved-plan>` checks local identity, not remote freshness or execution.
 Keep saved plans outside the worktree.
 
 ## Historical timing evidence
 
-The original exact native admissions are recorded in
-[test quarantine](test-quarantine.md#retained-short-coverage). The former tooling
+The original native coverage is recorded in
+[test inventory](test-inventory.md). The former tooling
 suite's 24.4-second parallel run and longer native/Studio/render aggregates
 belong to their recorded revisions and removed runners. They are not measurements
 of the new C group. PR186 retains the original process-cleanup reproduction and
@@ -2559,13 +2510,13 @@ pointer ray against one displayed 64 x 64 image. Camera projection and ray
 inversion must agree, authored lens values remain unchanged, and out-of-image
 or non-perspective pointer requests must fail. A requested camera or resize keeps
 the pointer ray aligned with the last presented camera until the next draw.
-These checks stay in the same hidden app and shared deadline.
+These checks stay in the same hidden app.
 Its UI case draws one 64 x 64 frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB
-in the exported texture. The earlier four-case workload passed in 1.219 seconds under the shared 60-second
-deadline on macOS with the native Metal renderer. That measurement does not cover
+in the exported texture. The earlier four-case workload passed in 1.219 seconds
+on macOS with the native Metal renderer. That measurement does not cover
 the current nine-case selector. The combined nine-case run passed in 2.448
 seconds of execution, or 2.668 seconds including the production supervisor. The old presentation path
 failed the new case with red 255 where source-over required 128. Vulkan discovery
@@ -2664,7 +2615,7 @@ joining and parting, crisp unlit liquid edges, burning cores, plumes without
 holes, fading parcels and wisps along their velocity. Gas and liquid must take
 HRC's light and the wall's shadow with one and three traced cascades, a
 refracting liquid must bend only the background behind it, and a crystal must
-mirror the scene beside it. All cases share the production 60-second deadline.
+mirror the scene beside it.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
@@ -2892,7 +2843,7 @@ three surface queries must retain zero drawn meshes, caster meshes and boxes,
 while the rebuild counter distinguishes reuse from reconstruction. This adds
 one case and seven assertions to the existing six-case route, with no frames,
 rendering, files or child processes. ASan/UBSan validation keeps the zero-length
-mesh-copy regression observable under the same shared 60-second supervisor.
+mesh-copy regression observable.
 
 ### Configurable source layout and whitespace maps
 
@@ -2904,13 +2855,13 @@ composition with the comment-preserving semantic minimizer. Fixtures are tiny
 in-memory strings; no worlds, clocks, files, processes, network or GPU are added.
 The map checks walk at most the bytes of those fixed strings.
 
-The existing bounded native corpus (at most 256 files/8 MiB) now verifies three
+The existing bounded native corpus (at most 512 files/8 MiB) now verifies three
 fixed configurations: defaults, two spaces at width 80, and tabs at width 40.
 Each configuration reparses the result and checks idempotence and immutable
 input. `language-format` owns that corpus; `wasm-format` runs the same finite C
-cases through Node without a browser or corpus filesystem dependency. Both use
-the unchanged production 60-second supervisor. Configuration/build timing is
-separate. This is SDK/printer evidence, not controller, Studio, RML/RCSS,
+cases through Node without a browser or corpus filesystem dependency.
+Configuration/build timing is separate. This is SDK/printer evidence, not
+controller, Studio, RML/RCSS,
 rendering or browser integration coverage.
 
 The first successful measured expanded runs passed 38 native cases/2,944
@@ -2940,13 +2891,11 @@ output, immutable input, idempotence and whitespace edit-map reconstruction.
 No source generation, files, processes, authored/backend execution, worlds,
 frames, network or GPU are added. The redesigned native/Wasm finite suite has
 47 cases, plus one bounded corpus case on native. The generated corpus manifest
-retains its 256-file and 8 MiB limits; record its exact migrated file/byte totals
+retains its 512-file and 8 MiB limits; record its exact migrated file/byte totals
 and assertion counts with the current run. These case counts are source-derived,
-not an execution result. Use the existing production 60-second supervisor after
-independent exact-source/workload admission; configuration and build timing
-remain separate.
+not an execution result. Configuration and build timing remain separate.
 
-## Qualified module prerequisite: admitted fixed workload
+## Qualified module prerequisite: fixed workload
 
 `tool language-modules` and `tool wasm-modules` route seventeen fixed pico_unit
 cases through the existing `test_language --modules` dispatcher. The complete
@@ -2959,8 +2908,7 @@ calls retain their 1000-step arguments. Cases cover the original scroll and
 ownership scenarios, imported generic and constant ownership, the 32-pair float
 metadata matrix, incremental reuse and invalidation, retained library state,
 task-state rejection and empty compile bindings. These source-derived counts
-are not a current execution result. Each selected route or aggregate retains one
-production 60-second deadline. The earlier seven-case workload and results below
+are not a current execution result. The earlier seven-case workload and results below
 are historical; see the [original coverage boundary](module-composition.md#fixed-workload-and-validation).
 
 The original six-case checks at `072be745a8f5c73e14c1e07b0a1704c4de8555a8`
@@ -2980,21 +2928,20 @@ complete Wasm (17 commands) passed 233/32,519 in 4.223 s. Exact-source
 Each check ran once, serially, and exited 0. Source/artifact hashes matched before
 and after; all three `-j2` build currency checks reported no work. No prior group
 member was removed. The native language group includes program/imported state,
-publication, navigation and incremental coverage. Each complete group retained
-one shared production 60-second deadline, with configuration/build time separate
-and no chunking or failure suppression. These are measured full commands, not
-sums of old timings. This documentation follow-up preserves tested product,
-test, policy and fixture bytes and performs no new runtime.
+publication, navigation and incremental coverage. Configuration/build time was
+separate; failures were not suppressed. These are measured full commands, not
+sums of old timings. That documentation follow-up preserved tested product,
+test, policy and fixture bytes and performed no new runtime.
 `wasm-format` remains a pre-existing standalone gap; this does not claim every
-admitted selector is covered. See the linked proof and
+selector is covered. See the linked proof and
 [machine-readable historical evidence and current status](module-composition-validation.json).
 No full-L07, application-scale, benchmark, or scheduling claim follows;
-full/quarantined gates remain disabled, not passed.
+those checks were not run.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
 status is asserted by this local validation.
 
 
-## Selected runtime attribution: admitted fixed workload
+## Selected runtime attribution: fixed workload
 
 `tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
 same six C/pico_unit cases through the existing language dispatcher. Each occurs
@@ -3007,8 +2954,7 @@ cycles and four boundaries each, six native/five Wasm backend attempts, and
 5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
 storage cap are unchanged. There are no new frames, GPU/browser/network workers
 or environment-controlled repetitions. Source review and exact artifact
-validation preceded measurement; all commands retain their original shared
-60-second production-supervisor deadline.
+validation preceded measurement.
 
 The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
 The integrated complete language/Wasm groups, native-tools and installed
@@ -3020,7 +2966,7 @@ census or a whole-application performance/retention claim.
 
 ### Private owner retention
 
-The retained-ownership simplification reuses the admitted language, source-edit,
+The retained-ownership simplification reuses the language, source-edit,
 query-program, publication and prepared selectors. Finite VM/compiled cases cover
 behavior-attachment isolation, registration isolation, retained helper/import
 values, row removal/reentry, zero matches and reload/restart. Query regressions
@@ -3029,13 +2975,12 @@ structural match. They do not introduce engine frames, GPU work or sleeps.
 Syntax and authoring cases reject `retain(system)` and keep plain `retain` in
 system roots and helpers. Historical migration cases preserve behavior/system
 owner retention but reject per-match system state before replacing files.
-All commands retain the existing production supervisor's 60-second ceiling.
 
 ### Name-first retained bindings (historical project version 25)
 
-The retention increment extends existing admitted selectors, without adding a
-new executable or increasing the 60-second supervisor ceiling. Independent
-review covered the grammar, semantic kinds, authoring equivalence and migration.
+The retention increment extends existing selectors without adding a new
+executable. Independent review covered the grammar, semantic kinds, authoring
+equivalence and migration.
 
 - `language-program`: three finite runtime cases on VM and the compiled backend
   check per-owner helper retention, system versus query-row ownership, copied
@@ -3068,10 +3013,9 @@ formatter calls. The minimizer's existing internal oracle rounds are unchanged.
 The format dispatcher includes these two cases and the package separator case:
 47 finite cases, plus the existing bounded corpus case on native. Wasm has no
 corpus file dependency. No catalog, generated source, runtime frame, world,
-subprocess, network or GPU workload is added. Use the unchanged production
-60-second supervisor; independent exact-head source and artifact admission is
-required before a runtime slot. Configuration and compilation are separate from
-test execution. These SDK checks do not establish CLI/Studio integration or a
+subprocess, network or GPU workload is added. Configuration and compilation are
+separate from test execution. These SDK checks do not establish CLI/Studio
+integration or a
 caret map across semantic rewriting.
 
 ### Authored record project publication
@@ -3093,25 +3037,22 @@ The redesigned fixed green path has nine parses, sixteen declaration analyses,
 at most twenty-five full analyses, 52 lower calls, four module finalizations, two source
 stages/commits, and eight direct prepared-table codec entries. The two stages
 serialize two unique modules and one import edge each. These are source-derived
-bounds, not a measured pass. The route remains outside aggregates and requires
-updated independent exact-source admission for the redesigned workload before
-execution.
+bounds, not a measured pass. The route remains outside aggregates.
 
 `language-record-publication-repro` runs only the first case's BYTECODE half
 with the same success expectation. On the fixture-only baseline it must fail
 at source staging with `duplicate prepared type requirement`, before commit.
 That red invocation has two parses, eight declaration analyses, at most ten full
 analyses, two lower calls, two module finalizations, one stage and no authored
-calls. Red and green runs each use one production 60-second deadline with
-build/configuration kept separate. This focused evidence does not establish
+calls. Build/configuration is kept separate from red and green execution. This
+focused evidence does not establish
 full Studio startup, rendering or native-catalog-only helper coverage.
 
 ## CUT-79 inferred string arrays: fixed standalone regression
 
 `tool language-inferred-string-arrays` selects two C/pico_unit cases in the
-existing language driver. This new source-only workload requires independent
-exact-source and resource admission before its first supervised invocation.
-Registration is not admission. It is not included in a native or Wasm aggregate.
+existing language driver. This source-only workload is not included in a native
+or Wasm aggregate. Registration does not establish an execution result.
 
 The first case parses/analyzes 22 inline documents once each. It covers direct
 and parenthesized literals, a named-constant alias chain, local/state/return
@@ -3141,17 +3082,16 @@ all fixture-owned objects after REQUIRE returns, before the next case/module.
 
 Every inline source is at most 1 KiB and semantic source text totals less than
 16 KiB. There are no files, workload children, engine frames, GPU operations,
-network requests, sleeps, benchmarks or environment-sized loops. Run once under
-the unchanged production supervisor's shared 60-second deadline including
-setup, all preparation, calls and cleanup. Configuration/build timing is separate.
-A timeout does not authorize splitting the workload or repeating until fast.
+network requests, sleeps, benchmarks or environment-sized loops. The complete
+fixture includes setup, preparation, calls and cleanup. Configuration/build
+timing is separate.
 
 `tool language-inferred-string-array-repro` is an optional semantic-only route
 for the first specimen, using the same expected-success assertions. A successful
 patched run has one parse/analysis and eight assertions, with no lower,
 finalization or direct call. An unpatched baseline should fail analysis with
 eleven compatibility diagnostics. A separate baseline run is not mandatory;
-any invocation needs its own admission and cannot mutate a preserved donor.
+an invocation must not mutate a preserved donor.
 
 This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
 It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
@@ -3174,14 +3114,13 @@ bounded configuration child.
 
 The whole selector has five C cases and fifteen direct children on Linux
 (eight and twenty before the dependency package, its s2n pin and enkiTS
-acquisition cases were removed, 2026-10-20). Its existing ten-second child limits and one shared
-production 60-second route deadline remain unchanged. The added case performs
+acquisition cases were removed, 2026-10-20). Its existing ten-second child limits
+remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
 Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
 consumers alone. The OpenGL case relocates discovered roles on Linux and asserts
 that other hosts reject the same absolute paths as unowned. The complete selector
-passes 8 cases in 6.8s on macOS. The 60-second ceiling covers the entire desktop
-selector, not each case separately.
+passes 8 cases in 6.8s on macOS.
 ### Snapshot-to-reader composition
 
 The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
@@ -3231,20 +3170,18 @@ C parser/reader calls are fixture oracles only. No runtime files, processes,
 services, GPU work, new semantic native calls, or compiler completion result is
 introduced.
 
-The selector passes 3 cases / 61,885 assertions in 3.1s on macOS under one
-production 60-second deadline; configuration/build time stays separate. Failure
-to fit the source/row limits or deadline is a blocker; do not increase a cap or
-split the selector to evade it. Header environments, semantic sidecars, body
+The selector passes 3 cases / 61,885 assertions in 3.1s on macOS;
+configuration/build time stays separate. Source and row limits remain part of
+the fixture contract. Header environments, semantic sidecars, body
 analysis, exports, lowering, artifact assembly and `Checked` remain
 unimplemented here.
 
 
-## Typed prototype compiler workloads: quarantined
+## Typed prototype compiler workloads
 
-The migrated `--typed-prototype` fixture retains seven C cases in the existing
-installed-SDK language dispatcher. Its old scalar-evaluator admission has been
-withdrawn. The replacement compiler path has compiled but has not been executed
-or admitted; compilation is not a runtime pass.
+The migrated `--typed-prototype` fixture uses the existing installed-SDK
+language dispatcher. It exercises the shared compiled asset path. Record its
+execution result separately from a successful build.
 
 The cases cover helper calls, local mutation, branches and loops, scalar
 parameters and recomputation, explicit overrides and whole-record Reset,
@@ -3258,9 +3195,9 @@ The current runtime probes request a 100-instruction rejection, cancellation
 after ten polls, and at most twenty binary-search evaluations within
 1–1,048,576 instructions to find a single-field budget. That budget must reject
 two identical fields. Other successful loops have at most eight iterations per
-evaluation. These are fixture bounds, not permission to execute the workload.
+evaluation. These are fixture bounds.
 
-The external Studio fixtures are also retained without admission:
+The external Studio fixtures cover separate UI contracts:
 
 - `studio-prototype-source`: two hidden frames at fixed 1/60 second, four small
   temporary prototype files, three actors and one checkpoint restore; covers
@@ -3269,12 +3206,7 @@ The external Studio fixtures are also retained without admission:
   and one screenshot; checks the production Parameters and computed/override/Reset
   controls.
 
-All three standalone routes require renewed independent review of the exact
-compiler-backed sources, prepared compiler identity, installed SDK, input sizes,
-cache state and complete command. The reviewed first measurement must include
-compiler work within the production 60-second supervisor. Record configuration,
-backend, sanitizer settings and complete execution logs before restoring an
-admission. Keep configuration/build timing separate. Do not increase a limit or
-split a workload to evade the deadline. The fixtures/selectors remain available
-for that review; their supervised execution routes are disabled in
-`tools/test_policy.py`. Existing broad-suite quarantines remain unchanged.
+Run each route with the SDK and backend relevant to the change. Record source
+and binary identities, cache state, sanitizer configuration and complete results.
+Keep configuration/build timing separate. A CPU model pass does not establish
+rendered control behavior or full Studio startup.

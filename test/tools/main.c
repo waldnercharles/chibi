@@ -988,6 +988,8 @@ int main(int argc, char **argv)
     bool desktop_dependencies = argc == 2 &&
                                 !strcmp(argv[1], "--desktop-dependencies");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
+    bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
@@ -1168,9 +1170,10 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !package_ownership && !unit &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
+        !package_ownership && !unit && !test_runner && !validation_plan &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
@@ -1195,6 +1198,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --package-ownership | --unit | "
+            "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
             "--ecs-query | --ecs-strings | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
@@ -1585,6 +1589,10 @@ int main(int argc, char **argv)
         test_tool_prototype_expansion(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (test_runner) {
+        test_tool_test_policy();
+    } else if (validation_plan) {
+        test_tool_validation_plan();
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {

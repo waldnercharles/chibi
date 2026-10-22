@@ -1,4 +1,4 @@
-# Source-only standalone producer fixture. Registration is not test admission.
+# Source-only standalone producer fixture.
 # The runtime-only compiler_host target must not acquire these producer sources.
 foreach(component Compile Expression Prepare)
     string(TOUPPER "${component}" component_upper)

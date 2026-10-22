@@ -7,8 +7,8 @@ also executed `check-behavior-backend`. This output is preserved as historical
 execution and does not certify the later policy-integrated source. The complete
 paired build and package did not finish.
 
-The integration owner identified that latest main quarantines unreviewed web
-backend execution and removes that runtime target from the normal build. The
+The integration owner identified that the recorded main revision removed the web
+backend runtime target from the normal build. The
 remaining owned Make process tree was stopped before its threaded runtime target
 could execute. No new browser acceptance ran: the dedicated browser remained on
 about:blank and was closed, and no workspace server was started. No other process

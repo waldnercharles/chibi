@@ -1,6 +1,17 @@
-RelationshipTarget :: prototype {
-    Health {
-        current: 5,
-        maximum: 5
-    }
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RelationshipTarget")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Health", data.Object([
+                    data.Field.Named("current", data.Value.UInt(5)),
+                    data.Field.Named("maximum", data.Value.UInt(5))
+                ]))
+            ]))
+        ])
+    );
 }

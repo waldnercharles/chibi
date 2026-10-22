@@ -178,7 +178,7 @@ static int usage()
     fprintf(
         stderr,
         "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
-        "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
+        "--backend bytecode|sljit --budget N --timeout-ms N [--batch | "
         "--output-artifact FILE | --output-bytes FILE]\n"
         "       chibi-compiler-host --target-json [OUTPUT]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
@@ -292,24 +292,11 @@ int main(int argc, char **argv)
                         (boot.seed || !boot.revision) && !(boot.seed && boot.output);
         return alone && complete ? bootstrap(&boot) : usage();
     }
-    if (!artifact || !input || !entry || !budget ||
+    if (!artifact || !input || !entry || !budget || !timeout ||
         backend == BEHAVIOR_UNAVAILABLE || (batch && output_artifact)) {
         return usage();
     }
-    double deadline = timeout ? now() + (double)timeout / 1000 : INFINITY;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        errno = 0;
-        double value = strtod(inherited, &end);
-        if (errno || end == inherited || *end || !isfinite(value) || value <= 0) {
-            fprintf(stderr, "invalid inherited compiler deadline\n");
-            return 1;
-        }
-        if (value < deadline) {
-            deadline = value;
-        }
-    }
+    double deadline = now() + (double)timeout / 1000;
     if (!isfinite(deadline)) {
         return usage();
     }

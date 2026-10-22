@@ -858,8 +858,7 @@ static bool external_project()
                   "data.Value.Text(\"Spark\"))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 5, 12, 1, 6, 0 } },
+                  "}\n" },
         { .id = 401,
           .kind = SCRIPT_CAPABILITY_EVENT,
           .name = "Pulse",
@@ -875,8 +874,7 @@ static bool external_project()
                   "data.Value.Text(\"Pulse\"))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 5, 12, 1, 6, 0 } },
+                  "}\n" },
     };
     static source_catalog_reference references[] = {
         { .id = 400,
@@ -896,8 +894,7 @@ static bool external_project()
                   "data.Value.Text(\"Spark\"))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 10, 17, 1, 11, 0 } },
+                  "}\n" },
     };
     catalog = (script_catalog){ .types = &component_type,
                                 .type_count = 1,
@@ -993,9 +990,10 @@ TEST_CASE(navigation_resolves_external_definitions_and_selected_references)
                                !strcmp(highlights[i].cls, "tok-type");
     }
     REQUIRE(prototype_highlight);
-    edited = authoring_source_hover(navigation, 1, 7);
+    int definition_offset = definition->location.range.start + 1;
+    edited = authoring_source_hover(navigation, 1, definition_offset);
     REQUIRE(edited && !strcmp(edited, "Spark :: prototype"));
-    authoring_source_complete(navigation, 1, 7, &completions);
+    authoring_source_complete(navigation, 1, definition_offset, &completions);
     REQUIRE(completions.count == 0);
     int external_count = -1;
     authoring_highlight *external = authoring_source_highlights(navigation, 1, &external_count);
@@ -1136,8 +1134,7 @@ static bool spawn_project(const char *const *source, int count)
                   "data.Value.Text(\"Spark\"))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 5, 12, 1, 6, 0 } },
+                  "}\n" },
     };
     base_catalog();
     spawn_parameter.type = script_reference_type(SCRIPT_REFERENCE_PROTOTYPE);
@@ -1156,6 +1153,7 @@ static bool spawn_project(const char *const *source, int count)
                                                    .completion_outcome = -1 };
     catalog.capability_count = 4;
     bool valid = load(source, count);
+    definitions[0].range = fixture_range(definitions[0].text, "\"Spark\"");
     authoring_navigation_free(navigation);
     navigation = authoring_navigation_new_project(documents, count, &catalog, definitions, 1, NULL, 0);
     return valid;
@@ -1587,8 +1585,7 @@ static bool scene_globals_project()
                   "            ]))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 24, 31, 2, 10, 0 } },
+                  "}\n" },
         { .id = 40,
           .field = true,
           .owner = 30,
@@ -1608,8 +1605,7 @@ static bool scene_globals_project()
                   "            ]))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 24, 31, 2, 10, 0 } },
+                  "}\n" },
         { .id = 41,
           .field = true,
           .owner = 30,
@@ -1629,8 +1625,7 @@ static bool scene_globals_project()
                   "            ]))\n"
                   "        ])\n"
                   "    )\n"
-                  "}\n",
-          .range = { 24, 32, 2, 10, 0 } },
+                  "}\n" },
     };
     const char *sources[] = {
         "App :: behavior { on Tick :: () { level:=globals.Level; "
@@ -1652,6 +1647,9 @@ static bool scene_globals_project()
     catalog.global_count = 1;
     catalog.entity_type = 31;
     bool valid = load(sources, 1);
+    definitions[0].range = fixture_range(definitions[0].text, "\"Level\"");
+    definitions[1].range = fixture_range(definitions[1].text, "\"Level\"");
+    definitions[2].range = fixture_range(definitions[2].text, "\"Camera\"");
     authoring_navigation_free(navigation);
     navigation = authoring_navigation_new_declarations(documents, 1, &catalog, definitions, 3);
     return valid;
@@ -1672,7 +1670,10 @@ TEST_CASE(navigation_connects_scene_globals_and_completes_typed_bindings)
         *definition = authoring_navigation_definition(navigation, level->target);
     REQUIRE(definition && definition->location.document == 1);
     REQUIRE(definition->type.storage == PIN_HANDLE && definition->type.nominal == 31);
-    const authoring_reference *second = authoring_navigation_at(navigation, 2, 25);
+    const char *second_text = authoring_navigation_document_text(navigation, 2);
+    script_range second_range = fixture_range(second_text, "\"Level\"");
+    const authoring_reference
+        *second = authoring_navigation_at(navigation, 2, second_range.start + 1);
     REQUIRE(
         second && second->kind == AUTHORING_DEFINE &&
         authoring_target_equal(second->target, level->target)

@@ -2525,7 +2525,11 @@ TEST_CASE(physics_joints_name_their_other_by_path)
     scene_free(scene);
     /* A path no entity has stops preparation. */
     char *stray = xstrdup(swing_scene);
-    memcpy(strstr(stray, "other=\"Anchor\"") + 7, "Nowher", 6);
+    char *other_field = strstr(stray, "data.Field.Named(\"other\",");
+    REQUIRE(other_field);
+    char *anchor_text = strstr(other_field, "data.Value.Text(\"Anchor\")");
+    REQUIRE(anchor_text);
+    memcpy(anchor_text + strlen("data.Value.Text(\""), "Nowher", 6);
     REQUIRE(!prepare_swings(stray, error, sizeof error));
     REQUIRE(!strcmp(error, "Joint other names Nowher, but no entity has that path"));
     free(stray);

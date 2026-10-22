@@ -415,7 +415,7 @@ x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
 ## Test
 
 Four groups of samples each have two selectors, one for each backend the
-compiler runs on, each under its own 60 s ceiling. The bytecode selector also
+compiler runs on. The bytecode selector also
 compares each module with stage zero's. Times are from macOS arm64, Debug +
 ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
 stage zero preparing stage one:

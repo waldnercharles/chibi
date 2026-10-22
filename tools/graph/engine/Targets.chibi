@@ -701,6 +701,7 @@ Files :: (target: string) -> string[] {
             "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
             "test/language/record_semantic.c", "test/language/record_values.c",
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
+            "test/language/execution_scope.c",
             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
             "test/language/query_boundary.c", "test/language/incremental.c", "test/language/modules.c",
@@ -2623,7 +2624,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_project_document_consumer") {
         return [
-            "public/asset_documents",
+            "public/asset_documents", "public/asset_values",
             "build/test/tools/testing/include", "public/project_document", "public/text_source",
             "public/support", "public/text_search"
         ];
@@ -3421,7 +3422,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/component_write_ir.c", "test/language/component_write_source.c",
         "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
         "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
-        "test/language/execution.c", "test/language/generic.c",
+        "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
         "test/language/inferred_string_arrays.c", "test/language/lexical_binding_chibi.c",
         "test/language/maps.c", "test/language/named_binding_chibi.c",
         "test/language/nominal_binding_chibi.c", "test/language/numeric.c",
@@ -3766,7 +3767,7 @@ pub Runs :: (target: string) -> string[] {
         return ["chibi-compile", "chibi-player"];
     }
     if (target == "test_tools") {
-        return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
+        return ["policy_worker", "benchmark_trials", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
     }
     return [];
 }

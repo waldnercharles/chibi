@@ -13,11 +13,11 @@ graph layout and debug metadata never define execution.
 1. **Inspect.** Read the asset and its referenced declarations. Use the native
    controller's read-only inspection when resolved graph facts are needed.
    State what the asset does and which names or relationships are unclear.
-2. **Record a baseline.** Choose an admitted check that exercises the affected
+2. **Record a baseline.** Choose a check that exercises the affected
    behavior. For rendering or simulation, follow `docs/agent-execution.md` and
-   the temporary limits in `docs/testing.md`. Preserve inputs, timing and output
+   the test instructions in `docs/testing.md`. Preserve inputs, timing and output
    evidence so the same check can compare the edit. An unavailable check remains
-   unverified; do not launch Studio or reconstruct quarantined suites.
+   unverified. Use the native controller for routine captures.
 3. **Simplify.** Edit source formulas, field bindings and named values directly.
    Preserve evaluation count, side effects, suspension and event order. Reusing
    a lazy expression does not guarantee that its producer runs only once.
@@ -30,7 +30,7 @@ graph layout and debug metadata never define execution.
    violates. Done when each rule is either satisfied or its exception is
    noted in the graph or asset description.
 6. **Verify.** After hand edits run `build/bin/chibi_ctl --project-root <root>
-   --format`, inspect its result, and rerun the selected admitted check. For
+   --format`, inspect its result, and rerun the selected check. For
    layout changes, compare a rendered view when the permitted inspection path
    supports it. Report checks run and any unverified behavior separately.
 

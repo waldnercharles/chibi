@@ -83,10 +83,9 @@ frame workload, and preserves every original assertion.
   This establishes rejection before function/artifact decode and finalization;
   it is not an RSS or leak measurement.
 
-All execution, including aggregates, must use the unchanged production hard
-60-second supervisor. Configuration/build timing remains separate. ASan/UBSan
-runs use `ASAN_OPTIONS=detect_leaks=0` because the environment is traced. No
-quarantine, chunk bypass or gate/document-policy changes are permitted.
+All execution, including aggregates, uses the production supervisor.
+Configuration/build timing remains separate. ASan/UBSan runs use
+`ASAN_OPTIONS=detect_leaks=0` because the environment is traced.
 
 ## Fresh recovered-environment validation
 
@@ -97,8 +96,8 @@ CMake 4.4.3, Ninja 1.13.2, Emscripten 6.0.10 and Node 24.19.0. Dependency source
 pins are unchanged. Compiler and dependency recovery is shared with other tasks;
 this work does not weaken warnings or install a second toolchain.
 
-After new coordinator admission, fresh focused commands under the unchanged
-60-second supervisor produced these results:
+After independent coordinator review, fresh focused commands through the
+production supervisor produced these results:
 
 | Source/configuration | Command | Result | Wall time |
 | --- | --- | --- | --- |
@@ -150,10 +149,9 @@ python3 tools/test_policy.py tool c-export-alias
 python3 tools/test_policy.py tool native-tools
 ```
 
-Each command has its own unchanged production 60-second deadline, including its
-existing fixture setup and child processes. These selected checks do not claim
-the quarantined full native/render/Studio coverage. Builds use bounded parallelism
-and finish before the test sequence.
+Each supervised command includes its existing fixture setup and child processes.
+These selected checks do not establish full native/render/Studio coverage. Builds
+use bounded parallelism and finish before the test sequence.
 
 ## Refreshed main-based candidate
 

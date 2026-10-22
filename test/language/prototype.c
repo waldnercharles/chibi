@@ -421,8 +421,36 @@ TEST_CASE(scene_children_nest_at_most_the_depth_limit)
     char error[192];
     char *deepest = nested_scene(SCENE_DEPTH_MAX),
          *deeper = nested_scene(SCENE_DEPTH_MAX + 1);
+    if (!deepest || !deeper) {
+        fprintf(
+            stderr,
+            "Nested scene writer failed: depth %d=%s, depth %d=%s\n",
+            SCENE_DEPTH_MAX,
+            deepest ? "written" : "failed",
+            SCENE_DEPTH_MAX + 1,
+            deeper ? "written" : "failed"
+        );
+    }
     scene = scene_document_load(deepest, error, sizeof error);
+    if (!scene) {
+        fprintf(
+            stderr,
+            "Nested scene depth %d (%zu source bytes): %s\n",
+            SCENE_DEPTH_MAX,
+            deepest ? strlen(deepest) : 0,
+            error
+        );
+    }
     reloaded = scene_document_load(deeper, error, sizeof error);
+    if (reloaded || !strstr(error, "nests deeper than 256 levels")) {
+        fprintf(
+            stderr,
+            "Nested scene depth %d (%zu source bytes): %s\n",
+            SCENE_DEPTH_MAX + 1,
+            deeper ? strlen(deeper) : 0,
+            reloaded ? "unexpectedly loaded" : error
+        );
+    }
     free(deepest);
     free(deeper);
     REQUIRE(scene && acount(scene->entities) == SCENE_DEPTH_MAX);
@@ -933,7 +961,22 @@ TEST_CASE(entity_paths_load_and_save_as_written)
     const prototype_link *bob = only_link(document->child_prototypes[1]);
     REQUIRE(bob && bob->outer && !strcmp(bob->path, "Hook"));
     saved = prototype_save(document);
-    REQUIRE(saved && strstr(saved, "test.Link other=\"Bob\"") && strstr(saved, "other=\"Hook\""));
+    av_doc *saved_document = saved ? asset_document_read(saved, error, sizeof error)
+                                   : NULL;
+    av_value *root = av_doc_root(saved_document);
+    av_value *root_link = av_obj_get(av_obj_get(root, "components"), "test.Link");
+    av_value *saved_bob = av_arr_get(av_obj_get(root, "children"), 1);
+    av_value *bob_link = av_obj_get(av_obj_get(saved_bob, "components"), "test.Link");
+    av_value *root_other = av_obj_get(root_link, "other");
+    av_value *bob_name = av_obj_get(saved_bob, "name");
+    av_value *bob_other = av_obj_get(bob_link, "other");
+    bool paths_saved = saved_document && av_is_str(root_other) &&
+                       av_is_str(bob_name) && av_is_str(bob_other) &&
+                       !strcmp(av_get_str(root_other), "Bob") &&
+                       !strcmp(av_get_str(bob_name), "Bob") &&
+                       !strcmp(av_get_str(bob_other), "Hook");
+    av_doc_free(saved_document);
+    REQUIRE(paths_saved);
     loaded = prototype_clone(document->child_prototypes[1], error, sizeof error);
     REQUIRE(loaded && only_link(loaded) && only_link(loaded)->outer);
     /* Bob's path differs from Weight's; Hook's is Weight's own. */

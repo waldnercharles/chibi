@@ -14,7 +14,7 @@ The exact-9872 review correctly found stale workload counts in the production
 policy comment after the blank-package regression. The comment now describes
 11 cases, 31 canonical parses plus one edit, 32 extractions (18 accepted and
 14 refused), and total submitted snapshot text below 8192 bytes. Nine graph
-attempts, all other bounds, the selector and the 60-second deadline are unchanged.
+attempts, all other fixture bounds and the selector are unchanged.
 
 The prior independent source/workload admission and observed 11-case/292-assertion
 result already covered that actual workload. This correction changes only Python
@@ -54,7 +54,7 @@ Independent inspection again found only frame_dummy initialization, standard
 C-runtime finalization and the same libc/libm/system-loader closure.
 
 The owning language-package-syntax route passed 11 cases, 292 assertions and one
-suite under the unchanged 60-second policy: 0.072 seconds production time,
+suite through the production supervisor: 0.072 seconds production time,
 15.648 seconds recorded checked operation, terminal sample at 15.718 seconds.
 Complete before/after input checks matched and no live descendants remained.
 The runtime result SHA256 is
@@ -153,8 +153,8 @@ authored-code execution or filesystem fixture is part of this selector.
 The predecessor --package-graph selector, canonical syntax regressions and
 canonical formatter were validated separately against their reviewed finite
 workloads. The sole new tools/test_policy.py row is language-package-syntax;
-it changes neither the 60-second supervisor nor any aggregate. Build/configure
-and generator timing are separate from each production test deadline.
+it changes neither the supervisor nor any aggregate. Build/configure and
+generator timing are separate from test execution.
 
 ## Retained source-tool evidence
 
@@ -206,13 +206,12 @@ or authored/backend execution is introduced.
 
 These original results qualified tree `45e3f0f2020faa2be96e3214430c06e8d20f381d`
 before the post-review correction above. Each route below ran separately through
-the unchanged production 60-second
-supervisor, including in-test fixture setup. The outer operation also checked
-the complete source, executable, dependencies and protected inputs before/after.
+the production supervisor, including in-test fixture setup. The outer operation
+also checked the complete source, executable, dependencies and protected inputs before/after.
 No live descendant remained. Configuration/build time is not counted as test time.
 
 From the engine root, run these four routes separately and serially against the
-configured language build (do not reconstruct an unadmitted aggregate):
+configured language build:
 
 ```sh
 CHIBI_LANGUAGE_BUILD_DIR="<configured-language-build-directory>" python3 tools/test_policy.py tool language
@@ -278,8 +277,8 @@ re-review completed clean on unchanged ef303fe3 at 15:00 UTC on 2026-10-17 and
 received Codex's thumbs-up. The branch-retention setting was separately corrected
 to retain branches at 14:42 UTC. Neither is a current blocker. This successor
 still requires fresh exact-head review and separate dependent integration gates.
-Full native/render/Studio, runtime package activation and other quarantined
-coverage are disabled or unrun, not passed. Published-head correspondence remains
+Full native/render/Studio, runtime package activation and other unrun
+coverage are not established by these results. Published-head correspondence remains
 a separate required review.
 
 ## Explicitly outside this slice

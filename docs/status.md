@@ -9,7 +9,7 @@ owning docs; [PLAN](../PLAN.md), the [Arena plan](arena-roadmap.md) and the
 [RML migration record](studio-rml-migration.md) retain dated history.
 
 Implementation means the reviewed source contains the capability. Coverage means
-checked-in assertions exist, subject to [test admission](test-quarantine.md).
+checked-in assertions exist, as cataloged in the [test inventory](test-inventory.md).
 Execution evidence names the revision and checks actually run. None implies the
 other two. The combined candidate's final execution evidence belongs in its
 integration PR; the historical results below do not validate that combination.
@@ -42,8 +42,9 @@ These are recorded results, not tests re-run by this documentation change.
   on GLES 3.2. This is a recorded focused run; GLES does not establish browser
   product acceptance, and this audit did not re-run either backend.
 - [Studio PR #53](https://github.com/waldnercharles/chibi-studio/pull/53) reports
-  all 16 acceptance selectors at `243fdc6`, each below 60 seconds. At `64c0b3b`
-  it re-ran source-edit, code-keys, the historical asset-editor key selector, code-followups, code-glyphs and smoke.
+  all 16 acceptance selectors at `243fdc6`. At `64c0b3b`
+  it re-ran source-edit, code-keys, the historical asset-editor key selector,
+  code-followups, code-glyphs and smoke.
   Neither report establishes all interactions on `d10222d`.
 - Engine [release run 38099495996](https://github.com/waldnercharles/chibi/actions/runs/38099495996)
   successfully built and published packages for `f3ff608c`.
@@ -54,10 +55,9 @@ These are recorded results, not tests re-run by this documentation change.
   against that engine. These runs do not validate the `d10222d`/`f3ff608c` pair
   or establish browser interaction or threaded-product acceptance.
 
-Admitted native/language drivers and focused GPU selectors do not release the
-[quarantined full suites and historical oracles](test-quarantine.md). A workflow's
-configured steps, an installed package, or an old screenshot cannot substitute
-for current runtime evidence.
+The [test inventory](test-inventory.md) records checks and their evidence limits.
+A workflow's configured steps, an installed package, or an old screenshot cannot
+substitute for current runtime evidence.
 
 ## Reviewed work and remaining scope
 

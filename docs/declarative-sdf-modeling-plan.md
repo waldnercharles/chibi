@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 Status: implementation is in the isolated declarative-modeling worktree. See [the implemented contract](declarative-sdf-modeling.md) and [validation evidence](declarative-sdf-modeling-validation.md). The original design and scope below remain the implementation reference.
 

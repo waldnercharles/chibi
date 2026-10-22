@@ -780,7 +780,10 @@ TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
     REQUIRE(reference->kind == SOURCE_REFERENCE_PROTOTYPE);
     REQUIRE(reference->id == script_catalog_id("prototype", "Enemy"));
     REQUIRE(reference->text_kind == SOURCE_TEXT_CHIBI);
-    REQUIRE(!strncmp(reference->text + reference->range.start, "Enemy", 5));
+    REQUIRE(
+        reference->range.start >= 0 && reference->range.end - reference->range.start == 7
+    );
+    REQUIRE(!memcmp(reference->text + reference->range.start, "\"Enemy\"", 7));
     syntax = script_parse(
         "/* local note */\n"
         "package asset\n"

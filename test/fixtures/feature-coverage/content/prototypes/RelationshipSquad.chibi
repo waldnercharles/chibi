@@ -1,9 +1,29 @@
-RelationshipSquad :: prototype {
-    Health {
-        current: 10,
-        maximum: 10
-    }
-    behaviors: [RelationshipProbe]
-    children: [{name: "enemy", prototype: RelationshipTarget}]
-    links: {Targets: child.enemy}
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("RelationshipSquad")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Health", data.Object([
+                    data.Field.Named("current", data.Value.UInt(10)),
+                    data.Field.Named("maximum", data.Value.UInt(10))
+                ]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("RelationshipProbe")
+            ])),
+            data.Field.Named("children", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("enemy")),
+                    data.Field.Named("prototype", data.Value.Text("RelationshipTarget"))
+                ])
+            ])),
+            data.Field.Named("links", data.Object([
+                data.Field.Named("Targets", data.Value.Text("child.enemy"))
+            ]))
+        ])
+    );
 }

@@ -1755,7 +1755,26 @@ TEST_CASE(manifest_content_folder_is_used)
     char hero[256];
     path(hero, sizeof hero, "game/assets/prototypes/Hero.chibi");
     REQUIRE(access(hero, F_OK) == 0);
-    write_file("game/assets/prototypes/Hero.chibi", "Hero :: prototype { Transform { x: 1, y: 2 } }\n");
+    write_file(
+        "game/assets/prototypes/Hero.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Hero\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"Transform\", data.Object([\n"
+        "                    data.Field.Named(\"x\", data.Value.UInt(1)),\n"
+        "                    data.Field.Named(\"y\", data.Value.UInt(2))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    );\n"
+        "}\n"
+    );
     write_file(
         "game/assets/scenes/Start.chibi",
         "package asset\n"

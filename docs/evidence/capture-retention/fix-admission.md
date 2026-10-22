@@ -17,8 +17,8 @@ fix, not a claimed throughput optimization.
 
 ## Proposed workload, before execution
 
-Use existing `language-program` and Node `wasm-program` selectors, each under the
-unchanged production 60-second supervisor. Preserve every original assertion.
+Use existing `language-program` and Node `wasm-program` selectors through the
+production supervisor. Preserve every original assertion.
 The earlier 14-scenario workload remains 382 total updates and gains an equality
 assertion: detached box used bytes equal a fresh snapshot of the current root.
 
@@ -64,8 +64,7 @@ disabled under this traced host. Requested allocation bytes and xalloc call
 counts around each write are reported separately from retained bytes. They are
 not live/peak process memory, copy-byte counters or throughput measurements.
 
-Admission is requested for the expanded fixed-workload measurements, and for
-one negative-control run of the same bounded selector with only intrinsics.c
+Review the expanded fixed-workload measurements and one negative-control run of the same bounded selector with only intrinsics.c
 restored to the baseline production implementation. Restore the fix afterward
 and rerun both selectors on the final exact source tree. Preserve every log,
 including failures. No publication or landing is authorized by this document.

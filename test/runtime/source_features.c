@@ -928,7 +928,7 @@ TEST_CASE(url_requests_validate_copy_replace_and_cancel)
         "https://:443/",
         "https://example.org:",
         "https://user@example.org/",
-        "https://example.org/path?q=a%20b#part",
+        "https://example.org/\n",
         "https://example.org/a b",
         "https://example.org\\path",
     };
@@ -937,7 +937,7 @@ TEST_CASE(url_requests_validate_copy_replace_and_cancel)
         char *url;
         REQUIRE(url_requests_take(test_urls, &url) && !url);
     }
-    const char *accepted[] = { "https://example.org/\n",
+    const char *accepted[] = { "https://example.org/path?q=a%20b#part",
                                "http://localhost:8080/",
                                "https://[::1]/" };
     for (int i = 0; i < (int)(sizeof accepted / sizeof *accepted); i++) {

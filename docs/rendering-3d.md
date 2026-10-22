@@ -779,8 +779,8 @@ a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSa
 cases and 83503 assertions in 17.9 seconds on 2026-10-11.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gi` runs global illumination's
-cases, apart from the rest so that each selector compiles its shaders and runs
-within the 60-second limit even with an empty shader cache; `--scene3d-gi-gles`
+cases in a separate selector that compiles its shaders, including with an empty
+shader cache; `--scene3d-gi-gles`
 runs them on GLES. At Low, a sunlit red floor lights the white box's face that
 the sun misses in red, and an orange emissive box below the view lights the
 floor near it, both black without global illumination. The red floor still does

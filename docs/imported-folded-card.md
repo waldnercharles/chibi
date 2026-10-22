@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 `ImportedFoldedCard` is an independent two-panel mesh with a four-color image, a banked pose, and no ship, combat, or particle behavior. Its mesh source is `content/meshes/ImportedFoldedCard.mesh.json`. Material, prototype, camera and scene were authored and validated through Chibi MCP.
 

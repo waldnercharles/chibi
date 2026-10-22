@@ -62,8 +62,7 @@ CHIBI_CPU_SELECTOR("--terrain-storage")
 CHIBI_CPU_SELECTOR("--terrain-storage-commands")
 CHIBI_CPU_SELECTOR("--terrain-playable")
 
-/* Explicit opt-in checks against installed products; each runs under the
- * shared 60-second supervisor. */
+/* Explicit opt-in checks against installed products. */
 CHIBI_GPU_SELECTOR("--studio-source-edit")
 CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 CHIBI_GPU_SELECTOR("--studio-scene-move")

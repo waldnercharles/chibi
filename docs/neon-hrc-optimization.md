@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 This log predates the 2026-09-28 field redesign. In its measurements, `scale`
 is the RGB grid. `luminance_scale` of 2, 4 or 8 times `scale` is now

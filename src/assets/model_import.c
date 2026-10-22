@@ -4,7 +4,6 @@
 #include "assets/prototype.h"
 #include "assets/standard_material.h"
 #include "authoring/image_prepare.h"
-#include "authoring/source_asset.h"
 #include "graph/document/serialize.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_asset.h"
@@ -1238,7 +1237,7 @@ static bool declared_name(import *in, const char *path, char **name)
         return fail(in, "Cannot read content/%s", shown);
     }
     char reason[160];
-    av_doc *document = authoring_prototype_document_read(text, NULL, reason, sizeof reason);
+    av_doc *document = asset_document_read(text, reason, sizeof reason);
     av_value *value = document ? av_obj_get(av_doc_root(document), "name") : NULL;
     *name = value && av_is_str(value) ? xstrdup(av_get_str(value)) : NULL;
     bool parsed = document != NULL;
@@ -1373,6 +1372,47 @@ static bool names_free(import *in)
            );
 }
 
+/* Refuse our exact destinations before reading existing declarations. The
+ * exclusive create in write_new still protects against later races. */
+static bool output_free(import *in, const char *key)
+{
+    size_t size = strlen(in->content) + strlen(key);
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", in->content, key + 8);
+    struct stat info;
+    bool exists = !lstat(path, &info);
+    int code = errno;
+    free(path);
+    if (exists) {
+        return fail(in, "%s already exists", key);
+    }
+    return code == ENOENT || fail(in, "Cannot create %s: %s", key, strerror(code));
+}
+
+static bool outputs_free(import *in)
+{
+    for (int i = 0; i < in->model->image_count; i++) {
+        if (in->images[i] && !output_free(in, in->images[i])) {
+            return false;
+        }
+    }
+    char key[NEW_ASSET_NAME_MAX + 32];
+    for (int slot = 0; slot <= in->model->material_count; slot++) {
+        if (in->materials[slot]) {
+            snprintf(key, sizeof key, "content/materials/%s.chibi", in->materials[slot]);
+            if (!output_free(in, key)) {
+                return false;
+            }
+        }
+    }
+    snprintf(key, sizeof key, "content/meshes/%s.mesh", in->name);
+    if (!output_free(in, key)) {
+        return false;
+    }
+    snprintf(key, sizeof key, "content/prototypes/%s.chibi", in->name);
+    return output_free(in, key);
+}
+
 /* Every image, material, the mesh and the prototype, as new content files. */
 static bool write_files(import *in, const render_mesh_asset *mesh, const standard_material *materials)
 {
@@ -1476,7 +1516,7 @@ static bool run(import *in, const char *path)
     if (ok) {
         warn_unused(in);
     }
-    ok = ok && names_free(in) && write_files(in, &mesh, materials);
+    ok = ok && outputs_free(in) && names_free(in) && write_files(in, &mesh, materials);
     render_mesh_asset_free(&mesh);
     free(materials);
     yyjson_doc_free(json);

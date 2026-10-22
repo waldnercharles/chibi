@@ -82,7 +82,25 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
         "    level: float\n"
         "}\n"
     );
-    write_asset("content/prototypes/Probe.chibi", "Probe :: prototype { PreviewHeat { level: 7 } }\n");
+    write_asset(
+        "content/prototypes/Probe.chibi",
+        "package asset\n"
+        "\n"
+        "import data \"game:assets\"\n"
+        "\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(\n"
+        "        data.Object([\n"
+        "            data.Field.Named(\"name\", data.Value.Text(\"Probe\")),\n"
+        "            data.Field.Named(\"components\", data.Object([\n"
+        "                data.Field.Named(\"PreviewHeat\", data.Object([\n"
+        "                    data.Field.Named(\"level\", data.Value.Int(7))\n"
+        "                ]))\n"
+        "            ]))\n"
+        "        ])\n"
+        "    );\n"
+        "}\n"
+    );
     write_asset(
         "content/scenes/Probe.chibi",
         "package asset\n"

@@ -164,5 +164,3 @@ passed functional acceptance. Installed-consumer builds establish dependency
 boundaries; package checks establish integrity. Rendered player behavior, Studio
 interaction and browser execution require their own reviewed captures. Current
 evidence and outstanding requirements are tracked in [PLAN](../PLAN.md).
-All tests retain the [60-second admission policy](testing.md#temporary-60-second-policy);
-quarantined coverage is not treated as passed.

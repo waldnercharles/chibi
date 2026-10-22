@@ -26,7 +26,7 @@ for (int i = 0; i < 64; i++) {
 
 ## Limits and validation
 
-A one-off manual check, not an admitted test, played a 220 Hz OGG loop with `set_music_volume(0.5)` through SDL's disk audio driver. The recorded peak matched half the source amplitude times the centered pan gain. The overflow case was found by reading the code and was not reproduced under a sanitizer.
+A one-off manual check, outside the regression suite, played a 220 Hz OGG loop with `set_music_volume(0.5)` through SDL's disk audio driver. The recorded peak matched half the source amplitude times the centered pan gain. The overflow case was found by reading the code and was not reproduced under a sanitizer.
 
 ## Apply the patch
 

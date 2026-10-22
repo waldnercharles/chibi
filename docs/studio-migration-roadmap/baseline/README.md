@@ -1,8 +1,8 @@
 # Stage 0 baseline evidence, 15 October 2026
 
-This is a verified source/registry and evidence baseline for B00–B02. It is not
-a completed Studio conversion, a passing three-way oracle, or permission to
-run every selector listed here. No runtime workload was executed for this report.
+This is a verified source/registry and evidence baseline for B00–B02. It does not
+establish a completed Studio conversion, a passing three-way oracle or execution
+results for the listed selectors. No runtime workload was executed for this report.
 
 ## Result and readiness
 
@@ -25,16 +25,16 @@ run every selector listed here. No runtime workload was executed for this report
   duplicate IDs. The manifests retain exact callbacks, ordering, shortcut
   defaults, contexts, repeat/index/phase flags and immutable source links.
 - Studio's dispatcher contains 26 acceptance selectors. The engine lists
-  eleven relevant bounded routes; fifteen have no admitted route at this
+  eleven relevant bounded routes; fifteen have no configured engine route at this
   snapshot. One listed route has an exact-source frame mismatch described below.
 - B00 remains blocked on executable original/candidate SDK pairs and health
   evidence. B01 has complete path/build/registry accounting, but not the full
-  function-body/ownership audit. B02 has a concrete existing-admission map;
+  function-body/ownership audit. B02 has a concrete existing-route map;
   missing or mismatched acceptance remains a gate. None is marked complete.
 
 The seven already-owned foundations and B06 native-reload audit remain with
 their existing owners. This report changes no engine or Studio implementation,
-test admission, project version, generated assets, or runtime behavior.
+test execution, project version, generated assets, or runtime behavior.
 
 ## Files and evidence meanings
 
@@ -45,7 +45,7 @@ test admission, project version, generated assets, or runtime behavior.
 | `panel-sources.csv` | All 44 registrations in synchronization order; exact add/sync/action symbols and mount gate |
 | `commands.csv` | All 123 command identities and defaults, including macro-expanded declarations and in-memory enum ordinal |
 | `ownership.md` | Source-backed shared/instance state, command/input dispatch, document/history and asynchronous ownership; explicit audit gaps |
-| [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) | All 26 native Studio selectors and 25 relevant engine prerequisites; admission versus execution and excluded coverage |
+| [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) | All 26 native Studio selectors and 25 relevant engine prerequisites; historical route status versus execution and excluded coverage |
 | `source-provenance.csv` | Exact fetched/source-audited Git blobs, byte counts, SHA-256 and immutable URLs |
 | `engine-fonts.csv` | All 28 files in the candidate engine font tree, including licenses/readmes; source byte fingerprints, not installed-font or rendered-output proof |
 | `toolchain-files.json` | Local compiler/build-tool executable identities; not a complete SDK/dependency closure |
@@ -139,9 +139,9 @@ without recording the resolved pair and exact artifacts.
    power mode, background load and deterministic pixel/action goldens remain
    unrecorded. There are no performance measurements or numeric budgets here.
 
-## Admission defects and missing evidence
+## Route defects and missing evidence
 
-### Collider selector mismatch: do not run or widen implicitly
+### Collider selector mismatch: reconcile the source and wrapper
 
 The engine's
 [exact acceptance tuple](https://github.com/waldnercharles/chibi/blob/64183a1c4ba5b367bf35604ddae45fa616fd3bd0/tools/agent.py#L86-L98)
@@ -151,30 +151,29 @@ requires 26 frames and the literal success string ending in `frames=26` for
 and prints that constant at completion. The README also says 28.
 
 This is a source-proven incompatibility in the baseline, not an observed runtime
-failure. Review the added workload and its bounds independently; then either
-admit the exact current source under the unchanged shared 60-second supervisor
-or explicitly select a separately pinned earlier oracle. Changing a frame number
-or expected success string alone cannot certify admission or runtime coverage.
+failure. Review the actual workload and its bounds independently; then either
+update the wrapper to match the source or select a separately pinned earlier
+oracle. Changing a frame number or expected success string alone does not prove
+runtime coverage.
 
-### Documentation is not workload admission
+### Documentation is not execution evidence
 
-`--code-keys` has no admitted engine route here. Its
+`--code-keys` has no configured engine route here. Its
 [source constant](https://github.com/waldnercharles/chibi-studio/blob/78cb4d4c47242db9f7af2b9573653d9756050e99/tests/acceptance/main.c#L816)
 is 38 frames, while its README description says 21. Use actual source bounds
-for future review. A short/no-GPU selector such as `--scene-cursors` is still
-unadmitted unless the supervisor explicitly admits its command.
+for future review. A short/no-GPU selector such as `--scene-cursors` still needs
+its owning executable, configuration and an actual result.
 
 The ten ordinary Studio agent routes require absolute source/build/evidence
 paths, matching binary and extraction hashes, build/configuration evidence,
 acceptance-source hashes, compile-commands identity, SDK config identity, the
 three-file disposable fixture and bounded resources. Those missing generated
 records must be recreated from actual builds, never filled in as passes.
-`studio-panel-idle` is a separately admitted fixed workload and has its own
-setup; it does not grant the full acceptance executable permission.
+`studio-panel-idle` is a separate fixed workload and has its own setup; its
+results do not establish a full acceptance-suite pass.
 
-Read [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) as a per-feature coverage map. Do not execute its rows as
-a substitute aggregate. Preserve the production supervisor's shared 60-second
-deadline, exact input bounds, independent admission and root serialization.
+Read [the archived selectors snapshot](https://github.com/waldnercharles/chibi/blob/77717143059b344bb41123104b5012396ca63eb8/docs/studio-migration-roadmap/baseline/selectors.csv) as a historical per-feature coverage map. Select current checks for the
+affected contracts, preserve their input bounds, and report actual results.
 Build/configure time is separate. Actual native/SLJIT and actual Wasm execution
 must be identified; inspected IR, compilation or native execution of a Wasm-named
 case is insufficient. Node Wasm results do not establish browser UI behavior.
@@ -183,8 +182,8 @@ Missing Stage 0 evidence includes deterministic state/document/history/action
 traces; exact same-platform pixels; all input/IME/focus/capture states; complete
 save/import/export/failure/retry behavior; owner close/cancel/reload reclamation;
 large/typical/stress distributions and long-session retention. Held engine
-oracles remain held. Fifteen unadmitted native selectors, browser interaction
-coverage and soak/capture coverage are explicit gates, not successful skips.
+oracles remain held. Fifteen native selectors without configured engine routes,
+browser interaction coverage and soak/capture coverage remain unverified.
 
 ## Source recovery and remaining implementation dependencies
 
@@ -245,13 +244,12 @@ never point Studio at engine source/private headers or mix SDK generations.
    Populate the engine's external-Studio evidence and per-selector records only
    from those actual outputs. In particular, never synthesize successful
    configure/build exits to satisfy a preflight.
-5. **Stop before execution for admission and capability review.** Select the
-   smallest needed health/acceptance checks with the coordinator; require the
-   exact source workload, disposable fixture, isolated preferences/cache,
-   available renderer and root serialization. Preserve the shared 60-second
-   test supervisor and separate build/configure timing. The 26/28 collider
-   mismatch remains blocked; the fifteen unadmitted selectors remain unadmitted.
-   A two-frame startup, even when separately admitted, is not UI acceptance.
+5. **Review capabilities and run affected checks.** Select the health/acceptance
+   checks with the coordinator; use the exact source workload, disposable
+   fixture, isolated preferences/cache and required renderer. Separate
+   build/configure timing from execution. Reconcile the 26/28 collider mismatch
+   before using that wrapper, and identify the owning executable for routes
+   absent from the engine map. A two-frame startup is not UI acceptance.
 6. **Resolve drift before migration.** Reproduce/dispose of the font-health
    report, compare original-versus-candidate SDK effects, and capture approved
    original outputs. Complete feature-local state/effect/history/async ownership
@@ -266,7 +264,7 @@ and [acceptance preflight](https://github.com/waldnercharles/chibi/blob/64183a1c
 
 ## Reproducing the source-only audit
 
-No new test program or admission was added. Verification uses Git object
+No new test program or execution result was added. Verification uses Git object
 identities, existing inventory/registry declarations and metadata reads:
 
 - Verify the local Studio commit/tree, clean worktree and `git fsck --full`.
@@ -286,7 +284,7 @@ identities, existing inventory/registry declarations and metadata reads:
   enum ordinals and flags with the CSVs; exclude the count sentinel.
 - Inspect the 26 literal selector names in Studio's `main` dispatcher and
   compare the engine's `STUDIO_ACCEPTANCE`, `TOOLS` and `NATIVE` definitions.
-  `make test-list` prints the admitted inventory without executing tests.
+  `make test-list` prints the command inventory without executing tests.
 - Read workflow jobs/logs and release-asset metadata using the exact run, job,
   release and asset IDs above. Keep historical executed evidence separate from
   this report's source-only findings.

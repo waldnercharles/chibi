@@ -4,7 +4,7 @@ Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. 
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
 The merged string design specifies one public `string` type and a descriptor behind the existing
 pointer, followed by shared slices. The descriptor implementation is local to
-the isolated package-foundations worktree and passes its admitted integration
+the isolated package-foundations worktree and passes its selected integration
 checks; publication evidence is in the [package library plan](package-library-plan.md).
 Other semantics and fidelity remain decisions for the user, separately per package. Helpful language prerequisites precede dependent
 implementations. This record covers bytes, strings and UTF-8; it is not an exhaustive Odin API review.

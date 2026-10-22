@@ -129,7 +129,7 @@ jobs:
       - name: Publish the release and pin it
         run: |
           # Like engine releases, never "latest": consumers fetch exact tags.
-          gh release create "$RELEASE" archives/*.tar.gz --title "$RELEASE" --prerelease --latest=false \
+          gh release create "$RELEASE" archives/*.tar.gz --target "$GITHUB_SHA" --title "$RELEASE" --prerelease --latest=false \
             --notes "Third-party archives built by ${{ github.workflow }} from ${{ github.sha }}."
           {
             echo "# repository ${{ github.repository }}"

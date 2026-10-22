@@ -1,60 +1,285 @@
 package bootstrap_tests
 
 import resolver "bootstrap:resolver"
+import strings "core:strings"
 
-Check :: (condition: bool, name: string) -> int {
+Check :: (condition: bool, name: string) -> string[] {
     if (condition) {
-        return 0;
+        return [];
     }
-    build.report(format_text("bootstrap resolver failed: {}", name));
-    return 1;
+    return [name];
 }
 
-Case :: (request: resolver.Request, kind: string, value: string, name: string) -> int {
+Case :: (request: resolver.Request, kind: string, value: string, name: string) -> string[] {
     selection := resolver.Select(request);
     return Check(selection.error == "" && selection.kind == kind && selection.value == value, name);
 }
 
-Rejected :: (request: resolver.Request, name: string) -> int {
+Rejected :: (request: resolver.Request, name: string) -> string[] {
     selection := resolver.Select(request);
     return Check(selection.error != "" && selection.kind == "" && selection.value == "", name);
 }
 
-// A bounded authored test entry for the existing build host. No filesystem,
+// A bounded pure authored test entry for the existing compiler host. No filesystem,
 // process, network, environment, publication or persistent-state operations.
-SelectionTests :: () -> int {
-    failures := 0;
-    failures += Case({command: "", has_command: false, environment: "", has_environment: false},
-                     "latest", "", "default is latest");
-    failures += Case({command: "ignored", has_command: false, environment: "ignored", has_environment: false},
-                     "latest", "", "absent values are ignored");
-    failures += Case({command: "", has_command: false, environment: "version:build-20261022.1", has_environment: true},
-                     "version", "build-20261022.1", "environment version");
-    failures += Case({command: "local:./SDK with spaces", has_command: true, environment: "version:older", has_environment: true},
-                     "local", "./SDK with spaces", "command wins and preserves local path");
-    failures += Case({command: "latest", has_command: true, environment: "local:missing", has_environment: true},
-                     "latest", "", "explicit latest wins");
-    failures += Case({command: "version:pinned", has_command: true, environment: "invalid", has_environment: true},
-                     "version", "pinned", "unused environment is not parsed");
-    failures += Case({command: "local:C:\\SDK\\chibi", has_command: true, environment: "", has_environment: false},
-                     "local", "C:\\SDK\\chibi", "Windows local path is not a URL");
-    failures += Rejected({command: "", has_command: true, environment: "latest", has_environment: true},
-                         "empty command does not fall back");
-    failures += Rejected({command: "", has_command: false, environment: "", has_environment: true},
-                         "empty environment does not fall back");
+pub SelectionTests :: () -> string[] {
+    failures: string[] = [];
+    failures.extend(Case({command: "", has_command: false, environment: "", has_environment: false},
+                     "latest", "", "default is latest"));
+    failures.extend(Case({command: "ignored", has_command: false, environment: "ignored", has_environment: false},
+                     "latest", "", "absent values are ignored"));
+    failures.extend(Case({command: "", has_command: false, environment: "version:build-20261022.1", has_environment: true},
+                     "version", "build-20261022.1", "environment version"));
+    failures.extend(Case({command: "local:./SDK with spaces", has_command: true, environment: "version:older", has_environment: true},
+                     "local", "./SDK with spaces", "command wins and preserves local path"));
+    failures.extend(Case({command: "latest", has_command: true, environment: "local:missing", has_environment: true},
+                     "latest", "", "explicit latest wins"));
+    failures.extend(Case({command: "version:pinned", has_command: true, environment: "invalid", has_environment: true},
+                     "version", "pinned", "unused environment is not parsed"));
+    failures.extend(Case({command: "local:C:\\SDK\\chibi", has_command: true, environment: "", has_environment: false},
+                     "local", "C:\\SDK\\chibi", "Windows local path is not a URL"));
+    failures.extend(Rejected({command: "", has_command: true, environment: "latest", has_environment: true},
+                         "empty command does not fall back"));
+    failures.extend(Rejected({command: "", has_command: false, environment: "", has_environment: true},
+                         "empty environment does not fall back"));
     for (value in ["version:", "version:latest", "version:..", "version:.", "version:a/b", "version:a\\b",
                    "version:with space", "version:tag?query", "version:tag#fragment", "version:\nnew",
                    "local:", "local:path\nnext", "local:path\rnext", "build-20261022", " latest", "latest ",
                    "https://github.com/waldnercharles/chibi/releases/latest"]) {
-        failures += Rejected({command: value, has_command: true, environment: "latest", has_environment: true}, value);
+        failures.extend(Rejected({command: value, has_command: true, environment: "latest", has_environment: true}, value));
     }
+    failures.extend(Rejected({command: format_text("version:{}", strings.Repeat("a", 129)), has_command: true,
+                              environment: "latest", has_environment: true}, "overlong version"));
+    failures.extend(Rejected({command: format_text("local:{}", strings.Repeat("a", 4096)), has_command: true,
+                              environment: "latest", has_environment: true}, "overlong local path"));
     return failures;
 }
 
-Tests :: () -> int {
+pub Tests :: () -> string[] {
     failures := SelectionTests();
-    if (failures == 0) {
-        build.report("bootstrap resolver selection tests passed");
+    failures.extend(ManifestTests());
+    failures.extend(ResolutionTests());
+    return failures;
+}
+
+Hash :: () -> string {
+    return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+}
+
+Record :: (path: string, executable: bool) -> resolver.File {
+    return {path: path, bytes: 1, sha256: Hash(), executable: executable};
+}
+
+Package :: () -> resolver.Platform {
+    return {name: "linux-x64", archive: "chibi-toolchain-linux-x64.tar.gz", archive_bytes: 1, archive_sha256: Hash(),
+            executable: "libexec/chibi/chibi-build-host", native_abi: 20, prepared_format: 5, bootstrap_version: 5,
+            first: 0, count: 6};
+}
+
+Files :: () -> resolver.File[] {
+    return [Record("libexec/chibi/chibi-build-host", true),
+            Record("share/chibi/compiler/bootstrap.kdl", false),
+            Record("share/chibi/compiler/bootstrap/bootstrap.json", false),
+            Record("share/chibi/compiler/bootstrap/compiler.chibip", false),
+            Record("share/chibi/compiler/package_compiler/Compile.chibi", false),
+            Record("share/chibi/core/strings/Strings.chibi", false)];
+}
+
+Generation :: () -> resolver.Generation {
+    return {format: 1, kind: "chibi-toolchain", id: "build-20261022.1", repository: "waldnercharles/chibi",
+            source_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            source_tree: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", validated: true};
+}
+
+Pack :: (generation: resolver.Generation, platform: resolver.Platform, files: resolver.File[]) -> resolver.Manifest {
+    adjusted := platform;
+    adjusted.count = length(files);
+    return resolver.Manifest.Contents(generation, [adjusted], files);
+}
+
+Good :: () -> resolver.Manifest {
+    return Pack(Generation(), Package(), Files());
+}
+
+Required :: () -> resolver.Compatibility {
+    return {platform: "linux-x64", native_abi: 20, prepared_format: 5, bootstrap_minimum: 2, bootstrap_maximum: 5};
+}
+
+Resolve :: (selection: string, manifest: resolver.Manifest, required: resolver.Compatibility) -> resolver.Resolution {
+    return resolver.Resolve(resolver.Select({command: selection, has_command: true, environment: "", has_environment: false}),
+                            manifest, Hash(), required);
+}
+
+RejectResolution :: (result: resolver.Resolution, name: string) -> string[] {
+    switch result {
+        case .Rejected(error):
+            return Check(error != "", name);
+        case .Resolved(snapshot, platform, files):
+            return [name];
+    }
+}
+
+pub ManifestTests :: () -> string[] {
+    failures: string[] = [];
+    failures.extend(Check(resolver.GenerationError(Good()) == "", "valid complete generation"));
+    bad := Generation();
+    bad.kind = "compiler-runtime";
+    failures.extend(Check(resolver.GenerationError(Pack(bad, Package(), Files())) != "", "compiler-only manifest is not a toolchain"));
+    bad = Generation();
+    bad.format = 2;
+    failures.extend(Check(resolver.GenerationError(Pack(bad, Package(), Files())) != "", "unknown manifest format"));
+    bad = Generation();
+    bad.source_revision = "main";
+    failures.extend(Check(resolver.GenerationError(Pack(bad, Package(), Files())) != "", "mutable source identity"));
+    bad = Generation();
+    bad.source_tree = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    failures.extend(Check(resolver.GenerationError(Pack(bad, Package(), Files())) != "", "noncanonical source hash"));
+    bad = Generation();
+    bad.repository = "another/repository";
+    failures.extend(Check(resolver.GenerationError(Pack(bad, Package(), Files())) != "", "wrong repository"));
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [], [])) != "", "empty platform matrix"));
+    second := Package();
+    second.first = 6;
+    both := Files();
+    both.extend(Files());
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [Package(), second], both)) != "", "duplicate platform"));
+    second.name = "macos-arm64";
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [Package(), second], both)) != "", "duplicate archive"));
+    second.archive = "chibi-toolchain-macos-arm64.tar.gz";
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [Package(), second], both)) == "", "complete two-platform generation"));
+    second.first = 5;
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [Package(), second], both)) != "", "overlapping inventory spans"));
+    failures.extend(Check(resolver.GenerationError(resolver.Manifest.Contents(Generation(), [Package()], both)) != "", "unclaimed inventory files"));
+    for (path in ["../escape", "/absolute", "a//b", "a/./b", "a/../b", "a\\b", "C:drive", "a/", "a\nnext"]) {
+        files := Files();
+        files.append(Record(path, false));
+        failures.extend(Check(resolver.GenerationError(Pack(Generation(), Package(), files)) != "", format_text("invalid inventory path {}", path)));
+    }
+    files := Files();
+    files.append(Record("share/chibi/compiler/bootstrap.kdl", false));
+    failures.extend(Check(resolver.GenerationError(Pack(Generation(), Package(), files)) != "", "duplicate inventory path"));
+    for (i in 0..<6) {
+        files = Files();
+        files.remove_index(i);
+        failures.extend(Check(resolver.GenerationError(Pack(Generation(), Package(), files)) != "", format_text("missing resource {}", i)));
+    }
+    files = Files();
+    files[0] = Record("libexec/chibi/chibi-build-host", false);
+    failures.extend(Check(resolver.GenerationError(Pack(Generation(), Package(), files)) != "", "missing executable mode"));
+    platform := Package();
+    platform.archive_bytes = 0;
+    failures.extend(Check(resolver.GenerationError(Pack(Generation(), platform, Files())) != "", "empty archive"));
+    files = Files();
+    files[1] = {path: files[1].path, bytes: 1, sha256: "bad", executable: false};
+    failures.extend(Check(resolver.GenerationError(Pack(Generation(), Package(), files)) != "", "invalid file checksum"));
+    platform = Package();
+    platform.name = "unsupported";
+    failures.extend(Check(resolver.GenerationError(Pack(Generation(), platform, Files())) != "", "unknown platform"));
+    return failures;
+}
+
+pub ResolutionTests :: () -> string[] {
+    failures: string[] = [];
+    failures.extend(RejectResolution(Resolve("version:other", Good(), Required()), "version never substitutes another generation"));
+    bad := Generation();
+    bad.validated = false;
+    development := Pack(bad, Package(), Files());
+    failures.extend(RejectResolution(Resolve("latest", development, Required()), "unvalidated latest"));
+    failures.extend(RejectResolution(Resolve("version:build-20261022.1", development, Required()), "unvalidated explicit version"));
+    required := Required();
+    required.platform = "windows-x64";
+    failures.extend(RejectResolution(Resolve("latest", Good(), required), "missing requested platform"));
+    required = Required();
+    required.native_abi = 21;
+    failures.extend(RejectResolution(Resolve("latest", Good(), required), "ABI mismatch"));
+    required = Required();
+    required.prepared_format = 6;
+    failures.extend(RejectResolution(Resolve("latest", Good(), required), "prepared format mismatch"));
+    required = Required();
+    required.bootstrap_maximum = 4;
+    failures.extend(RejectResolution(Resolve("latest", Good(), required), "bootstrap version too new"));
+    required = Required();
+    required.bootstrap_minimum = 6;
+    required.bootstrap_maximum = 7;
+    failures.extend(RejectResolution(Resolve("latest", Good(), required), "bootstrap version too old"));
+    failures.extend(RejectResolution(resolver.Resolve({kind: "latest", value: "", error: ""}, Good(), "invalid", Required()),
+                                      "missing exact manifest digest"));
+    failures.extend(RejectResolution(resolver.Resolve({kind: "local", value: "", error: ""}, Good(), Hash(), Required()),
+                                      "forged empty local selection"));
+    switch Resolve("version:build-20261022.1", Good(), Required()) {
+        case .Rejected(error):
+            failures.append(format_text("valid version rejected: {}", error));
+        case .Resolved(snapshot, platform, expected):
+            failures.extend(Check(snapshot.generation == "build-20261022.1" && !snapshot.development, "exact version selected"));
+    }
+    switch Resolve("local:./claims-promoted", Good(), Required()) {
+        case .Rejected(error):
+            failures.append(format_text("local published copy rejected: {}", error));
+        case .Resolved(snapshot, platform, expected):
+            failures.extend(Check(snapshot.development, "local metadata cannot claim trusted promotion"));
+    }
+    switch Resolve("local:./development", development, Required()) {
+        case .Rejected(error):
+            failures.append(format_text("local development rejected: {}", error));
+        case .Resolved(snapshot, platform, expected):
+            failures.extend(Check(snapshot.development && snapshot.local_path == "./development", "local provenance recorded"));
+    }
+    unpacked := Package();
+    unpacked.archive = "";
+    unpacked.archive_bytes = 0;
+    unpacked.archive_sha256 = "";
+    switch Resolve("local:./unpacked", Pack(bad, unpacked, Files()), Required()) {
+        case .Rejected(error):
+            failures.append(format_text("unpacked local package rejected: {}", error));
+        case .Resolved(snapshot, platform, expected):
+            failures.extend(Check(resolver.DownloadError(platform, {bytes: 0, sha256: ""}) != "", "unpacked package cannot pass archive check"));
+    }
+    failures.extend(RejectResolution(Resolve("latest", Pack(Generation(), unpacked, Files()), Required()), "published package missing archive"));
+    switch Resolve("latest", Good(), Required()) {
+        case .Rejected(error):
+            failures.append(format_text("valid latest rejected: {}", error));
+        case .Resolved(snapshot, platform, expected):
+            failures.extend(Check(snapshot.generation == "build-20261022.1" && snapshot.manifest_sha256 == Hash() &&
+                                  !snapshot.development && snapshot.local_path == "", "resolved identity is captured"));
+            failures.extend(Check(resolver.DownloadError(platform, {bytes: 1, sha256: Hash()}) == "", "verified archive"));
+            failures.extend(Check(resolver.DownloadError(platform, {bytes: 2, sha256: Hash()}) != "", "wrong archive size"));
+            failures.extend(Check(resolver.DownloadError(platform, {bytes: 1, sha256: "bad"}) != "", "wrong archive hash"));
+            files := Files();
+            failures.extend(Check(resolver.InventoryError(expected, files) == "", "complete observed inventory"));
+            files.reverse();
+            failures.extend(Check(resolver.InventoryError(expected, files) == "", "inventory order is irrelevant"));
+            files.remove_index(0);
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "missing observed resource"));
+            files = Files();
+            files[1] = files[0];
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "duplicate observation cannot hide missing file"));
+            files = Files();
+            files.append(Record("extra", false));
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "unexpected observed file"));
+            files = Files();
+            files[0] = Record(platform.executable, false);
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "observed executable mode mismatch"));
+            files = Files();
+            files[1] = {path: files[1].path, bytes: 2, sha256: Hash(), executable: false};
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "observed resource size mismatch"));
+            files = Files();
+            files[1] = {path: files[1].path, bytes: 1, sha256: "bad", executable: false};
+            failures.extend(Check(resolver.InventoryError(expected, files) != "", "observed resource hash mismatch"));
+            failures.extend(Check(resolver.RuntimeError(platform, Required(), true, true) == "", "verified runtime identity"));
+            failures.extend(Check(resolver.RuntimeError(platform, Required(), false, true) != "", "incomplete compiler closure"));
+            failures.extend(Check(resolver.RuntimeError(platform, Required(), true, false) != "", "compiler-only host has no build services"));
+            required = Required();
+            required.native_abi = 21;
+            failures.extend(Check(resolver.RuntimeError(platform, required, true, true) != "", "observed ABI mismatch"));
+            required = Required();
+            required.platform = "windows-x64";
+            failures.extend(Check(resolver.RuntimeError(platform, required, true, true) != "", "observed platform mismatch"));
+            required = Required();
+            required.prepared_format = 6;
+            failures.extend(Check(resolver.RuntimeError(platform, required, true, true) != "", "observed prepared format mismatch"));
+            required = Required();
+            required.bootstrap_maximum = 4;
+            failures.extend(Check(resolver.RuntimeError(platform, required, true, true) != "", "observed bootstrap capability mismatch"));
     }
     return failures;
 }

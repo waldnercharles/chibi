@@ -1,4 +1,4 @@
-package native_abi
+package native_abi_checks
 
 @test
 LinuxTargetIsExplicit :: () {

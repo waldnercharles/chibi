@@ -706,7 +706,19 @@ compiler syntax and JSON libraries and the automation library, naming the
 desktop archive's libraries and frameworks in CMake's order: 122 targets, 731
 compile commands and seven link commands, equal to CMake's. Their Linux
 links wait for a Linux archive.
-Next: the testing libraries and test drivers; an install layout, which
+Slice 18, 2026-10-21: the small test drivers. The graph builds and links
+`test_host`, `concurrent_runner`, `policy_worker` and `benchmark_trials`,
+which link no library, staging the host tests' headers below
+`BUILD/testing/host/include`: 745 compile commands and eleven link commands
+on macOS, equal to CMake's.
+Slice 19, 2026-10-21: `test_language`. The graph configures files as CMake's
+`configure_file` does, from templates whose placeholders take a file's bytes
+(a new `build.byte_list` native) or its text as a C string, and gives a
+source its own defines, with the source root, build type and a file's
+SHA-256 filled in. On macOS it builds and links `test_language` over its
+object library: 850 compile commands and twelve link commands, equal to
+CMake's, and 28 generated headers equal to CMake's.
+Next: `test_tools` and the SDK contract consumers; an install layout, which
 `chibi version` reads; then moving profile selection from `Build.chibi`'s
 CMake arguments into the graph.
 

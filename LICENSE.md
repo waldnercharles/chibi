@@ -24,7 +24,8 @@ in the table take precedence over broader rows.
 | `include/`, `packages/core/`, `sdk/`, `cmake/` | LGPL-3.0-only |
 | `CMakeLists.txt`, `Makefile` | LGPL-3.0-only |
 | `tools/reflect/`, `tools/docs/`, `tools/collab/config.js.in` | LGPL-3.0-only |
-| First-party material in `docs/` and `test/` | LGPL-3.0-only |
+| First-party material in `docs/` and `test/`, except the three listed MIT snippets | LGPL-3.0-only |
+| The three explicitly marked snippets in `docs/code-language.md` listed below | MIT |
 | `src/toolchain/` except the four shared library files below | GPL-3.0-only |
 | `src/toolchain/compiler_json.c`, `src/toolchain/compiler_json.h`, `src/toolchain/compiler_syntax.c`, `src/toolchain/compiler_syntax.h` | LGPL-3.0-only |
 | The `src/host/` tool files listed below | GPL-3.0-only |
@@ -52,6 +53,30 @@ they combine their GPL tool code with these libraries. Keep this boundary
 consistent when adding dependencies: a runtime or reusable-library target
 must not silently acquire GPL-only implementation code.
 
+## MIT copy-paste examples
+
+Only the code inside the following three fenced blocks in
+`docs/code-language.md` is additionally offered under the MIT license in
+[COPYING.EXAMPLES](COPYING.EXAMPLES). Each block contains an MIT SPDX notice
+and a code comment with its exact identifier:
+
+| Identifier | Code |
+| --- | --- |
+| `chibi-mit-example: damage-functions` | `Example` library defining `DamageFor` and `DamageAfterArmor` |
+| `chibi-mit-example: reference-parameter` | `Example` library defining `AddScore` |
+| `chibi-mit-example: weighted-total` | `Example` library defining `WeightedTotal` |
+
+Each identifier applies only to its enclosing fenced code block, not the
+surrounding prose or other code blocks. This list is exhaustive;
+adding an MIT marker elsewhere does not extend this grant. These snippets may
+be copied and modified in proprietary application code under the MIT terms.
+Retain the copyright and permission notice required by that license.
+
+No tests, runtime or compiler implementation, generated Chibi scaffolding,
+core library, asset, third-party material, or other example is included in
+this carveout. Using the snippets with Chibi does not remove the runtime's
+LGPL conditions.
+
 ## Games, applications, and generated code
 
 Writing a game or application in Chibi does not by itself license that
@@ -67,15 +92,14 @@ application-origin portions retain their own terms. This is not a blanket
 permission to remove notices or treat all generated source as unrestricted.
 Header material is also subject to LGPL section 3 where applicable.
 
-The same distinction applies to examples: merely using the language is
-not copying Chibi, but copying or adapting Chibi examples retains the
-license of those portions. Adapting a supplied LGPL game example can therefore
-require source for its copied and modified LGPL portions; it is not the same
-as independently writing a game that only uses Chibi interfaces. No permissive
-example-code exception is granted here. Third-party game assets retain their
-own terms.
+Outside the three MIT snippets listed above, the same distinction applies
+to examples: merely using the language is not copying Chibi, but copying or
+adapting Chibi examples retains the license of those portions. Adapting a
+supplied LGPL game example can therefore require source for its copied and
+modified LGPL portions; it is not the same as independently writing a game
+that only uses Chibi interfaces. Third-party game assets retain their own terms.
 
-Changes to Chibi's compiler, libraries, runtime, player, or other covered
+Changes to Chibi's compiler, libraries, runtime, player, or other copyleft-covered
 code remain subject to their applicable copyleft license when distributed.
 Changing the player is not the same thing as writing an independent game
 that uses its interfaces. Private use does not itself require publishing

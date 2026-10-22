@@ -58,12 +58,17 @@ compiler bootstrap is a compiler artifact, not a required game runtime.
 
 ## Copied examples
 
-First-party examples in the documentation and tests are LGPL under the file
-map, not permissively licensed starter projects. If you copy or adapt them,
+The three explicitly enumerated MIT snippets in [the file map](../LICENSE.md#mit-copy-paste-examples)
+may be copied and modified under [the MIT license](../COPYING.EXAMPLES), including
+in proprietary code, while retaining its required notices. This does not change
+the terms for Chibi runtime components used by an application.
+
+Other first-party examples in the documentation and tests are LGPL under the
+file map, not permissively licensed starter projects. If you copy or adapt them,
 their Chibi-origin portions retain LGPL obligations, including applicable
 source and recombination requirements. Writing an independent application
-using the language and library interfaces is a different case. This policy
-does not grant a custom template or example exception.
+using the language and library interfaces is a different case. The MIT list is
+exhaustive; it does not include tests, assets, third-party material, generated runtime scaffolding, or other templates.
 
 ## Export and packaging status
 

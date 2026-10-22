@@ -78,6 +78,17 @@ const char *build_io_hash(
     char digest[65]
 );
 
+/* A regular file's bytes as `0xHH,` for each, the C initializer CMake's
+ * file(READ ... HEX) and "0x\\1," replacement write; *out is xmalloc'd. Fails
+ * for an input that is not a regular file or whose list would pass the build
+ * text limit. */
+const char *build_io_byte_list(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char **out
+);
 /* Writes a C file defining `const unsigned char SYMBOL[]` with the bytes of a
  * regular input file of at most 64 MiB, and `SYMBOL_size`, in the form
  * cmake/embed_binary.cmake writes. An output that already holds that text is

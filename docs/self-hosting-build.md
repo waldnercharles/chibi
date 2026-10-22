@@ -216,6 +216,7 @@ interprocess lock they needed, went away rather than moved.
 | `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
 | `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
 | `build.replace(text, find, with) -> string` | Text with every occurrence of a non-empty `find` replaced by `with`, left to right, in one native pass; `core:strings.ReplaceAll` scans byte by byte in the interpreter, and rewriting Cute's 96 KB of codec headers took it 11 s. A result past the text limit fails the program. |
+| `build.byte_list(path) -> string` | A regular file's bytes as `0xHH,` for each, the C initializer CMake writes from `file(READ ... HEX)` and its `0x\\1,` replacement, so embedding a source needs no Chibi loop. At most 3.2 MiB of input, a fifth of the text limit. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -343,7 +344,15 @@ standard (`gnu23`, or `gnu17` for Box2D and Box3D's `C_STANDARD 17`), whether it
 is position-independent (`-fPIC`) and embedded files. A generated source is a
 `build/` path, below the build directory where CMake writes it. An
 `Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT with
-`build.embed_file`, before any compile. A target whose `Generator` is
+`build.embed_file`, before any compile. A header set's `Configures` entry
+`HEADER=INPUT` writes HEADER below its private root as CMake's
+`configure_file` does when its text changed, and staging keeps it: a
+`.in` INPUT with each `@NAME@` of the target's `Substitutions` replaced
+(`bytes:PATH` through `build.byte_list`, `cstring:PATH` as C string lines),
+any other INPUT copied; the language tests embed the Chibi sources they
+compile this way. A source's own defines (`SourceDefines`, CMake's
+`COMPILE_DEFINITIONS` source property) follow the target's, with
+`{source_root}`, `{build_type}` and `{sha256:PATH}` filled in. A target whose `Generator` is
 `reflect` first makes the graph build `reflect` and stage the math headers,
 then run it as root `CMakeLists.txt`'s `generate_runtime_registry` does, to
 write `BUILD/generated/native_types.c` and `native_capabilities.c`; `c.Step`
@@ -370,8 +379,11 @@ host or the archive is not unpacked.
 `--third-party DIR` names another. Objects of its sources sit below
 `objects/TARGET/third-party/`.
 The graph also links executables. `engine.Programs` lists them (the
-reflection tool `reflect`, the build host, the compiler host and the `chibi`
-launcher, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
+reflection tool `reflect`, the build host, the compiler host, the `chibi`
+launcher and the host, concurrency, policy-worker and benchmark test drivers,
+the first two over the header set the graph stages below
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
+player, `chibi-compile`, `chibi_ctl` and `test_language`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's

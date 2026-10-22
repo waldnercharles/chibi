@@ -1112,6 +1112,35 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     return true;
 }
 
+/* A file's bytes as the C initializer CMake writes from file(READ ... HEX),
+ * NUL and high bytes included; a missing file fails the program. */
+TEST_CASE(private_byte_lists_write_cmake_initializers)
+{
+    primitive_file(
+        "primitive-bytes",
+        "\0\xff"
+        "a",
+        3
+    );
+    static const char *sources[] = {
+        "package bytes\nBuild :: () -> int { "
+        "if (build.byte_list(\"primitive-bytes\") != \"0x00,0xff,0x61,\") { "
+        "return 1; } return 0; }",
+        "package bytes\nBuild :: () -> int { "
+        "build.byte_list(\"primitive-absent\"); return 0; }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result) == !i);
+        REQUIRE(
+            i ? !strcmp(result.diagnostic, "build byte list input must be a regular file of at most 3.2 MiB")
+              : !result.value
+        );
+    }
+    return true;
+}
+
 /* Build values are never freed, so a program's values only grow: a build
  * graph that reads a record per source holds tens of megabytes, and a
  * program past the storage limit fails with its cause. */
@@ -1571,6 +1600,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
     RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+    RUN_TEST_CASE(private_byte_lists_write_cmake_initializers);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);

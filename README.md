@@ -65,5 +65,6 @@ and reusable libraries are LGPLv3. Both are version 3 only. Independent games
 and applications may use their own license, including proprietary terms,
 when the LGPL distribution conditions are met. Distributed changes to Chibi
 remain covered by its applicable copyleft license. Third-party components
-keep their existing licenses. See the [file scope](LICENSE.md) and
+keep their existing licenses. Three explicitly listed [copy-paste examples](LICENSE.md#mit-copy-paste-examples)
+are available under MIT. See the [file scope](LICENSE.md) and
 [distribution guide](docs/distribution-licensing.md).

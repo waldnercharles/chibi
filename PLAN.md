@@ -695,10 +695,26 @@ import, UI host, renderer and project compilation, format and preparation
 libraries: 110 libraries and 692 compile commands, equal to CMake's when
 split as the shell splits them. `build-graph` now compares commands alone,
 and `build-graph-support` holds the rebuild cases.
-Next: executables beyond `reflect` (the players, compiler host, `chibi_ctl`
-and `chibi`), with their system libraries and the C++ runtime; the testing
-libraries and test drivers; then moving profile selection from
-`Build.chibi`'s CMake arguments into the graph.
+Slice 16, 2026-10-21: executables. The graph links the build host, the
+compiler host and the `chibi` launcher beside `reflect`, with object
+libraries, per-executable link options and link libraries in CMake's order,
+and writes `link_commands.json`, whose four commands `build-graph` compares
+with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
+Slice 17, 2026-10-21: C++-linked executables. On macOS the graph links the
+player, `chibi-compile` and `chibi_ctl` with the C++ compiler, over the
+compiler syntax and JSON libraries and the automation library, naming the
+desktop archive's libraries and frameworks in CMake's order: 122 targets, 731
+compile commands and seven link commands, equal to CMake's. Their Linux
+links wait for a Linux archive.
+Slice 18, 2026-10-21: the small test drivers. The graph builds and links
+`test_host`, `concurrent_runner`, `policy_worker` and `benchmark_trials`,
+which link no library, staging the host tests' headers below
+`BUILD/testing/host/include`: 745 compile commands and eleven link commands
+on macOS, equal to CMake's.
+Next: `test_tools` and `test_language`, whose generated headers embed sources
+as strings, and the SDK contract consumers; an install layout, which
+`chibi version` reads; then moving profile selection from `Build.chibi`'s
+CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

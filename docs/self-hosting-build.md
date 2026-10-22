@@ -369,12 +369,23 @@ does, and a run that needs it stops and says so when nothing is pinned for the
 host or the archive is not unpacked.
 `--third-party DIR` names another. Objects of its sources sit below
 `objects/TARGET/third-party/`.
-The graph also links executables. `engine.Programs` lists them (now the
-reflection tool, `reflect`); `c.Link` runs CMake's executable link (the
-language and link flags, the sanitizers, the objects, `-o`, then the
-profile's external libraries, the graph's archives and system libraries) and
-records it as it records compiles. Naming a program with `--target` also
-builds the libraries it links. `reflect` takes libclang from the profile
+The graph also links executables. `engine.Programs` lists them (the
+reflection tool `reflect`, the build host, the compiler host, the `chibi`
+launcher and the host, concurrency, policy-worker and benchmark test drivers,
+the first two over the header set the graph stages below
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
+`Links` name the desktop archive's libraries as `third-party/` paths and its
+frameworks as CMake orders them; Linux's follow its archive). An executable
+over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
+executable link (the language and link
+flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
+then the profile's external libraries and `Links` in CMake's order, which
+may name a library twice and holds `-lm` where CMake puts it) and records it
+as it records compiles. An object library (`ObjectLibrary`, as
+`chibi_build_host`) compiles but is not archived; an executable's
+`LinkedObjects` put its objects before the executable's own. Every run
+writes `BUILD/link_commands.json` beside the compile commands. Naming a
+program with `--target` also builds the libraries it links. `reflect` takes libclang from the profile
 (`--libclang-include`, `--libclang-library`), and the graph finds clang's
 builtin headers as `tools/reflect/resource.cmake` does, by asking that
 libclang's `clang -print-resource-dir`.

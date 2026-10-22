@@ -15,7 +15,8 @@ import strings "core:strings"
 //   --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --third-party DIR --reflect PATH
-// Every path is absolute. Writes BUILD/compile_commands.json, then, unless
+// Every path is absolute. Writes BUILD/compile_commands.json and
+// BUILD/link_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
 
@@ -127,6 +128,11 @@ Libraries :: () -> int {
     commands := strings.Join([build_dir, "/compile_commands.json"], "");
     if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, selected))) {
         build.report("graph: writing compile_commands.json failed");
+        return 1;
+    }
+    links := strings.Join([build_dir, "/link_commands.json"], "");
+    if (!build.write_file(links, engine.LinkCommands(tools, profile, build.root(), build_dir, selected))) {
+        build.report("graph: writing link_commands.json failed");
         return 1;
     }
     if (Option(arguments, "--commands-only", "") == "on") {

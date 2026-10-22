@@ -2175,9 +2175,16 @@ debug directory, which depends on where a build is), the graph finds the
 rest of its profile on the machine and writes the compile commands of every
 target it owns, including the third-party archive's sources and include
 directories, the options of single sources and C++ and Objective-C sources,
-and each of the 692 must equal `compile_commands.json`'s for the same source,
-split as the shell splits it, apart from the object path and with the
-temporary build directory standing for CMake's. About 10 s.
+and each of them (745 on macOS) must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each link command it writes in `link_commands.json` (eleven on macOS,
+eight elsewhere) to equal its executable's `build.ninja` statement, with the
+C++ compiler for an executable CMake links as C++, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 23 s.
 
 `python3 tools/test_policy.py tool build-graph-support` runs three cases in a
 copy of the sources: about ten runs that build only `chibi_support` check

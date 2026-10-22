@@ -7,12 +7,8 @@
  * never reads disk, parses text, resolves paths, or starts authored code.
  * All input arrays and strings remain immutable and alive until free. Returned
  * package indices are snapshot-local; the canonical directory is the identity. */
+#include "authoring/source_package_io.h"
 #include "language/syntax.h"
-
-enum
-{
-    SOURCE_PACKAGE_MAX_FILES = 256
-}; /* Existing source_catalog limit. */
 
 typedef struct
 {

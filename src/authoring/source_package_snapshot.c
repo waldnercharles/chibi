@@ -1,5 +1,6 @@
 #include "authoring/source_package_snapshot.h"
 
+#include "authoring/source_package_files.h"
 #include "authoring/source_package_paths.h"
 #include "authoring/source_package_routes.h"
 #include "authoring/source_package_syntax.h"
@@ -33,6 +34,20 @@ struct source_package_snapshot
     bool failed;
     source_package_snapshot_error error;
 };
+
+source_package_snapshot *source_package_snapshot_load(
+    const source_package_disk_options *options,
+    source_package_load_error *error
+)
+{
+    source_package_snapshot_options inputs = { 0 };
+    if (!source_package_files_load(options, &inputs, error)) {
+        return NULL;
+    }
+    source_package_snapshot *snapshot = source_package_snapshot_new(&inputs);
+    source_package_files_release(&inputs);
+    return snapshot;
+}
 
 static char *copy(source_package_snapshot *s, const char *text, size_t size)
 {

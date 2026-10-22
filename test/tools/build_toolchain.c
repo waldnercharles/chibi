@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 static const char *worker_path, *host_path;
+static chibi_build_compiler *build_compiler;
 static char suite[256], root[512], program_path[1024];
 static char *program;
 static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
@@ -101,6 +102,7 @@ static void reset_fixture(const char *name, int backend)
 static bool invoke(const char *const *arguments, int count, int backend, int value)
 {
     chibi_build_options options = {
+        .compiler = build_compiler,
         .root = root,
         .source_path = program_path,
         .source_text = program,
@@ -581,6 +583,10 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
     path(log, root, "cli.log");
     const char *arguments[] = {
         host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
         "--root",
         root,
         "--source",
@@ -663,6 +669,18 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
 void test_build_toolchain(const char *worker, const char *host)
 {
     host_path = host;
+    char error[256] = { 0 };
+    build_compiler = chibi_build_compiler_load(
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        error,
+        sizeof error
+    );
+    if (!build_compiler) {
+        fprintf(stderr, "build compiler: %s\n", error);
+    }
+    assert(build_compiler);
+
     worker_path = worker;
     strcpy(suite, "/tmp/chibi-toolchain-XXXXXX");
     assert(mkdtemp(suite));
@@ -699,6 +717,8 @@ void test_build_toolchain(const char *worker, const char *host)
         }
         free(saved_environment[i]);
     }
+    chibi_build_compiler_free(build_compiler);
+    build_compiler = NULL;
     free(program);
     tool_remove_tree(suite);
 }

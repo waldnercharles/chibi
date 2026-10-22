@@ -561,10 +561,16 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
-                    callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
+    switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+                    callables, params, declared_types, members, constants, natives, ports, native_ids,
+                    resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
-                                  make_fields));
+                                  make_fields)) {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Compiled(module, bytes, effects):
+            return Result.Compiled(module, bytes);
+    }
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that

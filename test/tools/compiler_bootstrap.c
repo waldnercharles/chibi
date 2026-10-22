@@ -1,8 +1,13 @@
 #include "compiler_bootstrap.h"
 
+#include "execution/status.h"
+#include "support/sha256.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "third_party/yyjson/yyjson.h"
+#include "toolchain/compiler_bootstrap.h"
+#include "toolchain/compiler_host.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -23,6 +28,14 @@
 
 static const char *host_path, *producer_path, *artifact_path;
 static char root[64], log_path[128], compiler[128], core[128];
+static char api_folder[256], api_sources[512], api_digest[65], api_error[512];
+static unsigned char *api_bytes;
+static size_t api_length;
+static char *api_target;
+static compiler_host *api_host;
+static compiler_host_result api_result;
+static const char api_source[] = "package api\n";
+static const char api_core[] = "package core\n";
 
 static void path(char *out, const char *relative)
 {
@@ -42,6 +55,14 @@ static void write_file(const char *relative, const char *text)
     char full[256];
     path(full, relative);
     tool_write(full, text);
+}
+
+static void write_binary(const char *relative, const void *bytes, size_t length)
+{
+    char full[256];
+    path(full, relative);
+    FILE *file = fopen(full, "wb");
+    assert(file && fwrite(bytes, 1, length, file) == length && !fclose(file));
 }
 
 static bool log_has(const char *text)
@@ -91,10 +112,12 @@ static void manifest(
     const char *target
 )
 {
-    char file[256], text[2048];
-    snprintf(
+    char file[256];
+    size_t capacity = strlen(digest) + strlen(sources) + strlen(target) + 512;
+    char *text = xmalloc(capacity);
+    int written = snprintf(
         text,
-        sizeof text,
+        capacity,
         "{\"format\": %d, \"version\": %d, \"minimum\": 1, \"revision\": \"\", "
         "\"closure\": {\"file\": \"compiler.chibip\", \"bytes\": %zu, "
         "\"sha256\": \"%s\"}, "
@@ -107,8 +130,10 @@ static void manifest(
         sources,
         target
     );
+    assert(written > 0 && (size_t)written < capacity);
     snprintf(file, sizeof file, "%s/bootstrap.json", name);
     write_file(file, text);
+    free(text);
 }
 
 /* An artifact folder holding closure and its manifest. */
@@ -308,6 +333,177 @@ TEST_CASE(bootstrap_write_checks_the_seed)
     return true;
 }
 
+static void cleanup_load()
+{
+    compiler_host_free(api_host);
+    api_host = NULL;
+    free(api_result.json);
+    api_result = (compiler_host_result){ 0 };
+}
+
+static compiler_host *load(const char *folder)
+{
+    compiler_bootstrap options = { .folder = folder, .compiler = compiler, .core = core };
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    return api_host;
+}
+
+static void api_manifest(const char *target)
+{
+    manifest("api-bootstrap", 1, 1, api_length, api_digest, api_sources, target);
+}
+
+/* A trusted prepared fixture has no CompileClosure export. Matching source
+ * hashes must load it without trying to rebuild it. The returned host must
+ * still execute after the loader's manifest/closure buffers retire. */
+TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation)
+{
+    folder("api-produced");
+    char produced[256], file[256];
+    path(produced, "api-produced");
+    const char *produce[] = { producer_path, "--compiler-artifact-write", produced, NULL };
+    REQUIRE(tool_run_within(produce, root, log_path, 40) == 0);
+    path(file, "api-produced/compiler.artifact");
+    api_bytes = read_bytes(file, &api_length);
+    REQUIRE(api_bytes && api_length);
+    sha256_hex(api_bytes, api_length, api_digest);
+    api_host = compiler_host_load(api_bytes, api_length, BEHAVIOR_BYTECODE, api_error, sizeof api_error);
+    REQUIRE(api_host);
+    size_t target_length = 0;
+    api_target = compiler_host_target_json(api_host, &target_length);
+    REQUIRE(api_target && target_length);
+    cleanup_load();
+    folder("compiler/api");
+    write_file("compiler/api/Fixture.chibi", api_source);
+    write_file("core/API.chibi", api_core);
+    char source_digest[65], core_digest[65];
+    sha256_hex(api_source, sizeof api_source - 1, source_digest);
+    sha256_hex(api_core, sizeof api_core - 1, core_digest);
+    snprintf(
+        api_sources,
+        sizeof api_sources,
+        "[{\"path\":\"api/Fixture.chibi\",\"sha256\":\"%s\"},"
+        "{\"path\":\"/sdk/core/API.chibi\",\"sha256\":\"%s\"}]",
+        source_digest,
+        core_digest
+    );
+    contract(1, 1);
+    folder("api-bootstrap");
+    path(api_folder, "api-bootstrap");
+    write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
+    api_manifest(api_target);
+    REQUIRE(load(api_folder));
+    path(file, "api-produced/entry.txt");
+    char *id = tool_read(file);
+    REQUIRE(id);
+    uint64_t entry = strtoull(id, NULL, 16);
+    free(id);
+    path(file, "api-produced/requests.json");
+    char *arguments = tool_read(file);
+    REQUIRE(arguments);
+    bool called = compiler_host_invoke_batch(api_host, entry, arguments, strlen(arguments), 3000000, &api_result);
+    free(arguments);
+    REQUIRE(called && api_result.flow_status == FLOW_OK);
+    path(file, "api-produced/expected.json");
+    char *expected = tool_read(file);
+    bool same = expected && api_result.json && !strcmp(expected, api_result.json);
+    free(expected);
+    REQUIRE(same);
+    return true;
+}
+
+TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions)
+{
+    REQUIRE(api_bytes && api_target);
+    unsigned char first = api_bytes[0];
+    api_bytes[0] ^= 1;
+    write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
+    api_bytes[0] = first;
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "is not the closure bootstrap.json records"));
+    write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
+    manifest("api-bootstrap", 2, 1, api_length, api_digest, api_sources, api_target);
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "has format 2; this host reads format 1"));
+    contract(3, 2);
+    api_manifest(api_target);
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "bootstrap version 1, older than 2"));
+    contract(1, 1);
+    return true;
+}
+
+TEST_CASE(bootstrap_load_rejects_another_prepared_abi)
+{
+    REQUIRE(api_target);
+    yyjson_doc *original = yyjson_read(api_target, strlen(api_target), 0);
+    REQUIRE(original);
+    yyjson_mut_doc *changed = yyjson_doc_mut_copy(original, NULL);
+    yyjson_doc_free(original);
+    REQUIRE(changed);
+    yyjson_mut_val *target = yyjson_mut_doc_get_root(changed);
+    yyjson_mut_val *abi = yyjson_mut_arr_get(target, 1);
+    bool replaced = yyjson_mut_arr_replace(
+                        target,
+                        1,
+                        yyjson_mut_uint(changed, yyjson_mut_get_uint(abi) + 1)
+                    ) != NULL;
+    char *text = replaced ? yyjson_mut_write(changed, 0, NULL) : NULL;
+    REQUIRE(text);
+    api_manifest(text);
+    free(text);
+    yyjson_mut_doc_free(changed);
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "other prepared ABI than this host's"));
+    api_manifest(api_target);
+    return true;
+}
+
+TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
+{
+    REQUIRE(api_target);
+    write_file("compiler/api/Extra.chibi", "package api\n");
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "api/Extra.chibi is not among the artifact's sources"));
+    char file[256];
+    path(file, "compiler/api/Extra.chibi");
+    REQUIRE(!unlink(file));
+    write_file("core/Extra.chibi", "package core\n");
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "/sdk/core/Extra.chibi is not among the artifact's sources"));
+    path(file, "core/Extra.chibi");
+    REQUIRE(!unlink(file));
+    path(file, "compiler/api/Fixture.chibi");
+    REQUIRE(!unlink(file));
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "cannot read the compiler source api/Fixture.chibi"));
+    write_file("compiler/api/Fixture.chibi", api_source);
+    return true;
+}
+
+/* Hashing must compare current bytes on every load, for compiler and core
+ * sources. This fixture cannot recover, so any changed source must reject
+ * through CompileClosure, then load successfully once restored. */
+TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
+{
+    REQUIRE(api_target && api_bytes && api_folder[0]);
+    const char *files[] = { "compiler/api/Fixture.chibi", "core/API.chibi" };
+    const char *sources[] = { api_source, api_core };
+    for (int i = 0; i < 2; i++) {
+        char changed[32];
+        snprintf(changed, sizeof changed, "%s", sources[i]);
+        changed[8] ^= 1;
+        write_file(files[i], changed);
+        REQUIRE(!load(api_folder));
+        REQUIRE(strstr(api_error, "the compiler failed:"));
+        write_file(files[i], sources[i]);
+        REQUIRE(load(api_folder));
+        cleanup_load();
+    }
+    return true;
+}
+
 static void setup_root()
 {
     strcpy(root, "/tmp/chibi-bootstrap-XXXXXX");
@@ -331,6 +527,17 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     RUN_TEST_CASE(bootstrap_reads_every_recorded_source);
     RUN_TEST_CASE(bootstrap_rejects_another_target);
     RUN_TEST_CASE(bootstrap_write_checks_the_seed);
+    pu_setup(NULL, cleanup_load);
+    RUN_TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation);
+    RUN_TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions);
+    RUN_TEST_CASE(bootstrap_load_rejects_another_prepared_abi);
+    RUN_TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness);
+    RUN_TEST_CASE(bootstrap_load_does_not_cache_source_hashes);
+    pu_clear_setup();
+    free(api_target);
+    api_target = NULL;
+    free(api_bytes);
+    api_bytes = NULL;
     tool_remove_tree(root);
 }
 
@@ -374,11 +581,51 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
     return true;
 }
 
+TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
+{
+    char source[256], output[256];
+    snprintf(source, sizeof source, "%s/package_compiler/Compile.chibi", compiler);
+    size_t length = 0;
+    unsigned char *original = read_bytes(source, &length);
+    REQUIRE(original && length);
+    FILE *file = fopen(source, "ab");
+    REQUIRE(file);
+    bool changed = fputs("\npub BootstrapLoadMarker :: () -> int { return 37; }\n", file) >=
+                   0;
+    changed = !fclose(file) && changed;
+    REQUIRE(changed);
+    path(output, "load-must-not-write.chibip");
+    compiler_bootstrap options = { .folder = artifact_path,
+                                   .compiler = compiler,
+                                   .core = core,
+                                   .output = output };
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    file = fopen(source, "wb");
+    assert(file && fwrite(original, 1, length, file) == length && !fclose(file));
+    free(original);
+    if (!api_host) {
+        fprintf(stderr, "%s\n", api_error);
+    }
+    REQUIRE(api_host);
+    REQUIRE(strstr(api_error, "compiler sources changed since revision"));
+    REQUIRE(strstr(api_error, "that compiles them to itself"));
+    REQUIRE(access(output, F_OK) != 0);
+    uint64_t entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadMarker:callable");
+    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
+    REQUIRE(api_result.flow_status == FLOW_OK);
+    REQUIRE(api_result.json && !strcmp(api_result.json, "[37]"));
+    return true;
+}
+
 void test_tool_bootstrap_recovery(const char *host, const char *artifact)
 {
     host_path = host;
     artifact_path = artifact;
     setup_root();
     RUN_TEST_CASE(bootstrap_recovers_from_a_clean_checkout);
+    pu_setup(NULL, cleanup_load);
+    RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing);
+    pu_clear_setup();
     tool_remove_tree(root);
 }

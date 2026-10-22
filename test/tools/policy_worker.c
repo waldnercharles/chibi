@@ -334,6 +334,17 @@ int main(int argc, char **argv)
         }
     }
     assert(argc >= 3);
+    if (!strcmp(argv[1], "build-blocked-signals")) {
+        sigset_t blocked;
+        sigemptyset(&blocked);
+        sigaddset(&blocked, SIGINT);
+        sigaddset(&blocked, SIGTERM);
+        sigaddset(&blocked, SIGALRM);
+        assert(!sigprocmask(SIG_BLOCK, &blocked, NULL));
+        execv(argv[2], argv + 2);
+        perror(argv[2]);
+        return 127;
+    }
     if (!strcmp(argv[1], "release") && !strcmp(argv[2], "download")) {
         return release_download(argc, argv);
     }

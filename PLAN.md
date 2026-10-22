@@ -820,6 +820,31 @@ command parity and the expanded target/parser regression. Current clean-build
 and focused validation evidence is tracked in PR #655. Full native/render/Studio
 coverage was not established by these focused results.
 
+The 2026-10-22 build-program compiler cutover removes C semantic preparation
+from the private build host. Protocol 8 loads an owned compiler generation from
+the validated bootstrap and current compiler/core sources, then uses
+`CompileClosureWithEffects` and the runtime-only native linker for Build and
+Graph programs. Matching source hashes load directly; changed sources recover a
+fixed point in memory without writing an SDK cache. Build-tree and installed
+layouts carry the full compiler/bootstrap and core inputs, with explicit
+checkout overrides for Make invocations. The stable twelve-argument pure
+bootstrap exports remain; thirteen-argument effects-aware exports carry the
+private catalog's real native effects through authored compilation.
+
+Validation passed for actual Graph native compilation, 970 compile-command and
+thirteen link-command parity, relocated read-only SDK loading, corrupt-seed
+refusal, qualified native calls, inferred numeric locals and native effects.
+The five required Make groups passed 1,561 cases and 1,568,825 assertions. An
+isolated compiler/core-only recovery with an empty tool PATH reproduced the
+refreshed 11,856,792-byte compiler, SHA-256
+`2fcbdbaf6b999d87b119a8e6195752dc2b5aca18016e9349b9f6ae1a5bfa2b37`.
+Publication also requires committed-source recovery and hosted cross-platform
+validation. Public game compilation has not switched: StageOne's C catalog export
+and assembly, declared components, libraries, systems and projections still need
+their owning cutovers. Native build-host construction, SDK, other native-platform,
+Wasm, Studio and parity/recovery CMake paths remain. This change does not complete
+the final installed build/link and checked-game acceptance gate.
+
 Next: packaging the SDK from the graph's build, the browser builds and Linux
 (which needs a Linux archive the owner approves).
 

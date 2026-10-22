@@ -83,7 +83,11 @@ typedef struct
     const behavior_function *function;
     behavior_data_binding *calls;
     pin_value *values;
+    /* What a reset restores: the initial values, each struct buffer's bound. */
+    pin_value *initial;
     void **buffers;
+    /* The cells that own a struct buffer. */
+    int *buffered;
     /* The struct buffers' total size, fixed when the storage is made. */
     size_t buffer_bytes;
 } behavior_data_storage;

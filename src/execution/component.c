@@ -16,14 +16,12 @@ bool behavior_function_bind(
     uint64_t owner
 )
 {
+    assert(f->frozen);
     ctx->owner = owner;
     ctx->services = services;
     /* A reference argument may name a component the caller resolved, and a
      * task keeps it after the caller's world binding ends. */
-    bool world = f->component_access;
-    for (int i = 0; !world && i < acount(f->argument_kinds); i++) {
-        world = f->argument_kinds[i] == BEHAVIOR_REFERENCE;
-    }
+    bool world = f->binds_world;
     if (!world && !f->component_bindings) {
         return true;
     }

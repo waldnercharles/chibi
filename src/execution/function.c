@@ -292,7 +292,7 @@ bool behavior_function_own(behavior_function *f)
         }
     }
     afree(owner.records);
-    behavior_function_note_results(f);
+    behavior_function_note_derived(f);
     f->frozen = true;
     return true;
 invalid:
@@ -300,8 +300,12 @@ invalid:
     return false;
 }
 
-void behavior_function_note_results(behavior_function *f)
+void behavior_function_note_derived(behavior_function *f)
 {
+    f->binds_world = f->component_access;
+    for (int i = 0; i < acount(f->argument_kinds); i++) {
+        f->binds_world |= f->argument_kinds[i] == BEHAVIOR_REFERENCE;
+    }
     f->builds_results = false;
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);

@@ -1,4 +1,5 @@
 #include "runtime/shaders/source_debug.h"
+#include "runtime/shaders/volume.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -458,6 +459,83 @@ TEST_CASE(nonfinite_intermediates_remain_visible_when_output_is_finite)
     REQUIRE(!(shader_debug_limitations(snapshot) & SHADER_DEBUG_NONFINITE_VALUE));
     return true;
 }
+typedef struct
+{
+    shader_image_view view;
+    int calls;
+    bool available;
+} volume_resolver;
+static bool resolve_volume(void *userdata, const shader_image_source *source, shader_image_view *view)
+{
+    volume_resolver *resolver = userdata;
+    resolver->calls++;
+    assert(!strcmp(source->key, "Mask.png"));
+    *view = resolver->view;
+    return resolver->available;
+}
+TEST_CASE(sampled_sdf_arithmetic_failure_is_not_a_missing_image)
+{
+    int position = operation(SHADER_PARAMETER, 3, 10, -1, -1);
+    int two = constant(2);
+    int scaled = operation(SHADER_MULTIPLY, 3, 11, position, two);
+    int sdf = operation(SHADER_SAMPLED_SDF, 1, 20, scaled, -1);
+    shader_node *volume = &graph.nodes[sdf];
+    volume->parameter = 2;
+    volume->volume_range = volume->volume_lipschitz = 1;
+    volume->value[0] = volume->value[1] = volume->value[2] = 1;
+    shader_image_source source = { .key = "Mask.png",
+                                   .color_space = SHADER_IMAGE_LINEAR,
+                                   .filter = SHADER_IMAGE_NEAREST,
+                                   .wrap = SHADER_IMAGE_CLAMP };
+    volume->image = shader_graph_add_image(&graph, &source);
+    unsigned char pixels[8 * 4];
+    for (int i = 0; i < 8; i++) {
+        memcpy(pixels + i * 4, (unsigned char[]){ 255, 255, 0, 255 }, 4);
+    }
+    volume_resolver resolver = { .view = { pixels, 4, 2 }, .available = true };
+    REQUIRE(shader_volume_validate(volume, &resolver.view, &error));
+    origin(10, 0, "gain", 100, 0);
+    origin(11, 0, "uv.x * gain", 101, 0);
+    origin(20, 0, "image.Sample(uv)", 200, 0);
+    result(20, sdf);
+    shader_sample_context sample = { .resolve_image = resolve_volume,
+                                     .image_userdata = &resolver };
+    float parameters[32][4] = { 0 };
+    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    const shader_debug_value *value = shader_debug_source_value(snapshot, 20, documents, 2);
+    REQUIRE(value && value->finite && near(value->value[0], 1));
+    shader_debug_snapshot *saved = snapshot;
+    parameters[0][0] = FLT_MAX;
+    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    REQUIRE(snapshot == saved && resolver.calls == 2 && error.node == 20);
+    if (!strstr(error.message, "nonfinite")) {
+        fprintf(stderr, "Sampled SDF overflow diagnostic: %s\n", error.message);
+    }
+    REQUIRE(strstr(error.message, "nonfinite") && strstr(error.message, "coordinates"));
+    REQUIRE(!strstr(error.message, "resolved"));
+    REQUIRE(shader_debug_source_value(snapshot, 20, documents, 2) == value);
+    parameters[0][0] = FLT_MAX / 2;
+    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    REQUIRE(snapshot == saved && resolver.calls == 3 && error.node == 20);
+    REQUIRE(strstr(error.message, "nonfinite") && strstr(error.message, "distance"));
+    parameters[0][0] = 0;
+    resolver.available = false;
+    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    REQUIRE(snapshot == saved && resolver.calls == 4 && error.node == 20);
+    REQUIRE(strstr(error.message, "image could not be resolved"));
+    resolver.available = true;
+    resolver.view.width = 3;
+    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    REQUIRE(snapshot == saved && resolver.calls == 5 && error.node == 20);
+    REQUIRE(strstr(error.message, "atlas dimensions"));
+    REQUIRE(shader_debug_source_value(snapshot, 20, documents, 2) == value);
+    REQUIRE(value->finite && near(value->value[0], 1));
+    resolver.view.width = 4;
+    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
+    value = shader_debug_source_value(snapshot, 20, documents, 2);
+    REQUIRE(value && value->finite && near(value->value[0], 1) && resolver.calls == 6);
+    return true;
+}
 TEST_CASE(bump_and_context_effects_declare_their_cpu_limits)
 {
     int position = operation(SHADER_PART_POSITION, 3, 0, -1, -1);
@@ -528,6 +606,7 @@ void test_tool_shader_source_debug()
     RUN_TEST_CASE(missing_image_preserves_previous_values_and_reports_source);
     RUN_TEST_CASE(invalid_source_maps_cannot_replace_a_valid_snapshot);
     RUN_TEST_CASE(nonfinite_intermediates_remain_visible_when_output_is_finite);
+    RUN_TEST_CASE(sampled_sdf_arithmetic_failure_is_not_a_missing_image);
     RUN_TEST_CASE(bump_and_context_effects_declare_their_cpu_limits);
     RUN_TEST_CASE(decal_facing_declares_coordinate_gradient_dependency);
     pu_setup(NULL, NULL);

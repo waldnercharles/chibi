@@ -202,3 +202,29 @@ export. [typed-facts.md](typed-facts.md) records a representative gradient shade
 and the proposed stable facts, avoiding private compiler records and prepared
 bytecode reconstruction. Stages 4–5 additionally depend on the reviewed typed
 asset checkpoint. No shared compiler, asset, bootstrap or Studio edits yet.
+
+### Review follow-up: sampled SDF failure diagnostics
+
+The integration review reproduced a valid resident 2x2x2 atlas being reported as
+missing when upstream `FLT_MAX * 2` produced a nonfinite coordinate. The shared
+evaluator combined resolver and volume-evaluation failure in one diagnostic.
+
+`shader_volume_eval` now accepts an optional `shader_error *` and distinguishes
+invalid metadata/atlas, nonfinite coordinates and nonfinite evaluated distance.
+The shader evaluator reports actual resolver failure separately and forwards
+volume diagnostics with the originating source ID. Successful calculations are
+unchanged. No alternate evaluator or per-sample full-atlas validation is added.
+
+The regression first failed with the original missing-image message. It now
+checks coordinate overflow, finite-coordinate distance overflow, actual resolver
+failure, invalid resident atlas, preservation of the previous snapshot and
+recovery. The focused source-debug selector passes 13 cases / 165 assertions.
+The direct sampled-model caller also checks its metadata diagnostic from a
+cleared error value. Independent source/contract review found no remaining
+defect. Follow-up evidence is retained under `.chibi/shader-source/sdf-*`.
+The five required Make groups passed again. Materials, projects and language
+took 18.460, 69.532 and 7.679 seconds; tooling passed 130 cases / 27,374 assertions
+in 87.158 seconds. The final native run after the fresh-error assertion passed
+in 50.825 seconds. Configuration/build time is excluded. `make check-format`
+passed in 70.0 seconds. Source and binary fingerprints are recorded in
+`.chibi/shader-source/sdf-evidence.json`.

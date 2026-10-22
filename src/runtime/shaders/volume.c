@@ -8,6 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool fail(const shader_node *n, shader_error *error, const char *message)
+{
+    if (error) {
+        error->node = n->source_id;
+        snprintf(error->message, sizeof error->message, "%s", message);
+    }
+    return false;
+}
+
 bool shader_volume_contract(const shader_node *n)
 {
     if (n->parameter < 2 || n->parameter > 144 || !isfinite(n->volume_range) ||
@@ -77,32 +86,29 @@ bool shader_volume_validate(const shader_node *n, const shader_image_view *image
                     ) > n->volume_lipschitz) {
         message = "Sampled SDF gradient exceeds its declared Lipschitz bound";
     }
-    if (message && error) {
-        error->node = n->source_id;
-        snprintf(error->message, sizeof error->message, "%s", message);
-    }
-    return !message;
+    return message ? fail(n, error, message) : true;
 }
 bool shader_volume_eval(
     const shader_node *n,
     const shader_image_view *image,
     const float p[3],
-    float *result
+    float *result,
+    shader_error *error
 )
 {
     if (!shader_volume_contract(n)) {
-        return false;
+        return fail(n, error, "Sampled SDF metadata is invalid");
     }
     int size = n->parameter, columns = tiles(size);
     if (!image->pixels || image->width != columns * size ||
         image->height != ((size + columns - 1) / columns) * size) {
-        return false;
+        return fail(n, error, "Sampled SDF atlas dimensions or pixels are invalid");
     }
     int cell[3];
     float f[3], outside = 0;
     for (int axis = 0; axis < 3; axis++) {
         if (!isfinite(p[axis])) {
-            return false;
+            return fail(n, error, "Sampled SDF coordinates are nonfinite");
         }
         float q = fmaxf(-n->value[axis], fminf(n->value[axis], p[axis]));
         float delta = p[axis] - q;
@@ -123,7 +129,8 @@ bool shader_volume_eval(
         d += weight * voxel(n, image, at[0], at[1], at[2]);
     }
     *result = d + sqrtf(outside);
-    return isfinite(*result);
+    return isfinite(*result) ||
+           fail(n, error, "Sampled SDF evaluated distance is nonfinite");
 }
 char *shader_volume_glsl(const shader_node *n, const char *prefix, int index)
 {

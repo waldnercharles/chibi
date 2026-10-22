@@ -2,9 +2,11 @@
 #include "assets/scene_document.h"
 #include "authoring/native_prototype.h"
 #include "runtime/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "test/asset_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -26,8 +28,10 @@ static scene_document *scene, *loaded;
 static av_value *values;
 static char **owned_strings;
 
+static arena text_reads;
 static void cleanup()
 {
+    arena_free(&text_reads);
     prototype_free(test_prototype);
     prototype_free(copy);
     ecs_world_free(world);
@@ -440,8 +444,8 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
     test_prototype = NULL;
     REQUIRE(copy && prototype_add_component(copy, &component) == 0);
     pin_value value;
-    REQUIRE(prototype_read_field(copy, "test.Label", "text", &value) == 0);
-    REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
+    REQUIRE(prototype_read_field(&text_reads, copy, "test.Label", "text", &value) == 0);
+    REQUIRE(value.type == PIN_STR && strcmp(pin_text(value).bytes, "customized") == 0);
     REQUIRE(prototype_detach_component(copy, "test.Label") == 0);
     saved = prototype_save(copy);
 
@@ -454,8 +458,10 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
                                             .include_user = NULL };
     test_prototype = prototype_load(saved, &renamed_registry, error, sizeof error);
     REQUIRE(test_prototype && prototype_add_component(test_prototype, &renamed) == 0);
-    REQUIRE(prototype_read_field(test_prototype, "DisplayLabel", "text", &value) == 0);
-    REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
+    REQUIRE(
+        prototype_read_field(&text_reads, test_prototype, "DisplayLabel", "text", &value) == 0
+    );
+    REQUIRE(value.type == PIN_STR && strcmp(pin_text(value).bytes, "customized") == 0);
     return true;
 }
 
@@ -507,7 +513,9 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
     REQUIRE(prototype_detach_component(test_prototype, "Input") == 0);
     REQUIRE(prototype_detach_component(test_prototype, "Health") == -1);
     pin_value value;
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &value) == -1);
+    REQUIRE(
+        prototype_read_field(&text_reads, test_prototype, "Health", "current", &value) == -1
+    );
     saved = prototype_save(test_prototype);
     prototype_free(test_prototype);
     test_prototype = prototype_load(saved, &registry, error, sizeof error);
@@ -816,11 +824,11 @@ TEST_CASE(prototype_spawns_edits_and_captures_overrides)
     REQUIRE(attached == 2 && ecs_entity_is_alive(world, entity));
 
     pin_value field = { 0 };
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
+    REQUIRE(prototype_read_field(&text_reads, test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 100);
     pin_value edited = { .type = PIN_I32, .i = 101 };
     REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
+    REQUIRE(prototype_read_field(&text_reads, test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 101);
     edited.i = 100;
     REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);
@@ -885,8 +893,8 @@ TEST_CASE(prototype_spawns_edits_and_captures_overrides)
     return true;
 }
 
-/* Reflected values save readably: enum labels, hex colors and floats in their
- * shortest form, unchanged by a second round trip. */
+/* Reflected values retain enum labels, unsigned colors and exact floating
+ * values in canonical constructor source, unchanged by a second round trip. */
 TEST_CASE(scene_documents_save_reflected_values_readably)
 {
     char error[256];
@@ -939,11 +947,19 @@ TEST_CASE(scene_documents_save_reflected_values_readably)
     );
     REQUIRE(scene);
     saved = scene_document_save(scene, components());
-    REQUIRE(saved && strstr(saved, "kind=\"Liquid\"") && strstr(saved, "color=0x399fe8ff"));
-    REQUIRE(strstr(saved, "absorption=0.035") && strstr(saved, "x=0.15"));
-    REQUIRE(strstr(saved, "y=-0.0") && strstr(saved, "category=16"));
+    REQUIRE(saved && strstr(saved, "data.Value.Text(\"Liquid\")"));
+    REQUIRE(strstr(saved, "data.Value.UInt(966781183)"));
     loaded = scene_document_load(saved, error, sizeof error);
     REQUIRE(loaded);
+    av_value *fluid = av_obj_get(loaded->entities[0].components, "FluidVolume");
+    REQUIRE(
+        av_is_str(av_obj_get(fluid, "kind")) &&
+        !strcmp(av_get_str(av_obj_get(fluid, "kind")), "Liquid")
+    );
+    REQUIRE(av_get_uint(av_obj_get(fluid, "color")) == 0x399fe8ffu);
+    REQUIRE((float)av_get_num(av_obj_get(fluid, "absorption")) == 0.035f);
+    av_value *collider = av_obj_get(loaded->entities[0].components, "Collider");
+    REQUIRE(av_get_uint(av_obj_get(collider, "category")) == 16);
     again = scene_document_save(loaded, components());
     REQUIRE(again && !strcmp(saved, again));
     av_value *before = av_obj_get(scene->entities[0].components, "Transform");
@@ -984,7 +1000,14 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
     REQUIRE(av_obj_get(scene->entities[0].components, "Health"));
     av_value_free(values);
 
-    values = test_read_asset_value("Appearance shape=0\n");
+    values = test_read_asset_value(
+        "package asset\n"
+        "import data \"game:assets\"\n"
+        "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+        "data.Field.Named(\"Appearance\", data.Object(["
+        "data.Field.Named(\"shape\", data.Value.Int(0))]))])) }\n"
+    );
+    REQUIRE(values);
     REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
     saved = scene_document_save(scene, components());
     char error[256];
@@ -1066,24 +1089,15 @@ TEST_CASE(scene_documents_round_trip_entities_and_physics)
 
 TEST_CASE(scene_documents_refuse_invalid_physics_names_and_versions)
 {
-    const char *invalid_physics[] = {
-        "substeps 0;",
-        "substeps 1.5;",
-        "workers 33;",
-        "contact_damping -1;",
-        "sleep 0;",
-        "package asset\n"
-        "\n"
-        "import data \"game:assets\"\n"
-        "\n"
-        "pub Build :: () -> byte[] {\n"
-        "    return data.Encode(\n"
-        "        data.Object([\n"
-        "            data.Field.Named(\"unknown\", data.Value.Bool(true))\n"
-        "        ])\n"
-        "    )\n"
-        "}\n"
-    };
+    const struct
+    {
+        const char *name, *value;
+    } invalid_physics[] = { { "substeps", "data.Value.Int(0)" },
+                            { "substeps", "data.Value.Real(1.5)" },
+                            { "workers", "data.Value.Int(33)" },
+                            { "contact_damping", "data.Value.Int(-1)" },
+                            { "sleep", "data.Value.Int(0)" },
+                            { "unknown", "data.Value.Bool(true)" } };
     char error[256];
     for (int i = 0; i < 6; i++) {
         char text[16384];
@@ -1102,15 +1116,16 @@ TEST_CASE(scene_documents_refuse_invalid_physics_names_and_versions)
             "data.Value.Text(\"Invalid\")),\n"
             "            data.Field.Named(\"entities\", data.List([])),\n"
             "            data.Field.Named(\"physics\", data.Object([\n"
-            "                data.Field.Named(\"%s\", data.Object([]))\n"
+            "                data.Field.Named(\"%s\", %s)\n"
             "            ]))\n"
             "        ])\n"
             "    )\n"
             "}\n",
-            invalid_physics[i]
+            invalid_physics[i].name,
+            invalid_physics[i].value
         );
         loaded = scene_document_load(text, error, sizeof error);
-        REQUIRE(!loaded && strstr(error, "physics"));
+        REQUIRE(!loaded && strstr(error, "invalid scene physics settings"));
     }
     scene = scene_document_new("Duplicate");
     REQUIRE(scene && scene_document_add_entity(scene, -1, "A", "P") == 0);

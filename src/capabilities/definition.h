@@ -20,6 +20,7 @@ typedef struct
     int generic_group;
     script_reference_kind reference_kind;
     const char *member_name; /* Fully qualified reflected field name. */
+    bool c_string; /* Input bytes must be representable by a C string. */
     bool has_default, default_owner;
     pin_value default_value;
 } native_parameter_definition;
@@ -36,6 +37,21 @@ typedef struct
       .reference_kind = REFERENCE,                                                                         \
       .has_default = true,                                                                                 \
       .default_owner = OWNER,                                                                              \
+      .default_value = VALUE },
+/* Explicit opt-in for native inputs that require C strings. */
+#define NATIVE_CSTRING_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
+    { .name = NAME,                                                                                                \
+      .c_string = ((STORAGE) == PIN_STR || (STORAGE) == PIN_NAME) &&                                               \
+                  (CONTAINER) == PIN_CONTAINER_SINGLE,                                                             \
+      .kind = KIND,                                                                                                \
+      .storage = STORAGE,                                                                                          \
+      .type_name = TYPE_NAME,                                                                                      \
+      .container = CONTAINER,                                                                                      \
+      .type_flags = TYPE_FLAGS,                                                                                    \
+      .generic_group = GROUP,                                                                                      \
+      .reference_kind = REFERENCE,                                                                                 \
+      .has_default = true,                                                                                         \
+      .default_owner = OWNER,                                                                                      \
       .default_value = VALUE },
 /* A port row that also carries graph pin flags, which definitions ignore. */
 #define NATIVE_PORT_FLAGS(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE, GRAPH_FLAGS) \

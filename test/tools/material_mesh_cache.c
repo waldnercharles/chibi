@@ -10,6 +10,7 @@
 #include "test/render/hidden_app.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -109,7 +110,10 @@ static void image_height_material(shader_image_color_space color_space, shader_i
     assert(!graph_set_node_reference(g, gain, 0, "Gain"));
     float uv[] = { .49f, .5f };
     pin_value coord = { .type = PIN_STRUCT, .type_name = "ShaderVec2", .ptr = uv };
-    pin_value key = { .type = PIN_STR, .str = (char *)height_image.key };
+    pin_value key = { .type = PIN_STR,
+                      .text = &(const pin_string){
+                          .bytes = (char *)height_image.key,
+                          .length = (uint32_t)strlen((char *)height_image.key) } };
     pin_value linear = {
         .type = PIN_I32,
         .type_name = image->input_pins[SHADER_IMAGE_INPUT_COLOR_SPACE].type_name,

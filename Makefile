@@ -6,7 +6,8 @@ $(error Temporary 60-second policy: use one validation goal per invocation; aggr
 endif
 endif
 
-# Convenience wrapper around CMake. `make` configures and builds.
+# Convenience wrapper around the build. `make` builds: with the Chibi build
+# graph on macOS, otherwise by configuring CMake.
 BUILD_DIR ?= build
 SDK_BUILD_DIR ?= build-sdk
 SDK_PREFIX ?= dist/sdk
@@ -36,6 +37,17 @@ BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
+# On macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
+# profile name: sanitizer, or debug and release for build-debug and
+# build-release. CMake builds only the first build host, in a tree beside the
+# build directory, which the build-graph checks also compare against
+# (graph-reference). Linux, the SDK, web and Studio builds still use CMake.
+# CCACHE_BASEDIR, as CMake sets it, lets worktrees share ccache objects.
+BUILD_PROFILE ?= sanitizer
+GRAPH_BUILD = $(filter Darwin,$(shell uname -s))
+GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
+GRAPH_TIMEOUT_MS ?= 3600000
+CMAKE_REFERENCE_DIR ?= $(BUILD_DIR)-cmake
 BUILD_HOST_TARGET = $(if $(filter Linux Darwin,$(shell uname -s)),chibi-build-host,)
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
@@ -103,9 +115,22 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 6 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 7 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
-.PHONY: toolchain-build stage-zero-build
+.PHONY: toolchain-build stage-zero-build graph-reference
+ifneq ($(GRAPH_BUILD),)
+toolchain-build:
+	@$(QUIET) third-party -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
+
+# Recovery builds the first build host with CMake beside the build directory;
+# the graph then builds its own.
+stage-zero-build:
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(CMAKE_REFERENCE_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) build -- cmake --build "$(CMAKE_REFERENCE_DIR)" --target chibi-build-host --parallel $(JOBS)
+	@$(MAKE) toolchain-build BUILD_HOST="$(CMAKE_REFERENCE_DIR)/sdk/chibi-build-host"
+else
 toolchain-build:
 	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 
@@ -113,9 +138,19 @@ toolchain-build:
 stage-zero-build:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
+endif
+
+# The CMake build the build-graph checks compare the graph with: configured
+# with the sanitizer profile, with what they read built (reflect, its
+# generated sources, the shaders and the build host).
+graph-reference:
+	@$(QUIET) configure-reference -- sh tools/configure_native.sh "$(CMAKE_REFERENCE_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SANITIZER_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) build-reference -- cmake --build "$(CMAKE_REFERENCE_DIR)" --target reflect generate_runtime_registry chibi_build_shaders chibi-build-host --parallel $(JOBS)
+	@# Configuring links the root compile database to this tree; editors keep the graph's.
+	@if [ -f "$(abspath $(BUILD_DIR))/compile_commands.json" ]; then ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json; fi
 
 build-debug:
-	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
+	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
 
 .PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
 sdk-reflect-build:
@@ -204,7 +239,7 @@ install:
 	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
 
 build-release:
-	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
+	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_TARGET="$(BUILD_TARGET)"
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
@@ -392,13 +427,15 @@ test-list test-policy-inventory:
 	@python3 tools/test_policy.py inventory
 
 clean:
-	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \
-		'$$1 == "worktree" && ($$2 == root || index($$2, root "/") == 1) { found = 1 } END { exit !found }'; then \
-		printf '%s\n' "Skipping $(BUILD_DIR): it contains a registered worktree"; \
-	else \
-		rm -rf "$(BUILD_DIR)"; \
-	fi
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
+	@for dir in "$(abspath $(BUILD_DIR))" "$(abspath $(CMAKE_REFERENCE_DIR))"; do \
+		if git worktree list --porcelain | awk -v root="$$dir" \
+			'$$1 == "worktree" && ($$2 == root || index($$2, root "/") == 1) { found = 1 } END { exit !found }'; then \
+			printf '%s\n' "Skipping $$dir: it contains a registered worktree"; \
+		else \
+			rm -rf -- "$$dir"; \
+		fi; \
+	done
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(DEBUG_BUILD_DIR)-cmake" "$(RELEASE_BUILD_DIR)" "$(RELEASE_BUILD_DIR)-cmake" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
 # Full-function browser JIT checks use the existing C language dispatcher.
 WASM_BUILD_DIR ?= build-wasm-language$(WEB_SUFFIX)
 .PHONY: wasm-language-build test-wasm

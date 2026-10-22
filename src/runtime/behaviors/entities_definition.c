@@ -4,18 +4,20 @@
 #include "runtime/behaviors/entity_query.h"
 
 static const native_parameter_definition GLOBAL_NAME[] = {
-    ENTITY_GLOBAL_NAME_PORTS(NATIVE_PORT)
+    ENTITY_GLOBAL_NAME_PORTS(NATIVE_CSTRING_PORT)
 };
 static const native_parameter_definition GLOBAL_VALUE[] = {
     ENTITY_GLOBAL_VALUE_PORTS(NATIVE_PORT)
 };
 static const native_parameter_definition SET_GLOBAL_IN[] = {
-    ENTITY_SET_GLOBAL_INPUTS(NATIVE_PORT)
+    ENTITY_SET_GLOBAL_INPUTS(NATIVE_CSTRING_PORT)
 };
 static const native_parameter_definition SET_GLOBAL_OUT[] = {
     ENTITY_SET_GLOBAL_OUTPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition COMPONENT[] = { ENTITY_COMPONENT_PORTS(NATIVE_PORT) };
+static const native_parameter_definition COMPONENT[] = {
+    ENTITY_COMPONENT_PORTS(NATIVE_CSTRING_PORT)
+};
 static const native_parameter_definition FOUND[] = { ENTITY_FOUND_PORTS(NATIVE_PORT) };
 static const native_parameter_definition FIND_OUT[] = { ENTITY_FIND_OUTPUTS(NATIVE_PORT) };
 static const native_parameter_definition COUNT_IN[] = { ENTITY_COUNT_INPUTS(NATIVE_PORT) };
@@ -24,7 +26,9 @@ static const native_parameter_definition NEAREST_IN[] = { ENTITY_NEAREST_INPUTS(
 static const native_parameter_definition NEAREST_OUT[] = {
     ENTITY_NEAREST_OUTPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition SPAWN_IN[] = { ENTITY_SPAWN_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition SPAWN_IN[] = {
+    ENTITY_SPAWN_INPUTS(NATIVE_CSTRING_PORT)
+};
 static const native_parameter_definition SPAWN_OUT[] = { ENTITY_SPAWN_OUTPUTS(NATIVE_PORT) };
 static const native_parameter_definition TARGET[] = { ENTITY_TARGET_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition THEN[] = { ENTITY_THEN_PORTS(NATIVE_PORT) };

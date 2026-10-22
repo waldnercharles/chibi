@@ -7,9 +7,12 @@
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/text_definition.h"
+#include "runtime/text_format.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +28,7 @@ static native_capabilities *tables[2];
 static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
-static arena storage;
+static arena storage, inputs_storage;
 static pin_value output;
 static const char APP[] =
     "package app\nimport strings \"core:strings\"\n"
@@ -77,6 +80,7 @@ static void finish_call()
 static void cleanup()
 {
     finish_call();
+    arena_free(&inputs_storage);
     execution_module_free(retained);
     retained = NULL;
     for (int i = 0; i < 3; i++) {
@@ -241,7 +245,11 @@ static bool core_call(const char *name, const pin_value *arguments, int count, p
 }
 static pin_value text(const char *value)
 {
-    return (pin_value){ .type = PIN_STR, .str = value };
+    pin_value result;
+    const char *error = pin_value_text(&inputs_storage, &result, value, strlen(value));
+    assert(!error);
+    (void)error;
+    return result;
 }
 static pin_value integer(int value)
 {
@@ -292,7 +300,8 @@ static bool run_cases(const char *identity, const call_case *cases, int count, b
                                            : integer(call->integers[integers++]);
         }
         REQUIRE(invoke(item->module, exported(item, call->name), args, size, call->type, backend));
-        bool same = call->type == PIN_STR  ? !strcmp(output.str, call->result)
+        bool same = call->type == PIN_STR
+                      ? !strcmp(pin_text(output).bytes, call->result)
                   : call->type == PIN_BOOL ? output.b == (call->number != 0)
                                            : output.i == call->number;
         if (!same) {
@@ -337,9 +346,12 @@ TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
         args[1] = integer(1);
         args[2] = integer(3);
         REQUIRE(core_call("Slice", args, 3, PIN_STR, backends[b]));
-        REQUIRE(output.str && output.str != source + 1 && !strcmp(output.str, "bcd"));
+        REQUIRE(
+            pin_text(output).bytes && pin_text(output).bytes != source + 1 &&
+            !strcmp(pin_text(output).bytes, "bcd")
+        );
         memset(source, 'x', 6);
-        REQUIRE(!strcmp(output.str, "bcd"));
+        REQUIRE(!strcmp(pin_text(output).bytes, "bcd"));
         args[0] = text("abcdef");
         const int starts[] = { -2, 99, 2, 4 };
         const int counts[] = { 2, 2, -1, 99 };
@@ -348,8 +360,60 @@ TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
             args[1] = integer(starts[i]);
             args[2] = integer(counts[i]);
             REQUIRE(core_call("Slice", args, 3, PIN_STR, backends[b]));
-            REQUIRE(!strcmp(output.str, slices[i]));
+            REQUIRE(!strcmp(pin_text(output).bytes, slices[i]));
         }
+        const char binary[] = { 'A', 0, 'B', (char)0xff };
+        REQUIRE(!pin_value_text(&inputs_storage, &args[0], binary, sizeof binary));
+        REQUIRE(core_call("ByteLength", args, 1, PIN_I32, backends[b]) && output.i == 4);
+        args[1] = integer(1);
+        REQUIRE(core_call("ByteAt", args, 2, PIN_I32, backends[b]) && output.i == 0);
+        args[1] = integer(3);
+        REQUIRE(core_call("ByteAt", args, 2, PIN_I32, backends[b]) && output.i == 255);
+        args[1] = integer(1);
+        args[2] = integer(3);
+        REQUIRE(core_call("Slice", args, 3, PIN_STR, backends[b]));
+        REQUIRE(
+            pin_text(output).length == 3 &&
+            !memcmp(pin_text(output).bytes, binary + 1, 3)
+        );
+        pin_value format_args[] = { text("{:>4.2s}"), args[0] }, formatted;
+        REQUIRE(!NATIVE_FORMAT_TEXT_CALL.value(&storage, format_args, 2, &formatted));
+        const char padded[] = { ' ', ' ', 'A', 0 };
+        REQUIRE(
+            pin_text(formatted).length == sizeof padded &&
+            !memcmp(pin_text(formatted).bytes, padded, sizeof padded)
+        );
+        pin_value character_args[] = { text("{:3c}"), integer(0) };
+        REQUIRE(!NATIVE_FORMAT_TEXT_CALL.value(&storage, character_args, 2, &formatted));
+        const char character[] = { ' ', ' ', 0 };
+        REQUIRE(
+            pin_text(formatted).length == sizeof character &&
+            !memcmp(pin_text(formatted).bytes, character, sizeof character)
+        );
+        const char invalid_mods[] = { '{', ':', 0, 'g', '}' };
+        REQUIRE(
+            !pin_value_text(&inputs_storage, &character_args[0], invalid_mods, sizeof invalid_mods)
+        );
+        character_args[1] = integer(42);
+        REQUIRE(!NATIVE_FORMAT_TEXT_CALL.value(&storage, character_args, 2, &formatted));
+        REQUIRE(pin_text(formatted).length == 2 && !memcmp(pin_text(formatted).bytes, "42", 2));
+        const char format[] = { 'X', 0, '{', '}' };
+        REQUIRE(!pin_value_text(&inputs_storage, &format_args[0], format, sizeof format));
+        REQUIRE(!NATIVE_FORMAT_TEXT_CALL.value(&storage, format_args, 2, &formatted));
+        const char joined[] = { 'X', 0, 'A', 0, 'B', (char)0xff };
+        REQUIRE(
+            pin_text(formatted).length == sizeof joined &&
+            !memcmp(pin_text(formatted).bytes, joined, sizeof joined)
+        );
+        arena_free(&inputs_storage);
+        REQUIRE(
+            pin_text(output).length == 3 &&
+            !memcmp(pin_text(output).bytes, binary + 1, 3)
+        );
+        REQUIRE(
+            pin_text(formatted).length == sizeof joined &&
+            !memcmp(pin_text(formatted).bytes, joined, sizeof joined)
+        );
         cleanup();
     }
     return true;
@@ -383,7 +447,7 @@ TEST_CASE(package_core_strings_comparison_identifiers_and_basename)
         for (int i = 0; i < 6; i++) {
             pin_value arg = text(paths[i]);
             REQUIRE(core_call("BaseName", &arg, 1, PIN_STR, backends[b]));
-            REQUIRE(!strcmp(output.str, base[i]));
+            REQUIRE(!strcmp(pin_text(output).bytes, base[i]));
         }
         cleanup();
     }

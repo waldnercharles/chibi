@@ -51,6 +51,7 @@ pub GameField :: struct {
     storage: int;
     offset: int;
     writable: bool;
+    c_string: bool;
     record: int;
     constant: bool;
     read: int;
@@ -183,7 +184,7 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         if (!linked.required) {
             kind = NamespaceDecl;
         }
-        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, kind: kind,
+        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, node: -1, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
                          key: 0, value_storage: 0, value_container: 0, value_record: -1};
@@ -195,7 +196,7 @@ NativeFields :: (type_fields: GameField[]) -> TypeMember[] {
     fields: TypeMember[] = [];
     for (linked in type_fields) {
         row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: linked.record,
-                           offset: linked.offset, writable: linked.writable, constant: linked.constant,
+                           offset: linked.offset, writable: linked.writable, c_string: linked.c_string, constant: linked.constant,
                            read: linked.read, read_key: linked.read_key};
         fields.append(row);
     }

@@ -1,0 +1,159 @@
+name: Compiler runtime seed refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-runtime-seed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    name: Compiler recovery (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: ARM64
+          - os: ubuntu-24.04
+            arch: X64
+          - os: windows-2022
+            arch: X64
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Preserve the manifest's source bytes on checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the seed's architecture
+        run: |
+          if ($env:RUNNER_ARCH -ne '${{ matrix.arch }}' -or
+              [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToUpperInvariant() -ne '${{ matrix.arch }}' -or
+              [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToUpperInvariant() -ne '${{ matrix.arch }}') {
+            throw 'The runner architecture differs from this runtime seed'
+          }
+      - name: Set up the native build tools
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($IsWindows) {
+            $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            if (!$vs) { throw 'Visual Studio C tools were not found' }
+            cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+              if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
+            }
+            if ($LASTEXITCODE) { throw 'Activating the Visual Studio C tools failed' }
+            'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
+          } elseif ($IsMacOS) {
+            brew install llvm
+            if ($LASTEXITCODE) { throw 'Installing LLVM for the native runtime failed' }
+            $llvm = & brew --prefix llvm
+            "$llvm/bin" >> $env:GITHUB_PATH
+          }
+          $python = if ($IsWindows) { 'python' } else { 'python3' }
+          $venv = Join-Path $env:RUNNER_TEMP 'compiler-recovery-build-tools'
+          & $python -m venv $venv
+          if ($LASTEXITCODE) { throw 'Creating the native build-tools environment failed' }
+          $bin = Join-Path $venv $(if ($IsWindows) { 'Scripts' } else { 'bin' })
+          & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
+          $bin >> $env:GITHUB_PATH
+      - name: Configure the native runtime
+        id: configure
+        run: |
+          $timer = [Diagnostics.Stopwatch]::StartNew()
+          cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
+          if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
+          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
+      - name: Build the native runtime
+        id: build
+        run: |
+          $timer = [Diagnostics.Stopwatch]::StartNew()
+          cmake --build runtime-build --target chibi-compiler-host --parallel 4
+          if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
+          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
+      - name: Copy the recovery inputs into an isolated directory
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prepare -Proof $proof -Runtime (Join-Path $PWD "runtime-build/$hostName")
+      - name: Recover the compiler without a native toolchain
+        env:
+          CONFIGURE_SECONDS: ${{ steps.configure.outputs.seconds }}
+          BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
+        run: |
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prove -Proof (Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof') -QueryTarget
+      - name: Retain the native runtime seed
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          $platform = if ($IsWindows) { 'windows-x64' } elseif ($IsMacOS) { 'macos-arm64' } else { 'linux-x64' }
+          $name = "chibi-compiler-host-$platform$suffix"
+          Copy-Item (Join-Path $proof ('chibi-compiler-host' + $suffix)) (Join-Path $proof $name)
+          $digest = (Get-FileHash (Join-Path $proof $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  $name" | Set-Content (Join-Path $proof "$name.sha256")
+      - name: Upload the recovered compiler, runtime seed and evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compiler-recovery-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip.sha256
+            ${{ runner.temp }}/compiler-recovery-proof/evidence.json
+            ${{ runner.temp }}/compiler-recovery-proof/stage1/compiler.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/stage1/bootstrap.json
+            ${{ runner.temp }}/compiler-recovery-proof/stage2/compiler.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/stage2/bootstrap.json
+            ${{ runner.temp }}/compiler-recovery-proof/compiler.sha256
+            ${{ runner.temp }}/compiler-recovery-proof/stage*.stdout.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage*.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/runtime-target.json
+            ${{ runner.temp }}/compiler-recovery-proof/target.*.txt
+            ${{ runner.temp }}/compiler-recovery-proof/compile.json
+            ${{ runner.temp }}/compiler-recovery-proof/chibi-compiler-host-*
+
+  compare:
+    name: Compiler recovery across platforms
+    needs: recover
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful recovery on every platform
+        shell: pwsh
+        env:
+          RECOVERY_RESULT: ${{ needs.recover.result }}
+        run: |
+          if ($env:RECOVERY_RESULT -ne 'success') {
+            throw "Compiler recovery matrix did not pass: $env:RECOVERY_RESULT"
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: compiler-recovery-*
+          path: recovered
+      - name: Require identical compiler bytes on all three platforms
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $digests = @()
+          foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
+            $artifact = "recovered/compiler-recovery-$platform/compiler.chibip"
+            $digest = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+            $recorded = (Get-Content "$artifact.sha256").Split(' ')[0]
+            if ($digest -ne $recorded) { throw "$platform artifact does not match its recorded SHA-256" }
+            $digests += $digest
+            "$platform`: $digest" >> $env:GITHUB_STEP_SUMMARY
+          }
+          if (@($digests | Select-Object -Unique).Count -ne 1) {
+            throw 'The recovered compiler bytes differ across platforms with the validated bootstrap ABI'
+          }

@@ -44,13 +44,16 @@ void behavior_run_scope_begin(behavior_run_scope *scope);
 void behavior_run_scope_end(behavior_run_scope *scope);
 void behavior_run_scope_reset(behavior_run_scope *scope);
 /* Thread-confined invocation budget shared by every outlined call. Scoped
- * execution uses the canonical VM; no prepared context ABI fields change. */
+ * execution uses the canonical instruction stream; no context ABI changes. */
 typedef struct behavior_execution_scope
 {
     uint64_t remaining;
     bool (*cancelled)(void *user);
     void *user;
     bool pure;
+    /* Trusted packaged code may request guarded native execution. Pure scopes
+     * always use the VM. Unsupported native targets fall back to the VM. */
+    bool prefer_compiled;
     struct behavior_execution_scope *previous;
     bool active;
 } behavior_execution_scope;
@@ -58,6 +61,8 @@ void behavior_execution_scope_begin(behavior_execution_scope *);
 void behavior_execution_scope_end(behavior_execution_scope *);
 bool behavior_execution_scope_active();
 bool behavior_execution_scope_pure();
+/* Cancellation-only preparation poll: never consumes instruction budget. */
+bool behavior_execution_scope_cancelled();
 /* NULL on success, otherwise a stable diagnostic. Called before each VM op. */
 const char *behavior_execution_scope_step();
 typedef enum
@@ -100,7 +105,11 @@ typedef struct
     const behavior_function *function;
     behavior_data_binding *calls;
     pin_value *values;
+    /* What a reset restores: the initial values, each struct buffer's bound. */
+    pin_value *initial;
     void **buffers;
+    /* The cells that own a struct buffer. */
+    int *buffered;
     /* The struct buffers' total size, fixed when the storage is made. */
     size_t buffer_bytes;
 } behavior_data_storage;
@@ -342,6 +351,7 @@ typedef struct behavior_function_context
      * storage for a call, otherwise its own. */
     void *result_storage;
     const char *(*copy_string)(void *storage, const char *text);
+    const pin_string *(*copy_text)(void *storage, const pin_string *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);
     void (*add_set_value)(void *owner, int variable, const pin_value *item);
@@ -563,5 +573,10 @@ const pin_value *behavior_function_frame_inputs(
     int frame,
     arena *storage,
     int *count
+);
+const pin_string *behavior_function_intern_text(
+    behavior_function_context *,
+    const struct ecs_execution_view *,
+    const pin_string *
 );
 #endif

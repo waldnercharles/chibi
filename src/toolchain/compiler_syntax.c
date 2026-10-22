@@ -3,6 +3,7 @@
 #include "execution/function.h"
 #include "support/arena.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <limits.h>
 #include <string.h>
@@ -58,15 +59,12 @@ static const native_parameter_definition OUTPUTS[] = {
 #undef ARRAY_OUTPUT
 _Static_assert(NATIVE_COUNT(OUTPUTS) == RESULT_COUNT, "syntax result schema");
 
-static const char *own(arena *storage, const char *text)
+static const pin_string *own(arena *storage, const char *text)
 {
-    if (!text) {
-        text = "";
-    }
-    size_t bytes = strlen(text) + 1;
-    char *copy = arena_alloc(storage, bytes);
-    memcpy(copy, text, bytes);
-    return copy;
+    pin_value value = { 0 };
+    text = text ? text : "";
+    pin_value_text(storage, &value, text, strlen(text));
+    return value.text;
 }
 static const char *snapshot(arena *storage, TSTree *tree, pin_value *results)
 {
@@ -109,7 +107,7 @@ static const char *snapshot(arena *storage, TSTree *tree, pin_value *results)
         int current = count++;
         outputs[KINDS]->items[current] = (pin_value){
             .type = PIN_STR,
-            .str = own(storage, ts_node_type(node))
+            .text = own(storage, ts_node_type(node))
         };
         outputs[STARTS]->items[current] = (pin_value){ .type = PIN_I32,
                                                        .i = (int)start };
@@ -131,7 +129,7 @@ static const char *snapshot(arena *storage, TSTree *tree, pin_value *results)
                                                            .b = ts_node_has_error(node) };
         outputs[FIELDS]->items[current] = (pin_value){
             .type = PIN_STR,
-            .str = own(storage, ts_tree_cursor_current_field_name(&cursor))
+            .text = own(storage, ts_tree_cursor_current_field_name(&cursor))
         };
         outputs[IS_NAMED]->items[current] = (pin_value){ .type = PIN_BOOL,
                                                          .b = ts_node_is_named(node) };
@@ -185,8 +183,11 @@ static const char *parse(
         arguments[0].type != PIN_STR || arguments[0].container != PIN_CONTAINER_SINGLE) {
         return "Invalid syntax parse arguments";
     }
-    const char *text = arguments[0].str ? arguments[0].str : "";
-    size_t bytes = strlen(text);
+    pin_string text = pin_text(arguments[0]);
+    size_t bytes = text.length;
+    if (memchr(text.bytes, 0, bytes)) {
+        return "Syntax source contains NUL bytes";
+    }
     if (bytes > UINT32_MAX || bytes > INT_MAX) {
         return "Syntax source exceeds integer range";
     }
@@ -198,7 +199,7 @@ static const char *parse(
         ts_parser_delete(parser);
         return "Syntax grammar ABI is incompatible";
     }
-    TSTree *tree = ts_parser_parse_string(parser, NULL, text, (uint32_t)bytes);
+    TSTree *tree = ts_parser_parse_string(parser, NULL, text.bytes, (uint32_t)bytes);
     ts_parser_delete(parser);
     if (!tree) {
         return "Cannot parse syntax source";

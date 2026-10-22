@@ -3,10 +3,12 @@
 #include "authoring/asset_compiler_host.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_literal.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/value_document.h"
 
 #include <assert.h>
@@ -24,6 +26,7 @@ typedef struct
     char *error;
     size_t size;
     int values;
+    arena storage;
 } context;
 
 static bool fail(context *c, const char *message)
@@ -32,6 +35,27 @@ static bool fail(context *c, const char *message)
         snprintf(c->error, c->size, "%s", message);
     }
     return false;
+}
+static bool text_type(context *c, pin_type expected, pin_value *value)
+{
+    if (expected == PIN_NAME && value->type == PIN_STR) {
+        const char *text;
+        const char *error = pin_text_cstring(&c->storage, *value, &text, NULL);
+        if (error) {
+            return fail(c, error);
+        }
+        value->type = PIN_NAME;
+        value->str = text;
+    } else if (expected == PIN_STR && value->type == PIN_NAME) {
+        const char *text = value->str ? value->str : "";
+        const char *type_name = value->type_name;
+        const char *error = pin_value_text(&c->storage, value, text, strlen(text));
+        if (error) {
+            return fail(c, error);
+        }
+        value->type_name = type_name;
+    }
+    return true;
 }
 static const script_catalog_type *component_type(context *c, const ecs_component_desc *desc)
 {
@@ -106,7 +130,7 @@ static bool field_fits(const type_desc *type, const type_field *field)
            width <= type->size - field->offset;
 }
 
-static bool write_path(void *data, const type_desc *type, const char *path, pin_value value, int depth)
+static bool write_path(context *c, void *data, const type_desc *type, const char *path, pin_value value, int depth)
 {
     if (!type || depth >= EDIT_MAX_DEPTH) {
         return false;
@@ -137,11 +161,12 @@ static bool write_path(void *data, const type_desc *type, const char *path, pin_
                     return false;
                 }
             }
-            pin_write_field(data, f, value);
-            return true;
+            return text_type(c, f->type, &value) &&
+                   !pin_write_field(&c->storage, data, f, value);
         }
         return f->type == PIN_STRUCT && dot[1] &&
                write_path(
+                   c,
                    (char *)data + f->offset,
                    type_catalog_find(f->type_name),
                    dot + 1,
@@ -246,6 +271,11 @@ static av_value *object(av_doc *doc, av_value *parent, const char *key)
  * patch policy remain in the authored facade. Never render a C source literal. */
 static av_value *project_value(context *c, av_doc *doc, script_type expected, const pin_value *value, int depth)
 {
+    pin_value normalized = *value;
+    if (!text_type(c, expected.storage, &normalized)) {
+        return NULL;
+    }
+    value = &normalized;
     bool text = (expected.storage == PIN_NAME || expected.storage == PIN_STR) &&
                 (value->type == PIN_NAME || value->type == PIN_STR);
     if (depth >= EDIT_MAX_DEPTH || ++c->values > 16384 ||
@@ -330,7 +360,11 @@ static av_value *project_value(context *c, av_doc *doc, script_type expected, co
                 return NULL;
             }
             pin_value member;
-            pin_read_field(value->ptr, field, &member);
+            const char *error = pin_read_field(&c->storage, value->ptr, field, &member);
+            if (error) {
+                fail(c, error);
+                return NULL;
+            }
             av_value *projected = project_value(c, doc, contract->type, &member, depth + 1);
             if (!projected) {
                 return NULL;
@@ -482,7 +516,13 @@ static char *parameter_source(context *c, const char *source, const authoring_pr
             break;
         case PIN_STR:
             kind = 5;
-            text = value->str;
+            {
+                const char *error = pin_text_cstring(&c->storage, *value, &text, NULL);
+                if (error) {
+                    fail(c, error);
+                    return NULL;
+                }
+            }
             break;
         default:
             fail(c, "Parameters require bool, integer, number or string values");
@@ -617,8 +657,8 @@ static bool apply(context *c, av_doc *doc, const prototype *model, const authori
     void *copy = xmalloc(desc->element_size);
     memcpy(copy, current->data, desc->element_size);
     pin_value whole;
-    bool ok = write_path(copy, desc->type, op->field, op->value, 0) &&
-              !pin_read_field_path(copy, desc->type, top, &whole);
+    bool ok = write_path(c, copy, desc->type, op->field, op->value, 0) &&
+              !pin_read_field_path(&c->storage, copy, desc->type, top, &whole);
     const script_catalog_field *outer = named_field(type, top, length);
     if (!ok || !outer) {
         free(copy);
@@ -682,12 +722,14 @@ bool authoring_prototype_source_edit(
         av_doc_free(doc);
         if (!next) {
             free(current);
+            arena_free(&c.storage);
             return false;
         }
         free(current);
         current = next;
         if (strlen(current) > AUTHORING_PROTOTYPE_EDIT_MAX_BYTES) {
             free(current);
+            arena_free(&c.storage);
             return fail(&c, "Prototype source edit exceeds its output byte limit");
         }
     }
@@ -697,12 +739,14 @@ bool authoring_prototype_source_edit(
     av_doc_free(doc);
     if (!value) {
         free(current);
+        arena_free(&c.storage);
         return false;
     }
     result->source = current;
     result->value = value;
     result->changed = strcmp(source, current) != 0;
     result->materialized = materialized;
+    arena_free(&c.storage);
     return true;
 }
 

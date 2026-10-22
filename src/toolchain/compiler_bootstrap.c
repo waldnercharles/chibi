@@ -91,6 +91,12 @@ static bool write_bytes(const char *folder, const char *name, const void *bytes,
 static bool write_path(const char *path, const void *bytes, size_t length)
 {
     const char *slash = strrchr(path, '/');
+#ifdef _WIN32
+    const char *backslash = strrchr(path, '\\');
+    if (backslash && (!slash || backslash > slash)) {
+        slash = backslash;
+    }
+#endif
     if (!slash) {
         return write_bytes(".", path, bytes, length);
     }

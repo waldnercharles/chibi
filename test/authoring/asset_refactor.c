@@ -6,8 +6,10 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/core_nodes.h"
 #include "runtime/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -379,12 +381,14 @@ static bool particle_bindings_rewritten(const char *expected)
         if (edit->asset == 1) {
             prototype *saved = prototype_load_authored(edit->text, &particle_registry, error, sizeof error);
             pin_value material = { 0 }, parameters = { 0 };
+            arena text_reads = { 0 };
             bool ok = saved &&
-                      !prototype_read_field(saved, "Shader", "material", &material) &&
-                      !prototype_read_field(saved, "Shader", "parameters", &parameters) &&
-                      !strcmp(material.str, expected) &&
-                      !strcmp(parameters.str, "Speed 2\n");
+                      !prototype_read_field(&text_reads, saved, "Shader", "material", &material) &&
+                      !prototype_read_field(&text_reads, saved, "Shader", "parameters", &parameters) &&
+                      !strcmp(pin_text(material).bytes, expected) &&
+                      !strcmp(pin_text(parameters).bytes, "Speed 2\n");
             prototype_free(saved);
+            arena_free(&text_reads);
             REQUIRE(ok);
             rewritten++;
         }

@@ -699,6 +699,7 @@ prepare:
             goto done;
         }
         behavior_execution_scope compilation = { .remaining = compile_budget,
+                                                 .prefer_compiled = true,
                                                  .cancelled = options->cancelled,
                                                  .user = options->user };
         behavior_execution_scope_begin(&compilation);
@@ -840,6 +841,7 @@ av_doc *asset_source_invoke(
     uint64_t budget = options->compile_budget ? options->compile_budget
                                               : ASSET_COMPILE_BUDGET;
     behavior_execution_scope scope = { .remaining = budget,
+                                       .prefer_compiled = true,
                                        .cancelled = options->cancelled,
                                        .user = options->user };
     compiler_host_result result = { 0 };
@@ -993,6 +995,7 @@ char *asset_source_invoke_bytes(
     uint64_t budget = options->compile_budget ? options->compile_budget
                                               : ASSET_COMPILE_BUDGET;
     behavior_execution_scope scope = { .remaining = budget,
+                                       .prefer_compiled = true,
                                        .cancelled = options->cancelled,
                                        .user = options->user };
     compiler_host_bytes result = { 0 };

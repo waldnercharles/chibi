@@ -1,6 +1,7 @@
 /* A scene's page in the reference index: the scene's own ui:, or the
  * project's default, and what rename makes of each. */
 #include "assets/refactor.h"
+#include "assets/scene_document.h"
 #include "authoring/reference_index.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
@@ -88,8 +89,13 @@ TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
                    0;
     bool followed = false;
     for (int i = 0; renamed && i < acount(plan.edits); i++) {
-        followed |= plan.edits[i].asset == dock &&
-                    strstr(plan.edits[i].text, "ui \"Frame\"");
+        if (plan.edits[i].asset != dock) {
+            continue;
+        }
+        scene_document *scene = scene_document_load(plan.edits[i].text, error, sizeof error);
+        followed = scene && scene->ui && !strcmp(scene->ui, "Frame") &&
+                   !strcmp(scene->name, "Dock") && !acount(scene->entities);
+        scene_document_free(scene);
     }
     if (!renamed) {
         printf("  %s\n", error);

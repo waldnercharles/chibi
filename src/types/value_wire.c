@@ -7,6 +7,7 @@
 #include "types/map.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -224,6 +225,30 @@ void execution_wire_string(execution_wire *w, const char **value)
     w->size += length;
     w->offset = w->size;
 }
+/* Language text has an explicit length; metadata uses wire_string above. */
+static void text_value(execution_wire *w, pin_value *value)
+{
+    pin_string text = w->reading ? (pin_string){ 0 } : pin_text(*value);
+    const unsigned char *bytes = (const unsigned char *)text.bytes;
+    size_t length = text.length;
+    execution_wire_blob(w, &bytes, &length);
+    if (w->error || !w->reading) {
+        return;
+    }
+    if (length > UINT32_MAX || length > SIZE_MAX - sizeof(pin_string) - 1) {
+        fail(w, "Prepared text exceeds byte limit");
+        return;
+    }
+    pin_string *owned = execution_wire_allocate(w, sizeof *owned + length + 1);
+    if (!owned) {
+        return;
+    }
+    char *payload = (char *)(owned + 1);
+    memcpy(payload, bytes, length);
+    payload[length] = 0;
+    *owned = (pin_string){ .bytes = payload, .length = (uint32_t)length };
+    value->text = owned;
+}
 static bool same_name(const char *a, const char *b)
 {
     return !strcmp(a ? a : "", b ? b : "");
@@ -361,8 +386,29 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
             return;
         }
         pin_value member = { 0 };
-        if (!w->reading) {
-            pin_read_field(v->ptr, field, &member);
+        pin_string borrowed = { 0 };
+        if (!w->reading && field->type == PIN_STR && !field->text_descriptor) {
+            const char *bytes = *(const char *const *)((const char *)v->ptr +
+                                                       field->offset);
+            bytes = bytes ? bytes : "";
+            size_t limit = EXECUTION_WIRE_MAX_BYTES - w->size;
+            size_t length = strnlen(bytes, limit);
+            if (length == limit) {
+                fail(w, "Prepared text exceeds remaining byte limit");
+                return;
+            }
+            borrowed = (pin_string){ .bytes = bytes, .length = (uint32_t)length };
+            member = (pin_value){ .type = PIN_STR,
+                                  .type_name = field->type_name,
+                                  .text = &borrowed };
+        } else if (!w->reading) {
+            /* All remaining reads borrow fields; no native C text is copied
+             * before its encoded payload has passed the writer byte bound. */
+            const char *error = pin_read_field(NULL, v->ptr, field, &member);
+            if (error) {
+                fail(w, error);
+                return;
+            }
         }
         pin_value target = { .type = field->type,
                              .type_name = field->type_name,
@@ -377,8 +423,25 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
             fail(w, "Prepared field type differs from linked type");
             return;
         }
-        if (w->reading) {
-            pin_write_field(v->ptr, field, member);
+        if (w->reading && field->type == PIN_STR) {
+            void *destination = (unsigned char *)v->ptr + field->offset;
+            if (field->text_descriptor) {
+                *(const pin_string **)destination = member.text;
+            } else {
+                const char *bytes;
+                const char *error = pin_text_cstring(w->storage, member, &bytes, NULL);
+                if (error) {
+                    fail(w, error);
+                    return;
+                }
+                *(const char **)destination = bytes;
+            }
+        } else if (w->reading && field->type != PIN_STRUCT) {
+            const char *error = pin_write_field(w->storage, v->ptr, field, member);
+            if (error) {
+                fail(w, error);
+                return;
+            }
         }
     }
 }
@@ -666,7 +729,11 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         tagged_value(c, v, depth);
         return;
     }
-    if (tag == PIN_STR || tag == PIN_NAME) {
+    if (tag == PIN_STR) {
+        text_value(w, v);
+        return;
+    }
+    if (tag == PIN_NAME) {
         execution_wire_string(w, &v->str);
         return;
     }
@@ -724,7 +791,11 @@ static void value(value_codec *c, pin_value *v, unsigned depth)
 void execution_wire_value(execution_wire *w, pin_value *v)
 {
     value_codec c = { .wire = w };
-    value(&c, v, 0);
+    pin_value decoded = w->reading ? (pin_value){ 0 } : *v;
+    value(&c, &decoded, 0);
+    if (!w->error) {
+        *v = decoded;
+    }
 }
 void execution_wire_value_owned(execution_wire *w, pin_value *v, execution_wire_resolver resolve, void *user)
 {
@@ -733,7 +804,11 @@ void execution_wire_value_owned(execution_wire *w, pin_value *v, execution_wire_
         return;
     }
     value_codec c = { .wire = w, .resolve = resolve, .user = user };
-    value(&c, v, 0);
+    pin_value decoded = w->reading ? (pin_value){ 0 } : *v;
+    value(&c, &decoded, 0);
+    if (!w->error) {
+        *v = decoded;
+    }
 }
 
 bool execution_wire_reserve(execution_wire *w, size_t bytes)

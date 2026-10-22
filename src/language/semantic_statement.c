@@ -891,6 +891,22 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             address.type
         );
         script_analyzer_require_values(a, node, result.expression, result.second);
+        if (address.kind == SCRIPT_EXPR_MEMBER && address.left >= 0) {
+            script_type owner = script_analyzer_expr_type(a, address.left);
+            const script_catalog_type
+                *record = script_catalog_type_by_id(a->catalog, owner.nominal);
+            for (int i = 0; record && i < record->field_count; i++) {
+                const script_catalog_field *field = &record->fields[i];
+                if (field->id == address.member && field->c_string) {
+                    script_analyzer_c_string_argument(
+                        a,
+                        script_analyzer_field(node, "value"),
+                        result.second,
+                        field->name
+                    );
+                }
+            }
+        }
         result.op = script_analyzer_operator_node(a, script_analyzer_field(node, "operator"));
         if (result.op != SCRIPT_OP_NONE && !script_type_numeric(address.type)) {
             script_expression operation = {

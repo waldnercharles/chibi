@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <string.h>
@@ -88,9 +89,12 @@ TEST_CASE(live_rename_updates_applied_sources)
                           .type = PIN_STR,
                           .type_name = "MaterialAsset",
                           .declaration_id = paint_slot->id,
-                          .default_value = { .type = PIN_STR,
-                                             .type_name = "MaterialAsset",
-                                             .str = paint->name } };
+                          .default_value = {
+                              .type = PIN_STR,
+                              .type_name = "MaterialAsset",
+                              .text = &(const pin_string){
+                                  .bytes = paint->name,
+                                  .length = (uint32_t)strlen(paint->name) } } };
     REQUIRE(graph_add_pin(parent->graph, instance, false, &override) == 0);
     publish(parent->graph, instance);
     uint64_t instance_id = instance->id;
@@ -105,11 +109,11 @@ TEST_CASE(live_rename_updates_applied_sources)
     REQUIRE(!preview_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
     REQUIRE(!strcmp(paint_definition->working->name, "LiveRenamedPaint"));
     REQUIRE(!strcmp(paint_definition->applied->name, "LiveRenamedPaint"));
-    REQUIRE(!strcmp(instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
+    REQUIRE(!strcmp(pin_text(instance->input_pins[0].default_value).bytes, "LiveRenamedPaint"));
     applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
     REQUIRE(
         applied_instance &&
-        !strcmp(applied_instance->input_pins[0].default_value.str, "LiveRenamedPaint")
+        !strcmp(pin_text(applied_instance->input_pins[0].default_value).bytes, "LiveRenamedPaint")
     );
     REQUIRE(!preview_remove_definition(world, "LiveRenameParent"));
     REQUIRE(!preview_remove_definition(world, "LiveRenamedBase"));

@@ -339,15 +339,55 @@ int test_asset_cache_worker(const char *directory)
     return valid ? 0 : 1;
 }
 
+/* Arm after the second cold compilation starts: cache-key evaluation and the
+ * public preflight cancellation poll must not consume the compiler's ticks. */
+static bool cache_cancel_compilation(void *user)
+{
+    if (asset_source_cache_stats().compile_attempts < 2) {
+        return false;
+    }
+    int *remaining = user;
+    return --*remaining <= 0;
+}
+
 TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
 {
     snprintf(cache_directory, sizeof cache_directory, "/tmp/chibi-asset-cache-XXXXXX");
     REQUIRE(mkdtemp(cache_directory));
     asset_source_release_thread();
     asset_compiler_options options = cache_options(cache_directory);
+    options.compile_budget = 1;
+    asset_compiler_diagnostic failed;
+    av_doc *rejected = asset_source_read(cache_source, NULL, &options, &failed);
+    bool limited = !rejected && strstr(failed.message, "budget");
+    av_doc_free(rejected);
+    REQUIRE(limited);
+    REQUIRE(asset_source_cache_stats().compile_attempts == 1);
+    binary_cache_entry *failed_entries = NULL;
+    int failed_count = 0;
+    REQUIRE(binary_cache_list(cache_directory, &failed_entries, &failed_count));
+    free(failed_entries);
+    REQUIRE(!failed_count);
+
+    options.compile_budget = 0;
+    int remaining = 10;
+    options.cancelled = cache_cancel_compilation;
+    options.user = &remaining;
+    rejected = asset_source_read(cache_source, NULL, &options, &failed);
+    bool cancelled = !rejected && strstr(failed.message, "cancelled");
+    av_doc_free(rejected);
+    REQUIRE(cancelled && remaining <= 0);
+    REQUIRE(asset_source_cache_stats().compile_attempts == 2);
+    failed_entries = NULL;
+    REQUIRE(binary_cache_list(cache_directory, &failed_entries, &failed_count));
+    free(failed_entries);
+    REQUIRE(!failed_count);
+
+    options.cancelled = NULL;
+    options.user = NULL;
     REQUIRE(cache_value(cache_source, &options, 7));
     asset_compiler_cache_stats stats = asset_source_cache_stats();
-    REQUIRE(stats.compile_attempts == 1 && !stats.persistent_hits && !stats.memory_hits);
+    REQUIRE(stats.compile_attempts == 3 && !stats.persistent_hits && !stats.memory_hits);
     binary_cache_entry *entries = NULL;
     int count = 0;
     REQUIRE(binary_cache_list(cache_directory, &entries, &count));
@@ -365,7 +405,7 @@ TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
     REQUIRE(asset_source_cache_stats().memory_hits == 1);
 
     REQUIRE(cache_value(cache_changed_source, &options, 8));
-    REQUIRE(asset_source_cache_stats().compile_attempts == 2);
+    REQUIRE(asset_source_cache_stats().compile_attempts == 4);
     /* Replace the immutable snapshot; cache identity includes library contents. */
     asset_source_library *changed = xcalloc((size_t)options.library_count, sizeof *changed);
     memcpy(changed, cache_libraries, (size_t)options.library_count * sizeof *changed);

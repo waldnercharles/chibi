@@ -11,6 +11,11 @@ build-release/
 build-package/
 dist/
 build-debug/
+# On macOS, the CMake trees beside graph builds: the first build host and the
+# build-graph checks' reference.
+build-cmake/
+build-debug-cmake/
+build-release-cmake/
 build-performance/
 build-web/
 build-web-profile/

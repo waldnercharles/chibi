@@ -141,8 +141,10 @@ not authorize check elimination or arithmetic reassociation. Component range
 changes invalidate the linked storage contract, and prepared players retain
 their ranges. Reloaded scripts and whole-component snapshots use the world's
 registered component schema while a replacement catalog is being prepared.
-Generic local values and nested layouts still use the current nominal type
-catalog; replacing their physical layouts while those values are live remains
+Generic local values and nested layouts use the current nominal type catalog.
+Prototype operations instead resolve nested layouts through their registry for
+the duration of each transaction; the world retains copied values, not that
+resolver. Replacing physical layouts while generic values are live remains
 outside the existing runtime contract.
 
 A unit such as `u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the

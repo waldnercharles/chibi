@@ -15,6 +15,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -270,19 +271,24 @@ TEST_CASE(runtime_attribution_copy_sites)
         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
         const char *texts[] = { NULL, "", "abc" };
         for (int i = 0; i < 3; i++) {
-            pin_value source = { .type = PIN_STR, .str = texts[i] };
+            const pin_string borrowed = { texts[i] ? texts[i] : "",
+                                          texts[i] ? (uint32_t)strlen(texts[i]) : 0 };
+            pin_value source = { .type = PIN_STR, .text = texts[i] ? &borrowed : NULL };
             copy_begin(enabled);
             REQUIRE(pin_value_copy(&fixture.heap[0], &source) == 0);
-            REQUIRE(copy_end(1, i == 0 ? 0 : i == 1 ? 1 : 4, 0, 0));
+            /* Owning copies materialize a terminator for both empty forms. */
+            REQUIRE(copy_end(1, i < 2 ? 1 : 4, 0, 0));
             REQUIRE(pin_value_equal(&source, &fixture.heap[0]));
             pin_value_destroy(&fixture.heap[0]);
         }
-        pin_value text = { .type = PIN_STR, .str = "abc" };
+        pin_value text = { .type = PIN_STR,
+                           .text = &(const pin_string){ .bytes = "abc",
+                                                        .length = sizeof("abc") - 1 } };
         copy_begin(enabled);
         REQUIRE(pin_value_copy_to_arena(&fixture.output, &result, &text) == 0);
         REQUIRE(copy_end(1, 4, 0, 0));
         REQUIRE(pin_value_equal(&text, &result));
-        text.str = "";
+        text.text = &(const pin_string){ .bytes = "", .length = (uint32_t)strlen("") };
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &text) == 0);
         REQUIRE(copy_end(1, 1, 0, 0));
@@ -432,7 +438,10 @@ TEST_CASE(runtime_attribution_copy_sites)
         REQUIRE(copy_end(0, 0, 0, 0));
         REQUIRE(set->count == 1);
         /* S8: root record and union child snapshots, with no duplicate bytes. */
-        children[1] = (pin_value){ .type = PIN_STR, .str = "kid" };
+        children[1] = (pin_value){
+            .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "kid", .length = sizeof("kid") - 1 }
+        };
         REQUIRE(pin_union_value(&fixture.input, 7, children, 2, &union_value) == 0);
         ProbeEnvelope envelope = { .value = union_value.ptr };
         record = (pin_value){ .type = PIN_STRUCT,
@@ -568,7 +577,9 @@ TEST_CASE(runtime_attribution_scopes)
     pin_copy_scope_begin(outer);
     REQUIRE(copy_scalar_helper()); /* 2 */
     pin_copy_scope_begin(inner);
-    pin_value text = { .type = PIN_STR, .str = "abc" };
+    pin_value text = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "abc",
+                                                    .length = sizeof("abc") - 1 } };
     REQUIRE(pin_value_copy(&fixture.heap[0], &text) == 0); /* 3 */
     pin_copy_scope_end(inner);
     REQUIRE(inner->counts.value_header_moves == 1 && inner->counts.text_bytes == 4);
@@ -711,7 +722,10 @@ TEST_CASE(runtime_attribution_world_strings)
                 owner[i],
                 component.id,
                 0,
-                (pin_value){ .type = PIN_STR, .str = i ? "other" : "base" }
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){
+                                 .bytes = i ? "other" : "base",
+                                 .length = (uint32_t)strlen(i ? "other" : "base") } }
             ) == ECS_OK
         );
     }
@@ -735,7 +749,9 @@ TEST_CASE(runtime_attribution_world_strings)
                 owner[0],
                 component.id,
                 0,
-                (pin_value){ .type = PIN_STR, .str = text }
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = text,
+                                                          .length = (uint32_t)strlen(text) } }
             ) == ECS_OK
         );
         int entries = i + 2;
@@ -766,7 +782,10 @@ TEST_CASE(runtime_attribution_world_strings)
                 owner[0],
                 component.id,
                 0,
-                (pin_value){ .type = PIN_STR, .str = "edit31" }
+                (pin_value){
+                    .type = PIN_STR,
+                    .text = &(const pin_string){ .bytes = "edit31",
+                                                 .length = sizeof("edit31") - 1 } }
             ) == ECS_OK
         );
         REQUIRE(
@@ -781,7 +800,9 @@ TEST_CASE(runtime_attribution_world_strings)
             owner[0],
             component.id,
             0,
-            (pin_value){ .type = PIN_STR, .str = "base" }
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = "base",
+                                                      .length = sizeof("base") - 1 } }
         ) == ECS_OK
     );
     REQUIRE(
@@ -937,9 +958,12 @@ static arena workload_storage;
 static pin_copy_scope workload_copy_scope;
 static behavior_run_scope workload_run_scope;
 static pin_value workload_input_items[] = {
-    { .type = PIN_STR, .str = "one" },
-    { .type = PIN_STR, .str = "two" },
-    { .type = PIN_STR, .str = "three" },
+    { .type = PIN_STR,
+      .text = &(const pin_string){ .bytes = "one", .length = sizeof("one") - 1 } },
+    { .type = PIN_STR,
+      .text = &(const pin_string){ .bytes = "two", .length = sizeof("two") - 1 } },
+    { .type = PIN_STR,
+      .text = &(const pin_string){ .bytes = "three", .length = sizeof("three") - 1 } },
 };
 static pin_array workload_input_array = {
     .element_type = PIN_STR,
@@ -1144,7 +1168,10 @@ TEST_CASE(runtime_attribution_tasks)
                 expected[sizeof expected - 1] = '\0';
                 workload_producer = xmalloc(sizeof expected);
                 memcpy(workload_producer, expected, sizeof expected);
-                pin_value argument = { .type = PIN_STR, .str = workload_producer };
+                pin_value argument = { .type = PIN_STR,
+                                       .text = &(const pin_string){
+                                           .bytes = workload_producer,
+                                           .length = (uint32_t)strlen(workload_producer) } };
                 double now = 3 * cycle;
                 int status = execution_instance_dispatch(
                     workload_instance[index],
@@ -1165,7 +1192,7 @@ TEST_CASE(runtime_attribution_tasks)
                 memset(workload_producer, '!', sizeof expected - 1);
                 free(workload_producer);
                 workload_producer = NULL;
-                argument.str = NULL;
+                argument.text = NULL;
                 status = execution_program_update(workload_program[index], now + 1, 0, WORKLOAD_BUDGET);
                 boundaries++;
                 REQUIRE(status == FLOW_OK);
@@ -1189,8 +1216,8 @@ TEST_CASE(runtime_attribution_tasks)
                     workload_instance[index],
                     workload_text_state[backend]
                 );
-                REQUIRE(text && text->type == PIN_STR && text->str);
-                REQUIRE(!strcmp(text->str, expected));
+                REQUIRE(text && text->type == PIN_STR && pin_text(*text).bytes);
+                REQUIRE(!strcmp(pin_text(*text).bytes, expected));
                 handle = execution_instance_state(workload_instance[index], workload_task_state[backend]);
                 REQUIRE(handle && !handle->u64);
                 status = execution_program_update(workload_program[index], now + 2, 0, WORKLOAD_BUDGET);
@@ -1202,8 +1229,8 @@ TEST_CASE(runtime_attribution_tasks)
                 REQUIRE(released.retained_tasks == 0 && released.task_result_bytes == 0);
                 REQUIRE(released.task_slots == 1);
                 text = execution_instance_state(workload_instance[index], workload_text_state[backend]);
-                REQUIRE(text && text->str && !strcmp(text->str, expected));
-                memcpy(workload_final_text[index], text->str, sizeof expected);
+                REQUIRE(text && pin_text(*text).bytes && !strcmp(pin_text(*text).bytes, expected));
+                memcpy(workload_final_text[index], pin_text(*text).bytes, sizeof expected);
             }
             workload_end_scopes();
             execution_wasm_jit_get_stats(&after);
@@ -1424,8 +1451,8 @@ static uint64_t workload_checksum(int managed, const pin_value *result)
     }
     uint64_t sum = (uint64_t)array->count;
     for (int i = 0; i < 3; i++) {
-        sum += pin_array_get(array, i).str
-                 ? (unsigned char)pin_array_get(array, i).str[0]
+        sum += pin_text(pin_array_get(array, i)).bytes
+                 ? (unsigned char)pin_text(pin_array_get(array, i)).bytes[0]
                  : 0;
     }
     return sum;
@@ -1452,11 +1479,20 @@ static bool workload_check_results(int managed, int count)
         for (int j = 0; j < 3; j++) {
             REQUIRE(
                 pin_array_get(array, j).type == PIN_STR &&
-                pin_array_get(array, j).str
+                pin_text(pin_array_get(array, j)).bytes
             );
-            REQUIRE(pin_array_get(array, j).str != workload_input_items[j].str);
-            REQUIRE(arena_contains(&workload_storage, pin_array_get(array, j).str));
-            REQUIRE(!strcmp(pin_array_get(array, j).str, workload_input_items[j].str));
+            REQUIRE(
+                pin_text(pin_array_get(array, j)).bytes !=
+                pin_text(workload_input_items[j]).bytes
+            );
+            REQUIRE(arena_contains(
+                &workload_storage,
+                pin_text(pin_array_get(array, j)).bytes
+            ));
+            REQUIRE(!strcmp(
+                pin_text(pin_array_get(array, j)).bytes,
+                pin_text(workload_input_items[j]).bytes
+            ));
         }
     }
     size_t used, capacity;

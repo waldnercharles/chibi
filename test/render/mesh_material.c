@@ -17,6 +17,7 @@
 #include "support/xalloc.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -626,7 +627,10 @@ TEST_CASE(imported_meshes_sample_their_uvs)
     asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
     node *out = shader_graph_add_output(asset->graph, false);
     node *texture = graph_add_node(asset->graph, registry_node_by_name("Shader Image Texture"));
-    pin_value key = { .type = PIN_STR, .str = "content/uv.png" };
+    pin_value key = { .type = PIN_STR,
+                      .text = &(const pin_string){
+                          .bytes = "content/uv.png",
+                          .length = sizeof("content/uv.png") - 1 } };
     REQUIRE(!graph_set_pin_default(asset->graph, texture, 0, SHADER_IMAGE_INPUT_IMAGE, &key));
     for (int i = SHADER_IMAGE_INPUT_COLOR_SPACE; i < SHADER_IMAGE_INPUT_COUNT; i++) {
         pin_value value = { .type = PIN_I32,

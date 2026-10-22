@@ -1,5 +1,7 @@
 #include "assets/project.h"
+#include "authoring/asset_compiler_host.h"
 #include "host/process.h"
+#include "support/asset_document.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -14,6 +16,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <time.h>
 #include <unistd.h>
 
 static char root[128], launcher[256], log_path[256], compiler[256], built[256];
@@ -1782,4 +1785,196 @@ void test_tool_chibi_cli_installed(const char *binary)
     RUN_TEST_CASE(installed_project_commands);
     RUN_TEST_CASE(installed_package_commands_and_docs);
     tool_remove_tree(root);
+}
+
+/* One complete current-project format lifecycle, separate from the corpus. */
+static const char *format_files[] = {
+    "formatted/project.chibi",
+    "formatted/content/scenes/Start.chibi",
+    "formatted/content/prototypes/Box.chibi",
+    "formatted/content/behaviors/Tiny.chibi",
+};
+static const char *format_scene =
+    "// keep scene helper\npackage asset\nimport data \"game:assets\"\n"
+    "EntityName::()->string{return \"Anchor\"}\n"
+    "pub Build::()->byte[]{return data.Encode(data.Object(["
+    "data.Field.Named(\"version\",data.Value.UInt(1)),"
+    "data.Field.Named(\"name\",data.Value.Text(\"Start\")),"
+    "data.Field.Named(\"entities\",data.List([data.Object(["
+    "data.Field.Named(\"name\",data.Value.Text(EntityName())),"
+    "data.Field.Named(\"prototype\",data.Value.Text(\"Box\"))])]))]))}\n";
+static const char *format_prototype =
+    "// keep prototype helper\npackage asset\nimport data \"game:assets\"\n"
+    "Double::(value:double)->double{return value*2.0}\n"
+    "pub Build::()->byte[]{return data.Encode(data.Object(["
+    "data.Field.Named(\"name\",data.Value.Text(\"Box\")),"
+    "data.Field.Named(\"components\",data.Object(["
+    "data.Field.Named(\"Transform\",data.Object(["
+    "data.Field.Named(\"x\",data.Value.Real(Double(3.0))),"
+    "data.Field.Named(\"y\",data.Value.Real(2.0))]))]))]))}\n";
+static char *format_original[4], *format_saved[4], *format_cache_before;
+static av_doc *format_values[2];
+
+static void compiled_format_cleanup()
+{
+    asset_source_release_thread();
+    for (int i = 0; i < 4; i++) {
+        free(format_original[i]);
+        free(format_saved[i]);
+        format_original[i] = format_saved[i] = NULL;
+    }
+    for (int i = 0; i < 2; i++) {
+        av_doc_free(format_values[i]);
+        format_values[i] = NULL;
+    }
+    if (format_cache_before) {
+        assert(!setenv("CHIBI_ASSET_CACHE_DIR", format_cache_before, 1));
+    } else {
+        assert(!unsetenv("CHIBI_ASSET_CACHE_DIR"));
+    }
+    free(format_cache_before);
+    format_cache_before = NULL;
+    tool_remove_tree(root);
+}
+
+static av_doc *format_read(const char *text)
+{
+    char error[512];
+    av_doc *value = asset_document_read(text, error, sizeof error);
+    if (!value) {
+        fprintf(stderr, "compiled format asset: %s\n", error);
+    }
+    return value;
+}
+
+static bool format_keeps_stat(const struct stat *before, const struct stat *after)
+{
+#ifdef __APPLE__
+    struct timespec a = before->st_mtimespec, b = after->st_mtimespec;
+#else
+    struct timespec a = before->st_mtim, b = after->st_mtim;
+#endif
+    return before->st_ino == after->st_ino && before->st_size == after->st_size &&
+           a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec;
+}
+
+TEST_CASE(compiled_project_format_preserves_computation)
+{
+    project("formatted", CHIBI_PROJECT_VERSION);
+    char folder[256], nested[256], game[256];
+    path(folder, "formatted/content/prototypes");
+    REQUIRE(!mkdir(folder, 0700));
+    path(nested, "formatted/content/behaviors");
+    REQUIRE(!mkdir(nested, 0700));
+    path(game, "formatted");
+    write_file(format_files[1], format_scene);
+    write_file(format_files[2], format_prototype);
+    write_file(format_files[3], "// keep executable\nTiny::behavior{on Tick::(dt:float){}}\n");
+    struct stat original[4];
+    for (int i = 0; i < 4; i++) {
+        format_original[i] = contents(format_files[i]);
+        path(folder, format_files[i]);
+        REQUIRE(!stat(folder, &original[i]));
+    }
+    format_values[0] = format_read(format_original[1]);
+    format_values[1] = format_read(format_original[2]);
+    REQUIRE(format_values[0] && format_values[1]);
+    const av_value *entities = av_obj_get(av_doc_root(format_values[0]), "entities");
+    REQUIRE(av_arr_size(entities) == 1);
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(entities, 0), "name")), "Anchor"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(entities, 0), "prototype")), "Box"));
+    const av_value *transform = av_obj_get(
+        av_obj_get(av_doc_root(format_values[1]), "components"),
+        "Transform"
+    );
+    REQUIRE(
+        av_get_num(av_obj_get(transform, "x")) == 6.0 &&
+        av_get_num(av_obj_get(transform, "y")) == 2.0
+    );
+
+    /* One launcher and its compiler child prove discovery from a nested folder. */
+    const char *discover[] = { launcher, "fmt", "--check", NULL };
+    REQUIRE(tool_run_within(discover, nested, log_path, 20) == 1);
+    REQUIRE(file_has("format-check-before.log", "not canonical: content/scenes/Start.chibi"));
+    REQUIRE(file_has("format-check-before.log", "not canonical: content/prototypes/Box.chibi"));
+    REQUIRE(file_has("format-check-before.log", "not canonical: content/behaviors/Tiny.chibi"));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(file_is(format_files[i], format_original[i]));
+        struct stat current;
+        path(folder, format_files[i]);
+        REQUIRE(!stat(folder, &current) && format_keeps_stat(&original[i], &current));
+    }
+    REQUIRE(!exists("formatted/.chibi") && !exists("formatted/build"));
+
+    path(log_path, "format-write.log");
+    const char *write[] = { compiler, "--project-root", game, "--format", NULL };
+    REQUIRE(tool_run_within(write, root, log_path, 20) == 0);
+    REQUIRE(file_is(format_files[0], format_original[0]));
+    struct stat saved[4];
+    for (int i = 0; i < 4; i++) {
+        format_saved[i] = contents(format_files[i]);
+        REQUIRE(i == 0 || strcmp(format_saved[i], format_original[i]));
+        path(folder, format_files[i]);
+        REQUIRE(!stat(folder, &saved[i]));
+    }
+    REQUIRE(
+        strstr(format_saved[1], "// keep scene helper") &&
+        strstr(format_saved[1], "EntityName()")
+    );
+    REQUIRE(
+        strstr(format_saved[2], "// keep prototype helper") &&
+        strstr(format_saved[2], "Double ::") && strstr(format_saved[2], "Double(3.0)")
+    );
+    REQUIRE(strstr(format_saved[3], "// keep executable") && strstr(format_saved[3], "on Tick"));
+    for (int i = 0; i < 2; i++) {
+        av_doc *value = format_read(format_saved[i + 1]);
+        bool same = value &&
+                    av_equals_ordered(av_doc_root(value), av_doc_root(format_values[i]));
+        av_doc_free(value);
+        REQUIRE(same);
+    }
+
+    path(log_path, "format-check-after.log");
+    const char *check[] = { compiler,   "--project-root", game,
+                            "--format", "--check",        NULL };
+    REQUIRE(tool_run_within(check, root, log_path, 20) == 0);
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(file_is(format_files[i], format_saved[i]));
+        struct stat current;
+        path(folder, format_files[i]);
+        REQUIRE(!stat(folder, &current) && format_keeps_stat(&saved[i], &current));
+    }
+    REQUIRE(!exists("formatted/.chibi") && !exists("formatted/build"));
+    asset_compiler_cache_stats stats = asset_source_cache_stats();
+    printf(
+        "\nCompiled format lifecycle: files=4 commands=3 child_processes<=4 "
+        "parent_compiles=%llu memory_hits=%llu persistent_hits=%llu\n",
+        (unsigned long long)stats.compile_attempts,
+        (unsigned long long)stats.memory_hits,
+        (unsigned long long)stats.persistent_hits
+    );
+    return true;
+}
+
+void test_tool_compiled_project_format(const char *binary)
+{
+    strcpy(root, "/tmp/chibi-compiled-format-XXXXXX");
+    assert(mkdtemp(root));
+    char *program = realpath(binary, NULL);
+    assert(program && strlen(program) < sizeof launcher);
+    strcpy(launcher, program);
+    *strrchr(program, '/') = 0;
+    int length = snprintf(compiler, sizeof compiler, "%s/chibi-compile", program);
+    assert(length > 0 && length < (int)sizeof compiler);
+    free(program);
+    const char *previous = getenv("CHIBI_ASSET_CACHE_DIR");
+    format_cache_before = previous ? xstrdup(previous) : NULL;
+    char cache[256];
+    path(cache, "cache");
+    assert(!setenv("CHIBI_ASSET_CACHE_DIR", cache, 1));
+    asset_source_release_thread();
+    path(log_path, "format-check-before.log");
+    pu_setup(NULL, compiled_format_cleanup);
+    RUN_TEST_CASE(compiled_project_format_preserves_computation);
+    pu_clear_setup();
 }

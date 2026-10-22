@@ -1,24 +1,6 @@
 include("${CMAKE_CURRENT_LIST_DIR}/ui_document.cmake")
 
-set(ui_css_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter_css")
-set(ui_html_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter_html")
-add_library(chibi_ui_syntax STATIC
-    "${ui_css_root}/src/parser.c" "${ui_css_root}/src/scanner.c"
-    "${ui_html_root}/src/parser.c" "${ui_html_root}/src/scanner.c")
-add_library(Chibi::ui_syntax ALIAS chibi_ui_syntax)
-set_target_properties(chibi_ui_syntax PROPERTIES EXPORT_NAME ui_syntax)
-set_source_files_properties("${ui_css_root}/src/parser.c" "${ui_css_root}/src/scanner.c"
-    PROPERTIES INCLUDE_DIRECTORIES "${ui_css_root}/src")
-set_source_files_properties("${ui_html_root}/src/parser.c" "${ui_html_root}/src/scanner.c"
-    PROPERTIES INCLUDE_DIRECTORIES "${ui_html_root}/src")
-target_link_libraries(chibi_ui_syntax PRIVATE chibi_syntax_runtime)
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(chibi_ui_syntax PRIVATE -w)
-endif()
-install(FILES "${ui_css_root}/LICENSE"
-    DESTINATION share/chibi/licenses/tree-sitter-css)
-install(FILES "${ui_html_root}/LICENSE"
-    DESTINATION share/chibi/licenses/tree-sitter-html)
+chibi_sdk_vendor(chibi_ui_syntax ui_syntax tree_sitter_css tree_sitter_html)
 
 configure_file("${CHIBI_SDK_ROOT}/src/assets/ui_source_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/ui_authoring/assets/ui_source_internal.h" COPYONLY)

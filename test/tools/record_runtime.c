@@ -1,3 +1,4 @@
+#include "types/text.h"
 /* This consumer compiles only with exported runtime SDK headers. */
 #include "execution/function_builder.h"
 #include "execution/module.h"
@@ -81,7 +82,17 @@ static bool read_module(int index, behavior_backend backend)
 static pin_value member(const pin_value *row, int index)
 {
     pin_value value;
-    pin_read_field(row->ptr, &row->record->type.fields[index], &value);
+    {
+        const char *error = pin_read_field(
+            &storage,
+            row->ptr,
+            &row->record->type.fields[index],
+            &value
+        );
+        if (error) {
+            abort();
+        }
+    };
     return value;
 }
 static bool check_row(const pin_value *value, const char *key, const char *label)
@@ -89,10 +100,13 @@ static bool check_row(const pin_value *value, const char *key, const char *label
     REQUIRE(value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE);
     REQUIRE(pin_record_valid(value->record) && value->record->type.field_count == 12);
     REQUIRE(value->ptr && !strcmp(value->type_name, "Rows.Row"));
-    REQUIRE(!strcmp(member(value, 0).str, key));
-    REQUIRE(!strcmp(member(value, 1).str, label));
-    REQUIRE(!strcmp(member(value, 2).str, "node"));
-    REQUIRE(!strcmp(member(value, 3).str, "") && !strcmp(member(value, 4).str, ""));
+    REQUIRE(!strcmp(pin_text(member(value, 0)).bytes, key));
+    REQUIRE(!strcmp(pin_text(member(value, 1)).bytes, label));
+    REQUIRE(!strcmp(pin_text(member(value, 2)).bytes, "node"));
+    REQUIRE(
+        !strcmp(pin_text(member(value, 3)).bytes, "") &&
+        !strcmp(pin_text(member(value, 4)).bytes, "")
+    );
     REQUIRE(member(value, 5).i == 1 && !member(value, 6).i && member(value, 7).b);
     for (int i = 8; i < 12; i++) {
         REQUIRE(!member(value, i).b);
@@ -103,7 +117,7 @@ static bool owned_row(const pin_value *value)
 {
     REQUIRE(arena_contains(&storage, value->ptr));
     for (int field = 0; field < 5; field++) {
-        const char *text = member(value, field).str;
+        const char *text = pin_text(member(value, field)).bytes;
         REQUIRE(text && arena_contains(&storage, text));
     }
     return true;
@@ -116,7 +130,11 @@ static bool run(int index, behavior_backend backend)
     REQUIRE(count == 1 && results && results[0].record);
     char text[] = "installed-owner";
     const int counts[] = { -1, 0, 1, 3 };
-    pin_value args[2] = { { .type = PIN_STR, .str = text }, results[0] };
+    pin_value args[2] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) } },
+        results[0]
+    };
     if (index) {
         args[0] = (pin_value){ .type = PIN_I32, .i = counts[index - 1] };
         args[1].ptr = NULL;

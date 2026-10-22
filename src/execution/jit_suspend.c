@@ -268,8 +268,9 @@ void behavior_jit_resume(const behavior_machine *m, struct sljit_jump **jumps, s
         SLJIT_R0,
         0,
         SLJIT_IMM,
-        (sljit_sw)(m->inspected ? f->artifact->inspection_addresses
-                                : f->artifact->resume_addresses)
+        (sljit_sw)(m->scoped      ? f->artifact->scoped_addresses
+                   : m->inspected ? f->artifact->inspection_addresses
+                                  : f->artifact->resume_addresses)
     );
     sljit_emit_ijump(
         m->compiler,

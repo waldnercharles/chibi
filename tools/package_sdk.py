@@ -360,25 +360,14 @@ def ninja_package_artifacts(build, cache, objects, allowed_products):
             'configured_targets': targets, 'configured_targets_sha256': canonical_digest(targets)}
 
 
-def installed_archive_owners(compiled, files, vendor_text, desktop):
+def installed_archive_owners(compiled, files):
     installed = {}
     pending = []
     for name, checksum in compiled['archives'].items():
         destination = 'lib/' + Path(name).name
         if destination not in files:
-            target = compiled['archive_targets'][name]
-            owner = 'Chibi::desktop_' + re.sub(r'[^A-Za-z0-9_]', '_', target)
-            declarations = re.findall(r'set_target_properties\(' + re.escape(owner) +
-                                      r' PROPERTIES IMPORTED_LOCATION "\$\{_chibi_desktop_prefix\}/([^"\n]+)"\)', vendor_text)
-            if desktop and declarations:
-                if len(declarations) != 1:
-                    raise ValueError(f'Ambiguous desktop archive owner: {name}')
-                destination = declarations[0]
-                if not destination.startswith('lib/chibi-vendor/') or '..' in Path(destination).parts:
-                    raise ValueError(f'Invalid desktop archive install path: {destination}')
-            else:
-                pending.append(name)
-                continue
+            pending.append(name)
+            continue
         if destination not in files or files[destination]['sha256'] != checksum:
             raise ValueError(f'Installed archive differs from compiled evidence: {destination}')
         installed[name] = {'path': destination}
@@ -646,8 +635,8 @@ def check_exports(stage, kind, cache, build):
         header_owners |= DESKTOP_TARGETS
         if kind == 'sdk':
             header_owners |= DESKTOP_AUTHORING_TARGETS
-    if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
-        header_owners |= {'desktop_vendor'}
+    # Prebuilt third-party libraries the SDK links install their headers here.
+    header_owners |= {'vendor'}
     for owner in includes.iterdir():
         if not owner.is_dir() or owner.name not in header_owners:
             raise ValueError(f'Undeclared public header owner: {owner.name}')
@@ -713,10 +702,7 @@ def assemble(build, output, kind):
         shutil.copy2(ROOT / 'sdk/README.md', docs / 'sdk.md')
         engine = engine_manifest(stage, compiled)
         files = package_files(stage)
-        vendor = stage / 'lib/cmake/Chibi/ChibiDesktopDependencies.cmake'
-        vendor_text = vendor.read_text() if vendor.is_file() else ''
-        archive_installation = installed_archive_owners(
-            compiled, files, vendor_text, cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON')
+        archive_installation = installed_archive_owners(compiled, files)
         for name, evidence in compiled['executables'].items():
             installed = 'bin/' + Path(evidence['path']).name
             binary = stage / installed

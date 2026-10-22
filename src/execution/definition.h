@@ -144,6 +144,9 @@ struct behavior_function
     bool readonly_collections;
     /* Some host call builds a returned local in the caller's storage. */
     bool builds_results;
+    /* It reads components, or takes a reference that may name one, so a call
+     * binds the execution world. */
+    bool binds_world;
     behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
@@ -250,6 +253,8 @@ void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 bool behavior_function_compile_inspection(const behavior_function *function);
+bool behavior_function_compile_scoped(const behavior_function *function);
+void *behavior_function_jit_scoped(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
@@ -264,8 +269,8 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_prepare_borrows(behavior_function *function);
-/* Sets builds_results from the frozen function's host calls. */
-void behavior_function_note_results(behavior_function *function);
+/* Sets what a frozen function's body implies: builds_results and binds_world. */
+void behavior_function_note_derived(behavior_function *function);
 /* The instructions control may reach next from `pc`; returns their count. */
 int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);
 bool program_call_views_allowed(const behavior_function_context *context);

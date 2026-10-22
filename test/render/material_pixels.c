@@ -13,6 +13,7 @@
 #include "render/shader_program.h"
 #include "runtime/component_catalog.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -87,7 +88,8 @@ TEST_CASE(material_parameters_override_one_entity_until_cleared)
     float override[3] = { 0, 0, 1 };
     pin_value inputs[] = {
         { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = ecs_entity_to_u64(first) },
-        { .type = PIN_STR, .str = "Tint" },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "Tint", .length = sizeof("Tint") - 1 } },
         { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = override }
     };
     REQUIRE(!RENDER_MATERIAL_PARAMETER_CALL.invoke(world, inputs, NULL));

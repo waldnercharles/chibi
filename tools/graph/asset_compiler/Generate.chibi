@@ -222,8 +222,10 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
         !build.write_file(Join([folder, "/inventory-directories.txt"]), Join([strings.Join(InventoryDirectories(), "\n"), "\n"])) ||
         !build.write_file(Join([folder, "/sources.sha256"]), Join(stamps)) ||
         !build.write_file(Join([folder, "/manifest.json"]), manifest) ||
-        !build.write_file(Join([folder, "/target.json"]), target) ||
-        !build.embed_file(artifact, Join([folder, "/asset_compiler_blob.inc"]), "asset_compiler_blob")) { return false; }
+        !build.write_file(Join([folder, "/target.json"]), target)) { return false; }
+    blob := Join([folder, "/asset_compiler_blob.inc"]);
+    build.embed_file(artifact, blob, "asset_compiler_blob");
+    if (!build.file_exists(blob)) { return false; }
     build.remove(inputs);
     build.remove(compiler);
     build.remove(facade);

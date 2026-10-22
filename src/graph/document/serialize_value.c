@@ -21,7 +21,7 @@ const char *serialize_implied_type_name(pin_type type, const char *template_name
 pin_value serialize_zero_value(pin_type type, pin_container container, const char *type_name)
 {
     pin_value value = { .type = type, .container = container, .type_name = type_name };
-    if (container == PIN_CONTAINER_SINGLE && (type == PIN_STR || type == PIN_NAME)) {
+    if (container == PIN_CONTAINER_SINGLE && type == PIN_NAME) {
         value.str = "";
     }
     return value;

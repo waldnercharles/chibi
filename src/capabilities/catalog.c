@@ -1,6 +1,7 @@
 #include "capabilities/catalog.h"
 
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -20,13 +21,17 @@ const script_catalog *script_catalog_project()
 }
 uint64_t script_catalog_id(const char *domain, const char *name)
 {
+    return script_catalog_id_bytes(domain, name, strlen(name));
+}
+uint64_t script_catalog_id_bytes(const char *domain, const char *bytes, size_t length)
+{
     uint64_t hash = UINT64_C(14695981039346656037);
     for (const unsigned char *p = (const unsigned char *)domain; *p; p++) {
         hash = (hash ^ *p) * UINT64_C(1099511628211);
     }
     hash = (hash ^ ':') * UINT64_C(1099511628211);
-    for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
-        hash = (hash ^ *p) * UINT64_C(1099511628211);
+    for (size_t i = 0; i < length; i++) {
+        hash = (hash ^ (unsigned char)bytes[i]) * UINT64_C(1099511628211);
     }
     return hash ? hash : 1;
 }
@@ -529,6 +534,9 @@ static uint64_t abi_type_shape(
         hash = abi_word(hash, record->layout);
         hash = abi_word(hash, record->size);
         hash = abi_word(hash, record->underlying);
+        for (int i = 0; i < record->field_count; i++) {
+            hash = abi_word(hash, record->fields[i].c_string);
+        }
         for (int i = 0; i < depth; i++) {
             if (parents[i] == record->id) {
                 return hash;
@@ -550,7 +558,12 @@ static uint64_t abi_type_shape(
             }
             if (v->is_literal) {
                 hash = abi_word(hash, v->literal.type);
-                hash = abi_text(hash, v->literal.str);
+                pin_string text = pin_text(v->literal);
+                for (uint32_t j = 0; j < text.length; j++) {
+                    hash = (hash ^ (unsigned char)text.bytes[j]) *
+                           UINT64_C(1099511628211);
+                }
+                hash = (hash ^ 0) * UINT64_C(1099511628211);
             }
             hash = abi_word(hash, v->field_count);
             for (int j = 0; j < v->field_count; j++) {
@@ -576,6 +589,7 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
         hash = abi_type(hash, catalog, parameter->type);
         hash = abi_word(hash, parameter->reference_kind);
         hash = abi_word(hash, parameter->member);
+        hash = abi_word(hash, parameter->c_string);
     }
     hash = abi_word(hash, capability->result_count);
     for (int i = 0; i < capability->result_count; i++) {

@@ -4,6 +4,7 @@
 #include "runtime/materials.h"
 #include "runtime/save.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -169,18 +170,21 @@ static const char *request(
     bool load
 )
 {
-    assert(ctx->copy_string);
+    const char *name;
+    const char *conversion_error = pin_text_cstring(ctx->value_storage, in[1], &name, NULL);
+    if (conversion_error) {
+        return conversion_error;
+    }
     char error[256] = "Terrain storage requires a material world";
-    out[0].i = service ? terrain_storage_request(
-                             service,
-                             ecs_entity_from_u64(in[0].u64),
-                             in[1].str,
-                             load,
-                             error,
-                             sizeof error
-                         )
-                       : 0;
-    out[1].str = ctx->copy_string(ctx->value_storage, error);
+    out[0].i = service
+                 ? terrain_storage_request(service, ecs_entity_from_u64(in[0].u64), name, load, error, sizeof error)
+                 : 0;
+    pin_value value;
+    const char *text_error = pin_value_text(ctx->value_storage, &value, error, strlen(error));
+    if (text_error) {
+        return text_error;
+    }
+    out[1].text = value.text;
     return NULL;
 }
 
@@ -211,7 +215,6 @@ static const char *result(
     pin_value *out
 )
 {
-    assert(ctx->copy_string);
     terrain_storage_state
         state = service
                   ? terrain_storage_result(service, in[0].i)
@@ -220,7 +223,17 @@ static const char *result(
                     };
     out[0].b = state.pending;
     out[1].b = state.succeeded;
-    out[2].str = ctx->copy_string(ctx->value_storage, state.error);
+    pin_value value;
+    const char *text_error = pin_value_text(
+        ctx->value_storage,
+        &value,
+        state.error,
+        strlen(state.error)
+    );
+    if (text_error) {
+        return text_error;
+    }
+    out[2].text = value.text;
     return NULL;
 }
 

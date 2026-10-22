@@ -13,6 +13,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -157,7 +158,17 @@ static bool prepare(int index)
 static pin_value member(const pin_value *row, int field)
 {
     pin_value value;
-    pin_read_field(row->ptr, &row->record->type.fields[field], &value);
+    {
+        const char *error = pin_read_field(
+            &storage,
+            row->ptr,
+            &row->record->type.fields[field],
+            &value
+        );
+        if (error) {
+            abort();
+        }
+    };
     return value;
 }
 static bool row(const pin_value *value, const char *key, const char *label)
@@ -165,10 +176,13 @@ static bool row(const pin_value *value, const char *key, const char *label)
     REQUIRE(value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE);
     REQUIRE(pin_record_valid(value->record) && value->record->type.field_count == 12);
     REQUIRE(!strcmp(value->type_name, "Rows.Row") && value->ptr);
-    REQUIRE(!strcmp(member(value, 0).str, key));
-    REQUIRE(!strcmp(member(value, 1).str, label));
-    REQUIRE(!strcmp(member(value, 2).str, "node"));
-    REQUIRE(!strcmp(member(value, 3).str, "") && !strcmp(member(value, 4).str, ""));
+    REQUIRE(!strcmp(pin_text(member(value, 0)).bytes, key));
+    REQUIRE(!strcmp(pin_text(member(value, 1)).bytes, label));
+    REQUIRE(!strcmp(pin_text(member(value, 2)).bytes, "node"));
+    REQUIRE(
+        !strcmp(pin_text(member(value, 3)).bytes, "") &&
+        !strcmp(pin_text(member(value, 4)).bytes, "")
+    );
     REQUIRE(member(value, 5).i == 1 && member(value, 6).i == 0);
     REQUIRE(member(value, 7).b);
     for (int i = 8; i < 12; i++) {
@@ -180,7 +194,7 @@ static bool owned_row(const pin_value *value)
 {
     REQUIRE(arena_contains(&storage, value->ptr));
     for (int field = 0; field < 5; field++) {
-        const char *text = member(value, field).str;
+        const char *text = pin_text(member(value, field)).bytes;
         REQUIRE(text && arena_contains(&storage, text));
     }
     return true;
@@ -192,7 +206,11 @@ static bool sample(int backend, int index)
     const behavior_function *f = functions[function];
     const int counts[] = { -1, 0, 1, 3, 0, 1, 20 };
     char text[] = "export-owner";
-    pin_value args[2] = { { .type = PIN_STR, .str = text }, f->result_defaults[0] };
+    pin_value args[2] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) } },
+        f->result_defaults[0]
+    };
     if (function) {
         args[0] = (pin_value){ .type = PIN_I32, .i = counts[index - 1] };
         args[1].ptr = NULL;

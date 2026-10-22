@@ -49,6 +49,11 @@ pub Stage :: (root: string, build_dir: string) -> bool {
         }
         return true;
     }
-    return build.copy_file(Join([resource, "/asset_compiler_packaged.c"]), Join([output, "/asset_compiler_packaged.c"])) &&
-           build.embed_file(Join([resource, "/asset_compiler.chibip"]), Join([output, "/asset_compiler_blob.inc"]), "asset_compiler_blob");
+    if (!build.copy_file(Join([resource, "/asset_compiler_packaged.c"]), Join([output, "/asset_compiler_packaged.c"]))) {
+        return false;
+    }
+    // embed_file returns whether it changed the output; an unchanged blob is ready.
+    blob := Join([output, "/asset_compiler_blob.inc"]);
+    build.embed_file(Join([resource, "/asset_compiler.chibip"]), blob, "asset_compiler_blob");
+    return build.file_exists(blob);
 }

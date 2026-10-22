@@ -10,6 +10,7 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -243,10 +244,15 @@ TEST_CASE(scalar_unions_remove_nonescaping_payloads_snapshots_and_tag_checks)
 
 TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
 {
-    const pin_value cases[] = { { .type = PIN_F64, .d = 2.75 },
-                                { .type = PIN_STR, .str = "" },
-                                { .type = PIN_STR },
-                                { .type = PIN_STR, .str = "original" } };
+    const pin_value cases[] = {
+        { .type = PIN_F64, .d = 2.75 },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "", .length = sizeof("") - 1 } },
+        { .type = PIN_STR },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "original",
+                                       .length = sizeof("original") - 1 } }
+    };
     for (int j = 0; j < 4; j++) {
         cleanup();
         builder = behavior_function_builder_new();
@@ -263,19 +269,23 @@ TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
 #endif
         for (int backend = 0; backend < 4; backend++) {
             char text[] = "original";
+            pin_string descriptor = { text, sizeof text - 1 };
             if (j == 3) {
-                input.str = text;
+                input.text = &descriptor;
             }
             REQUIRE(begin(&input, 1, &output, backend) == FLOW_OK);
             const pin_union *retained = output.ptr;
             REQUIRE(retained && retained->tag == 42 && retained->count == 1);
             if (!j) {
                 REQUIRE(retained->values[0].d == input.d);
-            } else if (input.str) {
+            } else if (input.text) {
                 text[0] = 'X';
-                REQUIRE(!strcmp(retained->values[0].str, cases[j].str));
+                REQUIRE(!strcmp(
+                    pin_text(retained->values[0]).bytes,
+                    pin_text(cases[j]).bytes
+                ));
             } else {
-                REQUIRE(!retained->values[0].str);
+                REQUIRE(pin_text(retained->values[0]).length == 0);
             }
         }
     }
@@ -768,10 +778,11 @@ TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots)
     REQUIRE(calls(true) == 4);
     for (int mode = 0; mode < 4; mode++) {
         char original[] = "snapshot";
-        input.str = original;
+        input.text = &(const pin_string){ .bytes = original,
+                                          .length = (uint32_t)strlen(original) };
         REQUIRE(begin(&input, 1, &output, mode) == FLOW_OK);
         original[0] = 'X';
-        REQUIRE(output.str && !strcmp(output.str, "snapshot"));
+        REQUIRE(pin_text(output).bytes && !strcmp(pin_text(output).bytes, "snapshot"));
         size_t bytes, capacity;
         arena_usage(&storage, &bytes, &capacity);
         REQUIRE(bytes > 0);
@@ -968,6 +979,8 @@ static bool read_compile_reflection(
                                             .name = f->name,
                                             .type = { .storage = f->type },
                                             .offset = f->offset,
+                                            .c_string = f->type == PIN_STR &&
+                                                        !f->text_descriptor,
                                             .range_contract = f->range_contract,
                                             .min = f->min,
                                             .max = f->max };
@@ -1950,9 +1963,12 @@ TEST_CASE(scalar_component_reads_keep_unproven_and_managed_fields_generic)
         pin_value output = { .type = PIN_STR };
         read_begin(&output, mode);
         REQUIRE(read_run(mode) == FLOW_OK);
-        REQUIRE(output.str && output.str != text && !strcmp(output.str, text));
+        REQUIRE(
+            pin_text(output).bytes && pin_text(output).bytes != text &&
+            !strcmp(pin_text(output).bytes, text)
+        );
         text[0] = 'X';
-        REQUIRE(!strcmp(output.str, "managed field"));
+        REQUIRE(!strcmp(pin_text(output).bytes, "managed field"));
     }
     return true;
 }

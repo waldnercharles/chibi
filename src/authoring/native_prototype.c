@@ -41,14 +41,14 @@ static int motion_initial(const prototype *prototype, VisualMotion *motion)
                           &motion->rotation.z };
     if (contains(prototype->components, "VisualTransform")) {
         for (int i = 0; i < 3; i++) {
-            if (prototype_read_field(prototype, "VisualTransform", angles[i], &value)) {
+            if (prototype_read_field(NULL, prototype, "VisualTransform", angles[i], &value)) {
                 return -1;
             }
             *rotation[i] = value.f;
         }
     }
     if (contains(prototype->components, "Geometry3D")) {
-        if (prototype_read_field(prototype, "Geometry3D", "elevation", &value)) {
+        if (prototype_read_field(NULL, prototype, "Geometry3D", "elevation", &value)) {
             return -1;
         }
         motion->rest_elevation = value.f;

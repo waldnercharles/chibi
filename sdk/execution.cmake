@@ -37,7 +37,8 @@ target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contrac
 
 # The prepared reader and writer share a translation unit. Let the compiler
 # host's section-GC link discard the unused public writer entry point.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
+if((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32) AND
+   CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
     target_compile_options(chibi_execution PRIVATE -ffunction-sections -fdata-sections)
 endif()
 
@@ -48,13 +49,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 target_compile_definitions(chibi_execution PRIVATE CHIBI_HAVE_SJLIT=$<BOOL:${CHIBI_ENABLE_SJLIT}>)
 if(CHIBI_ENABLE_SJLIT)
-    set(sljit_root "${CHIBI_THIRD_PARTY_DIR}/source/sljit/sljit_src")
-    add_library(chibi_execution_sljit STATIC "${sljit_root}/sljitLir.c")
-    set_target_properties(chibi_execution_sljit PROPERTIES EXPORT_NAME execution_sljit)
-    target_compile_definitions(chibi_execution_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
-    target_compile_options(chibi_execution_sljit PRIVATE -w)
-    target_include_directories(chibi_execution PRIVATE "${sljit_root}")
+    if(CHIBI_SDK_COMPILER_HOST_ONLY)
+        set(sljit_root "${CHIBI_THIRD_PARTY_DIR}/source/sljit/sljit_src")
+        add_library(chibi_execution_sljit STATIC "${sljit_root}/sljitLir.c")
+        set_target_properties(chibi_execution_sljit PROPERTIES EXPORT_NAME execution_sljit)
+        target_compile_definitions(chibi_execution_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
+        target_compile_options(chibi_execution_sljit PRIVATE -w)
+        target_include_directories(chibi_execution PRIVATE "${sljit_root}")
+        install(TARGETS chibi_execution_sljit EXPORT ChibiTargets ARCHIVE DESTINATION lib)
+        install(FILES "${CHIBI_THIRD_PARTY_DIR}/source/sljit/LICENSE"
+            DESTINATION share/chibi/licenses/sljit)
+    else()
+        chibi_sdk_vendor(chibi_execution_sljit execution_sljit sljit)
+        install(TARGETS chibi_execution_sljit EXPORT ChibiTargets)
+    endif()
     target_link_libraries(chibi_execution PRIVATE chibi_execution_sljit)
-    install(TARGETS chibi_execution_sljit EXPORT ChibiTargets ARCHIVE DESTINATION lib)
-    install(FILES "${CHIBI_THIRD_PARTY_DIR}/source/sljit/LICENSE" DESTINATION share/chibi/licenses/sljit)
 endif()

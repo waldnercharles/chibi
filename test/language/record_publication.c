@@ -7,12 +7,16 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+static const pin_string stale_text = { "stale", sizeof("stale") - 1 };
+static const pin_string changed_text = { "changed", sizeof("changed") - 1 };
 
 /* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */
@@ -220,8 +224,8 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
     REQUIRE(copied.types[0].name != analysis->types[0].name);
     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
     REQUIRE(
-        copied.types[0].fields[0].default_value.str !=
-        analysis->types[0].fields[0].default_value.str
+        pin_text(copied.types[0].fields[0].default_value).bytes !=
+        pin_text(analysis->types[0].fields[0].default_value).bytes
     );
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);
@@ -277,7 +281,7 @@ TEST_CASE(record_catalog_conflicts_reject_before_function_creation)
             case 13: fields[0].type.storage = PIN_I32; break;
             case 14: fields[0].offset++; break;
             case 15: fields[0].has_default = false; break;
-            case 16: fields[0].default_value.str = "stale"; break;
+            case 16: fields[0].default_value.text = &stale_text; break;
             case 17: fields[1].default_value.i = 8; break;
             case 18: fields[2].default_value.b = false; break;
             case 19: types[0].layout = 0; break;
@@ -335,7 +339,7 @@ TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values)
         };
         if (fields[changed].type.storage == PIN_NAME ||
             fields[changed].type.storage == PIN_STR) {
-            fields[changed].default_value.str = "changed";
+            fields[changed].default_value.text = &changed_text;
         }
         script_catalog_type type = copied.types[0];
         type.fields = fields;

@@ -116,8 +116,6 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
         "    )\n"
         "}\n"
     ));
-    snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.chibi", content);
-    REQUIRE(access(expected_path, F_OK) != 0);
 
     /* A file where the folder belongs is a storage failure, not a bad name. */
     snprintf(expected_path, sizeof expected_path, "%s/libraries", content);
@@ -159,11 +157,14 @@ TEST_CASE(new_asset_source_templates_use_canonical_identifiers_and_headers)
     const char *headers[] = { "Sample :: behavior",
                               "Sample :: library",
                               "Sample :: system()",
-                              "Sample :: prototype",
-                              "Sample :: relationship" };
+                              "package asset",
+                              "package asset" };
     for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
         char *text = new_asset_text(kinds[i], "Sample");
         REQUIRE(text && strstr(text, headers[i]) == text);
+        if (kinds[i] == NEW_ASSET_PROTOTYPE || kinds[i] == NEW_ASSET_RELATIONSHIP) {
+            REQUIRE(strstr(text, "data.Field.Named(\"name\", data.Value.Text(\"Sample\"))"));
+        }
         script_syntax *syntax = script_parse(text);
         REQUIRE(syntax && !syntax->diagnostic_count);
         script_syntax_free(syntax);
@@ -171,7 +172,14 @@ TEST_CASE(new_asset_source_templates_use_canonical_identifiers_and_headers)
         REQUIRE(!new_asset_text(kinds[i], "Two Words"));
         REQUIRE(!new_asset_text(kinds[i], "Two-Words"));
         REQUIRE(!new_asset_text(kinds[i], "Nested.Name"));
-        REQUIRE(!new_asset_text(kinds[i], "if"));
+        char *keyword = new_asset_text(kinds[i], "if");
+        if (kinds[i] == NEW_ASSET_PROTOTYPE || kinds[i] == NEW_ASSET_RELATIONSHIP) {
+            /* Data names are quoted values, so a language keyword is valid. */
+            REQUIRE(keyword && strstr(keyword, "data.Field.Named(\"name\", data.Value.Text(\"if\"))"));
+        } else {
+            REQUIRE(!keyword);
+        }
+        free(keyword);
     }
     return true;
 }

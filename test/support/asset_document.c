@@ -1,4 +1,7 @@
 #include "support/asset_document.h"
+#ifdef _WIN32
+#include "support/binary_cache.h"
+#endif
 
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -146,9 +149,29 @@ TEST_CASE(asset_document_strings_escape_separators_and_decode_scalars)
     return true;
 }
 
+#ifdef _WIN32
+TEST_CASE(unavailable_cache_keeps_outputs_empty)
+{
+    size_t length = 9;
+    REQUIRE(!binary_cache_read("unused", "key", 16, &length) && length == 0);
+    REQUIRE(binary_cache_lock("unused") < 0);
+    REQUIRE(!binary_cache_write("unused", "key", "value", 5, 16));
+    REQUIRE(!binary_cache_remove("unused", "key"));
+    binary_cache_entry sentinel, *entries = &sentinel;
+    int count = 9;
+    REQUIRE(!binary_cache_list("unused", &entries, &count));
+    REQUIRE(!entries && count == 0);
+    binary_cache_unlock(-1);
+    return true;
+}
+#endif
+
 void test_asset_document()
 {
     pu_setup(NULL, cleanup);
+#ifdef _WIN32
+    RUN_TEST_CASE(unavailable_cache_keeps_outputs_empty);
+#endif
     RUN_TEST_CASE(asset_document_owns_each_property_name);
     RUN_TEST_CASE(asset_document_reads_typed_values_and_writes_them_canonically);
     RUN_TEST_CASE(asset_document_reals_round_trip_exactly);

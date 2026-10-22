@@ -15,12 +15,18 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# The configured CMake build the build-graph checks compare the graph with:
+# on macOS `make build` uses the graph, so `make graph-reference` configures
+# one beside it.
+GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
+                                            'build-cmake' if sys.platform == 'darwin' else 'build'))
 LIMIT = 60
 DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
+    ('--execution-scope',): 'First supervised measurement: two independently reviewed C builder cases, two definitions of at most24 canonical operations,26 bounded invocations of at most128 operations; canonical VM/guarded native budget and cancellation parity, source failures, outlined resume/shared budget, pure VM fallback and nested scopes; no authored compiler, files, children, frames or GPU; shared60s.',
+    ('--c-export-alias',): 'Two bounded C cases: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; second case has eight nine-instruction shift functions (eight types, direction argument) with six counts per direction, 192 VM/generated-C calls checking valid results and invalid-count DATA metadata, plus one ten-instruction binary-string function with two samples and four VM/generated-C calls at budget64 and a fixed4KiB stack disturbance; source<64KiB; two shared-library compiler children with existing 10s limit each, original case source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -137,10 +143,11 @@ NATIVE = {
 }
 # Standalone measurements do not admit or expand any aggregate.
 NATIVE[('--asset-cache',)] = (
-    'Independently reviewed two fixed cases, four cold CompileBytes attempts, '
+    'Independently reviewed two fixed cases, four full cold compilations plus '
+    'budget/cancellation rejection with no cache publication, '
     'one fresh-process worker capped at15s, tiny framing/retention metadata; '
-    '2cases36asserts25.669s under shared60s, Debug sanitizersOFF bytecode; '
-    '.chibi/asset-cache-second.log; no browser/transport/aggregate coverage')
+    '2cases44asserts5.081s under shared60s, installed Release SDK with guarded native compiler; '
+    '.chibi/asset-main-cache-first.log; no browser/transport/aggregate coverage')
 NATIVE[('--asset-cache-browser',)] = (
     'Independently reviewed four sequential fresh Wasm page sessions in real Chrome: '
     'cold persistence, reload/remove/corrupt-record repair, actual IndexedDB '
@@ -218,6 +225,9 @@ TOOLS = {
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Existing query correctness cases, including bounded cache/optimizer regressions.
     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
+    # Three independently reviewed CPU-only string ownership/publication cases;
+    # one entity each, at most two components, no files, children or frames.
+    'ecs-strings': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-strings'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
     # Three reviewed arena cases: aligned growth, block reuse after reset, a zero-initialized arena
@@ -302,49 +312,56 @@ TOOLS = {
     # build graph writes equals the configured CMake build's.
     'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                     '--build-graph',
-                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                    GRAPH_REFERENCE],
     # Three cases over chibi_support: about ten graph runs in a copied root
     # rebuild only what changed, retry a failed compile, and link the archive.
     # Compiles about thirty C files.
     'build-graph-support': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-support',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
     # One case: the graph builds and links reflect (about 27 C files with the
     # profile's sanitizers), its link command matches CMake's build.ninja, and
     # the program writes the same reflected sources as CMake's.
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
-    # One case: the graph compiles SLJIT and enkiTS's C++ from the third-party
-    # archive, chibi_vector_capabilities over the archive's staged Cute math
-    # headers and the task pool (four C and two C++ files with the profile's
-    # sanitizers), then finds them current.
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
+    # One case: the graph compiles chibi_vector_capabilities over the
+    # third-party archive's staged Cute math headers and the task pool over its
+    # prebuilt enkiTS (three C files with the profile's sanitizers), then finds
+    # them current.
     'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-archive',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                            GRAPH_REFERENCE],
     # Two cases: the graph runs the configured build's reflect to write the
     # native type sources and compiles one of them, and rewrites Cute's codec
     # headers with private symbols and compiles image preparation.
     'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-generated',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                              GRAPH_REFERENCE],
     # One case: naming test_tools in a commands-only run writes the links of
     # the programs it runs, as CMake's add_dependencies builds them.
     'build-graph-programs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                              '--build-graph-programs',
-                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                             GRAPH_REFERENCE],
     # One case: with a compiler that always fails, the graph still writes the
     # launcher's share/chibi and chibi_ctl's resources equal to CMake's.
     'build-graph-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-resources',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+                              GRAPH_REFERENCE],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
-    # Eight offline desktop dependency/configuration cases; twenty direct children, each <=10s.
+    # Six offline vendor dependency/configuration cases; eighteen direct children on Linux, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # Two configured-ownership cases:22children,14rejects,13tiny C units and one PCH.
+    # Two configured-ownership cases:23children,15rejects,13tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],
@@ -632,6 +649,7 @@ TOOLS = {
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps,
     # plus fixed Map ownership, iteration and bounded generic specialization cases.
+    # Descriptor observer adds one entity/two tiny functions/two steps at budget1000.
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     # Bounded in-process SDK generation reuse and invalidation, with four tiny source overlays.
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
@@ -730,7 +748,7 @@ TOOLS = {
     # children/services/GPU. Independent first-run review, separate build/shared60s.
     'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--constant-proof-chibi'],
-    # Three cases:70 fixed requests,140 authored calls capped at2m instructions.
+    # Three cases:91 fixed requests,182 authored calls capped at2m instructions.
     # Two owners prepare4sources each (<64KiB/source):8preparation parses.
     # <=7expressions/1symbol/0aggregate arguments perrequest; no full65536visit
     # exhaustion, runtime IO, children/services/GPU. Independent first-run review,
@@ -823,7 +841,8 @@ TOOLS = {
                                                         '--package-compiler-chibi-imports-compiled'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same
-    # bytes. Sanitizers make one compile take about two minutes, so this runs
+    # bytes; its six target values must match the production host, excluding
+    # test-only native probes. Sanitizers make one compile take about two minutes, so this runs
     # an unsanitized Release test_language (make test-bootstrap). shared60s.
     'language-package-compiler-chibi-bootstrap': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                  '--package-compiler-chibi-bootstrap'],
@@ -1004,7 +1023,7 @@ TOOLS = {
     'language-runtime-attribution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--runtime-attribution'],
     # Fixed legacy array callback case plus native-only scalar/handle globals.
     'language-record-compatibility': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-compatibility'],
-    # Four fixed complete-document record cases; no authored execution.
+    # Five fixed complete-document record cases; no authored execution.
     'language-record-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-document'],
     # Three fixed record state/watch/private frame-input cases, standalone only.
     'language-record-state': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-state'],
@@ -1020,11 +1039,13 @@ TOOLS = {
     'language-inferred-string-arrays': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-arrays'],
     # Optional first semantic specimen only, with the same expected-success assertion.
     'language-inferred-string-array-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-array-repro'],
-    # Fixed six-case authored-layout foundation; independent admission required.
+    # Thirteen reviewed authored-layout/byte-string cases; fixed eight-key map,
+    # eight UTF-8 vectors, one tiny nested-resolver ownership/atomicity case;
+    # no files, children, frames or GPU work.
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
     # Ten fixed semantic record cases; independent workload admission required.
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
-    # Six fixed owned prepared-record cases; independent admission, standalone only.
+    # Seven reviewed owned prepared-record cases; standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
     'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
@@ -1045,6 +1066,8 @@ TOOLS = {
     'language-wasm': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--wasm'],
     'language-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                            '--execution'],
+    'execution-scope': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                        '--execution-scope'],
     # Reviewed finite semantic contracts with inline sources and an immutable catalog.
     'language-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                           '--semantic'],
@@ -1142,6 +1165,10 @@ GROUPS = {
 ASSET_MIGRATION_HOLD = (
     'compiled asset migration changed cold compilation/evaluation work; '
     'historical admission retained, complete new workload not admitted or passed')
+RELEASE_ASSET_DOCUMENTS = {
+    'project-document', 'prototype-documents', 'graph-document',
+    'graph-functions', 'graph-presentation',
+}
 HELD_TOOLS = dict.fromkeys([
     *GROUPS['projects'],
     'asset-values', 'project-document', 'prototype-documents', 'reference-index',
@@ -1152,6 +1179,10 @@ HELD_TOOLS = dict.fromkeys([
     'material-destruction', 'language-program', 'prototype-document',
     'wasm-program', 'fixture-format',
 ], ASSET_MIGRATION_HOLD)
+# Independently reviewed complete workloads, first renewed measurements on the
+# pinned installed Release consumer only. Aggregate holds remain in force.
+for name in RELEASE_ASSET_DOCUMENTS:
+    HELD_TOOLS.pop(name, None)
 HELD_STUDIO_TOOLS = {name for name in TOOLS if name.startswith('studio-')}
 HELD_TOOLS.update(dict.fromkeys(HELD_STUDIO_TOOLS,
     'Studio cold startup now compiles migrated UI assets; historical full '
@@ -1172,17 +1203,21 @@ NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
 
 
 def admitted(arguments):
+    name = arguments[0][2:] if len(arguments) == 1 and arguments[0].startswith('--') else ''
+    if name in RELEASE_ASSET_DOCUMENTS:
+        return (Path(TOOLS[name][0]).resolve() == ROOT / 'build-tools-release/test_tools'
+                and asset_release_ready())
     return tuple(arguments) in NATIVE and tuple(arguments) not in HELD_NATIVE
 
 
-def asset_transport_release_ready():
-    # This exception admits one measured installed consumer, not an arbitrary
-    # Release binary or a change to the default selector's Debug admission.
+def asset_release_ready():
+    # Bind reviewed complete workloads to this installed consumer. The default
+    # Debug transport and unreviewed aggregate admissions remain held.
     expected = {
-        'build-tools-release/test_tools': '0fd969b2a774f592cb23b69cc98e24246e6a87320de83ad586e863ea7373cbd1',
-        'test/authoring/asset_source.c': '0aaaa6333cb947e84995a0297d3ce79ab4ff1b609eccf5d48ff43d63d51dacb0',
+        'build-tools-release/test_tools': '3a7e3f0a405b36235a22aa0b488c67824245b2af59efbe955e6aca9d9a036c75',
+        'test/authoring/asset_source.c': 'e9f485f946cb0c246ecc7219a0c59376dd09d0485cb6a714e79a09c0e4ba9010',
         'dist/sdk-release/share/chibi/assets/compiler/asset_compiler.chibip':
-            'd95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b',
+            '1dedea839e7d9d8e84c2ebe7f74f71e9b8a05b6d20ea7deaff02c55be2d0b02f',
     }
     try:
         cache = {}
@@ -1198,7 +1233,7 @@ def asset_transport_release_ready():
                 Path(cache.get('Chibi_DIR', '')).resolve() ==
                     (ROOT / 'dist/sdk-release/lib/cmake/Chibi').resolve() and
                 package.get('build_id') ==
-                    'c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325' and
+                    '8c5341a0ae9f3ffe344ece40cb1ee1b17e29428f7ddeb6a2a2b4fa466739d6b0' and
                 all(hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
                     for path, digest in expected.items()))
     except (OSError, ValueError, TypeError):
@@ -1212,11 +1247,11 @@ def compiled_asset_edit_model_ready():
     # .chibi/asset-final-model-tool.log and -evidence.json.
     expected = {
         'build-studio-release/bin/studio-acceptance':
-            'fa7aaa3879e8bcc6e4ea678fad04f3df49824190e752076985303c5f979fa7b3',
+            'a8f0d237fbec087d10c531df274a8d2e983baa7f8857ea9eae7297f3f0515f8f',
         '../chibi-studio/tests/acceptance/main.c':
-            'aba646b7bc55e7f735124ced885291aba4a74d32835e3d519996eadd7b892efa',
+            '5f4feffa068633e2b2e81ea9bc54d484074b141e173e91c703c63865f4328f84',
         '../chibi-studio/tests/acceptance/compiled_asset_edit.h':
-            '2b0749937fc3cf77bc407e0d9fb48624047c2bbe5c5487b5ff80d8f91355e21a',
+            '6d91e28028eff80e1d547438ed850d3a991b7f04a875dccdf377021e9348d14e',
     }
     try:
         cache = {}
@@ -1233,7 +1268,7 @@ def compiled_asset_edit_model_ready():
                 Path(cache.get('Chibi_DIR', '')).resolve() ==
                     (ROOT / 'dist/sdk-release/lib/cmake/Chibi').resolve() and
                 package.get('build_id') ==
-                    'c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325' and
+                    '8c5341a0ae9f3ffe344ece40cb1ee1b17e29428f7ddeb6a2a2b4fa466739d6b0' and
                 all(hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
                     for path, digest in expected.items()))
     except (OSError, ValueError, TypeError):
@@ -1525,9 +1560,15 @@ def main():
             os.environ.setdefault('CHIBI_ASSET_CACHE_BROWSER_ROOT',
                                   str(ROOT / 'build-web-cache-browser'))
         if arguments[0] == 'asset-transport-release':
-            if not asset_transport_release_ready():
+            if not asset_release_ready():
                 print('DISABLED: installed Release transport identity/configuration changed; '
                       'renew exact workload admission', file=sys.stderr)
+                return 2
+            os.environ['CHIBI_ASSET_CACHE_DIR'] = ''
+        if arguments[0] in RELEASE_ASSET_DOCUMENTS:
+            if (Path(TOOLS[arguments[0]][0]).resolve() != ROOT / 'build-tools-release/test_tools'
+                    or not asset_release_ready()):
+                print('DISABLED: reviewed document workload requires the pinned installed Release consumer', file=sys.stderr)
                 return 2
             os.environ['CHIBI_ASSET_CACHE_DIR'] = ''
         if arguments[0] in HELD_TOOLS:

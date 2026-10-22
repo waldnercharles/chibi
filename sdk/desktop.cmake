@@ -6,12 +6,8 @@ if(APPLE)
 endif()
 # Cute (with SDL) and RmlUi (with FreeType) come prebuilt from the third-party
 # archive (cmake/third_party.cmake); the SDK installs copies of their archives.
-include("${CMAKE_CURRENT_LIST_DIR}/desktop_dependencies.cmake")
-chibi_desktop_dependency(Chibi::desktop_cute CHIBI_DESKTOP_CUTE)
-chibi_desktop_dependency(Chibi::desktop_rmlui_core CHIBI_DESKTOP_RMLUI)
-install(FILES "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" DESTINATION lib/cmake/Chibi)
-install(DIRECTORY "${CHIBI_THIRD_PARTY_DIR}/share/chibi/licenses/desktop/"
-    DESTINATION share/chibi/licenses/desktop)
+chibi_vendor_dependency(Chibi::vendor_cute CHIBI_DESKTOP_CUTE)
+chibi_vendor_dependency(Chibi::vendor_rmlui_core CHIBI_DESKTOP_RMLUI)
 
 add_library(chibi_platform STATIC "${CHIBI_SDK_ROOT}/src/support/resources.c")
 add_library(Chibi::platform ALIAS chibi_platform)

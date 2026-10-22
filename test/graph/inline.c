@@ -11,6 +11,7 @@
 #include "support/xalloc.h"
 #include "test/graph/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -234,18 +235,21 @@ TEST_CASE(presentations_and_placement_round_trip)
     }
     char *document = graph_asset_text(asset);
     REQUIRE(document);
-    bool written = strstr(document, "presentation \"inline\"") &&
-                   strstr(document, "presentation \"expanded\"") &&
-                   !strstr(document, "presentation \"auto\"") &&
+    const char *inline_mode = "data.Field.Named(\"presentation\", "
+                              "data.Value.Text(\"inline\"))";
+    bool written = strstr(document, inline_mode) &&
+                   strstr(document, "data.Field.Named(\"presentation\", data.Value.Text(\"expanded\"))") &&
+                   !strstr(document, "data.Field.Named(\"presentation\", data.Value.Text(\"auto\"))") &&
                    !strstr(document, "inline_source");
+    REQUIRE(written);
     behavior_asset *copy = graph_asset_read(document);
     behavior_asset *snapshot = behavior_asset_clone(asset);
-    char *invalid = replace(document, "presentation \"inline\"", "presentation \"sideways\"");
+    char *invalid = replace(document, inline_mode, "data.Field.Named(\"presentation\", data.Value.Text(\"sideways\"))");
     behavior_asset *rejected = graph_asset_read(invalid);
-    bool named_error = !rejected && strstr(graph_last_error(), "presentation");
+    bool named_error = !rejected &&
+                       strstr(graph_last_error(), "node presentation must be auto, inline or expanded");
     free(invalid);
     free(document);
-    REQUIRE(written);
     REQUIRE(copy && snapshot);
     for (int i = 0; i < 3; i++) {
         node *saved = graph_node_by_id(copy->graph, modes[i]->id);
@@ -510,7 +514,9 @@ TEST_CASE(shader_and_field_operations_format_as_expressions)
     );
     REQUIRE(formats(&g, vector, "vec3(1, 2, 3)"));
     node *origin = add(&g, "Field Parameter");
-    pin_value name = { .type = PIN_STR, .str = "OriginX" };
+    pin_value name = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "OriginX",
+                                                    .length = sizeof("OriginX") - 1 } };
     REQUIRE(graph_set_pin_default(&g, origin, false, 0, &name) == 0);
     REQUIRE(formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "x + OriginX"));
     return true;

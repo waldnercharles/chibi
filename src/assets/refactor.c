@@ -11,10 +11,12 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "runtime/declared_components.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -23,6 +25,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+static const char *reference_text(pin_value value)
+{
+    pin_string text = pin_text(value);
+    return !memchr(text.bytes, 0, text.length) && !text.bytes[text.length]
+             ? text.bytes
+             : NULL;
+}
+static pin_value renamed_value(pin_type type, const char *bytes, pin_string *text)
+{
+    if (type == PIN_NAME) {
+        return (pin_value){ .type = PIN_NAME, .str = bytes };
+    }
+    *text = (pin_string){ bytes, bytes ? (uint32_t)strlen(bytes) : 0 };
+    return (pin_value){ .type = PIN_STR, .text = text };
+}
 
 #define NAME_MAX_LENGTH 120
 
@@ -354,20 +372,23 @@ static bool rename_struct_field(
     }
     void *copy = xmalloc(type->size);
     memcpy(copy, pin->default_value.ptr, type->size);
+    arena storage = { 0 };
     pin_value current;
-    pin_read_field(copy, field, &current);
+    pin_read_field(&storage, copy, field, &current);
     int count;
-    char *renamed = value_renamed(r, current.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(current), from, to, &count);
     pin_value value = pin->default_value;
     value.ptr = copy;
     if (renamed) {
-        pin_write_field(copy, field, (pin_value){ .type = field->type, .str = renamed });
+        pin_string text;
+        pin_write_field(&storage, copy, field, renamed_value(field->type, renamed, &text));
     }
     bool ok = renamed_count(w, r, count, expected) &&
               (graph_set_pin_default(g, n, output, index, &value) == 0 ||
                fail(w, "could not set %s in %s", r->component, asset_name(w, r->source)));
     free(renamed);
     free(copy);
+    arena_free(&storage);
     return ok;
 }
 
@@ -388,9 +409,10 @@ static bool rename_pin(work *w, graph *g, node *n, const reference *r, const cha
         return rename_struct_field(w, g, n, output, index, r, from, to, expected);
     }
     int count;
-    char *renamed = value_renamed(r, pin->default_value.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(pin->default_value), from, to, &count);
     pin_value value = pin->default_value;
-    value.str = renamed;
+    pin_string text;
+    value = renamed_value(value.type, renamed, &text);
     bool ok = renamed_count(w, r, count, expected) &&
               (graph_set_pin_default(g, n, output, index, &value) == 0 ||
                fail(w, "could not set a pin in %s", asset_name(w, r->source)));
@@ -456,19 +478,22 @@ static bool rename_prototype_field(
 {
     char component[128];
     component_of(r, component, sizeof component);
+    arena storage = { 0 };
+    pin_string text;
     pin_value current = { 0 };
-    prototype_read_field(prototype, component, component_field(r), &current);
+    prototype_read_field(&storage, prototype, component, component_field(r), &current);
     int count;
-    char *renamed = value_renamed(r, current.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(current), from, to, &count);
     bool ok = renamed_count(w, r, count, expected) &&
               (prototype_write_field(
                    prototype,
                    component,
                    component_field(r),
-                   (pin_value){ .type = PIN_STR, .str = renamed }
+                   renamed_value(PIN_STR, renamed, &text)
                ) == 0 ||
                fail(w, "could not set %s in %s", r->component, prototype->name));
     free(renamed);
+    arena_free(&storage);
     return ok;
 }
 

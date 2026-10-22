@@ -4,6 +4,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stddef.h>
@@ -114,37 +115,61 @@ static bool write_value(pin_value reference, pin_value value, bool success)
 }
 TEST_CASE(capture_whole_value_shrink_preserves_escaped_and_self_values)
 {
-    REQUIRE(begin((pin_value){ .type = PIN_STR, .str = large_text, .type_name = "CaptureText" }));
+    REQUIRE(begin((pin_value){
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = large_text, .length = LARGE_TEXT_BYTES },
+        .type_name = "CaptureText" }));
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
     REQUIRE(write_value(root_reference, box.kept, true));
-    REQUIRE(strlen(box.kept.str) == LARGE_TEXT_BYTES);
+    REQUIRE(strlen(pin_text(box.kept).bytes) == LARGE_TEXT_BYTES);
     REQUIRE(write_value(
         root_reference,
-        (pin_value){ .type = PIN_STR, .str = "small", .type_name = "CaptureText" },
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "small",
+                                                  .length = sizeof("small") - 1 },
+                     .type_name = "CaptureText" },
         true
     ));
-    REQUIRE(!strcmp(box.kept.str, "small") && !strcmp(box.kept.type_name, "CaptureText"));
+    REQUIRE(
+        !strcmp(pin_text(box.kept).bytes, "small") &&
+        !strcmp(box.kept.type_name, "CaptureText")
+    );
     REQUIRE(arena_storage_bytes(&box.storage) < 512);
-    REQUIRE(write_value(root_reference, (pin_value){ .type = PIN_STR, .str = "" }, true));
-    REQUIRE(!strcmp(box.kept.str, "") && arena_storage_bytes(&box.storage) < 512);
+    REQUIRE(write_value(
+        root_reference,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "", .length = sizeof("") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(box.kept).bytes, "") && arena_storage_bytes(&box.storage) < 512);
     size_t idle = arena_storage_bytes(&box.storage);
     for (int i = 0; i < 4; i++) {
-        REQUIRE(!strcmp(box.kept.str, "") && arena_storage_bytes(&box.storage) == idle);
-        REQUIRE(!strcmp(saved.str, large_text) && !strcmp(saved.type_name, "CaptureText"));
+        REQUIRE(
+            !strcmp(pin_text(box.kept).bytes, "") &&
+            arena_storage_bytes(&box.storage) == idle
+        );
+        REQUIRE(
+            !strcmp(pin_text(saved).bytes, large_text) &&
+            !strcmp(saved.type_name, "CaptureText")
+        );
     }
     REQUIRE(write_value(
         root_reference,
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(box.kept.str, ""));
+    REQUIRE(!strcmp(pin_text(box.kept).bytes, ""));
     return true;
 }
 TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
 {
-    pin_value items[] = { { .type = PIN_STR, .str = large_text },
-                          { .type = PIN_STR, .str = "tail" } };
+    pin_value items[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = large_text, .length = LARGE_TEXT_BYTES } },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "tail", .length = sizeof("tail") - 1 } }
+    };
     pin_array values = { .element_type = PIN_STR, .count = 2, .capacity = 2, .items = items };
     pin_value root = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = &values };
     REQUIRE(begin(root));
@@ -156,16 +181,34 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
     REQUIRE(write_value(first, pin_array_get(box.kept.ptr, 1), true));
-    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "tail"));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, "tail"));
     REQUIRE(write_value(second, pin_array_get(box.kept.ptr, 1), true));
     values.count = 1;
     REQUIRE(write_value(root_reference, root, true));
-    REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "short" }, true));
-    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "short"));
-    REQUIRE(write_value(second, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
+    REQUIRE(write_value(
+        first,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "short",
+                                                  .length = sizeof("short") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, "short"));
+    REQUIRE(write_value(
+        second,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "bad",
+                                                  .length = sizeof("bad") - 1 } },
+        false
+    ));
     values.count = 0;
     REQUIRE(write_value(root_reference, root, true));
-    REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
+    REQUIRE(write_value(
+        first,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "bad",
+                                                  .length = sizeof("bad") - 1 } },
+        false
+    ));
     size_t idle = arena_storage_bytes(&box.storage);
     for (int i = 0; i < 4; i++) {
         REQUIRE(
@@ -180,9 +223,9 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, large_text));
-    REQUIRE(!strcmp(pin_array_get(saved.ptr, 0).str, large_text));
-    REQUIRE(!strcmp(pin_array_get(saved.ptr, 1).str, "tail"));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, large_text));
+    REQUIRE(!strcmp(pin_text(pin_array_get(saved.ptr, 0)).bytes, large_text));
+    REQUIRE(!strcmp(pin_text(pin_array_get(saved.ptr, 1)).bytes, "tail"));
     return true;
 }
 
@@ -304,7 +347,7 @@ TEST_CASE(capture_references_refuse_another_type)
         path(root_reference, (pin_value){ .type = PIN_STR }, offsetof(capture_record, label), false, &label)
     );
     REQUIRE(read_value(label, (pin_value){ .type = PIN_STR }, NULL, &read));
-    REQUIRE(!strcmp(read.str, "label"));
+    REQUIRE(!strcmp(pin_text(read).bytes, "label"));
     REQUIRE(write_value(root_reference, (pin_value){ .type = PIN_F64, .d = 1 }, false));
     REQUIRE(
         box.kept.type == PIN_STRUCT &&
@@ -334,7 +377,10 @@ TEST_CASE(capture_unnamed_union_references_read_and_write)
  * the array's own item: a string array's element stays a string. */
 TEST_CASE(capture_element_writes_keep_the_item_type)
 {
-    pin_value items[] = { { .type = PIN_STR, .str = "first" } };
+    pin_value items[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "first", .length = sizeof("first") - 1 } }
+    };
     pin_array values = { .element_type = PIN_STR, .count = 1, .capacity = 1, .items = items };
     REQUIRE(begin((pin_value){ .type = PIN_STR,
                                .container = PIN_CONTAINER_ARRAY,
@@ -345,8 +391,14 @@ TEST_CASE(capture_element_writes_keep_the_item_type)
     REQUIRE(path(root_reference, (pin_value){ .type = PIN_F64 }, 0, true, &number));
     REQUIRE(write_value(number, (pin_value){ .type = PIN_F64, .d = 1 }, false));
     REQUIRE(((const pin_array *)box.kept.ptr)->items[0].type == PIN_STR);
-    REQUIRE(write_value(text, (pin_value){ .type = PIN_STR, .str = "second" }, true));
-    REQUIRE(!strcmp(((const pin_array *)box.kept.ptr)->items[0].str, "second"));
+    REQUIRE(write_value(
+        text,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "second",
+                                                  .length = sizeof("second") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(((const pin_array *)box.kept.ptr)->items[0]).bytes, "second"));
     return true;
 }
 void test_language_capture()

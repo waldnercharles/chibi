@@ -142,15 +142,42 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 6
+On macOS `make build` compiles with the Chibi build graph instead of CMake
+(since 2026-10-22). `Build.chibi third-party BUILD_DIR` prepares the pinned
+third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
+the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
+`release` from `make build-debug` and `make build-release`) and
+`CCACHE_BASEDIR` set to the checkout, as CMake sets it, and `--all-commands
+on`, which writes every target's compile commands; it links the root
+`compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
+no longer apply there; the graph finds the profile's toolchain on the
+machine. Without a current host, `make stage-zero-build` builds the first
+one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
+graph-reference` configures that tree with the sanitizer profile and builds
+what the build-graph checks compare with. Linux, the SDK, web and Studio
+builds still use CMake as below, so a source, define or library CMake gains
+belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
+the graph's commands equal CMake's again.
+
+The graph parses compiler dependency files in Chibi, reading their bytes once
+and treating line continuations as spaces. It unescapes only paths that need
+it. Large record and command-database joins use the existing `build.join`
+primitive rather than repeatedly copying an accumulated prefix. Small path
+joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
+Unknown or missing `--target` names fail before toolchain discovery or writes.
+
+Elsewhere `make build` uses this program when its private host reports protocol version 7
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
 natives under `build.`, version 5 runs programs as packages that may import
-`core:`, and version 6 has the array methods and the natives `append` and
-`extend` of project version 32. A cold build or an older host
+`core:`, version 6 has the array methods and the natives `append` and
+`extend` of project version 32, and version 7 has what the macOS graph build
+needs: `build.replace`, `build.byte_list` and steps of up to 1,023
+arguments. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
-path and builds the host for subsequent invocations. `BUILD_HOST` and
+path and builds the host for subsequent invocations (on macOS in
+`BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 
@@ -271,7 +298,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   record differs. A failed compile leaves no record, so the next run retries
   it. Records are read with `build.lines`, because `core:strings` copies the
   rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 362
+  stamps are separate lines because build values are never freed: with 363
   sources an up-to-date run reads about 6 MB of records, and splitting each
   line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
   arena blocks, about 128 MB of values.
@@ -297,7 +324,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   adds that before `sdk/desktop.cmake` enables Objective-C, a CMake defect the
   graph copies so their commands stay equal.
 
-`graph:engine`'s `Targets.chibi` lists the 110 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored formatting and JSON libraries (`chibi_fmt`, `chibi_json` over yyjson)
@@ -305,25 +332,24 @@ and the libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
 `chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
 engine component Chibi modules are embedded sources, `chibi_save_runtime`, and
-`chibi_execution` with SLJIT and the header-only `chibi_math` from the
-third-party archive, with the libraries that need only those (the behavior,
-scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
+`chibi_execution` over the third-party archive's prebuilt SLJIT and the
+header-only `chibi_math` from it, with the libraries that need only those (the
+behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
 Studio capabilities, the prepared native catalog, model baking and the scene
 and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
 whose sources `reflect` writes, with the libraries over them (the spatial,
 entity, rhythm, particle, input and visual motion runtimes, declared
 components, the visual catalog, scene authoring and the scenario document),
-and from the archive tree-sitter's runtime (`chibi_syntax_runtime`), its CSS
-and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
-project syntax documents and UI authoring over them, and enkiTS's C++ task
-scheduler with the task pool, material, physics, visibility, graph model,
-authoring and compilation, Studio catalog and graph, engine and default
-native catalog libraries over it, and image preparation, the language,
+and, over the archive's prebuilt tree-sitter runtime, CSS and HTML grammars,
+Box2D and Box3D, the language and project syntax documents and UI authoring,
+and over its prebuilt enkiTS task scheduler the task pool, material, physics,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and default native catalog libraries over it, and image preparation, the language,
 compiler, authoring, asset authoring, graph catalog, model authoring, shader
 preparation, source catalog and presentation and player libraries, and over
 the desktop Cute archive the platform, model import, UI host (C++17 over
 RmlUi) and renderer (with its Objective-C GPU clock on macOS) and the project
-compilation, format and preparation libraries: 685 sources in 106 archives.
+compilation, format and preparation libraries: 594 sources in 100 archives.
 `ExportName` names the targets whose CMake `EXPORT_NAME` differs, as
 `chibi_ui_host` stages `public/ui` and `chibi_renderer` `public/render`. A name that is no target, such as `chibi_physics` or
 `chibi_graph`, lists the headers of a `private/NAME` directory several
@@ -361,16 +387,18 @@ records the run as a link is recorded, over the inputs CMake names, and
 reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
-includes name. CMake still builds them and
-everything else, and `build-graph` checks that their compile commands agree;
-`build-graph-support` compiles only `chibi_support`. Building everything the
-graph owns, `test_tools` included, is a manual check, about 32 minutes with
-sanitizers and no compiler cache at a load average of 5;
-`build-graph-archive` compiles SLJIT and a math-header library from the
-archive, `build-graph-generated` generates the native type sources and
-rewrites the codec headers, `build-graph-programs` checks that naming
-`test_tools` also builds the programs it runs, and `build-graph-resources`
-that the launcher's and `chibi_ctl`'s resources equal CMake's.
+includes name. On macOS `make build` builds them with the graph; elsewhere
+CMake still does, and `build-graph` checks that their compile commands agree
+with a configured CMake build's; `build-graph-support` compiles only
+`chibi_support`. Before the dependency-parser and join improvements, building
+everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
+and no compiler cache at a load average of 5.
+`build-graph-archive` compiles a math-header library and the task pool over
+the archive's headers and prebuilt libraries; `build-graph-generated`
+generates the native type sources and rewrites the codec headers,
+`build-graph-programs` checks that naming `test_tools` also builds the programs
+it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
+resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -703,13 +731,91 @@ tools/compiler --core packages/core` and needs neither stage zero, nor a
 compiler built from Chibi, nor a network. `--recover FILE` also writes the
 compiler it recovers, which `tools/toolchain/StageOne.chibi` runs. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
-before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
-target is the value layout and prepared ABI rather than an operating system,
-so one artifact serves every host with that ABI.
+before it loads. Its target is the value layout and prepared ABI rather than an
+operating system, so one artifact serves every host with that ABI.
+
+### Three-platform compiler recovery proof
+
+The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`
+runs on every pull request into `main`, push to `main` and manual dispatch.
+Its macOS 15, Ubuntu 24.04 and Windows 2022 jobs download an existing runtime
+binary from the release pinned in `tools/compiler/runtime.json`. The manifest
+records each binary's filename, byte length and SHA-256, plus the source
+revision, tree and CI run that produced it. Downloaded bytes are checked before
+execution. No job installs or invokes a C compiler or CMake, and none depends
+on a native build job. A missing or incompatible seed fails the job rather
+than silently building a replacement.
+
+The runtime binary is an explicit bootstrap input, alongside the checked-in
+Chibi compiler artifact. It executes prepared Chibi code using SLJIT and
+exposes native services, including raw Tree-sitter syntax facts. It excludes
+the C semantic frontend. The authored compiler performs semantic analysis and
+code generation; its output is a prepared `compiler.chibip` artifact executed
+by the same runtime. This proof rebuilds the compiler, retaining the native
+runtime as an external binary dependency.
+
+Both workflows use `.github/scripts/compiler-self-build.ps1`. Preparation
+validates the seed closure and source inventory, then copies only the executable,
+bootstrap metadata and manifest-listed compiler/core `.chibi` files into an
+isolated directory. It rejects unrecorded package siblings and native source
+files. Generated asset resources are excluded from these compiler inputs.
+
+The proof builds a lossless twelve-argument JSON request from those sources and
+the manifest's six target facts. Every child has an empty `PATH` and unavailable
+`CC` and `CXX`. It executes the copied runtime directly:
+
+```sh
+./chibi-compiler-host --artifact tools/compiler/bootstrap/compiler.chibip \
+  --entry 0x140a9546d9e8c296 --input compile.json --backend sljit \
+  --budget 2000000000 --timeout-ms REMAINING --output-artifact stage1/compiler.chibip
+```
+
+Stage two invokes the same entry in the exact stage-one output. Both outputs
+must have identical bytes and hashes. Two additional bytecode calls evaluate
+the produced `BootstrapContract`, enforcing its version/minimum before
+promoting the output manifest with current source hashes. The older seed does
+not need to export this contract.
+
+The pinned runtime predates the authored bootstrap contract and has no target
+query interface. Its generic `--output-artifact` path loads each output to
+validate the actual prepared ABI and native catalog. The manual runtime-seed
+workflow also queries the newly built runtime's target and compares all six
+manifest facts losslessly. Neither workflow uses the frozen runtime's retired
+source-contract recovery path.
+
+All four runtime invocations, request preparation and manifest promotion share
+one 59-second deadline inside
+a hard 60-second step. Timeout terminates the active process tree. Each job
+uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
+with seed/runtime identities, input inventory, revision, platform, cleared
+environment and timings. The comparison job requires matching compiler bytes
+across all three platforms. Every job is nonadvisory; skipped or failed
+platform proofs cannot satisfy the comparison job. Environment and input
+isolation do not restrict the runner's filesystem.
+
+`.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
+route for preparing replacement runtime binaries. It uses the source-only SDK
+mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
+the recovery proof and provenance with each binary. Publish a fresh release
+and review new manifest pins when changing the runtime ABI; routine compiler
+self-builds continue to consume the pinned release. The initial runtime seeds
+were produced by the predecessor recovery workflow at the recorded revision.
+
+On the 2026-10-22 local integration with main `444e5b20e`, the complete pinned
+macOS proof passed in 9.930 seconds, including 9.013 seconds in the shared proof
+budget. Both stages reproduced 11,539,354 bytes with SHA-256
+`88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178`.
+The proof used nineteen sources and contracts `[5,2]`. YAML and every embedded
+PowerShell step parsed successfully. Evidence is under
+`.chibi/compiler-self-build`; Linux, Windows and the manual target-query branch
+were not executed locally. No runtime release or pin changed.
+
 
 Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;
 - when the host's target changes;
+- when the prepared payload or semantic version changes, even if layout and
+  instruction names remain unchanged;
 - when a compiler package gains or loses a source file, because recovery
   compiles the files the manifest records;
 - when the compiler emits other code for its own sources, because the first

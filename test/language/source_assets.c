@@ -7,11 +7,13 @@
 #include "backend.h"
 #include "language/lower.h"
 #include "runtime/scenes/prepared.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_document.h"
 #include "support/file_io.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #ifdef CHIBI_TEST_RECORD_SERVICES
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/entities_native.h"
@@ -65,8 +67,10 @@ static behavior_backend query_backend = BEHAVIOR_BYTECODE;
 #ifdef CHIBI_TEST_RECORD_SERVICES
 static entities *service;
 #endif
+static arena text_reads;
 static void cleanup()
 {
+    arena_free(&text_reads);
     execution_program_free(program);
     execution_module_free(module);
     script_analysis_free(analysis);
@@ -183,9 +187,9 @@ TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults)
     authored = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
     REQUIRE(authored);
     pin_value v;
-    REQUIRE(!prototype_read_field(authored, "Health", "current", &v));
+    REQUIRE(!prototype_read_field(&text_reads, authored, "Health", "current", &v));
     REQUIRE(v.i == 200);
-    REQUIRE(!prototype_read_field(authored, "Health", "maximum", &v));
+    REQUIRE(!prototype_read_field(&text_reads, authored, "Health", "maximum", &v));
     REQUIRE(v.i == 150);
     REQUIRE(!authoring_prototype_source_read(
         "package asset\n"
@@ -1263,7 +1267,8 @@ static script_catalog_field bridge_sample_catalog_fields[] = {
       .offset = offsetof(bridge_sample, position) },
     { .name = "label",
       .type = { .storage = PIN_STR },
-      .offset = offsetof(bridge_sample, label) },
+      .offset = offsetof(bridge_sample, label),
+      .c_string = true },
     { .name = "target",
       .type = { .storage = PIN_HANDLE },
       .offset = offsetof(bridge_sample, target) },
@@ -1408,7 +1413,10 @@ TEST_CASE(source_edit_replaces_only_the_normalized_value_span)
         "}\n"
     ));
     pin_value v;
-    REQUIRE(!prototype_read_field(bridge_result.value, "Health", "current", &v) && v.i == 200);
+    REQUIRE(
+        !prototype_read_field(&text_reads, bridge_result.value, "Health", "current", &v) &&
+        v.i == 200
+    );
     REQUIRE(!strcmp(
         source,
         "// keep header\n"
@@ -1529,8 +1537,12 @@ TEST_CASE(source_edit_sparse_component_keeps_other_base_fields_live)
     REQUIRE(document);
     authored = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
     pin_value v;
-    REQUIRE(authored && !prototype_read_field(authored, "Health", "current", &v) && v.i == 200);
-    REQUIRE(!prototype_read_field(authored, "Health", "maximum", &v) && v.i == 175);
+    REQUIRE(
+        authored &&
+        !prototype_read_field(&text_reads, authored, "Health", "current", &v) &&
+        v.i == 200
+    );
+    REQUIRE(!prototype_read_field(&text_reads, authored, "Health", "maximum", &v) && v.i == 175);
     return true;
 }
 TEST_CASE(source_edit_nested_axis_obeys_existing_whole_record_semantics)
@@ -1584,7 +1596,7 @@ TEST_CASE(source_edit_nested_axis_obeys_existing_whole_record_semantics)
         1
     ));
     pin_value v;
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &v));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &v));
     REQUIRE(((bridge_vector *)v.ptr)->x == 9 && ((bridge_vector *)v.ptr)->y == 2);
     REQUIRE(
         strstr(bridge_result.source, "data.Value.Text(\"Enemy\")") &&
@@ -1681,11 +1693,12 @@ TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
     REQUIRE(!memcmp(&defaults, &original, sizeof defaults));
     REQUIRE(strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Sample", "label", &v) &&
-        !strcmp(v.str, defaults.label)
+        !prototype_read_field(&text_reads, bridge_result.value, "Sample", "label", &v) &&
+        !strcmp(pin_text(v).bytes, defaults.label)
     );
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Sample", "amount", &v) && v.i64 == INT64_MIN
+        !prototype_read_field(&text_reads, bridge_result.value, "Sample", "amount", &v) &&
+        v.i64 == INT64_MIN
     );
     char *added = strdup(bridge_result.source);
     authoring_prototype_edit remove = { .kind = AUTHORING_PROTOTYPE_REMOVE_COMPONENT,
@@ -1693,7 +1706,7 @@ TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
     REQUIRE(bridge_edit(added, &registry, &remove, 1));
     free(added);
     REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "/* other */"));
-    REQUIRE(prototype_read_field(bridge_result.value, "Sample", "position", &v));
+    REQUIRE(prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &v));
     defaults.label = NULL;
     REQUIRE(bridge_edit(
         "package asset\n"
@@ -1713,7 +1726,10 @@ TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
         &add,
         1
     ));
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "label", &v) && !v.str);
+    REQUIRE(
+        !prototype_read_field(&text_reads, bridge_result.value, "Sample", "label", &v) &&
+        pin_text(v).length == 0
+    );
     return true;
 }
 TEST_CASE(source_edit_inherited_remove_preserves_children_links_and_behavior_order)
@@ -1866,12 +1882,12 @@ TEST_CASE(source_edit_inherited_remove_preserves_children_links_and_behavior_ord
         !strcmp(bridge_result.value->graphs[2], "Local")
     );
     pin_value v;
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &v));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &v));
     REQUIRE(((bridge_vector *)v.ptr)->x == 3 && ((bridge_vector *)v.ptr)->y == 4);
     REQUIRE(bridge_edit(source, &registry, NULL, 0));
     REQUIRE(
         !strcmp(bridge_result.source, source) &&
-        !prototype_read_field(bridge_result.value, "Health", "current", &v)
+        !prototype_read_field(&text_reads, bridge_result.value, "Health", "current", &v)
     );
     return true;
 }
@@ -2115,19 +2131,19 @@ TEST_CASE(source_edit_typed_batch_and_null_symbolic_link)
     pin_value value;
     REQUIRE(strstr(bridge_result.source, "/*keep*/"));
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Health", "current", &value) &&
+        !prototype_read_field(&text_reads, bridge_result.value, "Health", "current", &value) &&
         value.i == 7
     );
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Health", "maximum", &value) &&
+        !prototype_read_field(&text_reads, bridge_result.value, "Health", "maximum", &value) &&
         value.i == INT32_MAX
     );
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Sample", "amount", &value) &&
+        !prototype_read_field(&text_reads, bridge_result.value, "Sample", "amount", &value) &&
         value.i64 == INT64_MAX
     );
     REQUIRE(
-        !prototype_read_field(bridge_result.value, "Sample", "mode", &value) &&
+        !prototype_read_field(&text_reads, bridge_result.value, "Sample", "mode", &value) &&
         value.e == 1
     );
     child_text = strdup(
@@ -2382,7 +2398,7 @@ static const char *typed_enemy =
 static bool typed_health(const prototype *value, int expected)
 {
     pin_value field;
-    return !prototype_read_field(value, "Health", "current", &field) &&
+    return !prototype_read_field(&text_reads, value, "Health", "current", &field) &&
            field.i == expected;
 }
 TEST_CASE(typed_prototype_helpers_and_parameter_recomputation)
@@ -2391,8 +2407,8 @@ TEST_CASE(typed_prototype_helpers_and_parameter_recomputation)
     REQUIRE(bridge_edit(typed_enemy, &registry, NULL, 0));
     REQUIRE(typed_health(bridge_result.value, 120));
     pin_value label;
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "label", &label));
-    REQUIRE(label.str && !strcmp(label.str, "Guard"));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "label", &label));
+    REQUIRE(pin_text(label).length == 5 && !memcmp(pin_text(label).bytes, "Guard", 5));
     authoring_prototype_field_source info;
     REQUIRE(authoring_prototype_source_field(typed_enemy, "Health", "current", &info));
     REQUIRE(info.computed && !info.overridden);
@@ -2488,6 +2504,7 @@ TEST_CASE(typed_prototype_override_reset_preserves_formula)
 TEST_CASE(typed_prototype_parameter_type_refusal_is_atomic)
 {
     prototype_registry registry = bridge_registry();
+    const pin_string wrong_level = { "four", 4 };
     authoring_prototype_edit ops[] = {
         { .kind = AUTHORING_PROTOTYPE_SET_FIELD,
           .component = "Health",
@@ -2495,7 +2512,7 @@ TEST_CASE(typed_prototype_parameter_type_refusal_is_atomic)
           .value = { .type = PIN_I32, .i = 300 } },
         { .kind = AUTHORING_PROTOTYPE_SET_PARAMETER,
           .field = "level",
-          .value = { .type = PIN_STR, .str = "four" } },
+          .value = { .type = PIN_STR, .text = &wrong_level } },
     };
     REQUIRE(
         !authoring_prototype_source_edit(typed_enemy, &registry, &bridge_catalog, ops, 2, &bridge_result, error, sizeof error)
@@ -2732,7 +2749,7 @@ TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings)
                                     .value = { .type = PIN_F32, .f = 9 } };
     REQUIRE(bridge_edit(source, &registry, &op, 1));
     pin_value value;
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &value));
     REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
     REQUIRE(strstr(bridge_result.source, "data.Get(parameters, \"axis\")"));
     child_text = strdup(bridge_result.source);
@@ -2755,11 +2772,11 @@ TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings)
     REQUIRE(!reset_ok && empty);
     REQUIRE(strstr(error, "entire native record position"));
     REQUIRE(!strcmp(child_text, bridge_result.source));
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &value));
     REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
     reset.field = "position";
     REQUIRE(bridge_edit(child_text, &registry, &reset, 1));
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &value));
     REQUIRE(((bridge_vector *)value.ptr)->x == 3 && ((bridge_vector *)value.ptr)->y == 2);
     REQUIRE(strstr(bridge_result.source, "data.Get(parameters, \"axis\")"));
     base_text = strdup(
@@ -2807,7 +2824,7 @@ TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings)
         &op,
         1
     ));
-    REQUIRE(!prototype_read_field(bridge_result.value, "Sample", "position", &value));
+    REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &value));
     REQUIRE(((bridge_vector *)value.ptr)->x == 9 && ((bridge_vector *)value.ptr)->y == 2);
     REQUIRE(!bridge_result.materialized && strstr(bridge_result.source, "data.Value.Text(\"Enemy\")"));
     return true;

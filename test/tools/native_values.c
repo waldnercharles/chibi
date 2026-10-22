@@ -3,6 +3,7 @@
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/value_format.h"
 
 #include <limits.h>
@@ -103,9 +104,15 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
                              { .type = PIN_I32, .i = INT32_MAX - 1 } };
     REQUIRE(call("Integer Greater", integers, 2, &result) == NULL);
     REQUIRE(result.b);
-    pin_value strings[] = { { .type = PIN_STR, .str = own("equal") },
-                            { .type = PIN_STR, .str = own("equal") } };
-    REQUIRE(strings[0].str != strings[1].str);
+    pin_value strings[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = own("equal"),
+                                       .length = sizeof("equal") - 1 } },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = own("equal"),
+                                       .length = sizeof("equal") - 1 } }
+    };
+    REQUIRE(pin_text(strings[0]).bytes != pin_text(strings[1]).bytes);
     REQUIRE(native_compare_Equal(strings, 2, &output).b);
     pin_value enums[] = { { .type = PIN_ENUM, .type_name = "test.mode", .e = 7 },
                           { .type = PIN_ENUM, .type_name = "test.mode", .e = 7 } };
@@ -131,11 +138,16 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
     number.d = 512;
     REQUIRE(call("To Byte", &number, 1, &result) == NULL);
     REQUIRE(result.u8 == UINT8_MAX);
-    pin_value text = { .type = PIN_STR, .str = own("retained") };
+    pin_value text = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = own("retained"),
+                                                    .length = sizeof("retained") - 1 } };
     pin_value string, name;
     REQUIRE(call("To String", &text, 1, &string) == NULL);
     REQUIRE(call("To Name", &text, 1, &name) == NULL);
-    REQUIRE(string.str != text.str && name.str != text.str);
+    REQUIRE(
+        pin_text(string).bytes != pin_text(text).bytes &&
+        pin_text(name).bytes != pin_text(text).bytes
+    );
     const char *long_text = "a name longer than the sixty-four byte display "
                             "buffer keeps every byte";
     pin_value long_name = { .type = PIN_NAME, .str = own(long_text) }, long_string;
@@ -151,9 +163,9 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
     arena_free(&input);
     native_capabilities_free(capabilities);
     capabilities = NULL;
-    REQUIRE(string.type == PIN_STR && !strcmp(string.str, "retained"));
-    REQUIRE(name.type == PIN_NAME && !strcmp(name.str, "retained"));
-    REQUIRE(long_string.type == PIN_STR && !strcmp(long_string.str, long_text));
+    REQUIRE(string.type == PIN_STR && !strcmp(pin_text(string).bytes, "retained"));
+    REQUIRE(name.type == PIN_NAME && !strcmp(pin_text(name).bytes, "retained"));
+    REQUIRE(long_string.type == PIN_STR && !strcmp(pin_text(long_string).bytes, long_text));
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     const float *coordinates = vector.ptr;
     REQUIRE(coordinates[0] == 4.5f && coordinates[1] == 4.5f);

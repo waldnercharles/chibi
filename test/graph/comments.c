@@ -113,10 +113,10 @@ TEST_CASE(comment_frames_keep_title_color_and_bounds)
     graph_comment_box *box = graph_add_comment_box(&g, "Movement", 10, 20, 300, 200);
     REQUIRE(box && box->color == 0);
     char *plain = graph_save(&g);
-    REQUIRE(plain && !strstr(plain, "color "));
+    REQUIRE(plain && !strstr(plain, "data.Field.Named(\"color\","));
     REQUIRE(graph_set_comment_box(&g, box, "Dash", 0x4a8fe0ffu) == 0);
     char *colored = graph_save(&g);
-    REQUIRE(colored && strstr(colored, "0x4a8fe0ff"));
+    REQUIRE(colored && strstr(colored, "data.Value.UInt(1250943231)"));
     graph *loaded = graph_load(colored);
     REQUIRE(loaded && acount(loaded->comment_boxes) == 1);
     const graph_comment_box *copy = &loaded->comment_boxes[0];

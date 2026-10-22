@@ -16,6 +16,7 @@
 #include "test/asset_fixture.h"
 #include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <string.h>
@@ -212,7 +213,14 @@ static healer healer_new()
     h.split = graph_add_node(g, &NODE_SetComponent);
     set_default(g, h.split, "Component", (pin_value){ .type = PIN_NAME, .str = "Ui" });
     assert(component_node_show_field(g, h.split, "document", true) == 0);
-    set_default(g, h.split, "document", (pin_value){ .type = PIN_STR, .str = "Hud" });
+    set_default(
+        g,
+        h.split,
+        "document",
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "Hud",
+                                                  .length = sizeof("Hud") - 1 } }
+    );
     h.shader = add_named_node(g, "SetEntity_Shader");
     Shader glow = { .material = "Glow", .shape = "", .parameters = "" };
     set_default(
@@ -383,7 +391,13 @@ TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
     );
 
     const char *behaviors[] = { "Flight" };
-    av_value *overrides = test_read_asset_value("Shader material=\"Chrome\"\n");
+    av_value *overrides = test_read_asset_value(
+        "package asset\n"
+        "import data \"game:assets\"\n"
+        "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+        "data.Field.Named(\"Shader\", data.Object(["
+        "data.Field.Named(\"material\", data.Value.Text(\"Chrome\"))]))])) }\n"
+    );
     reference_object object = {
         .name = "player",
         .prototype = "Ship",

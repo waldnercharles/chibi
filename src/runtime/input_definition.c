@@ -14,7 +14,9 @@
       .default_owner = OWNER,                                                                  \
       .has_default = true,                                                                     \
       .default_value = VALUE },
-static const native_parameter_definition INPUTS[] = { INPUT_ACTION_INPUTS(PORT) };
+static const native_parameter_definition INPUTS[] = {
+    INPUT_ACTION_INPUTS(NATIVE_CSTRING_PORT)
+};
 #define ARRAYS(KEY, NAME, OUTPUTS)                                             \
     static const native_parameter_definition KEY##_outputs[] = { OUTPUTS(PORT) };
 INPUT_OPERATIONS(ARRAYS)

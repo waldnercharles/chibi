@@ -6,6 +6,7 @@
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
+#include "execution/function_builder.h"
 #include "execution/inspection.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
@@ -30,6 +31,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -360,7 +362,10 @@ static const char *managed_text(arena *storage, const pin_value *, int count, pi
     memset(text, 'x', (size_t)size);
     text[0] = (char)('A' + index % 26);
     text[size] = 0;
-    const pin_value value = { .type = PIN_STR, .str = text };
+    const pin_value value = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) }
+    };
     return pin_value_snapshot_to_arena(storage, out, &value)
              ? "managed text snapshot failed"
              : NULL;
@@ -380,7 +385,10 @@ static const char *capture_text(arena *storage, const pin_value *, int count, pi
     text[1] = (char)('a' + capture_text_calls % 26);
     text[CAPTURE_TEXT_BYTES] = 0;
     capture_text_calls++;
-    const pin_value value = { .type = PIN_STR, .str = text };
+    const pin_value value = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) }
+    };
     return pin_value_snapshot_to_arena(storage, out, &value)
              ? "capture text snapshot failed"
              : NULL;
@@ -401,13 +409,13 @@ static const node_host_call clock_call = { .context = instance_clock };
 static bool jump_held, jump_pressed;
 static const char *action_held(arena *, const pin_value *in, int count, pin_value *out)
 {
-    assert(count == 1 && !strcmp(in[0].str, "Jump"));
+    assert(count == 1 && !strcmp(pin_text(in[0]).bytes, "Jump"));
     *out = (pin_value){ .type = PIN_BOOL, .b = jump_held };
     return NULL;
 }
 static const char *action_pressed(arena *, const pin_value *in, int count, pin_value *out)
 {
-    assert(count == 1 && !strcmp(in[0].str, "Jump"));
+    assert(count == 1 && !strcmp(pin_text(in[0]).bytes, "Jump"));
     *out = (pin_value){ .type = PIN_BOOL, .b = jump_pressed };
     return NULL;
 }
@@ -417,7 +425,7 @@ static ecs_entity bound_level;
 static bool binding_available;
 static const char *scene_binding(arena *, const pin_value *in, int count, pin_value *out)
 {
-    assert(count == 1 && !strcmp(in[0].str, "Level"));
+    assert(count == 1 && !strcmp(pin_text(in[0]).bytes, "Level"));
     if (!binding_available) {
         return "Get Global Variable references an unknown value";
     }
@@ -1861,7 +1869,8 @@ TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_ow
 static bool string_state(execution_instance *instance, const char *name, const char *expected)
 {
     const pin_value *value = execution_instance_state(instance, state_id(name));
-    return value && value->type == PIN_STR && !strcmp(value->str, expected);
+    return value && value->type == PIN_STR &&
+           !strcmp(pin_text(*value).bytes, expected);
 }
 TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
 {
@@ -1887,7 +1896,10 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
                 execution_instance_set_state(
                     instance,
                     state_id("text"),
-                    (pin_value){ .type = PIN_STR, .str = initial }
+                    (pin_value){ .type = PIN_STR,
+                                 .text = &(const pin_string){
+                                     .bytes = initial,
+                                     .length = (uint32_t)strlen(initial) } }
                 ) == FLOW_OK
             );
             initial[0] = 'X';
@@ -1901,7 +1913,10 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
                 execution_instance_set_state(
                     instance,
                     state_id("text"),
-                    (pin_value){ .type = PIN_STR, .str = replacement }
+                    (pin_value){ .type = PIN_STR,
+                                 .text = &(const pin_string){
+                                     .bytes = replacement,
+                                     .length = (uint32_t)strlen(replacement) } }
                 ) == FLOW_OK
             );
             replacement[0] = 'X';
@@ -1917,7 +1932,9 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
                 execution_instance_set_state(
                     instance,
                     state_id("text"),
-                    (pin_value){ .type = PIN_STR, .str = "after" }
+                    (pin_value){ .type = PIN_STR,
+                                 .text = &(const pin_string){ .bytes = "after",
+                                                              .length = sizeof("after") - 1 } }
                 ) == FLOW_OK
             );
             REQUIRE(string_state(instance, "observed", "between"));
@@ -2010,8 +2027,10 @@ static bool memory_text_state(execution_instance *instance, const char *name, in
 {
     const pin_value *value = execution_instance_state(instance, state_id(name));
     int size = MEMORY_TEXT_MIN + produced * MEMORY_TEXT_STEP;
-    return value && value->type == PIN_STR && value->str[0] == 'A' + produced % 26 &&
-           strlen(value->str) == (size_t)size && value->str[size - 1] == 'x';
+    return value && value->type == PIN_STR &&
+           pin_text(*value).bytes[0] == 'A' + produced % 26 &&
+           strlen(pin_text(*value).bytes) == (size_t)size &&
+           pin_text(*value).bytes[size - 1] == 'x';
 }
 /* This audit deliberately inspects private box storage: public payload metrics
  * cover activation arenas, not the detached box's ordinary arena. It measures
@@ -2033,12 +2052,13 @@ static execution_box *capture_box(execution_instance *instance, int *holders)
 static bool capture_text_is(const pin_value *value, int produced)
 {
     if (!value || value->type != PIN_STR || value->container != PIN_CONTAINER_SINGLE ||
-        strlen(value->str) != CAPTURE_TEXT_BYTES ||
-        value->str[0] != 'A' + produced / 26 || value->str[1] != 'a' + produced % 26) {
+        strlen(pin_text(*value).bytes) != CAPTURE_TEXT_BYTES ||
+        pin_text(*value).bytes[0] != 'A' + produced / 26 ||
+        pin_text(*value).bytes[1] != 'a' + produced % 26) {
         return false;
     }
     for (int i = 2; i < CAPTURE_TEXT_BYTES; i++) {
-        if (value->str[i] != 'x') {
+        if (pin_text(*value).bytes[i] != 'x') {
             return false;
         }
     }
@@ -2322,9 +2342,15 @@ TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
         REQUIRE(execution_program_paused(program));
         REQUIRE(capture_text_is(box->value, 0));
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
-        REQUIRE(!strcmp(box->value->str, "small") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(
+            !strcmp(pin_text(*(box->value)).bytes, "small") &&
+            arena_storage_bytes(&box->storage) < 512
+        );
         REQUIRE(execution_program_update(program, 4, 0, 10000) == FLOW_OK);
-        REQUIRE(!strcmp(box->value->str, "") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(
+            !strcmp(pin_text(*(box->value)).bytes, "") &&
+            arena_storage_bytes(&box->storage) < 512
+        );
         REQUIRE(number_state(instance, "done", 1));
         REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
         REQUIRE(execution_program_update(program, 5, 0, 10000) == FLOW_OK);
@@ -2749,7 +2775,9 @@ TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
         owned_plan->states,
         ((execution_module_state){
             .id = 456,
-            .initial = { .type = PIN_STR, .str = initial },
+            .initial = { .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = initial,
+                                                      .length = (uint32_t)strlen(initial) } },
         })
     );
     execution_module_plan *before = owned_plan;
@@ -2767,7 +2795,7 @@ TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
     execution_instance *instance = execution_program_attach(program, 1);
     REQUIRE(instance);
     const pin_value *value = execution_instance_state(instance, 456);
-    REQUIRE(value && value->type == PIN_STR && !strcmp(value->str, "producer text"));
+    REQUIRE(value && value->type == PIN_STR && !strcmp(pin_text(*value).bytes, "producer text"));
     return true;
 }
 static bool int_state(execution_instance *instance, const char *name, pin_type type, int64_t expected)
@@ -3260,7 +3288,10 @@ TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage)
                         *entity = execution_instance_state(instance, ids[2]),
                         *big = execution_instance_state(instance, ids[3]);
         REQUIRE(byte && byte->type == PIN_U8 && byte->u8 == UINT8_MAX);
-        REQUIRE(name && name->type == PIN_NAME && name->str && !strcmp(name->str, "token"));
+        REQUIRE(
+            name && name->type == PIN_NAME && pin_text(*name).bytes &&
+            !strcmp(pin_text(*name).bytes, "token")
+        );
         REQUIRE(
             entity && entity->type == PIN_HANDLE && entity->u64 == UINT64_MAX &&
             entity->type_name && !strcmp(entity->type_name, "ecs.entity")
@@ -3679,8 +3710,9 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         int saved = -1;
         for (int n = 0; n < execution_inspector_watch_count(debugger); n++) {
             const execution_debug_watch *w = execution_inspector_watch_at(debugger, n);
-            if (w->availability == EXECUTION_WATCH_AVAILABLE && w->value.type == PIN_STR &&
-                w->value.str && !strcmp(w->value.str, "snapshot")) {
+            if (w->availability == EXECUTION_WATCH_AVAILABLE &&
+                w->value.type == PIN_STR && pin_text(w->value).bytes &&
+                !strcmp(pin_text(w->value).bytes, "snapshot")) {
                 saved = n;
             }
         }
@@ -3722,7 +3754,10 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         script_syntax_free(syntax);
         syntax = NULL;
         REQUIRE(execution_inspector_cursor(debugger).retired);
-        REQUIRE(!strcmp(execution_inspector_watch_at(debugger, saved)->value.str, "snapshot"));
+        REQUIRE(!strcmp(
+            pin_text(execution_inspector_watch_at(debugger, saved)->value).bytes,
+            "snapshot"
+        ));
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_ERR_STATE);
         REQUIRE(!execution_inspector_pause(debugger, owner));
     }
@@ -4209,7 +4244,11 @@ TEST_CASE(program_native_nested_collections_retain_task_handles)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         pin_value pulse = *execution_instance_state(instance, state_id("pulse"));
         REQUIRE(pulse.type == PIN_TASK && pulse.u64);
-        pin_map_entry entry = { { .type = PIN_STR, .str = "job" }, pulse };
+        pin_map_entry entry = {
+            { .type = PIN_STR,
+              .text = &(const pin_string){ .bytes = "job", .length = sizeof("job") - 1 } },
+            pulse
+        };
         arena producer = { 0 };
         pin_map *map = pin_map_create(&producer, (pin_value){ .type = PIN_STR }, pulse, &entry, 1);
         REQUIRE(map);
@@ -4370,7 +4409,7 @@ TEST_CASE(program_task_result_snapshot_outlives_the_last_handle)
         REQUIRE(execution_program_memory_usage(program).task_result_bytes == 0);
         REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
         const pin_value *text = execution_instance_state(instance, state_id("text"));
-        REQUIRE(text && text->str && !strcmp(text->str, "retained"));
+        REQUIRE(text && pin_text(*text).bytes && !strcmp(pin_text(*text).bytes, "retained"));
     }
     return true;
 }
@@ -5840,7 +5879,7 @@ TEST_CASE(program_task_keeps_state_and_component_references)
         }
         REQUIRE(number_state(instance, "n", 2) && execution_instance_pending(instance) == 0);
         pin_value x;
-        REQUIRE(ecs_component_read_field(world, owner, 501, 0, &x) == ECS_OK && x.d == 7);
+        REQUIRE(ecs_component_read_field(NULL, world, owner, 501, 0, &x) == ECS_OK && x.d == 7);
     }
     return true;
 }
@@ -6659,9 +6698,152 @@ TEST_CASE(program_reduction_query_rows_count_filtered_candidates)
     }
     return true;
 }
+TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
+{
+    /* One entity and descriptor field; two tiny functions and two program
+     * steps capped at 1000 instructions. The changed byte follows a NUL. */
+    cleanup();
+    world = ecs_world_new();
+    static const type_field field = { .name = "text",
+                                      .type = PIN_STR,
+                                      .size = sizeof(const pin_string *),
+                                      .type_name = "const char *",
+                                      .text_descriptor = true };
+    static const type_desc type = { .name = "test.program.text",
+                                    .size = sizeof(const pin_string *),
+                                    .fields = &field,
+                                    .field_count = 1 };
+    static const ecs_component_desc declared = { .id = 816,
+                                                 .key = "test.program.text",
+                                                 .name = "Text",
+                                                 .element_size = sizeof(const pin_string *),
+                                                 .type = &type };
+    REQUIRE(ecs_world_register_component(world, &declared, NULL) == ECS_OK);
+    const ecs_component_desc *component = ecs_world_component(world, declared.id);
+    REQUIRE(component && component->layout_hash);
+    ecs_entity entity = ecs_world_create_entity(world);
+    const pin_string initial = { "A\0B", 3 };
+    const pin_string *initial_field = &initial;
+    REQUIRE(ecs_world_record_add(world, entity, component->id, &initial_field, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    pin_value text = { .type = PIN_STR, .type_name = "const char *" };
+    pin_value receiver = { .type = PIN_HANDLE,
+                           .type_name = "ecs.entity",
+                           .u64 = ecs_entity_to_u64(entity) };
+    owned_plan = execution_module_plan_new();
+    owned_plan->id = 810;
+    owned_plan->valid = true;
+    behavior_function_builder *builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &text, 1, NULL, 0, &text, 1);
+    int input = behavior_function_builder_slot(builder, PIN_STR);
+    behavior_function_builder_emit(
+        builder,
+        (
+            behavior_function_instruction
+        ){ .op = BF_ARGUMENT, .type = PIN_STR, .output = input, .value = text }
+    );
+    int bank = behavior_function_builder_values(builder, &text, 1);
+    int address = behavior_function_builder_slot(builder, BF_POINTER_TYPE);
+    REQUIRE(behavior_function_builder_kind(builder, BEHAVIOR_BANK_SLOT, address, BEHAVIOR_ADDRESS));
+    behavior_function_builder_emit(
+        builder,
+        (
+            behavior_function_instruction
+        ){ .op = BF_HOST_SLOT, .type = BF_POINTER_TYPE, .output = address, .left = bank }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_WRITE,
+                                         .type = PIN_STR,
+                                         .left = input,
+                                         .right = address,
+                                         .offset = offsetof(pin_value, d) }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_STORE_VALUE, .left = bank, .target = 0 }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    REQUIRE(body);
+    apush(owned_plan->functions, ((execution_module_function){ .id = 814, .body = body }));
+    owned_plan->function_count = 1;
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &receiver, 1, &text, 1);
+    int target = behavior_function_builder_slot(builder, PIN_HANDLE);
+    behavior_function_builder_emit(
+        builder,
+        (
+            behavior_function_instruction
+        ){ .op = BF_CONSTANT, .type = PIN_HANDLE, .output = target, .value = receiver }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_HANDLE, .left = target }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    behavior_function *subscription = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    owned_plan->functions[0].subscription = subscription;
+    REQUIRE(subscription);
+    apush(owned_plan->states, ((execution_module_state){ .id = 811, .initial = text }));
+    owned_plan->state_count = 1;
+    execution_module_event_field *event_field = malloc(sizeof *event_field);
+    REQUIRE(event_field);
+    *event_field = (execution_module_event_field){ .name = "changed", .initial = text };
+    apush(
+        owned_plan->events,
+        ((
+            execution_module_event_declaration
+        ){ .id = 812, .abi = 813, .name = "Changed", .fields = event_field, .field_count = 1 })
+    );
+    owned_plan->event_count = 1;
+    owned_plan->functions[0] = (execution_module_function){
+        .id = 814,
+        .kind = EXECUTION_FUNCTION_HANDLER,
+        .event = 812,
+        .event_abi = 813,
+        .body = body,
+        .subscription = subscription,
+        .observer = { .component = component->id,
+                      .layout = component->layout_hash,
+                      .field = 815,
+                      .type = text }
+    };
+    module = execution_module_finish(&owned_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "ECS string observer: %s\n", error);
+    }
+    REQUIRE(module);
+    program = execution_program_new(module, world, NULL);
+    REQUIRE(program);
+    execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(entity));
+    REQUIRE(instance);
+    REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+    const pin_value *seen = execution_instance_state(instance, 811);
+    REQUIRE(seen && !pin_text(*seen).length);
+    const pin_string changed = { "A\0C", 3 };
+    REQUIRE(
+        ecs_component_write_field(
+            world,
+            entity,
+            component->id,
+            0,
+            (pin_value){ .type = PIN_STR, .text = &changed }
+        ) == ECS_OK
+    );
+    REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+    seen = execution_instance_state(instance, 811);
+    REQUIRE(seen && pin_text(*seen).length == 3 && !memcmp(pin_text(*seen).bytes, "A\0C", 3));
+    return true;
+}
+
 void test_language_query_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
@@ -6681,6 +6863,7 @@ void test_language_query_program()
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
     RUN_TEST_CASE(program_pattern_bindings_share_and_spellings);

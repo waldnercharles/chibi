@@ -39,6 +39,12 @@ typedef enum
 } pin_container;
 
 typedef struct pin_record pin_record;
+typedef struct arena arena;
+typedef struct pin_string
+{
+    const char *bytes;
+    uint32_t length;
+} pin_string;
 
 typedef struct
 {
@@ -57,6 +63,7 @@ typedef struct
         float f;
         double d;
         const char *str;
+        const pin_string *text;
         void *ptr;
         int32_t e;
     };

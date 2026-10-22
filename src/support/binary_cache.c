@@ -1,3 +1,4 @@
+#ifndef _WIN32
 #ifdef __APPLE__
 #ifndef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE
@@ -9,8 +10,35 @@
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
+#endif
 #include "support/binary_cache.h"
 
+#ifdef _WIN32
+unsigned char *binary_cache_read(const char *, const char *, size_t, size_t *length)
+{
+    *length = 0;
+    return NULL;
+}
+bool binary_cache_remove(const char *, const char *)
+{
+    return false;
+}
+int binary_cache_lock(const char *)
+{
+    return -1;
+}
+void binary_cache_unlock(int) {}
+bool binary_cache_list(const char *, binary_cache_entry **entries, int *count)
+{
+    *entries = NULL;
+    *count = 0;
+    return false;
+}
+bool binary_cache_write(const char *, const char *, const void *, size_t, size_t)
+{
+    return false;
+}
+#else
 #include "support/sha256.h"
 #include "support/xalloc.h"
 
@@ -169,12 +197,6 @@ static bool directories(const char *directory)
     bool ok = true;
     for (char *p = path + 1;; p++) {
         bool separator = *p == '/';
-#ifdef _WIN32
-        separator |= *p == '\\';
-        if (*p && p == path + 2 && path[1] == ':') {
-            continue;
-        }
-#endif
         if (*p && !separator) {
             continue;
         }
@@ -354,3 +376,5 @@ bool binary_cache_write(const char *directory, const char *key, const void *byte
     free(temporary);
     return ok;
 }
+
+#endif

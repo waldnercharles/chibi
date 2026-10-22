@@ -1,12 +1,15 @@
 #include "assets/prototype.h"
 
 #include "ecs/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_document.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -63,6 +66,107 @@ static char *own_string(prototype *document, const char *text)
     char *copy = xstrdup(text ? text : "");
     apush(document->strings, copy);
     return copy;
+}
+
+/* Temporary reads borrow native text through a caller-owned descriptor. */
+static void read_field(const void *base, const type_field *field, pin_value *out, pin_string *text)
+{
+    if (field->type == PIN_STR && field->text_descriptor) {
+        const pin_string *stored;
+        memcpy(&stored, (const char *)base + field->offset, sizeof stored);
+        *out = (pin_value){ .type = PIN_STR, .type_name = field->type_name, .text = stored };
+        return;
+    }
+    if (field->type == PIN_STR) {
+        const char *bytes;
+        memcpy(&bytes, (const char *)base + field->offset, sizeof bytes);
+        size_t length = bytes ? strlen(bytes) : 0;
+        assert(length <= UINT32_MAX);
+        *text = (pin_string){ bytes ? bytes : "", (uint32_t)length };
+        *out = (pin_value){ .type = PIN_STR, .type_name = field->type_name, .text = text };
+        return;
+    }
+    const char *error = pin_read_field(NULL, base, field, out);
+    assert(!error);
+    (void)error;
+}
+
+static int own_field(prototype *document, const type_field *field, pin_value *value)
+{
+    if (field->type == PIN_NAME) {
+        value->str = own_string(document, value->str);
+    }
+    if (field->type == PIN_STR) {
+        pin_string text = pin_text(*value);
+        if (!field->text_descriptor) {
+            if (memchr(text.bytes, 0, text.length)) {
+                return -1;
+            }
+        }
+        pin_value copy = *value;
+        if (pin_value_text(NULL, &copy, text.bytes, text.length)) {
+            return -1;
+        }
+        apush(document->strings, (char *)copy.text);
+        value->text = copy.text;
+    }
+    return 0;
+}
+
+static const type_desc *find_type(const prototype_registry *, const char *);
+
+static const type_desc *resolve_prototype_type(void *registry, const char *name)
+{
+    return find_type(registry, name);
+}
+static type_resolver prototype_types(const prototype *document)
+{
+    return (type_resolver){ .find = resolve_prototype_type,
+                            .user = (void *)document->registry };
+}
+
+static int copy_default_fields(prototype *, void *, const void *, const type_desc *, int);
+
+static const char *write_field(prototype *document, void *base, const type_field *field, pin_value value)
+{
+    if (field->type == PIN_STRUCT && value.ptr) {
+        const type_desc *type = find_type(document->registry, field->type_name);
+        if (!type || type->size != field->size) {
+            return "Field record layout is unavailable";
+        }
+        if (!value.type_name) {
+            value.type_name = field->type_name;
+        }
+        arena temporary = { 0 };
+        void *converted = xcalloc(1, field->size);
+        const char *error = pin_write_struct_resolved(&temporary, converted, type, value, prototype_types(document));
+        void *owned = xcalloc(1, field->size);
+        if (!error && copy_default_fields(document, owned, converted, type, 0)) {
+            error = "Field record copy failed";
+        }
+        if (!error) {
+            memcpy((char *)base + field->offset, owned, field->size);
+        }
+        arena_free(&temporary);
+        free(converted);
+        free(owned);
+        return error;
+    }
+    if (field->type != PIN_STR && field->type != PIN_NAME) {
+        return pin_write_field(NULL, base, field, value);
+    }
+    if (own_field(document, field, &value)) {
+        return "String contains embedded NUL";
+    }
+    void *destination = (char *)base + field->offset;
+    if (field->type == PIN_STR && field->text_descriptor) {
+        memcpy(destination, &value.text, sizeof value.text);
+    } else {
+        const char *bytes = field->type == PIN_NAME ? value.str
+                                                    : pin_text(value).bytes;
+        memcpy(destination, &bytes, sizeof bytes);
+    }
+    return NULL;
 }
 
 void prototype_owned_strings_free(char **strings)
@@ -232,10 +336,11 @@ static int parse_field(
 {
     if (field->range_contract && av_is_num(json) &&
         (field->type == PIN_F32 || field->type == PIN_F64)) {
-        pin_write_field(base, field, pin_field_number(field, av_get_num(json)));
+        write_field(document, base, field, pin_field_number(field, av_get_num(json)));
         return 0;
     }
     pin_value value = { .type = field->type, .type_name = field->type_name };
+    pin_string text = { 0 };
     int result = 0;
     int64_t signed_value = 0;
     uint64_t unsigned_value = 0;
@@ -307,10 +412,18 @@ static int parse_field(
             value.d = result ? 0.0 : av_get_num(json);
             break;
         case PIN_NAME:
-        case PIN_STR:
-            result = !av_is_str(json);
-            value.str = result ? NULL : own_string(document, av_get_str(json));
+            result = !av_is_str(json) ||
+                     memchr(av_get_str(json), 0, av_get_len(json));
+            value.str = result ? NULL : av_get_str(json);
             break;
+        case PIN_STR: {
+            result = !av_is_str(json);
+            if (!result) {
+                text = (pin_string){ av_get_str(json), (uint32_t)av_get_len(json) };
+                value.text = &text;
+            }
+            break;
+        }
         case PIN_STRUCT: {
             const type_desc *nested = find_type(registry, field->type_name);
             void *nested_value = xcalloc(1, field->size);
@@ -318,7 +431,7 @@ static int parse_field(
                      parse_fields(document, registry, nested_value, nested, json, NULL, error, error_size);
             if (!result) {
                 value.ptr = nested_value;
-                pin_write_field(base, field, value);
+                memcpy((char *)base + field->offset, nested_value, field->size);
             }
             free(nested_value);
             return result;
@@ -353,7 +466,11 @@ static int parse_field(
         set_error(error, error_size, "field %s has the wrong value type", field->name);
         return -1;
     }
-    pin_write_field(base, field, value);
+    const char *write_error = write_field(document, base, field, value);
+    if (write_error) {
+        set_error(error, error_size, "field %s: %s", field->name, write_error);
+        return -1;
+    }
     return 0;
 }
 
@@ -1079,7 +1196,8 @@ static void write_struct_fields(
 static bool zero_field(const void *base, const type_field *field)
 {
     pin_value value;
-    pin_read_field(base, field, &value);
+    pin_string text;
+    read_field(base, field, &value, &text);
     switch (field->type) {
         case PIN_BOOL: return !value.b;
         case PIN_I8: return !value.i8;
@@ -1093,8 +1211,9 @@ static bool zero_field(const void *base, const type_field *field)
         case PIN_U64: return !value.u64;
         case PIN_F32: return value.f == 0.0f && !signbit(value.f);
         case PIN_F64: return value.d == 0.0 && !signbit(value.d);
-        case PIN_NAME:
-        case PIN_STR: return !value.str;
+        case PIN_NAME: return !value.str;
+        case PIN_STR:
+            return !*(const void *const *)((const char *)base + field->offset);
         case PIN_STRUCT: return !value.ptr;
         case PIN_HANDLE:
         case PIN_TASK:
@@ -1107,7 +1226,8 @@ static bool zero_field(const void *base, const type_field *field)
 static av_value *write_value(av_doc *doc, const prototype *document, const void *base, const type_field *field)
 {
     pin_value value;
-    pin_read_field(base, field, &value);
+    pin_string text;
+    read_field(base, field, &value, &text);
     switch (field->type) {
         case PIN_BOOL: return av_bool(doc, value.b);
         case PIN_I8: return av_sint(doc, value.i8);
@@ -1125,8 +1245,11 @@ static av_value *write_value(av_doc *doc, const prototype *document, const void 
         case PIN_U64: return av_uint(doc, value.u64);
         case PIN_F32: return av_float(doc, value.f);
         case PIN_F64: return av_real(doc, value.d);
-        case PIN_NAME:
-        case PIN_STR: return av_str(doc, value.str ? value.str : "");
+        case PIN_NAME: return av_str(doc, value.str ? value.str : "");
+        case PIN_STR: {
+            pin_string text = pin_text(value);
+            return av_strn(doc, text.bytes, text.length);
+        }
         case PIN_STRUCT: {
             av_value *object = av_obj(doc);
             const type_desc *nested = find_type(document->registry, field->type_name);
@@ -1180,7 +1303,8 @@ static void write_struct_fields(
             continue;
         }
         pin_value value;
-        pin_read_field(base, field, &value);
+        pin_string text;
+        read_field(base, field, &value, &text);
         av_value *json = NULL;
         if (field->type == PIN_STRUCT && value.ptr) {
             json = av_obj(doc);
@@ -1401,8 +1525,9 @@ static int field_equal(const prototype *document, const type_field *field, const
     }
     pin_value left_value = { 0 };
     pin_value right_value = { 0 };
-    pin_read_field(left, field, &left_value);
-    pin_read_field(right, field, &right_value);
+    pin_string left_text, right_text;
+    read_field(left, field, &left_value, &left_text);
+    read_field(right, field, &right_value, &right_text);
     return pin_value_equal(&left_value, &right_value);
 }
 
@@ -1755,7 +1880,14 @@ static int write_links(
         pin_value value = { .type = PIN_HANDLE,
                             .type_name = field->type_name,
                             .u64 = ecs_entity_to_u64(spawned[child]) };
-        if (ecs_component_write_field(world, at, link->component->id, link->field, value)) {
+        if (ecs_component_write_field_resolved(
+                world,
+                at,
+                link->component->id,
+                link->field,
+                value,
+                prototype_types(named)
+            )) {
             set_error(
                 error,
                 error_size,
@@ -1837,8 +1969,16 @@ static int create_tree(
         const prototype_component *component = &document->components[i];
         for (int field = 0; field < component->desc->type->field_count; field++) {
             pin_value value;
-            pin_read_field(component->data, &component->desc->type->fields[field], &value);
-            if (ecs_component_write_field(world, entity, component->desc->id, field, value)) {
+            pin_string text;
+            read_field(component->data, &component->desc->type->fields[field], &value, &text);
+            if (ecs_component_write_field_resolved(
+                    world,
+                    entity,
+                    component->desc->id,
+                    field,
+                    value,
+                    prototype_types(document)
+                )) {
                 set_error(
                     error,
                     error_size,
@@ -2003,6 +2143,7 @@ int prototype_spawn(
 }
 
 int prototype_read_field(
+    arena *storage,
     const prototype *document,
     const char *component_name,
     const char *field_name,
@@ -2019,8 +2160,7 @@ int prototype_read_field(
     if (!field) {
         return -1;
     }
-    pin_read_field(component->data, field, out);
-    return 0;
+    return pin_read_field(storage, component->data, field, out) ? -1 : 0;
 }
 
 int prototype_write_field(prototype *document, const char *component_name, const char *field_name, pin_value value)
@@ -2035,9 +2175,6 @@ int prototype_write_field(prototype *document, const char *component_name, const
     if (!field || field->type != value.type) {
         return -1;
     }
-    if (field->type == PIN_NAME || field->type == PIN_STR) {
-        value.str = own_string(document, value.str);
-    }
     if (field->type == PIN_HANDLE) {
         drop_links(
             document->links,
@@ -2045,8 +2182,7 @@ int prototype_write_field(prototype *document, const char *component_name, const
             (int)(field - component->desc->type->fields)
         );
     }
-    pin_write_field(component->data, field, value);
-    return 0;
+    return write_field(document, component->data, field, value) ? -1 : 0;
 }
 
 int prototype_write_field_value(
@@ -2188,7 +2324,8 @@ static int copy_default_fields(
             return -1;
         }
         pin_value value;
-        pin_read_field(initial, field, &value);
+        pin_string text;
+        read_field(initial, field, &value, &text);
         if (field->type == PIN_STRUCT) {
             const type_desc *nested = find_type(document->registry, field->type_name);
             if (!nested || nested->size != field->size ||
@@ -2197,10 +2334,9 @@ static int copy_default_fields(
             }
             continue;
         }
-        if ((field->type == PIN_STR || field->type == PIN_NAME) && value.str) {
-            value.str = own_string(document, value.str);
+        if (write_field(document, out, field, value)) {
+            return -1;
         }
-        pin_write_field(out, field, value);
     }
     return 0;
 }

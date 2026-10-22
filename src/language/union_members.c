@@ -4,6 +4,7 @@
 #include "language/constant_proof.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 #include "yyjson.h"
 
 #include <assert.h>
@@ -270,14 +271,49 @@ script_union_member_result script_union_members(
                 continue;
             }
             TSNode literal = field(variant, "literal");
-            const char *text = name(&r, ts_node_is_null(literal) ? field(variant, "name") : literal);
+            pin_value literal_value = { .type = PIN_STR };
+            const char *text;
+            if (ts_node_is_null(literal)) {
+                text = name(&r, field(variant, "name"));
+            } else {
+                size_t start = ts_node_start_byte(literal),
+                       length = ts_node_end_byte(literal) - start;
+                yyjson_doc *document = yyjson_read(r.source + start, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
+                yyjson_val *decoded = document ? yyjson_doc_get_root(document) : NULL;
+                const char *error = !yyjson_is_str(decoded)
+                                      ? "Invalid string literal"
+                                      : pin_value_text(
+                                            r.storage,
+                                            &literal_value,
+                                            yyjson_get_str(decoded),
+                                            yyjson_get_len(decoded)
+                                        );
+                if (error) {
+                    diagnostic(&r, literal, "%s", error);
+                }
+                pin_string bytes = pin_text(literal_value);
+                if (bytes.length && memchr(bytes.bytes, 0, bytes.length)) {
+                    char *label = arena_alloc(r.storage, length + 1);
+                    memcpy(label, r.source + start, length);
+                    label[length] = 0;
+                    text = label;
+                } else {
+                    text = bytes.bytes;
+                }
+                yyjson_doc_free(document);
+            }
             script_catalog_variant v = { .name = own(&r, text),
                                          .type = union_type,
                                          .tagged = ts_node_is_null(literal),
                                          .is_literal = !ts_node_is_null(literal) };
             if (v.is_literal) {
-                v.tag = script_catalog_id("union-literal", text);
-                v.literal = (pin_value){ .type = PIN_STR, .str = v.name };
+                pin_string bytes = pin_text(literal_value);
+                v.tag = script_catalog_id_bytes(
+                    "union-literal",
+                    bytes.bytes,
+                    bytes.length
+                );
+                v.literal = literal_value;
                 v.type = (script_type){ .storage = PIN_STR,
                                         .flags = SCRIPT_TYPE_LITERAL,
                                         .parameter = v.tag };

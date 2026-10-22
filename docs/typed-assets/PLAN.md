@@ -19,6 +19,29 @@ source history and save must continue through the shared source path.
 
 ## Ownership and baseline
 
+### Current-main integration in progress — 2026-10-22
+
+The owner approved continuing from the local stabilization checkpoints.
+Engine main is pinned at `444e5b20e60d052e9e280788eec7163ca52f8390` for this
+integration. Studio main remains `97f74c7e`. The merge preserves main's
+length-carrying strings, prepared format 20, prebuilt SDK dependencies and
+compiler self-build workflow while keeping the retired asset format removed.
+
+1. Resolve integration conflicts, recover the descriptor-compatible Compiler
+   with its authored bootstrap contract, and regenerate both target resources.
+2. Adapt the pinned-runtime self-build proof to the generic compiler-artifact
+   protocol and isolate only its manifest-listed compiler/core inputs.
+3. Rebuild the installed SDK and paired Studio, then address cold startup cost
+   through the production compiler/asset path.
+4. Independently map affected document/project/scene/graph contracts to bounded
+   checks. Renew only reviewed complete workloads under the same 60-second
+   ceiling, preserving holds for coverage that remains unavailable.
+5. Review and commit the integrated candidate locally with exact current
+   evidence. Main landing and publication remain separate actions.
+
+Earlier results below belong to their recorded snapshots. They do not validate
+this in-progress candidate or its new ABI/resources.
+
 Engine: `codex/typed-assets-20261021`, updated to `881941162` before this rework.
 Studio: `codex/typed-prototype-editor-20261021`, based on `97f74c7e`.
 Both worktrees are under `.worktrees/typed-assets`. Dirty primary checkouts and

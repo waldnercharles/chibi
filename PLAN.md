@@ -132,6 +132,23 @@ A bounded disk adapter supplies explicit package roots on Linux and macOS. The
 installed `core:strings` collection and pure native arrays support the first
 compiler component; Windows disk loading remains unsupported.
 
+The owner approved the Odin-inspired package library program on 2026-10-20,
+with fidelity decided per package and useful language prerequisites implemented
+before affected ports. [Package library plan](docs/package-library-plan.md)
+owns that program's sequence, semantic decisions and implementation status.
+Read it before expanding `core:` or adding public collections. The toolchain
+milestones below retain their existing order and acceptance conditions.
+
+The current prerequisite is the approved byte-preserving string representation:
+one immutable public `string` carrying bytes and length, with explicit UTF-8
+operations. This branch implements descriptors and ownership throughout the
+compiler, execution backends, persistence, and native adapters. It diagnoses
+provably invalid embedded NUL at C-only uses during compilation and validates
+unknown values before native effects. Existing boolean APIs return failure and
+existing diagnostic APIs fail the invocation. New APIs accepting external data
+must expose recoverable errors. Shared slices follow the descriptor cutover.
+Track language friction and discuss each package's semantics before porting it.
+
 ### Bootstrap terms
 
 - **Stage zero** is the existing C compiler and native build used to create the
@@ -163,8 +180,9 @@ compiler component; Windows disk loading remains unsupported.
   [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
   sources under `src/language/`.
 
-These documents explain existing contracts. This file alone owns milestone
-order, current status, and the next action.
+These documents explain existing contracts. This file owns toolchain milestone
+order, current status, and the next action; the package library program linked
+above has its own ledger.
 
 ## Integration rules
 
@@ -574,6 +592,16 @@ supported host configuration. The Linux x86_64 and Windows x64 runs wait for
 CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
+The 2026-10-22 compiler self-build CI removes native runtime construction from
+the normal proof. It starts from a checksummed runtime binary recorded in
+`tools/compiler/runtime.json` and the checked-in compiler artifact, compiles
+the current compiler sources, and executes the resulting compiler to compile
+them again. No C compiler or CMake is installed or invoked by that workflow;
+native runtime-seed construction is a separate manual recovery operation.
+This proves compiler-artifact self-reproduction on the supported native hosts.
+The final installed build/link and checked-game acceptance above remains a
+separate gate; the native runtime itself is still an explicit prebuilt input.
+
 ### M6. Replace the internal build graph
 
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
@@ -736,9 +764,30 @@ graph writes the build identity (`engine.json`) as
 resources: 213 files, equal to CMake's.
 Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
 `corpus.txt`, every fixture source by absolute path, equal to CMake's.
-Next: moving profile selection from `Build.chibi`'s CMake arguments into the
-graph, which makes `make build` build with it (awaiting the owner's
-decision); then packaging the SDK from the graph's build.
+Slice 24, 2026-10-22: on macOS `make build`, `make build-debug` and `make
+build-release` build with the graph, by profile name, as the owner chose on
+2026-10-22; Linux, the SDK, web and Studio builds keep CMake. `Build.chibi
+third-party` prepares the archives, a missing or older host is rebuilt with
+CMake in `BUILD_DIR-cmake`, and `make graph-reference` configures that tree
+for the build-graph checks. The host protocol rose to 7 for the natives the
+graph uses. Initial local validation reported a 25-minute cold sanitizer build
+and an 18-second no-op. The macOS CI graph build later reached the job's
+45-minute limit before it finished.
+
+The 2026-10-22 repair keeps dependency parsing in Chibi and scans the original
+bytes, folding continuations without retaining whole-file native intermediates.
+Large record and command-database joins use existing `build.join`; temporary
+small path joins remain collectable. Invalid target names now fail before
+profile discovery or writes. No new native capability or protocol change is
+needed. A sanitizer test-driver rebuild passed in 247 s on a partially
+built tree. The native, materials, projects, language and tooling groups passed
+under their separate production 60-second deadlines, as did compile/link
+command parity and the expanded target/parser regression. Current clean-build
+and focused validation evidence is tracked in PR #655. Full native/render/Studio
+and other quarantined coverage remain disabled, not passed.
+
+Next: packaging the SDK from the graph's build, the browser builds and Linux
+(which needs a Linux archive the owner approves).
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
@@ -962,8 +1011,9 @@ libraries, as Odin's `vendor/` keeps them, published as GitHub release assets
 instead of committed. `third_party/archives.tsv` pins one archive per target
 and variant (release, ASan+UBSan, ThreadSanitizer) by SHA-256; `Build.chibi`
 unpacks it into the clone's `.git/chibi/third_party`, which its worktrees
-share, and the SDK compiles the small libraries it owns from
-the archive's patched sources. The FetchContent declarations, configure-time
+share. The SDK links the archive's libraries, including the small ones it
+exports as its own targets (Box2D, Box3D, SLJIT, enkiTS, tree-sitter and its
+grammars), and installs copies of them. The FetchContent declarations, configure-time
 patching, `dependency_package.py`, `fetchcontent_cache.py`, the package
 decision `Build.chibi` took over from `configure_inputs.py package-enabled`,
 their tests and CI cache keys are deleted, as are the engine's unused Zep copy
@@ -1346,8 +1396,9 @@ compiler's own run:
   code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
   need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
   budget (36,292 instructions × 14,750 slots), so it must be split first.
-- `Text(forest, text, node)` still measures the source up to each node it
-  slices, because strings do not carry their length.
+- The descriptor cutover resolves repeated source-length scans in
+  `Text(forest, text, node)`. Slice still copies its selected bytes; shared
+  backing remains a separate ownership optimization.
 
 Later on 2026-10-21, `EmitBody` was split (#622), loops read unchanging arrays
 in place (#627), and arrays change through methods (#628, #630). Recovering the

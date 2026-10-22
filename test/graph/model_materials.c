@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -526,9 +527,12 @@ TEST_CASE(reused_nested_materials)
                           .type = PIN_STR,
                           .type_name = "MaterialAsset",
                           .declaration_id = paint->id,
-                          .default_value = { .type = PIN_STR,
-                                             .type_name = "MaterialAsset",
-                                             .str = blue->name } };
+                          .default_value = {
+                              .type = PIN_STR,
+                              .type_name = "MaterialAsset",
+                              .text = &(const pin_string){
+                                  .bytes = blue->name,
+                                  .length = (uint32_t)strlen(blue->name) } } };
     REQUIRE(graph_add_pin(a->graph, right, false, &override) == 0);
     node *combine = graph_add_node(a->graph, &NODE_ModelUnion);
     connect(a->graph, translated(a->graph, left, -10, 0, 0), combine, 0);
@@ -656,9 +660,12 @@ TEST_CASE(catalog_material_edits)
                           .type = PIN_STR,
                           .type_name = "MaterialAsset",
                           .declaration_id = paint->id,
-                          .default_value = { .type = PIN_STR,
-                                             .type_name = "MaterialAsset",
-                                             .str = blue->name } };
+                          .default_value = {
+                              .type = PIN_STR,
+                              .type_name = "MaterialAsset",
+                              .text = &(const pin_string){
+                                  .bytes = blue->name,
+                                  .length = (uint32_t)strlen(blue->name) } } };
     REQUIRE(graph_add_pin(parent->graph, instance, false, &override) == 0);
     publish(parent->graph, instance);
     REQUIRE(render_shader_upsert(parent, &error));
@@ -670,7 +677,7 @@ TEST_CASE(catalog_material_edits)
     REQUIRE(render_shader_find("CatalogOverrideRenamed") == parent_id);
     REQUIRE(render_shader_model_material_slot(parent_id, 0, &applied));
     REQUIRE(!strcmp(applied.material, "CatalogBlueRenamed"));
-    REQUIRE(!strcmp(instance->input_pins[0].default_value.str, "CatalogBlue"));
+    REQUIRE(!strcmp(pin_text(instance->input_pins[0].default_value).bytes, "CatalogBlue"));
     behavior_asset_free(parent);
     behavior_asset_free(invalid);
     behavior_asset_free(red);

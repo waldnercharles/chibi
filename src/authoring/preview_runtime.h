@@ -30,6 +30,7 @@ typedef struct preview_log
     uint64_t owner, node;
     double now;
     char *program, *text;
+    size_t text_length;
 } preview_log;
 preview_runtime *preview_runtime_new(ecs_world *);
 void preview_runtime_free(preview_runtime *);

@@ -12,6 +12,7 @@ enum
 };
 
 typedef int (*eval_component_read_fn)(
+    arena *storage,
     void *user,
     uint64_t owner,
     const char *component_key,

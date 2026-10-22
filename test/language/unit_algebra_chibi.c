@@ -5,10 +5,12 @@
 #include "package_core_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "unit_algebra_chibi_source.h"
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* 48 fixed requests: 24 Parse, five Same, ten Product and nine Format. Both
@@ -165,10 +167,13 @@ static pin_value boolean(bool n)
 }
 static pin_value text(const char *s, int length)
 {
-    char *copy = arena_alloc(&input, (size_t)length + 1);
-    memcpy(copy, s, (size_t)length);
-    copy[length] = 0;
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    s = s ? s : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, s, (size_t)length);
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool ready()
 {
@@ -183,7 +188,7 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static const script_catalog_variant *variant(int b, const char *name, const char *member)
@@ -312,13 +317,15 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         REQUIRE(type && type->field_count == 2);
         for (int i = 0; i < type->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(&input, value->ptr, &type->fields[i], &field));
             REQUIRE(owned(storage, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);
@@ -329,7 +336,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool unit_result(const pin_value *value, script_unit expected)
@@ -350,9 +357,13 @@ static bool unit_result(const pin_value *value, script_unit expected)
             read(&terms->items[i], "power", &power)
         );
         REQUIRE(
-            name.type == PIN_STR && name.str &&
-            strlen(name.str) == (size_t)expected.terms[i].length &&
-            !memcmp(name.str, expected.terms[i].name, (size_t)expected.terms[i].length)
+            name.type == PIN_STR && pin_text(name).bytes &&
+            strlen(pin_text(name).bytes) == (size_t)expected.terms[i].length &&
+            !memcmp(
+                pin_text(name).bytes,
+                expected.terms[i].name,
+                (size_t)expected.terms[i].length
+            )
         );
         REQUIRE(power.type == PIN_I32 && power.i == expected.terms[i].power);
     }
@@ -479,7 +490,8 @@ TEST_CASE(unit_algebra_format_matches)
                 owned(&detached, &result, 0)
             );
             REQUIRE(
-                !strcmp(result.str, oracle) && strlen(result.str) < (size_t)item->size
+                !strcmp(pin_text(result).bytes, oracle) &&
+                strlen(pin_text(result).bytes) < (size_t)item->size
             );
             if (i == 5) {
                 memcpy(saved_text, oracle, strlen(oracle) + 1);
@@ -500,8 +512,8 @@ TEST_CASE(unit_algebra_results_outlive_owners)
     for (int b = 0; b < 2; b++) {
         REQUIRE(owned(&retained[b][0], &kept[b][0], 0) && unit_result(&kept[b][0], saved));
         REQUIRE(
-            owned(&retained[b][1], &kept[b][1], 0) &&
-            kept[b][1].type == PIN_STR && !strcmp(kept[b][1].str, saved_text)
+            owned(&retained[b][1], &kept[b][1], 0) && kept[b][1].type == PIN_STR &&
+            !strcmp(pin_text(kept[b][1]).bytes, saved_text)
         );
     }
     return true;

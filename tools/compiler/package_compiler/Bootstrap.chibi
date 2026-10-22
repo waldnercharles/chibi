@@ -5,5 +5,5 @@ package package_compiler
 // Artifact export evaluates this compiled contract into bootstrap.json; recovery
 // reads that metadata before loading, then checks the recovered contract.
 pub BootstrapContract :: () -> int[] {
-    return [3, 2]
+    return [5, 2]
 }

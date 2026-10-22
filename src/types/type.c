@@ -1,15 +1,30 @@
 #include "types/type.h"
 
+#include "support/arena.h"
+#include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 const type_desc TYPE_MARKER = { .name = "marker", .size = 1 };
+
+const type_desc *type_resolve(type_resolver resolver, const char *name)
+{
+    if (!name) {
+        return NULL;
+    }
+    return resolver.find ? resolver.find(resolver.user, name)
+                         : type_catalog_find(name);
+}
 
 enum
 {
@@ -53,8 +68,17 @@ const type_field *pin_type_field_path(const type_desc *type, const char *path)
     return NULL;
 }
 
-int pin_read_field_path(const void *base, const type_desc *type, const char *path, pin_value *out)
+int pin_read_field_path(
+    arena *storage,
+    const void *base,
+    const type_desc *type,
+    const char *path,
+    pin_value *out
+)
 {
+    if (!out) {
+        return -1;
+    }
     const char *at = path;
     const void *current = base;
     for (int depth = 0; current && type && at && *at && depth < PIN_FIELD_PATH_MAX_DEPTH;
@@ -66,7 +90,9 @@ int pin_read_field_path(const void *base, const type_desc *type, const char *pat
             return -1;
         }
         pin_value value;
-        pin_read_field(current, field, &value);
+        if (pin_read_field(storage, current, field, &value)) {
+            return -1;
+        }
         if (!end) {
             if (out) {
                 *out = value;
@@ -202,31 +228,153 @@ pin_value pin_field_number(const type_field *f, double number)
     return pin_clamp_field(f, value);
 }
 
-static void validate_ranges(const type_desc *type, void *data, int depth)
+static void validate_ranges(const type_desc *type, void *data, int depth, type_resolver resolver)
 {
     assert(depth < TYPE_MAX_NESTING);
     for (int i = 0; i < type->field_count; i++) {
         const type_field *f = &type->fields[i];
         if (f->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(f->type_name);
+            const type_desc *nested = type_resolve(resolver, f->type_name);
             if (nested && nested->size == f->size) {
-                validate_ranges(nested, (char *)data + f->offset, depth + 1);
+                validate_ranges(nested, (char *)data + f->offset, depth + 1, resolver);
             }
         } else if (f->range_contract) {
             pin_value value;
-            pin_read_field(data, f, &value);
-            pin_write_field(data, f, value);
+            const char *error = pin_read_field(NULL, data, f, &value);
+            assert(!error);
+            error = pin_write_field(NULL, data, f, value);
+            assert(!error);
+            (void)error;
         }
     }
 }
 
 void type_validate_ranges(const type_desc *type, void *data)
 {
-    validate_ranges(type, data, 0);
+    type_validate_ranges_resolved(type, data, (type_resolver){ 0 });
 }
 
-void pin_write_field(void *base, const type_field *f, pin_value v)
+void type_validate_ranges_resolved(const type_desc *type, void *data, type_resolver resolver)
 {
+    validate_ranges(type, data, 0, resolver);
+}
+
+/* Only the string allocations made by a failed staged field write are owned.
+ * Names and other native pointers retain their existing borrowed contracts. */
+static void free_field_text(const type_desc *type, void *data, int depth, type_resolver resolver)
+{
+    assert(depth < TYPE_MAX_NESTING);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        void *member = (char *)data + field->offset;
+        if (field->type == PIN_STR) {
+            free(*(void **)member);
+        } else if (field->type == PIN_STRUCT) {
+            const type_desc *nested = type_resolve(resolver, field->type_name);
+            if (nested) {
+                free_field_text(nested, member, depth + 1, resolver);
+            }
+        }
+    }
+}
+const char *pin_write_struct_resolved(
+    arena *storage,
+    void *destination,
+    const type_desc *target,
+    pin_value value,
+    type_resolver resolver
+)
+{
+    if (resolver.find && storage && storage->collectable) {
+        return "Custom type resolution requires ordinary storage";
+    }
+    if (!target || !destination || !value.ptr || value.type != PIN_STRUCT ||
+        value.container != PIN_CONTAINER_SINGLE || !target->size ||
+        target->field_count < 0 || (target->field_count && !target->fields) ||
+        (value.record &&
+         (!pin_record_valid(value.record) || !pin_record_current(value.record)))) {
+        return "Field record layout is unavailable";
+    }
+    const type_desc *source = value.record
+                                ? pin_value_type(&value)
+                                : type_resolve(resolver, value.type_name);
+    if (!source && !value.record && value.type_name && target->name &&
+        !strcmp(value.type_name, target->name)) {
+        source = target;
+    }
+    if (!source || target->field_count != source->field_count ||
+        (source->field_count && !source->fields)) {
+        return "Field record layout differs";
+    }
+    if (!target->field_count) {
+        if (value.record || source->size != target->size || !value.type_name ||
+            !target->name || strcmp(value.type_name, target->name)) {
+            return "Field record layout differs";
+        }
+        memcpy(destination, value.ptr, target->size);
+        return NULL;
+    }
+    void *copy = xcalloc(1, target->size);
+    arena temporary = { 0 };
+    const char *error = NULL;
+    for (int i = 0; i < target->field_count && !error; i++) {
+        if (!target->fields[i].name || !source->fields[i].name ||
+            target->fields[i].offset > target->size ||
+            target->fields[i].size > target->size - target->fields[i].offset ||
+            source->fields[i].offset > source->size ||
+            source->fields[i].size > source->size - source->fields[i].offset ||
+            strcmp(target->fields[i].name, source->fields[i].name) ||
+            target->fields[i].type != source->fields[i].type) {
+            error = "Field record layout differs";
+            break;
+        }
+        pin_type type = target->fields[i].type;
+        if ((type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE) &&
+            strcmp(
+                target->fields[i].type_name ? target->fields[i].type_name : "",
+                source->fields[i].type_name ? source->fields[i].type_name : ""
+            )) {
+            error = "Field record nominal type differs";
+            break;
+        }
+        pin_value member;
+        error = pin_read_field(&temporary, value.ptr, &source->fields[i], &member);
+        if (!error) {
+            error = pin_write_field_resolved(storage, copy, &target->fields[i], member, resolver);
+        }
+    }
+    arena_free(&temporary);
+    if (!error) {
+        if (!value.record && source == target) {
+            /* Native reflection may omit fields. Keep their original bytes,
+             * then publish the validated, owned fields over them. */
+            memmove(destination, value.ptr, target->size);
+            for (int i = 0; i < target->field_count; i++) {
+                const type_field *field = &target->fields[i];
+                memcpy(
+                    (char *)destination + field->offset,
+                    (const char *)copy + field->offset,
+                    field->size
+                );
+            }
+        } else {
+            memcpy(destination, copy, target->size);
+        }
+    }
+    if (error && !storage) {
+        free_field_text(target, copy, 0, resolver);
+    }
+    free(copy);
+    return error;
+}
+const char *pin_write_field_resolved(arena *storage, void *base, const type_field *f, pin_value v, type_resolver resolver)
+{
+    if (resolver.find && storage && storage->collectable) {
+        return "Custom type resolution requires ordinary storage";
+    }
+    if (v.type != f->type || v.container != PIN_CONTAINER_SINGLE) {
+        return "Field value type differs";
+    }
     v = pin_clamp_field(f, v);
     unsigned char *dst = (unsigned char *)base + f->offset;
     switch (f->type) {
@@ -242,7 +390,31 @@ void pin_write_field(void *base, const type_field *f, pin_value v)
         case PIN_F32: *(float *)dst = v.f; break;
         case PIN_F64: *(double *)dst = v.d; break;
         case PIN_NAME: *(const char **)dst = v.str; break;
-        case PIN_STR: *(const char **)dst = v.str; break;
+        case PIN_STR: {
+            pin_string text = pin_text(v);
+            if (f->text_descriptor) {
+                pin_value copy;
+                const char *error = pin_value_text(storage, &copy, text.bytes, text.length);
+                if (error) {
+                    return error;
+                }
+                *(const pin_string **)dst = copy.text;
+                break;
+            }
+            if (text.length && memchr(text.bytes, 0, text.length)) {
+                return "String contains embedded NUL";
+            }
+            char *copy = storage ? arena_alloc(storage, (size_t)text.length + 1)
+                                 : xmalloc((size_t)text.length + 1);
+            if (!copy) {
+                return "Field string allocation failed";
+            }
+            memcpy(copy, text.bytes, text.length);
+            copy[text.length] = 0;
+            *(const char **)dst = copy;
+            pin_copy_record(PIN_COPY_TEXT, (size_t)text.length + 1);
+            break;
+        }
         case PIN_HANDLE:
         case PIN_TASK: *(uint64_t *)dst = v.u64; break;
         case PIN_UNION: *(void **)dst = v.ptr; break;
@@ -251,21 +423,33 @@ void pin_write_field(void *base, const type_field *f, pin_value v)
             break;
         case PIN_STRUCT:
             if (v.ptr) {
-                memcpy(dst, v.ptr, f->size);
-                const type_desc *nested = type_catalog_find(f->type_name);
-                if (nested && nested->size == f->size) {
-                    type_validate_ranges(nested, dst);
+                const type_desc *target = type_resolve(resolver, f->type_name);
+                if (!target || target->size != f->size) {
+                    return "Field record layout is unavailable";
                 }
+                return pin_write_struct_resolved(storage, dst, target, v, resolver);
             }
             break;
         case PIN_FLOW: break;
     }
+    return NULL;
 }
 
-void pin_read_field(const void *base, const type_field *f, pin_value *out)
+const char *pin_write_struct(arena *storage, void *destination, const type_desc *type, pin_value value)
+{
+    return pin_write_struct_resolved(storage, destination, type, value, (type_resolver){ 0 });
+}
+const char *pin_write_field(arena *storage, void *base, const type_field *field, pin_value value)
+{
+    return pin_write_field_resolved(storage, base, field, value, (type_resolver){ 0 });
+}
+
+const char *pin_read_field(arena *storage, const void *base, const type_field *f, pin_value *out)
 {
     const unsigned char *src = (const unsigned char *)base + f->offset;
-    *out = (pin_value){ .type = f->type, .type_name = f->type_name };
+    pin_value value = { .type = f->type, .type_name = f->type_name };
+    pin_value *destination = out;
+    out = &value;
     switch (f->type) {
         case PIN_BOOL: out->b = *(const bool *)src; break;
         case PIN_I8: out->i8 = *(const int8_t *)src; break;
@@ -279,7 +463,21 @@ void pin_read_field(const void *base, const type_field *f, pin_value *out)
         case PIN_F32: out->f = *(const float *)src; break;
         case PIN_F64: out->d = *(const double *)src; break;
         case PIN_NAME: out->str = *(const char *const *)src; break;
-        case PIN_STR: out->str = *(const char *const *)src; break;
+        case PIN_STR: {
+            if (f->text_descriptor) {
+                out->text = *(const pin_string *const *)src;
+                break;
+            }
+            const char *bytes = *(const char *const *)src;
+            bytes = bytes ? bytes : "";
+            size_t length = strlen(bytes);
+            const char *error = pin_value_text(storage, out, bytes, length);
+            if (error) {
+                return error;
+            }
+            out->type_name = f->type_name;
+            break;
+        }
         case PIN_HANDLE:
         case PIN_TASK: out->u64 = *(const uint64_t *)src; break;
         case PIN_UNION: out->ptr = *(void *const *)src; break;
@@ -291,6 +489,8 @@ void pin_read_field(const void *base, const type_field *f, pin_value *out)
         case PIN_STRUCT: out->ptr = (void *)src; break;
         case PIN_FLOW: break;
     }
+    *destination = value;
+    return NULL;
 }
 
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
@@ -343,6 +543,9 @@ static uint64_t layout_hash(
         hash = hash_bytes(hash, &field->offset, sizeof field->offset);
         hash = hash_bytes(hash, &field->size, sizeof field->size);
         hash = hash_bytes(hash, &field->type, sizeof field->type);
+        if (field->text_descriptor) {
+            hash = hash_bytes(hash, &field->text_descriptor, sizeof field->text_descriptor);
+        }
         hash = hash_string(hash, field->type_name);
         if (field->range_contract) {
             hash = hash_bytes(hash, &field->range_contract, sizeof field->range_contract);

@@ -17,6 +17,7 @@ void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_packed();
 void test_language_runtime_attribution();
+void test_language_execution_scope();
 void test_language_record_values();
 void test_language_record_publication(bool repro);
 void test_language_record_document();
@@ -145,6 +146,7 @@ int main(int argc, char **argv)
     bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
     bool record_publication_repro = argc == 2 &&
                                     !strcmp(argv[1], "--record-publication-repro");
+    bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
@@ -266,17 +268,18 @@ int main(int argc, char **argv)
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !runtime_attribution && !wasm &&
-         !program && !query_program && !incremental && !modules && !ranges &&
-         !numeric_exact_core && !package_graph && !package_graph_chibi &&
-         !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
-         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
-         !scalar_lowering_chibi && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_types &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
-         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
-         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
+         !row_array && !record_runtime && !runtime_attribution &&
+         !execution_scope && !wasm && !program && !query_program && !incremental &&
+         !modules && !ranges && !numeric_exact_core && !package_graph &&
+         !package_graph_chibi && !syntax_chibi && !source_tokenizer_chibi &&
+         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
+         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
+         !constant_scalar_chibi && !scalar_lowering_chibi && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
+         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
+         !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
@@ -395,6 +398,8 @@ int main(int argc, char **argv)
         test_language_record_document();
     } else if (record_values) {
         test_language_record_values();
+    } else if (execution_scope) {
+        test_language_execution_scope();
     } else if (runtime_attribution) {
         test_language_runtime_attribution();
     } else if (wasm) {

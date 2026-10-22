@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1769,7 +1770,7 @@ TEST_CASE(catalog_publishes_union_payloads_from_later_libraries)
     REQUIRE(!strcmp(payload->variants[0].fields[0].name, "label"));
     REQUIRE(payload->variants[0].fields[0].type.storage == PIN_STR);
     REQUIRE(payload->variants[1].is_literal);
-    REQUIRE(!strcmp(payload->variants[1].literal.str, "missing"));
+    REQUIRE(!strcmp(pin_text(payload->variants[1].literal).bytes, "missing"));
     int pass = script_catalog_find_capability(view, "First.Pass", SCRIPT_CAPABILITY_FUNCTION);
     REQUIRE(pass >= 0);
     REQUIRE(view->capabilities[pass].parameter_count == 1);
@@ -1887,7 +1888,9 @@ TEST_CASE(catalog_owns_union_variant_names_fields_and_literals)
         { .name = literal,
           .tag = 902,
           .is_literal = true,
-          .literal = { .type = PIN_STR, .str = literal } },
+          .literal = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = literal,
+                                                    .length = (uint32_t)strlen(literal) } } },
     };
     script_catalog_type type = {
         .id = 900,
@@ -1924,7 +1927,7 @@ TEST_CASE(catalog_owns_union_variant_names_fields_and_literals)
     REQUIRE(!strcmp(owned->variants[0].fields[0].read_key, "read"));
     REQUIRE(owned->variants[0].fields[0].type.storage == PIN_STR);
     REQUIRE(!strcmp(owned->variants[1].name, "done"));
-    REQUIRE(!strcmp(owned->variants[1].literal.str, "done"));
+    REQUIRE(!strcmp(pin_text(owned->variants[1].literal).bytes, "done"));
     REQUIRE(script_catalog_capability_abi(source_catalog_view(input_catalog), &callable) == abi);
     return true;
 }

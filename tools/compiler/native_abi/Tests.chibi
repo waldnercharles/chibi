@@ -2,37 +2,15 @@ package native_abi
 
 @test
 LinuxTargetIsExplicit :: () {
-    target := LinuxX64();
-    assert(target.triple == "x86_64-unknown-linux-gnu", "exact destination triple");
-    assert(target.pointer_bits == 64, "destination pointer width");
-    assert(Supported(target), "the initial destination is supported");
+    assert(TargetChecks() == 0, "exact destination triple and pointer width");
 }
 
 @test
 OtherTargetsAreRejected :: () {
-    target: Target = {triple: "x86_64-unknown-linux-gnu", pointer_bits: 32};
-    assert(!Supported(target), "the triple cannot hide a different pointer width");
-    target.pointer_bits = 0;
-    assert(!Supported(target), "an absent width is not a host default");
-    target.pointer_bits = 128;
-    assert(!Supported(target), "a wider pointer needs another target contract");
-    target.pointer_bits = 64;
-    target.triple = "";
-    assert(!Supported(target), "an absent triple is not a host default");
-    target.triple = "x86_64-pc-windows-msvc";
-    assert(!Supported(target), "matching width does not establish Windows support");
-    target.triple = "aarch64-apple-darwin";
-    assert(!Supported(target), "matching width does not establish macOS support");
-    target.triple = "x86_64-unknown-linux-gnu-extra";
-    assert(!Supported(target), "target identity is exact, not a prefix");
+    assert(RejectedTargetChecks() == 0, "unsupported targets must not inherit the initial ABI");
 }
 
 @test
 OnlyPlainBoolAndIntHaveScalarTypes :: () {
-    assert(ScalarType(1) == "i1", "internal bool is one bit");
-    assert(ScalarType(6) == "i32", "int is 32 bits");
-    unsupported: int[] = [-1, 0, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 999];
-    for (storage in unsupported) {
-        assert(ScalarType(storage) == "", "unsupported storage must not acquire a native representation");
-    }
+    assert(ScalarTypeChecks() == 0, "only plain bool and int have an internal LLVM type");
 }

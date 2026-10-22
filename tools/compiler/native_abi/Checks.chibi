@@ -1,0 +1,79 @@
+package native_abi
+
+// Shared checks for authored tests and the bootstrap host's pure invocation.
+// Zero means success; nonzero identifies a failed contract below. No assert
+// native is required, so the same checks run in the minimal compiler catalog.
+TargetChecks :: () -> int {
+    target := LinuxX64();
+    if (target.triple != "x86_64-unknown-linux-gnu") {
+        return 1;
+    }
+    if (target.pointer_bits != 64) {
+        return 2;
+    }
+    if (!Supported(target)) {
+        return 3;
+    }
+    return 0;
+}
+
+RejectedTargetChecks :: () -> int {
+    target: Target = {triple: "x86_64-unknown-linux-gnu", pointer_bits: 32};
+    if (Supported(target)) {
+        return 4;
+    }
+    target.pointer_bits = 0;
+    if (Supported(target)) {
+        return 5;
+    }
+    target.pointer_bits = 128;
+    if (Supported(target)) {
+        return 6;
+    }
+    target.pointer_bits = 64;
+    target.triple = "";
+    if (Supported(target)) {
+        return 7;
+    }
+    target.triple = "x86_64-pc-windows-msvc";
+    if (Supported(target)) {
+        return 8;
+    }
+    target.triple = "aarch64-apple-darwin";
+    if (Supported(target)) {
+        return 9;
+    }
+    target.triple = "x86_64-unknown-linux-gnu-extra";
+    if (Supported(target)) {
+        return 10;
+    }
+    return 0;
+}
+
+ScalarTypeChecks :: () -> int {
+    if (ScalarType(1) != "i1") {
+        return 11;
+    }
+    if (ScalarType(6) != "i32") {
+        return 12;
+    }
+    unsupported: int[] = [-1, 0, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 999];
+    for (storage in unsupported) {
+        if (ScalarType(storage) != "") {
+            return 100 + storage;
+        }
+    }
+    return 0;
+}
+
+pub Tests :: () -> int {
+    target := TargetChecks();
+    if (target != 0) {
+        return target;
+    }
+    rejected := RejectedTargetChecks();
+    if (rejected != 0) {
+        return rejected;
+    }
+    return ScalarTypeChecks();
+}

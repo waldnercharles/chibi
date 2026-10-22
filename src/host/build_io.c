@@ -490,6 +490,7 @@ static const char *read_bytes(
     size_t limit,
     double deadline,
     const volatile sig_atomic_t *cancelled,
+    const char *refusal,
     unsigned char **out,
     size_t *size
 )
@@ -505,7 +506,7 @@ static const char *read_bytes(
         if (fd >= 0) {
             close(fd);
         }
-        return "build embed input must be a regular file of at most 64 MiB";
+        return refusal;
     }
     unsigned char *bytes = xmalloc((size_t)info.st_size + 1);
     const char *error = NULL;
@@ -515,7 +516,7 @@ static const char *read_bytes(
             continue;
         }
         if (count < 0 || *size + (size_t)count > (size_t)info.st_size) {
-            error = "build embed input changed or could not be read";
+            error = "build input changed or could not be read";
         }
         if (count <= 0 || error) {
             break;
@@ -544,6 +545,42 @@ static bool symbol_valid(const char *symbol)
     return true;
 }
 
+const char *build_io_byte_list(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char **out
+)
+{
+    unsigned char *bytes;
+    size_t size;
+    const char *error = read_bytes(
+        root,
+        path,
+        BUILD_TEXT_LIMIT / 5,
+        deadline,
+        cancelled,
+        "build byte list input must be a regular file of at most 3.2 MiB",
+        &bytes,
+        &size
+    );
+    if (error) {
+        return error;
+    }
+    static const char digits[] = "0123456789abcdef";
+    char *text = xmalloc(size * 5 + 1);
+    for (size_t i = 0; i < size; i++) {
+        memcpy(text + i * 5, "0x", 2);
+        text[i * 5 + 2] = digits[bytes[i] >> 4];
+        text[i * 5 + 3] = digits[bytes[i] & 15];
+        text[i * 5 + 4] = ',';
+    }
+    text[size * 5] = 0;
+    free(bytes);
+    *out = text;
+    return NULL;
+}
 const char *build_io_embed(
     const char *root,
     const char *input,
@@ -560,7 +597,16 @@ const char *build_io_embed(
     }
     unsigned char *bytes;
     size_t size;
-    const char *error = read_bytes(root, input, BUILD_EMBED_LIMIT, deadline, cancelled, &bytes, &size);
+    const char *error = read_bytes(
+        root,
+        input,
+        BUILD_EMBED_LIMIT,
+        deadline,
+        cancelled,
+        "build embed input must be a regular file of at most 64 MiB",
+        &bytes,
+        &size
+    );
     if (error) {
         return error;
     }
@@ -593,7 +639,7 @@ const char *build_io_embed(
     unsigned char *previous;
     size_t previous_size;
     char *joined = build_io_path(root, output);
-    bool same = !read_bytes(root, output, at, deadline, cancelled, &previous, &previous_size) &&
+    bool same = !read_bytes(root, output, at, deadline, cancelled, "", &previous, &previous_size) &&
                 previous_size == at && !memcmp(previous, text, at);
     free(previous);
     if (same) {

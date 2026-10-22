@@ -119,15 +119,18 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
 }
 
 // What an executable links after its output, in CMake's order: the profile's
-// external libraries, then its Links, the graph's archives by name and other
-// entries, such as -lm, as they are.
+// external libraries, then its Links: the graph's archives by name, the
+// third-party archive's `third-party/` paths, and options and frameworks as
+// they are.
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        if (strings.HasPrefix(linked, "-")) {
-            libraries.append(linked);
-        } else {
+        if (strings.HasPrefix(linked, "third-party/")) {
+            libraries.append(Resolve(source_root, build_dir, profile.third_party, linked));
+        } else if (strings.HasPrefix(linked, "chibi_")) {
             libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
+        } else {
+            libraries.append(linked);
         }
     }
     return libraries;
@@ -244,6 +247,74 @@ Embed :: (source_root: string, build_dir: string, target: string) {
     }
 }
 
+// A source define with the values CMake substitutes: {source_root},
+// {build_type}, and {sha256:PATH} for a file's SHA-256.
+Expand :: (source_root: string, profile: Profile, define: string) -> string {
+    text := build.replace(define, "{source_root}", source_root);
+    text = build.replace(text, "{build_type}", profile.build_type);
+    if (build.before(text, "{sha256:") == text) {
+        return text;
+    }
+    rest := build.after(text, "{sha256:");
+    sha256 := build.hash_file(Join([source_root, "/", build.before(rest, "}")]));
+    return Join([build.before(text, "{sha256:"), sha256, build.after(rest, "}")]);
+}
+
+// Writes each header a target configures into its private root, as CMake's
+// configure_file does, when its text changed: a `.in` template with each
+// `@NAME@` of Substitutions replaced, or a plain copy. Placeholders are found
+// in the template, which is small; build values are never freed, and
+// searching the text as byte lists fill it copied it for every absent one.
+// False when an input is missing or an output cannot be written.
+Configure :: (source_root: string, build_dir: string, target: string) -> bool {
+    for (configure in Configures(target)) {
+        input := Resolve(source_root, build_dir, "", build.after(configure, "="));
+        if (!build.file_exists(input)) {
+            return false;
+        }
+        template := build.read_file(input);
+        text := template;
+        if (strings.HasSuffix(input, ".in")) {
+            for (substitution in Substitutions(target)) {
+                placeholder := Join(["@", build.before(substitution, "="), "@"]);
+                if (build.before(template, placeholder) != template) {
+                    text = build.replace(text, placeholder, Substitute(source_root, build.after(substitution, "=")));
+                }
+            }
+        }
+        output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(configure, "=")]);
+        if (build.file_exists(output) && build.read_file(output) == text) {
+            continue;
+        }
+        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+        if (!build.write_file(output, text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The headers a target configures, below its private root.
+Configured :: (target: string) -> string[] {
+    headers: string[] = [];
+    for (configure in Configures(target)) {
+        headers.append(build.before(configure, "="));
+    }
+    return headers;
+}
+
+// A substitution's value: `bytes:PATH` as the C initializer CMake writes from
+// file(READ ... HEX), or `cstring:PATH` as the lines of a C string literal.
+Substitute :: (source_root: string, value: string) -> string {
+    path := Join([source_root, "/", build.after(value, ":")]);
+    if (build.before(value, ":") == "bytes") {
+        return build.byte_list(path);
+    }
+    text := build.replace(build.read_file(path), "\\", "\\\\");
+    text = build.replace(text, "\"", "\\\"");
+    return build.replace(text, "\n", "\\n\"\n\"");
+}
+
 // Whether building the targets runs reflect first: one compiles a source it
 // writes.
 Reflects :: (targets: string[]) -> bool {
@@ -324,9 +395,18 @@ LinkObjects :: (source_root: string, build_dir: string, third_party: string, tar
     return objects;
 }
 
+// The tools that link an executable: the C++ compiler links one over C++.
+Linker :: (tools: c.Tools, target: string) -> c.Tools {
+    linker := tools;
+    if (LinksCxx(target)) {
+        linker.compiler = tools.cxx_compiler;
+    }
+    return linker;
+}
+
 // An executable's link command.
 LinkCommand :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, target: string) -> string[] {
-    return c.LinkCommand(tools, Executable(build_dir, target),
+    return c.LinkCommand(Linker(tools, target), Executable(build_dir, target),
                          LinkObjects(source_root, build_dir, profile.third_party, target),
                          LinkFlags(profile, build_dir, target),
                          LinkLibraries(source_root, build_dir, target, profile));
@@ -354,17 +434,21 @@ IncludeDirectory :: (source_root: string, build_dir: string, third_party: string
     return Resolve(source_root, build_dir, third_party, include);
 }
 
-// Its defines, a source's own include directories (SourceIncludes) and then
-// its own, its system ones, the profile's flags, then its own options: the
-// order CMake writes them. SourceFlags adds a source's own.
-pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile,
-                     source_includes: string[], language: string) -> string[] {
+// Its defines, then a source's own (SourceDefines), the source's include
+// directories (SourceIncludes) and then its own, its system ones, the
+// profile's flags, then its own options: the order CMake writes them. An
+// empty file names no source. SourceFlags adds a source's own options.
+pub CompileFlags :: (source_root: string, build_dir: string, target: string, profile: Profile, file: string,
+                     language: string) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
         flags.append(Join(["-D", define]));
     }
     flags.extend(ProfileDefines(target, profile));
-    for (include in source_includes) {
+    for (define in SourceDefines(target, file)) {
+        flags.append(Join(["-D", Expand(source_root, profile, define)]));
+    }
+    for (include in SourceIncludes(target, file)) {
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in ProfileIncludes(target, profile)) {
@@ -386,11 +470,10 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
 // last, where CMake puts source properties.
 SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
                 target_flags: string[]) -> string[] {
-    includes := SourceIncludes(target, file);
     language := Language(file);
     flags := target_flags;
-    if (length(includes) > 0 || language != "c") {
-        flags = CompileFlags(source_root, build_dir, target, profile, includes, language);
+    if (length(SourceIncludes(target, file)) > 0 || length(SourceDefines(target, file)) > 0 || language != "c") {
+        flags = CompileFlags(source_root, build_dir, target, profile, file, language);
     }
     flags.extend(SourceOptions(target, file));
     return flags;
@@ -475,7 +558,8 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
 }
 
 // The libraries whose headers the targets' compiles include: the targets, and
-// each library a `public/NAME` or `private/NAME` include names.
+// each library a `public/NAME` or `private/NAME` include names, or the header
+// set a `build/` include directory holds (DirectorySet).
 Staged :: (targets: string[]) -> string[] {
     staged: string[] = [];
     for (target in targets) {
@@ -488,6 +572,8 @@ Staged :: (targets: string[]) -> string[] {
         for (include in includes) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
                 staged = Add(staged, ExportTarget(build.after(include, "/")));
+            } else if (DirectorySet(include) != "") {
+                staged = Add(staged, DirectorySet(include));
             }
         }
     }
@@ -557,9 +643,12 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     }
     for (target in Staged(targets)) {
         published := Resolve(source_root, build_dir, profile.third_party, HeaderSource(target));
+        kept := Rewritten(target);
+        kept.extend(Configured(target));
         if (!Rewrite(source_root, build_dir, profile.third_party, target) ||
+            !Configure(source_root, build_dir, target) ||
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
-            !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), Rewritten(target))) {
+            !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
             return -1;
         }
@@ -569,7 +658,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     failed := false;
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        target_flags := CompileFlags(source_root, build_dir, target, profile, [], "c");
+        target_flags := CompileFlags(source_root, build_dir, target, profile, "", "c");
         for (file in Files(target)) {
             source := Resolve(source_root, build_dir, profile.third_party, file);
             flags := SourceFlags(source_root, build_dir, target, file, profile, target_flags);
@@ -608,7 +697,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         if (!Program(target)) {
             continue;
         }
-        if (c.Link(tools, Executable(build_dir, target), LinkObjects(source_root, build_dir, profile.third_party, target),
+        if (c.Link(Linker(tools, target), Executable(build_dir, target), LinkObjects(source_root, build_dir, profile.third_party, target),
                    LinkFlags(profile, build_dir, target), LinkLibraries(source_root, build_dir, target, profile)) < 0) {
             build.report(Join(["graph: linking ", target, " failed"]));
             return -1;
@@ -623,7 +712,7 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
     entries: string[] = [];
     for (target in targets) {
         built := Library(source_root, build_dir, profile.third_party, target);
-        flags := CompileFlags(source_root, build_dir, target, profile, [], "c");
+        flags := CompileFlags(source_root, build_dir, target, profile, "", "c");
         for (file in Files(target)) {
             source := Resolve(source_root, build_dir, profile.third_party, file);
             entries.append(c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));

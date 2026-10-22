@@ -17,7 +17,7 @@
 
 #define GRAPH_PATH 4096
 #define GRAPH_RUN_SECONDS 50
-#define GRAPH_TOKENS 128
+#define GRAPH_TOKENS 512
 
 static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
@@ -551,8 +551,12 @@ static char *ninja_variable(const char *ninja, const char *name, const char *var
     const char *block = strstr(ninja, head);
     assert(block);
     const char *end = strstr(block + 1, "\n\n");
+    /* A variable the statement does not set is empty, as LINK_LIBRARIES is
+     * for an executable that links no library. */
     const char *at = strstr(block, key);
-    assert(at && (!end || at < end));
+    if (!at || (end && at > end)) {
+        return strdup("");
+    }
     at += strlen(key);
     return strndup(at, strcspn(at, "\n"));
 }
@@ -585,15 +589,17 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
          *link_flags = ninja_variable(ninja, path, "LINK_FLAGS"),
          *libraries = ninja_variable(ninja, path, "LINK_LIBRARIES"),
          *theirs[GRAPH_TOKENS];
-    int count = 0;
-    theirs[count++] = compiler;
-    count = split_into(flags, theirs, count);
-    count = split_into(link_flags, theirs, count);
-    int objects = count;
     char head[GRAPH_PATH];
     snprintf(head, sizeof head, "\nbuild %s: ", path);
     const char *statement = strstr(ninja, head);
     assert(statement);
+    /* CMake links with the C++ compiler when a library has C++ sources. */
+    bool cxx = !strncmp(statement + strlen(head), "CXX_EXECUTABLE_LINKER", 21);
+    int count = 0;
+    theirs[count++] = cxx ? cxx_compiler : compiler;
+    count = split_into(flags, theirs, count);
+    count = split_into(link_flags, theirs, count);
+    int objects = count;
     char *line = strndup(statement + 1, strcspn(statement + 1, "\n"));
     for (char *token = strtok(line, " "); token && strcmp(token, "|");
          token = strtok(NULL, " ")) {
@@ -642,8 +648,19 @@ TEST_CASE(links_match_cmake)
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *name = base(yyjson_get_str(yyjson_obj_get(entry, "output")));
-        char cmake_path[GRAPH_PATH];
-        snprintf(cmake_path, sizeof cmake_path, "%s%s", strcmp(name, "reflect") ? "sdk/" : "", name);
+        /* The output CMake's link statement for the executable names, found
+         * by its linker rule, since a bare name may be a phony alias. */
+        char rule[GRAPH_PATH], cmake_path[GRAPH_PATH];
+        snprintf(rule, sizeof rule, "_EXECUTABLE_LINKER__%s_%s ", name, build_type);
+        const char *found = strstr(ninja, rule);
+        REQUIRE(found);
+        const char *line = found;
+        while (line > ninja && line[-1] != '\n') {
+            line--;
+        }
+        REQUIRE(!strncmp(line, "build ", 6));
+        line += strlen("build ");
+        snprintf(cmake_path, sizeof cmake_path, "%.*s", (int)strcspn(line, ":"), line);
         yyjson_val *arguments = yyjson_obj_get(entry, "arguments");
         char *ours[GRAPH_TOKENS];
         int count = 0;
@@ -661,8 +678,15 @@ TEST_CASE(links_match_cmake)
         matched,
         yyjson_arr_size(yyjson_doc_get_root(doc))
     );
-    /* reflect, the build host, the compiler host and the launcher. */
-    REQUIRE(matched == 4 && yyjson_arr_size(yyjson_doc_get_root(doc)) == 4);
+/* reflect, the build host, the compiler host, the launcher and four test
+ * drivers, and on macOS the player, chibi-compile, chibi_ctl and
+ * test_language. */
+#ifdef __APPLE__
+    size_t programs = 12;
+#else
+    size_t programs = 8;
+#endif
+    REQUIRE((size_t)matched == programs && yyjson_arr_size(yyjson_doc_get_root(doc)) == programs);
     yyjson_doc_free(doc);
     free(ninja);
     return true;
@@ -892,6 +916,44 @@ TEST_CASE(rewritten_codec_headers_match_cmake)
     return true;
 }
 
+/* The language tests' generated headers, as CMake configures them: Chibi
+ * sources as byte initializers, the build workflow as C string lines and plain
+ * copies, each equal to CMake's. Building only the object library over them
+ * writes them all, and an unchanged run leaves their stamps. */
+TEST_CASE(configured_headers_match_cmake)
+{
+#ifdef __APPLE__
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH];
+    join(build_dir, suite, "configured");
+    const char *const consumer_only[] = { "--target", "test_behavior_consumer", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, consumer_only) == 1);
+    const char *const headers[] = { "package_core_source.h",
+                                    "build_workflow_source.h",
+                                    "package_compiler_chibi_source.h",
+                                    "third_party/pico_headers/pico_unit.h",
+                                    "test/prepared_fixture.h" };
+    struct stat before[5], after;
+    for (int i = 0; i < 5; i++) {
+        char header[GRAPH_PATH];
+        snprintf(header, sizeof header, "test/language/testing/include/%s", headers[i]);
+        join(ours, build_dir, header);
+        join(theirs, reference, header);
+        char *mine = tool_read(ours), *cmake = tool_read(theirs);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake) && !stat(ours, &before[i]));
+        free(mine);
+        free(cmake);
+    }
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, consumer_only) == 0);
+    for (int i = 0; i < 5; i++) {
+        char header[GRAPH_PATH];
+        snprintf(header, sizeof header, "test/language/testing/include/%s", headers[i]);
+        join(ours, build_dir, header);
+        REQUIRE(!stat(ours, &after) && after.st_ino == before[i].st_ino);
+    }
+#endif
+    return true;
+}
+
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -975,5 +1037,6 @@ void test_build_graph_generated(const char *host)
     set_up(host);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
+    RUN_TEST_CASE(configured_headers_match_cmake);
     tool_remove_tree(suite);
 }

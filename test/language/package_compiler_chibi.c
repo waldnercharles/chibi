@@ -92,12 +92,14 @@ typedef enum
  * arrays nothing changes in place, and its CopiedWalk copies the array its loop
  * changes. A `variants` sample calls no native: its Kept functions return
  * variants that keep their payload values, and its Copied function builds one
- * it keeps after a change. */
+ * it keeps after a change. A `built` sample calls no native: its Built
+ * functions build the arrays they return in their caller's storage, and its
+ * Copied function, which assigns its array, does not. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants;
+    bool core, updates, boxed, game, moves, aliases, variants, built;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -226,6 +228,34 @@ static const sample samples[] = {
       .calls = { { "Total", "[]", "[241]" },
                  { "Changed", "[]", "[17]" },
                  { "CopiedHold", "[[5,6]]", "[5]" } } },
+    { .name = "built results",
+      .group = IMPORT_SAMPLES,
+      .built = true,
+      .source = "package facts\n"
+                "Holder :: union { Some(items: int[], name: string) }\n"
+                "BuiltCount :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    return xs;\n}\n"
+                "BuiltPair :: (n: int, ys: int[]) -> Holder {\n"
+                "    xs: int[] = [7];\n    xs.extend(BuiltCount(n));\n    "
+                "xs[0] = 9;\n"
+                "    if (n == 0) { return Holder.Some(ys, \"none\"); }\n"
+                "    return Holder.Some(xs, \"pair\");\n}\n"
+                "CopiedCount :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    xs = BuiltCount(n);\n    return "
+                "xs;\n}\n"
+                "Total :: () -> int {\n"
+                "    a := BuiltCount(3);\n    ys: int[] = [4, 5];\n"
+                "    b := BuiltPair(2, ys);\n    c := BuiltPair(0, ys);\n    "
+                "ys[0] = 6;\n"
+                "    total: int = a[2] * 1000 + CopiedCount(4)[3] * 100;\n"
+                "    switch b { case .Some(items, name): total += items[0] * "
+                "10 + items[2]; }\n"
+                "    switch c { case .Some(items, name): total += items[0] * "
+                "10000; }\n"
+                "    return total;\n}",
+      .calls = { { "Total", "[]", "[42391]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -2291,6 +2321,17 @@ static int union_calls(const behavior_function *f, const node_host_call *call)
     }
     return count;
 }
+/* Variants built in the caller's storage, keeping the locals built there. */
+static int kept_unions(const behavior_function *f)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id ==
+                 (execution_intrinsic_id(&EXECUTION_union_keep_call) |
+                  EXECUTION_INTRINSIC_IN_RESULT);
+    }
+    return count;
+}
 /* A returned variant keeps its payload values, which the return copies to the
  * caller; one kept in a local copies them, since the local's array changes. */
 static bool moves_returned_variants(const unsigned char *bytes, size_t length)
@@ -2321,7 +2362,7 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
             execution_module_function_info f = execution_module_function_at(module, i);
             bool keep = !strncmp(f.entry, "Kept", 4),
                  copy = !strncmp(f.entry, "Copied", 6);
-            int moves = union_calls(f.body, &EXECUTION_union_move_call),
+            int moves = kept_unions(f.body),
                 makes = union_calls(f.body, &EXECUTION_union_make_call);
             kept += keep;
             copied += copy;
@@ -2334,6 +2375,53 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
     }
     package_collection_free(packages);
     REQUIRE(kept == 3 && copied == 1 && !wrong);
+    return true;
+}
+/* A function builds a local array it returns in its caller's storage; one
+ * whose local it assigns does not. */
+static bool builds_results(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler built load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int built = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool build = !strncmp(f.entry, "Built", 5),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            built += build;
+            copied += copy;
+            if ((build && !f.body->builds_results) || (copy && f.body->builds_results)) {
+                fprintf(
+                    stderr,
+                    "package compiler %s builds results: %d\n",
+                    f.entry,
+                    f.body->builds_results
+                );
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
 /* A loop over an array nothing changes, and a local that reads an element of
@@ -2701,6 +2789,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
+                   (!s->built || builds_results(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

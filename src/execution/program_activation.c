@@ -231,6 +231,7 @@ execution_activation *program_activation_new(
         .variable_storage = instance->layouts,
         .value_owner = instance,
         .value_storage = &a->payload,
+        .result_storage = &a->payload,
 
         .arguments = args,
         .argument_count = declared,

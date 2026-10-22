@@ -1,4 +1,5 @@
 #include "execution/borrow.h"
+#include "execution/intrinsics.h"
 #include "execution/jit_internal.h"
 #include "support/array.h"
 
@@ -105,7 +106,9 @@ bool behavior_jit_host_call(
             SLJIT_R0,
             0,
             SLJIT_MEM1(m->context),
-            offsetof(behavior_function_context, value_storage)
+            execution_intrinsic_in_result(spec->capability_id)
+                ? offsetof(behavior_function_context, result_storage)
+                : offsetof(behavior_function_context, value_storage)
         );
         sljit_emit_icall(
             c,

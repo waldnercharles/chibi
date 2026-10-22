@@ -1446,10 +1446,17 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         }
         mutated := MutatedNames(forest, documents[callable.document].text, Field(forest, callable.node, "body"),
                                 referenced);
+        // A function with one result builds the arrays it returns in its
+        // caller's storage.
+        built: int[] = [];
+        if (callable.results == 0) {
+            built = BuiltLocals(forest, documents[callable.document].text, types, aliases, callable.package,
+                                Field(forest, callable.node, "body"), referenced);
+        }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
                            aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced,
-                           mutated, ops, target);
+                           mutated, built, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);

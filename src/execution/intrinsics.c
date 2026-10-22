@@ -323,9 +323,7 @@ const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
 const node_access EXECUTION_value_access = { .flags = NODE_EFFECT_PURE };
-/* Builds the union `args` name, copying its payload unless `moved`: then
- * pin_union_moved keeps the values held in storage. */
-static const char *union_build(arena *storage, const pin_value *args, int count, pin_value *out, bool moved)
+static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count >= 1);
     if (!args[0].u64) {
@@ -335,18 +333,19 @@ static const char *union_build(arena *storage, const pin_value *args, int count,
         pin_union_cancelled(out);
         return NULL;
     }
-    int failed = moved
-                   ? pin_union_moved(storage, args[0].u64, args + 1, count - 1, out)
-                   : pin_union_value(storage, args[0].u64, args + 1, count - 1, out);
-    return failed ? "Cannot retain union payload" : NULL;
+    return pin_union_value(storage, args[0].u64, args + 1, count - 1, out)
+             ? "Cannot retain union payload"
+             : NULL;
 }
-static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+static const char *union_keep(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    return union_build(storage, args, count, out, false);
-}
-static const char *union_move(arena *storage, const pin_value *args, int count, pin_value *out)
-{
-    return union_build(storage, args, count, out, true);
+    assert(count >= 2);
+    if (!args[0].u64) {
+        return "Union constructor requires a nonzero tag";
+    }
+    return pin_union_kept(storage, args[0].u64, args[1].u64, args + 2, count - 2, out)
+             ? "Cannot retain union payload"
+             : NULL;
 }
 static const char *union_test(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -393,7 +392,7 @@ static const char *union_get(arena *storage, const pin_value *args, int count, p
     return NULL;
 }
 const node_host_call EXECUTION_union_make_call = { .value = union_make };
-const node_host_call EXECUTION_union_move_call = { .value = union_move };
+const node_host_call EXECUTION_union_keep_call = { .value = union_keep };
 const node_host_call EXECUTION_union_test_call = { .value = union_test };
 const node_host_call EXECUTION_union_get_call = { .value = union_get };
 typedef struct language_reference_path
@@ -1377,7 +1376,7 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             return &EXECUTION_array_extend_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
-        case EXECUTION_INTRINSIC_UNION_MOVE: return &EXECUTION_union_move_call;
+        case EXECUTION_INTRINSIC_UNION_KEEP: return &EXECUTION_union_keep_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -1443,8 +1442,8 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     if (call == &EXECUTION_union_make_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MAKE;
     }
-    if (call == &EXECUTION_union_move_call) {
-        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MOVE;
+    if (call == &EXECUTION_union_keep_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_KEEP;
     }
     if (call == &EXECUTION_union_test_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_TEST;
@@ -1508,19 +1507,39 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     return 0;
 }
+/* The intrinsics that may build a returned local in the caller's storage;
+ * union_keep runs only there. */
+static bool result_kind(execution_intrinsic kind)
+{
+    return kind == EXECUTION_INTRINSIC_CONSTRUCT ||
+           kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+           kind == EXECUTION_INTRINSIC_ARRAY_STORE ||
+           kind == EXECUTION_INTRINSIC_ARRAY_EXTEND ||
+           kind == EXECUTION_INTRINSIC_UNION_KEEP;
+}
 const node_host_call *execution_intrinsic_resolve(uint64_t id)
 {
-    if ((id & UINT64_C(0xffffffffffffff00)) != UINT64_C(0x4348494900000000)) {
+    execution_intrinsic kind = execution_intrinsic_kind(id);
+    if (((id & ~EXECUTION_INTRINSIC_IN_RESULT) & UINT64_C(0xffffffffffffff00)) !=
+        UINT64_C(0x4348494900000000)) {
         return NULL;
     }
-    return execution_intrinsic_call((execution_intrinsic)(id & 255));
+    if (execution_intrinsic_in_result(id) ? !result_kind(kind)
+                                          : kind == EXECUTION_INTRINSIC_UNION_KEEP) {
+        return NULL;
+    }
+    return execution_intrinsic_call(kind);
 }
 const node_access *execution_intrinsic_access(uint64_t id)
 {
     if (!execution_intrinsic_resolve(id)) {
         return NULL;
     }
-    switch ((execution_intrinsic)(id & 255)) {
+    /* Building in the caller's storage writes outside the call. */
+    if (execution_intrinsic_in_result(id)) {
+        return &EXECUTION_assignment_access;
+    }
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
@@ -1548,8 +1567,8 @@ const node_access *execution_intrinsic_access(uint64_t id)
 }
 uint64_t execution_intrinsic_abi(uint64_t id)
 {
-    if ((id & UINT64_C(0xffffffff)) >= EXECUTION_INTRINSIC_STRING_BYTES &&
-        (id & UINT64_C(0xffffffff)) <= EXECUTION_INTRINSIC_STRING_NEXT &&
+    if (execution_intrinsic_kind(id) >= EXECUTION_INTRINSIC_STRING_BYTES &&
+        execution_intrinsic_kind(id) <= EXECUTION_INTRINSIC_STRING_NEXT &&
         execution_intrinsic_resolve(id)) {
         return 2;
     }

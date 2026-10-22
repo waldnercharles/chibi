@@ -23,9 +23,9 @@ The identity symbol communicates asset type, while Player identifies the particu
 
 ## Reusable ImGui controls
 
-There is already a shared layer in [editor/ui_shell.h](/Users/cwaldner/Personal/c-blueprints/editor/ui_shell.h:118) and [editor/ui_shell.c](/Users/cwaldner/Personal/c-blueprints/editor/ui_shell.c:640): icon buttons, search fields, disclosure rows, section headers, and a central theme. Extend it rather than starting a second styling system.
+There is already a shared layer in editor/ui_shell.h (`editor/ui_shell.h:118`; historical repository reference) and editor/ui_shell.c (`editor/ui_shell.c:640`; historical repository reference): icon buttons, search fields, disclosure rows, section headers, and a central theme. Extend it rather than starting a second styling system.
 
-The current [search helper](/Users/cwaldner/Personal/c-blueprints/editor/ui_shell.c:717) already draws the magnifier inside the input, using padded text. Scene and Navigator callers still render their clear buttons separately. Consolidate the clear action into that helper and update those callers together. Focus, clear behavior, padding, and hit regions must remain consistent across all searches.
+The current search helper (`editor/ui_shell.c:717`; historical repository reference) already draws the magnifier inside the input, using padded text. Scene and Navigator callers still render their clear buttons separately. Consolidate the clear action into that helper and update those callers together. Focus, clear behavior, padding, and hit regions must remain consistent across all searches.
 
 The next implementation should share these small controls:
 

@@ -16,7 +16,7 @@ void pin_union_cancelled(pin_value *out)
     *out = (pin_value){ .type = PIN_UNION, .ptr = (void *)&cancelled };
 }
 
-int pin_union_value(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+static pin_union *allocate(arena *storage, uint64_t tag, const pin_value *values, int count)
 {
     assert(storage && tag && count >= 0 && (!count || values));
     assert((size_t)count <= (SIZE_MAX - sizeof(pin_union)) / sizeof(pin_value));
@@ -24,8 +24,34 @@ int pin_union_value(arena *storage, uint64_t tag, const pin_value *values, int c
     *value = (pin_union){ .tag = tag, .count = count };
     memset(value->values, 0, (size_t)count * sizeof *values);
     pin_arena_trace_union(storage, value);
+    return value;
+}
+int pin_union_value(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+{
+    pin_union *value = allocate(storage, tag, values, count);
     for (int i = 0; i < count; i++) {
         if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {
+            return -1;
+        }
+    }
+    *out = (pin_value){ .type = PIN_UNION, .ptr = value };
+    return 0;
+}
+/* Whether what a value points to is in storage. Its header's type name and
+ * record are the layout its cell was declared with, which outlives it. */
+static bool held_by(const arena *storage, const pin_value *v)
+{
+    bool pointer = v->container != PIN_CONTAINER_SINGLE || v->type == PIN_STRUCT ||
+                   v->type == PIN_STR || v->type == PIN_NAME || v->type == PIN_UNION;
+    return !pointer || !v->ptr || arena_contains(storage, v->ptr);
+}
+int pin_union_moved(arena *storage, uint64_t tag, const pin_value *values, int count, pin_value *out)
+{
+    pin_union *value = allocate(storage, tag, values, count);
+    for (int i = 0; i < count; i++) {
+        if (held_by(storage, &values[i])) {
+            value->values[i] = values[i];
+        } else if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {
             return -1;
         }
     }

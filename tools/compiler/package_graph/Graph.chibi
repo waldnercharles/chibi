@@ -100,10 +100,10 @@ SortBindings :: (items: Binding[]) -> Binding[] {
             takeLeft = BindingCompare(left[a], right[b]) <= 0;
         }
         if (takeLeft) {
-            result = array_add(result, left[a]);
+            result.append(left[a]);
             a += 1;
         } else {
-            result = array_add(result, right[b]);
+            result.append(right[b]);
             b += 1;
         }
     }
@@ -158,7 +158,7 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
             // responsible for this package's declared name and header.
             item: Package = {directory: file.directory, name: file.name,
                              member_start: i, member_count: 0};
-            packages = array_add(packages, item);
+            packages.append(item);
         }
         filePackages[i] = found;
         i += 1;
@@ -225,7 +225,7 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
         }
         if (!blank) {
             binding: Binding = {name: alias, file: imported.file, target: target, import_index: i};
-            bindings = array_add(bindings, binding);
+            bindings.append(binding);
         }
         from := filePackages[imported.file];
         exists := false;
@@ -237,7 +237,7 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
         }
         if (!exists) {
             edge: Edge = {from: from, to: target, import_index: i};
-            edges = array_add(edges, edge);
+            edges.append(edge);
         }
         i += 1;
     }
@@ -303,7 +303,7 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
                         }
                     }
                 }
-                path = array_add(path, importIndex);
+                path.append(importIndex);
                 current = target;
             }
             start := seen[current] - 1;

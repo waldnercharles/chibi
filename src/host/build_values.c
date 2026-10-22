@@ -107,6 +107,38 @@ const char *build_values_join(build_values *values, const pin_value *arguments, 
     results[0].str = text;
     return NULL;
 }
+/* Every occurrence of a non-empty `find` in text, left to right, replaced by
+ * `with`. */
+const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results)
+{
+    if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1]) ||
+        !build_values_string(&arguments[2]) || !arguments[1].str[0]) {
+        return "invalid build string arguments";
+    }
+    const char *text = arguments[0].str, *find = arguments[1].str,
+               *with = arguments[2].str;
+    size_t find_size = strlen(find), with_size = strlen(with), size = strlen(text);
+    for (const char *at = strstr(text, find); at; at = strstr(at + find_size, find)) {
+        if (with_size > find_size && with_size - find_size > BUILD_TEXT_LIMIT - size) {
+            return "build text limit exceeded";
+        }
+        size = size - find_size + with_size;
+    }
+    char *result = allocate(values, size + 1);
+    if (!result) {
+        return values->error;
+    }
+    char *out = result;
+    for (const char *at; (at = strstr(text, find)); text = at + find_size) {
+        memcpy(out, text, (size_t)(at - text));
+        out += at - text;
+        memcpy(out, with, with_size);
+        out += with_size;
+    }
+    strcpy(out, text);
+    results[0].str = result;
+    return NULL;
+}
 const char *build_values_starts_with(build_values *, const pin_value *arguments, pin_value *results)
 {
     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1])) {

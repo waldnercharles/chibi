@@ -139,7 +139,8 @@ function(chibi_vendor_dependency target output)
         set(license_root "${path}")
         foreach(level RANGE 0 3)
             file(GLOB licenses "${license_root}/LICENSE*" "${license_root}/License*"
-                "${license_root}/COPYING*" "${license_root}/FTL.TXT" "${license_root}/docs/FTL.TXT")
+                "${license_root}/COPYING*" "${license_root}/NOTICE*" "${license_root}/FTL.TXT"
+                "${license_root}/docs/FTL.TXT")
             # Case-insensitive file systems match one file to both spellings.
             list(REMOVE_DUPLICATES licenses)
             foreach(license IN LISTS licenses)

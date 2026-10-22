@@ -1,6 +1,6 @@
 # Simplified crowd physics: Neon-Swarm comparison
 
-Neon-Swarm's `/Users/cwaldner/Personal/repos/Neon-Swarm/src/physics.c` implements
+Neon-Swarm's `/path/to/Neon-Swarm/src/physics.c` implements
 circle collision detection and soft separation. It stores positions, velocities,
 radii and other body properties in separate arrays, rebuilds a spatial grid,
 and checks neighboring cells. Penetration applies repulsive spring/damping
@@ -72,7 +72,7 @@ been integrated or claimed to pass Arena acceptance.
 
 ```sh
 python3 tools/bench_neon_physics.py \
-  --neon /Users/cwaldner/Personal/repos/Neon-Swarm \
+  --neon /path/to/Neon-Swarm \
   --build build-performance --count 20000 --frames 240 --trials 3 \
   --output docs/research/neon-physics-comparison-results.json
 ```

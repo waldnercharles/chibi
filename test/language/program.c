@@ -3016,19 +3016,18 @@ TEST_CASE(program_loops_count_half_open_and_in_reverse)
  * ones, and the appends after the resume continue in place. */
 TEST_CASE(program_local_array_survives_collection_mid_build)
 {
-    const char
-        *source = "Grow :: behavior {\n"
-                  "  total: double = 0;\n"
-                  "  on Impulse :: () {\n"
-                  "    xs: double[] = [];\n"
-                  "    i: double = 0;\n"
-                  "    while (i < 200) { xs = array_add(xs, i); i += 1; }\n"
-                  "    await Delay(1);\n"
-                  "    while (i < 400) { xs = array_add(xs, i); i += 1; }\n"
-                  "    xs[0] = 1000;\n"
-                  "    total = xs[0] + xs[199] + xs[399] + length(xs);\n"
-                  "  }\n"
-                  "}";
+    const char *source = "Grow :: behavior {\n"
+                         "  total: double = 0;\n"
+                         "  on Impulse :: () {\n"
+                         "    xs: double[] = [];\n"
+                         "    i: double = 0;\n"
+                         "    while (i < 200) { xs = append(xs, i); i += 1; }\n"
+                         "    await Delay(1);\n"
+                         "    while (i < 400) { xs = append(xs, i); i += 1; }\n"
+                         "    xs[0] = 1000;\n"
+                         "    total = xs[0] + xs[199] + xs[399] + length(xs);\n"
+                         "  }\n"
+                         "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3042,11 +3041,11 @@ TEST_CASE(program_local_array_survives_collection_mid_build)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
         REQUIRE(execution_instance_pending(instance) == 1);
         execution_memory_usage suspended = execution_program_memory_usage(program);
-        /* 200 items fill a 256-item buffer; the outgrown 8- to 128-item
-         * buffers would hold 248 more. */
+        /* 200 doubles fill a packed 256-item buffer; the outgrown 8- to
+         * 128-item buffers would hold 248 more. */
         REQUIRE(arena_collect_marks() > marks);
-        REQUIRE(suspended.payload_bytes >= 256 * sizeof(pin_value));
-        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(pin_value));
+        REQUIRE(suspended.payload_bytes >= 256 * sizeof(double));
+        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(double));
         REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
         REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
         REQUIRE(execution_instance_pending(instance) == 0);
@@ -3059,7 +3058,7 @@ TEST_CASE(program_local_array_store_checks_its_range)
                          "  first: int = 0;\n"
                          "  on Impulse :: (enabled: bool) {\n"
                          "    xs: int[] = [];\n"
-                         "    xs = array_add(xs, int(1));\n"
+                         "    xs = append(xs, int(1));\n"
                          "    i: int = 0;\n"
                          "    if (enabled) { i = 3; }\n"
                          "    xs[i] = 5;\n"
@@ -3086,6 +3085,59 @@ TEST_CASE(program_local_array_store_checks_its_range)
         execution_program_free(program);
         program = NULL;
     }
+    return true;
+}
+/* Every array function is a method on its first argument. `append` adds an
+ * item and `extend` an array's items, and a method that changes its array
+ * does so in place as a statement on a name. */
+TEST_CASE(program_array_methods_change_their_array)
+{
+    const char *source = "Methods :: behavior {\n"
+                         "  total: double = 0;\n"
+                         "  count: int = 0;\n"
+                         "  on Impulse :: () {\n"
+                         "    xs: double[] = [];\n"
+                         "    i: double = 0;\n"
+                         "    while (i < 300) { xs.append(i); i += 1; }\n"
+                         "    ys: double[] = [1000, 2000];\n"
+                         "    xs.extend(ys);\n"
+                         "    xs.reverse();\n"
+                         "    count = xs.length();\n"
+                         "    total = xs[0] + xs[1] + xs[301];\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(int_state(instance, "count", PIN_I32, 302));
+        REQUIRE(number_state(instance, "total", 2000 + 1000 + 0));
+    }
+    const char *changed = "Changed :: behavior {\n"
+                          "  on Impulse :: () {\n"
+                          "    xs: double[] = [];\n"
+                          "    ys := xs.append(1);\n"
+                          "    xs = xs.append(1);\n"
+                          "    xs.array_add(1);\n"
+                          "    xs.ArrayAdd(1);\n"
+                          "  }\n"
+                          "}";
+    prepare();
+    REQUIRE(!compile_pack(changed, BEHAVIOR_BYTECODE, &NATIVE_ARRAY_DEFINITION_PACK));
+    int statements = 0, unknown = 0;
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        statements += strstr(analysis->diagnostics[i].message, "append changes the array") !=
+                      NULL;
+        unknown += strstr(analysis->diagnostics[i].message, "Unknown callable 'xs.") !=
+                   NULL;
+    }
+    REQUIRE(statements == 2 && unknown == 2);
     return true;
 }
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
@@ -8127,6 +8179,124 @@ TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
     }
     return true;
 }
+/* Version 32 calls array_add `append` and append `extend`, in every spelling
+ * the catalog matches; methods already have those meanings. */
+TEST_CASE(program_version_31_array_calls_take_their_new_names)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "L :: library { F :: (xs: int[]) -> int[] { return array_add(xs, 1) "
+          "} }",
+          "L :: library { F :: (xs: int[]) -> int[] { return append(xs, 1) } "
+          "}" },
+        { "L :: library { F :: (xs: int[], ys: int[]) -> int[] { return "
+          "append(append(xs, ys), ArrayAdd(ys, 2)) } }",
+          "L :: library { F :: (xs: int[], ys: int[]) -> int[] { return "
+          "extend(extend(xs, ys), append(ys, 2)) } }" },
+        { "L :: library { F :: (xs: int[]) -> int[] { xs.append(1); "
+          "xs.extend([2]); return xs } }",
+          NULL },
+        /* A source that calls `extend` is already migrated. */
+        { "L :: library { F :: (xs: int[]) -> int[] { return extend(append(xs, "
+          "1), [2]) } }",
+          NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_array_calls(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    /* Calls of a function declared with one of those names would change
+     * meaning. */
+    const char *refused[] = {
+        "L :: library { append :: (xs: int[]) -> int[] { return xs } }",
+        "L :: library { Extend :: (xs: int[]) -> int[] { return xs } }",
+        "L :: library { F :: (array_add: int) -> int { return array_add } }",
+        "L :: library { F :: () -> int { append := 1; return append } }",
+        "B :: behavior { action Append = Go(); on Begin :: () { Append() } }",
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_array_calls(refused[i], &migrated, error, sizeof error) < 0);
+        if (!strstr(error, "named like an array function")) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, "named like an array function"));
+    }
+    return true;
+}
+static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
+{
+    int *calls = user;
+    if (!(*calls)++) {
+        snprintf(error, size, "finalization failed");
+        return -1;
+    }
+    return 0;
+}
+/* A rerun after finalization failed resumes after the steps that finished:
+ * a migrated `append(xs, 1)` that only adds an item stays as it is. */
+TEST_CASE(program_migration_retry_resumes_after_finished_steps)
+{
+    const char *source = "L :: library { F :: (xs: int[]) -> int[] { return "
+                         "array_add(xs, 1) } }",
+               *expected = "L :: library { F :: (xs: int[]) -> int[] { return "
+                           "append(xs, 1) } }";
+    char root[] = "/tmp/chibi-retry-XXXXXX", path[300], manifest[300],
+         error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/Adds.chibi", root);
+    write_whole(path, source);
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    char text[96];
+    snprintf(
+        text,
+        sizeof text,
+        "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n",
+        CHIBI_PROJECT_VERSION - 1
+    );
+    write_whole(manifest, text);
+    int calls = 0;
+    REQUIRE(
+        chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error) < 0
+    );
+    char marked[96];
+    snprintf(
+        marked,
+        sizeof marked,
+        "version %d\nmigrated %d\ncontent \"content\"\nstart_scene "
+        "\"Start.kdl\"\n",
+        CHIBI_PROJECT_VERSION - 1,
+        CHIBI_PROJECT_VERSION
+    );
+    REQUIRE(!strcmp(read_whole(manifest), marked));
+    REQUIRE(!strcmp(read_whole(path), expected));
+    int resumed = chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error);
+    if (resumed != 1) {
+        fprintf(stderr, "resumed %d: %s\n", resumed, error);
+    }
+    REQUIRE(resumed == 1);
+    REQUIRE(calls == 2 && !strcmp(read_whole(path), expected));
+    snprintf(text, sizeof text, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(!strcmp(read_whole(manifest), text));
+    REQUIRE(!unlink(path) && !unlink(manifest));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!rmdir(path) && !rmdir(root));
+    return true;
+}
 /* An upgrade that fails after its steps wrote, for example in finalization,
  * leaves scripts at the current version under an older manifest. Its rerun
  * starts at that version, and every step leaves those scripts alone. */
@@ -9208,7 +9378,7 @@ TEST_CASE(program_union_arrays_keep_owned_writable_values)
                   "switch value { case .Item(number): return number; } } "
                   "Edit :: (values: Value[]) -> Value[] { "
                   "local: Value[] = values; "
-                  "local = array_add(local, Value.Item(2)); "
+                  "local = append(local, Value.Item(2)); "
                   "local[0] = Value.Item(3); return local; } "
                   "on Impulse :: (enabled: bool) { "
                   "if enabled { "
@@ -9453,6 +9623,7 @@ void test_language_program()
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);
+    RUN_TEST_CASE(program_array_methods_change_their_array);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
@@ -9515,6 +9686,8 @@ void test_language_program()
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
+    RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
+    RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);

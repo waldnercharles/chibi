@@ -19,6 +19,7 @@ endif()
 # build. Inherited whole-repository includes must not hide a dependency leak.
 set_directory_properties(PROPERTIES INCLUDE_DIRECTORIES "")
 get_filename_component(CHIBI_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+include(licenses.cmake)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CHIBI_SDK_ROOT}/src/assets/project.h")
 file(STRINGS "${CHIBI_SDK_ROOT}/src/assets/project.h" project_version_line REGEX "^#define CHIBI_PROJECT_VERSION [0-9]+$")
 string(REGEX REPLACE ".* ([0-9]+)$" "\\1" CHIBI_PROJECT_FORMAT "${project_version_line}")
@@ -482,6 +483,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate26.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate30.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate31.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
@@ -489,7 +491,8 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
@@ -499,6 +502,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)

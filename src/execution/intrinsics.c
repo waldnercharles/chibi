@@ -156,6 +156,33 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     return NULL;
 }
 const node_host_call EXECUTION_value_equal_call = { .value = value_equal };
+/* Whether an array of `type` keeps its elements inline while it changes in
+ * place: plain scalars do, so a byte grows the array by a byte. */
+static bool inline_scalar(pin_type type)
+{
+    return type >= PIN_BOOL && type <= PIN_F64;
+}
+/* Boxes a packed array's elements in place; false when they cannot fit.
+ * In-place updates of records grow boxed items; the packed records stay in
+ * their owned allocation. */
+static bool box(arena *storage, pin_array *array)
+{
+    int capacity = array->capacity > array->count ? array->capacity : array->count;
+    if ((size_t)capacity > SIZE_MAX / sizeof(pin_value)) {
+        return false;
+    }
+    pin_value *items = arena_alloc(storage, (size_t)(capacity ? capacity : 1) * sizeof *items);
+    for (int i = 0; i < array->count; i++) {
+        items[i] = pin_array_get(array, i);
+    }
+    array->items = items;
+    array->capacity = capacity;
+    array->data = NULL;
+    array->stride = 0;
+    return true;
+}
+/* A local's array, owned by storage and ready to change in place; NULL when
+ * it cannot be boxed. */
 static pin_array *owned_array(arena *storage, pin_value *header)
 {
     assert(header && header->container == PIN_CONTAINER_ARRAY);
@@ -166,50 +193,65 @@ static pin_array *owned_array(arena *storage, pin_value *header)
                               .record = header->record
                                           ? pin_record_snapshot(storage, header->record)
                                           : NULL };
+        if (inline_scalar(header->type)) {
+            array->stride = pin_array_element_stride(
+                header->type,
+                header->type_name,
+                array->record
+            );
+        }
         pin_arena_trace_array(storage, array);
         header->ptr = array;
     }
     pin_array *array = header->ptr;
     /* A local's array and its layout live in this storage: every store into the
-     * local snapshots there. The optional lookup index is rebuilt on demand.
-     * In-place updates grow boxed items, so a packed array is boxed once; its
-     * packed records stay in their owned allocation. */
-    if (array->stride) {
-        int capacity = array->capacity > array->count ? array->capacity : array->count;
-        pin_value *items = arena_alloc(storage, (size_t)(capacity ? capacity : 1) * sizeof *items);
-        for (int i = 0; i < array->count; i++) {
-            items[i] = pin_array_get(array, i);
-        }
-        array->items = items;
-        array->capacity = capacity;
-        array->data = NULL;
-        array->stride = 0;
+     * local snapshots there. The optional lookup index is rebuilt on demand. */
+    if (array->stride && !inline_scalar(array->element_type) && !box(storage, array)) {
+        return NULL;
     }
     array->buckets = NULL;
     array->bucket_mask = 0;
     return array;
+}
+/* Appends item to an owned array: inline when it is packed and the item fits,
+ * otherwise as a boxed copy. Its capacity must already hold it. */
+static const char *append_item(arena *storage, pin_array *array, const pin_value *item)
+{
+    assert(array->count < array->capacity);
+    if (array->stride) {
+        array->count++;
+        if (!pin_array_set(array, array->count - 1, item)) {
+            return NULL;
+        }
+        array->count--;
+        if (!box(storage, array)) {
+            return "Array exceeds its length limit";
+        }
+    }
+    if (pin_array_snapshot_owned_items(
+            storage,
+            array->record,
+            &array->items[array->count],
+            item,
+            1
+        )) {
+        return "Cannot retain array item";
+    }
+    array->count++;
+    return NULL;
 }
 static const char *array_push(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 2);
     (void)count;
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
-    if (array->count == INT_MAX ||
+    if (!array || array->count == INT_MAX ||
         pin_array_reserve_owned(storage, array, array->count + 1)) {
         return "Array exceeds its length limit";
     }
-    if (pin_array_snapshot_owned_items(
-            storage,
-            array->record,
-            &array->items[array->count],
-            &args[1],
-            1
-        )) {
-        return "Cannot retain array item";
-    }
-    array->count++;
+    const char *error = append_item(storage, array, &args[1]);
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
-    return NULL;
+    return error;
 }
 static const char *array_store(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -217,15 +259,26 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     (void)count;
     pin_value *header = (pin_value *)(uintptr_t)args[0].u64;
     const pin_array *current = header->ptr;
-    if (!current || args[1].i < 0 || args[1].i >= current->count) {
+    int index = args[1].i;
+    if (!current || index < 0 || index >= current->count) {
         return "Array index out of range";
     }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    pin_array *array = owned_array(storage, header);
+    if (!array) {
+        return "Array exceeds its length limit";
+    }
+    if (array->stride && !pin_array_set(array, index, &args[2])) {
+        return NULL;
+    }
     pin_value item;
-    if (pin_array_snapshot_owned_items(storage, current->record, &item, &args[2], 1)) {
+    if (pin_array_snapshot_owned_items(storage, array->record, &item, &args[2], 1)) {
         return "Cannot retain array item";
     }
-    owned_array(storage, header)->items[args[1].i] = item;
-    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    if (array->stride && !box(storage, array)) {
+        return "Array exceeds its length limit";
+    }
+    array->items[index] = item;
     return NULL;
 }
 static const char *array_extend(arena *storage, const pin_value *args, int count, pin_value *out)
@@ -235,24 +288,32 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
     const pin_array *items = args[1].ptr;
     int added = items ? items->count : 0;
-    if (added > INT_MAX - array->count ||
+    if (!array || added > INT_MAX - array->count ||
         pin_array_reserve_owned(storage, array, array->count + added)) {
         return "Array exceeds its length limit";
     }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    /* Packed scalars of one type copy as bytes; `xs.extend(xs)` reads the
+     * items it had before. */
+    if (added && array->stride && items->stride == array->stride &&
+        items->element_type == array->element_type) {
+        memmove(
+            (char *)array->data + (size_t)array->count * array->stride,
+            items->data,
+            (size_t)added * array->stride
+        );
+        array->count += added;
+        return NULL;
+    }
+    int before = array->count;
     for (int i = 0; i < added; i++) {
         pin_value item = pin_array_get(items, i);
-        if (pin_array_snapshot_owned_items(
-                storage,
-                array->record,
-                &array->items[array->count + i],
-                &item,
-                1
-            )) {
-            return "Cannot retain array item";
+        const char *error = append_item(storage, array, &item);
+        if (error) {
+            array->count = before;
+            return error;
         }
     }
-    array->count += added;
-    *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return NULL;
 }
 const node_host_call EXECUTION_array_push_call = { .value = array_push };
@@ -262,7 +323,9 @@ const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
 const node_access EXECUTION_value_access = { .flags = NODE_EFFECT_PURE };
-static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+/* Builds the union `args` name, copying its payload unless `moved`: then
+ * pin_union_moved keeps the values held in storage. */
+static const char *union_build(arena *storage, const pin_value *args, int count, pin_value *out, bool moved)
 {
     assert(count >= 1);
     if (!args[0].u64) {
@@ -272,9 +335,18 @@ static const char *union_make(arena *storage, const pin_value *args, int count, 
         pin_union_cancelled(out);
         return NULL;
     }
-    return pin_union_value(storage, args[0].u64, args + 1, count - 1, out)
-             ? "Cannot retain union payload"
-             : NULL;
+    int failed = moved
+                   ? pin_union_moved(storage, args[0].u64, args + 1, count - 1, out)
+                   : pin_union_value(storage, args[0].u64, args + 1, count - 1, out);
+    return failed ? "Cannot retain union payload" : NULL;
+}
+static const char *union_make(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return union_build(storage, args, count, out, false);
+}
+static const char *union_move(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return union_build(storage, args, count, out, true);
 }
 static const char *union_test(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -321,6 +393,7 @@ static const char *union_get(arena *storage, const pin_value *args, int count, p
     return NULL;
 }
 const node_host_call EXECUTION_union_make_call = { .value = union_make };
+const node_host_call EXECUTION_union_move_call = { .value = union_move };
 const node_host_call EXECUTION_union_test_call = { .value = union_test };
 const node_host_call EXECUTION_union_get_call = { .value = union_get };
 typedef struct language_reference_path
@@ -1304,6 +1377,7 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             return &EXECUTION_array_extend_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
+        case EXECUTION_INTRINSIC_UNION_MOVE: return &EXECUTION_union_move_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -1368,6 +1442,9 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_union_make_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MAKE;
+    }
+    if (call == &EXECUTION_union_move_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MOVE;
     }
     if (call == &EXECUTION_union_test_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_TEST;

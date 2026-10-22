@@ -10,11 +10,13 @@ import strings "core:strings"
 //     [--target NAME]... [--commands-only on]
 // The profile, the Makefile's sanitizer profile unless named, is found on
 // this machine (engine.Discover); these options override what they name:
-//   --compiler PATH --compiler-id ID --build-type TYPE --architecture ARCH
-//   --sysroot DIR --warnings on|off --sanitizers LIST --debug-compilation-dir DIR
+//   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
+//   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST
+//   --debug-compilation-dir DIR
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
-//   --libclang-library PATH
-// Every path is absolute. Writes BUILD/compile_commands.json, then, unless
+//   --libclang-library PATH --third-party DIR --reflect PATH
+// Every path is absolute. Writes BUILD/compile_commands.json and
+// BUILD/link_commands.json, then, unless
 // --commands-only is on, builds every target or those named, in dependency
 // order, and reports how many sources it compiled.
 
@@ -41,7 +43,7 @@ Count :: (text: string) -> int {
 }
 
 // Whether a target was named with --target, or none were, or a named
-// executable links it.
+// executable needs it (engine.Needed).
 Selected :: (arguments: string[], target: string) -> bool {
     named := false;
     for (i in 0..<length(arguments) - 1) {
@@ -50,10 +52,8 @@ Selected :: (arguments: string[], target: string) -> bool {
             if (arguments[i + 1] == target) {
                 return true;
             }
-            for (linked in engine.Links(arguments[i + 1])) {
-                if (linked == target) {
-                    return true;
-                }
+            if (engine.Needed(arguments[i + 1], target)) {
+                return true;
             }
         }
     }
@@ -73,22 +73,29 @@ Libraries :: () -> int {
         warnings = "on";
     }
     libclang_library := Option(arguments, "--libclang-library", found.libclang_library);
+    compiler_id := Option(arguments, "--compiler-id", engine.CompilerId(compiler));
+    sanitizers := Option(arguments, "--sanitizers", found.sanitizers);
     profile: engine.Profile = {
         compiler: compiler,
-        compiler_id: Option(arguments, "--compiler-id", engine.CompilerId(compiler)),
+        cxx_compiler: Option(arguments, "--cxx-compiler", engine.CxxCompiler(compiler, compiler_id)),
+        compiler_id: compiler_id,
         build_type: Option(arguments, "--build-type", found.build_type),
         architecture: Option(arguments, "--architecture", found.architecture),
         sysroot: Option(arguments, "--sysroot", found.sysroot),
         warnings: Option(arguments, "--warnings", warnings) == "on",
-        sanitizers: Option(arguments, "--sanitizers", found.sanitizers),
+        sanitizers: sanitizers,
         debug_compilation_dir: Option(arguments, "--debug-compilation-dir", found.debug_compilation_dir),
         libclang_include: Option(arguments, "--libclang-include", found.libclang_include),
         libclang_library: libclang_library,
-        clang_resource_include: engine.ClangResourceInclude(libclang_library)
+        clang_resource_include: engine.ClangResourceInclude(libclang_library),
+        // The archive for the profile as overridden.
+        third_party: Option(arguments, "--third-party", engine.ThirdParty(build.root(), compiler_id, sanitizers)),
+        reflect: Option(arguments, "--reflect", "")
     };
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", build.find_executable("ccache")),
         compiler: profile.compiler,
+        cxx_compiler: profile.cxx_compiler,
         archiver: Option(arguments, "--archiver", build.find_executable("ar")),
         ranlib: Option(arguments, "--ranlib", engine.DiscoverTool(compiler, "llvm-ranlib", "ranlib")),
         jobs: jobs
@@ -101,13 +108,31 @@ Libraries :: () -> int {
     selected: string[] = [];
     for (target in engine.Targets()) {
         if (Selected(arguments, target)) {
-            selected = array_add(selected, target);
+            selected.append(target);
         }
+    }
+    if (engine.NeedsCxx(selected) && !strings.HasPrefix(profile.cxx_compiler, "/")) {
+        build.report("graph: no C++ compiler was found for the C++ sources; set CXX or --cxx-compiler");
+        return 2;
+    }
+    if (engine.NeedsThirdParty(selected) && profile.third_party == "") {
+        build.report("graph: third_party/archives.tsv pins no archive for this host and profile");
+        return 2;
+    }
+    if (engine.NeedsThirdParty(selected) &&
+        !build.file_exists(strings.Join([profile.third_party, "/third-party.cmake"], ""))) {
+        build.report("graph: the third-party archive is not unpacked; configure with make build first, or name it with --third-party");
+        return 2;
     }
     build.make_directory(build_dir);
     commands := strings.Join([build_dir, "/compile_commands.json"], "");
     if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, selected))) {
         build.report("graph: writing compile_commands.json failed");
+        return 1;
+    }
+    links := strings.Join([build_dir, "/link_commands.json"], "");
+    if (!build.write_file(links, engine.LinkCommands(tools, profile, build.root(), build_dir, selected))) {
+        build.report("graph: writing link_commands.json failed");
         return 1;
     }
     if (Option(arguments, "--commands-only", "") == "on") {

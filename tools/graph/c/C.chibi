@@ -8,24 +8,27 @@ import strings "core:strings"
 // command or an input changed. Paths are absolute, so steps behave the same
 // from any working directory.
 
-// The tools that build C, and how many compiles may run at once. A launcher,
-// such as ccache, runs the compiler when it is not empty.
+// The tools that build C and C++, and how many compiles may run at once. A
+// launcher, such as ccache, runs the compiler when it is not empty.
 pub Tools :: struct {
     launcher: string;
     compiler: string;
+    cxx_compiler: string;
     archiver: string;
     ranlib: string;
     jobs: int;
 }
 
-// A static library: the root its sources are below, the directory generated
-// sources are below, the directory its objects go to and the archive it
-// becomes. Its sources and the flags each compile takes, in order, are arrays
-// beside it, since records hold only scalars.
+// A static library: the root its sources are below, the build directory
+// generated sources are below, the directory third-party sources are below,
+// the directory its objects go to and the archive it becomes. Its sources and
+// the flags each compile takes, in order, are arrays beside it, since records
+// hold only scalars.
 pub Library :: struct {
     name: string;
     root: string;
-    generated: string;
+    build_dir: string;
+    third_party: string;
     objects: string;
     output: string;
 }
@@ -35,40 +38,59 @@ Join :: (parts: string[]) -> string {
 }
 
 // The object a source compiles to: its path below the root, or below
-// `generated/` for a generated source, below the library's object directory.
+// `build/` or `third-party/` for a generated or third-party source, below the
+// library's object directory.
 pub Object :: (target: Library, source: string) -> string {
     base := target.root;
     prefix := "";
-    if (strings.HasPrefix(source, Join([target.generated, "/"]))) {
-        base = target.generated;
-        prefix = "generated/";
+    if (strings.HasPrefix(source, Join([target.build_dir, "/"]))) {
+        base = target.build_dir;
+        prefix = "build/";
+    } else if (target.third_party != "" && strings.HasPrefix(source, Join([target.third_party, "/"]))) {
+        base = target.third_party;
+        prefix = "third-party/";
     }
     relative := strings.Slice(source, strings.ByteLength(base) + 1, strings.ByteLength(source));
     return Join([target.objects, "/", prefix, relative, ".o"]);
 }
 
+// The compiler for a source: the C++ compiler for a .cpp source.
+Compiler :: (tools: Tools, source: string) -> string {
+    if (strings.HasSuffix(source, ".cpp")) {
+        return tools.cxx_compiler;
+    }
+    return tools.compiler;
+}
+
 // The compile command of a source, as CMake writes it, without its launcher.
 pub Command :: (tools: Tools, target: Library, flags: string[], source: string) -> string[] {
-    command := append([tools.compiler], flags);
-    return append(command, ["-o", Object(target, source), "-c", source]);
+    command := [Compiler(tools, source)];
+    command.extend(flags);
+    command.extend(["-o", Object(target, source), "-c", source]);
+    return command;
 }
 
 // The record that says what built a file: its command, one argument per line,
-// an empty line, then a stamp and path for each input and for the output.
+// an empty line, then for each input and for the output its path and, on the
+// next line, its stamp.
 Record :: (output: string) -> string {
     return Join([output, ".chibi-record"]);
 }
 RecordText :: (command: string, inputs: string[], output: string) -> string {
     lines := [command, ""];
-    for (input in array_add(inputs, output)) {
-        lines = array_add(lines, Join([build.file_stamp(input), " ", input]));
+    recorded := inputs;
+    recorded.append(output);
+    for (input in recorded) {
+        lines.extend([input, build.file_stamp(input)]);
     }
     return Join([strings.Join(lines, "\n"), "\n"]);
 }
 
 // Whether output was built by command from inputs that have not changed since.
 // Records are read with the host's line natives: core:strings copies the rest
-// of the text at each line, which costs seconds over a few records.
+// of the text at each line, which costs seconds over a few records. A path and
+// its stamp are separate lines, so reading one copies nothing more: build
+// values are never freed, and an up-to-date build reads every record.
 Current :: (command: string[], output: string) -> bool {
     record := Record(output);
     if (!build.file_exists(record) || !build.file_exists(output)) {
@@ -84,9 +106,12 @@ Current :: (command: string[], output: string) -> bool {
             return false;
         }
     }
-    for (i in count + 1..<length(lines)) {
-        line := lines[i];
-        if (build.file_stamp(build.after(line, " ")) != build.before(line, " ")) {
+    if ((length(lines) - count - 1) % 2 != 0) {
+        return false;
+    }
+    for (i in 0..<(length(lines) - count - 1) / 2) {
+        at := count + 1 + 2 * i;
+        if (build.file_stamp(lines[at]) != lines[at + 1]) {
             return false;
         }
     }
@@ -111,7 +136,7 @@ pub Dependencies :: (text: string) -> string[] {
         space := byte == 32 || byte == 9 || byte == 10 || byte == 13;
         if (space && !escaped) {
             if (start >= 0) {
-                paths = array_add(paths, Unescape(strings.Slice(rest, start, i - start)));
+                paths.append(Unescape(strings.Slice(rest, start, i - start)));
                 start = -1;
             }
         } else if (start < 0) {
@@ -120,7 +145,7 @@ pub Dependencies :: (text: string) -> string[] {
         escaped = byte == 92 && !escaped;
     }
     if (start >= 0) {
-        paths = array_add(paths, Unescape(strings.Slice(rest, start, length(bytes) - start)));
+        paths.append(Unescape(strings.Slice(rest, start, length(bytes) - start)));
     }
     return paths;
 }
@@ -150,9 +175,10 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
     command := Command(tools, target, flags, source);
     started := command;
     if (tools.launcher != "") {
-        started = append([tools.launcher], started);
+        started = [tools.launcher];
+        started.extend(command);
     }
-    started = append(started, ["-MD", "-MF", Join([object, ".d"])]);
+    started.extend(["-MD", "-MF", Join([object, ".d"])]);
     return {
         owner: target.name,
         object: object,
@@ -177,9 +203,10 @@ pub Finish :: (compile: Running) -> bool {
 pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool) -> bool {
     objects: string[] = [];
     for (source in sources) {
-        objects = array_add(objects, Object(target, source));
+        objects.append(Object(target, source));
     }
-    archive := append([tools.archiver, "qc", target.output], objects);
+    archive := [tools.archiver, "qc", target.output];
+    archive.extend(objects);
     if (!compiled && Current(archive, target.output)) {
         return true;
     }
@@ -191,8 +218,9 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
 
 // Copies each header that differs to its place below a staged include root,
 // and removes files there that no header names, as CMake's chibi_sdk_headers
-// does, so a moved header cannot still be included.
-pub StageHeaders :: (root: string, headers: string[], destination: string) -> bool {
+// does, so a moved header cannot still be included. The kept headers are
+// ones a step wrote there itself.
+pub StageHeaders :: (root: string, headers: string[], destination: string, kept: string[]) -> bool {
     for (header in headers) {
         from := Join([root, "/", header]);
         to := Join([destination, "/", header]);
@@ -204,7 +232,9 @@ pub StageHeaders :: (root: string, headers: string[], destination: string) -> bo
             return false;
         }
     }
-    return !build.file_exists(destination) || RemoveUnlisted(destination, "", headers);
+    listed := headers;
+    listed.extend(kept);
+    return !build.file_exists(destination) || RemoveUnlisted(destination, "", listed);
 }
 
 // Removes the files below directory whose path from the staged root, under
@@ -235,7 +265,32 @@ RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool
 
 // A JSON string holding text; build arguments hold no control characters.
 Quote :: (text: string) -> string {
+    // core:strings replaces byte by byte in the interpreter, and few arguments
+    // hold a backslash or quote; the host's split finds one natively.
+    if (build.before(text, "\\") == text && build.before(text, "\"") == text) {
+        return Join(["\"", text, "\""]);
+    }
     return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
+}
+
+// An executable's link command, as CMake writes it: the compiler, `flags`, the
+// objects, `-o` and the output, then `libraries`.
+pub LinkCommand :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> string[] {
+    command := [tools.compiler];
+    command.extend(flags);
+    command.extend(objects);
+    command.extend(["-o", output]);
+    command.extend(libraries);
+    return command;
+}
+
+// The link_commands.json entry of an executable: its output and arguments.
+pub LinkEntry :: (command: string[], output: string) -> string {
+    arguments: string[] = [];
+    for (argument in command) {
+        arguments.append(Quote(argument));
+    }
+    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"]);
 }
 
 // A compile_commands.json entry for a source, in the `arguments` form clangd
@@ -243,7 +298,7 @@ Quote :: (text: string) -> string {
 pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: string) -> string {
     arguments: string[] = [];
     for (argument in Command(tools, target, flags, source)) {
-        arguments = array_add(arguments, Quote(argument));
+        arguments.append(Quote(argument));
     }
     return Join([
         "{\"directory\": ", Quote(target.root), ", \"file\": ", Quote(source), ", \"output\": ",
@@ -257,14 +312,21 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
 // absolute paths are inputs too. 1 when it linked, 0 when it was current, -1
 // on failure.
 pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
-    command := append(append(append([tools.compiler], flags), objects), ["-o", output]);
-    command = append(command, libraries);
+    command := LinkCommand(tools, output, objects, flags, libraries);
     inputs := objects;
     for (linked in libraries) {
         if (strings.HasPrefix(linked, "/")) {
-            inputs = array_add(inputs, linked);
+            inputs.append(linked);
         }
     }
+    return Step(command, inputs, output);
+}
+
+// Runs a command that writes output, unless output was written by the same
+// command from inputs that have not changed since, and records it as a
+// compile is recorded. 1 when it ran, 0 when output was current, -1 on
+// failure.
+pub Step :: (command: string[], inputs: string[], output: string) -> int {
     if (Current(command, output)) {
         return 0;
     }

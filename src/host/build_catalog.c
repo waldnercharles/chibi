@@ -249,6 +249,25 @@ static const char *build_hash_file(void *service, const pin_value *arguments, pi
     );
     return failure ? failure : string_result(host, results, digest);
 }
+static const char *build_byte_list(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char *text = NULL;
+    const char *failure = build_io_byte_list(
+        host->root,
+        arguments[0].str,
+        host->deadline,
+        host->options->cancelled,
+        &text
+    );
+    if (failure) {
+        return failure;
+    }
+    failure = string_result(host, results, text);
+    free(text);
+    return failure;
+}
 static const char *build_embed_file(void *service, const pin_value *arguments, pin_value *results)
 {
     READY_HOST();
@@ -288,6 +307,7 @@ VALUE_CALLBACK(lines)
 VALUE_CALLBACK(trim)
 VALUE_CALLBACK(concat)
 VALUE_CALLBACK(length)
+VALUE_CALLBACK(replace)
 #undef VALUE_CALLBACK
 #undef STRING_ARGUMENTS
 #undef READY_HOST
@@ -301,6 +321,11 @@ static const script_catalog_parameter array_parameter = {
 static const script_catalog_parameter two_text_parameters[] = {
     { .name = "text", .type = { .storage = PIN_STR } },
     { .name = "other", .type = { .storage = PIN_STR } },
+};
+static const script_catalog_parameter replace_parameters[] = {
+    { .name = "text", .type = { .storage = PIN_STR } },
+    { .name = "find", .type = { .storage = PIN_STR } },
+    { .name = "with", .type = { .storage = PIN_STR } },
 };
 static const script_catalog_parameter join_parameters[] = {
     { .name = "arguments",
@@ -370,7 +395,9 @@ static const script_catalog_parameter array_result = {
     X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)             \
     X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                \
     X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                 \
-    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)
+    X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)          \
+    X(937, "build.replace", replace_parameters, 3, text_result, value_replace)              \
+    X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

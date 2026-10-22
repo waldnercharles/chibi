@@ -68,7 +68,8 @@ typedef struct
  * within its time ceiling: unions, constants, patterns and integer types
  * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
  * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
+ * to prepare, and the moves, reads in place and array methods
+ * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
  * references, arrays and ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
@@ -80,20 +81,23 @@ typedef enum
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings. A
  * `game` sample's target links the core pack a game links, which declares
- * assert; preparing every sample with it would cost each selector seconds. An `updates` sample's `Build(count)` updates a
- * local array in place: doubling its count at most doubles the values it
- * copies, where copying the array on each update would quadruple them. A
- * `boxed` sample's Boxed functions read only arrays that are never packed,
- * and its Packed functions arrays that may be. A `moves` sample calls no
- * native: its Moved functions take fresh values into locals and returns
- * without copying them, and its Copied function copies an array's element.
- * An `aliases` sample's Aliased functions read records and arrays nothing
- * changes in place, and its CopiedWalk copies the array its loop changes. */
+ * assert; preparing every sample with it would cost each selector seconds. An
+ * `updates` sample's `Build(count)` updates a local array in place: doubling
+ * its count at most doubles the values it copies, where copying the array on
+ * each update would quadruple them. A `boxed` sample's Boxed functions read
+ * only arrays that are never packed, and its Packed functions arrays that may
+ * be. A `moves` sample calls no native: its Moved functions take fresh values
+ * into locals and returns without copying them, and its Copied function copies
+ * an array's element. An `aliases` sample's Aliased functions read records and
+ * arrays nothing changes in place, and its CopiedWalk copies the array its loop
+ * changes. A `variants` sample calls no native: its Kept functions return
+ * variants that keep their payload values, and its Copied function builds one
+ * it keeps after a change. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases;
+    bool core, updates, boxed, game, moves, aliases, variants;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -169,7 +173,7 @@ static const sample samples[] = {
                    "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { "Total", "[5]", "[123]" } } },
     { .name = "moved values",
-      .group = COLLECTION_SAMPLES,
+      .group = IMPORT_SAMPLES,
       .moves = true,
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; }\n"
@@ -189,8 +193,41 @@ static const sample samples[] = {
                  { "MovedResults", "[]", "[12]" },
                  { "MovedSecond", "[4]", "[5]" },
                  { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+    { .name = "returned variants",
+      .group = IMPORT_SAMPLES,
+      .variants = true,
+      .source =
+          "package facts\n"
+          "Holder :: union { Some(items: int[], name: string) }\n"
+          "KeptMake :: (n: int) -> Holder {\n"
+          "    xs: int[] = [];\n    i: int = 0;\n"
+          "    while (i < n) { xs.append(i); i += 1; }\n"
+          "    return (Holder.Some(xs, \"made\"));\n}\n"
+          "KeptAgain :: (h: Holder) -> Holder {\n"
+          "    switch h { case .Some(items, name): return Holder.Some(items, "
+          "name); }\n}\n"
+          "KeptParam :: (xs: int[]) -> Holder { return Holder.Some(xs, \"p\"); "
+          "}\n"
+          "Total :: () -> int {\n"
+          "    a := KeptMake(3);\n    b := KeptMake(5);\n    c := "
+          "KeptAgain(a);\n"
+          "    total: int = 0;\n"
+          "    switch a { case .Some(items, name): total += items[2] * 100; }\n"
+          "    switch b { case .Some(items, name): total += items[4] * 10; }\n"
+          "    switch c { case .Some(items, name): total += items[1]; }\n"
+          "    return total;\n}\n"
+          "Changed :: () -> int {\n"
+          "    ys: int[] = [1, 2];\n    h := KeptParam(ys);\n    ys[0] = 7;\n"
+          "    switch h { case .Some(items, name): return items[0] * 10 + "
+          "ys[0]; }\n}\n"
+          "CopiedHold :: (xs: int[]) -> int {\n"
+          "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
+          "    switch h { case .Some(items, name): return items[0]; }\n}",
+      .calls = { { "Total", "[]", "[241]" },
+                 { "Changed", "[]", "[17]" },
+                 { "CopiedHold", "[[5,6]]", "[5]" } } },
     { .name = "read in place",
-      .group = COLLECTION_SAMPLES,
+      .group = IMPORT_SAMPLES,
       .aliases = true,
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; }\n"
@@ -206,6 +243,38 @@ static const sample samples[] = {
                 "    return total;\n}",
       .calls = { { "AliasedSum", "[[{\"text\":\"a\",\"count\":1},{\"text\":\"b\",\"count\":2}]]", "[103]" },
                  { "CopiedWalk", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}]]", "[3]" } } },
+    { .name = "array methods",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Build :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    ys: int[] = [100, 200];\n"
+                "    xs.extend(ys);\n    seven: int = 7;\n    xs.insert(0, "
+                "seven);\n    xs.reverse();\n"
+                "    return xs;\n}\n"
+                "Count :: (xs: int[]) -> int { return xs.length() * 10 + "
+                "Build(2).length(); }\n"
+                "Has :: (xs: int[], x: int) -> bool { return xs.contains(x); "
+                "}\n"
+                "Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); "
+                "return part; }\n"
+                "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
+                "ys.append(3); return xs.length(); }\n"
+                "Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }",
+      .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
+                 { "Count", "[[1,2,3]]", "[35]" },
+                 { "Has", "[[1,2],2]", "[true]" },
+                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
+                 { "Separate", "[]", "[2]" },
+                 { "Grow", "[[5]]", "[[5,1]]" } } },
+    { .name = "array method in an expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "
+                "xs.append(1); return xs; }",
+      .message = "append changes the array; call it as a statement on a name",
+      .line = 2,
+      .column = 45 },
     { .name = "strings",
       .source = "package facts\n"
                 "Name :: (name: string) -> string {\n"
@@ -385,7 +454,7 @@ static const sample samples[] = {
                 "Point :: struct { x: int; y: int; }\n"
                 "Squares :: (n: int) -> int[] {\n"
                 "    out: int[] = [];\n    i: int = 0;\n"
-                "    while (i < n) { out = array_add(out, i * i); i += 1; }\n"
+                "    while (i < n) { out = append(out, i * i); i += 1; }\n"
                 "    return out;\n}\n"
                 "Total :: (xs: int[]) -> int {\n"
                 "    sum: int = 0;\n"
@@ -395,13 +464,13 @@ static const sample samples[] = {
                 "Edit :: () -> int {\n"
                 "    xs: int[] = [1, 2, 3];\n    xs[1] = 20;\n    xs[2] += 5;\n"
                 "    copy := xs;\n    more: int[] = [7, 8];\n    xs = "
-                "append(xs, more);\n"
+                "extend(xs, more);\n"
                 "    return xs[1] + xs[2] + length(xs) * 100 + length(copy) * "
                 "1000;\n}\n"
                 "Points :: (n: int) -> Point[] {\n"
                 "    ps: Point[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { p: Point = {x: i, y: i * 2}; ps = "
-                "array_add(ps, p); i += 1; }\n"
+                "append(ps, p); i += 1; }\n"
                 "    return ps;\n}\n"
                 "SumY :: (ps: Point[]) -> int {\n"
                 "    total: int = 0;\n"
@@ -507,7 +576,7 @@ static const sample samples[] = {
                 "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
                 "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
                 "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = array_add(xs, int(7)); }\n"
+                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
                 "Inc :: (k: int) -> int { Bump(k); return k; }\n"
                 "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
                 "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
@@ -790,8 +859,8 @@ static const sample samples[] = {
                 "    return hash;\n}\n"
                 "Bytes :: () -> byte[] {\n"
                 "    out: byte[] = [1, 2, 255];\n"
-                "    out = array_add(out, byte(wrap: 300));\n"
-                "    out = array_add(out, Small);\n"
+                "    out = append(out, byte(wrap: 300));\n"
+                "    out = append(out, Small);\n"
                 "    return out;\n}\n"
                 "High :: (n: int) -> int { return int(wrap: (Mask >> "
                 "56) + uint64(n)); }\n"
@@ -849,7 +918,7 @@ static const sample samples[] = {
                 "    out.delta *= 2;\n    return out;\n}\n"
                 "Total :: (n: int) -> int64 {\n"
                 "    es: Entry[] = [];\n    i: int = 0;\n"
-                "    while (i < n) { es = array_add(es, Make(i)); i += 1; }\n"
+                "    while (i < n) { es = append(es, Make(i)); i += 1; }\n"
                 "    total: int64 = 0;\n"
                 "    for (e in es) { total += e.delta + int64(e.small); }\n"
                 "    return total;\n}",
@@ -964,7 +1033,7 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Grow :: (xs: int[], n: int) -> int[] { xs = "
-                "array_add(xs, n); xs[0] = 9; return xs; }\n"
+                "append(xs, n); xs[0] = 9; return xs; }\n"
                 "Swap :: (p: Point, q: Point) -> int { p = q; return "
                 "p.x * 10 + q.y; }\n"
                 "Caller :: () -> int {\n"
@@ -1002,7 +1071,7 @@ static const sample samples[] = {
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
                 "        node: Node = {kind: \"a\", start: index};\n"
-                "        nodes = array_add(nodes, node);\n"
+                "        nodes = append(nodes, node);\n"
                 "        index += 1;\n"
                 "    }\n"
                 "    return length(nodes);\n}",
@@ -1013,7 +1082,7 @@ static const sample samples[] = {
                 "    xs: int[] = [];\n"
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
-                "        xs = append(xs, [index, index]);\n"
+                "        xs = extend(xs, [index, index]);\n"
                 "        index += 1;\n"
                 "    }\n"
                 "    return length(xs);\n}",
@@ -1205,7 +1274,7 @@ static const sample samples[] = {
       .column = 48 },
     { .name = "inferred mismatch",
       .source = "package facts\nOne :: (xs: int[]) -> int { ys := "
-                "array_add(xs, true); return length(ys); }",
+                "append(xs, true); return length(ys); }",
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 35 },
@@ -2214,6 +2283,59 @@ static bool moves_fresh_values(const unsigned char *bytes, size_t length)
     REQUIRE(moved == 4 && copied == 1 && !wrong);
     return true;
 }
+static int union_calls(const behavior_function *f, const node_host_call *call)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id == execution_intrinsic_id(call);
+    }
+    return count;
+}
+/* A returned variant keeps its payload values, which the return copies to the
+ * caller; one kept in a local copies them, since the local's array changes. */
+static bool moves_returned_variants(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler variants load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int kept = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool keep = !strncmp(f.entry, "Kept", 4),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            int moves = union_calls(f.body, &EXECUTION_union_move_call),
+                makes = union_calls(f.body, &EXECUTION_union_make_call);
+            kept += keep;
+            copied += copy;
+            if ((keep && (moves != 1 || makes || snapshots(f.body))) ||
+                (copy && (moves || makes != 1))) {
+                fprintf(stderr, "package compiler %s moves %d and makes %d variants\n", f.entry, moves, makes);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(kept == 3 && copied == 1 && !wrong);
+    return true;
+}
 /* A loop over an array nothing changes, and a local that reads an element of
  * it, read in place; a loop whose body changes its array walks a copy. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
@@ -2578,6 +2700,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->boxed || reads_boxed(bytes, length)) &&
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
+                   (!s->variants || moves_returned_variants(bytes, length)) &&
                    (b || (oracle_closure(s, &expected, &expected_length) &&
                           points_like_oracle(bytes, length)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {

@@ -100,7 +100,7 @@ TEST_CASE(record_legacy_array_callbacks)
     static const pin_type kinds[] = { PIN_I32, PIN_STR, PIN_STRUCT };
     static const node_host_call *const calls[2][8] = {
         { &NATIVE_ARRAY_add_HOST,
-          &NATIVE_ARRAY_append_HOST,
+          &NATIVE_ARRAY_extend_HOST,
           &NATIVE_ARRAY_set_elem_HOST,
           &NATIVE_ARRAY_insert_HOST,
           &NATIVE_ARRAY_remove_index_HOST,
@@ -108,7 +108,7 @@ TEST_CASE(record_legacy_array_callbacks)
           &NATIVE_ARRAY_resize_HOST,
           &NATIVE_ARRAY_slice_HOST },
         { &NATIVE_ARRAY_add_CALL,
-          &NATIVE_ARRAY_append_CALL,
+          &NATIVE_ARRAY_extend_CALL,
           &NATIVE_ARRAY_set_elem_CALL,
           &NATIVE_ARRAY_insert_CALL,
           &NATIVE_ARRAY_remove_index_CALL,

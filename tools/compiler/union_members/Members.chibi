@@ -102,18 +102,18 @@ Edges :: (definition: Definition, variants: Variant[], fields: Field[]) -> int[]
     edges: int[] = [];
     index: int = 0;
     while (index < definition.field_count) {
-        edges = array_add(edges, fields[definition.field_start + index].type);
+        edges.append(fields[definition.field_start + index].type);
         index += 1;
     }
     index = 0;
     while (index < definition.variant_count) {
         variant := variants[definition.variant_start + index];
         if (!variant.tagged) {
-            edges = array_add(edges, variant.type);
+            edges.append(variant.type);
         }
         field_index: int = 0;
         while (field_index < variant.field_count) {
-            edges = array_add(edges, fields[variant.field_start + field_index].type);
+            edges.append(fields[variant.field_start + field_index].type);
             field_index += 1;
         }
         index += 1;
@@ -144,8 +144,8 @@ Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants
                 }
                 updated[found] = 1;
                 if (depth == length(open)) {
-                    open = array_add(open, found);
-                    cursors = array_add(cursors, int(0));
+                    open.append(found);
+                    cursors.append(int(0));
                 } else {
                     open[depth] = found;
                     cursors[depth] = 0;
@@ -253,7 +253,7 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                                 new_types = rows;
                                 new_ids = pool;
                                 row: Variant = {type: type_index, tagged: tagged, field_start: field_start, field_count: field_count};
-                                new_variants = array_add(new_variants, row);
+                                new_variants.append(row);
                         }
                         index += 1;
                     }
@@ -282,15 +282,15 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                                 new_types = rows;
                                 new_ids = pool;
                                 row: Field = {type: type_index};
-                                new_fields = array_add(new_fields, row);
+                                new_fields.append(row);
                         }
                         index += 1;
                     }
                     id_slot := length(new_ids);
-                    new_ids = array_add(new_ids, id);
+                    new_ids.append(id);
                     row: Definition = {id_slot: id_slot, field_start: field_start, field_count: length(selected_fields),
                                        variant_start: variant_start, variant_count: length(selected)};
-                    new_definitions := array_add(definitions, row);
+                    new_definitions := append(definitions, row);
                     return Environment.Tables(reading, new_types, new_ids, new_definitions, new_variants, new_fields, capabilities, capability_fields);
             }
     }
@@ -302,7 +302,7 @@ Absorb :: (environment: Environment, result: reader.Reading) -> Members {
             updates: Update[] = [];
             for (plan in publications) {
                 current = Append(current, plan);
-                updates = array_add(updates, Update.Added(plan));
+                updates.append(Update.Added(plan));
             }
             switch current {
                 case .Tables(old_reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
@@ -319,13 +319,13 @@ Combine :: (earlier: Members, later: Members) -> Members {
                     all_diagnostics := old_diagnostics;
                     all_uses := old_uses;
                     for (item in updates) {
-                        all_updates = array_add(all_updates, item);
+                        all_updates.append(item);
                     }
                     for (item in diagnostics) {
-                        all_diagnostics = array_add(all_diagnostics, item);
+                        all_diagnostics.append(item);
                     }
                     for (item in uses) {
-                        all_uses = array_add(all_uses, item);
+                        all_uses.append(item);
                     }
                     return Members.Built(environment, all_updates, all_diagnostics, all_uses);
             }
@@ -336,14 +336,14 @@ Errors :: (result: Members, errors: syntax.Diagnostic[]) -> Members {
         case .Built(environment, updates, diagnostics, uses):
             all_diagnostics := diagnostics;
             for (item in errors) {
-                all_diagnostics = array_add(all_diagnostics, item);
+                all_diagnostics.append(item);
             }
             return Members.Built(environment, updates, all_diagnostics, uses);
     }
 }
 OneError :: (result: Members, tree: reader.Tree, node: int, document: int, message: string) -> Members {
     errors: syntax.Diagnostic[] = [];
-    errors = array_add(errors, reader.Diagnostic(tree, node, document, message));
+    errors.append(reader.Diagnostic(tree, node, document, message));
     return Errors(result, errors);
 }
 
@@ -361,7 +361,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                         new_types = rows;
                         new_ids = pool;
                         row: Field = {type: type_index};
-                        new_fields = array_add(new_fields, row);
+                        new_fields.append(row);
                 }
             }
             new_variants := variants;
@@ -373,7 +373,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                         new_ids = pool;
                         row: Variant = {type: type_index, tagged: item.tagged,
                                         field_start: field_start + item.field_start, field_count: item.field_count};
-                        new_variants = array_add(new_variants, row);
+                        new_variants.append(row);
                 }
             }
             new_definitions := definitions;
@@ -400,9 +400,9 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                                     case .Added(next_rows, next_pool, type_index):
                                         rows = next_rows;
                                         tag_slot := length(next_pool);
-                                        pool = array_add(next_pool, named.IDAt(payload_ids, item.tag_slot));
+                                        pool = append(next_pool, named.IDAt(payload_ids, item.tag_slot));
                                         row: constructors.RawVariant = {tag_slot: tag_slot, type: type_index};
-                                        alternatives = array_add(alternatives, row);
+                                        alternatives.append(row);
                                 }
                             }
                             definitions_copy := ctor_definitions;
@@ -495,10 +495,10 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                                     case .Added(rows, pool, type_index):
                                                         types = rows;
                                                         id_slot := length(pool);
-                                                        ids = array_add(pool, binding.ID("union-field", field_name));
+                                                        ids = append(pool, binding.ID("union-field", field_name));
                                                         row: DeclaredField = {name: field_name, id_slot: id_slot, type: type_index,
                                                                               offset: length(fields) - first_field, writable: false, has_default: false};
-                                                        fields = array_add(fields, row);
+                                                        fields.append(row);
                                                 }
                                         }
                                     }
@@ -509,7 +509,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                 case .Added(rows, pool, type_index):
                                     types = rows;
                                     tag_slot := length(pool);
-                                    ids = array_add(pool, tag);
+                                    ids = append(pool, tag);
                                     literal := "";
                                     if (literal_node >= 0) {
                                         literal = name;
@@ -517,7 +517,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                     row: DeclaredVariant = {name: name, tag_slot: tag_slot, type: type_index,
                                                             tagged: literal_node < 0, is_literal: literal_node >= 0, literal: literal,
                                                             field_start: first_field, field_count: length(fields) - first_field};
-                                    variants = array_add(variants, row);
+                                    variants.append(row);
                             }
                     }
                 }
@@ -530,7 +530,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
     switch current {
         case .Built(environment, updates, diagnostics, uses):
             updated := Replace(environment, union_id, variants, fields, types, ids);
-            all_updates := array_add(updates, Update.Replaced(union_id, variants, fields, types, ids));
+            all_updates := append(updates, Update.Replaced(union_id, variants, fields, types, ids));
             return Members.Built(updated, all_updates, diagnostics, uses);
     }
 }

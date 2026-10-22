@@ -544,6 +544,12 @@ before/after calls. `tools/toolchain/StageOne.chibi` first escaped sources as
 JSON strings with a before/after loop per special character, but build values
 are never freed, so each replacement copied the whole text and an 800-line
 source exceeded the 32 MB value limit; `chibi-compile` now writes the JSON.
+The M6 graph met the same limit: an up-to-date build of 362 sources reads 6 MB
+of compile records, and splitting each `stamp path` line with `build.before`
+and `build.after` exceeded 32 MB, so records now keep the path and the stamp
+on separate lines, and the host allows 256 MB of arena blocks (about 128 MB of
+values), since the next slices about double the sources. Freeing values a program no longer reaches would remove
+the ceiling.
 
 - Zig's `build.zig` is ordinary Zig: the whole standard library
   (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.
@@ -567,6 +573,12 @@ Splitting the 25 KB `build/CMakeCache.txt` into lines and testing each takes
 0.9 s with `strings.SplitLines` in a Debug host with sanitizers, against 0.2 s
 with `build.lines`. A 50 KB cache ran out of the host's then 100,000-step budget,
 because each split copies the rest of the text.
+The M6 graph's `compile_commands.json` writer escaped every argument with two
+`strings.ReplaceAll` calls: with 218 commands of about forty arguments the run
+took 7 s, and 2.4 s once it asks `build.before` whether the text holds a quote
+or backslash first and escapes only the rare argument that does. Rewriting
+Cute's 96 KB of codec headers with three `strings.ReplaceAll` calls took 11 s,
+so the build host gained `build.replace`.
 
 ## A host's natives can't form a package
 

@@ -279,18 +279,41 @@ TOOLS = {
                            str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'tools/compiler/bootstrap'))],
     # Seven fixed orchestration cases: 50 API invocations on both backends, one CLI,
     # twelve tiny Git roots, controlled CMake workers and Make routing; no engine builds.
-    # Four Chibi build-graph cases over chibi_support: its compile commands match
-    # the configured CMake build's, its archive links, and about ten graph runs in
-    # a copied root rebuild only what changed. Compiles about thirty C files.
+    # One case: from only the profile's name, every compile command the Chibi
+    # build graph writes equals the configured CMake build's.
     'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                     '--build-graph',
                     str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Three cases over chibi_support: about ten graph runs in a copied root
+    # rebuild only what changed, retry a failed compile, and link the archive.
+    # Compiles about thirty C files.
+    'build-graph-support': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--build-graph-support',
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     # One case: the graph builds and links reflect (about 27 C files with the
     # profile's sanitizers), its link command matches CMake's build.ninja, and
     # the program writes the same reflected sources as CMake's.
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: the graph compiles chibi_vector_capabilities over the
+    # third-party archive's staged Cute math headers and the task pool over its
+    # prebuilt enkiTS (three C files with the profile's sanitizers), then finds
+    # them current.
+    'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--build-graph-archive',
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Two cases: the graph runs the configured build's reflect to write the
+    # native type sources and compiles one of them, and rewrites Cute's codec
+    # headers with private symbols and compiles image preparation.
+    'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                              '--build-graph-generated',
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # One case: naming test_tools in a commands-only run writes the links of
+    # the programs it runs, as CMake's add_dependencies builds them.
+    'build-graph-programs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                             '--build-graph-programs',
+                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),

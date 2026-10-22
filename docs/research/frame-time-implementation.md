@@ -175,8 +175,8 @@ exposes `cf_app_exists`; scene authoring uses it before app-dependent work.
 
 Hosted CI remains blocked. Repository Actions are disabled, and the latest
 [failed job](https://github.com/waldnercharles/c-blueprints/actions/runs/36082791733/job/107908155400)
-reports failed account payments or a spending limit. Restoring hosted execution
-requires an account owner. No billing, Actions or deployment setting was changed.
+could not start because hosted execution was unavailable. Restoring hosted execution
+requires an account owner. No account, Actions or deployment setting was changed.
 
 Final checks passed after removing the pressure-cache experiment:
 

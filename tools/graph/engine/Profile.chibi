@@ -7,11 +7,14 @@ import strings "core:strings"
 // SANITIZER_, DEBUG_ and RELEASE_CMAKE_FLAGS, its default the first.
 
 // The profile `name` names on this machine, or a profile whose compiler is
-// empty when the name is unknown or no compiler is found.
+// empty when the name is unknown or no compiler is found. Its C++ compiler
+// and archive depend on the compiler and sanitizers a caller may override, so
+// CxxCompiler and ThirdParty find them once they are final.
 pub Discover :: (name: string, source_root: string, build_dir: string) -> Profile {
     compiler := DiscoverCompiler();
     profile: Profile = {
         compiler: compiler,
+        cxx_compiler: "",
         compiler_id: CompilerId(compiler),
         build_type: "Debug",
         architecture: "",
@@ -21,7 +24,9 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         debug_compilation_dir: "",
         libclang_include: "",
         libclang_library: "",
-        clang_resource_include: ""
+        clang_resource_include: "",
+        third_party: "",
+        reflect: ""
     };
     if (name == "sanitizer") {
         profile.sanitizers = "address,undefined";
@@ -43,6 +48,48 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
     return profile;
 }
 
+// The unpacked third-party archive cmake/third_party.cmake loads for a
+// profile: third_party/archives.tsv's pin for this host's target and the
+// profile's variant, below .git/chibi/third_party in the clone's Git
+// directory, where tools/toolchain/Build.chibi unpacks it. Sanitized builds
+// use the archive instrumented the same way, except with Apple clang, whose
+// sanitizer runtime the instrumented archives do not link with. Empty when
+// nothing is pinned for this host; the directory is missing until something
+// unpacks it. Build.chibi's ThirdPartyTarget and ThirdPartyCache name the
+// target and cache the same way; that program parses with older hosts, so it
+// keeps its own copy.
+pub ThirdParty :: (source_root: string, compiler_id: string, sanitizers: string) -> string {
+    if (build.probe(["uname", "-m"]) != 0) {
+        return "";
+    }
+    machine := strings.TrimSpace(build.last_stdout());
+    os := "linux";
+    if (build.platform() == "Darwin") {
+        os = "macos";
+    }
+    architecture := "x64";
+    if (machine == "arm64" || machine == "aarch64") {
+        architecture = "arm64";
+    }
+    variant := "release";
+    if (compiler_id != "AppleClang" && sanitizers == "address,undefined") {
+        variant = "address-undefined";
+    } else if (compiler_id != "AppleClang" && sanitizers == "thread") {
+        variant = "thread";
+    }
+    cache := Join([source_root, "/.chibi/third_party"]);
+    if (build.probe(["git", "-C", source_root, "rev-parse", "--path-format=absolute", "--git-common-dir"]) == 0) {
+        cache = Join([strings.TrimSpace(build.last_stdout()), "/chibi/third_party"]);
+    }
+    pin := Join([os, "-", architecture, "\t", variant, "\t"]);
+    for (line in build.lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
+        if (strings.HasPrefix(line, pin)) {
+            return Join([cache, "/", build.after(build.after(build.after(line, "\t"), "\t"), "\t")]);
+        }
+    }
+    return "";
+}
+
 // CC, or Homebrew LLVM's clang as the Makefile prefers it, or cc.
 DiscoverCompiler :: () -> string {
     chosen := build.environment("CC");
@@ -53,6 +100,30 @@ DiscoverCompiler :: () -> string {
         chosen = "cc";
     }
     return build.find_executable(chosen);
+}
+
+// CXX, or the C++ driver beside a C compiler named clang, gcc or cc, or the
+// one on PATH for the compiler's kind, as CMake finds them. Empty when none
+// is found.
+pub CxxCompiler :: (compiler: string, compiler_id: string) -> string {
+    chosen := build.environment("CXX");
+    if (chosen != "") {
+        return build.find_executable(chosen);
+    }
+    directory := strings.Slice(compiler, 0, strings.LastIndex(compiler, "/") + 1);
+    name := strings.Slice(compiler, strings.ByteLength(directory), strings.ByteLength(compiler));
+    for (pair in ["clang=clang++", "gcc=g++", "cc=c++"]) {
+        if (name == build.before(pair, "=") && build.file_exists(Join([directory, build.after(pair, "=")]))) {
+            return Join([directory, build.after(pair, "=")]);
+        }
+    }
+    if (compiler_id == "GNU") {
+        return build.find_executable("g++");
+    }
+    if (compiler_id == "Clang" || compiler_id == "AppleClang") {
+        return build.find_executable("clang++");
+    }
+    return build.find_executable("c++");
 }
 
 // AppleClang, Clang or GNU, from the compiler's version banner, as CMake
@@ -113,7 +184,7 @@ pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
     parts: string[] = [];
     for (part in strings.Split(strings.Slice(build_dir, strings.ByteLength(prefix), strings.ByteLength(build_dir)), "/")) {
         if (part != "") {
-            parts = array_add(parts, "build");
+            parts.append("build");
         }
     }
     return strings.Join(parts, "/");
@@ -127,7 +198,7 @@ DiscoverLibclang :: (part: string) -> string {
     versions: string[] = [];
     for (name in build.list_directory("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
-            versions = array_add(versions, name);
+            versions.append(name);
         }
     }
     // Newest first: a longer version number is newer, then the larger.
@@ -143,7 +214,7 @@ DiscoverLibclang :: (part: string) -> string {
         }
     }
     for (version in versions) {
-        prefixes = array_add(prefixes, Join(["/usr/lib/", version]));
+        prefixes.append(Join(["/usr/lib/", version]));
     }
     for (prefix in prefixes) {
         include := Join([prefix, "/include"]);

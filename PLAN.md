@@ -639,12 +639,99 @@ Slice 9, 2026-10-21: profiles. The graph finds the Makefile's sanitizer,
 debug or release profile on the machine: compiler, its kind, architecture,
 SDK, ccache, libclang, `ar` and `ranlib`. From only the profile's name and
 CMake's compiler as `CC`, its 129 commands equal CMake's.
-Next: run `reflect` from the graph to generate `chibi_native_types`, once Cute
-math's headers come from the repository; the fetched
-dependencies (`chibi_execution`'s SLJIT, Cute math, tree-sitter, Box2D/Box3D),
-which wait for vendoring (#569) so the graph builds them from the repository;
-then moving profile selection from `Build.chibi`'s CMake arguments into the
-graph.
+Slice 10, 2026-10-21: the third-party archive (#569). The graph finds the
+unpacked archive `cmake/third_party.cmake` loads for its profile and builds
+`third-party/` sources and include directories from it: SLJIT,
+`chibi_execution`, the header-only `chibi_math` (Cute's math headers, staged
+and included as system headers), and the fourteen libraries that need only
+those: 60 libraries and 218 compile commands, all of which compiled and
+archived (or, for `reflect`, linked) from the graph.
+`build-graph-archive` builds SLJIT and a math-header library, and
+`build-graph-reflect` now reads the math headers the graph staged. Writing the
+commands quotes arguments through the host's split, 7 s down to 2.4 s.
+Slice 11, 2026-10-21: generated sources and per-source options. A target
+whose sources `reflect` writes makes the graph build reflect, stage the math
+headers and run it as `generate_runtime_registry` does, recorded like a link
+(`c.Step`); `--reflect` runs another, as cross builds do. Generated sources
+are `build/` paths, and a source can add options, as CMake's source property
+does. The graph owns `chibi_native_types`, `chibi_native_bindings` and ten
+libraries over them: 72 libraries and 250 compile commands, equal to CMake's,
+whose reflected sources equal CMake's byte for byte.
+Slice 12, 2026-10-21: tree-sitter and Box2D/Box3D from the archive. A target
+names its C standard and position-independent code, and a source its own
+include directories, which come before its target's. The graph owns
+tree-sitter's runtime, the CSS and HTML grammars, Box2D, Box3D, the language
+and project syntax documents and UI authoring: 79 libraries and 362 compile
+commands, equal to CMake's. An up-to-date build of all of them read 6 MB of
+records and ran out of the host's 32 MB of never-freed values; records now
+keep each path and stamp on separate lines, and it takes 7 s. That leaves
+about twice the headroom; the next slices about double the sources, so a
+host-side stamp check or freeable build values must come with them.
+Slice 13, 2026-10-21: C++ and shared private headers. The graph compiles
+`.cpp` sources with the profile's C++ compiler (`CXX`, or the driver beside
+the C compiler) and the target's C++ standard, and stages `private/NAME`
+directories several libraries share. It owns enkiTS's task scheduler and the
+twelve libraries it unblocks (task pool, material, physics, physics3d,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and the default native catalog): 92 libraries and 484 compile
+commands, equal to CMake's. The host's value storage rose to 256 MB for
+up-to-date builds of graphs this size.
+Slice 14, 2026-10-21: rewritten codecs and the language. The graph writes
+Cute's codec headers with private symbols through a new `build.replace`
+native (`core:strings.ReplaceAll` took 11 s), stages the language's private
+headers below `sdk/language/private`, and owns image preparation, the
+language, compiler, authoring, asset and model authoring, shader
+preparation, source catalog and presentation, graph catalog and player
+libraries: 103 libraries and 579 compile commands, equal to CMake's. A text
+value now holds 16 MB, since `compile_commands.json` passed 1 MB; a step's
+own output stays at 1 MB.
+Slice 15, 2026-10-21: the desktop libraries. The graph compiles each
+source as its language: C, C++ with the target's C++ standard (C++17 for the
+UI host over RmlUi), or Objective-C (`-x objective-c`, CMake's `gnu2x`, and
+no debug directory, which root CMakeLists.txt adds before Objective-C is
+enabled). Export names that differ from a target's name are tables, and the
+Vorbis decoder is rewritten like Cute's codecs. It owns the platform, model
+import, UI host, renderer and project compilation, format and preparation
+libraries: 110 libraries and 692 compile commands, equal to CMake's when
+split as the shell splits them. `build-graph` now compares commands alone,
+and `build-graph-support` holds the rebuild cases.
+Slice 16, 2026-10-21: executables. The graph links the build host, the
+compiler host and the `chibi` launcher beside `reflect`, with object
+libraries, per-executable link options and link libraries in CMake's order,
+and writes `link_commands.json`, whose four commands `build-graph` compares
+with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
+Slice 17, 2026-10-21: C++-linked executables. On macOS the graph links the
+player, `chibi-compile` and `chibi_ctl` with the C++ compiler, over the
+compiler syntax and JSON libraries and the automation library, naming the
+desktop archive's libraries and frameworks in CMake's order: 122 targets, 731
+compile commands and seven link commands, equal to CMake's. Their Linux
+links wait for a Linux archive.
+Slice 18, 2026-10-21: the small test drivers. The graph builds and links
+`test_host`, `concurrent_runner`, `policy_worker` and `benchmark_trials`,
+which link no library, staging the host tests' headers below
+`BUILD/testing/host/include`: 745 compile commands and eleven link commands
+on macOS, equal to CMake's.
+Slice 19, 2026-10-21: `test_language`. The graph configures files as CMake's
+`configure_file` does, from templates whose placeholders take a file's bytes
+(a new `build.byte_list` native) or its text as a C string, and gives a
+source its own defines, with the source root, build type and a file's
+SHA-256 filled in. On macOS it builds and links `test_language` over its
+object library: 850 compile commands and twelve link commands, equal to
+CMake's, and 28 generated headers equal to CMake's.
+Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
+compiles the 21 object libraries `test/tools` declares over staged SDK
+headers and the fixtures it copies beside pico_unit, and expands a target's
+own defines: 949 compile commands, equal to CMake's.
+Slice 21, 2026-10-21: `test_tools`. On macOS the graph links it over those
+consumers and writes every executable where CMake does, so the paths it
+compiles in for `chibi_ctl` and `policy_worker` (`{program:NAME}`) and the
+compiler it exports C with (`export_compiler.h`) equal CMake's: 1061
+compile commands and thirteen link commands. A build step now takes up to
+1,023 arguments, which its 497-argument link needs; the graph-built
+`test_tools` passes `make test-tools`' cases and `build-process`.
+Next: an install layout, which
+`chibi version` reads; then moving profile selection from `Build.chibi`'s
+CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
@@ -793,15 +880,14 @@ runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
 so the owner's instruction was to run the workflow once this branch reached
 `main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
-job ("recent account payments have failed or your spending limit needs to be
-increased"). At the owner's direction the site was instead built locally from
+job because hosted execution was unavailable. At the owner's direction the site was instead built locally from
 `main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
 the Pages source switched back to that branch. The commit, `0b17fddde`,
 replaces the old browser build, whose editor now lives on chibi-studio's own
 Pages site. To publish again, build the site from `main`, commit `build/docs`
 with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
 `gh-pages`, and push. Returning to the workflow means switching the Pages
-source back to GitHub Actions once billing allows. No published page uses an
+source back to GitHub Actions once hosted execution is available. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -972,7 +1058,7 @@ Host status on 2026-10-20:
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
   On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
   readied M6, with these runs as M5's open gate (see M6).
-  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+  - They run when CI is back (disabled since 2026-09-25) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero
     remains the normal compiler.
@@ -1256,6 +1342,24 @@ compiler's own run:
   budget (36,292 instructions × 14,750 slots), so it must be split first.
 - `Text(forest, text, node)` still measures the source up to each node it
   slices, because strings do not carry their length.
+
+Later on 2026-10-21, `EmitBody` was split (#622), loops read unchanging arrays
+in place (#627), and arrays change through methods (#628, #630). Recovering the
+compiler from the bootstrap artifact, the self-hosted compiler's own run, took
+about 4.4 s of CPU. Two runtime and emitter changes followed:
+- Owned scalar arrays stay packed while they change in place (#635), so the
+  prepared writer's byte arrays cost a byte per byte rather than a
+  `pin_value`. This brought recovery to 3.6 s.
+- A returned variant is now a fresh value, and is built by `union_move`, which
+  keeps the payload values held in the call's storage (this PR). This brought
+  recovery to about 3.3 s, or 57 billion instructions.
+
+What remains, in that run's samples:
+- The call-result copy into the caller is about 12%.
+- Record and array constructors are about 16%. Their per-field layout checks
+  are about a third of that.
+- Resetting each call's data is about 10%.
+- The JIT's own snapshots are about 5%.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

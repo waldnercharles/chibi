@@ -1157,6 +1157,38 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     result.effects = script_analyzer_expr_effects(a, result.left);
     return script_analyzer_expr_add(a, result);
 }
+/* `xs.f(...)` calls the array function f with xs first. */
+const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNode member)
+{
+    char *name = script_analyzer_name_copy(a, member);
+    const script_catalog_capability *found = NULL;
+    for (int i = 0; !found && i < a->catalog->capability_count; i++) {
+        const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+        if (candidate->kind == SCRIPT_CAPABILITY_FUNCTION && candidate->parameter_count &&
+            candidate->parameters[0].type.container == PIN_CONTAINER_ARRAY &&
+            script_analyzer_native_capability(a, candidate->id) &&
+            script_name_matches(candidate->name, name)) {
+            found = candidate;
+        }
+    }
+    free(name);
+    return found;
+}
+/* The array functions that return their array changed; `slice` returns a new one. */
+static const char *const ARRAY_CHANGERS[] = {
+    "append",  "add_unique",   "extend",      "set_array_elem",
+    "insert",  "remove_index", "remove_item", "clear",
+    "reverse", "swap",         "resize",
+};
+bool script_analyzer_array_changer(const script_catalog_capability *function)
+{
+    for (size_t i = 0; i < sizeof ARRAY_CHANGERS / sizeof *ARRAY_CHANGERS; i++) {
+        if (script_name_matches(function->name, ARRAY_CHANGERS[i])) {
+            return true;
+        }
+    }
+    return false;
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode target = script_analyzer_field(node, "function"),
@@ -1322,6 +1354,17 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                     }
                 }
                 free(method);
+            }
+            if (!capability && function_index < 0 &&
+                script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_ARRAY) {
+                TSNode member = script_analyzer_field(target, "member");
+                capability = script_analyzer_array_method(a, member);
+                if (capability && script_analyzer_array_changer(capability) &&
+                    !ts_node_eq(a->changing, node)) {
+                    char *method = script_analyzer_name_copy(a, member);
+                    script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
+                    free(method);
+                }
             }
         }
         /* Numeric type names always convert; other types yield to a

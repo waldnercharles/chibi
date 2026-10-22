@@ -2033,6 +2033,100 @@ TEST_CASE(borrow_shared_argument_returned_is_copied)
     REQUIRE(output.i == 1);
     return true;
 }
+/* A value a function built in its caller's storage and returns in two
+ * results moves into one of them and is copied into the other. */
+TEST_CASE(borrow_aliased_results_stay_independent)
+{
+    cleanup();
+    builder = behavior_function_builder_new();
+    pin_value pair[] = { array_shape, array_shape };
+    behavior_function_builder_signature(builder, NULL, 0, pair, 2, NULL, 0);
+    int make = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_assignment_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                     EXECUTION_INTRINSIC_IN_RESULT;
+    assert(
+        behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = make,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int made = value(
+        (behavior_function_instruction){
+            .op = BF_LOAD,
+            .type = BF_POINTER_TYPE,
+            .left = host_address(behavior_function_builder_host_results(builder, make)),
+            .offset = offsetof(pin_value, d) },
+        true
+    );
+    int name = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = BF_POINTER_TYPE,
+                                         .value = { .type = BF_POINTER_TYPE } },
+        true
+    );
+    for (int result = 0; result < 2; result++) {
+        emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                              .type = PIN_F64,
+                                              .left = made,
+                                              .right = name,
+                                              .target = result,
+                                              .value = array_shape });
+    }
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    helper_function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!helper_function) {
+        fprintf(stderr, "aliased results helper: %s\n", error);
+    }
+    REQUIRE(helper_function);
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value same = { .type = PIN_BOOL };
+    behavior_function_builder_signature(builder, NULL, 0, &same, 1, NULL, 0);
+    int call = behavior_function_builder_call(builder, helper_function, NULL, 0, pair, 2);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    int results = behavior_function_builder_call_results(builder, call), arrays[2];
+    for (int result = 0; result < 2; result++) {
+        arrays[result] = value(
+            (behavior_function_instruction){ .op = BF_LOAD,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = host_address(results + result),
+                                             .offset = offsetof(pin_value, d) },
+            true
+        );
+    }
+    int equal = value(
+        (behavior_function_instruction){ .op = BF_EQ,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = arrays[0],
+                                         .right = arrays[1] },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_BOOL, .left = equal });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "aliased results caller: %s\n", error);
+    }
+    REQUIRE(function);
+    behavior_function_prepare_borrows(function);
+    behavior_function_prepare_borrows(helper_function);
+    REQUIRE(helper_function->builds_results);
+    pin_value output = { .type = PIN_BOOL };
+    REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
+    REQUIRE(!output.b);
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -2059,5 +2153,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
     RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
+    RUN_TEST_CASE(borrow_aliased_results_stay_independent);
     pu_clear_setup();
 }

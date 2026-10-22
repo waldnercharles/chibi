@@ -61,14 +61,13 @@ endif()
 set(CHIBI_SDK_NEEDS_THREADS OFF)
 
 # Windows executables read and write file names as UTF-8, as elsewhere.
-# Installed consumers add share/chibi/windows/chibi.rc themselves.
+# Installed CMake consumers add share/chibi/windows/chibi.manifest themselves.
 function(chibi_windows_manifest target)
     if(WIN32)
         set(windows "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/host/windows")
-        target_sources(${target} PRIVATE "${windows}/chibi.rc")
-        # The resource compiler reports no dependencies, so name the manifest.
-        set_source_files_properties("${windows}/chibi.rc" TARGET_DIRECTORY ${target}
-            PROPERTIES OBJECT_DEPENDS "${windows}/chibi.manifest")
+        # Let CMake merge this into the linker's generated manifest. Embedding
+        # chibi.rc beside /MANIFEST:EMBED would define manifest resource 1 twice.
+        target_sources(${target} PRIVATE "${windows}/chibi.manifest")
     endif()
 endfunction()
 if(WIN32)

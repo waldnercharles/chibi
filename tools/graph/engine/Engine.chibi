@@ -307,6 +307,135 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
     return true;
 }
 
+// The build identity document sdk/artifact_formats.cmake writes, which
+// `chibi version` and `chibi doctor` read: the SDK and project versions, the
+// platform, the processors and execution backends, and for each artifact
+// format its version and the SHA-256 of the sources and headers that own it.
+// Empty when an owner declares no version.
+Identity :: (source_root: string, profile: Profile) -> string {
+    sdk := build.read_file(Join([source_root, "/sdk/CMakeLists.txt"]));
+    project := Version(Join([source_root, "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    if (project == "") {
+        return "";
+    }
+    processor := profile.architecture;
+    if (processor == "" && build.probe(["uname", "-m"]) == 0) {
+        processor = strings.TrimSpace(build.last_stdout());
+    }
+    records: string[] = [];
+    for (format in ArtifactFormats()) {
+        record := FormatRecord(source_root, strings.Split(format, " "));
+        if (record == "") {
+            return "";
+        }
+        records.append(record);
+    }
+    return Join([
+        "{\"sdk_version\": \"", build.before(build.after(sdk, "set(CHIBI_SDK_VERSION "), ")"), "\", \"system\": \"",
+        build.platform(), "\", \"processors\": [\"", processor,
+        "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
+        ", \"artifact_formats\": {\n", strings.Join(records, ",\n"), "\n}}\n"
+    ]);
+}
+
+// One artifact format's record: its version, its owner and, by its flags, the
+// value_wire codec and the execution codecs. Empty without a version.
+FormatRecord :: (source_root: string, fields: string[]) -> string {
+    version := Version(Join([source_root, "/src/", fields[2]]), fields[3]);
+    if (version == "") {
+        return "";
+    }
+    parts := ["\"", fields[0], "\": {\"version\": ", version, ", ", Owner(source_root, fields[1], fields[2])];
+    for (flag in fields) {
+        if (flag == "VALUE_WIRE") {
+            parts.extend([", \"codec\": {", Owner(source_root, "types/value_wire.c", "types/value_wire.h"), "}"]);
+        }
+        if (flag == "EXECUTION_CODECS") {
+            implementation: string[] = [];
+            codecs := ["execution/prepared_function.c", "execution/prepared_record.c"];
+            for (source in codecs) {
+                implementation.append(Join(["{\"source\": \"src/", source, "\", \"sha256\": \"",
+                                            build.hash_file(Join([source_root, "/src/", source])), "\"}"]));
+            }
+            parts.extend([", \"implementation\": [", strings.Join(implementation, ", "), "]"]);
+        }
+    }
+    parts.append("}");
+    return Join(parts);
+}
+
+// A source and the header it publishes, with their SHA-256: the staged header
+// is a copy of the one below src/.
+Owner :: (source_root: string, source: string, header: string) -> string {
+    return Join([
+        "\"source\": \"src/", source, "\", \"sha256\": \"", build.hash_file(Join([source_root, "/src/", source])),
+        "\", \"header\": \"src/", header, "\", \"header_sha256\": \"",
+        build.hash_file(Join([source_root, "/src/", header])), "\""
+    ]);
+}
+
+// The digits a header's `#define NAME N` or `#define NAME UINT64_C(N)`
+// declares, or empty when it declares none.
+Version :: (path: string, define: string) -> string {
+    prefix := Join(["#define ", define, " "]);
+    for (line in build.lines(build.read_file(path))) {
+        if (!strings.HasPrefix(line, prefix)) {
+            continue;
+        }
+        value := strings.TrimPrefix(build.after(line, prefix), "UINT64_C(");
+        digits := 0;
+        while (digits < strings.ByteLength(value) && strings.ByteAt(value, digits) >= 48 &&
+               strings.ByteAt(value, digits) <= 57) {
+            digits += 1;
+        }
+        return strings.Slice(value, 0, digits);
+    }
+    return "";
+}
+
+// Writes the build identity to build/sdk/chibi_engine_metadata.json, where
+// CMake writes it, when its text changed. False when it cannot.
+WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
+    text := Identity(source_root, profile);
+    path := Join([build_dir, "/sdk/chibi_engine_metadata.json"]);
+    if (text == "") {
+        return false;
+    }
+    if (build.file_exists(path) && build.read_file(path) == text) {
+        return true;
+    }
+    build.make_directory(Join([build_dir, "/sdk"]));
+    return build.write_file(path, text);
+}
+
+// Copies a file to `to` when it differs, or each file below a directory.
+CopyChanged :: (from: string, to: string) -> bool {
+    if (build.file_kind(from) == "directory") {
+        for (name in build.list_directory(from)) {
+            if (!CopyChanged(Join([from, "/", name]), Join([to, "/", name]))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (build.file_exists(to) && build.hash_file(to) == build.hash_file(from)) {
+        return true;
+    }
+    build.make_directory(strings.Slice(to, 0, strings.LastIndex(to, "/")));
+    return build.copy_file(from, to);
+}
+
+// Installs a target's resources into the build tree (Resources).
+Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
+    for (resource in Resources(target)) {
+        if (!CopyChanged(Resolve(source_root, build_dir, third_party, build.after(resource, "=")),
+                         Resolve(source_root, build_dir, third_party, build.before(resource, "=")))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // The headers a target configures, below its private root.
 Configured :: (target: string) -> string[] {
     headers: string[] = [];
@@ -712,6 +841,22 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
+            return -1;
+        }
+    }
+    // Resources are written before any compile, as CMake writes them when it
+    // configures; the identity first, since they copy it.
+    installs := false;
+    for (target in targets) {
+        installs = installs || length(Resources(target)) > 0;
+    }
+    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
+        build.report("graph: writing the build identity failed");
+        return -1;
+    }
+    for (target in targets) {
+        if (!Install(source_root, build_dir, profile.third_party, target)) {
+            build.report(Join(["graph: installing ", target, "'s resources failed"]));
             return -1;
         }
     }

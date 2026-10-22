@@ -1080,12 +1080,121 @@ void test_build_graph(const char *host)
     tool_remove_tree(suite);
 }
 
+/* The number of files below ours, each equal to the file of the same path
+ * below theirs, or -1 when ours is missing or one differs. */
+static int same_tree(const char *ours, const char *theirs)
+{
+    struct stat status;
+    if (stat(ours, &status)) {
+        fprintf(stderr, "graph resource missing: %s\n", ours);
+        return -1;
+    }
+    if (!S_ISDIR(status.st_mode)) {
+        char *mine = tool_read(ours), *cmake = tool_read(theirs);
+        bool same = mine && cmake && !strcmp(mine, cmake);
+        if (!same) {
+            fprintf(stderr, "graph resource differs from CMake's: %s\n", ours);
+        }
+        free(mine);
+        free(cmake);
+        return same ? 1 : -1;
+    }
+    DIR *directory = opendir(ours);
+    assert(directory);
+    int count = 0;
+    for (struct dirent *entry; count >= 0 && (entry = readdir(directory));) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+            continue;
+        }
+        char mine[GRAPH_PATH], cmake[GRAPH_PATH];
+        join(mine, ours, entry->d_name);
+        join(cmake, theirs, entry->d_name);
+        int below = same_tree(mine, cmake);
+        count = below < 0 ? -1 : count + below;
+    }
+    closedir(directory);
+    return count;
+}
+
+/* The launcher's share/chibi and chibi_ctl's resources equal what CMake
+ * configures: the build identity, the core and documentation sources and the
+ * shaders. They are written before any compile, so a compiler that always
+ * fails still writes them, and an unchanged run leaves their stamps. */
+TEST_CASE(resources_install_as_cmake)
+{
+#ifdef __APPLE__
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH],
+        program[GRAPH_PATH];
+    join(build_dir, suite, "resources");
+    join(program, reference, "reflect");
+    const char *const failing[] = {
+        "--compiler",    "/usr/bin/false", "--compiler-id",
+        compiler_id,     "--sanitizers",   sanitizers,
+        "--third-party", third_party,      "--archiver",
+        archiver,        "--ranlib",       ranlib,
+        "--reflect",     program,          NULL
+    };
+    const char *const installs[] = { "--target", "chibi", "--target", "chibi_ctl", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, installs) == -1);
+    /* The identity, seven sources and the shaders below share/chibi, and the
+     * identity and the shaders again for chibi_ctl. The shaders are compared
+     * with the sources CMake copies, since it copies chibi_ctl's only when it
+     * configures. */
+    const char *const trees[][2] = {
+        { "share/chibi/engine.json", "build/share/chibi/engine.json" },
+        { "share/chibi/core", "build/share/chibi/core" },
+        { "share/chibi/docs", "build/share/chibi/docs" },
+        { "share/chibi/shaders", "src/render/shaders" },
+        { "controller_resources/engine.json", "build/controller_resources/engine.json" },
+        { "controller_resources/shaders", "src/render/shaders" },
+    };
+    int files = 0;
+    for (int i = 0; i < 6; i++) {
+        join(ours, build_dir, trees[i][0]);
+        if (!strncmp(trees[i][1], "build/", 6)) {
+            join(theirs, reference, trees[i][1] + 6);
+        } else {
+            join(theirs, CHIBI_SOURCE_ROOT, trees[i][1]);
+        }
+        int count = same_tree(ours, theirs);
+        REQUIRE(count > 0);
+        files += count;
+    }
+    REQUIRE(files == 213);
+    struct stat before, after, identity_before, identity_after;
+    char identity[GRAPH_PATH];
+    join(ours, build_dir, "share/chibi/engine.json");
+    join(identity, build_dir, "sdk/chibi_engine_metadata.json");
+    REQUIRE(!stat(ours, &before) && !stat(identity, &identity_before));
+    const char *const launcher_only[] = { "--target", "chibi", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, launcher_only) == -1);
+    REQUIRE(
+        !stat(ours, &after) && after.st_ino == before.st_ino &&
+        after.st_mtime == before.st_mtime
+    );
+    REQUIRE(
+        !stat(identity, &identity_after) &&
+        identity_after.st_ino == identity_before.st_ino &&
+        identity_after.st_mtime == identity_before.st_mtime
+    );
+#endif
+    return true;
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: staging chibi_ctl's headers takes seconds. */
+void test_build_graph_resources(const char *host)
+{
+    set_up(host);
+    RUN_TEST_CASE(resources_install_as_cmake);
     tool_remove_tree(suite);
 }
 

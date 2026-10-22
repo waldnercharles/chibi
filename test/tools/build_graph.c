@@ -1181,6 +1181,32 @@ TEST_CASE(resources_install_as_cmake)
     return true;
 }
 
+/* The language tests' corpus lists every fixture source below test/fixtures
+ * by absolute path, sorted, without the migration originals, as CMake writes
+ * it; like resources, before any compile. */
+TEST_CASE(language_corpus_lists_as_cmake)
+{
+#ifdef __APPLE__
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH],
+        program[GRAPH_PATH];
+    join(build_dir, suite, "corpus");
+    join(program, reference, "reflect");
+    const char *const failing[] = {
+        "--compiler",    "/usr/bin/false", "--compiler-id",
+        compiler_id,     "--sanitizers",   sanitizers,
+        "--third-party", third_party,      "--archiver",
+        archiver,        "--ranlib",       ranlib,
+        "--reflect",     program,          NULL
+    };
+    const char *const language_only[] = { "--target", "test_language", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, language_only) == -1);
+    join(ours, build_dir, "test/language/corpus.txt");
+    join(theirs, reference, "test/language/corpus.txt");
+    REQUIRE(same_tree(ours, theirs) == 1);
+#endif
+    return true;
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
@@ -1195,6 +1221,7 @@ void test_build_graph_resources(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(resources_install_as_cmake);
+    RUN_TEST_CASE(language_corpus_lists_as_cmake);
     tool_remove_tree(suite);
 }
 

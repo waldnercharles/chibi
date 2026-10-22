@@ -127,7 +127,7 @@ function(chibi_desktop_dependency target output)
             FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl" PATTERN "bindings" EXCLUDE)
         set(license_root "${path}")
         foreach(level RANGE 0 3)
-            file(GLOB licenses "${license_root}/LICENSE*" "${license_root}/COPYING*"
+            file(GLOB licenses "${license_root}/LICENSE*" "${license_root}/COPYING*" "${license_root}/NOTICE*"
                 "${license_root}/FTL.TXT" "${license_root}/docs/FTL.TXT")
             foreach(license IN LISTS licenses)
                 if(NOT IS_DIRECTORY "${license}")

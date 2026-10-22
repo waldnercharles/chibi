@@ -1,4 +1,5 @@
 #include "host/build_host.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 
@@ -32,7 +33,7 @@ static void cancel(int signal)
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
+    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
     return 1;
 }
 #define BUILD_SOURCE_LIMIT (1024 * 1024)
@@ -85,6 +86,24 @@ static char *from_root(const char *root, const char *path)
     }
     return out;
 }
+/* Build-tree and installed hosts carry the same compiler inputs beside their
+ * SDK. Resolve from the executable so invocation never depends on the cwd. */
+static char *shared(const char *name)
+{
+    char *bin = file_executable_dir();
+    const char *parents[] = { "..", "../..", "." };
+    char *folder = NULL;
+    for (size_t i = 0; i < sizeof parents / sizeof *parents && !folder; i++) {
+        size_t size = strlen(bin) + strlen(parents[i]) + strlen(name) +
+                      sizeof "/share/chibi//";
+        char *candidate = xmalloc(size);
+        snprintf(candidate, size, "%s/%s/share/chibi/%s", bin, parents[i], name);
+        folder = realpath(candidate, NULL);
+        free(candidate);
+    }
+    free(bin);
+    return folder;
+}
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
@@ -92,6 +111,7 @@ int main(int argc, char **argv)
         return 0;
     }
     const char *root = NULL, *path = NULL, *core = NULL, *entry = NULL;
+    const char *compiler_sources = NULL, *compiler_core = NULL;
     long timeout = 0;
     int arguments_start = argc;
     const char *collections[CHIBI_BUILD_MAX_COLLECTIONS];
@@ -110,6 +130,10 @@ int main(int argc, char **argv)
             path = argv[i + 1];
         } else if (!strcmp(argv[i], "--core") && !core) {
             core = argv[i + 1];
+        } else if (!strcmp(argv[i], "--compiler") && !compiler_sources) {
+            compiler_sources = argv[i + 1];
+        } else if (!strcmp(argv[i], "--compiler-core") && !compiler_core) {
+            compiler_core = argv[i + 1];
         } else if (!strcmp(argv[i], "--collection") && collection_count < CHIBI_BUILD_MAX_COLLECTIONS) {
             const char *equals = strchr(argv[i + 1], '=');
             if (!equals || equals == argv[i + 1] || !equals[1]) {
@@ -182,7 +206,20 @@ int main(int argc, char **argv)
         }
         return 1;
     }
+    char *sources = compiler_sources ? realpath(compiler_sources, NULL)
+                                     : shared("compiler");
+    char *compiler_collection = compiler_core ? realpath(compiler_core, NULL)
+                                              : shared("core");
+    char error[256] = "SDK compiler sources and core collection could not be "
+                      "found";
+    chibi_build_compiler
+        *compiler = sources && compiler_collection
+                      ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
+                      : NULL;
+    free(sources);
+    free(compiler_collection);
     chibi_build_options options = {
+        .compiler = compiler,
         .root = root,
         .source_path = source_path,
         .source_text = text,
@@ -196,8 +233,11 @@ int main(int argc, char **argv)
         .deadline = deadline,
         .cancelled = &cancelled,
     };
-    chibi_build_result result;
-    bool success = chibi_build_invoke(&options, &result);
+    chibi_build_result result = { 0 };
+    bool success = compiler && chibi_build_invoke(&options, &result);
+    if (!compiler) {
+        snprintf(result.diagnostic, sizeof result.diagnostic, "%s", error);
+    }
     fwrite(result.stdout_text, 1, result.stdout_size, stdout);
     fwrite(result.stderr_text, 1, result.stderr_size, stderr);
     if (result.stdout_truncated) {
@@ -209,6 +249,7 @@ int main(int argc, char **argv)
     if (!success) {
         fprintf(stderr, "%s\n", result.diagnostic);
     }
+    chibi_build_compiler_free(compiler);
     free(text);
     free(source_path);
     free(core_path);

@@ -66,12 +66,10 @@ typedef struct
     const char *function, *arguments, *expected;
     const char *diagnostic;
 } sample_call;
-/* Separate selectors cover unions, constants, patterns and integer types
- * (TYPE_SAMPLES); the imports sample, which compiles all of core:strings,
- * the samples that link the core pack, whose oracle costs seconds more to
- * prepare, and moves, reads in place and array methods
- * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
- * references, arrays and ranges (COLLECTION_SAMPLES). */
+/* Focused selectors group unions, constants, patterns and integer types
+ * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
+ * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
+ * ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
@@ -101,7 +99,7 @@ typedef struct
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe;
+        same_rejection, c_string_probe, host_effects;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -118,6 +116,14 @@ static const char *cstring_probe(arena *storage, const pin_value *arguments, int
     result->i = (int)strlen(value);
     return NULL;
 }
+static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
+{
+    result->i = arguments[0].i;
+    return NULL;
+}
+static const native_parameter_definition INTEGER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_INPUT[] = {
     { .name = "value",
       .kind = NATIVE_PARAMETER_DATA,
@@ -128,28 +134,52 @@ static const native_parameter_definition CSTRING_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+#define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
+    { .canonical_name = CANONICAL,                                             \
+      .source_name = SOURCE,                                                   \
+      .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
+      .inputs = INPUT,                                                         \
+      .input_count = 1,                                                        \
+      .outputs = CSTRING_OUTPUT,                                               \
+      .output_count = 1,                                                       \
+      .completion_output = -1,                                                 \
+      .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
-    { .canonical_name = "CString Probe",
-      .source_name = "cstring_probe",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = CSTRING_INPUT,
-      .input_count = 1,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
+    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
+    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
 };
+#undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
+static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+#define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
+    {                                                                          \
+        .canonical_name = CANONICAL, .implementation = {                       \
+            .call = &CALL,                                                     \
+            .access = &ACCESS                                                  \
+        }                                                                      \
+    }
 static const native_definition_binding CSTRING_BINDINGS[] = {
-    { .canonical_name = "CString Probe",
-      .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
+    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
 };
+#undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
     .definitions = CSTRING_DEFINITIONS,
-    .definition_count = 1,
+    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
     .bindings = CSTRING_BINDINGS,
-    .binding_count = 1,
+    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
     { .name = "typed constant shifts discard bits",
@@ -1710,12 +1740,33 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of uint64",
       .line = 2,
       .column = 35 },
-    { .name = "untyped local",
-      .source = "package facts\nOne :: () -> int { x := 5; return 1; }",
-      .message = "an untyped number is a double; give the local an integer "
-                 "type",
+    { .name = "inferred numeric locals",
+      .source = "package facts\n"
+                "Bump :: (x: ref int) { x += 1; }\n"
+                "ByReference :: () -> int { x := 0; Bump(x); return x; }\n"
+                "One :: () -> int { x := 5; return x; }\n"
+                "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
+                "xs[x] = 9; return xs[x] + x; }\n"
+                "Negative :: () -> int { x := -1; x += 2; return x; }\n"
+                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "x; }\n"
+                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> double { x := 1e3; return x; }",
+      .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
+                 { .function = "One", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Index", .arguments = "[]", .expected = "[10]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2147483649]" },
+                 { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
+    { .name = "inferred integer refuses float assignment",
+      .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
+                "= fraction; return x; }",
+      .message = "assigned value differs from its local",
       .line = 2,
-      .column = 25 },
+      .column = 45 },
     { .name = "conversion arity",
       .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
                 "}",
@@ -1824,6 +1875,59 @@ static const sample samples[] = {
       .calls = { { .function = "Binary", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "ReadDefault", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "Equal", .arguments = "[]", .expected = "[false]" } } },
+    { .name = "qualified native calls",
+      .c_string_probe = true,
+      .host_effects = true,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Probe :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Caller :: () -> int { return Probe(); }\n"
+                "Recursive :: (n: int) -> int { if (n <= 0) { return Probe(); "
+                "} return Recursive(n - 1); }\n"
+                "ImportedHost :: () -> int { return lib.Through(); }\n"
+                "Length :: () -> int { return native.length(\"four\"); }\n"
+                "Text :: () -> int { return native . overload(\"three\"); }\n"
+                "Integer :: (value: int) -> int { return native . "
+                "overload(value); }",
+      .library = "package lib\npub Through :: () -> int { return "
+                 "native.probe(\"lib\"); }" },
+    { .name = "qualified native import and local precedence",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\n"
+                "Imported :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Local :: () -> int { native: int[] = [1, 2]; "
+                "native.append(3); return length(native); }",
+      .library = "package lib\npub probe :: (value: string) -> int { return "
+                 "99; }",
+      .calls = { { .function = "Imported", .arguments = "[]", .expected = "[99]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "qualified native missing",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return native.absent(); }",
+      .message = "Unknown function 'native.absent'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native ambiguous",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return "
+                "native.PROBE_ONE(\"x\"); }",
+      .message = "Ambiguous function 'native.PROBE_ONE'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native import missing",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\nCall :: () -> "
+                "int { return native.probe(\"x\"); }",
+      .library = "package lib\npub Other :: () -> int { return 0; }",
+      .message = "Unknown function 'probe'",
+      .line = 3,
+      .column = 35 },
+    { .name = "qualified native local shadow",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { native: int = 1; return "
+                "native.probe(\"x\"); }",
+      .message = "call needs a function name",
+      .line = 2,
+      .column = 45 },
     { .name = "C-string dynamic boundary compiles", .c_string_probe = true, .source = "package facts\nDynamic :: (value: string) -> int { return cstring_probe(value); }" },
     { .name = "C-string literal boundary",
       .c_string_probe = true,
@@ -1849,6 +1953,7 @@ static native_capabilities *linked[2][2];
 /* Compile's native tables for the host and for a game, per compiler backend,
  * built once from `linked`. */
 static pin_value linked_tables[2][2][2][3];
+static pin_value linked_effects[2][2][2];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
@@ -1865,6 +1970,7 @@ static void cleanup()
     }
     memset(linked, 0, sizeof linked);
     memset(linked_tables, 0, sizeof linked_tables);
+    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
     compiler_host_free(host);
@@ -1977,7 +2083,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         REQUIRE(linked[game][probe]);
     }
     const script_catalog *catalog = native_capabilities_catalog(linked[game][probe]);
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *effects = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
         if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
@@ -1996,6 +2102,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
             (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
         ));
         apush(functions, function);
+        apush(effects, ((pin_value){ .type = PIN_I32, .i = (int)c->effects }));
         for (int j = 0; j < c->parameter_count + c->result_count; j++) {
             const script_catalog_parameter *declared = j < c->parameter_count
                                                          ? &c->parameters[j]
@@ -2027,10 +2134,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    linked_effects[game][probe][b] = rows(effects, acount(effects), PIN_I32, NULL);
     memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
     afree(functions);
     afree(ports);
     afree(identities);
+    afree(effects);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -2167,17 +2276,27 @@ static bool compile(
     int b,
     bool game,
     bool probe,
+    bool effects,
     const source_package_input *inputs,
     int count,
     uintptr_t budget,
     pin_value *out
 )
 {
-    pin_value args[ARGUMENTS];
+    pin_value args[ARGUMENTS + 1];
     REQUIRE(arguments_for(b, game, probe, inputs, count, args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
-    );
+    args[ARGUMENTS] = linked_effects[game][probe][b];
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        effects ? "CompileWithEffects" : "Compile",
+        args,
+        ARGUMENTS + effects,
+        budget,
+        &detached,
+        out
+    ));
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -2989,9 +3108,45 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     }
     return packages;
 }
-/* Each module of stage one's closure has the function and statement points of
- * the stage-zero module with its ID that oracle_closure prepared. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length)
+/* Compare serialized function flags, independently of the runtime's derived
+ * effect summary. Direct, recursive and imported HOST callers must retain it. */
+static bool same_host_effects(const execution_module *expected, const execution_module *actual)
+{
+    bool same = true;
+    int observed = 0;
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const execution_module_function *x = &expected->plan.functions[i];
+        const execution_module_function *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == x->id) {
+                y = &actual->plan.functions[j];
+            }
+        }
+        bool host_call = x->id == function_id("Probe") ||
+                         x->id == function_id("Caller") ||
+                         x->id == function_id("Recursive") ||
+                         x->id == function_id("ImportedHost") ||
+                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
+        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
+        observed += host_call;
+        REQUIRE(y);
+        if (x->effects != y->effects) {
+            fprintf(
+                stderr,
+                "stored function effects %016llx: stage zero=%u stage one=%u\n",
+                (unsigned long long)x->id,
+                x->effects,
+                y->effects
+            );
+        }
+        same &= x->effects == y->effects;
+    }
+    REQUIRE(observed > 0);
+    return same;
+}
+/* Each module retains stage zero's source points, watches and, when supplied,
+ * effects for the target's natives. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
     package_collection *packages = read_packages(bytes, length, &native);
@@ -3008,15 +3163,15 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
                          : NULL;
         }
         alike = expected && same_points(expected, module) &&
-                same_watches(expected, module);
+                same_watches(expected, module) &&
+                (!host_effects || same_host_effects(expected, module));
     }
     package_collection_free(packages);
     native_capabilities_free(native);
     return alike;
 }
-/* The samples of `group` compiled by stage one on compiler backend `b`.
- * Stage one compiles slowest on the bytecode backend, so each backend has a
- * selector of its own; only it compares with stage zero's closure. */
+/* Each compiler backend has a focused selector. Bytecode compares source
+ * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
 {
     source_package_input inputs[SAMPLE_INPUTS];
@@ -3062,9 +3217,55 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
     REQUIRE(same);
     return true;
 }
+static bool rejects_malformed_effects()
+{
+    static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
+    pin_value args[ARGUMENTS + 1];
+    REQUIRE(arguments_for(0, false, false, &bad_source, 1, args));
+    const pin_array *declared = linked_effects[0][0][0].ptr;
+    REQUIRE(declared && declared->count > 0);
+    for (int i = 0; i < 3; i++) {
+        int count = i ? declared->count : 0;
+        pin_array *masks = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+        for (int j = 0; j < count; j++) {
+            masks->items[j] = (pin_value){ .type = PIN_I32,
+                                           .i = j      ? 0
+                                              : i == 1 ? -1
+                                                       : 128 };
+        }
+        args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
+                                       .container = PIN_CONTAINER_ARRAY,
+                                       .ptr = masks };
+        pin_value out, message, document;
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            0,
+            PACKAGE,
+            "CompileWithEffects",
+            args,
+            ARGUMENTS + 1,
+            COMPILE_BUDGET,
+            &detached,
+            &out
+        ));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(&value->values[0], "document", &document));
+        REQUIRE(
+            !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
+            document.i == -1
+        );
+        arena_free(&detached);
+    }
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
+    if (group == BASE_SAMPLES && b == 0) {
+        REQUIRE(rejects_malformed_effects());
+    }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
         if (s->group != group) {
@@ -3073,7 +3274,9 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out));
+        REQUIRE(
+            compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out)
+        );
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -3132,8 +3335,9 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   (b || (oracle_closure(s, &expected, &expected_length) &&
-                          points_like_oracle(bytes, length)));
+                   ((b && !s->host_effects) ||
+                    (oracle_closure(s, &expected, &expected_length) &&
+                     points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
@@ -3330,14 +3534,17 @@ static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS + 1], out;
     REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
+    args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
+    int argument_count = ARGUMENTS + s->host_effects;
+    const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
     REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
     );
     const pin_union *value = out.ptr;
     size_t length, expected_length;
-    char *json = document_json(args, ARGUMENTS, &length);
+    char *json = document_json(args, argument_count, &length);
     bool compiled = value->tag == tag(1, "Compiled");
     unsigned char *expected = compiled
                                 ? closure_bytes(value, &expected_length)
@@ -3348,7 +3555,7 @@ static bool stage_two_sample(const sample *s)
         compiler_host_bytes again = { 0 };
         same = compiler_host_invoke_bytes(
                    host,
-                   script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
+                   script_catalog_id("package-symbol", s->host_effects ? "project:package_compiler:1:CompileClosureWithEffects:callable" : "project:package_compiler:1:CompileClosure:callable"),
                    json,
                    length,
                    SELF_BUDGET,
@@ -3367,7 +3574,12 @@ static bool stage_two_sample(const sample *s)
         }
         free(again.bytes);
     } else {
-        uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+        uint64_t entry = script_catalog_id(
+            "package-symbol",
+            s->host_effects
+                ? "project:package_compiler:1:CompileWithEffects:callable"
+                : "project:package_compiler:1:Compile:callable"
+        );
         bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
         same = called && result.flow_status == FLOW_OK &&
                result.length == expected_length &&
@@ -4266,9 +4478,14 @@ static bool takes_project_identities(int b)
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",           "CompileClosure",
-                                 "CompileBehavior",   "CompileBehaviors",
-                                 "BehaviorRejection", "Declare",
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "Declare",
                                  "DeclarePackage" };
     const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
                                           ->module->plan;

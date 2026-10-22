@@ -653,6 +653,7 @@ static bool recover(
     size_t length,
     int changed,
     const char *output,
+    compiler_host **current,
     char *report,
     size_t size
 )
@@ -707,37 +708,72 @@ static bool recover(
     }
     valid = valid && written(output, first, first_length, report, size);
     free(second);
+    if (valid && current) {
+        *current = next;
+        next = NULL;
+    }
     compiler_host_free(next);
     free(first);
     return valid;
 }
 
-bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
+static compiler_host *validated(
+    const compiler_bootstrap *b,
+    artifact *a,
+    char **json,
+    size_t *length,
+    int *changed,
+    char *report,
+    size_t size
+)
 {
     contract c;
+    bool valid = read_contract(b->compiler, &c, report, size) &&
+                 read_artifact(b, c.minimum, a, report, size);
+    *json = valid ? disk_arguments(b, a->root, length, changed, report, size) : NULL;
+    compiler_host *host = *json ? compiler_host_load(
+                                      a->closure,
+                                      a->closure_length,
+                                      behavior_default_backend(),
+                                      report,
+                                      size
+                                  )
+                                : NULL;
+    if (host &&
+        !target_matches(host, yyjson_obj_get(a->root, "target"), 0, report, size)) {
+        compiler_host_free(host);
+        host = NULL;
+    }
+    return host;
+}
+
+bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
+{
     artifact a = { 0 };
+    char *json = NULL;
     size_t length = 0;
     int changed = 0;
-    bool valid = read_contract(b->compiler, &c, report, size) &&
-                 read_artifact(b, c.minimum, &a, report, size);
-    char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
-                       : NULL;
-    compiler_host *host = json ? compiler_host_load(
-                                     a.closure,
-                                     a.closure_length,
-                                     behavior_default_backend(),
-                                     report,
-                                     size
-                                 )
-                               : NULL;
-    bool targeted = host &&
-                    target_matches(host, yyjson_obj_get(a.root, "target"), 0, report, size);
-    valid = targeted &&
-            recover(host, &a, json, length, changed, b->output, report, size);
-    if (!targeted) {
-        compiler_host_free(host);
-    }
+    compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
+    bool valid = host &&
+                 recover(host, &a, json, length, changed, b->output, NULL, report, size);
     free(json);
     free_artifact(&a);
     return valid;
+}
+
+compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error, size_t size)
+{
+    artifact a = { 0 };
+    char *json = NULL;
+    size_t length = 0;
+    int changed = 0;
+    compiler_host *host = validated(b, &a, &json, &length, &changed, error, size);
+    if (host && changed) {
+        compiler_host *current = NULL;
+        recover(host, &a, json, length, changed, NULL, &current, error, size);
+        host = current;
+    }
+    free(json);
+    free_artifact(&a);
+    return host;
 }

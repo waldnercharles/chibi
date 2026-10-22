@@ -1,5 +1,100 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Coordinated named struct results, 2026-10-22
+
+The next local setup slice extends the ABI20 authored compiler's existing
+named-result protocol to structs. Terrain Lab requires a named `CF_V2` result
+that returns an ordinary expression and is consumed directly. The cutover owner
+approved this scope; the managed-pointer owner reserves pointer recognition and
+requires pointer named results to remain rejected. No ABI21 code or independent
+bootstrap regeneration belongs in this slice.
+
+Native semantic/lowering behavior and the existing runtime result contract are
+the source of truth. Named record bindings need typed, owned zero storage before
+field writes; returned headers must preserve the nominal record and reach the
+correct result ordinal. Reuse the existing snapshot, result-cell and caller
+storage protocol. A singleton result works as its ordinary value while keeping
+the named projection valid. Explicit named return values are assigned in order
+before publication, as the native compiler does. Do not change native defaults
+or missing-return semantics based on assumptions.
+
+Changes span `Compile.chibi` signature/result headers, `Body.chibi` prologue and
+result bindings, and `Steps.chibi` returns, caller cells and projections.
+`test/language/package_compiler_chibi.c` owns native differential regressions for
+single scalar and record results, bare record returns and field mutation,
+multiple result projections, sequential assignment, nested string bytes and
+caller/callee copy independence. The singleton and record samples both fail on
+the current compiler before implementation. Keep helper source provenance
+explicit rather than overloading the nominal record index.
+
+After implementation, verify package and behavior results, debugger points and
+watches on VM and the platform compiled backend; then self-compilation,
+source-only recovery, formatting, independent review and the five required Make
+groups. Probe Terrain Lab again to identify its next actual blocker. Keep the
+installed default unchanged until the combined compiler and SDK support the
+representative projects. No project version migration is required.
+
+The named-result implementation passes package, struct and owned-string
+differential checks on VM and SLJIT. Singleton projections follow declaration
+initializers through lexical aliases, matching native semantic analysis, without
+adding provenance to every compiler value or name. A widened local's projection
+converts to the declared result type using the existing checked conversion.
+The same repair in native lowering resolves its physical/declared watch-type
+mismatch; valid boundaries succeed and out-of-range values fail on both paths.
+PR #660 is merged and supplies member-procedure effect propagation. The combined
+behavior fixture then exposed a separate source-semantic rule: the native
+compiler marks member access on a component-typed local as READ, even though the
+local access creates no ECS component dependency. Preserve that semantic flag
+separately from actual reached/written component tables and feed it into the
+existing effect fixed point. A private work directive collects these flags in
+the body summary without enlarging emitted instructions or changing runtime
+validation accounting. Bare typed result construction remains pure.
+
+The independently reviewed empty-project route is included in this candidate.
+`--stage-one-input` reports the exact executable-source count after writing its
+input; zero sources select explicit `--resources-only` assembly before compiler
+recovery. Assembly rescans and rejects any executable source, preserving prior
+output on failure. Empty closures remain invalid. The focused C integration
+compares artifact/resource bytes and CPU traces with native preparation while
+the behavior compiler is unavailable.
+
+The compiler owner approved regeneration of the combined ABI20 bootstrap after
+source freeze. Required Make groups, all focused compiler selectors, independent
+review and recovery with the checksum-pinned runtime gate this checkpoint;
+three-platform pinned-runtime CI gates landing. Rich game native catalogs follow
+in a separate coordinated increment. The installed default remains unchanged.
+
+The frozen checkpoint passes `make test-native test-materials test-projects
+test-language-all test-tools`: 1,561 cases and 1,568,825 assertions, no failures,
+in 865.3 seconds including configuration and builds. All thirteen focused
+compiler selectors pass (14 cases, 111,175 assertions, 188.653 seconds under
+concurrent workloads). The explicit empty-route integration passes 3 cases /
+20 assertions in 21.7 seconds including its supervisor; `make check-format`
+passes in 80.3 seconds. Bootstrap generation passes in 133.9 seconds including
+configuration and builds. The exact pinned macOS runtime, with no native
+sources and an empty child PATH, recovers byte-identical stages of 12,098,990
+bytes, SHA256
+`41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e`.
+Its initial two-stage proof took 34.792 seconds under concurrent workloads.
+Three-platform CI is still pending; these local results do not establish Linux
+or Windows recovery, or a full self-hosted game/default cutover.
+
+## Coordinated entity expression metadata, 2026-10-22
+
+Terrain Lab now reaches `terrain = globals.Terrain` and rejects it because the
+state binding drops its declared entity record while the keyed global keeps it.
+Native entities are nominal handles. Preserve that identity in retained-state
+and `self` bindings and in native/ordinary field-read values; keep exact type
+comparison and native result headers unchanged. Verify global assignment,
+comparison with `self`, null/zero reset and rejection of a distinct handle type
+through the existing behavior differential dispatcher, including source watches.
+
+This is a narrow ABI20 producer/binding repair in the named/entity slice. Rich
+nominal native-port catalogs, native result buffers and provenance belong to
+the next coordinated compiler increment. Keep the pure bootstrap Port/target
+JSON and its twelve-argument exports unchanged; regenerate only the matching
+combined compiler artifact after validation.
+
 ## Coordinated behavior-state support, 2026-10-22
 
 The local setup chat owns authored behavior state for bool, entity and string,

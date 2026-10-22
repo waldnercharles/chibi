@@ -2175,11 +2175,11 @@ debug directory, which depends on where a build is), the graph finds the
 rest of its profile on the machine and writes the compile commands of every
 target it owns, including the third-party archive's sources and include
 directories, the options of single sources and C++ and Objective-C sources,
-and each of them (745 on macOS) must equal `compile_commands.json`'s for the same source
+and each of them (949 on macOS) must equal `compile_commands.json`'s for the same source
 in the same target, split as the shell splits it, apart from the object path
 and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (eleven on macOS,
-eight elsewhere) to equal its executable's `build.ninja` statement, with the
+requires each link command it writes in `link_commands.json` (twelve on macOS,
+eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
 C++ compiler for an executable CMake links as C++, apart from where objects, the
 output and archives sit. A third builds the `chibi` launcher with a compiler
 that always fails: the headers its libraries staged stay in place, since an
@@ -2222,8 +2222,13 @@ equal CMake's byte for byte, an unchanged run neither reruns reflect nor
 compiles, and losing an output reruns it. Another builds
 `chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
 with private symbols: they equal CMake's, staging keeps them, and an
-unchanged run compiles nothing and leaves their stamps. About 19 s at a load
-average of 12.
+unchanged run compiles nothing and leaves their stamps. On macOS a third
+builds `test_behavior_consumer`, which writes the language tests' configured
+headers (byte initializers, C string lines and copies); they equal CMake's
+and keep their stamps when unchanged. A fourth builds
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures;
+they equal CMake's and keep their stamps when unchanged. About 34 s at a load
+average of 4.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

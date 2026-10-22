@@ -711,8 +711,18 @@ Slice 18, 2026-10-21: the small test drivers. The graph builds and links
 which link no library, staging the host tests' headers below
 `BUILD/testing/host/include`: 745 compile commands and eleven link commands
 on macOS, equal to CMake's.
-Next: `test_tools` and `test_language`, whose generated headers embed sources
-as strings, and the SDK contract consumers; an install layout, which
+Slice 19, 2026-10-21: `test_language`. The graph configures files as CMake's
+`configure_file` does, from templates whose placeholders take a file's bytes
+(a new `build.byte_list` native) or its text as a C string, and gives a
+source its own defines, with the source root, build type and a file's
+SHA-256 filled in. On macOS it builds and links `test_language` over its
+object library: 850 compile commands and twelve link commands, equal to
+CMake's, and 28 generated headers equal to CMake's.
+Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
+compiles the 21 object libraries `test/tools` declares over staged SDK
+headers and the fixtures it copies beside pico_unit, and expands a target's
+own defines: 949 compile commands, equal to CMake's.
+Next: linking `test_tools` over them; an install layout, which
 `chibi version` reads; then moving profile selection from `Build.chibi`'s
 CMake arguments into the graph.
 
@@ -863,15 +873,14 @@ runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
 so the owner's instruction was to run the workflow once this branch reached
 `main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
-job ("recent account payments have failed or your spending limit needs to be
-increased"). At the owner's direction the site was instead built locally from
+job because hosted execution was unavailable. At the owner's direction the site was instead built locally from
 `main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
 the Pages source switched back to that branch. The commit, `0b17fddde`,
 replaces the old browser build, whose editor now lives on chibi-studio's own
 Pages site. To publish again, build the site from `main`, commit `build/docs`
 with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
 `gh-pages`, and push. Returning to the workflow means switching the Pages
-source back to GitHub Actions once billing allows. No published page uses an
+source back to GitHub Actions once hosted execution is available. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -1041,7 +1050,7 @@ Host status on 2026-10-20:
 - Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
   On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
   readied M6, with these runs as M5's open gate (see M6).
-  - They run when CI is back (disabled since 2026-09-25 for billing) or when
+  - They run when CI is back (disabled since 2026-09-25) or when
     a bigger host is available.
   - Until then, stage one stays off as the normal compiler, and stage zero
     remains the normal compiler.

@@ -370,8 +370,10 @@ host or the archive is not unpacked.
 `--third-party DIR` names another. Objects of its sources sit below
 `objects/TARGET/third-party/`.
 The graph also links executables. `engine.Programs` lists them (the
-reflection tool `reflect`, the build host, the compiler host and the `chibi`
-launcher, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
+reflection tool `reflect`, the build host, the compiler host, the `chibi`
+launcher and the host, concurrency, policy-worker and benchmark test drivers,
+the first two over the header set the graph stages below
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the player, `chibi-compile` and `chibi_ctl`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's

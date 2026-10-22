@@ -48,7 +48,7 @@ pub Targets :: () -> string[] {
     if (build.platform() == "Darwin") {
         targets.extend(["chibi-player", "chibi-compile", "chibi_ctl"]);
     }
-    targets.append("reflect");
+    targets.extend(["test_host", "concurrent_runner", "policy_worker", "benchmark_trials", "reflect"]);
     return targets;
 }
 
@@ -748,6 +748,22 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_ctl") {
         return ["tools/chibi_ctl/main.c", "tools/chibi_ctl/prepare.c", "tools/chibi_ctl/registry.c"];
     }
+    if (target == "test_host") {
+        return [
+            "test/host/main.c", "test/host/export.c", "test/host/process.c", "test/host/state_file.c",
+            "src/host/export.c", "src/host/process.c", "src/host/state_file.c", "src/support/xalloc.c",
+            "third_party/yyjson/yyjson.c"
+        ];
+    }
+    if (target == "concurrent_runner") {
+        return ["test/host/concurrent.c", "src/host/process.c"];
+    }
+    if (target == "policy_worker") {
+        return ["test/tools/policy_worker.c"];
+    }
+    if (target == "benchmark_trials") {
+        return ["tools/benchmark.c", "src/host/process.c"];
+    }
     return [];
 }
 
@@ -1369,6 +1385,11 @@ pub PrivateHeaders :: (target: string) -> string[] {
             "diagnostics/tracy.h", "diagnostics/web_trace.h", "support/execution_policy.h"
         ];
     }
+    if (target == "chibi_host_tests") {
+        // The headers the host tests include, as root CMakeLists.txt stages
+        // them below its binary directory.
+        return ["host/export.h", "host/process.h", "host/state_file.h", "support/array.h", "support/xalloc.h"];
+    }
     return [];
 }
 
@@ -1393,6 +1414,9 @@ pub PrivateDirectory :: (target: string) -> string {
     if (target == "chibi_ctl_private") {
         return "build/tools/chibi_ctl/private";
     }
+    if (target == "chibi_host_tests") {
+        return "build/testing/host/include";
+    }
     return "";
 }
 
@@ -1400,6 +1424,9 @@ pub PrivateDirectory :: (target: string) -> string {
 pub DirectorySet :: (include: string) -> string {
     if (include == "build/tools/chibi_ctl/private") {
         return "chibi_ctl_private";
+    }
+    if (include == "build/testing/host/include") {
+        return "chibi_host_tests";
     }
     return "";
 }
@@ -1411,6 +1438,9 @@ pub Rewrites :: (target: string) -> string[] {
     if (target == "chibi_sound_preparation") {
         // The players' Vorbis decoder, as sdk/project_preparation.cmake writes it.
         return ["vendor/sound_vorbis.h=third-party/source/cute_framework/libraries/stb/stb_vorbis.c"];
+    }
+    if (target == "chibi_host_tests") {
+        return ["third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h"];
     }
     if (target == "chibi_renderer") {
         // A plain copy: the one private header from outside src/.
@@ -2319,6 +2349,15 @@ pub Includes :: (target: string) -> string[] {
             "public/studio_graph", "public/ui_authoring", "public/ui_document"
         ];
     }
+    if (target == "test_host") {
+        return ["third_party/yyjson", "build/testing/host/include"];
+    }
+    if (target == "concurrent_runner") {
+        return ["build/testing/host/include"];
+    }
+    if (target == "benchmark_trials") {
+        return ["src"];
+    }
     return [];
 }
 
@@ -2579,6 +2618,12 @@ pub Defines :: (target: string) -> string[] {
             "ImDrawIdx=unsigned int"
         ];
     }
+    if (target == "policy_worker") {
+        return ["_DEFAULT_SOURCE", "_POSIX_C_SOURCE=200809L"];
+    }
+    if (target == "benchmark_trials") {
+        return ["_POSIX_C_SOURCE=200809L"];
+    }
     return [];
 }
 
@@ -2633,6 +2678,15 @@ pub Options :: (target: string) -> string[] {
     }
     if (target == "chibi_renderer") {
         return ["-Wno-macro-redefined"];
+    }
+    if (target == "test_host") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "concurrent_runner") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "policy_worker") {
+        return ["-UNDEBUG"];
     }
     return [];
 }
@@ -2780,7 +2834,10 @@ pub Embeds :: (target: string) -> string[] {
 
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
-    programs := ["reflect", "chibi-build-host", "chibi-compiler-host", "chibi"];
+    programs := [
+        "reflect", "chibi-build-host", "chibi-compiler-host", "chibi", "test_host", "concurrent_runner",
+        "policy_worker", "benchmark_trials"
+    ];
     // Their links name the macOS desktop archive's libraries and frameworks;
     // Linux's follow its archive.
     if (build.platform() == "Darwin") {

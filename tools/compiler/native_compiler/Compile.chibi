@@ -1,0 +1,122 @@
+package native_compiler
+
+import frontend "project:package_compiler"
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import syntax "project:syntax_diagnostics"
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+pub Result :: union {
+    Rejected(diagnostic: syntax.Diagnostic) | Emitted(text: string)
+}
+Failure :: (message: string) -> Result {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1,
+                                     document: 0, message: message};
+    return Result.Rejected(diagnostic);
+}
+NativeOpcode :: (name: string) -> int {
+    if (name == "CONSTANT") { return native.Constant; }
+    if (name == "ARGUMENT") { return native.Argument; }
+    if (name == "LOCAL") { return native.Local; }
+    if (name == "SAVE") { return native.Save; }
+    if (name == "RESULT") { return native.Publish; }
+    if (name == "RETURN") { return native.Return; }
+    if (name == "END") { return native.End; }
+    if (name == "ADD") { return native.Add; }
+    if (name == "SUB") { return native.Sub; }
+    if (name == "MUL") { return native.Mul; }
+    if (name == "DIV") { return native.Div; }
+    if (name == "MOD") { return native.Mod; }
+    if (name == "NEG") { return native.Neg; }
+    if (name == "BIT_AND") { return native.BitAnd; }
+    if (name == "BIT_OR") { return native.BitOr; }
+    if (name == "BIT_XOR") { return native.BitXor; }
+    if (name == "BIT_NOT") { return native.BitNot; }
+    if (name == "SHL") { return native.Shl; }
+    if (name == "SHR") { return native.Shr; }
+    if (name == "LT") { return native.Lt; }
+    if (name == "LE") { return native.Le; }
+    if (name == "GT") { return native.Gt; }
+    if (name == "GE") { return native.Ge; }
+    if (name == "EQ") { return native.Eq; }
+    if (name == "NE") { return native.Ne; }
+    if (name == "BRANCH") { return native.Branch; }
+    if (name == "JUMP") { return native.Jump; }
+    if (name == "CHECK") { return native.Check; }
+    // In particular, CAST/CONVERT are not replaced by LLVM casts: checked,
+    // wrap and clamp conversions need a separately verified lowering.
+    return -1;
+}
+EmitPlan :: (plan: frontend.NativePlan, target: abi.Target, main: bool, step_budget: int) -> Result {
+    switch plan {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Lowered(result, parameters, slots, locals, code):
+            native_slots: int[] = [];
+            for (slot in slots) {
+                if (slot.kind != 0 || abi.ScalarType(slot.storage) == "") {
+                    return Failure("native scalar body contains a managed value or pointer");
+                }
+                native_slots.append(slot.storage);
+            }
+            native_locals: int[] = [];
+            for (local in locals) {
+                if (local.kind != 0 || abi.ScalarType(local.storage) == "") {
+                    return Failure("native scalar local requires runtime storage");
+                }
+                native_locals.append(local.storage);
+            }
+            names := frontend.NativeInstructionNames();
+            instructions: native.Instruction[] = [];
+            for (item in code) {
+                if (item.op < 0 || item.op >= length(names)) {
+                    return Failure("unknown shared frontend instruction");
+                }
+                name := names[item.op];
+                op := NativeOpcode(name);
+                if (op < 0 || item.offset != 0 || item.has_text || item.value_container != 0 ||
+                    (name == "CONSTANT" && (item.value_storage != item.type || item.value_record != -1))) {
+                    diagnostic: syntax.Diagnostic = {start: item.start, end: item.end, line: item.line,
+                                                     column: item.column, document: 0,
+                                                     message: format_text("unsupported native instruction {} (type {}, value {}, container {}, record {}, offset {}, text {})",
+                                                                          name, item.type, item.value_storage, item.value_container, item.value_record, item.offset, item.has_text)};
+                    return Result.Rejected(diagnostic);
+                }
+                instruction: native.Instruction = {op: op, type: item.type, output: item.output,
+                                                   left: item.left, right: item.right, target: item.target,
+                                                   literal: int(wrap: item.payload)};
+                instructions.append(instruction);
+            }
+            switch native.Emit(target, parameters, result, native_slots, native_locals, instructions, main, step_budget) {
+                case .Rejected(instruction, message):
+                    if (instruction >= 0 && instruction < length(code)) {
+                        item := code[instruction];
+                        diagnostic: syntax.Diagnostic = {start: item.start, end: item.end, line: item.line,
+                                                         column: item.column, document: 0, message: message};
+                        return Result.Rejected(diagnostic);
+                    }
+                    return Failure(message);
+                case .Emitted(text):
+                    return Result.Emitted(text);
+            }
+    }
+}
+
+// Ordinary Chibi source through the shared frontend, with a deliberately
+// smaller backend contract. Unsupported source fails before LLVM IR escapes.
+// The compiler may currently run in the bootstrap VM; emitted programs do not.
+pub Compile :: (project: string, path: string, source: string,
+                target: abi.Target, main: bool, step_budget: int) -> Result {
+    if (step_budget <= 0 || !abi.Supported(target) || strings.ByteLength(source) > 16384 ||
+        strings.ByteLength(project) == 0 || strings.ByteLength(path) == 0) {
+        return Failure("unsupported native scalar source or target");
+    }
+    input: snapshot.Input = {path: path, text: source, has_path: true, has_text: true};
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: false, file_count: 1, collection_count: 0};
+    collections: routes.Collection[] = [];
+    return EmitPlan(frontend.LowerNative(snapshot.Build(options, collections, [input],
+                                                       [uint64(strings.ByteLength(source))])), target, main, step_budget);
+}

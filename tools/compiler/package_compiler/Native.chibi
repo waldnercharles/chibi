@@ -1,0 +1,135 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// A bounded accessor for the existing declarations/body frontend. No native
+// emitter dependency is added to the bootstrap compiler package. Its consumer
+// must validate the returned body against its own narrower backend contract.
+pub NativePlan :: union {
+    Rejected(diagnostic: syntax.Diagnostic)
+    | Lowered(result: int, parameters: int[], slots: Slot[], locals: Slot[], code: Code[])
+}
+NativeFailure :: (document: int, message: string) -> NativePlan {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1,
+                                     document: document, message: message};
+    return NativePlan.Rejected(diagnostic);
+}
+// Negative runtime offsets are unusable: the scalar accessor claims no
+// pin_value/context layout. Consumers reject every operation using one.
+NativeFrontendTarget :: () -> Target {
+    return {pointer_storage: 9, pointer_size: 8, value_size: -1, payload_offset: -1,
+            results_offset: -1, type_offset: -1, container_offset: -1, name_offset: -1,
+            record_offset: -1, count_offset: -1, items_offset: -1, data_offset: -1,
+            stride_offset: -1, map_count_offset: -1, data_failure: -1,
+            argument_failure: -1, assert_failure: -1};
+}
+pub NativeInstructionNames :: () -> string[] {
+    // These are private symbolic ordinals, not a host instruction enum.
+    return ["CONSTANT", "ARGUMENT", "LOCAL", "SAVE", "CONTEXT", "ARRAY", "HOST_SLOT",
+            "STRING_EQUAL", "INDEX", "LOAD", "WRITE", "RESULT", "HOST_CALL", "INVOKE", "ASSERT",
+            "CHECK", "BRANCH", "JUMP", "RETURN", "END", "ADD", "SUB", "MUL", "DIV", "MOD", "NEG",
+            "BIT_AND", "BIT_OR", "BIT_XOR", "BIT_NOT", "SHL", "SHR", "LT", "LE", "GT", "GE",
+            "EQ", "NE", "CAST", "SELECT", "VARIABLE", "STORE", "STORE_VALUE", "OWNER", "CONVERT",
+            "SOURCE_POINT", "SOURCE_WATCH"];
+}
+NativeBodyPlan :: (body: Body, callable: Callable, params: Param[]) -> NativePlan {
+    switch body {
+        case .Failed(diagnostic):
+            return NativePlan.Rejected(diagnostic);
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches):
+            if (length(cells) != 0 || length(calls) != 0 || length(hosts) != 0 || length(roots) != 0 ||
+                length(points) != 0 || length(watches) != 0) {
+                return NativeFailure(callable.document, "native scalar body requires runtime storage, calls or debug services");
+            }
+            parameters: int[] = [];
+            for (param in params) {
+                parameters.append(param.storage);
+            }
+            return NativePlan.Lowered(callable.result, parameters, slots, locals, code);
+    }
+}
+NativeDeclarations :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
+                       declarations: Declarations) -> NativePlan {
+    switch declarations {
+        case .Failed(diagnostic):
+            return NativePlan.Rejected(diagnostic);
+        case .Collected(callables, params, types, members, constants):
+            if (length(callables) != 1 || length(types) != 0 || length(constants) != 0) {
+                return NativeFailure(-1, "native scalar input requires exactly one function and no declared types");
+            }
+            callable := callables[0];
+            if (callable.results != 0 || callable.result_container != 0 || callable.result_record != -1 ||
+                (callable.result != BoolStorage && callable.result != IntStorage) || callable.count > 8) {
+                return NativeFailure(callable.document, "native scalar result must be one ordinary int or bool");
+            }
+            for (param in params) {
+                if (param.reference || param.container != 0 || param.record != -1 || param.has_default ||
+                    (param.storage != BoolStorage && param.storage != IntStorage)) {
+                    return NativeFailure(callable.document, "native scalar parameters must be ordinary int or bool without defaults");
+                }
+            }
+            document := documents[callable.document];
+            // No operation requiring runtime layout reaches EmitBody with
+            // sentinel offsets. Calls and conversions are unsupported too.
+            at := document.node_start;
+            while (at < document.node_start + document.node_count) {
+                kind := forest[at].kind;
+                if (kind == "call_expression" || kind == "array_expression" || kind == "struct_expression" ||
+                    kind == "map_expression" || kind == "string" ||
+                    (kind == "type" && Text(forest, document.text, at) != "int" &&
+                                       Text(forest, document.text, at) != "bool")) {
+                    return NativePlan.Rejected(Diagnose(forest, at, callable.document,
+                                                        "native scalar body does not support calls, conversions or managed values"));
+                }
+                at += 1;
+            }
+            solid := SolidOffsets(document.text);
+            natives: Native[] = [];
+            ports: Port[] = [];
+            ids: uint64[] = [];
+            operators: NumericOperator[] = [];
+            makes: NativeMake[] = [];
+            integers: int[] = [];
+            aliases: Name[] = [];
+            names: string[] = [];
+            mutated := MutatedNames(forest, document.text, Field(forest, callable.node, "body"), names);
+            ops := ResolveOps(NativeInstructionNames(), false);
+            body := EmitBody(forest, document.text, callable.document, callables, params, types, members,
+                             constants, natives, ports, ids, operators, makes, integers, aliases,
+                             document.key, solid, 0, 0, 0, names, mutated, integers, ops, NativeFrontendTarget());
+            return NativeBodyPlan(body, callable, params);
+    }
+}
+pub LowerNative :: (source: snapshot.Result) -> NativePlan {
+    switch source {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return NativePlan.Rejected(diagnostic);
+        case .Accepted(roots, documents, nodes, imports, built):
+            if (length(imports) != 0 || length(nodes) > 2048) {
+                return NativeFailure(-1, "native scalar input cannot import packages or exceed 2048 syntax nodes");
+            }
+            switch built {
+                case .Rejected(error, cycle):
+                    return NativeFailure(-1, "native scalar input requires an accepted package graph");
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    if (length(packages) != 1) {
+                        return NativeFailure(-1, "native scalar input requires one complete package");
+                    }
+                    // Reject runtime-shaped declarations before shared code
+                    // computes any physical layout for their fields.
+                    for (document in documents) {
+                        child := FirstMember(nodes, document.syntax_root);
+                        while (child >= 0) {
+                            if (!Is(nodes, child, "package_header") && !Is(nodes, child, "function_declaration")) {
+                                return NativeFailure(-1, "native scalar input supports function declarations only");
+                            }
+                            child = NextMember(nodes, child);
+                        }
+                    }
+                    return NativeDeclarations(nodes, documents,
+                                              Declare(nodes, documents, packages, files_of, order, imports, links,
+                                                      NativeFrontendTarget()));
+            }
+    }
+}

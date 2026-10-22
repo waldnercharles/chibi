@@ -45,6 +45,7 @@ pub Eq: int : 23;
 pub Ne: int : 24;
 pub Branch: int : 25;
 pub Jump: int : 26;
+pub Check: int : 27;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -129,7 +130,7 @@ Validate :: (parameters: int[], result: int, slots: int[], locals: int[],
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Jump) {
+        if (item.op < Constant || item.op > Check) {
             return Result.Rejected(pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -222,8 +223,11 @@ CheckArithmetic :: (item: Instruction, pc: int) -> string {
                            pc, pc, pc, pc, pc);
     }
     if (item.op == Div || item.op == Mod) {
-        return format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %min{} = icmp eq i32 %a{}, -2147483648\n  %negone{} = icmp eq i32 %b{}, -1\n  %overflow{} = and i1 %min{}, %negone{}\n  %bad{} = or i1 %zero{}, %overflow{}\n  br i1 %bad{}, label %trap, label %safe{}\nsafe{}:\n",
-                           pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+        operands := format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %min{} = icmp eq i32 %a{}, -2147483648\n  %negone{} = icmp eq i32 %b{}, -1\n  %overflow{} = and i1 %min{}, %negone{}\n",
+                                pc, pc, pc, pc, pc, pc, pc, pc, pc);
+        guarded := format_text("  %bad{} = or i1 %zero{}, %overflow{}\n  br i1 %bad{}, label %trap, label %safe{}\nsafe{}:\n",
+                              pc, pc, pc, pc, pc, pc);
+        return format_text("{}{}", operands, guarded);
     }
     return "";
 }
@@ -251,6 +255,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
         return format_text("{}{}", out, format_text("  br i1 %a{}, label %p{}, label %p{}\n", pc, item.target, pc + 1));
     } else if (item.op == Jump) {
         return format_text("{}{}", out, format_text("  br label %p{}\n", item.target));
+    } else if (item.op == Check) {
+        // CHECKs, not LLVM instructions, consume the caller's positive bound.
+        // Compare before subtracting: exactly N CHECKs may pass a budget N.
+        out = format_text("{}  %remaining{} = load i32, ptr %budget0\n  %available{} = icmp sgt i32 %remaining{}, 0\n  br i1 %available{}, label %budget_ok{}, label %trap\nbudget_ok{}:\n  %next_budget{} = sub i32 %remaining{}, 1\n  store i32 %next_budget{}, ptr %budget0\n",
+                          out, pc, pc, pc, pc, pc, pc, pc, pc, pc);
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (Unary(item.op)) {
@@ -274,7 +283,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
 }
 
 pub Emit :: (target: abi.Target, parameters: int[], result: int, slots: int[], locals: int[],
-             code: Instruction[], main: bool) -> Result {
+             code: Instruction[], main: bool, step_budget: int) -> Result {
+    if (step_budget <= 0) {
+        return Result.Rejected(-1, "native CHECK budget must be positive");
+    }
     if (!abi.Supported(target)) {
         return Result.Rejected(-1, "unsupported native target");
     }
@@ -299,6 +311,7 @@ pub Emit :: (target: abi.Target, parameters: int[], result: int, slots: int[], l
                 index += 1;
             }
             out = format_text("{}{}", out, ") {\nentry:\n");
+            out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
             index = 0;
             while (index < length(slots)) {
                 out = format_text("{}{}", out, format_text("  %s{} = alloca {}\n", index, abi.ScalarType(slots[index])));

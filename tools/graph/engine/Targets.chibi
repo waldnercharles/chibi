@@ -3820,7 +3820,7 @@ pub Runs :: (target: string) -> string[] {
         return ["chibi-compile", "chibi-player"];
     }
     if (target == "test_tools") {
-        return ["policy_worker", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
+        return ["policy_worker", "benchmark_trials", "chibi-build-host", "chibi-compiler-host", "chibi_ctl", "chibi-compile"];
     }
     return [];
 }

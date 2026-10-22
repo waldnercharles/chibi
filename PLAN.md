@@ -1515,7 +1515,7 @@ host. Remaining
 semantic analysis, lowering, authored artifact construction, scanner ownership
 and stage-one/stage-two equivalence still need implementation and validation.
 Full-size scalar evaluation
-exhaustion remains unadmitted. No compiler implementation or stage-zero recovery
+exhaustion was not tested at this checkpoint. No compiler implementation or stage-zero recovery
 path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407

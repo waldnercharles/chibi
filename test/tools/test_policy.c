@@ -223,6 +223,70 @@ static void reset_markers()
     }
 }
 
+static int benchmark(const char *const arguments[])
+{
+    const char *worker = CHIBI_POLICY_WORKER_PATH;
+    const char *separator = strrchr(worker, '/');
+    assert(separator);
+    char binary[PATH_MAX];
+    int length = snprintf(binary, sizeof binary, "%.*s/benchmark_trials", (int)(separator - worker), worker);
+    assert(length > 0 && length < (int)sizeof binary);
+    const char *argv[16] = { binary };
+    int count = 1;
+    while (*arguments) {
+        assert(count < (int)(sizeof argv / sizeof *argv) - 1);
+        argv[count++] = *arguments++;
+    }
+    return tool_run(argv, tool_root(), logpath);
+}
+
+TEST_CASE(benchmark_runner_timeout_is_optional)
+{
+    const char *normal[] = { "--", CHIBI_POLICY_WORKER_PATH, "exit", "0", NULL };
+    REQUIRE(benchmark(normal) == 0);
+    char *output = tool_read(logpath);
+    bool completed = output && strstr(output, "benchmark trials=3 median=");
+    free(output);
+    REQUIRE(completed);
+    const char *extended[] = { "--timeout", "120", "--trials",
+                               "5",         "--",  CHIBI_POLICY_WORKER_PATH,
+                               "exit",      "0",   NULL };
+    REQUIRE(benchmark(extended) == 0);
+    output = tool_read(logpath);
+    completed = output && strstr(output, "benchmark trials=5 median=");
+    free(output);
+    REQUIRE(completed);
+    const char *failure[] = { "--", CHIBI_POLICY_WORKER_PATH, "exit", "7", NULL };
+    REQUIRE(benchmark(failure) == 7);
+    const char *invalid[] = { "0", "-1", "2", "inf", "2147483648" };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        const char *argv[] = { "--timeout", invalid[i],
+                               "--",        CHIBI_POLICY_WORKER_PATH,
+                               "mark",      directory,
+                               NULL };
+        REQUIRE(benchmark(argv) == 2);
+        REQUIRE(!exists("last-command"));
+    }
+    return true;
+}
+
+TEST_CASE(benchmark_runner_explicit_timeout_cleans_descendants)
+{
+    reset_markers();
+    const char *argv[] = { "--timeout",  "3",
+                           "--",         CHIBI_POLICY_WORKER_PATH,
+                           "descendant", directory,
+                           "0",          "0",
+                           NULL };
+    REQUIRE(benchmark(argv) == 124);
+    REQUIRE(exists("started"));
+    const char *probe[] = { CHIBI_POLICY_WORKER_PATH, "cleanup-probe", directory, NULL };
+    REQUIRE(tool_run(probe, tool_root(), logpath) == 0);
+    REQUIRE(!exists("escaped"));
+    reset_markers();
+    return true;
+}
+
 TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
 {
     const char *selectors[] = {
@@ -754,6 +818,8 @@ void test_tool_test_policy()
     RUN_TEST_CASE(studio_collider_requires_twenty_six_clean_frames);
     RUN_TEST_CASE(studio_resources_require_recorded_generation);
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
+    RUN_TEST_CASE(benchmark_runner_timeout_is_optional);
+    RUN_TEST_CASE(benchmark_runner_explicit_timeout_cleans_descendants);
     RUN_TEST_CASE(exit_sequence_and_optional_timeout);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);

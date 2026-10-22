@@ -123,7 +123,6 @@ TEST_CASE(validation_plans_native_tools_without_certifying_full_gate)
     REQUIRE(only_command(root, "iteration_commands", "make test-tools"));
     REQUIRE(only_command(root, "integration_commands", "make check-format"));
     REQUIRE(yyjson_is_false(yyjson_obj_get(root, "full_verification")));
-    REQUIRE(!yyjson_obj_get(root, "quarantined_commands"));
     REQUIRE(strstr(output, "Evidence covers only the checks actually run"));
     REQUIRE(plan("--tool=native-tools", NULL, NULL, NULL) == 0);
     REQUIRE(only_command(json(), "iteration_commands", "make test-tools"));

@@ -4,6 +4,8 @@
 #include "host/process.h"
 
 #include <errno.h>
+#include <float.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +14,6 @@
 #include <unistd.h>
 
 #define MAX_TRIALS 5
-#define MAX_SECONDS 60
 #define CLEANUP_SECONDS 2
 
 static volatile sig_atomic_t interrupted;
@@ -52,7 +53,7 @@ static int number(const char *text)
     char *end;
     errno = 0;
     long value = strtol(text, &end, 10);
-    if (errno || !*text || *end || value < 1 || value > MAX_SECONDS) {
+    if (errno || !*text || *end || value < 1 || value > INT_MAX) {
         return 0;
     }
     return (int)value;
@@ -80,14 +81,15 @@ static bool replay(const char *path)
 
 static int usage(const char *name)
 {
-    fprintf(stderr, "Usage: %s [--trials 3|5] [--timeout 3..60] -- binary [arguments...]\n", name);
+    fprintf(stderr, "Usage: %s [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]\n", name);
+    fputs("The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.\n", stderr);
     return 2;
 }
 
 int main(int argc, char **argv)
 {
     int trials = 3;
-    int timeout = MAX_SECONDS;
+    int timeout = 0;
     int arg = 1;
     while (arg < argc && strcmp(argv[arg], "--")) {
         if (arg + 1 >= argc) {
@@ -129,7 +131,7 @@ int main(int argc, char **argv)
     close(log);
 
     double times[MAX_TRIALS];
-    double deadline = seconds() + timeout - CLEANUP_SECONDS;
+    double deadline = timeout ? seconds() + timeout - CLEANUP_SECONDS : DBL_MAX;
     int status = 0;
     for (int trial = 0; trial < trials; trial++) {
         if (interrupted || seconds() >= deadline) {

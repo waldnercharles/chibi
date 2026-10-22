@@ -1,4 +1,4 @@
-# Source-only standalone writer fixture. Registration is not test admission.
+# Source-only standalone writer fixture.
 set(source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/prepared_writer/Writer.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
 file(READ "${source}" source_hex HEX)

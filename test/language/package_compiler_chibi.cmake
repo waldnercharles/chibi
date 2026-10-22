@@ -1,4 +1,4 @@
-# Source-only standalone package compiler fixture. Registration is not test admission.
+# Source-only standalone package compiler fixture.
 foreach(component Compile Body Steps Maps References Tree Number Behavior)
     string(TOUPPER "${component}" component_upper)
     set(source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_compiler/${component}.chibi")

@@ -143,6 +143,10 @@ void execution_module_free(execution_module *module);
  * fixed or sentinel array. Binding rows are copied; the input vector may retire
  * after return. Its type_name strings, host values and ECS world are borrowed
  * and must outlive the program, including imported programs and replacements. */
+/* Register host-retained pointer values with this heap before the next run.
+ * Destroying the program clears registered root slots; pointers never outlive
+ * their owning program. The returned heap remains stable across replacement. */
+behavior_managed_heap *execution_program_managed_heap(execution_program *);
 execution_program *execution_program_new(
     execution_module *module,
     ecs_world *world,
@@ -275,7 +279,8 @@ int execution_instance_pending(const execution_instance *instance);
  * old activations before releasing the prior module generation. */
 int execution_program_replace(execution_program *program, execution_module *module, bool restart);
 /* Preparation leaves live state/work untouched. Discard with program_free.
- * Commit consumes the matching staged replacement at a quiescent boundary. */
+ * The original program must outlive its staged candidate. Commit consumes the
+ * matching staged replacement at a quiescent boundary. */
 execution_program *execution_program_prepare_replace(
     const execution_program *,
     execution_module *,

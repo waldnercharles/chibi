@@ -26,7 +26,8 @@
     X(PIN_STRUCT, "struct")                                                    \
     X(PIN_ENUM, "enum")                                                        \
     X(PIN_TASK, "task")                                                        \
-    X(PIN_UNION, "union")
+    X(PIN_UNION, "union")                                                      \
+    X(PIN_POINTER, "pointer")
 
 DEFINE_ENUM(pin_type, PIN_TYPE_LIST)
 

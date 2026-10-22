@@ -221,7 +221,7 @@ static int type_slot(script_type type)
         script_type t = types[i];
         if (t.storage == type.storage && t.container == type.container &&
             t.flags == type.flags && t.nominal == type.nominal &&
-            t.parameter == type.parameter) {
+            t.parameter == type.parameter && t.collection == type.collection) {
             return i;
         }
     }
@@ -406,7 +406,8 @@ static bool environment(int b, const script_named_facts *facts, int scope_count,
             put(row, "container", integer(types[i].container)) &&
             put(row, "flags", integer(bits(types[i].flags))) &&
             put(row, "nominal_slot", integer(nominal)) &&
-            put(row, "parameter_slot", integer(parameter))
+            put(row, "parameter_slot", integer(parameter)) &&
+            put(row, "collection", wide(types[i].collection))
         );
     }
     fields[2] = array(PIN_U64, id_count);
@@ -454,7 +455,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
     REQUIRE(value->container == PIN_CONTAINER_SINGLE);
     if (value->type == PIN_UNION) {
         const pin_union *data = value->ptr;
-        REQUIRE(data && arena_contains(storage, data) && data->count >= 0 && data->count <= 7);
+        REQUIRE(data && arena_contains(storage, data) && data->count >= 0 && data->count <= 8);
         REQUIRE(!data->count || arena_contains(storage, data->values));
         for (int i = 0; i < data->count; i++) {
             REQUIRE(owned(storage, &data->values[i], depth + 1));
@@ -488,7 +489,7 @@ static bool resolution(const pin_value *value, const script_named_resolution *ex
 {
     REQUIRE(value->type == PIN_UNION && value->ptr);
     const pin_union *data = value->ptr;
-    REQUIRE(data->count == 7);
+    REQUIRE(data->count == 8);
     REQUIRE(
         data->values[0].type == PIN_I32 &&
         data->values[0].i == (int)expected->type.storage &&
@@ -498,8 +499,10 @@ static bool resolution(const pin_value *value, const script_named_resolution *ex
         data->values[2].i == bits(expected->type.flags)
     );
     REQUIRE(
-        data->values[3].type == PIN_U64 && data->values[3].u64 == expected->type.nominal &&
-        data->values[4].type == PIN_U64 && data->values[4].u64 == expected->type.parameter
+        data->values[3].type == PIN_U64 &&
+        data->values[3].u64 == expected->type.nominal && data->values[4].type == PIN_U64 &&
+        data->values[4].u64 == expected->type.parameter &&
+        data->values[7].type == PIN_U64 && data->values[7].u64 == expected->type.collection
     );
     REQUIRE(data->values[5].type == PIN_UNION && data->values[5].ptr);
     const pin_union *use = data->values[5].ptr;
@@ -811,7 +814,11 @@ static bool raw_query(int index)
             q.operation = TEXT;
             q.text = "\"Native.Foo_Bar\"";
             break;
-        case 18: q.text = "dep.Remote"; break;
+        case 18:
+            entries[3].type.container = PIN_CONTAINER_ARRAY;
+            entries[3].type.collection = UINT64_MAX - 43;
+            q.text = "dep.Remote";
+            break;
         case 19: q.text = "_.Remote"; break;
         case 20:
             q.text = "dep.Remote";
@@ -828,6 +835,8 @@ static bool raw_query(int index)
             facts.use_count = 1;
             break;
         case 25:
+            symbols[1].type.container = PIN_CONTAINER_ARRAY;
+            symbols[1].type.collection = UINT64_MAX - 41;
             q.text = "T";
             facts.use_count = 2;
             break;

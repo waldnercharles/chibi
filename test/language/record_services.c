@@ -9,6 +9,7 @@
 #include "types/array.h"
 #include "types/record.h"
 #include "types/text.h"
+#include "types/union.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,6 +298,33 @@ TEST_CASE(record_globals_atomic_rejections)
     REQUIRE(unchanged_rows());
     REQUIRE(host(&ENTITY_GET_GLOBAL_CALL, arguments, &output));
     REQUIRE(!memcmp(&output, &before, sizeof output));
+    /* A new key avoids the existing-value type mismatch rejecting first. */
+    pin_value pointer = { .type = PIN_POINTER, .type_name = "^int" }, variant;
+    REQUIRE(!pin_union_value(&producer, 1, &pointer, 1, &variant));
+    pin_array *pointer_array = pin_array_snapshot_allocate(&producer, PIN_POINTER, "^int", 1);
+    REQUIRE(pointer_array);
+    pointer_array->items[0] = pointer;
+    const type_field pointer_field = { .name = "value",
+                                       .type = PIN_POINTER,
+                                       .type_name = "^int" };
+    const pin_record *pointer_record = pin_record_create(&producer, "PointerCarrier", 93, &pointer_field, 1);
+    REQUIRE(pointer_record);
+    void *absent = NULL;
+    const pin_value rejected[] = {
+        variant,
+        { .type = PIN_POINTER,
+          .container = PIN_CONTAINER_ARRAY,
+          .type_name = "^int",
+          .ptr = pointer_array },
+        { .type = PIN_STRUCT,
+          .type_name = pointer_record->type.name,
+          .record = pointer_record,
+          .ptr = &absent },
+    };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(entities_set_global_value(globals, "rejected", &rejected[i]) == -1);
+        REQUIRE(unchanged_rows());
+    }
     return true;
 }
 static bool check_document_row(const av_value *value, int number)

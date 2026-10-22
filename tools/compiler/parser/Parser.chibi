@@ -1,0 +1,268 @@
+package parser
+
+import tokenizer "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
+
+// This first authored slice accepts package headers, imports and untyped
+// literal constants. It is deliberately not the compiler's selected parser.
+// Successful facts have the same preorder/link/byte contract as compiler_syntax.
+// Rejection is atomic: an incomplete or unsupported tree is never published.
+pub Result :: union {
+    Parsed(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], root: int)
+    | Rejected(code: string, diagnostic: syntax.Diagnostic)
+}
+
+Header: int : 0;
+PackageWord: int : 1;
+PackageName: int : 2;
+Top: int : 3;
+ImportWord: int : 4;
+ImportAlias: int : 5;
+ImportPath: int : 6;
+ConstantName: int : 7;
+ConstantMarker: int : 8;
+ConstantValue: int : 9;
+LiteralWord: int : 10;
+End: int : 11;
+PublicName: int : 12;
+
+Reject :: (code: string, message: string, start: int, end: int, row: int, column: int) -> Result {
+    diagnostic: syntax.Diagnostic = {start: start, end: end, line: row + 1,
+        column: column + 1, document: 0, message: message};
+    return Result.Rejected(code, diagnostic);
+}
+
+// These are the grammar's contextual names, not a second keyword inventory.
+Name :: (kind: string) -> bool {
+    return kind == "Ident" || kind == "package" || kind == "import" ||
+        kind == "struct" || kind == "from" || kind == "split" ||
+        kind == "component" || kind == "not" || kind == "join" || kind == "unordered";
+}
+
+// A contextual `import` can instead be a constant's name.
+IsImport :: (tokens: int[], names: string[], from: int) -> bool {
+    index := from;
+    while (index < length(tokens) && names[tokens[index]] == "Comment") {
+        index += 1;
+    }
+    return index >= length(tokens) || names[tokens[index]] != "::";
+}
+
+Assemble :: (count: int, kinds: string[], starts: int[], ends: int[], rows: int[],
+             columns: int[], parents: int[], first: int[], next: int[]) -> syntax.Node[] {
+    nodes: syntax.Node[] = [];
+    index: int = 0;
+    while (index < count) {
+        node: syntax.Node = {kind: kinds[index], start: starts[index], end: ends[index],
+            row: rows[index], column: columns[index], parent: parents[index],
+            first_child: first[index], next_sibling: next[index],
+            error: false, missing: false, has_error: false};
+        nodes.append(node);
+        index += 1;
+    }
+    return nodes;
+}
+
+pub Parse :: (text: string) -> Result {
+    scanned := tokenizer.Tokenize(text);
+    switch (scanned) {
+        case .Scanned(tokens, token_starts, token_ends, token_rows, token_columns,
+                      errors, error_offsets, error_rows, error_columns):
+            if (length(errors) > 0) {
+                return Reject("lexical", errors[0], error_offsets[0], error_offsets[0],
+                              error_rows[0], error_columns[0]);
+            }
+            names := tokenizer.KindNames();
+            kinds: string[] = ["source_file"];
+            starts: int[] = [token_starts[0]];
+            ends: int[] = [text_byte_length(text)];
+            rows: int[] = [token_rows[0]];
+            columns: int[] = [token_columns[0]];
+            parents: int[] = [-1];
+            first: int[] = [-1];
+            next: int[] = [-1];
+            last: int[] = [-1];
+            fields: string[] = [""];
+            named: bool[] = [true];
+            extra: bool[] = [false];
+            phase := Header;
+            statement: int = 0;
+            literal: int = -1;
+            index: int = 0;
+            while (index < length(tokens)) {
+                token := names[tokens[index]];
+                start := token_starts[index];
+                end := token_ends[index];
+                row := token_rows[index];
+                column := token_columns[index];
+                if (token == "EOF") {
+                    if (phase != Top) {
+                        return Reject("syntax", "Incomplete package, import or constant declaration",
+                                      start, end, row, column);
+                    }
+                    nodes := Assemble(length(kinds), kinds, starts, ends, rows, columns,
+                                      parents, first, next);
+                    return Result.Parsed(nodes, fields, named, extra, 0);
+                }
+
+                kind := token;
+                field := "";
+                parent := statement;
+                is_named := false;
+                is_extra := false;
+                consume := true;
+                opening := false;
+                ending := false;
+                if (token == "Comment") {
+                    kind = "comment";
+                    is_named = true;
+                    is_extra = true;
+                } else if (phase == Header || phase == Top) {
+                    parent = 0;
+                    is_named = true;
+                    consume = false;
+                    opening = true;
+                    if (phase == Header) {
+                        if (token != "package") {
+                            return Reject("unsupported", "Authored parser requires a package header",
+                                          start, end, row, column);
+                        }
+                        kind = "package_header";
+                        field = "package";
+                        phase = PackageWord;
+                    } else if (token == "import" && IsImport(tokens, names, index + 1)) {
+                        kind = "import_declaration";
+                        phase = ImportWord;
+                    } else if (Name(token) || token == "pub") {
+                        kind = "constant_declaration";
+                        phase = ConstantName;
+                    } else {
+                        return Reject("unsupported", "Authored parser supports imports and literal constants only",
+                                      start, end, row, column);
+                    }
+                } else if (phase == PackageWord) {
+                    phase = PackageName;
+                } else if (phase == PackageName) {
+                    if (!Name(token)) {
+                        return Reject("syntax", "Expected package name", start, end, row, column);
+                    }
+                    kind = "identifier";
+                    field = "name";
+                    is_named = true;
+                    phase = End;
+                } else if (phase == ImportWord) {
+                    phase = ImportAlias;
+                } else if (phase == ImportAlias || phase == ImportPath) {
+                    if (token == "String") {
+                        kind = "string";
+                        field = "path";
+                        is_named = true;
+                        phase = End;
+                    } else if (phase == ImportAlias && Name(token)) {
+                        kind = "identifier";
+                        field = "alias";
+                        is_named = true;
+                        phase = ImportPath;
+                    } else {
+                        return Reject("syntax", "Expected import path string", start, end, row, column);
+                    }
+                } else if (phase == ConstantName) {
+                    if (token == "pub") {
+                        field = "visibility";
+                        // A second pub must not be accepted as another visibility.
+                        phase = PublicName;
+                    } else if (Name(token)) {
+                        kind = "identifier";
+                        field = "name";
+                        is_named = true;
+                        phase = ConstantMarker;
+                    } else {
+                        return Reject("syntax", "Expected constant name", start, end, row, column);
+                    }
+                } else if (phase == PublicName) {
+                    if (!Name(token)) {
+                        return Reject("syntax", "Expected name after pub", start, end, row, column);
+                    }
+                    kind = "identifier";
+                    field = "name";
+                    is_named = true;
+                    phase = ConstantMarker;
+                } else if (phase == ConstantMarker) {
+                    if (token != "::") {
+                        return Reject("unsupported", "Authored parser requires an untyped literal constant",
+                                      start, end, row, column);
+                    }
+                    phase = ConstantValue;
+                } else if (phase == ConstantValue) {
+                    field = "value";
+                    is_named = true;
+                    phase = End;
+                    if (token == "Integer" || token == "Float") {
+                        kind = "number";
+                    } else if (token == "String") {
+                        kind = "string";
+                    } else if (token == "true" || token == "false") {
+                        kind = "boolean";
+                        consume = false;
+                        phase = LiteralWord;
+                        literal = length(kinds);
+                    } else if (token == "nil" || token == "null") {
+                        kind = "nil";
+                        consume = false;
+                        phase = LiteralWord;
+                        literal = length(kinds);
+                    } else {
+                        return Reject("unsupported", "Authored parser requires a number, string, boolean or nil literal",
+                                      start, end, row, column);
+                    }
+                } else if (phase == LiteralWord) {
+                    parent = literal;
+                    phase = End;
+                } else if (phase == End) {
+                    if (token != ";") {
+                        return Reject("unsupported", "Expected terminator; compound expressions are not supported yet",
+                                      start, end, row, column);
+                    }
+                    ends[statement] = end;
+                    phase = Top;
+                    ending = true;
+                    if (start == end) {
+                        statement = 0;
+                        index += 1;
+                        continue;
+                    }
+                }
+
+                current := length(kinds);
+                previous := last[parent];
+                if (previous < 0) {
+                    first[parent] = current;
+                } else {
+                    next[previous] = current;
+                }
+                last[parent] = current;
+                kinds.append(kind);
+                starts.append(start);
+                ends.append(end);
+                rows.append(row);
+                columns.append(column);
+                parents.append(parent);
+                first.append(-1);
+                next.append(-1);
+                last.append(-1);
+                fields.append(field);
+                named.append(is_named);
+                extra.append(is_extra);
+                if (opening) {
+                    statement = current;
+                }
+                if (ending) {
+                    statement = 0;
+                }
+                if (consume) {
+                    index += 1;
+                }
+            }
+    }
+    return Reject("internal", "Tokenizer omitted EOF", 0, 0, 0, 0);
+}

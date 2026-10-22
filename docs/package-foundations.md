@@ -80,7 +80,7 @@ upstream inclusions need package approval.
 | `strings.Slice(s, start, count)` | Preserve current clamping and independent value semantics, including cuts inside UTF-8. Negative start/count clamp to zero, start past end clamps to end, excessive count to remaining length. |
 | `strings.Index` / `LastIndex` | Exact byte-substring search; `-1` if absent. Empty needle at zero / byte length respectively. No normalization or locale rules. |
 | `Split(s, "")`, `Count(s, "")` | Preserve byte splitting / byte count plus one. Scalar variants belong in explicitly Unicode operations. |
-| `bytes.Compare`, `Index`, `Clone`, `Slice`, `Append` | Unsigned lexicographic order; `-1` search miss; independent copies; strict ranges; append through ref with value-copy isolation. Empty needles match offset zero. |
+| `bytes.Compare`, `Index`, `Clone`, `Slice`, `Append` | Unsigned lexicographic order; `-1` search miss; independent copies; strict ranges; append through a pointer with value-copy isolation. Empty needles match offset zero. |
 | Byte-buffer indexing/slicing | Checked bounds, arbitrary bytes, value semantics. Verify actual array slicing support first; functions can precede new syntax. |
 
 Future direct `s[i]` syntax can return a checked `byte`, with an out-of-range call failure; a try operation
@@ -133,16 +133,24 @@ yielding `char` plus byte offset is separate ergonomics.
 
 ## Builders and compatibility
 
-Recommend `strings.Builder` with AppendText, AppendByte, AppendChar, Build and Reset, optionally Reserve.
-Byte/string appends preserve arbitrary bytes; AppendChar UTF-8 encodes a valid scalar. Build copies to an
-independent string; reset, later mutation, copied builders and scope exit cannot affect old results. Copies
-retain value semantics; ref operations mutate only the caller's value. Require amortized linear assembly and
-O(n) Build, rather than repeated prefix copies. Zero-copy Take and explicit allocators need separate lifetime
-policy.
+Approved on 2026-10-22: a reusable value `strings.Builder` with copy-on-write
+storage, independent assignment and ordinary arguments, explicit pointers for
+sharing, and immutable `build()` snapshots. Reset, later mutation, copied
+builders and scope exit cannot affect earlier strings. Ordinary copies require
+neither `clone()` nor `move`. The [value semantics decision](value-semantics.md)
+also applies this rule to arrays and maps and supersedes the earlier `ref`
+proposal. Exact method declarations remain a separate API discussion.
 
-An authored builder record containing `byte[]` needs container-valued record fields and correct copy/ref
-behavior in both stages. Approve that prerequisite before its dependent builder. If it is a large step, ship
-codecs and byte-array append helpers first. Do not add temporary opaque native builder handles.
+Byte/string appends preserve arbitrary bytes; character append UTF-8 encodes a
+valid scalar. Require amortized linear assembly without repeated prefix copies.
+Build may copy bytes or share retained backing that subsequent writes detach;
+both must preserve immutable snapshots. Consuming Take and explicit allocators
+need separate lifetime policy.
+
+An authored builder record containing `byte[]` needs container-valued record
+fields and correct value-copy/pointer behavior in both compiler stages, plus
+authored mutating receiver calls. Implement those prerequisites before the
+dependent builder. Do not add temporary opaque native builder handles.
 
 Current helpers remain byte/ASCII operations unless individually changed. Unicode casing, whitespace,
 normalization and grapheme segmentation require separate data-version/fidelity decisions. Review `Cut`'s
@@ -260,10 +268,10 @@ bytes := strings.Bytes("Aé")              // byte[]; three bytes
 part := strings.Slice("Aé", 1, 1)         // one byte; invalid UTF-8 allowed
 valid, badOffset := utf8.Validate(bytes)  // true, -1
 text := strings.FromBytes([65, 0, 66])    // three bytes, embedded NUL
-builder: strings.Builder = {}
-strings.AppendChar(builder, '🐈')         // proposed ref parameter, current call style
-label := strings.Build(builder)
-strings.Reset(builder)                   // label remains stable
+builder := strings.builder()
+builder.appendChar('🐈')                 // proposed method spelling
+label := builder.build()
+builder.clear()                          // label remains stable
 ```
 
 ## Decisions to settle
@@ -278,7 +286,7 @@ strings.Reset(builder)                   // label remains stable
 | Malformed iteration — no replacement approved | Preserve current strict failure; explicit Decode proposal is also strict | U+FFFD and one-byte advance after a separate decision |
 | Byte/string conversion signatures — proposed | Review `Bytes -> byte[]` and `FromBytes` with package consumers | Retain current `Bytes -> int[]` until that review |
 | Characters | Existing char; preserve one-scalar-string loop result initially | Change loop yield to char with byte offset after caller audit |
-| Builder | Value record, ref mutation, Build copy; container fields first | Byte-array append helpers until builder record support |
+| Builder — value behavior approved 2026-10-22 | Copy-on-write value record, explicit pointer sharing, reusable build snapshots; collection fields and authored methods first | Exact method declarations remain to be discussed |
 | Base/allocators | Private runtime hooks, runtime-managed values | Public expert base and explicit allocation policy with concrete consumers |
 | Fidelity | Approve and track individual package/API subsets | Broader Odin equivalence with all required language/runtime contracts |
 

@@ -28,7 +28,12 @@ implemented before the ports that need them.
 - Managed pointers and explicit call-site `ref` are implemented locally on
   `codex/managed-pointers-20261022`. The [pointer contract and verification
   ledger](managed-pointers.md) record supported operations and remaining limits.
-  The separate sequence workstream owns shared array objects and retained slices.
+  The later [value semantics decision](value-semantics.md) supersedes ordinary
+  shared-array assignment and retained source `ref`: arrays, maps and builders
+  are independent values with copy-on-write storage; pointers explicitly share
+  mutable targets. The sequence workstream is reconciling its collection work
+  with that decision. Record collection fields, authored mutating methods and
+  remaining pointer lifetime rules precede the Chibi-written builder.
 - Shift behavior approved on 2026-10-21: reject counts outside the operand
   width and discard shifted-out bits. Implemented and verified locally across
   compiler stages and execution backends in this branch; not merged into main.

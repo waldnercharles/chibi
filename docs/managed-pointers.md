@@ -5,6 +5,12 @@ Approved and implemented locally on 2026-10-22 on
 call-site `ref` changes. This branch is not merged. The validation ledger below
 records what has actually passed.
 
+The owner subsequently approved [value collections and builders](value-semantics.md)
+and removal of authored `ref` on 2026-10-22. That decision supersedes the shared
+dynamic-array contract and retained `ref` syntax described below. This document
+preserves the implemented checkpoint and its evidence; those later changes have
+not yet been implemented here.
+
 ## Contract
 
 Assignment copies the value of its type. A pointer assignment copies a

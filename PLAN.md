@@ -141,8 +141,11 @@ milestones below retain their existing order and acceptance conditions.
 
 The owner approved managed pointers with automatic lifetime and cycle cleanup
 on 2026-10-22. [Managed pointer implementation](docs/managed-pointers.md) records
-the contract, compiler/runtime work and current validation evidence. It builds
-on explicit call-site `ref` while keeping ordinary value copies independent.
+the local compiler/runtime checkpoint and its validation evidence. The later
+[value semantics decision](docs/value-semantics.md) replaces shared dynamic-array
+assignment with copy-on-write values and calls for removing authored `ref` in
+favor of pointers. That document owns the approved behavior, prerequisites and
+remaining lifetime questions; the new changes are not yet implemented.
 
 The current prerequisite is the approved byte-preserving string representation:
 one immutable public `string` carrying bytes and length, with explicit UTF-8

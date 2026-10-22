@@ -24,6 +24,13 @@ here; the plan records scheduling and package decision records own proposed APIs
 
 ## Managed pointer boundaries
 
+The later [value semantics decision](value-semantics.md) approves copy-on-write
+arrays, maps and builders and removal of authored `ref`. The boundaries below
+describe the completed pointer checkpoint, not that later migration. Its
+remaining decisions include collection-slot identity, scoped engine locations
+and reference iteration. Copy-on-write must distinguish logical copies from
+temporary lvalue reads so repeated append does not become quadratic.
+
 Language and runtime. The approved managed-pointer implementation is local to
 `codex/managed-pointers-20261022`; it is not yet merged. The
 [contract and validation ledger](managed-pointers.md) distinguish supported

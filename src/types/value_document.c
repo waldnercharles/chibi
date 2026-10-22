@@ -4,6 +4,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/type.h"
 #include "types/union.h"
 
@@ -15,6 +16,7 @@
 typedef struct
 {
     int values;
+    arena temporary;
 } document_writer;
 
 static av_value *shape(av_doc *doc, const pin_value *value)
@@ -208,8 +210,23 @@ static av_value *project(
             const char *label = type_catalog_enum_label(type_name, v->e);
             return label ? av_str(doc, label) : av_sint(doc, v->e);
         }
-        case PIN_NAME:
-        case PIN_STR: return av_str(doc, v->str ? v->str : "");
+        case PIN_NAME: return av_str(doc, v->str ? v->str : "");
+        case PIN_STR: {
+            pin_string text = pin_text(*v);
+            if (pin_text_valid_utf8(text)) {
+                return av_strn(doc, text.bytes, text.length);
+            }
+            if (text.length > (unsigned)(DOCUMENT_MAX_VALUES - writer->values)) {
+                return NULL;
+            }
+            writer->values += (int)text.length;
+            av_value *encoded = av_obj(doc), *bytes = av_arr(doc);
+            for (uint32_t i = 0; i < text.length; i++) {
+                av_arr_append(bytes, av_uint(doc, (unsigned char)text.bytes[i]));
+            }
+            av_obj_set(doc, encoded, "bytes", bytes);
+            return encoded;
+        }
         case PIN_STRUCT:
             if (v->ptr && type_name) {
                 const type_desc *type = v->record ? pin_value_type(v)
@@ -218,7 +235,9 @@ static av_value *project(
                     value = av_obj(doc);
                     for (int i = 0; i < type->field_count; i++) {
                         pin_value field;
-                        pin_read_field(v->ptr, &type->fields[i], &field);
+                        if (pin_read_field(&writer->temporary, v->ptr, &type->fields[i], &field)) {
+                            return NULL;
+                        }
                         av_value *child = project(
                             doc,
                             &field,
@@ -283,9 +302,12 @@ void pin_value_write_document(
     if (value) {
         av_obj_set(doc, obj, key, value);
     }
+    arena_free(&writer.temporary);
 }
 av_value *pin_value_to_document(av_doc *doc, const pin_value *value)
 {
     document_writer writer = { 0 };
-    return project(doc, value, value->type, value->type_name, NULL, &writer, 0);
+    av_value *result = project(doc, value, value->type, value->type_name, NULL, &writer, 0);
+    arena_free(&writer.temporary);
+    return result;
 }

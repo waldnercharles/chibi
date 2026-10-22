@@ -3,8 +3,12 @@
 #include "runtime/audio.h"
 
 static const native_parameter_definition TONE_IN[] = { AUDIO_TONE_INPUTS(NATIVE_PORT) };
-static const native_parameter_definition SOUND_IN[] = { AUDIO_SOUND_INPUTS(NATIVE_PORT) };
-static const native_parameter_definition MUSIC_IN[] = { AUDIO_MUSIC_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition SOUND_IN[] = {
+    AUDIO_SOUND_INPUTS(NATIVE_CSTRING_PORT)
+};
+static const native_parameter_definition MUSIC_IN[] = {
+    AUDIO_MUSIC_INPUTS(NATIVE_CSTRING_PORT)
+};
 static const native_parameter_definition FADE_IN[] = { AUDIO_FADE_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition VOLUME_IN[] = { AUDIO_VOLUME_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition OUTPUTS[] = { AUDIO_OUTPUTS(NATIVE_PORT) };

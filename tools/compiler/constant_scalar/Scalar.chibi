@@ -785,7 +785,10 @@ BitOperation :: (op: int, left: Value, right: Value, storage: int) -> Result {
     if (op != OpBitNot) {
         y = Bits(right);
     }
-    shift := y & uint64(width - 1);
+    if ((op == OpShiftLeft || op == OpShiftRight) && y >= uint64(width)) {
+        return Result.Failed("Integer shift count is outside the type width");
+    }
+    shift := y;
     bits: uint64 = 0;
     if (op == OpBitAnd) {
         bits = x & y;

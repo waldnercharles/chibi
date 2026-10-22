@@ -335,19 +335,16 @@ behavior_variable *behavior_asset_add_variable(
                 return NULL;
             }
         }
-        if (container == PIN_CONTAINER_SINGLE &&
-            (type == PIN_STR || type == PIN_NAME) && v.default_value.str) {
-            v.default_value.str = graph_own_str(
-                asset->graph,
-                v.default_value.str,
-                strlen(v.default_value.str)
-            );
+        if (container == PIN_CONTAINER_SINGLE && (type == PIN_STR || type == PIN_NAME) &&
+            pin_value_copy_to_graph(asset->graph, &v.default_value, default_value)) {
+            return NULL;
         }
+        v.default_value.type_name = v.type_name;
     } else {
         v.default_value = (pin_value){ .type = type,
                                        .container = container,
                                        .type_name = v.type_name };
-        if (container == PIN_CONTAINER_SINGLE && (type == PIN_STR || type == PIN_NAME)) {
+        if (container == PIN_CONTAINER_SINGLE && type == PIN_NAME) {
             v.default_value.str = "";
         }
     }
@@ -437,10 +434,11 @@ int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, cons
         );
     }
     if (v->container == PIN_CONTAINER_SINGLE &&
-        (value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
-        v->default_value
-            .str = graph_own_str(asset->graph, value->str, strlen(value->str));
+        (value->type == PIN_STR || value->type == PIN_NAME) &&
+        pin_value_copy_to_graph(asset->graph, &v->default_value, value)) {
+        return -1;
     }
+    v->default_value.type_name = v->type_name;
     return 0;
 }
 

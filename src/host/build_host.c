@@ -14,6 +14,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -193,33 +194,45 @@ static char **step_argv(build_host *host, const pin_value *arguments, char **pro
     const pin_array *array = arguments[0].ptr;
     if (arguments[0].type != PIN_STR || arguments[0].container != PIN_CONTAINER_ARRAY ||
         !array || array->element_type != PIN_STR || array->count < 1 ||
-        array->count > BUILD_MAX_STEP_ARGUMENTS) {
+        array->count > BUILD_MAX_STEP_ARGUMENTS || !array->items) {
         return NULL;
     }
     size_t bytes = 0;
     for (int i = 0; i < array->count; i++) {
         const pin_value *value = &array->items[i];
-        if (value->type != PIN_STR ||
-            value->container != PIN_CONTAINER_SINGLE || !value->str) {
+        if (value->type != PIN_STR || value->container != PIN_CONTAINER_SINGLE) {
             return NULL;
         }
-        size_t length = strlen(value->str) + 1;
+        pin_string text = pin_text(*value);
+        size_t length = (size_t)text.length + 1;
         if (length > BUILD_MAX_ARGUMENT_BYTES - bytes) {
+            return NULL;
+        }
+        if (memchr(text.bytes, 0, text.length)) {
+            *failure = "C string contains embedded NUL";
             return NULL;
         }
         bytes += length;
     }
-    if (!array->items[0].str[0]) {
+    if (!pin_text(array->items[0]).length) {
         return NULL;
     }
-    *program = build_host_executable(host, array->items[0].str);
+    const char *name;
+    *failure = build_values_cstring(&host->values, array->items[0], &name);
+    if (*failure) {
+        return NULL;
+    }
+    *program = build_host_executable(host, name);
     if (!*program) {
         *failure = "build process spawn failed";
         return NULL;
     }
     char **argv = xmalloc((array->count + 1) * sizeof(*argv));
     for (int i = 0; i < array->count; i++) {
-        argv[i] = xstrdup(array->items[i].str);
+        pin_string text = pin_text(array->items[i]);
+        argv[i] = xmalloc((size_t)text.length + 1);
+        memcpy(argv[i], text.bytes, text.length);
+        argv[i][text.length] = 0;
     }
     argv[array->count] = NULL;
     *failure = NULL;
@@ -423,14 +436,16 @@ const char *build_host_environment(void *service, const pin_value *arguments, pi
     if (failure) {
         return failure;
     }
-    if (arguments[0].type != PIN_STR ||
-        arguments[0].container != PIN_CONTAINER_SINGLE || !arguments[0].str) {
-        return "invalid build environment name";
+    const char *name;
+    failure = build_values_cstring(&host->values, arguments[0], &name);
+    if (failure) {
+        return failure;
     }
     for (size_t i = 0; i < sizeof(environment_names) / sizeof(*environment_names); i++) {
-        if (!strcmp(arguments[0].str, environment_names[i])) {
-            results[0].str = environment_value(host, arguments[0].str);
-            return NULL;
+        if (!strcmp(name, environment_names[i])) {
+            const char *value = environment_value(host, name);
+            results[0].text = build_values_text(&host->values, value, strlen(value));
+            return results[0].text ? NULL : host->values.error;
         }
     }
     return "build environment name is not allowed";
@@ -455,11 +470,11 @@ const char *build_host_environment_names(void *service, const pin_value *, pin_v
     }
     for (int i = 0; i < count; i++) {
         const char *row = host->environment[i];
-        char *name = build_values_text(&host->values, row, strcspn(row, "="));
+        const pin_string *name = build_values_text(&host->values, row, strcspn(row, "="));
         if (!name) {
             return host->values.error;
         }
-        names->items[i] = (pin_value){ .type = PIN_STR, .str = name };
+        names->items[i] = (pin_value){ .type = PIN_STR, .text = name };
     }
     results[0].ptr = names;
     return NULL;
@@ -664,12 +679,12 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
             break;
         }
         argument_bytes += bytes;
-        char *copy = build_values_text(&host.values, text, bytes - 1);
+        const pin_string *copy = build_values_text(&host.values, text, bytes - 1);
         if (!copy) {
             failure = host.values.error;
             break;
         }
-        host.arguments->items[i] = (pin_value){ .type = PIN_STR, .str = copy };
+        host.arguments->items[i] = (pin_value){ .type = PIN_STR, .text = copy };
     }
     if (!failure) {
         failure = build_host_ready(&host);

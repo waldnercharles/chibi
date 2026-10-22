@@ -47,7 +47,9 @@ static bool port(
         source->reference_kind > SCRIPT_REFERENCE_RELATIONSHIP) {
         return fail(error, size, definition->canonical_name, "Invalid port declaration");
     }
-    if ((source->type_name && !*source->type_name) ||
+    if ((source->c_string && ((source->storage != PIN_STR && source->storage != PIN_NAME) ||
+                              source->container != PIN_CONTAINER_SINGLE)) ||
+        (source->type_name && !*source->type_name) ||
         (source->member_name && !*source->member_name) ||
         (source->type_flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_RESULTS)) ||
         ((source->type_flags & SCRIPT_TYPE_GENERIC) && !source->generic_group) ||
@@ -66,6 +68,7 @@ static bool port(
         .reference_kind = source->reference_kind,
         .member = source->member_name ? script_catalog_id("field", source->member_name)
                                       : 0,
+        .c_string = source->c_string,
         .has_default = source->has_default,
         .default_owner = source->default_owner,
         .default_value = source->default_value,

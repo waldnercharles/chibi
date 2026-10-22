@@ -9,6 +9,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/map.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
@@ -24,7 +25,12 @@ static void box_record(arena *storage, const pin_value *value, int depth)
     const type_desc *type = pin_value_type(value);
     for (int i = 0; type && i < type->field_count; i++) {
         pin_value field;
-        pin_read_field(value->ptr, &type->fields[i], &field);
+        {
+            const char *error = pin_read_field(storage, value->ptr, &type->fields[i], &field);
+            if (error) {
+                abort();
+            }
+        };
         if (field.type == PIN_UNION) {
             box(storage, &field, depth + 1);
         }
@@ -308,9 +314,13 @@ static bool run(
         uintptr_t steps = observed->observed ? observed->steps : context->error_steps;
         const char *message = observed->observed ? observed->message
                                                  : context->error_message;
-        const char *failure = category == BEHAVIOR_FUNCTION_DEPTH  ? "depth"
-                            : category == BEHAVIOR_FUNCTION_BUDGET ? "budget"
-                                                                   : "other";
+        bool budget_failure = status == FLOW_ERR_STEP_BUDGET ||
+                              (observed->observed && category == BEHAVIOR_FUNCTION_BUDGET);
+        const char *failure = budget_failure                      ? "budget"
+                            : category == BEHAVIOR_FUNCTION_DEPTH ? "depth"
+                            : !observed->observed && !steps && !message
+                                ? "unreported"
+                                : "other";
         fprintf(
             stderr,
             "compiler fixture failure: backend=%s package=%s entry=%s "
@@ -435,15 +445,20 @@ static pin_value boolean(bool value)
 {
     return (pin_value){ .type = PIN_BOOL, .b = value };
 }
-static pin_value text(const char *value)
+static pin_value text(arena *storage, const char *value)
 {
-    return (pin_value){ .type = PIN_STR, .str = value };
+    pin_value result;
+    const char *error = pin_value_text(storage, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
-static bool put(pin_value *row, const char *name, pin_value value)
+static bool put(arena *storage, pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(storage, row->ptr, field, value));
     return true;
 }
 bool compiler_fixture_pack_nodes(
@@ -472,28 +487,28 @@ bool compiler_fixture_pack_nodes(
                           .record = record,
                           .type_name = record->type.name };
         memset(row.ptr, 0, record->type.size);
-        REQUIRE(put(&row, "kind", text(ts_node_type(node))));
+        REQUIRE(put(input, &row, "kind", text(input, ts_node_type(node))));
         REQUIRE(
-            put(&row, "start", integer((int)ts_node_start_byte(node))) &&
-            put(&row, "end", integer((int)ts_node_end_byte(node)))
+            put(input, &row, "start", integer((int)ts_node_start_byte(node))) &&
+            put(input, &row, "end", integer((int)ts_node_end_byte(node)))
         );
         REQUIRE(
-            put(&row, "row", integer((int)point.row)) &&
-            put(&row, "column", integer((int)point.column))
+            put(input, &row, "row", integer((int)point.row)) &&
+            put(input, &row, "column", integer((int)point.column))
         );
         REQUIRE(
-            put(&row, "parent", integer(nodes[i].parent)) &&
-            put(&row, "first_child", integer(nodes[i].first_child)) &&
-            put(&row, "next_sibling", integer(nodes[i].next_sibling))
+            put(input, &row, "parent", integer(nodes[i].parent)) &&
+            put(input, &row, "first_child", integer(nodes[i].first_child)) &&
+            put(input, &row, "next_sibling", integer(nodes[i].next_sibling))
         );
         REQUIRE(
-            put(&row, "error", boolean(ts_node_is_error(node))) &&
-            put(&row, "missing", boolean(ts_node_is_missing(node))) &&
-            put(&row, "has_error", boolean(ts_node_has_error(node)))
+            put(input, &row, "error", boolean(ts_node_is_error(node))) &&
+            put(input, &row, "missing", boolean(ts_node_is_missing(node))) &&
+            put(input, &row, "has_error", boolean(ts_node_has_error(node)))
         );
         array->items[i] = row;
         if (names) {
-            names->items[i] = text(nodes[i].field ? nodes[i].field : "");
+            names->items[i] = text(input, nodes[i].field ? nodes[i].field : "");
         }
     }
     *out = (pin_value){ .type = PIN_STRUCT,

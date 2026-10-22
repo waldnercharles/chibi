@@ -8,9 +8,11 @@
 #include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Twelve fixed fact requests plus four real one-header analyses, both backends:
@@ -56,17 +58,19 @@ static pin_value number(uint64_t n)
 }
 static pin_value text(const char *value)
 {
-    const char *source = value ? value : "";
-    size_t size = strlen(source) + 1;
-    char *copy = arena_alloc(&input, size);
-    memcpy(copy, source, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool record(int b, const char *package, const char *name, pin_value *out)
@@ -244,7 +248,7 @@ static bool read(const pin_value *value, const char *name, pin_value *out)
     REQUIRE(value->type == PIN_STRUCT && value->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(value), name);
     REQUIRE(field);
-    pin_read_field(value->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, value->ptr, field, out));
     return true;
 }
 static bool diagnostics(const pin_value *value, const script_nominal_declaration *want)
@@ -270,7 +274,7 @@ static bool diagnostics(const pin_value *value, const script_nominal_declaration
         pin_value message;
         REQUIRE(
             read(&rows->items[i], "message", &message) && message.type == PIN_STR &&
-            message.str && !strcmp(message.str, d->message)
+            pin_text(message).bytes && !strcmp(pin_text(message).bytes, d->message)
         );
     }
     return true;
@@ -302,9 +306,10 @@ static bool compare_value(const pin_value *result, uint64_t tag, const script_no
         v[8].type == PIN_U64 && v[8].u64 == want->type.parameter
     );
     REQUIRE(
-        v[9].type == PIN_STR && v[9].str &&
-        !strcmp(v[9].str, want->name ? want->name : "") && v[10].type == PIN_STR &&
-        v[10].str && !strcmp(v[10].str, want->source_name ? want->source_name : "")
+        v[9].type == PIN_STR && pin_text(v[9]).bytes &&
+        !strcmp(pin_text(v[9]).bytes, want->name ? want->name : "") &&
+        v[10].type == PIN_STR && pin_text(v[10]).bytes &&
+        !strcmp(pin_text(v[10]).bytes, want->source_name ? want->source_name : "")
     );
     REQUIRE(
         v[11].type == PIN_BOOL && v[11].b == want->authored_record &&
@@ -337,7 +342,7 @@ static bool owns(arena *owner, const pin_value *value)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(owner, value->str));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
         return true;
     }
     if (value->type == PIN_STRUCT) {
@@ -349,7 +354,7 @@ static bool owns(arena *owner, const pin_value *value)
         REQUIRE(type && type->field_count <= 6);
         for (int i = 0; i < type->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(owner, value->ptr, &type->fields[i], &field));
             REQUIRE(owns(owner, &field));
         }
         return true;

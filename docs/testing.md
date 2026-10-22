@@ -141,6 +141,54 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+The length-carrying string migration adds independently reviewed, fixed CPU
+workloads under the existing 60-second deadline per selector. This is admission
+for the first measurement; it does not record a pass.
+
+- `language-record-values`: thirteen cases, including eight fixed UTF-8 vectors,
+  eight indexed string keys, and ownership/native-boundary checks. One tiny
+  nested-record case checks local type resolution, a conflicting global shape,
+  atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
+  it adds no loops or child processes. One partial native record copy adds
+  three assertions for preserved opaque bytes and owned text after mutation.
+- `language-execution`: twenty-nine cases. The added five-instruction function
+  runs eight times across two backends with a 100-instruction budget; four
+  iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
+  checks read ownership and rejection before reference/constructor publication.
+- `language-package-core`: seven cases and 386 calls, retaining the existing
+  10,000-instruction per-call budget.
+- `language-record-document`: five cases, adding three tiny JSON roundtrips,
+  four malformed byte tags and one rejected NUL name.
+- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. A native-field
+  size check uses an 81-byte stack string and a nearly exhausted logical budget
+  with a hash sink; it allocates no large output buffer.
+- `build-process`: thirty-seven cases. The new helper case adds seven operations
+  on at most seven bytes and no processes. Existing invocation and child limits
+  remain unchanged; binary-output and file assertions replace text rejection.
+- `ecs-strings`: three cases, each with one entity, at most two components and
+  fixed short strings. Rejected writes preserve payloads, versions and intern
+  statistics; successful writes retain bytes after the original storage changes.
+- `language-program` and its `language-query-program` subset add one descriptor
+  observer case: one entity, two tiny bytecode functions and two program steps
+  with a 1,000-instruction budget to check a three-byte payload.
+- `c-export-alias`: the existing second compiler child includes one additional
+  ten-instruction string function, two samples and four VM/generated-C calls
+  with budget 64. A fixed 4 KiB stack disturbance checks returned descriptor
+  lifetime. The two compiler children, 10-second child deadlines and second
+  child's 64 KiB source cap remain unchanged.
+
+These extensions add no rendering, GPU or network work and no additional child
+process launches. They do not enable a quarantined aggregate.
+
+The independently reviewed compiler integration has 137 fixed samples: 90 base,
+13 types, 20 imports and 14 collections, with each selector under its own
+60-second deadline and imports using Release. The Release bootstrap also
+compares all 137 samples between stages and 59 fixed floating literals with
+both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+limit and writes only its closure and manifest; a failed compile may make one
+diagnostic call. It retains one shared 60-second production deadline.
+
 The compiled-runtime rollout passed native, language, tooling, materials and
 project groups under their shared 60-second deadlines. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine
@@ -233,6 +281,20 @@ all eight signed and unsigned widths, and optional context-aware logging. Native
 to these small functions; there are no files, processes, frames or GPU work.
 Debug Clang 23.1.1 with ASan/UBSan passed 10 cases and 726 assertions in 0.577
 seconds on 2026-10-07, including actual VM and SLJIT execution.
+
+The 2026-10-21 shift-contract regression adds sixteen tiny functions (eight
+integer types, two directions), each run on VM and the compiled backend with
+three invalid counts: width, width plus one, and all bits set. These 96 calls
+check DATA failure and source metadata. Existing valid-shift cases cover zero,
+one and width minus one, sign extension and discarded bits. This bounded
+extension was independently reviewed before execution; the shared deadline
+and no-IO/no-process constraints are unchanged.
+
+The same dispatcher adds six two-frame, ten-instruction definitions to check
+the optimizer's treatment of failing shifts. Twenty invocations, each capped at
+100 instructions, cover both directions, variable counts and valid/invalid
+constant counts on both backends. An unused invalid shift must still fail and
+preserve a prior persistent write; a valid shift reaches the subsequent write.
 
 `python3 tools/test_policy.py tool language-program` selects twelve independently
 reviewed source/runtime cases on VM and SLJIT. Besides typed events, systems,
@@ -1027,6 +1089,14 @@ The language follow-up admits these focused C checks under the same supervisor:
   columns. These coexist with the two query-variable definitions and sixteen
   query calls below, sharing the same compiler child and source-size bound.
   The combined generated source requires independent admission before execution.
+  The 2026-10-21 checked-shift extension is a second pico case in the same
+  dispatcher. It adds eight nine-instruction functions (eight integer types,
+  a direction argument), with six counts per direction and 192 paired
+  VM/generated-C calls. It checks valid values and invalid-count DATA metadata.
+  Its source is capped at 64 KiB; the original case retains its 128 KiB bound.
+  Each case has one compiler child with the existing 10-second limit, and both
+  share the selector's 60-second deadline. Cleanup runs between cases. The
+  combined workload requires independent review before execution.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -1147,7 +1217,7 @@ make test-list
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | The admitted native language aggregate under one shared deadline; standalone selectors are listed separately by `make test-list`. |
-| `test-bootstrap` | Stage one compiles the compiler and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; see `docs/package-compiler.md`. |
+| `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
 | `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -1267,7 +1337,7 @@ identifiers, basename extraction, the byte procedures ported from Odin's
 counting, case, trimming, cutting, repetition, splitting, joining, replacement
 and partition), generic native arrays, binding-generation invalidation and
 retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
-and 18 imports, with at most 36 package visits before reuse and 378 direct
+and 18 imports, with at most 36 package visits before reuse and 386 direct
 calls, each with a 10,000-instruction budget. At most three owners and
 three-element arrays are live; core source is below 16 KiB and the app below
 4 KiB. There is no filesystem, process, service or GPU work. Installed consumers
@@ -1468,7 +1538,7 @@ first run, build separately and use one shared 60-second ceiling outside the
 language aggregate.
 
 `python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
-scalar folding using 70 fixed requests and 140 authored calls across bytecode and
+scalar folding using 91 fixed requests and 182 authored calls across bytecode and
 SLJIT. Three pico cases prepare the four actual compiler packages once per
 backend (eight source parses, each below 64 KiB). Each call permits two million
 instructions and contains at most seven expressions, one symbol and no aggregate
@@ -1477,7 +1547,8 @@ evaluator; the authored implementation uses separate proof and evaluation
 budgets, preserving the production limit of 65,536 for each.
 
 The corpus covers all thirteen physical scalar variants, exact floating-point
-bits, numeric conversions, integer wrap and division failures, masked shifts,
+bits, numeric conversions, integer wrap and division failures, checked shift
+counts and discarded shift bits at fixed operand widths,
 result storage and float rounding, string presence, symbols, promotion and
 Boolean short-circuiting after full admissibility. Inputs retire before result
 inspection. Explicit arena checks verify detached union and string ownership;

@@ -33,12 +33,15 @@ void execution_wire_u64(execution_wire *, uint64_t *);
 void execution_wire_int(execution_wire *, int *);
 void execution_wire_size(execution_wire *, size_t *);
 void execution_wire_bool(execution_wire *, bool *);
+/* NUL-free metadata/name text only; PIN_STR values use length-prefixed bytes. */
 void execution_wire_string(execution_wire *, const char **);
 /* minimum_fields bounds a decoded count by the bytes left: each field is at least one. */
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Struct names/layouts must resolve in the supplied global type catalog. No
  * process pointer is encoded; HANDLE values must be zero. Collections preserve
- * ordered items. Maps encode full typed key/value headers and ordered pairs. */
+ * ordered items. Maps encode full typed key/value headers and ordered pairs.
+ * Failed reads leave the destination value unchanged; partial decoded storage
+ * belongs to the reader's arena and is discarded with its generation. */
 void execution_wire_value(execution_wire *, pin_value *);
 /* Explicit execution-prepared variant. Each recursive value carries an authored
  * discriminator; resolve validates original writer headers or supplies an owned

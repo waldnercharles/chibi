@@ -15,6 +15,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -300,6 +301,7 @@ static const script_symbol *action_symbol(lower *l, const script_expression *exp
     }
     return NULL;
 }
+static int retain_bank(lower *, int, script_type, script_range);
 static int reference(lower *, int);
 static int reference_expression(lower *, const script_expression *, bool written);
 static void statement(lower *, int);
@@ -423,12 +425,12 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
     }
     if (from.container == PIN_CONTAINER_SINGLE && to.container == PIN_CONTAINER_SINGLE &&
         behavior_scalar_string(from.storage) && behavior_scalar_string(to.storage)) {
-        pin_value header = initial(l, to);
+        pin_value input = initial(l, from), header = initial(l, to);
         int host = behavior_function_builder_host(
             l->builder,
             &EXECUTION_snapshot_call,
             &EXECUTION_value_access,
-            &header,
+            &input,
             1,
             &header,
             1
@@ -459,11 +461,26 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
                                              .offset = offsetof(pin_value, d) },
             range
         );
+        emit(
+            l,
+            (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                             .left = BEHAVIOR_FUNCTION_HOST_DATA,
+                                             .target = host },
+            range
+        );
+        int result = value_op(
+            l,
+            (behavior_function_instruction){
+                .op = BF_HOST_SLOT,
+                .type = BF_POINTER_TYPE,
+                .left = behavior_function_builder_host_results(l->builder, host) },
+            range
+        );
         return value_op(
             l,
             (behavior_function_instruction){ .op = BF_LOAD,
                                              .type = to.storage,
-                                             .left = address,
+                                             .left = result,
                                              .offset = offsetof(pin_value, d) },
             range
         );
@@ -530,7 +547,19 @@ static int assertion(lower *l, const script_expression *e)
             error(l, value->range, "assert's message is a string constant");
             return -1;
         }
-        message = value->constant.str;
+        pin_string literal = pin_text(value->constant);
+        char *display = arena_alloc(&l->module->storage, (size_t)literal.length * 2 + 1);
+        size_t used = 0;
+        for (uint32_t at = 0; at < literal.length; at++) {
+            if (!literal.bytes[at]) {
+                display[used++] = '\\';
+                display[used++] = '0';
+            } else {
+                display[used++] = literal.bytes[at];
+            }
+        }
+        display[used] = 0;
+        message = display;
     }
     if (condition < 0) {
         return -1;
@@ -1163,6 +1192,33 @@ static int reference_read(lower *l, int descriptor, script_type type, script_ran
         type,
         range
     );
+}
+/* Native char fields hold C pointers; reference reads adapt them to strings. */
+static int native_text_field(
+    lower *l,
+    int source,
+    script_type owner,
+    const script_catalog_field *field,
+    script_range range
+)
+{
+    int bank = retain_bank(l, source, owner, range);
+    pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                            initial(l, field->type),
+                            { .type = PIN_U64, .u64 = field->offset },
+                            { .type = PIN_BOOL } };
+    int slots[] = { bank_reference(l, bank, owner, range), -1, -1, -1 };
+    int reference = primitive(
+        l,
+        &EXECUTION_reference_field_call,
+        &EXECUTION_value_access,
+        headers,
+        slots,
+        4,
+        (script_type){ .storage = BF_POINTER_TYPE },
+        range
+    );
+    return reference_read(l, reference, field->type, range);
 }
 /* Reads an assignment's target; an absent map key reads its value type's zero. */
 static int target_read(lower *l, int descriptor, int index, script_range range)
@@ -2501,8 +2557,15 @@ static int struct_call(lower *l, const script_expression *e, const script_catalo
             return -1;
         }
         int value;
-        if (field->type.storage == PIN_STRUCT &&
-            field->type.container == PIN_CONTAINER_SINGLE) {
+        if (field->c_string) {
+            value = native_text_field(
+                l,
+                source,
+                l->a->expressions[e->arguments[0].value].type,
+                field,
+                e->range
+            );
+        } else if (field->type.storage == PIN_STRUCT && field->type.container == PIN_CONTAINER_SINGLE) {
             int offset = constant(
                 l,
                 (pin_value){ .type = BF_POINTER_TYPE, .u64 = field->offset },
@@ -3222,7 +3285,11 @@ static int call(lower *l, const script_expression *e)
                 error(l, arg->range, "Query capability requires a static declared key");
                 return -1;
             }
-            key = arg->constant.str;
+            size_t nul = 0;
+            if (pin_text_cstring(&l->module->storage, arg->constant, &key, &nul)) {
+                error(l, arg->range, "Query key contains embedded NUL");
+                return -1;
+            }
         }
         if (!key || e->type.container != PIN_CONTAINER_ARRAY ||
             e->type.storage != PIN_HANDLE) {
@@ -3380,7 +3447,22 @@ static int keyed_getter(lower *l, const script_expression *e, const script_catal
     }
     assert(cap->parameter_count == 1 && cap->result_count == 1);
     pin_value key = initial(l, cap->parameters[0].type);
-    key.str = field->read_key;
+    if (key.type == PIN_STR) {
+        pin_value owned = { 0 };
+        const char *failure = pin_value_text(
+            &l->module->storage,
+            &owned,
+            field->read_key,
+            strlen(field->read_key)
+        );
+        if (failure) {
+            error(l, e->range, failure);
+            return -1;
+        }
+        key.text = owned.text;
+    } else {
+        key.str = field->read_key;
+    }
     pin_value result = initial(l, e->type);
     int index = linked_host(l->builder, host.call, host.access, &key, 1, &result, 1);
     if (!behavior_function_builder_host_identity(
@@ -4589,6 +4671,12 @@ static int expression_value(lower *l, int index)
                     operand = (script_type){ .storage = common };
                 }
             }
+            if (behavior_scalar_string(operand.storage) &&
+                behavior_scalar_string(l->a->expressions[e->right].type.storage) &&
+                (operand.storage == PIN_STR ||
+                 l->a->expressions[e->right].type.storage == PIN_STR)) {
+                operand = (script_type){ .storage = PIN_STR };
+            }
             left = convert(l, left, l->a->expressions[e->left].type, operand, e->range);
             right = convert(l, right, l->a->expressions[e->right].type, operand, e->range);
             return binary(l, e->op, left, right, e->type, operand, e->range);
@@ -4748,6 +4836,19 @@ static int expression_value(lower *l, int index)
                                               .entry = -1,
                                               .arguments = &receiver_argument,
                                               .argument_count = 1 }
+                    );
+                }
+            }
+            const script_catalog_type
+                *owner = script_catalog_type_by_id(l->catalog, receiver->type.nominal);
+            for (int i = 0; owner && i < owner->field_count; i++) {
+                if (owner->fields[i].id == e->member && owner->fields[i].c_string) {
+                    return native_text_field(
+                        l,
+                        expression(l, e->left),
+                        receiver->type,
+                        &owner->fields[i],
+                        e->range
                     );
                 }
             }
@@ -7151,7 +7252,7 @@ static bool same_record_default(const script_catalog_field *a, const script_cata
         case PIN_F32: return !memcmp(&x->f, &y->f, sizeof x->f);
         case PIN_F64: return !memcmp(&x->d, &y->d, sizeof x->d);
         case PIN_NAME:
-        case PIN_STR: return same_record_text(x->str, y->str);
+        case PIN_STR: return pin_text_equal(pin_text(*x), pin_text(*y));
         default: return false;
     }
 }
@@ -7174,8 +7275,9 @@ static bool same_record(const script_catalog_type *a, const script_catalog_type 
         if (x->id != y->id || !same_record_text(x->name, y->name) ||
             !same_record_type(x->type, y->type) || x->offset != y->offset ||
             x->read != y->read || x->write != y->write ||
-            !same_record_text(x->read_key, y->read_key) || x->writable != y->writable ||
-            x->constant != y->constant || !same_record_text(x->unit, y->unit) ||
+            !same_record_text(x->read_key, y->read_key) ||
+            x->writable != y->writable || x->constant != y->constant ||
+            x->c_string != y->c_string || !same_record_text(x->unit, y->unit) ||
             x->range_contract != y->range_contract ||
             memcmp(&x->min, &y->min, sizeof x->min) ||
             memcmp(&x->max, &y->max, sizeof x->max) || x->has_default != y->has_default ||

@@ -6,7 +6,7 @@ static const native_parameter_definition SWITCH_OUTPUTS[] = {
     NATIVE_SWITCH_OUTPUTS(NATIVE_PORT)
 };
 #define INPUTS(KEY, NAME, SOURCE, PORTS, KERNEL)                               \
-    static const native_parameter_definition KEY##_inputs[] = { PORTS(NATIVE_PORT) };
+    static const native_parameter_definition KEY##_inputs[] = { PORTS(NATIVE_CSTRING_PORT) };
 NATIVE_SWITCH_OPERATIONS(INPUTS)
 #undef INPUTS
 

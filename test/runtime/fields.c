@@ -20,6 +20,7 @@
 #include "test/support/code_fixture.h"
 #include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <float.h>
@@ -168,9 +169,15 @@ TEST_CASE(field_parameters_and_errors)
         NULL
     ));
     node *param = add(a, "Field Parameter"), *output = add(a, "Field Output");
-    REQUIRE(
-        !graph_set_pin_default(a->graph, param, 0, 0, &(pin_value){ .type = PIN_STR, .str = "Radius" })
-    );
+    REQUIRE(!graph_set_pin_default(
+        a->graph,
+        param,
+        0,
+        0,
+        &(pin_value){ .type = PIN_STR,
+                      .text = &(const pin_string){ .bytes = "Radius",
+                                                   .length = sizeof("Radius") - 1 } }
+    ));
     wire(a, param, output, 0);
     field_program *p = compile(a);
     REQUIRE(sample(p, 0, 0) == 4);
@@ -374,9 +381,15 @@ TEST_CASE(field_rows_match_scalar_samples)
         NULL
     ));
     node *x = add(asset, "Field X"), *parameter = add(asset, "Field Parameter");
-    REQUIRE(
-        !graph_set_pin_default(asset->graph, parameter, 0, 0, &(pin_value){ .type = PIN_STR, .str = "Offset" })
-    );
+    REQUIRE(!graph_set_pin_default(
+        asset->graph,
+        parameter,
+        0,
+        0,
+        &(pin_value){ .type = PIN_STR,
+                      .text = &(const pin_string){ .bytes = "Offset",
+                                                   .length = sizeof("Offset") - 1 } }
+    ));
     node *sum = add(asset, "Field Add"), *subtract = add(asset, "Field Subtract");
     node *output = add(asset, "Field Output");
     wire(asset, x, sum, 0);

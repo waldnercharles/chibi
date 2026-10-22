@@ -8,5 +8,5 @@ const char *script_analyzer_scalar_constant(analyzer *a, int index, pin_type exp
     if (!script_analyzer_compile_time_value(a, index, &steps, true)) {
         return "requires bounded compile-time values and operators";
     }
-    return script_scalar_evaluate(a->out, index, expected, out);
+    return script_scalar_evaluate(&a->out->constants, a->out, index, expected, out);
 }

@@ -55,8 +55,9 @@ static bool same_fields(const script_catalog_field *a, const script_catalog_fiel
             !same_type(x->type, y->type) || x->offset != y->offset ||
             x->read != y->read || x->write != y->write ||
             !same_text(x->read_key, y->read_key) || x->writable != y->writable ||
-            x->constant != y->constant || x->has_default != y->has_default ||
-            !same_text(x->unit, y->unit) || x->range_contract != y->range_contract ||
+            x->constant != y->constant || x->c_string != y->c_string ||
+            x->has_default != y->has_default || !same_text(x->unit, y->unit) ||
+            x->range_contract != y->range_contract ||
             memcmp(&x->min, &y->min, sizeof x->min) ||
             memcmp(&x->max, &y->max, sizeof x->max)) {
             return false;
@@ -69,8 +70,9 @@ static bool same_parameters(const script_catalog_parameter *a, const script_cata
     for (int i = 0; i < count; i++) {
         const script_catalog_parameter *x = &a[i], *y = &b[i];
         if (!same_text(x->name, y->name) || !same_text(x->unit, y->unit) ||
-            !same_type(x->type, y->type) || x->reference_kind != y->reference_kind ||
-            x->member != y->member || x->has_default != y->has_default ||
+            !same_type(x->type, y->type) ||
+            x->reference_kind != y->reference_kind || x->member != y->member ||
+            x->c_string != y->c_string || x->has_default != y->has_default ||
             x->default_owner != y->default_owner) {
             return false;
         }

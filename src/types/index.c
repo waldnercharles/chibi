@@ -1,6 +1,7 @@
 #include "support/arena.h"
 #include "types/array.h"
 #include "types/copy_internal.h"
+#include "types/text.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -50,10 +51,11 @@ static unsigned hash(const pin_value *v)
         case PIN_STR:
         case PIN_NAME:
             bits = 2166136261u;
-            for (const unsigned char *s = (const unsigned char *)(v->str ? v->str : "");
-                 *s;
-                 s++) {
-                bits = (unsigned)bits * 16777619u ^ *s;
+            {
+                pin_string text = pin_text(*v);
+                for (uint32_t i = 0; i < text.length; i++) {
+                    bits = (unsigned)bits * 16777619u ^ (unsigned char)text.bytes[i];
+                }
             }
             break;
         default: assert(false);

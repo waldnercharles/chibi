@@ -12,6 +12,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -511,7 +512,14 @@ static int state_transition(
         char *mask = arena_alloc(&instance->selections, (size_t)plan->outcome_count + 1);
         memset(mask, '0', (size_t)plan->outcome_count);
         mask[plan->outcome_count] = 0;
-        *state = (pin_value){ .type = PIN_STR, .str = mask };
+        const char *error = pin_value_text(
+            &instance->selections,
+            state,
+            mask,
+            (size_t)plan->outcome_count
+        );
+        assert(!error);
+        (void)error;
     }
     pin_value result = { 0 };
     *selected = native_state_transition(plan->state_kind, entry, state, inputs, plan->outcome_count, &result);

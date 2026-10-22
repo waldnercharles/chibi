@@ -441,16 +441,17 @@ bool behavior_jit_integer(
             load(m, i->right, SLJIT_R1);
         }
         if (i->op == BF_SHL || i->op == BF_SHR) {
-            sljit_emit_op2(
+            // An unsigned comparison also rejects sign-extended negative counts.
+            struct sljit_jump *valid = sljit_emit_cmp(
                 c,
-                SLJIT_AND,
-                SLJIT_R1,
-                0,
+                SLJIT_LESS | (behavior_scalar_size(i->type) == 8 ? 0 : SLJIT_32),
                 SLJIT_R1,
                 0,
                 SLJIT_IMM,
-                behavior_scalar_size(i->type) * CHAR_BIT - 1
+                behavior_scalar_size(i->type) * CHAR_BIT
             );
+            behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
+            bind(c, valid);
         }
         int op = i->op == BF_BIT_AND                        ? SLJIT_AND
                : i->op == BF_BIT_OR                         ? SLJIT_OR

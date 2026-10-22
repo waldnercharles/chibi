@@ -9,6 +9,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -526,6 +527,12 @@ static bool fields_size(size_t *total, const type_desc *type, const void *data, 
                 !fields_size(total, nested, field, nesting + 1)) {
                 return false;
             }
+        } else if (f->type == PIN_STR && f->text_descriptor) {
+            const pin_string *text = *(const pin_string *const *)field;
+            if (f->size != sizeof text || (!add_size(total, sizeof *text + 1) ||
+                                           !add_size(total, text ? text->length : 0))) {
+                return false;
+            }
         } else if (f->type == PIN_STR || f->type == PIN_NAME) {
             if (f->size != sizeof(char *) ||
                 !text_size(total, *(const char *const *)field)) {
@@ -598,7 +605,11 @@ static bool value_size(size_t *total, const pin_value *v, int nesting, const pin
         }
         return true;
     }
-    if (v->type == PIN_STR || v->type == PIN_NAME) {
+    if (v->type == PIN_STR) {
+        return add_size(total, sizeof(pin_string) + 1) &&
+               add_size(total, pin_text(*v).length);
+    }
+    if (v->type == PIN_NAME) {
         return text_size(total, v->str);
     }
     if (v->type == PIN_STRUCT && v->ptr) {

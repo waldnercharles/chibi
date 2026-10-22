@@ -10,10 +10,12 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -688,6 +690,7 @@ static bool managed_prepare(behavior_backend backend, uint64_t ids[3])
     const script_catalog_field fields[] = { { .id = MANAGED_FIELD,
                                               .name = "text",
                                               .type = { .storage = PIN_STR },
+                                              .c_string = true,
                                               .writable = true },
                                             { .id = MANAGED_MATCH,
                                               .name = "matches",
@@ -763,10 +766,14 @@ static bool managed_values(const pin_value *values, const arena *storage, int it
             arena_contains(storage, row->record->type.fields)
         );
         pin_value label, count;
-        pin_read_field(row->ptr, &row->record->type.fields[0], &label);
-        pin_read_field(row->ptr, &row->record->type.fields[1], &count);
-        REQUIRE(label.type == PIN_STR && arena_contains(storage, label.str));
-        REQUIRE(!strcmp(label.str, text) && count.type == PIN_I32 && count.i == 1);
+        REQUIRE(
+            !pin_read_field(&managed_input, row->ptr, &row->record->type.fields[0], &label)
+        );
+        REQUIRE(
+            !pin_read_field(&managed_input, row->ptr, &row->record->type.fields[1], &count)
+        );
+        REQUIRE(label.type == PIN_STR && arena_contains(storage, pin_text(label).bytes));
+        REQUIRE(!strcmp(pin_text(label).bytes, text) && count.type == PIN_I32 && count.i == 1);
     }
     return true;
 }
@@ -853,7 +860,10 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
             if (pass >= 2 && pass <= 4) {
                 int index = pass - 2;
                 char producer[] = "second";
-                pin_value value = { .type = PIN_STR, .str = producer };
+                pin_value value = { .type = PIN_STR,
+                                    .text = &(const pin_string){
+                                        .bytes = producer,
+                                        .length = (uint32_t)strlen(producer) } };
                 pin_value item = { .type = PIN_I32, .i = 2 };
                 pin_array array = { .element_type = PIN_I32,
                                     .count = 1,
@@ -870,11 +880,20 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
                         &value,
                         execution_instance_state(instance, ids[index])
                     ));
-                    pin_write_field(
-                        value.ptr,
-                        &value.record->type.fields[0],
-                        (pin_value){ .type = PIN_STR, .str = producer }
-                    );
+                    {
+                        const char *error = pin_write_field(
+                            &managed_input,
+                            value.ptr,
+                            &value.record->type.fields[0],
+                            (pin_value){ .type = PIN_STR,
+                                         .text = &(const pin_string){
+                                             .bytes = producer,
+                                             .length = (uint32_t)strlen(producer) } }
+                        );
+                        if (error) {
+                            abort();
+                        }
+                    };
                 }
                 REQUIRE(execution_instance_set_state(instance, ids[index], value) == FLOW_OK);
                 memset(producer, 'x', sizeof producer - 1);
@@ -886,8 +905,8 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
                 REQUIRE(
                     managed_values(cache->inputs, &cache->storage, expected_item, expected_label)
                 );
-                REQUIRE(!strcmp(text_cache->inputs[0].str, expected_text));
-                REQUIRE(!strcmp(text_cache->output.str, expected_text));
+                REQUIRE(!strcmp(pin_text(text_cache->inputs[0]).bytes, expected_text));
+                REQUIRE(!strcmp(pin_text(text_cache->output).bytes, expected_text));
                 if (index == 0) {
                     expected_text = "second";
                 }
@@ -906,18 +925,25 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
             REQUIRE(cache->output.type == PIN_BOOL && cache->output.b);
             REQUIRE(text_cache->valid && text_cache->inputs[0].type == PIN_STR);
             REQUIRE(
-                arena_contains(&text_cache->storage, text_cache->inputs[0].str) &&
-                !strcmp(text_cache->inputs[0].str, expected_text)
+                arena_contains(
+                    &text_cache->storage,
+                    pin_text(text_cache->inputs[0]).bytes
+                ) &&
+                !strcmp(pin_text(text_cache->inputs[0]).bytes, expected_text)
             );
             REQUIRE(
                 text_cache->output.type == PIN_STR &&
-                arena_contains(&text_cache->storage, text_cache->output.str)
+                arena_contains(
+                    &text_cache->storage,
+                    pin_text(text_cache->output).bytes
+                )
             );
-            REQUIRE(!strcmp(text_cache->output.str, expected_text));
+            REQUIRE(!strcmp(pin_text(text_cache->output).bytes, expected_text));
             const binding_label *label = ecs_component_data_const(world, owners[0], MANAGED_COMPONENT);
             const binding_position *position = ecs_component_data_const(world, owners[0], 501);
             REQUIRE(
-                label && label->matches && label->text != text_cache->output.str &&
+                label && label->matches &&
+                label->text != pin_text(text_cache->output).bytes &&
                 !strcmp(label->text, expected_text)
             );
             REQUIRE(position && position->y == 42);
@@ -942,7 +968,10 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
         ecs_world_free(world);
         world = NULL;
         REQUIRE(managed_values(saved, &managed_saved, 1, "first"));
-        REQUIRE(arena_contains(&managed_saved, saved[4].str) && !strcmp(saved[4].str, "first"));
+        REQUIRE(
+            arena_contains(&managed_saved, pin_text(saved[4]).bytes) &&
+            !strcmp(pin_text(saved[4]).bytes, "first")
+        );
     }
     return true;
 }

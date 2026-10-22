@@ -4,6 +4,7 @@
 #include "support/file_io.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <dirent.h>
@@ -101,7 +102,7 @@ static bool prepare()
         REQUIRE(array->count > 0 && array->count <= MAX_KINDS);
         name_count[b] = array->count;
         for (int i = 0; i < array->count; i++) {
-            names[b][i] = pin_array_get(array, i).str;
+            names[b][i] = pin_text(pin_array_get(array, i)).bytes;
             REQUIRE(names[b][i] && names[b][i][0]);
         }
     }
@@ -285,7 +286,11 @@ static bool tokenize(int backend, const char *text, token **out, lex_error **err
     size_t size = strlen(text) + 1;
     char *copy = arena_alloc(&input, size);
     memcpy(copy, text, size);
-    pin_value argument = { .type = PIN_STR, .str = copy }, output = { 0 };
+    pin_value argument = { .type = PIN_STR,
+                           .text = &(
+                               const pin_string
+                           ){ .bytes = copy, .length = (uint32_t)strlen(copy) } },
+              output = { 0 };
     int budget = STEPS_PER_BYTE * (int)size + 100000;
     REQUIRE(
         compiler_fixture_call(&fixture, backend, IDENTITY, "Tokenize", &argument, 1, budget, &detached, &output)
@@ -317,7 +322,7 @@ static bool tokenize(int backend, const char *text, token **out, lex_error **err
         locate(text, offset, &at);
         REQUIRE(pin_array_get(columns[TOKEN_COLUMNS + 2], i).i == at.row);
         REQUIRE(pin_array_get(columns[TOKEN_COLUMNS + 3], i).i == offset - at.line);
-        const char *message = pin_array_get(columns[TOKEN_COLUMNS], i).str;
+        const char *message = pin_text(pin_array_get(columns[TOKEN_COLUMNS], i)).bytes;
         REQUIRE(message && message[0]);
         char *owned = xmalloc(strlen(message) + 1);
         strcpy(owned, message);

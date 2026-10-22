@@ -3,9 +3,11 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Fixed legacy controls for the array kernels changed by owned records. */
@@ -53,7 +55,10 @@ static pin_value item(pin_type type, int number)
     char *text = arena_alloc(&source, 24);
     snprintf(text, 24, "native-%d", number);
     if (type == PIN_STR) {
-        value.str = text;
+        const char *error = pin_value_text(&source, &value, text, strlen(text));
+        if (error) {
+            abort();
+        }
         return value;
     }
     native_row *row = arena_alloc(&source, sizeof *row);
@@ -70,7 +75,7 @@ static bool check_item(const pin_value *value, pin_type type, int number)
         REQUIRE(value->i == number);
         return true;
     }
-    const char *text = value->str;
+    const char *text = type == PIN_STR ? pin_text(*value).bytes : NULL;
     if (type == PIN_STRUCT) {
         REQUIRE(value->type_name && !strcmp(value->type_name, native_type.name));
         REQUIRE(arena_contains(&results, value->type_name));
@@ -84,7 +89,7 @@ static bool check_item(const pin_value *value, pin_type type, int number)
         text = row->text;
     }
     if (!number) {
-        REQUIRE(!text);
+        REQUIRE(type == PIN_STR && !pin_text(*value).length);
         return true;
     }
     char expected[24];
@@ -181,7 +186,7 @@ TEST_CASE(record_legacy_array_callbacks)
         if (kinds[kind] != PIN_I32) {
             for (int i = 0; i < 4; i++) {
                 char *text = kinds[kind] == PIN_STR
-                               ? (char *)items[i].str
+                               ? (char *)pin_text(items[i]).bytes
                                : (char *)((native_row *)items[i].ptr)->text;
                 text[0] = 'X';
             }

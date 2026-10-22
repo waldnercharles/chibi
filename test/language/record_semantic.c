@@ -4,6 +4,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +89,7 @@ TEST_CASE(record_semantic_row)
         }
         if (e->kind == SCRIPT_EXPR_CONSTANT && e->constant_snapshot &&
             e->constant.type == PIN_STR) {
-            REQUIRE(!strcmp(e->constant.str, ""));
+            REQUIRE(!strcmp(pin_text(e->constant).bytes, ""));
             owned_strings++;
         }
     }
@@ -112,7 +113,7 @@ TEST_CASE(record_semantic_operators)
     REQUIRE(row->fields[1].default_value.i == INT32_MIN);
     REQUIRE(row->fields[2].default_value.i == -1);
     REQUIRE(row->fields[3].default_value.b && row->fields[4].default_value.b);
-    REQUIRE(!strcmp(row->fields[5].default_value.str, "saved"));
+    REQUIRE(!strcmp(pin_text(row->fields[5].default_value).bytes, "saved"));
     return true;
 }
 TEST_CASE(record_semantic_required)
@@ -230,7 +231,7 @@ TEST_CASE(record_semantic_catalog_lifetime)
     for (int i = 0; i < analysis->expression_count; i++) {
         const script_expression *e = &analysis->expressions[i];
         if (e->kind == SCRIPT_EXPR_CONSTANT && e->constant.type == PIN_STR) {
-            REQUIRE(e->constant_snapshot && !strcmp(e->constant.str, "owned-first"));
+            REQUIRE(e->constant_snapshot && !strcmp(pin_text(e->constant).bytes, "owned-first"));
             strings++;
         }
     }
@@ -379,7 +380,11 @@ TEST_CASE(record_semantic_generic_catalog_snapshot_owns_bindings_and_parameters)
     pin_value item = { .type = PIN_I32, .i = 7 };
     pin_array array = { .element_type = PIN_I32, .count = 1, .capacity = 1, .items = &item };
     script_compile_binding bindings[] = {
-        { .name = binding_name, .value = { .value = { .type = PIN_STR, .str = label } } },
+        { .name = binding_name,
+          .value = { .value = { .type = PIN_STR,
+                                .text = &(
+                                    const pin_string
+                                ){ .bytes = label, .length = (uint32_t)strlen(label) } } } },
         { .name = "numbers",
           .value = { .value = { .type = PIN_I32,
                                 .container = PIN_CONTAINER_ARRAY,
@@ -419,7 +424,7 @@ TEST_CASE(record_semantic_generic_catalog_snapshot_owns_bindings_and_parameters)
     REQUIRE(!strcmp(saved.templates[0].parameters[0].name, "value"));
     REQUIRE(!strcmp(saved.templates[0].parameters[0].binder, "T"));
     REQUIRE(!strcmp(saved.specializations[0].bindings[0].name, "label"));
-    REQUIRE(!strcmp(saved.specializations[0].bindings[0].value.value.str, "retained"));
+    REQUIRE(!strcmp(pin_text(saved.specializations[0].bindings[0].value.value).bytes, "retained"));
     REQUIRE(
         pin_array_get(saved.specializations[0].bindings[1].value.value.ptr, 0).i == 7
     );

@@ -3,6 +3,7 @@
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -70,11 +71,11 @@ static uint32_t key_hash(const pin_value *key)
         case PIN_STR:
         case PIN_NAME:
             bits = 0xcbf29ce484222325u;
-            for (const unsigned char *c =
-                     (const unsigned char *)(key->str ? key->str : "");
-                 *c;
-                 c++) {
-                bits = (bits ^ *c) * 0x100000001b3u;
+            {
+                pin_string text = pin_text(*key);
+                for (uint32_t i = 0; i < text.length; i++) {
+                    bits = (bits ^ (unsigned char)text.bytes[i]) * 0x100000001b3u;
+                }
             }
             break;
         default: bits = key->u64; break;

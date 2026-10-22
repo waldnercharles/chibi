@@ -11,6 +11,7 @@
 #include "toolchain/compiler_json.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
@@ -86,7 +87,7 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool record(int b, const char *package, const char *name, pin_value *out)
@@ -313,7 +314,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int expected)
@@ -364,8 +365,8 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
     REQUIRE(
         type_value(&v[0], value_tag, expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
-        v[2].u64 == expected->id && v[3].type == PIN_STR && v[3].str &&
-        !strcmp(v[3].str, expected->name ? expected->name : "")
+        v[2].u64 == expected->id && v[3].type == PIN_STR && pin_text(v[3]).bytes &&
+        !strcmp(pin_text(v[3]).bytes, expected->name ? expected->name : "")
     );
     REQUIRE(
         type_value(&v[4], value_tag, expected->definition_type) &&
@@ -425,7 +426,7 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
         pin_value message;
         REQUIRE(
             read(row, "message", &message) && message.type == PIN_STR &&
-            message.str && !strcmp(message.str, d->message)
+            pin_text(message).bytes && !strcmp(pin_text(message).bytes, d->message)
         );
     }
     if (!expected->publish) {
@@ -471,13 +472,13 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         REQUIRE(!type->field_count || (type->fields && arena_contains(owner, type->fields)));
         for (int i = 0; i < type->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(owner, value->ptr, &type->fields[i], &field));
             REQUIRE(owned(owner, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(owner, value->str));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
@@ -607,11 +608,16 @@ TEST_CASE(type_constructor_raw_facts_match_plans_and_selected_metadata)
     for (int i = 0; i < 16; i++) {
         char name[32] = "Borrowed", field_name[32] = "message",
              default_text[32] = "owned default", literal[32] = "owned literal";
-        script_catalog_field field = { .name = field_name,
-                                       .type = { .storage = PIN_STR },
-                                       .has_default = true,
-                                       .default_value = { .type = PIN_STR,
-                                                          .str = default_text } };
+        script_catalog_field field = {
+            .name = field_name,
+            .type = { .storage = PIN_STR },
+            .has_default = true,
+            .default_value = { .type = PIN_STR,
+                               .text = &(
+                                   const pin_string
+                               ){ .bytes = default_text,
+                                  .length = (uint32_t)strlen(default_text) } }
+        };
         script_type nested = { .storage = PIN_UNION,
                                .nominal = 9001,
                                .flags = SCRIPT_TYPE_UNION };
@@ -629,7 +635,9 @@ TEST_CASE(type_constructor_raw_facts_match_plans_and_selected_metadata)
               .name = literal,
               .type = { .storage = PIN_STR, .parameter = 17, .flags = SCRIPT_TYPE_LITERAL },
               .is_literal = true,
-              .literal = { .type = PIN_STR, .str = literal } },
+              .literal = { .type = PIN_STR,
+                           .text = &(const pin_string){ .bytes = literal,
+                                                        .length = (uint32_t)strlen(literal) } } },
         };
         script_catalog_type definitions[2] = { { .id = 9001,
                                                  .name = "Nested",
@@ -1005,9 +1013,9 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
     );
     REQUIRE(
         literal->is_literal && literal->literal.type == PIN_STR &&
-        literal->literal.str &&
-        arena_contains(&metadata_storage, literal->literal.str) &&
-        !strcmp(literal->literal.str, "owned literal")
+        pin_text(literal->literal).bytes &&
+        arena_contains(&metadata_storage, pin_text(literal->literal).bytes) &&
+        !strcmp(pin_text(literal->literal).bytes, "owned literal")
     );
     REQUIRE(
         tagged->tag == UINT64_MAX - 3 && tagged->type.nominal == 9001 && tagged->tagged &&
@@ -1019,9 +1027,9 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
     REQUIRE(
         field->name && arena_contains(&metadata_storage, field->name) &&
         !strcmp(field->name, "message") && field->has_default &&
-        field->default_value.type == PIN_STR && field->default_value.str &&
-        arena_contains(&metadata_storage, field->default_value.str) &&
-        !strcmp(field->default_value.str, "owned default")
+        field->default_value.type == PIN_STR && pin_text(field->default_value).bytes &&
+        arena_contains(&metadata_storage, pin_text(field->default_value).bytes) &&
+        !strcmp(pin_text(field->default_value).bytes, "owned default")
     );
     return true;
 }

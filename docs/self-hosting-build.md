@@ -298,7 +298,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   record differs. A failed compile leaves no record, so the next run retries
   it. Records are read with `build.lines`, because `core:strings` copies the
   rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 362
+  stamps are separate lines because build values are never freed: with 363
   sources an up-to-date run reads about 6 MB of records, and splitting each
   line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
   arena blocks, about 128 MB of values.
@@ -685,13 +685,15 @@ tools/compiler --core packages/core` and needs neither stage zero, nor a
 compiler built from Chibi, nor a network. `--recover FILE` also writes the
 compiler it recovers, which `tools/toolchain/StageOne.chibi` runs. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
-before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
+before it loads. The current closure is about 11.4 MB. Its
 target is the value layout and prepared ABI rather than an operating system,
 so one artifact serves every host with that ABI.
 
 Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;
 - when the host's target changes;
+- when the prepared payload or semantic version changes, even if layout and
+  instruction names remain unchanged;
 - when a compiler package gains or loses a source file, because recovery
   compiles the files the manifest records;
 - when the compiler emits other code for its own sources, because the first

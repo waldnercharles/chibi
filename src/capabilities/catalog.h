@@ -56,6 +56,7 @@ typedef struct
     bool writable;
     /* Reads as its own name, a string constant, with no receiver storage. */
     bool constant;
+    bool c_string; /* Native storage requires a NUL-free C string. */
     /* Measure, such as "u/s"; NULL without one. Checked, never stored. */
     const char *unit;
     /* Stored-value contract. A compiler may use these bounds only for values
@@ -109,6 +110,7 @@ typedef struct
     script_type type;
     script_reference_kind reference_kind;
     uint64_t member; /* Reflected field identity for aggregate make/break ports. */
+    bool c_string; /* An explicit foreign C-string input boundary. */
     bool has_default;
     bool default_owner;
     pin_value default_value;
@@ -267,6 +269,7 @@ typedef struct
 } script_catalog;
 
 uint64_t script_catalog_id(const char *domain, const char *name);
+uint64_t script_catalog_id_bytes(const char *domain, const char *bytes, size_t length);
 /* The loaded project's declared script types. The owner sets the slot while no
  * project is loaded and clears it (NULL) before freeing them. */
 void script_catalog_set_project(const script_catalog *);

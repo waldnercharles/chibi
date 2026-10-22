@@ -11,6 +11,7 @@
 #include "support/xalloc.h"
 #include "test/graph/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -510,7 +511,9 @@ TEST_CASE(shader_and_field_operations_format_as_expressions)
     );
     REQUIRE(formats(&g, vector, "vec3(1, 2, 3)"));
     node *origin = add(&g, "Field Parameter");
-    pin_value name = { .type = PIN_STR, .str = "OriginX" };
+    pin_value name = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "OriginX",
+                                                    .length = sizeof("OriginX") - 1 } };
     REQUIRE(graph_set_pin_default(&g, origin, false, 0, &name) == 0);
     REQUIRE(formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "x + OriginX"));
     return true;

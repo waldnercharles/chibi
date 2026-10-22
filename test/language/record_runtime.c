@@ -11,6 +11,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -220,7 +221,17 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
 static pin_value member(const pin_value *row, int index)
 {
     pin_value field;
-    pin_read_field(row->ptr, &row->record->type.fields[index], &field);
+    {
+        const char *error = pin_read_field(
+            &storage,
+            row->ptr,
+            &row->record->type.fields[index],
+            &field
+        );
+        if (error) {
+            abort();
+        }
+    };
     return field;
 }
 TEST_CASE(record_runtime_owned_return_and_value_copy)
@@ -235,23 +246,26 @@ TEST_CASE(record_runtime_owned_return_and_value_copy)
         cleanup();
         REQUIRE(compile(source, backends[b], b == 0));
         char producer[] = "producer";
-        pin_value arg = { .type = PIN_STR, .str = producer };
+        pin_value arg = { .type = PIN_STR,
+                          .text = &(const pin_string){
+                              .bytes = producer,
+                              .length = (uint32_t)strlen(producer) } };
         REQUIRE(run(backends[b], &arg, 1));
         REQUIRE(result.record && pin_record_valid(result.record) && result.ptr);
         REQUIRE(arena_contains(&storage, result.record));
-        REQUIRE(!strcmp(member(&result, 0).str, "producer"));
-        REQUIRE(!strcmp(member(&result, 1).str, "changed"));
-        REQUIRE(!strcmp(member(&result, 2).str, "node"));
+        REQUIRE(!strcmp(pin_text(member(&result, 0)).bytes, "producer"));
+        REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, "changed"));
+        REQUIRE(!strcmp(pin_text(member(&result, 2)).bytes, "node"));
         REQUIRE(member(&result, 5).i == 4 && member(&result, 7).b);
         memset(producer, 'x', sizeof producer - 1);
-        REQUIRE(!strcmp(member(&result, 0).str, "producer"));
+        REQUIRE(!strcmp(pin_text(member(&result, 0)).bytes, "producer"));
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
         finish_call();
         execution_module_free(module);
         module = NULL;
         REQUIRE(pin_record_valid(saved.record));
-        REQUIRE(!strcmp(member(&saved, 0).str, "producer"));
-        REQUIRE(!strcmp(member(&saved, 1).str, "changed"));
+        REQUIRE(!strcmp(pin_text(member(&saved, 0)).bytes, "producer"));
+        REQUIRE(!strcmp(pin_text(member(&saved, 1)).bytes, "changed"));
         REQUIRE(member(&saved, 5).i == 4);
         pin_value operands[2] = { saved, saved };
         pin_value output = { .type = PIN_I32, .i = 73 }, before = output;
@@ -339,7 +353,7 @@ TEST_CASE(record_runtime_array_results)
         REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
         REQUIRE(pin_record_valid(saved.record) && array->count == 3);
         pin_value last = pin_array_get(array, 2);
-        REQUIRE(!strcmp(member(&last, 1).str, "C"));
+        REQUIRE(!strcmp(pin_text(member(&last, 1)).bytes, "C"));
     }
     return true;
 }
@@ -416,15 +430,15 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         for (int call = 0; call < 2; call++) {
             REQUIRE(run(backends[b], args, 2));
             REQUIRE(result.record && pin_record_valid(result.record));
-            REQUIRE(!strcmp(member(&result, 0).str, "parameter"));
-            REQUIRE(!strcmp(member(&result, 1).str, "local"));
+            REQUIRE(!strcmp(pin_text(member(&result, 0)).bytes, "parameter"));
+            REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, "local"));
             REQUIRE(member(&result, 5).i == 6);
-            REQUIRE(!strcmp(member(&args[0], 0).str, "a"));
-            REQUIRE(!strcmp(member(&args[0], 1).str, "A"));
+            REQUIRE(!strcmp(pin_text(member(&args[0], 0)).bytes, "a"));
+            REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "A"));
             REQUIRE(member(&args[0], 5).i == 1);
-            REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
             REQUIRE(member(&original->items[0], 5).i == 1);
-            REQUIRE(!strcmp(member(&original->items[1], 1).str, "B"));
+            REQUIRE(!strcmp(pin_text(member(&original->items[1], 1)).bytes, "B"));
             REQUIRE(member(&original->items[1], 5).i == 1);
             REQUIRE(!pin_value_snapshot_to_arena(&escaped, &returned, &result));
         }
@@ -432,11 +446,11 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         execution_module_free(module);
         module = NULL;
         REQUIRE(pin_record_valid(returned.record));
-        REQUIRE(!strcmp(member(&returned, 0).str, "parameter"));
-        REQUIRE(!strcmp(member(&returned, 1).str, "local"));
+        REQUIRE(!strcmp(pin_text(member(&returned, 0)).bytes, "parameter"));
+        REQUIRE(!strcmp(pin_text(member(&returned, 1)).bytes, "local"));
         REQUIRE(member(&returned, 5).i == 6);
         REQUIRE(pin_record_valid(original->record));
-        REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
         const char *value_consumers[] = { exposed_consumer, inline_consumer };
         const char *labels[] = { "exposed", "inline" };
         const int depths[] = { 8, 5 };
@@ -446,12 +460,12 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
                                    saved,
                                    { .type = PIN_I32, .i = 2 } };
             REQUIRE(run(backends[b], inputs, 3));
-            REQUIRE(!strcmp(member(&result, 1).str, labels[c]));
+            REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, labels[c]));
             REQUIRE(member(&result, 5).i == depths[c]);
-            REQUIRE(!strcmp(member(&inputs[0], 1).str, "A"));
+            REQUIRE(!strcmp(pin_text(member(&inputs[0], 1)).bytes, "A"));
             REQUIRE(member(&inputs[0], 5).i == 1);
             REQUIRE(inputs[1].ptr == original);
-            REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
             REQUIRE(member(&original->items[0], 5).i == 1);
             REQUIRE(inputs[2].i == 2);
             finish_call();
@@ -465,14 +479,14 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             execution_reference_value(&escaped, &owner, &saved, saved),
         };
         REQUIRE(run(backends[b], references, 2));
-        REQUIRE(!strcmp(member(&args[0], 1).str, "reference"));
+        REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "reference"));
         pin_array *changed = saved.ptr;
         REQUIRE(changed && changed->count == 2);
-        REQUIRE(!strcmp(member(&changed->items[0], 1).str, "reference-array"));
+        REQUIRE(!strcmp(pin_text(member(&changed->items[0], 1)).bytes, "reference-array"));
         REQUIRE(member(&changed->items[0], 5).i == 8);
-        REQUIRE(!strcmp(member(&result, 1).str, "reference-array"));
+        REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, "reference-array"));
         REQUIRE(member(&result, 5).i == 8);
-        REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
+        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
         finish_call();
         execution_module_free(module);
         module = NULL;

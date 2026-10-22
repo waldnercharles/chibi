@@ -135,6 +135,19 @@ bool save_set(save *save, const char *key, const char *text)
     if (!key || !key[0] || strlen(key) > 256 || !text || strlen(text) > SAVE_TEXT_MAX) {
         return fail(save, "Save keys must contain 1-256 bytes and values at most 65536 bytes");
     }
+    /* This store persists JSON text, so reject malformed UTF-8 before any
+     * entry, revision or dirty state changes. The JSON writer supplies the
+     * same validation used when committing the complete document. */
+    yyjson_mut_doc *validation = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *probe = yyjson_mut_obj(validation);
+    yyjson_mut_doc_set_root(validation, probe);
+    yyjson_mut_obj_add_strcpy(validation, probe, key, text);
+    char *encoded = yyjson_mut_write(validation, 0, NULL);
+    yyjson_mut_doc_free(validation);
+    if (!encoded) {
+        return fail(save, "Save keys and values require valid UTF-8");
+    }
+    free(encoded);
     int index = find_entry(save, key);
     if (index < 0 && acount(save->entries) >= SAVE_ENTRIES_MAX) {
         return fail(save, "Save entry limit exceeded");

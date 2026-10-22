@@ -1,5 +1,7 @@
 #include "execution/log.h"
 
+#include "types/text.h"
+
 #include <assert.h>
 
 const char *execution_print_string(
@@ -22,7 +24,8 @@ const char *execution_print_string(
         .node_id = context->node_id,
         .now = context->now,
         .program_name = context->program_name,
-        .text = arguments[0].str ? arguments[0].str : "",
+        .text = pin_text(arguments[0]).bytes,
+        .text_length = pin_text(arguments[0]).length,
     };
     log->emit(log->user, &message);
     return NULL;

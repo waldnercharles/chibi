@@ -7,6 +7,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <limits.h>
@@ -14,14 +15,14 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Three cases, one 70-request table, 70 C proof/evaluation oracle calls and
- * 140 authored calls. At most seven expressions and one symbol per request;
+/* Three cases, one 91-request table, 91 C proof/evaluation oracle calls and
+ * 182 authored calls. At most seven expressions and one symbol per request;
  * every call has a two-million-instruction ceiling. Four authored sources are
  * prepared once per backend (eight source parses). The 65536-visit exhaustion
  * workload is deliberately absent. No IO, services, workers or timing loops. */
 enum
 {
-    CASE_COUNT = 78,
+    CASE_COUNT = 91,
     MAX_EXPRESSIONS = 7
 };
 typedef enum
@@ -52,7 +53,11 @@ typedef struct
 #define F32(N) { .type = PIN_F32, .f = (N) }
 #define F64(N) { .type = PIN_F64, .d = (N) }
 #define BOOL(N) { .type = PIN_BOOL, .b = (N) }
-#define TEXT(N) { .type = PIN_STR, .str = (N) }
+#define TEXT(N)                                                                      \
+    { .type = PIN_STR,                                                               \
+      .text = (N) ? &(const pin_string){ .bytes = (N),                               \
+                                         .length = (N) ? (uint32_t)strlen((N)) : 0 } \
+                  : NULL }
 #define NAME(N) { .type = PIN_NAME, .str = (N) }
 static const scalar_case cases[] = {
     { "bool", LITERAL, 0, BOOL(true), BOOL(false), PIN_BOOL, PIN_BOOL },
@@ -91,8 +96,51 @@ static const scalar_case cases[] = {
     { "name-text-different", BINARY, SCRIPT_OP_NE, NAME("same"), TEXT("other"), PIN_BOOL, PIN_BOOL },
     { "null-empty-equal", BINARY, SCRIPT_OP_EQ, TEXT(NULL), TEXT(""), PIN_BOOL, PIN_BOOL },
     { "nan-not-equal", BINARY, SCRIPT_OP_EQ, F64(NAN), F64(NAN), PIN_BOOL, PIN_BOOL },
-    { "negative-shift-count", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
-    { "shift-width-masked", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
+    { "invalid-shift-negative", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
+    { "invalid-shift-width-int", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
+    { "invalid-shift-width-int8",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_I8, .i8 = 1 },
+      { .type = PIN_I8, .i8 = 8 },
+      PIN_I8,
+      PIN_I8 },
+    { "invalid-shift-width-byte",
+      BINARY,
+      SCRIPT_OP_SHIFT_RIGHT,
+      { .type = PIN_U8, .u8 = 1 },
+      { .type = PIN_U8, .u8 = 8 },
+      PIN_U8,
+      PIN_U8 },
+    { "invalid-shift-width-int16",
+      BINARY,
+      SCRIPT_OP_SHIFT_RIGHT,
+      { .type = PIN_I16, .i16 = -1 },
+      { .type = PIN_I16, .i16 = 16 },
+      PIN_I16,
+      PIN_I16 },
+    { "invalid-shift-width-uint16",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_U16, .u16 = 1 },
+      { .type = PIN_U16, .u16 = 16 },
+      PIN_U16,
+      PIN_U16 },
+    { "invalid-shift-width-uint", BINARY, SCRIPT_OP_SHIFT_RIGHT, U32(1), U32(32), PIN_U32, PIN_U32 },
+    { "invalid-shift-width-int64", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(64), PIN_I64, PIN_I64 },
+    { "invalid-shift-width-uint64", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(1), U64(64), PIN_U64, PIN_U64 },
+    { "invalid-shift-huge-uint64", BINARY, SCRIPT_OP_SHIFT_LEFT, U64(1), U64(UINT64_MAX), PIN_U64, PIN_U64 },
+    { "invalid-shift-before-result-widening", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I64 },
+    { "byte-shift-discards-before-result-widening",
+      BINARY,
+      SCRIPT_OP_SHIFT_LEFT,
+      { .type = PIN_U8, .u8 = 128 },
+      { .type = PIN_U8, .u8 = 1 },
+      PIN_U8,
+      PIN_I64 },
+    { "signed-right-shift-rounds-down", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-3), I32(1), PIN_I32, PIN_I32 },
+    { "left-shift-enters-sign-bit", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(63), PIN_I64, PIN_I64 },
+    { "zero-shift-preserves-value", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(-3), I32(0), PIN_I32, PIN_I32 },
     { "unsigned-right-shift", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(UINT64_MAX), U64(63), PIN_U64, PIN_U64 },
     { "byte-not", UNARY, SCRIPT_OP_BIT_NOT, { .type = PIN_U8, .u8 = UINT8_MAX }, I32(0), PIN_U8, PIN_U8 },
     { "int16-and",
@@ -178,7 +226,7 @@ _Static_assert(sizeof cases / sizeof cases[0] == CASE_COUNT, "scalar request cou
 static const char IR[] = "project:constant_ir", SCALAR[] = "project:constant_scalar",
                   FOLD[] = "project:constant_folding";
 static compiler_fixture fixture;
-static arena input, detached, retained[2][2];
+static arena input, detached, retained[2][2], scalar_expected;
 static pin_value kept[2][2];
 static script_expression expressions[MAX_EXPRESSIONS];
 static script_symbol symbol;
@@ -201,7 +249,7 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool rows(int backend, const char *name, int count, pin_value *out)
@@ -271,9 +319,13 @@ static bool scalar_value(int backend, pin_value value, pin_value *out)
         *variant = named_variant(exported_type(backend, SCALAR, "Value"), name);
     bool text = value.type == PIN_NAME || value.type == PIN_STR;
     REQUIRE(variant && variant->field_count == (text ? 2 : 1));
-    pin_value fields[2] = { value, boolean(text && value.str) };
+    pin_value fields[2] = {
+        value,
+        boolean(text && (value.type == PIN_NAME ? value.str != NULL : value.text != NULL))
+    };
     if (text) {
-        fields[0] = (pin_value){ .type = PIN_STR, .str = value.str ? value.str : "" };
+        pin_string bytes = pin_text(value);
+        REQUIRE(!pin_value_text(&input, &fields[0], bytes.bytes, bytes.length));
     }
     REQUIRE(!compiler_fixture_union(&input, variant->tag, fields, variant->field_count, out));
     return true;
@@ -413,10 +465,13 @@ static bool value_matches(int backend, const pin_value *value, pin_value expecte
             data->count == 2 && data->values[0].type == PIN_STR &&
             data->values[1].type == PIN_BOOL
         );
-        REQUIRE(data->values[1].b == (expected.str != NULL));
         REQUIRE(
-            data->values[0].str &&
-            !strcmp(data->values[0].str, expected.str ? expected.str : "")
+            data->values[1].b ==
+            (expected.type == PIN_NAME ? expected.str != NULL : expected.text != NULL)
+        );
+        REQUIRE(
+            pin_text(data->values[0]).bytes &&
+            !strcmp(pin_text(data->values[0]).bytes, pin_text(expected).bytes)
         );
     } else {
         REQUIRE(data->count == 1 && data->values[0].type == expected.type);
@@ -441,7 +496,9 @@ static bool owned(const arena *storage, const pin_value *value)
             REQUIRE(owned(storage, &data->values[i]));
         }
     } else if (behavior_scalar_string(value->type)) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
     }
     return true;
 }
@@ -453,13 +510,28 @@ static bool compare(int index)
         authoring_packages_valid(fixture.owners[1])
     );
     const scalar_case *item = &cases[index];
+    arena_free(&scalar_expected);
     build(item);
     constant_proof proofs[MAX_EXPRESSIONS] = { 0 };
     int steps = SCRIPT_SCALAR_CONSTANT_STEPS;
     pin_value expected = { .type = PIN_I32, .i = 73 };
     const char *error = !script_constant_prove(&analysis, proofs, 1, 0, &steps, true)
                           ? "requires bounded compile-time values and operators"
-                          : script_scalar_evaluate(&analysis, 0, item->expected, &expected);
+                          : script_scalar_evaluate(&scalar_expected, &analysis, 0, item->expected, &expected);
+    if (!strncmp(item->name, "invalid-shift-", strlen("invalid-shift-"))) {
+        REQUIRE(error && !strcmp(error, "Integer shift count is outside the type width"));
+    }
+    if (!strcmp(item->name, "byte-shift-discards-before-result-widening")) {
+        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == 0);
+    }
+    if (!strcmp(item->name, "signed-right-shift-rounds-down") ||
+        !strcmp(item->name, "zero-shift-preserves-value")) {
+        REQUIRE(!error && expected.type == PIN_I32);
+        REQUIRE(expected.i == (!strcmp(item->name, "zero-shift-preserves-value") ? -3 : -2));
+    }
+    if (!strcmp(item->name, "left-shift-enters-sign-bit")) {
+        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == INT64_MIN);
+    }
     if (!strcmp(item->name, "widened-add-result") ||
         !strcmp(item->name, "widened-neg-result")) {
         REQUIRE(!error && expected.type == PIN_I64);
@@ -498,8 +570,8 @@ static bool compare(int index)
         REQUIRE(variant && data->tag == variant->tag && data->count == 1);
         if (error) {
             REQUIRE(
-                data->values[0].type == PIN_STR && data->values[0].str &&
-                !strcmp(data->values[0].str, error)
+                data->values[0].type == PIN_STR && pin_text(data->values[0]).bytes &&
+                !strcmp(pin_text(data->values[0]).bytes, error)
             );
         } else {
             REQUIRE(value_matches(b, &data->values[0], expected));
@@ -563,7 +635,10 @@ TEST_CASE(constant_scalar_text_results_outlive_owners)
                 value->values[1].type == PIN_BOOL
             );
             REQUIRE(value->values[1].b == (i == 0));
-            REQUIRE(value->values[0].str && !strcmp(value->values[0].str, i ? "" : "caf\xc3\xa9"));
+            REQUIRE(
+                pin_text(value->values[0]).bytes &&
+                !strcmp(pin_text(value->values[0]).bytes, i ? "" : "caf\xc3\xa9")
+            );
         }
     }
     return true;
@@ -577,6 +652,7 @@ void test_language_constant_scalar_chibi()
     pu_clear_setup();
     cleanup();
     compiler_fixture_free(&fixture);
+    arena_free(&scalar_expected);
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < 2; i++) {
             arena_free(&retained[b][i]);

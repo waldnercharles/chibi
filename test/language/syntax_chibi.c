@@ -6,6 +6,7 @@
 #include "syntax_corpus.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -67,7 +68,7 @@ static bool read(const pin_value *row, const char *name, pin_value *value)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, value);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, value));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int expected)
@@ -115,7 +116,8 @@ static bool compare(int backend, const script_syntax *oracle)
         pin_value message;
         REQUIRE(
             read(row, "message", &message) && message.type == PIN_STR &&
-            message.str && !strcmp(message.str, diagnostic->message)
+            pin_text(message).bytes &&
+            !strcmp(pin_text(message).bytes, diagnostic->message)
         );
     }
     arena_free(&detached);

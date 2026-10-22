@@ -21,6 +21,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
 
@@ -166,14 +167,17 @@ static bool field_value(const pin_value *value, const char *name, pin_value *out
     REQUIRE(value->type == PIN_STRUCT && value->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(value), name);
     REQUIRE(field);
-    pin_read_field(value->ptr, field, out);
+    REQUIRE(!pin_read_field(&result_storage, value->ptr, field, out));
     return true;
 }
 static bool field_string(const pin_value *value, const char *name, const char *text)
 {
     pin_value result;
     REQUIRE(field_value(value, name, &result));
-    REQUIRE(result.type == PIN_STR && result.str && !strcmp(result.str, text));
+    REQUIRE(
+        result.type == PIN_STR && pin_text(result).bytes &&
+        !strcmp(pin_text(result).bytes, text)
+    );
     return true;
 }
 static bool field_integer(const pin_value *value, const char *name, int expected)

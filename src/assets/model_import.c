@@ -13,6 +13,7 @@
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 #include "yyjson.h"
 
 /* cute_model.h refuses to compile without ckit.h, though only its
@@ -1194,7 +1195,9 @@ static char *prototype_text(const char *name, const char *source)
         { "Geometry3D", "width", { .type = PIN_F32, .f = 1 } },
         { "Geometry3D", "height", { .type = PIN_F32, .f = 1 } },
         { "Geometry3D", "depth", { .type = PIN_F32, .f = 1 } },
-        { "MeshAsset", "source", { .type = PIN_STR, .str = source } },
+        { "MeshAsset",
+          "source",
+          { .type = PIN_STR, .text = &(pin_string){ source, (uint32_t)strlen(source) } } },
     };
     for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
         int written = prototype_write_field(

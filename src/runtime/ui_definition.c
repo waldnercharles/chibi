@@ -2,8 +2,8 @@
 
 #include "runtime/ui_native.h"
 
-#define ARRAYS(KEY, NAME, SOURCE, INPUTS, OUTPUTS, ACTION)                             \
-    static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) }; \
+#define ARRAYS(KEY, NAME, SOURCE, INPUTS, OUTPUTS, ACTION)                                     \
+    static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_CSTRING_PORT) }; \
     static const native_parameter_definition KEY##_outputs[] = { OUTPUTS(NATIVE_PORT) };
 UI_OPERATIONS(ARRAYS)
 #undef ARRAYS

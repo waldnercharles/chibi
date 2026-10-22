@@ -3,8 +3,10 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -39,10 +41,12 @@ static pin_value boolean(bool n)
 static pin_value text(packing *p, const char *s)
 {
     s = s ? s : "";
-    size_t size = strlen(s) + 1;
-    char *copy = arena_alloc(p->storage, size);
-    memcpy(copy, s, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    pin_value result;
+    const char *error = pin_value_text(p->storage, &result, s, strlen(s));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static int bits(unsigned value)
 {
@@ -51,19 +55,20 @@ static int bits(unsigned value)
     memcpy(&result, &value, sizeof result);
     return result;
 }
-static bool put(pin_value *row, const char *name, pin_value value)
+static bool put(packing *p, pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(p->storage, row->ptr, field, value));
     return true;
 }
-static bool range(pin_value *row, script_range r)
+static bool range(packing *p, pin_value *row, script_range r)
 {
     REQUIRE(
-        put(row, "start", integer(r.start)) && put(row, "end", integer(r.end)) &&
-        put(row, "line", integer(r.line)) && put(row, "column", integer(r.column)) &&
-        put(row, "document", integer(r.document))
+        put(p, row, "start", integer(r.start)) &&
+        put(p, row, "end", integer(r.end)) && put(p, row, "line", integer(r.line)) &&
+        put(p, row, "column", integer(r.column)) &&
+        put(p, row, "document", integer(r.document))
     );
     return true;
 }
@@ -173,27 +178,27 @@ static bool lexical(packing *p, const script_signature_facts *facts, int scope_c
               *ids = v[3].ptr, *keys = v[4].ptr;
     for (int i = 0; i < scope_count; i++) {
         REQUIRE(
-            put(&scopes->items[i], "parent", integer(f->scopes[i].parent)) &&
-            put(&scopes->items[i], "function", integer(f->scopes[i].function)) &&
-            range(&scopes->items[i], f->scopes[i].range)
+            put(p, &scopes->items[i], "parent", integer(f->scopes[i].parent)) &&
+            put(p, &scopes->items[i], "function", integer(f->scopes[i].function)) &&
+            range(p, &scopes->items[i], f->scopes[i].range)
         );
     }
     for (int i = 0; i < f->symbol_count; i++) {
         const script_symbol *s = &f->symbols[i];
         REQUIRE(s->name);
         REQUIRE(
-            put(&symbols->items[i], "name", text(p, s->name)) &&
-            put(&symbols->items[i], "kind", integer(s->kind)) &&
-            put(&symbols->items[i], "scope", integer(s->scope)) &&
-            put(&symbols->items[i], "id_slot", integer(i)) &&
-            range(&symbols->items[i], s->declaration)
+            put(p, &symbols->items[i], "name", text(p, s->name)) &&
+            put(p, &symbols->items[i], "kind", integer(s->kind)) &&
+            put(p, &symbols->items[i], "scope", integer(s->scope)) &&
+            put(p, &symbols->items[i], "id_slot", integer(i)) &&
+            range(p, &symbols->items[i], s->declaration)
         );
         ids->items[i] = (pin_value){ .type = PIN_U64, .u64 = s->id };
     }
     for (int i = 0; i < facts->function_count; i++) {
         REQUIRE(
-            put(&functions->items[i], "symbol", integer(facts->functions[i].symbol)) &&
-            put(&functions->items[i], "scope", integer(facts->functions[i].scope))
+            put(p, &functions->items[i], "symbol", integer(facts->functions[i].symbol)) &&
+            put(p, &functions->items[i], "scope", integer(facts->functions[i].scope))
         );
     }
     for (int i = 0; i < facts->named.document_count; i++) {
@@ -213,14 +218,14 @@ static bool entries(packing *p, const script_catalog_type *types, int count, pin
         int id = slot(p, t->id), type = type_slot(p, t->type);
         REQUIRE(id >= -1 && type >= 0 && t->name);
         REQUIRE(
-            put(row, "name", text(p, t->name)) &&
-            put(row, "source_name", text(p, t->source_name)) &&
-            put(row, "key", text(p, t->key)) &&
-            put(row, "id_slot", integer(id)) && put(row, "type", integer(type)) &&
-            put(row, "has_source_name", boolean(t->source_name != NULL)) &&
-            put(row, "has_key", boolean(t->key != NULL)) &&
-            put(row, "internal", boolean(t->internal)) &&
-            put(row, "component", boolean(t->component))
+            put(p, row, "name", text(p, t->name)) &&
+            put(p, row, "source_name", text(p, t->source_name)) &&
+            put(p, row, "key", text(p, t->key)) &&
+            put(p, row, "id_slot", integer(id)) && put(p, row, "type", integer(type)) &&
+            put(p, row, "has_source_name", boolean(t->source_name != NULL)) &&
+            put(p, row, "has_key", boolean(t->key != NULL)) &&
+            put(p, row, "internal", boolean(t->internal)) &&
+            put(p, row, "component", boolean(t->component))
         );
     }
     return true;
@@ -265,21 +270,21 @@ static bool names(packing *p, const script_signature_facts *facts, int scope_cou
         int count = t->exports ? t->exports->member_count : 0;
         REQUIRE(t->identity);
         REQUIRE(
-            put(row, "alias", text(p, t->alias)) &&
-            put(row, "identity", text(p, t->identity)) &&
-            put(row, "has_alias", boolean(t->alias != NULL)) &&
-            put(row, "document", integer(t->document)) &&
-            put(row, "export_start", integer(at)) &&
-            put(row, "export_count", integer(count))
+            put(p, row, "alias", text(p, t->alias)) &&
+            put(p, row, "identity", text(p, t->identity)) &&
+            put(p, row, "has_alias", boolean(t->alias != NULL)) &&
+            put(p, row, "document", integer(t->document)) &&
+            put(p, row, "export_start", integer(at)) &&
+            put(p, row, "export_count", integer(count))
         );
         for (int j = 0; j < count; j++) {
             const script_package_export *e = &t->exports->members[j];
             int id = slot(p, e->id);
             REQUIRE(id >= -1 && e->name);
             REQUIRE(
-                put(&exports->items[at], "name", text(p, e->name)) &&
-                put(&exports->items[at], "kind", integer(e->kind)) &&
-                put(&exports->items[at], "id_slot", integer(id))
+                put(p, &exports->items[at], "name", text(p, e->name)) &&
+                put(p, &exports->items[at], "kind", integer(e->kind)) &&
+                put(p, &exports->items[at], "id_slot", integer(id))
             );
             at++;
         }
@@ -289,10 +294,10 @@ static bool names(packing *p, const script_signature_facts *facts, int scope_cou
         int member = slot(p, u->member);
         REQUIRE(member >= -1);
         REQUIRE(
-            put(&uses->items[i], "kind", integer(u->kind)) &&
-            put(&uses->items[i], "symbol", integer(u->symbol)) &&
-            put(&uses->items[i], "member_slot", integer(member)) &&
-            range(&uses->items[i], u->range)
+            put(p, &uses->items[i], "kind", integer(u->kind)) &&
+            put(p, &uses->items[i], "symbol", integer(u->symbol)) &&
+            put(p, &uses->items[i], "member_slot", integer(member)) &&
+            range(p, &uses->items[i], u->range)
         );
     }
     v[10] = text(p, f->lexical.identity);
@@ -331,17 +336,17 @@ static bool constructors(packing *p, const script_signature_facts *facts, pin_va
         int id = slot(p, t->id);
         REQUIRE(id >= -1);
         REQUIRE(
-            put(&definitions->items[i], "id_slot", integer(id)) &&
-            put(&definitions->items[i], "variant_start", integer(at)) &&
-            put(&definitions->items[i], "variant_count", integer(t->variant_count))
+            put(p, &definitions->items[i], "id_slot", integer(id)) &&
+            put(p, &definitions->items[i], "variant_start", integer(at)) &&
+            put(p, &definitions->items[i], "variant_count", integer(t->variant_count))
         );
         for (int j = 0; j < t->variant_count; j++) {
             int tag = slot(p, t->variants[j].tag),
                 type = type_slot(p, t->variants[j].type);
             REQUIRE(tag >= -1 && type >= 0);
             REQUIRE(
-                put(&variants->items[at], "tag_slot", integer(tag)) &&
-                put(&variants->items[at], "type", integer(type))
+                put(p, &variants->items[at], "tag_slot", integer(tag)) &&
+                put(p, &variants->items[at], "type", integer(type))
             );
             at++;
         }
@@ -353,8 +358,9 @@ static bool constructors(packing *p, const script_signature_facts *facts, pin_va
             catalog->capabilities[i].result_count <= SPANS
         );
         REQUIRE(
-            put(&capabilities->items[i], "id_slot", integer(id)) &&
-            put(&capabilities->items[i],
+            put(p, &capabilities->items[i], "id_slot", integer(id)) &&
+            put(p,
+                &capabilities->items[i],
                 "result_count",
                 integer(catalog->capabilities[i].result_count))
         );
@@ -364,9 +370,9 @@ static bool constructors(packing *p, const script_signature_facts *facts, pin_va
         const script_function *f = &facts->functions[i];
         REQUIRE(f->symbol >= -1 && f->symbol < facts->named.lexical.symbol_count);
         REQUIRE(
-            put(&functions->items[i], "symbol", integer(f->symbol)) &&
-            put(&functions->items[i], "result_start", integer(at)) &&
-            put(&functions->items[i], "result_count", integer(acount(f->results)))
+            put(p, &functions->items[i], "symbol", integer(f->symbol)) &&
+            put(p, &functions->items[i], "result_start", integer(at)) &&
+            put(p, &functions->items[i], "result_count", integer(acount(f->results)))
         );
         for (int j = 0; j < acount(f->results); j++) {
             REQUIRE(f->results[j] >= 0 && f->results[j] < facts->named.lexical.symbol_count);
@@ -376,7 +382,7 @@ static bool constructors(packing *p, const script_signature_facts *facts, pin_va
     for (int i = 0; i < facts->named.lexical.symbol_count; i++) {
         int id = slot(p, facts->named.lexical.symbols[i].id);
         REQUIRE(id >= -1);
-        REQUIRE(put(&symbols->items[i], "id_slot", integer(id)));
+        REQUIRE(put(p, &symbols->items[i], "id_slot", integer(id)));
     }
     return true;
 }
@@ -389,11 +395,11 @@ static bool pools(packing *p, pin_value *types, pin_value *ids)
         int nominal = slot(p, t.nominal), parameter = slot(p, t.parameter);
         REQUIRE(nominal >= -1 && parameter >= -1);
         REQUIRE(
-            put(&rows->items[i], "storage", integer(t.storage)) &&
-            put(&rows->items[i], "container", integer(t.container)) &&
-            put(&rows->items[i], "flags", integer(bits(t.flags))) &&
-            put(&rows->items[i], "nominal_slot", integer(nominal)) &&
-            put(&rows->items[i], "parameter_slot", integer(parameter))
+            put(p, &rows->items[i], "storage", integer(t.storage)) &&
+            put(p, &rows->items[i], "container", integer(t.container)) &&
+            put(p, &rows->items[i], "flags", integer(bits(t.flags))) &&
+            put(p, &rows->items[i], "nominal_slot", integer(nominal)) &&
+            put(p, &rows->items[i], "parameter_slot", integer(parameter))
         );
     }
     *ids = array(p, PIN_U64, p->id_count);

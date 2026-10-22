@@ -1,6 +1,8 @@
 #include "runtime/selection.h"
 
+#include "execution/function.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <assert.h>
 
@@ -71,7 +73,7 @@ static const char *switch_int(
 }
 
 static const char *switch_text(
-    const struct behavior_function_context *,
+    const struct behavior_function_context *ctx,
     void *,
     const pin_value *inputs,
     int input_count,
@@ -88,7 +90,12 @@ static const char *switch_text(
     if (inputs[0].type != PIN_STR && inputs[0].type != PIN_NAME) {
         return "Switch selection is not text";
     }
-    *selected = native_switch_text(inputs[0].str, outcomes, outcome_count);
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, inputs[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+    *selected = native_switch_text(text, outcomes, outcome_count);
     return NULL;
 }
 

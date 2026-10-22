@@ -6,9 +6,11 @@
 #include "package_paths_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Three cases, one 26-request corpus, 26 C oracle calls and 52 authored calls.
@@ -67,16 +69,18 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static pin_value string(const char *text)
 {
-    const char *value = text ? text : "";
-    size_t size = strlen(value) + 1;
-    char *copy = arena_alloc(&input, size);
-    memcpy(copy, value, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    text = text ? text : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, text, strlen(text));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static pin_value boolean(bool value)
 {
@@ -141,12 +145,13 @@ static bool compare(int backend, const path_case *item, const char *expected, bo
     }
     REQUIRE(data->count == 1 && !strcmp(kind->fields[0].name, "path"));
     const pin_value *path = &data->values[0];
-    if (path->type != PIN_STR || !path->str || strcmp(path->str, expected)) {
+    if (path->type != PIN_STR || !pin_text(*path).bytes ||
+        strcmp(pin_text(*path).bytes, expected)) {
         fprintf(stderr, "path mismatch: %s backend %d\n", item->id, backend);
     }
     REQUIRE(
         path->type == PIN_STR && path->container == PIN_CONTAINER_SINGLE &&
-        path->str && !strcmp(path->str, expected)
+        pin_text(*path).bytes && !strcmp(pin_text(*path).bytes, expected)
     );
     if (retain) {
         REQUIRE(!compiler_fixture_snapshot(&retained[backend], &previous[backend], &result));
@@ -219,8 +224,8 @@ TEST_CASE(package_paths_detached_results)
         const pin_union *data = previous[b].ptr;
         REQUIRE(data->tag == retained_tag[b] && data->count == 1);
         REQUIRE(
-            data->values[0].type == PIN_STR && data->values[0].str &&
-            !strcmp(data->values[0].str, retained_expected[b])
+            data->values[0].type == PIN_STR && pin_text(data->values[0]).bytes &&
+            !strcmp(pin_text(data->values[0]).bytes, retained_expected[b])
         );
     }
     return true;

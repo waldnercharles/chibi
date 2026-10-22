@@ -14,9 +14,11 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Twenty-four shared constructions, four precedence inputs and seventeen
@@ -78,10 +80,13 @@ static const char *copy(arena *storage, const char *text, size_t size)
 }
 static pin_value text(const char *value)
 {
-    return (pin_value){
-        .type = PIN_STR,
-        .str = copy(&input, value ? value : "", value ? strlen(value) : 0)
-    };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static const char *prefix(const source_package_input *source, arena *storage)
 {
@@ -117,7 +122,7 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool read(const pin_value *row, const char *name, pin_value *value)
@@ -125,7 +130,7 @@ static bool read(const pin_value *row, const char *name, pin_value *value)
     REQUIRE(row && row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, value);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, value));
     return true;
 }
 static bool number(const pin_value *row, const char *name, int expected)
@@ -144,8 +149,8 @@ static bool string(const pin_value *row, const char *name, const char *expected)
 {
     pin_value value;
     REQUIRE(
-        read(row, name, &value) && value.type == PIN_STR && value.str &&
-        !strcmp(value.str, expected ? expected : "")
+        read(row, name, &value) && value.type == PIN_STR && pin_text(value).bytes &&
+        !strcmp(pin_text(value).bytes, expected ? expected : "")
     );
     return true;
 }
@@ -246,13 +251,15 @@ static bool own(arena *storage, const pin_value *value, int depth)
         REQUIRE(type && type->field_count <= 32);
         for (int i = 0; i < type->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(storage, value->ptr, &type->fields[i], &field));
             REQUIRE(own(storage, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -375,9 +382,15 @@ static bool pack(int backend, const source_package_snapshot_options *options, pi
         const source_package_input *source = &options->files[i];
         pin_value value;
         REQUIRE(row(backend, IDENTITY, "Input", &value));
+        const char *bytes = prefix(source, &input);
         REQUIRE(
             put(&value, "path", text(source->path)) &&
-            put(&value, "text", (pin_value){ .type = PIN_STR, .str = prefix(source, &input) })
+            put(&value,
+                "text",
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){
+                                 .bytes = bytes,
+                                 .length = (uint32_t)strlen(bytes) } })
         );
         REQUIRE(
             put(&value, "has_path", boolean(source->path != NULL)) &&
@@ -958,9 +971,9 @@ static bool retained_results()
             REQUIRE(data->tag == saved_tag[b][kind] && data->count == (kind ? 7 : 5));
             const pin_value *check = &saved_check[b][kind];
             REQUIRE(
-                check->type == PIN_STR && check->str &&
-                arena_contains(&retained[b][kind], check->str) &&
-                !strcmp(check->str, saved_expected[kind])
+                check->type == PIN_STR && pin_text(*check).bytes &&
+                arena_contains(&retained[b][kind], pin_text(*check).bytes) &&
+                !strcmp(pin_text(*check).bytes, saved_expected[kind])
             );
         }
     }

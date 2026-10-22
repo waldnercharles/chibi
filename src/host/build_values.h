@@ -20,8 +20,9 @@ typedef struct
     const char *error;
 } build_values;
 
-char *build_values_text(build_values *, const char *, size_t);
+const pin_string *build_values_text(build_values *, const char *, size_t);
 pin_array *build_values_array(build_values *, int);
+const char *build_values_cstring(build_values *, pin_value, const char **);
 bool build_values_string(const pin_value *);
 bool build_values_strings(const pin_value *);
 const char *build_values_join(build_values *, const pin_value *, pin_value *);

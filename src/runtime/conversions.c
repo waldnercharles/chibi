@@ -2,6 +2,7 @@
 
 #include "support/arena.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/value_format.h"
 
 #include <assert.h>
@@ -12,20 +13,19 @@
 pin_value native_conversion_To_String(const pin_value *inputs, int input_count, arena *a)
 {
     (void)input_count;
-    pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
-    /* Text converts whole. Other values format through pin_value_to_string's
-     * bounded static ring buffer: copy into the arena, never hand the ring out. */
-    bool textual = inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME;
-    const char *text = textual ? (inputs[0].str ? inputs[0].str : "")
-                               : pin_value_to_string(&inputs[0]);
-    size_t len = strlen(text);
-    char *copy = arena_alloc(a, len + 1);
-    if (!copy) {
-        return r;
+    pin_value result;
+    bool textual = inputs[0].container == PIN_CONTAINER_SINGLE &&
+                   (inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME);
+    if (textual) {
+        pin_string text = pin_text(inputs[0]);
+        return pin_value_text(a, &result, text.bytes, text.length)
+                 ? (pin_value){ .type = PIN_FLOW }
+                 : result;
     }
-    memcpy(copy, text, len + 1);
-    r.str = copy;
-    return r;
+    const char *text = pin_value_to_string(&inputs[0]);
+    return pin_value_text(a, &result, text, strlen(text))
+             ? (pin_value){ .type = PIN_FLOW }
+             : result;
 }
 
 pin_value native_conversion_To_Real(const pin_value *inputs, int input_count, arena *a)
@@ -47,7 +47,10 @@ pin_value native_conversion_To_Name(const pin_value *inputs, int count, arena *s
 {
     assert(count == 1 && inputs[0].type == PIN_STR);
     (void)count;
-    const char *text = inputs[0].str ? inputs[0].str : "";
+    const char *text;
+    if (pin_text_cstring(storage, inputs[0], &text, NULL)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
     size_t size = strlen(text) + 1;
     char *copy = arena_alloc(storage, size);
     memcpy(copy, text, size);

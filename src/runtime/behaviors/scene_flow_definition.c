@@ -14,7 +14,7 @@
       .has_default = true,                                                                     \
       .default_owner = OWNER,                                                                  \
       .default_value = VALUE },
-static const native_parameter_definition LOAD_IN[] = { SCENE_LOAD_INPUTS(PORT) };
+static const native_parameter_definition LOAD_IN[] = { SCENE_LOAD_INPUTS(NATIVE_CSTRING_PORT) };
 static const native_parameter_definition EXEC[] = { SCENE_EXEC(PORT) };
 static const native_parameter_definition THEN[] = { SCENE_THEN(PORT) };
 static const native_parameter_definition CURRENT_OUT[] = { SCENE_CURRENT_OUTPUTS(PORT) };

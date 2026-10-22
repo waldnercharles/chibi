@@ -541,7 +541,8 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         if (field->type == value && field->offset == offset &&
-            field->size == behavior_scalar_size(value)) {
+            field->size == behavior_scalar_size(value) &&
+            (value != PIN_STR || field->text_descriptor)) {
             return true;
         }
         if (field->type == PIN_STRUCT && field->type_name && offset >= field->offset &&
@@ -999,6 +1000,10 @@ static const char *verify_instruction(const behavior_function *f, int pc)
                      behavior_scalar_string(f->slots[i->right])),
                 "invalid string comparison"
             );
+            CHECK(
+                (f->slots[i->left] == PIN_STR) == (f->slots[i->right] == PIN_STR),
+                "string comparison mixes text descriptors and native names"
+            );
             break;
         case BF_BRANCH:
             CHECK(SLOT(i->left, PIN_BOOL), "branch condition must be bool"); /* fall through */
@@ -1152,7 +1157,9 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    pin_map_key_supported(values[2].initial) &&
                    OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_SNAPSHOT:
-            return count == 1 && same_type(values[0].initial, output);
+            return count == 1 && (same_type(values[0].initial, output) ||
+                                  (INPUT(0, PIN_NAME) && OUTPUT(PIN_STR)) ||
+                                  (INPUT(0, PIN_STR) && OUTPUT(PIN_NAME)));
         case EXECUTION_INTRINSIC_UNION_MAKE:
             return count >= 1 && INPUT(0, PIN_U64) && OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_UNION_KEEP:

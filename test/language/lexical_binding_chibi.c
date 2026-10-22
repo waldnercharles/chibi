@@ -7,9 +7,11 @@
 #include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Forty requests (24 fixed tables, sixteen from four real analyses), eighty
@@ -80,13 +82,19 @@ static pin_value boolean(bool value)
 }
 static pin_value text(const char *value)
 {
-    return (pin_value){ .type = PIN_STR, .str = value ? value : "" };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool record(int b, const char *name, pin_value *out)
@@ -210,7 +218,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int value)
@@ -246,10 +254,12 @@ static bool diagnostics(const arena *storage, const pin_value *value, const scri
         );
         pin_value message;
         REQUIRE(
-            read(row, "message", &message) && message.type == PIN_STR && message.str
+            read(row, "message", &message) && message.type == PIN_STR &&
+            pin_text(message).bytes
         );
         REQUIRE(
-            arena_contains(storage, message.str) && !strcmp(message.str, error->message)
+            arena_contains(storage, pin_text(message).bytes) &&
+            !strcmp(pin_text(message).bytes, error->message)
         );
     }
     return true;

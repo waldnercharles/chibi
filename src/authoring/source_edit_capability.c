@@ -460,7 +460,7 @@ static bool create_variable_access(
         const script_catalog_type
             *type = script_catalog_type_by_id(catalog, state->type.nominal);
         zero.type_name = type ? type->name : NULL;
-        if (zero.type == PIN_STR || zero.type == PIN_NAME) {
+        if (zero.type == PIN_NAME) {
             zero.str = "";
         }
         value = authoring_source_literal(catalog, state->type, r->value ? r->value : &zero, error, size);

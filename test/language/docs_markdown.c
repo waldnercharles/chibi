@@ -8,6 +8,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -56,10 +57,13 @@ static bool prepare()
 }
 static pin_value text(const char *value)
 {
-    size_t bytes = strlen(value) + 1;
-    char *copy = arena_alloc(&input, bytes);
-    memcpy(copy, value, bytes);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static pin_value strings(const char *const *items, int count)
 {
@@ -79,12 +83,12 @@ static char *call(int backend, const char *identity, const char *name, const pin
     const pin_array *pieces = out.ptr;
     size_t size = 1;
     for (int i = 0; i < pieces->count; i++) {
-        size += strlen(pieces->items[i].str);
+        size += strlen(pin_text(pieces->items[i]).bytes);
     }
     char *html = xmalloc(size);
     html[0] = '\0';
     for (int i = 0; i < pieces->count; i++) {
-        strcat(html, pieces->items[i].str);
+        strcat(html, pin_text(pieces->items[i]).bytes);
     }
     return html;
 }

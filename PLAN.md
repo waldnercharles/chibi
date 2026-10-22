@@ -132,6 +132,23 @@ A bounded disk adapter supplies explicit package roots on Linux and macOS. The
 installed `core:strings` collection and pure native arrays support the first
 compiler component; Windows disk loading remains unsupported.
 
+The owner approved the Odin-inspired package library program on 2026-10-20,
+with fidelity decided per package and useful language prerequisites implemented
+before affected ports. [Package library plan](docs/package-library-plan.md)
+owns that program's sequence, semantic decisions and implementation status.
+Read it before expanding `core:` or adding public collections. The toolchain
+milestones below retain their existing order and acceptance conditions.
+
+The current prerequisite is the approved byte-preserving string representation:
+one immutable public `string` carrying bytes and length, with explicit UTF-8
+operations. This branch implements descriptors and ownership throughout the
+compiler, execution backends, persistence, and native adapters. It diagnoses
+provably invalid embedded NUL at C-only uses during compilation and validates
+unknown values before native effects. Existing boolean APIs return failure and
+existing diagnostic APIs fail the invocation. New APIs accepting external data
+must expose recoverable errors. Shared slices follow the descriptor cutover.
+Track language friction and discuss each package's semantics before porting it.
+
 ### Bootstrap terms
 
 - **Stage zero** is the existing C compiler and native build used to create the
@@ -163,8 +180,9 @@ compiler component; Windows disk loading remains unsupported.
   [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
   sources under `src/language/`.
 
-These documents explain existing contracts. This file alone owns milestone
-order, current status, and the next action.
+These documents explain existing contracts. This file owns toolchain milestone
+order, current status, and the next action; the package library program linked
+above has its own ledger.
 
 ## Integration rules
 
@@ -1368,8 +1386,9 @@ compiler's own run:
   code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
   need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
   budget (36,292 instructions × 14,750 slots), so it must be split first.
-- `Text(forest, text, node)` still measures the source up to each node it
-  slices, because strings do not carry their length.
+- The descriptor cutover resolves repeated source-length scans in
+  `Text(forest, text, node)`. Slice still copies its selected bytes; shared
+  backing remains a separate ownership optimization.
 
 Later on 2026-10-21, `EmitBody` was split (#622), loops read unchanging arrays
 in place (#627), and arrays change through methods (#628, #630). Recovering the

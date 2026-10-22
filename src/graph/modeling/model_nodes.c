@@ -26,7 +26,7 @@ static float ones[3] = { 1, 1, 1 };
 static pin_spec sampled_inputs[] = { { .name = "Image",
                                        .type = PIN_STR,
                                        .flags = PIN_FLAG_SETTING,
-                                       .default_value = { .type = PIN_STR, .str = "" } },
+                                       .default_value = { .type = PIN_STR } },
                                      VECTOR("Half Size", ones),
                                      { .name = "Resolution",
                                        .type = PIN_I32,

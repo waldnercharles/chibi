@@ -1,5 +1,6 @@
 #include "graph/modeling/model_compile.h"
 
+#include "graph/model/value_copy.h"
 #include "graph/modeling/model_internal.h"
 #include "runtime/shaders/volume.h"
 #include "support/xalloc.h"
@@ -172,7 +173,12 @@ int model_lower(compiler *c, const node *n, int p)
     }
     int op = model_operation(n), result = 0;
     if (op == MODEL_SAMPLED_SDF) {
-        const char *key = n->input_pins[0].default_value.str;
+        const char *key = graph_text_cstring(c->source, n->input_pins[0].default_value);
+        if (!key) {
+            model_fail(c->error, n->id, "Model resource contains embedded NUL");
+            c->failed = true;
+            return 0;
+        }
         int image = 0;
         for (; image < acount(c->shader->images); image++) {
             if (!strcmp(c->shader->images[image].key, key)) {

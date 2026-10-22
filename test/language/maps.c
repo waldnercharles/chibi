@@ -14,6 +14,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/map.h"
+#include "types/text.h"
 #include "types/value_wire.h"
 
 #include <math.h>
@@ -142,7 +143,7 @@ TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order)
         REQUIRE(value && value->container == PIN_CONTAINER_MAP);
         const pin_map *map = value->ptr;
         REQUIRE(map && map->count == 4);
-        REQUIRE(!strcmp(map->entries[3].key.str, "Bea"));
+        REQUIRE(!strcmp(pin_text(map->entries[3].key).bytes, "Bea"));
         REQUIRE(map->entries[3].value.i == 5);
         cleanup();
     }
@@ -197,12 +198,18 @@ TEST_CASE(maps_index_finds_every_key_in_insertion_order)
     char text[32];
     for (int i = 0; i < 200; i++) {
         snprintf(text, sizeof text, "key %d", i);
-        pin_value key = { .type = PIN_STR, .str = text },
+        pin_value key = { .type = PIN_STR,
+                          .text = &(
+                              const pin_string
+                          ){ .bytes = text, .length = (uint32_t)strlen(text) } },
                   value = { .type = PIN_I32, .i = i };
         REQUIRE(!pin_map_store_owned(&storage, &names, &key, &value));
     }
     snprintf(text, sizeof text, "key %d", 137);
-    pin_value named = { .type = PIN_STR, .str = text };
+    pin_value named = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) }
+    };
     REQUIRE(pin_map_find(names, &named) == 137);
 
     pin_map *floats = pin_map_create(
@@ -446,16 +453,24 @@ TEST_CASE(maps_own_strings_compare_associations_and_reject_nonfinite_keys)
 {
     char key[] = "first", text[] = "owned";
     pin_map_entry entries[] = {
-        { { .type = PIN_STR, .str = key }, { .type = PIN_STR, .str = text } },
-        { { .type = PIN_STR, .str = "second" }, { .type = PIN_STR, .str = "two" } },
+        { { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = key, .length = (uint32_t)strlen(key) } },
+          { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = text,
+                                         .length = (uint32_t)strlen(text) } } },
+        { { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "second",
+                                         .length = sizeof("second") - 1 } },
+          { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "two", .length = sizeof("two") - 1 } } },
     };
     pin_value strings = { .type = PIN_STR };
     pin_map *map = pin_map_create(&storage, strings, strings, entries, 2);
     REQUIRE(map && map->count == 2);
     key[0] = 'X';
     text[0] = 'X';
-    REQUIRE(!strcmp(map->entries[0].key.str, "first"));
-    REQUIRE(!strcmp(map->entries[0].value.str, "owned"));
+    REQUIRE(!strcmp(pin_text(map->entries[0].key).bytes, "first"));
+    REQUIRE(!strcmp(pin_text(map->entries[0].value).bytes, "owned"));
     pin_map_entry reversed[] = { map->entries[1], map->entries[0] };
     pin_map *other = pin_map_create(&storage, strings, strings, reversed, 2);
     REQUIRE(other && pin_map_equal(map, other));
@@ -469,15 +484,23 @@ TEST_CASE(maps_own_strings_compare_associations_and_reject_nonfinite_keys)
 TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads)
 {
     pin_value strings = { .type = PIN_STR }, ints = { .type = PIN_I32 };
-    pin_map_entry inner_entry = { { .type = PIN_STR, .str = "count" },
-                                  { .type = PIN_I32, .i = 42 } };
+    pin_map_entry inner_entry = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "count", .length = sizeof("count") - 1 } },
+        { .type = PIN_I32, .i = 42 }
+    };
     pin_map *inner = pin_map_create(&storage, strings, ints, &inner_entry, 1);
     REQUIRE(inner);
     pin_value inner_value = { .type = PIN_UNION,
                               .container = PIN_CONTAINER_MAP,
                               .type_name = "Map_string_int",
                               .ptr = inner };
-    pin_map_entry entry = { { .type = PIN_STR, .str = "inside" }, inner_value };
+    pin_map_entry entry = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "inside",
+                                       .length = sizeof("inside") - 1 } },
+        inner_value
+    };
     pin_map *outer = pin_map_create(&storage, strings, inner_value, &entry, 1);
     REQUIRE(outer);
     pin_value source = { .type = PIN_UNION,
@@ -627,7 +650,8 @@ static const pin_array *inspection_nested_array(const pin_value *value)
     }
     const pin_map *outer = value->ptr;
     pin_value key = outer->key_type;
-    key.str = "group";
+    key.text = &(const pin_string){ .bytes = "group",
+                                    .length = (uint32_t)strlen("group") };
     int group = pin_map_find(outer, &key);
     if (group < 0 || outer->entries[group].value.container != PIN_CONTAINER_MAP) {
         return NULL;
@@ -637,7 +661,8 @@ static const pin_array *inspection_nested_array(const pin_value *value)
         return NULL;
     }
     key = inner->key_type;
-    key.str = "values";
+    key.text = &(const pin_string){ .bytes = "values",
+                                    .length = (uint32_t)strlen("values") };
     int values = pin_map_find(inner, &key);
     return values >= 0 && inner->entries[values].value.container == PIN_CONTAINER_ARRAY
              ? inner->entries[values].value.ptr
@@ -687,8 +712,12 @@ TEST_CASE(maps_inspection_owns_nested_snapshots_after_mutation_and_program_relea
 }
 TEST_CASE(maps_intrinsics_reject_incompatible_result_banks)
 {
-    pin_map_entry entry = { .key = { .type = PIN_STR, .str = "one" },
-                            .value = { .type = PIN_I32, .i = 7 } };
+    pin_map_entry entry = {
+        .key = { .type = PIN_STR,
+                 .text = &(const pin_string){ .bytes = "one",
+                                              .length = sizeof("one") - 1 } },
+        .value = { .type = PIN_I32, .i = 7 }
+    };
     pin_map map = { .key_type = { .type = PIN_STR },
                     .value_type = { .type = PIN_I32 },
                     .count = 1,
@@ -698,7 +727,7 @@ TEST_CASE(maps_intrinsics_reject_incompatible_result_banks)
                          { .type = PIN_BOOL } };
     pin_value out = { .type = PIN_STR };
     REQUIRE(EXECUTION_map_get_call.value(&storage, args, 2, &out));
-    REQUIRE(out.type == PIN_STR && !out.str);
+    REQUIRE(out.type == PIN_STR && out.text == NULL);
     out = (pin_value){ .type = PIN_I32 };
     REQUIRE(!EXECUTION_map_get_call.value(&storage, args, 2, &out) && out.i == 7);
     args[1] = (pin_value){ .type = PIN_I32 };
@@ -709,7 +738,7 @@ TEST_CASE(maps_intrinsics_reject_incompatible_result_banks)
     REQUIRE(EXECUTION_map_item_call.value(&storage, args, 3, &out));
     out = (pin_value){ .type = PIN_STR };
     REQUIRE(!EXECUTION_map_item_call.value(&storage, args, 3, &out));
-    REQUIRE(!strcmp(out.str, "one"));
+    REQUIRE(!strcmp(pin_text(out).bytes, "one"));
     behavior_function_context owner = { .value_storage = &storage };
     pin_value keyed[] = { execution_reference_value(&storage, &owner, &args[0], args[0]),
                           { .type = PIN_I64 },

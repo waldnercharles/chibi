@@ -11,8 +11,10 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Three fixed cases: eight modules, sixteen analyses, eight dispatches, four
@@ -176,12 +178,15 @@ static bool row(const pin_value *v, const char *text, int generation)
     REQUIRE(!strcmp(v->record->type.fields[5].name, generation == 2 ? "level" : "depth"));
     for (int i = 0; i < 12; i++) {
         pin_value field;
-        pin_read_field(v->ptr, &v->record->type.fields[i], &field);
+        REQUIRE(!pin_read_field(&producer, v->ptr, &v->record->type.fields[i], &field));
         if (i < 5) {
             const char *expected = i < 2  ? text
                                  : i == 2 ? (generation ? "new-icon" : "node")
                                           : "";
-            REQUIRE(field.type == PIN_STR && field.str && !strcmp(field.str, expected));
+            REQUIRE(
+                field.type == PIN_STR && pin_text(field).bytes &&
+                !strcmp(pin_text(field).bytes, expected)
+            );
         } else if (i < 7) {
             REQUIRE(field.type == PIN_I32 && field.i == (i == 5 ? generation + 1 : 0));
         } else {
@@ -222,7 +227,10 @@ static bool dispatch(execution_instance *instance, behavior_backend backend, cha
     behavior_run_scope_reset(&runs);
     execution_wasm_jit_stats before, after;
     execution_wasm_jit_get_stats(&before);
-    pin_value argument = { .type = PIN_STR, .str = text };
+    pin_value argument = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) }
+    };
     behavior_run_scope_begin(&runs);
     int status = execution_instance_dispatch(instance, event.id, &argument, 1, 0, 0, 10000);
     behavior_run_scope_end(&runs);
@@ -357,8 +365,18 @@ TEST_CASE(record_state_owned_watches)
             REQUIRE(w->availability == EXECUTION_WATCH_AVAILABLE);
             if (w->value.container == PIN_CONTAINER_SINGLE && w->value.ptr) {
                 pin_value field;
-                pin_read_field(w->value.ptr, &w->value.record->type.fields[0], &field);
-                if (field.str && !strcmp(field.str, "watched")) {
+                {
+                    const char *error = pin_read_field(
+                        &producer,
+                        w->value.ptr,
+                        &w->value.record->type.fields[0],
+                        &field
+                    );
+                    if (error) {
+                        abort();
+                    }
+                };
+                if (pin_text(field).bytes && !strcmp(pin_text(field).bytes, "watched")) {
                     REQUIRE(row(&w->value, "watched", 0));
                     scalar = i;
                 }
@@ -378,9 +396,32 @@ TEST_CASE(record_state_owned_watches)
         REQUIRE(
             !pin_value_snapshot_to_arena(&producer, &changed, execution_instance_state(instance, row_id))
         );
-        pin_value replacement = { .type = PIN_STR, .str = "replaced" };
-        pin_write_field(changed.ptr, &changed.record->type.fields[0], replacement);
-        pin_write_field(changed.ptr, &changed.record->type.fields[1], replacement);
+        pin_value replacement = { .type = PIN_STR,
+                                  .text = &(const pin_string){
+                                      .bytes = "replaced",
+                                      .length = sizeof("replaced") - 1 } };
+        {
+            const char *error = pin_write_field(
+                &producer,
+                changed.ptr,
+                &changed.record->type.fields[0],
+                replacement
+            );
+            if (error) {
+                abort();
+            }
+        };
+        {
+            const char *error = pin_write_field(
+                &producer,
+                changed.ptr,
+                &changed.record->type.fields[1],
+                replacement
+            );
+            if (error) {
+                abort();
+            }
+        };
         REQUIRE(execution_instance_set_state(instance, row_id, changed) == FLOW_OK);
         pin_value cleared = *execution_instance_state(instance, rows_id);
         pin_array array = { .element_type = PIN_STRUCT,
@@ -424,13 +465,21 @@ static pin_value frame_row(const pin_record *record)
             const char *text = i < 2 ? "frame" : i == 2 ? "node" : "";
             char *copy = arena_alloc(&producer, strlen(text) + 1);
             strcpy(copy, text);
-            f.str = copy;
+            const char *error = pin_value_text(&producer, &f, copy, strlen(copy));
+            if (error) {
+                abort();
+            }
         } else if (i < 7) {
             f.i = i == 5;
         } else {
             f.b = i == 7;
         }
-        pin_write_field(v.ptr, &record->type.fields[i], f);
+        {
+            const char *error = pin_write_field(&producer, v.ptr, &record->type.fields[i], f);
+            if (error) {
+                abort();
+            }
+        };
     }
     return v;
 }
@@ -451,8 +500,8 @@ static bool owned(const pin_value *v)
     REQUIRE(arena_contains(&saved, v->ptr));
     for (int i = 0; i < 5; i++) {
         pin_value field;
-        pin_read_field(v->ptr, &v->record->type.fields[i], &field);
-        REQUIRE(arena_contains(&saved, field.str));
+        REQUIRE(!pin_read_field(&producer, v->ptr, &v->record->type.fields[i], &field));
+        REQUIRE(arena_contains(&saved, pin_text(field).bytes));
     }
     return true;
 }
@@ -504,7 +553,13 @@ TEST_CASE(record_state_frame_inputs)
     );
     for (int i = 0; i < 12; i++) {
         pin_value field;
-        pin_read_field(scalar.ptr, &record->type.fields[i], &field);
+        {
+            const char *
+                error = pin_read_field(&producer, scalar.ptr, &record->type.fields[i], &field);
+            if (error) {
+                abort();
+            }
+        };
         memcpy(&bits[i], &field.d, behavior_scalar_size(field.type));
         apush(
             frame.locals,

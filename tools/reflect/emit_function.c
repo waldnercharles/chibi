@@ -48,7 +48,9 @@ const char *pin_member(const char *pin)
 
 static void emit_arg(FILE *out, const char *spelling, const char *pin, int idx)
 {
-    if (!strcmp(pin, "PIN_STRUCT")) {
+    if (!strcmp(pin, "PIN_STR")) {
+        fprintf(out, "__text%d", idx);
+    } else if (!strcmp(pin, "PIN_STRUCT")) {
         fprintf(out, "*(%s *)args[%d].ptr", spelling, idx);
     } else {
         fprintf(out, "args[%d].%s", idx, pin_member(pin));
@@ -62,6 +64,19 @@ static const char *param_label(const fn_info *f, int index)
 
 void emit_execution_result(FILE *out, const char *pin, const char *expr, const char *type, int index)
 {
+    if (!strcmp(pin, "PIN_STR")) {
+        fprintf(
+            out,
+            "    { const char *__text = %s; pin_value __owned = { 0 }; const "
+            "char *__text_error = "
+            "pin_value_text(ctx->value_storage, "
+            "&__owned, __text, __text ? strlen(__text) : 0); if (__text_error) "
+            "return __text_error; out[%d].text = __owned.text; }\n",
+            expr,
+            index
+        );
+        return;
+    }
     if (strcmp(pin, "PIN_STRUCT") && strcmp(pin, "PIN_STR") && strcmp(pin, "PIN_NAME")) {
         fprintf(out, "    out[%d].%s = %s;\n", index, pin_member(pin), expr);
         return;
@@ -122,6 +137,18 @@ void emit_execution_host(FILE *out, const fn_info *f, bool external)
                 j
             );
             fprintf(out, "    if (!__service%d) return \"missing service %s\";\n", j, f->pservice_type[j]);
+        } else if (!strcmp(f->ppin[j], "PIN_STR")) {
+            fprintf(out, "    const char *__text%d = NULL; size_t __nul%d = 0;\n", input, input);
+            fprintf(
+                out,
+                "    { const char *__error = "
+                "pin_text_cstring(ctx->value_storage, args[%d], &__text%d, "
+                "&__nul%d); "
+                "if (__error) return __error; }\n",
+                input,
+                input,
+                input
+            );
         } else if (!strcmp(f->ppin[j], "PIN_STRUCT")) {
             fprintf(
                 out,

@@ -293,6 +293,7 @@ bool ecs_component_has_entities(
 void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component);
 const void *ecs_component_data_const(const ecs_world *world, ecs_entity entity, ecs_component_id component);
 int ecs_component_read_field(
+    arena *storage,
     const ecs_world *world,
     ecs_entity entity,
     ecs_component_id component,
@@ -305,6 +306,16 @@ int ecs_component_write_field(
     ecs_component_id component,
     int field,
     pin_value value
+);
+/* Call-only native layout resolution for documents with registry-local types.
+ * The world retains copied payloads and never retains the resolver. */
+int ecs_component_write_field_resolved(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id component,
+    int field,
+    pin_value value,
+    type_resolver resolver
 );
 /* Retain a reflected value in its component row. offset and declared identify
  * either the whole component or one nested reflected field. Managed writes

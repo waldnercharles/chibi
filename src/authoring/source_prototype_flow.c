@@ -1,7 +1,9 @@
 #include "authoring/source_prototype_flow.h"
 
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <stdlib.h>
 
@@ -35,12 +37,12 @@ static void add_name(flow *f, int document, const script_expression *constant)
                        ? script_catalog_capability_by_id(f->catalog, constant->capability)
                        : NULL;
     if (!constant->capability) {
-        int index = script_catalog_find_capability(
-            f->catalog,
-            constant->constant.str,
-            SCRIPT_CAPABILITY_PROTOTYPE
-        );
+        arena storage = { 0 };
+        const char *name;
+        const char *error = pin_text_cstring(&storage, constant->constant, &name, NULL);
+        int index = error ? -1 : script_catalog_find_capability(f->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
         prototype = index >= 0 ? &f->catalog->capabilities[index] : NULL;
+        arena_free(&storage);
     }
     if (!prototype || prototype->kind != SCRIPT_CAPABILITY_PROTOTYPE) {
         return;
@@ -67,7 +69,7 @@ static void mark_value(flow *f, int document, int expression)
              * are still edited only at their original declaration. */
             if (!e->constant_snapshot && e->constant.container == PIN_CONTAINER_SINGLE &&
                 (e->constant.type == PIN_STR || e->constant.type == PIN_NAME) &&
-                e->constant.str) {
+                pin_text(e->constant).length) {
                 add_name(f, document, e);
             }
             return;

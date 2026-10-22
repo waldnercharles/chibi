@@ -16,6 +16,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stddef.h>
@@ -153,8 +154,8 @@ static const char *observe_syntax(
 )
 {
     raw_parses++;
-    if (arguments[0].type != PIN_STR || !arguments[0].str ||
-        strlen(arguments[0].str) > SOURCE_CAP) {
+    if (arguments[0].type != PIN_STR || !pin_text(arguments[0]).bytes ||
+        strlen(pin_text(arguments[0]).bytes) > SOURCE_CAP) {
         return "Bounded compiler passed oversized source to its raw parser";
     }
     return COMPILER_SYNTAX_DEFINITION_PACK.bindings[0]
@@ -166,16 +167,19 @@ static pin_value integer(int n)
 }
 static pin_value text(const char *s)
 {
-    size_t bytes = strlen(s) + 1;
-    char *copy = arena_alloc(&input, bytes);
-    memcpy(copy, s, bytes);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    s = s ? s : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, s, strlen(s));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -183,7 +187,7 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static uint64_t tag(int b, const char *package, const char *name, const char *variant)
@@ -344,9 +348,16 @@ static bool retain(int b, int index, const pin_value *result)
         }
         pin_value diagnostic;
         REQUIRE(get(&value->values[0], "message", &diagnostic));
-        REQUIRE(diagnostic.type == PIN_STR && diagnostic.str && diagnostic.str[0]);
-        REQUIRE(strlen(diagnostic.str) < sizeof out->diagnostic);
-        memcpy(out->diagnostic, diagnostic.str, strlen(diagnostic.str) + 1);
+        REQUIRE(
+            diagnostic.type == PIN_STR && pin_text(diagnostic).bytes &&
+            pin_text(diagnostic).bytes[0]
+        );
+        REQUIRE(strlen(pin_text(diagnostic).bytes) < sizeof out->diagnostic);
+        memcpy(
+            out->diagnostic,
+            pin_text(diagnostic).bytes,
+            strlen(pin_text(diagnostic).bytes) + 1
+        );
         return true;
     }
     REQUIRE(value->tag == tag(b, PACKAGE, "Result", "Compiled") && value->count == 3);

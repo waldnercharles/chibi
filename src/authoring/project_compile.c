@@ -22,6 +22,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -548,7 +549,8 @@ static bool generate(
     const pin_array *pieces = result.ptr;
     bool written = generated;
     for (int i = 0; written && i < pieces->count; i++) {
-        written = fputs(pieces->items[i].str, file) >= 0;
+        pin_string piece = pin_text(pieces->items[i]);
+        written = fwrite(piece.bytes, 1, piece.length, file) == piece.length;
     }
     if (generated && !written) {
         snprintf(error, size, "cannot write %s: %s", name, strerror(errno));
@@ -559,9 +561,13 @@ static bool generate(
     return written;
 }
 
-static pin_value text_value(const char *text)
+static pin_value text_value(arena *storage, const char *text)
 {
-    return (pin_value){ .type = PIN_STR, .str = text };
+    pin_value value;
+    const char *error = pin_value_text(storage, &value, text, strlen(text));
+    assert(!error);
+    (void)error;
+    return value;
 }
 
 /* An empty string[] argument of count items in storage. */
@@ -590,7 +596,7 @@ static pin_value lines_value(arena *storage, const char **lines)
 {
     pin_value value = strings_value(storage, acount(lines));
     for (int i = 0; i < acount(lines); i++) {
-        ((pin_array *)value.ptr)->items[i] = text_value(lines[i]);
+        ((pin_array *)value.ptr)->items[i] = text_value(storage, lines[i]);
     }
     return value;
 }
@@ -996,16 +1002,16 @@ static bool page_body(
         pin_value paths = strings_value(&body->storage, count);
         pin_array *starts = pin_array_snapshot_allocate(&body->storage, PIN_I32, NULL, count);
         for (int i = 0; i < count; i++) {
-            ((pin_array *)paths.ptr)->items[i] = text_value(body->paths[i]);
+            ((pin_array *)paths.ptr)->items[i] = text_value(&body->storage, body->paths[i]);
             starts->items[i] = (pin_value){ .type = PIN_I32, .i = body->starts[i] };
         }
-        body->arguments[0] = text_value(page->collection);
+        body->arguments[0] = text_value(&body->storage, page->collection);
         body->arguments[1] = paths;
         body->arguments[2] = (pin_value){ .type = PIN_I32,
                                           .container = PIN_CONTAINER_ARRAY,
                                           .ptr = starts };
         body->arguments[3] = lines_value(&body->storage, body->lines);
-        body->arguments[4] = text_value(page->source);
+        body->arguments[4] = text_value(&body->storage, page->source);
         body->arguments[5] = map[4];
         body->arguments[6] = map[3];
         body->count = 7;
@@ -1029,7 +1035,7 @@ static bool page_body(
         return false;
     }
     body->arguments[0] = lines_value(&body->storage, body->lines);
-    body->arguments[1] = text_value(page->source);
+    body->arguments[1] = text_value(&body->storage, page->source);
     body->arguments[2] = map[4];
     body->arguments[3] = map[3];
     body->count = 4;
@@ -1125,16 +1131,16 @@ static bool write_pages(
     /* The site, then the pages' sections, titles, outputs and sources. */
     arena storage = { 0 };
     int count = acount(pages);
-    pin_value map[] = { text_value(site),
+    pin_value map[] = { text_value(&storage, site),
                         strings_value(&storage, count),
                         strings_value(&storage, count),
                         strings_value(&storage, count),
                         strings_value(&storage, count) };
     for (int i = 0; i < count; i++) {
-        ((pin_array *)map[1].ptr)->items[i] = text_value(pages[i].section);
-        ((pin_array *)map[2].ptr)->items[i] = text_value(pages[i].title);
-        ((pin_array *)map[3].ptr)->items[i] = text_value(pages[i].output);
-        ((pin_array *)map[4].ptr)->items[i] = text_value(pages[i].source);
+        ((pin_array *)map[1].ptr)->items[i] = text_value(&storage, pages[i].section);
+        ((pin_array *)map[2].ptr)->items[i] = text_value(&storage, pages[i].title);
+        ((pin_array *)map[3].ptr)->items[i] = text_value(&storage, pages[i].output);
+        ((pin_array *)map[4].ptr)->items[i] = text_value(&storage, pages[i].source);
     }
     bool valid = true;
     for (int i = 0; valid && i < count; i++) {

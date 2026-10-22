@@ -24,7 +24,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
+    ('--c-export-alias',): 'Two bounded C cases: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; second case has eight nine-instruction shift functions (eight types, direction argument) with six counts per direction, 192 VM/generated-C calls checking valid results and invalid-count DATA metadata, plus one ten-instruction binary-string function with two samples and four VM/generated-C calls at budget64 and a fixed4KiB stack disturbance; source<64KiB; two shared-library compiler children with existing 10s limit each, original case source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -204,6 +204,9 @@ TOOLS = {
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Existing query correctness cases, including bounded cache/optimizer regressions.
     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
+    # Three independently reviewed CPU-only string ownership/publication cases;
+    # one entity each, at most two components, no files, children or frames.
+    'ecs-strings': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-strings'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
     # Three reviewed arena cases: aligned growth, block reuse after reset, a zero-initialized arena
@@ -620,6 +623,7 @@ TOOLS = {
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps,
     # plus fixed Map ownership, iteration and bounded generic specialization cases.
+    # Descriptor observer adds one entity/two tiny functions/two steps at budget1000.
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     # Bounded in-process SDK generation reuse and invalidation, with four tiny source overlays.
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
@@ -718,7 +722,7 @@ TOOLS = {
     # children/services/GPU. Independent first-run review, separate build/shared60s.
     'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--constant-proof-chibi'],
-    # Three cases:70 fixed requests,140 authored calls capped at2m instructions.
+    # Three cases:91 fixed requests,182 authored calls capped at2m instructions.
     # Two owners prepare4sources each (<64KiB/source):8preparation parses.
     # <=7expressions/1symbol/0aggregate arguments perrequest; no full65536visit
     # exhaustion, runtime IO, children/services/GPU. Independent first-run review,
@@ -811,7 +815,8 @@ TOOLS = {
                                                         '--package-compiler-chibi-imports-compiled'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same
-    # bytes. Sanitizers make one compile take about two minutes, so this runs
+    # bytes; its six target values must match the production host, excluding
+    # test-only native probes. Sanitizers make one compile take about two minutes, so this runs
     # an unsanitized Release test_language (make test-bootstrap). shared60s.
     'language-package-compiler-chibi-bootstrap': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                  '--package-compiler-chibi-bootstrap'],
@@ -992,7 +997,7 @@ TOOLS = {
     'language-runtime-attribution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--runtime-attribution'],
     # Fixed legacy array callback case plus native-only scalar/handle globals.
     'language-record-compatibility': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-compatibility'],
-    # Four fixed complete-document record cases; no authored execution.
+    # Five fixed complete-document record cases; no authored execution.
     'language-record-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-document'],
     # Three fixed record state/watch/private frame-input cases, standalone only.
     'language-record-state': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-state'],
@@ -1008,11 +1013,13 @@ TOOLS = {
     'language-inferred-string-arrays': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-arrays'],
     # Optional first semantic specimen only, with the same expected-success assertion.
     'language-inferred-string-array-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-array-repro'],
-    # Fixed six-case authored-layout foundation; independent admission required.
+    # Thirteen reviewed authored-layout/byte-string cases; fixed eight-key map,
+    # eight UTF-8 vectors, one tiny nested-resolver ownership/atomicity case;
+    # no files, children, frames or GPU work.
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
     # Ten fixed semantic record cases; independent workload admission required.
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
-    # Six fixed owned prepared-record cases; independent admission, standalone only.
+    # Seven reviewed owned prepared-record cases; standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
     'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],

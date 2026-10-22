@@ -194,6 +194,11 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         execution_wire_int(w, &kind);
         execution_wire_string(w, &type_name);
         execution_wire_string(w, &unit);
+        bool text_descriptor = w->reading ? false : v->record->type.fields[i].text_descriptor;
+        execution_wire_bool(w, &text_descriptor);
+        if (text_descriptor != (kind == PIN_STR)) {
+            w->error = "invalid prepared authored string representation";
+        }
         if (w->error) {
             break;
         }
@@ -220,7 +225,8 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
             fields[i] = (type_field){ .name = name,
                                       .type = kind,
                                       .type_name = type_name,
-                                      .unit = unit };
+                                      .unit = unit,
+                                      .text_descriptor = text_descriptor };
         }
     }
     if (w->error || !w->reading) {

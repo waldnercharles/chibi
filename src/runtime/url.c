@@ -1,6 +1,8 @@
 #include "runtime/url.h"
 
+#include "execution/function.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -90,9 +92,20 @@ bool url_requests_take(url_requests *requests, char **url)
     return true;
 }
 
-static const char *open_url(void *service, const pin_value *in, pin_value *out)
+static const char *open_url(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *out
+)
 {
-    out[0].b = service && url_requests_open(service, in[0].str);
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, in[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
+    out[0].b = service && url_requests_open(service, text);
     return NULL;
 }
 
@@ -105,7 +118,7 @@ static const char *cancel(void *service, const pin_value *, pin_value *)
 }
 
 const node_host_call URL_OPEN_CALL = { .service = URL_SERVICE,
-                                       .invoke = open_url,
+                                       .context = open_url,
                                        .optional_service = true };
 const node_host_call URL_CANCEL_CALL = { .service = URL_SERVICE,
                                          .invoke = cancel,

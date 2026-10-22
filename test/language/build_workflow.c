@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <string.h>
 
@@ -76,15 +77,17 @@ static const char *record_step(void *service, const pin_value *arguments, pin_va
     /* Validate before copying, and retain only owned bytes after the callback. */
     for (int i = 0; i < argv->count; i++) {
         if (argv->items[i].type != PIN_STR ||
-            argv->items[i].container != PIN_CONTAINER_SINGLE || !argv->items[i].str ||
-            strlen(argv->items[i].str) >= BUILD_MAX_ARGUMENT_BYTES) {
+            argv->items[i].container != PIN_CONTAINER_SINGLE ||
+            pin_text(argv->items[i]).length >= BUILD_MAX_ARGUMENT_BYTES ||
+            memchr(pin_text(argv->items[i]).bytes, 0, pin_text(argv->items[i]).length)) {
             return "invalid build recording string";
         }
     }
     int call = record->calls;
     for (int i = 0; i < argv->count; i++) {
-        const char *text = argv->items[i].str;
-        memcpy(record->arguments[call][i], text, strlen(text) + 1);
+        pin_string text = pin_text(argv->items[i]);
+        memcpy(record->arguments[call][i], text.bytes, text.length);
+        record->arguments[call][i][text.length] = 0;
     }
     record->argument_counts[call] = argv->count;
     results[0].i = record->statuses[call];

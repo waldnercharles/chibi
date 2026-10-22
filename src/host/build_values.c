@@ -1,5 +1,7 @@
 #include "host/build_values.h"
 
+#include "types/text.h"
+
 #include <ctype.h>
 #include <string.h>
 
@@ -11,16 +13,18 @@ static void *allocate(build_values *values, size_t size)
     }
     return data;
 }
-char *build_values_text(build_values *values, const char *text, size_t size)
+const pin_string *build_values_text(build_values *values, const char *text, size_t size)
 {
     if (size > BUILD_TEXT_LIMIT) {
         values->error = "build text limit exceeded";
         return NULL;
     }
-    char *copy = allocate(values, size + 1);
+    pin_string *copy = allocate(values, sizeof(*copy) + size + 1);
     if (copy) {
-        memcpy(copy, text, size);
-        copy[size] = 0;
+        char *bytes = (char *)(copy + 1);
+        memcpy(bytes, text, size);
+        bytes[size] = 0;
+        *copy = (pin_string){ .bytes = bytes, .length = (uint32_t)size };
     }
     return copy;
 }
@@ -46,8 +50,27 @@ pin_array *build_values_array(build_values *values, int count)
 bool build_values_string(const pin_value *value)
 {
     return value->type == PIN_STR && value->container == PIN_CONTAINER_SINGLE &&
-           value->str &&
-           strnlen(value->str, BUILD_TEXT_LIMIT + 1) <= BUILD_TEXT_LIMIT;
+           pin_text(*value).length <= BUILD_TEXT_LIMIT;
+}
+const char *build_values_cstring(build_values *values, pin_value value, const char **out)
+{
+    if (!build_values_string(&value)) {
+        return "invalid build string arguments";
+    }
+    pin_string text = pin_text(value);
+    if (memchr(text.bytes, 0, text.length)) {
+        return "C string contains embedded NUL";
+    }
+    if (text.bytes[text.length]) {
+        const pin_string *copy = build_values_text(values, text.bytes, text.length);
+        if (!copy) {
+            return values->error;
+        }
+        *out = copy->bytes;
+        return NULL;
+    }
+    *out = text.bytes;
+    return NULL;
 }
 bool build_values_strings(const pin_value *value)
 {
@@ -62,7 +85,7 @@ bool build_values_strings(const pin_value *value)
         if (!build_values_string(&array->items[i])) {
             return false;
         }
-        size_t size = strlen(array->items[i].str) + 1;
+        size_t size = pin_text(array->items[i]).length + 1;
         if (size > BUILD_TEXT_LIMIT - bytes) {
             return false;
         }
@@ -72,8 +95,8 @@ bool build_values_strings(const pin_value *value)
 }
 static const char *text_result(build_values *values, pin_value *result, const char *text, size_t size)
 {
-    result->str = build_values_text(values, text, size);
-    return result->str ? NULL : values->error;
+    result->text = build_values_text(values, text, size);
+    return result->text ? NULL : values->error;
 }
 const char *build_values_join(build_values *values, const pin_value *arguments, pin_value *results)
 {
@@ -81,62 +104,94 @@ const char *build_values_join(build_values *values, const pin_value *arguments, 
         return "invalid build string arguments";
     }
     const pin_array *array = arguments[0].ptr;
-    size_t size = 0, separator = strlen(arguments[1].str);
+    pin_string separator_text = pin_text(arguments[1]);
+    size_t size = 0, separator = separator_text.length;
     for (int i = 0; i < array->count; i++) {
-        size_t addition = strlen(array->items[i].str) + (i ? separator : 0);
+        size_t addition = pin_text(array->items[i]).length + (i ? separator : 0);
         if (addition > BUILD_TEXT_LIMIT - size) {
             return "build text limit exceeded";
         }
         size += addition;
     }
-    char *text = allocate(values, size + 1);
-    if (!text) {
+    pin_string *joined = allocate(values, sizeof(*joined) + size + 1);
+    if (!joined) {
         return values->error;
     }
+    char *text = (char *)(joined + 1);
+    *joined = (pin_string){ .bytes = text, .length = (uint32_t)size };
     size_t offset = 0;
     for (int i = 0; i < array->count; i++) {
         if (i) {
-            memcpy(text + offset, arguments[1].str, separator);
+            memcpy(text + offset, separator_text.bytes, separator);
             offset += separator;
         }
-        size_t length = strlen(array->items[i].str);
-        memcpy(text + offset, array->items[i].str, length);
+        size_t length = pin_text(array->items[i]).length;
+        memcpy(text + offset, pin_text(array->items[i]).bytes, length);
         offset += length;
     }
     text[size] = 0;
-    results[0].str = text;
+    results[0].text = joined;
     return NULL;
 }
+static size_t find_text(pin_string text, pin_string find, size_t start)
+{
+    while (start + find.length <= text.length) {
+        const char *at = memchr(
+            text.bytes + start,
+            (unsigned char)find.bytes[0],
+            text.length - start - find.length + 1
+        );
+        if (!at) {
+            return text.length;
+        }
+        start = (size_t)(at - text.bytes);
+        if (!memcmp(at, find.bytes, find.length)) {
+            return start;
+        }
+        start++;
+    }
+    return text.length;
+}
 /* Every occurrence of a non-empty `find` in text, left to right, replaced by
- * `with`. */
+ * `with`. Byte lengths preserve embedded NUL in all three arguments. */
 const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results)
 {
     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1]) ||
-        !build_values_string(&arguments[2]) || !arguments[1].str[0]) {
+        !build_values_string(&arguments[2])) {
         return "invalid build string arguments";
     }
-    const char *text = arguments[0].str, *find = arguments[1].str,
-               *with = arguments[2].str;
-    size_t find_size = strlen(find), with_size = strlen(with), size = strlen(text);
-    for (const char *at = strstr(text, find); at; at = strstr(at + find_size, find)) {
-        if (with_size > find_size && with_size - find_size > BUILD_TEXT_LIMIT - size) {
+    pin_string text = pin_text(arguments[0]), find = pin_text(arguments[1]),
+               with = pin_text(arguments[2]);
+    if (!find.length) {
+        return "invalid build string arguments";
+    }
+    size_t size = text.length;
+    for (size_t at = find_text(text, find, 0); at < text.length;
+         at = find_text(text, find, at + find.length)) {
+        if (with.length > find.length &&
+            with.length - find.length > BUILD_TEXT_LIMIT - size) {
             return "build text limit exceeded";
         }
-        size = size - find_size + with_size;
+        size = size - find.length + with.length;
     }
-    char *result = allocate(values, size + 1);
+    pin_string *result = allocate(values, sizeof(*result) + size + 1);
     if (!result) {
         return values->error;
     }
-    char *out = result;
-    for (const char *at; (at = strstr(text, find)); text = at + find_size) {
-        memcpy(out, text, (size_t)(at - text));
-        out += at - text;
-        memcpy(out, with, with_size);
-        out += with_size;
+    char *bytes = (char *)(result + 1), *out = bytes;
+    *result = (pin_string){ .bytes = bytes, .length = (uint32_t)size };
+    size_t start = 0;
+    for (size_t at = find_text(text, find, start); at < text.length;
+         at = find_text(text, find, start)) {
+        memcpy(out, text.bytes + start, at - start);
+        out += at - start;
+        memcpy(out, with.bytes, with.length);
+        out += with.length;
+        start = at + find.length;
     }
-    strcpy(out, text);
-    results[0].str = result;
+    memcpy(out, text.bytes + start, text.length - start);
+    bytes[size] = 0;
+    results[0].text = result;
     return NULL;
 }
 const char *build_values_starts_with(build_values *, const pin_value *arguments, pin_value *results)
@@ -144,23 +199,31 @@ const char *build_values_starts_with(build_values *, const pin_value *arguments,
     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1])) {
         return "invalid build string arguments";
     }
-    results[0]
-        .b = !strncmp(arguments[0].str, arguments[1].str, strlen(arguments[1].str));
+    pin_string text = pin_text(arguments[0]), prefix = pin_text(arguments[1]);
+    results[0].b = prefix.length <= text.length &&
+                   !memcmp(text.bytes, prefix.bytes, prefix.length);
     return NULL;
 }
 static const char *split(build_values *values, const pin_value *arguments, pin_value *results, bool after)
 {
-    if (!build_values_string(&arguments[0]) ||
-        !build_values_string(&arguments[1]) || !arguments[1].str[0]) {
+    if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1])) {
         return "invalid build string arguments";
     }
-    const char *text = arguments[0].str;
-    const char *delimiter = strstr(text, arguments[1].str);
-    if (after) {
-        const char *suffix = delimiter ? delimiter + strlen(arguments[1].str) : "";
-        return text_result(values, results, suffix, strlen(suffix));
+    pin_string text = pin_text(arguments[0]), delimiter = pin_text(arguments[1]);
+    if (!delimiter.length) {
+        return "invalid build string arguments";
     }
-    return text_result(values, results, text, delimiter ? (size_t)(delimiter - text) : strlen(text));
+    size_t offset = 0;
+    while (offset + delimiter.length <= text.length &&
+           memcmp(text.bytes + offset, delimiter.bytes, delimiter.length)) {
+        offset++;
+    }
+    bool found = offset + delimiter.length <= text.length;
+    if (after) {
+        size_t start = found ? offset + delimiter.length : text.length;
+        return text_result(values, results, text.bytes + start, text.length - start);
+    }
+    return text_result(values, results, text.bytes, found ? offset : text.length);
 }
 const char *build_values_before(build_values *values, const pin_value *arguments, pin_value *results)
 {
@@ -175,29 +238,31 @@ const char *build_values_lines(build_values *values, const pin_value *arguments,
     if (!build_values_string(arguments)) {
         return "invalid build string arguments";
     }
-    const char *text = arguments[0].str;
-    int count = text[0] ? 1 : 0;
-    for (const char *p = text; *p; p++) {
-        if (*p == '\n' && p[1]) {
-            count++;
-        }
+    pin_string text = pin_text(arguments[0]);
+    int count = text.length ? 1 : 0;
+    for (size_t i = 0; i + 1 < text.length; i++) {
+        count += text.bytes[i] == '\n';
     }
     pin_array *array = build_values_array(values, count);
     if (!array) {
         return values->error;
     }
+    size_t start = 0;
     for (int i = 0; i < count; i++) {
-        const char *end = strchr(text, '\n');
-        size_t size = end ? (size_t)(end - text) : strlen(text);
-        if (size && text[size - 1] == '\r') {
+        size_t end = start;
+        while (end < text.length && text.bytes[end] != '\n') {
+            end++;
+        }
+        size_t size = end - start;
+        if (size && text.bytes[start + size - 1] == '\r') {
             size--;
         }
-        char *line = build_values_text(values, text, size);
+        const pin_string *line = build_values_text(values, text.bytes + start, size);
         if (!line) {
             return values->error;
         }
-        array->items[i] = (pin_value){ .type = PIN_STR, .str = line };
-        text = end ? end + 1 : text + strlen(text);
+        array->items[i] = (pin_value){ .type = PIN_STR, .text = line };
+        start = end + 1;
     }
     results[0].ptr = array;
     return NULL;
@@ -207,15 +272,15 @@ const char *build_values_trim(build_values *values, const pin_value *arguments, 
     if (!build_values_string(arguments)) {
         return "invalid build string arguments";
     }
-    const char *text = arguments[0].str;
-    while (*text && isspace((unsigned char)*text)) {
-        text++;
+    pin_string text = pin_text(arguments[0]);
+    size_t start = 0, end = text.length;
+    while (start < end && isspace((unsigned char)text.bytes[start])) {
+        start++;
     }
-    size_t size = strlen(text);
-    while (size && isspace((unsigned char)text[size - 1])) {
-        size--;
+    while (end > start && isspace((unsigned char)text.bytes[end - 1])) {
+        end--;
     }
-    return text_result(values, results, text, size);
+    return text_result(values, results, text.bytes + start, end - start);
 }
 const char *build_values_concat(build_values *values, const pin_value *arguments, pin_value *results)
 {
@@ -226,9 +291,10 @@ const char *build_values_concat(build_values *values, const pin_value *arguments
     int count = left->count + right->count;
     size_t bytes = 0;
     for (int i = 0; i < count; i++) {
-        const char *text = i < left->count ? left->items[i].str
-                                           : right->items[i - left->count].str;
-        size_t size = strlen(text) + 1;
+        pin_string text = pin_text(
+            i < left->count ? left->items[i] : right->items[i - left->count]
+        );
+        size_t size = text.length + 1;
         if (size > BUILD_TEXT_LIMIT - bytes) {
             return "build text limit exceeded";
         }
@@ -239,13 +305,14 @@ const char *build_values_concat(build_values *values, const pin_value *arguments
         return values->error;
     }
     for (int i = 0; i < array->count; i++) {
-        const char *text = i < left->count ? left->items[i].str
-                                           : right->items[i - left->count].str;
-        char *copy = build_values_text(values, text, strlen(text));
+        pin_string text = pin_text(
+            i < left->count ? left->items[i] : right->items[i - left->count]
+        );
+        const pin_string *copy = build_values_text(values, text.bytes, text.length);
         if (!copy) {
             return values->error;
         }
-        array->items[i] = (pin_value){ .type = PIN_STR, .str = copy };
+        array->items[i] = (pin_value){ .type = PIN_STR, .text = copy };
     }
     results[0].ptr = array;
     return NULL;

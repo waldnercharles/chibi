@@ -144,7 +144,7 @@ static bool equal_value(compile_value x, compile_value y)
         return false;
     }
     return behavior_scalar_string(x.value.type)
-             ? behavior_string_equal(x.value.str, y.value.str)
+             ? pin_text_equal(pin_text(x.value), pin_text(y.value))
              : compile_bits(x.value) == compile_bits(y.value);
 }
 static int binding(compile_binding *bindings, const char *name)
@@ -213,7 +213,11 @@ static uint64_t binding_id(uint64_t definition, compile_binding *bindings, bool 
             hash = mix(
                 hash,
                 behavior_scalar_string(value.value.type)
-                    ? script_catalog_id("constant-string", value.value.str)
+                    ? script_catalog_id_bytes(
+                          "constant-string",
+                          pin_text(value.value).bytes,
+                          pin_text(value.value).length
+                      )
                     : compile_bits(value.value)
             );
         }
@@ -542,11 +546,13 @@ static char *specialization_name(analyzer *a, generic_template definition, compi
                          ? "char"
                          : scalar_name(value.type.storage);
         } else if (behavior_scalar_string(value.value.type)) {
-            const char *text = value.value.str ? value.value.str : "";
-            quoted = xmalloc(strlen(text) * 6 + 3);
+            pin_string text = pin_text(value.value);
+            quoted = xmalloc((size_t)text.length * 6 + 3);
             char *at = quoted;
             *at++ = '"';
-            for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+            for (const unsigned char *p = (const unsigned char *)text.bytes;
+                 p < (const unsigned char *)text.bytes + text.length;
+                 p++) {
                 if (*p == '"' || *p == '\\') {
                     *at++ = '\\';
                     *at++ = (char)*p;
@@ -559,6 +565,9 @@ static char *specialization_name(analyzer *a, generic_template definition, compi
                 } else if (*p == '\t') {
                     *at++ = '\\';
                     *at++ = 't';
+                } else if (*p < 32 || *p >= 127) {
+                    snprintf(at, 7, "\\u%04x", *p);
+                    at += 6;
                 } else {
                     *at++ = (char)*p;
                 }

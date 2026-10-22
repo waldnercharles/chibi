@@ -1,5 +1,6 @@
 #ifndef CHIBI_VALUE_SCALAR_H
 #define CHIBI_VALUE_SCALAR_H
+#include "types/text.h"
 #include "types/value.h"
 
 #include <assert.h>
@@ -26,7 +27,7 @@
     X(PIN_TASK, uint64_t, u64)                                                 \
     X(PIN_UNION, void *, ptr)                                                  \
     X(PIN_NAME, const char *, str)                                             \
-    X(PIN_STR, const char *, str)
+    X(PIN_STR, const pin_string *, text)
 
 /* Numeric bits, independent of host byte order. */
 static inline uint64_t behavior_scalar_bits(pin_value value)
@@ -45,8 +46,8 @@ static inline uint64_t behavior_scalar_bits(pin_value value)
         case PIN_TASK: return value.u64;
         case PIN_ENUM: return (uint64_t)value.e;
         case PIN_UNION: return (uintptr_t)value.ptr;
-        case PIN_NAME:
-        case PIN_STR: return (uintptr_t)value.str;
+        case PIN_NAME: return (uintptr_t)value.str;
+        case PIN_STR: return (uintptr_t)value.text;
         default: assert(false); return 0;
     }
 }
@@ -90,9 +91,14 @@ static inline pin_value behavior_scalar_from_bits(pin_type type, uint64_t bits)
     return value;
 }
 
+static inline int behavior_text_equal(const pin_string *a, const pin_string *b)
+{
+    return a == b ||
+           pin_text_equal(a ? *a : (pin_string){ "", 0 }, b ? *b : (pin_string){ "", 0 });
+}
 static inline int behavior_string_equal(const char *a, const char *b)
 {
-    return a == b || strcmp(a ? a : "", b ? b : "") == 0;
+    return a == b || !strcmp(a ? a : "", b ? b : "");
 }
 
 static inline bool behavior_scalar_string(pin_type type)

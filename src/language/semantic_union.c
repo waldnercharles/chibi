@@ -180,14 +180,29 @@ void script_analyzer_union_fields(analyzer *a, TSNode body)
             }
             TSNode literal = script_analyzer_field(variant, "literal");
             TSNode name = script_analyzer_field(variant, "name");
-            char *text = script_analyzer_name_copy(a, ts_node_is_null(literal) ? name : literal);
+            pin_value literal_value = { .type = PIN_STR };
+            char *text;
+            if (ts_node_is_null(literal)) {
+                text = script_analyzer_name_copy(a, name);
+            } else {
+                literal_value = script_analyzer_string_value(a, literal);
+                pin_string bytes = pin_text(literal_value);
+                text = bytes.length && memchr(bytes.bytes, 0, bytes.length)
+                         ? script_analyzer_text_copy(a, literal)
+                         : xstrdup(bytes.bytes);
+            }
             script_catalog_variant v = { .name = own(a, text),
                                          .type = type,
                                          .tagged = ts_node_is_null(literal),
                                          .is_literal = !ts_node_is_null(literal) };
             if (v.is_literal) {
-                v.tag = script_catalog_id("union-literal", text);
-                v.literal = (pin_value){ .type = PIN_STR, .str = v.name };
+                pin_string bytes = pin_text(literal_value);
+                v.tag = script_catalog_id_bytes(
+                    "union-literal",
+                    bytes.bytes,
+                    bytes.length
+                );
+                v.literal = literal_value;
                 v.type = (script_type){ .storage = PIN_STR,
                                         .flags = SCRIPT_TYPE_LITERAL,
                                         .parameter = v.tag };
@@ -531,13 +546,13 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
         }
         free(name);
     } else if (script_analyzer_is(node, "string")) {
-        char *text = script_analyzer_name_copy(a, node);
+        pin_value literal = script_analyzer_string_value(a, node);
+        pin_string text = pin_text(literal);
         result.tested = (script_type){
             .storage = PIN_STR,
             .flags = SCRIPT_TYPE_LITERAL,
-            .parameter = script_catalog_id("union-literal", text)
+            .parameter = script_catalog_id_bytes("union-literal", text.bytes, text.length)
         };
-        free(text);
     } else {
         char *name = script_analyzer_text_copy(a, node);
         char *dot = strrchr(name, '.');

@@ -8,15 +8,25 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/core_nodes.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const char *reference_text(pin_value value)
+{
+    pin_string text = pin_text(value);
+    return text.length && !memchr(text.bytes, 0, text.length) && !text.bytes[text.length]
+             ? text.bytes
+             : NULL;
+}
 
 static reference_symbol reference_asset_symbol(int asset)
 {
@@ -142,13 +152,13 @@ static void add_definition(const site *s, reference_symbol symbol, const char *n
     add_at(s, REFERENCE_DEFINE, symbol, pin);
 }
 
-static const char *pin_text(const pin_spec *pin)
+static const char *pin_reference_text(const pin_spec *pin)
 {
     bool text = pin->default_value.type == PIN_NAME ||
                 pin->default_value.type == PIN_STR;
     return pin->container == PIN_CONTAINER_SINGLE && text &&
-                   pin->default_value.str && pin->default_value.str[0]
-             ? pin->default_value.str
+                   reference_text(pin->default_value)
+             ? reference_text(pin->default_value)
              : NULL;
 }
 
@@ -207,7 +217,7 @@ static void add_spawn(const site *s)
     const node *n = s->node;
     for (int i = 0; !strcmp(n->desc->name, "Spawn Prototype") && i < n->input_count;
          i++) {
-        const char *prototype = pin_text(&n->input_pins[i]);
+        const char *prototype = pin_reference_text(&n->input_pins[i]);
         if (!strcmp(n->input_pins[i].name, "Prototype") && prototype) {
             int asset = reference_index_named_asset(s->index, REFERENCE_ASSET_PROTOTYPE, prototype);
             add_at(
@@ -304,7 +314,7 @@ static bool set_field(const node *n, int input, const ecs_component_desc *c, cha
 static void add_field_default(const site *s, const char *component, const char *field, const pin_spec *pin)
 {
     int named = reference_named_field(component, field);
-    const char *value = pin_text(pin);
+    const char *value = pin_reference_text(pin);
     if (named >= 0 && value) {
         reference_add_named(s->index, place_of(s, pin->id), named, value);
     }
@@ -366,20 +376,27 @@ static void add_struct_default(const site *s, const pin_spec *pin)
                                     pin->type_name && pin->container == PIN_CONTAINER_SINGLE
                               ? type_catalog_find(pin->type_name)
                               : NULL;
+    arena storage = { 0 };
     pin_value field;
     for (int i = 0; type && i < reference_named_field_count(); i++) {
         if (!strcmp(reference_named_field_at(i).component, type->name) &&
-            pin_read_field_path(value->ptr, type, reference_named_field_at(i).field, &field) ==
-                0 &&
-            field.str && field.str[0]) {
-            reference_add_named(s->index, place_of(s, pin->id), i, field.str);
+            pin_read_field_path(
+                &storage,
+                value->ptr,
+                type,
+                reference_named_field_at(i).field,
+                &field
+            ) == 0 &&
+            reference_text(field)) {
+            reference_add_named(s->index, place_of(s, pin->id), i, reference_text(field));
         }
     }
     if (type && !strcmp(type->name, MESH_PARTS) &&
-        pin_read_field_path(value->ptr, type, "parts", &field) == 0 &&
-        field.str && field.str[0]) {
-        add_mesh_parts(s->index, place_of(s, pin->id), field.str);
+        pin_read_field_path(&storage, value->ptr, type, "parts", &field) == 0 &&
+        reference_text(field)) {
+        add_mesh_parts(s->index, place_of(s, pin->id), reference_text(field));
     }
+    arena_free(&storage);
 }
 
 /* Variable, local and component bindings read what they name. */
@@ -484,11 +501,11 @@ static void add_node(const site *s)
         }
         if (pin->kind == PIN_DATA && pin->type == PIN_STR && pin->type_name &&
             !strcmp(pin->type_name, "MaterialAsset") &&
-            pin->default_value.str && pin->default_value.str[0]) {
+            reference_text(pin->default_value)) {
             int asset = reference_index_named_asset(
                 s->index,
                 REFERENCE_ASSET_MATERIAL,
-                pin->default_value.str
+                reference_text(pin->default_value)
             );
             add_at(
                 s,
@@ -654,6 +671,7 @@ static void add_prototype_fields(
     av_value *overrides
 )
 {
+    arena storage = { 0 };
     pin_value value;
     for (int i = 0; i < reference_named_field_count(); i++) {
         if (!overridden(
@@ -662,20 +680,22 @@ static void add_prototype_fields(
                 reference_named_field_at(i).field
             ) &&
             prototype_read_field(
+                &storage,
                 prototype,
                 reference_named_field_at(i).component,
                 reference_named_field_at(i).field,
                 &value
             ) == 0 &&
-            value.str && value.str[0]) {
-            reference_add_named(index, at, i, value.str);
+            reference_text(value)) {
+            reference_add_named(index, at, i, reference_text(value));
         }
     }
     if (!overridden(overrides, MESH_PARTS, "parts") &&
-        prototype_read_field(prototype, MESH_PARTS, "parts", &value) == 0 &&
-        value.str && value.str[0]) {
-        add_mesh_parts(index, at, value.str);
+        prototype_read_field(&storage, prototype, MESH_PARTS, "parts", &value) == 0 &&
+        reference_text(value)) {
+        add_mesh_parts(index, at, reference_text(value));
     }
+    arena_free(&storage);
 }
 
 static void add_override_fields(reference_index *index, reference at, av_value *components)

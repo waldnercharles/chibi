@@ -2,7 +2,7 @@
 
 #include "runtime/url.h"
 
-static const native_parameter_definition OPEN_IN[] = { URL_OPEN_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition OPEN_IN[] = { URL_OPEN_INPUTS(NATIVE_CSTRING_PORT) };
 static const native_parameter_definition OPEN_OUT[] = { URL_OPEN_OUTPUTS(NATIVE_PORT) };
 static const native_parameter_definition EXEC[] = { URL_EXEC(NATIVE_PORT) };
 static const native_parameter_definition THEN[] = { URL_THEN(NATIVE_PORT) };

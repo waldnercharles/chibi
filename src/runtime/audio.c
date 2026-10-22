@@ -1,8 +1,10 @@
 #include "runtime/audio.h"
 
+#include "execution/function.h"
 #include "execution/host.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -366,9 +368,13 @@ unsigned char *tone_wav(tone tone, int *size)
     return wav;
 }
 
-static int named(audio *audio, const pin_value *value, const char **error)
+static int named(arena *storage, audio *audio, const pin_value *value, const char **error)
 {
-    const char *name = value->str ? value->str : "";
+    const char *name;
+    *error = pin_text_cstring(storage, *value, &name, NULL);
+    if (*error) {
+        return -1;
+    }
     int index = find(audio, name);
     if (index < 0) {
         snprintf(audio->message, sizeof audio->message, "No sound named '%s'", name);
@@ -390,11 +396,16 @@ static const char *play_tone(void *service, const pin_value *in, pin_value *)
     }
     return NULL;
 }
-static const char *play_sound(void *service, const pin_value *in, pin_value *)
+static const char *play_sound(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *
+)
 {
     audio *audio = service;
     const char *error = NULL;
-    int index = named(audio, &in[0], &error);
+    int index = named(ctx->value_storage, audio, &in[0], &error);
     if (index < 0) {
         return error;
     }
@@ -421,11 +432,16 @@ static const char *change_music(audio *audio, int index, float seconds)
     mix(audio, TAG_MUSIC, values, 2);
     return NULL;
 }
-static const char *play_music(void *service, const pin_value *in, pin_value *)
+static const char *play_music(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *
+)
 {
     audio *audio = service;
     const char *error = NULL;
-    int index = named(audio, &in[0], &error);
+    int index = named(ctx->value_storage, audio, &in[0], &error);
     return index < 0 ? error : change_music(audio, index, in[1].f);
 }
 static const char *stop_music(void *service, const pin_value *in, pin_value *)
@@ -508,8 +524,16 @@ static const char *get_analysis(void *service, const pin_value *, pin_value *out
         .missing_service = "Audio requires a game world"                       \
     }
 CALL(AUDIO_TONE_CALL, play_tone);
-CALL(AUDIO_SOUND_CALL, play_sound);
-CALL(AUDIO_MUSIC_CALL, play_music);
+const node_host_call AUDIO_SOUND_CALL = {
+    .service = "game.audio",
+    .context = play_sound,
+    .missing_service = "Audio requires a game world"
+};
+const node_host_call AUDIO_MUSIC_CALL = {
+    .service = "game.audio",
+    .context = play_music,
+    .missing_service = "Audio requires a game world"
+};
 CALL(AUDIO_STOP_MUSIC_CALL, stop_music);
 CALL(AUDIO_MASTER_VOLUME_CALL, master_volume);
 CALL(AUDIO_MUSIC_VOLUME_CALL, music_volume);

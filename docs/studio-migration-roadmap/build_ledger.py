@@ -187,7 +187,7 @@ validation={
  'product_dispositions':dict(collections.Counter(r['disposition'] for r in prod)),
  'all_product_sources_and_headers_explicitly_owned':True,'all_867_paths_have_tracking_owner':True,
  'original_inventory_sha256':'76d710e88e0a2d2ecb35a9bf895b3b8223a1fbf96b9029e51f185f2106089d87',
- 'inventory_normalization':'CRLF to LF only; CSV row/field content retained',
+ 'inventory_normalization':'CRLF to LF; retired test-policy build-membership wording replaced with factual unrun coverage; source paths, identities and other fields retained',
  'original_source_plan_sha256':'ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31',
  'original_source_plan_url':'https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md',
  'source_plan_sha256':hashlib.sha256((root/'source/plan.md').read_bytes()).hexdigest(),

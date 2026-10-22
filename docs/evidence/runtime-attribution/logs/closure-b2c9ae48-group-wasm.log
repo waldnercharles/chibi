@@ -6,7 +6,6 @@ de60a1c108f6c6a8d768f20b1a12b9ae28f985b5166dc1b119bbaca7e745ed8b  build-attribut
 4a95073e957a36e4258f8b43d3ee43bc6e2739af2027808fba7b8cb778e8149b  tools/test_policy.py
 v24.19.0
 + env PATH=$NODE24_BIN:$BASE_PATH CHIBI_WASM_BUILD_DIR=build-attribution-wasm python3 tools/test_policy.py group wasm
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 Running: wasm_default_executes_emitted_code_with_numeric_and_array_helpers (OK) (0.030026 secs)
 Running: wasm_helper_resumes_and_budget_failure_is_reported (OK) (0.002166 secs)
 Running: wasm_integer_operations_preserve_width_and_exact_bits (OK) (0.001742 secs)
@@ -851,7 +850,7 @@ Running: reductions_mixed_public_ir_preserves_serial_failure_owner (OK) (0.00086
 Running: reductions_effects_include_component_payload_reads (OK) (0.000789 secs)
 ===============================================================
 Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 450
-Test command wall time: 3.985s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 3.985s; includes in-test fixture setup; external configuration/build excluded.
 + result=0
 + set +x
 ended=2026-10-15T20:12:46Z

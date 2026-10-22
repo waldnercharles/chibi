@@ -525,7 +525,7 @@ void behavior_function_prepare_borrows(behavior_function *f)
     execution_prepare_argument_sharing(f);
     /* With every callee's argument sharing known, a raw address to a built
      * value may reach a callee that changes no argument. */
-    behavior_function_note_results(f);
+    behavior_function_note_derived(f);
     borrow_proof proof = { 0 };
     f->readonly_collections = readonly(f, NULL, &proof);
     if (!f->readonly_collections) {

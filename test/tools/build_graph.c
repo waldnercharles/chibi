@@ -17,7 +17,7 @@
 
 #define GRAPH_PATH 4096
 #define GRAPH_RUN_SECONDS 50
-#define GRAPH_TOKENS 128
+#define GRAPH_TOKENS 512
 
 static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
@@ -585,15 +585,17 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
          *link_flags = ninja_variable(ninja, path, "LINK_FLAGS"),
          *libraries = ninja_variable(ninja, path, "LINK_LIBRARIES"),
          *theirs[GRAPH_TOKENS];
-    int count = 0;
-    theirs[count++] = compiler;
-    count = split_into(flags, theirs, count);
-    count = split_into(link_flags, theirs, count);
-    int objects = count;
     char head[GRAPH_PATH];
     snprintf(head, sizeof head, "\nbuild %s: ", path);
     const char *statement = strstr(ninja, head);
     assert(statement);
+    /* CMake links with the C++ compiler when a library has C++ sources. */
+    bool cxx = !strncmp(statement + strlen(head), "CXX_EXECUTABLE_LINKER", 21);
+    int count = 0;
+    theirs[count++] = cxx ? cxx_compiler : compiler;
+    count = split_into(flags, theirs, count);
+    count = split_into(link_flags, theirs, count);
+    int objects = count;
     char *line = strndup(statement + 1, strcspn(statement + 1, "\n"));
     for (char *token = strtok(line, " "); token && strcmp(token, "|");
          token = strtok(NULL, " ")) {
@@ -642,8 +644,17 @@ TEST_CASE(links_match_cmake)
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *name = base(yyjson_get_str(yyjson_obj_get(entry, "output")));
-        char cmake_path[GRAPH_PATH];
-        snprintf(cmake_path, sizeof cmake_path, "%s%s", strcmp(name, "reflect") ? "sdk/" : "", name);
+        /* CMake writes executables to sdk/, bin/ or the build directory; a
+         * bare name may also be a phony alias. */
+        char cmake_path[GRAPH_PATH], head[GRAPH_PATH];
+        const char *const directories[] = { "sdk/", "bin/", "" };
+        for (int i = 0; i < 3; i++) {
+            snprintf(cmake_path, sizeof cmake_path, "%s%s", directories[i], name);
+            snprintf(head, sizeof head, "\nbuild %s: ", cmake_path);
+            if (strstr(ninja, head)) {
+                break;
+            }
+        }
         yyjson_val *arguments = yyjson_obj_get(entry, "arguments");
         char *ours[GRAPH_TOKENS];
         int count = 0;
@@ -661,8 +672,14 @@ TEST_CASE(links_match_cmake)
         matched,
         yyjson_arr_size(yyjson_doc_get_root(doc))
     );
-    /* reflect, the build host, the compiler host and the launcher. */
-    REQUIRE(matched == 4 && yyjson_arr_size(yyjson_doc_get_root(doc)) == 4);
+    /* reflect, the build host, the compiler host and the launcher, and on
+     * macOS the player, chibi-compile and chibi_ctl. */
+#ifdef __APPLE__
+    size_t programs = 7;
+#else
+    size_t programs = 4;
+#endif
+    REQUIRE((size_t)matched == programs && yyjson_arr_size(yyjson_doc_get_root(doc)) == programs);
     yyjson_doc_free(doc);
     free(ninja);
     return true;

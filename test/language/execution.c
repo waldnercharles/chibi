@@ -1433,6 +1433,19 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         arena_contains(&storage, value->values[2].ptr)
     );
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
+    /* A value kept once is copied where the mask keeps it again. */
+    args[1].u64 = 5;
+    REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
+    value = out.ptr;
+    REQUIRE(value->values[0].ptr == held && value->values[2].ptr != held);
+    REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
+    /* A union it keeps may hold a value another payload keeps, so it is
+     * copied: here the inner union keeps `held`, as the second payload does. */
+    pin_value inner = out,
+              nested[] = { args[0], { .type = PIN_U64, .u64 = 3 }, inner, args[2] };
+    REQUIRE(!EXECUTION_union_keep_call.value(&storage, nested, 4, &out));
+    value = out.ptr;
+    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr == held);
     arena_free(&storage);
     arena_free(&other);
     /* The cost model reports the copy of each managed payload value the

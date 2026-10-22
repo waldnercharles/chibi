@@ -2003,7 +2003,7 @@ static const char *verify_metadata(const behavior_function *f)
 /* Every cycle must cross a runtime step check. Remove check vertices and prove
  * the remaining control graph acyclic with a linear topological traversal.
  * Fixed-step entry proofs cannot bound any cycle, even one containing checks. */
-static int successors(const behavior_function *f, int pc, int targets[2])
+int behavior_function_successors(const behavior_function *f, int pc, int targets[2])
 {
     behavior_function_op op = f->instructions[pc].op;
     int count = 0;
@@ -2026,7 +2026,7 @@ static bool checked_control(const behavior_function *f)
             continue;
         }
         vertices++;
-        int targets[2], n = successors(f, pc, targets);
+        int targets[2], n = behavior_function_successors(f, pc, targets);
         for (int edge = 0; edge < n; edge++) {
             int target = targets[edge];
             if (f->root_steps || f->instructions[target].op != BF_CHECK) {
@@ -2040,7 +2040,7 @@ static bool checked_control(const behavior_function *f)
         }
     }
     while (head < tail) {
-        int targets[2], n = successors(f, queue[head++], targets);
+        int targets[2], n = behavior_function_successors(f, queue[head++], targets);
         for (int edge = 0; edge < n; edge++) {
             int target = targets[edge];
             if ((!f->root_steps && f->instructions[target].op == BF_CHECK)) {
@@ -2104,7 +2104,7 @@ static bool defined_operands(const behavior_function *f)
             behavior_scalar_integer(i->type) && i->target >= 0) {
             define_slot(next, i->target);
         }
-        int targets[2], edges = successors(f, pc, targets);
+        int targets[2], edges = behavior_function_successors(f, pc, targets);
         for (int edge = 0; edge < edges; edge++) {
             int target = targets[edge];
             uint64_t *to = before + (size_t)target * words;

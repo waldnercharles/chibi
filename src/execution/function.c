@@ -306,8 +306,8 @@ void behavior_function_note_results(behavior_function *f)
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
     }
-    /* A result moves only when nothing but the updates that run in the
-     * caller's storage changes what the function builds there. */
+    /* A result moves only when execution_builds_safely proves that nothing
+     * else changes or shares what the function builds there. */
     f->builds_results = f->builds_results && execution_builds_safely(f);
 }
 

@@ -416,17 +416,6 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     }
 }
 
-/* Whether an earlier result returns the same value. Only the first may move,
- * so the caller's results stay independent. */
-static bool earlier_result(const behavior_function_context *context, int result)
-{
-    for (int i = 0; i < result; i++) {
-        if (context->results[i].ptr == context->results[result].ptr) {
-            return true;
-        }
-    }
-    return false;
-}
 static bool same_header(const pin_value *value, const pin_value *declared)
 {
     return value->type == declared->type && value->container == declared->container;
@@ -464,8 +453,7 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
                        result->type == PIN_UNION || result->type == PIN_STR;
         if (frame->function->builds_results && pointer && result->ptr &&
             context->value_storage != parent->value_storage &&
-            arena_contains(parent->value_storage, result->ptr) &&
-            !earlier_result(context, p)) {
+            arena_contains(parent->value_storage, result->ptr)) {
             out->ptr = result->ptr;
             continue;
         }

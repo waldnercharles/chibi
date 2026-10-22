@@ -49,7 +49,14 @@ int pin_union_kept(arena *storage, uint64_t tag, uint64_t keep, const pin_value 
 {
     pin_union *value = allocate(storage, tag, values, count);
     for (int i = 0; i < count; i++) {
-        bool kept = i < 64 && (keep >> i & 1) && held_by(storage, &values[i]);
+        /* A union kept here may hold a value another payload keeps. */
+        bool kept = i < 64 && (keep >> i & 1) && held_by(storage, &values[i]) &&
+                    !(values[i].type == PIN_UNION &&
+                      values[i].container == PIN_CONTAINER_SINGLE);
+        /* A value kept once is copied again, so the payloads stay apart. */
+        for (int j = 0; kept && j < i; j++) {
+            kept = value->values[j].ptr != values[i].ptr;
+        }
         if (kept) {
             value->values[i] = values[i];
         } else if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {

@@ -2043,6 +2043,7 @@ TEST_CASE(borrow_result_reached_through_argument_builds_nothing)
         BUILT,
         ARGUMENT,
         THROUGH_ARGUMENT,
+        WRITTEN_ARGUMENT,
         KINDS
     };
     for (int kind = 0; kind < KINDS; kind++) {
@@ -2092,17 +2093,33 @@ TEST_CASE(borrow_result_reached_through_argument_builds_nothing)
                 true
             );
         }
-        int name = value(
-            (behavior_function_instruction){ .op = BF_CONSTANT,
-                                             .type = BF_POINTER_TYPE,
-                                             .value = { .type = BF_POINTER_TYPE } },
-            true
-        );
-        emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
-                                              .type = PIN_F64,
-                                              .left = returned,
-                                              .right = name,
-                                              .value = array_shape });
+        if (kind == WRITTEN_ARGUMENT) {
+            /* Written into the result buffer, as stage one publishes. */
+            int results = value(
+                (behavior_function_instruction){
+                    .op = BF_CONTEXT,
+                    .type = BF_POINTER_TYPE,
+                    .offset = offsetof(behavior_function_context, results) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = returned,
+                                                  .right = results,
+                                                  .offset = offsetof(pin_value, d) });
+        } else {
+            int name = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .value = { .type = BF_POINTER_TYPE } },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                                  .type = PIN_F64,
+                                                  .left = returned,
+                                                  .right = name,
+                                                  .value = array_shape });
+        }
         emit((behavior_function_instruction){ .op = BF_RETURN });
         emit((behavior_function_instruction){ .op = BF_END });
         char error[256];
@@ -2115,8 +2132,112 @@ TEST_CASE(borrow_result_reached_through_argument_builds_nothing)
     }
     return true;
 }
-/* A value a function built in its caller's storage and returns in two
- * results moves into one of them and is copied into the other. */
+/* union_keep shares a value it keeps with the local that holds it, so a
+ * result-storage update after it would change the union too: such a function
+ * builds no results. Updates before it, or after one whose mask keeps
+ * nothing and no instruction writes, leave the union as it was built. */
+TEST_CASE(borrow_update_after_union_keep_builds_nothing)
+{
+    enum
+    {
+        UPDATE_BEFORE,
+        UPDATE_AFTER,
+        KEEPS_NOTHING,
+        MASK_WRITTEN,
+        KINDS
+    };
+    for (int kind = 0; kind < KINDS; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+        int local = behavior_function_builder_values(builder, &array_shape, 1);
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        put_address(
+            local,
+            value(
+                (behavior_function_instruction){
+                    .op = BF_LOAD,
+                    .type = BF_POINTER_TYPE,
+                    .left = host_address(behavior_function_builder_host_results(builder, make)),
+                    .offset = offsetof(pin_value, d) },
+                true
+            )
+        );
+        if (kind == UPDATE_BEFORE) {
+            push_item(local, true);
+        }
+        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                               { .type = PIN_U64,
+                                 .u64 = kind == KEEPS_NOTHING || kind == MASK_WRITTEN
+                                          ? 0
+                                          : 1 },
+                               array_shape },
+                  made = { .type = PIN_UNION };
+        int keep = behavior_function_builder_host(
+            builder,
+            &EXECUTION_union_keep_call,
+            &EXECUTION_assignment_access,
+            inputs,
+            3,
+            &made,
+            1
+        );
+        uint64_t id = execution_intrinsic_id(&EXECUTION_union_keep_call) |
+                      EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, keep, id, execution_intrinsic_abi(id))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = keep,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        if (kind == MASK_WRITTEN) {
+            /* A later write, here after the keep, makes its mask unknown. */
+            int all = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = PIN_U64,
+                                                 .value = { .type = PIN_U64, .u64 = 1 } },
+                false
+            );
+            emit((behavior_function_instruction){
+                .op = BF_WRITE,
+                .type = PIN_U64,
+                .left = all,
+                .right = host_address(behavior_function_builder_host_first(builder, keep) + 1),
+                .offset = offsetof(pin_value, d) });
+        }
+        if (kind != UPDATE_BEFORE) {
+            push_item(local, true);
+        }
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "update after keep %d: %s\n", kind, error);
+        }
+        REQUIRE(function);
+        REQUIRE(function->builds_results == (kind == UPDATE_BEFORE || kind == KEEPS_NOTHING));
+    }
+    return true;
+}
+/* A function with two results builds neither in its caller's storage, since
+ * both could reach one value: returning one built value twice gives the
+ * caller two independent copies. */
 TEST_CASE(borrow_aliased_results_stay_independent)
 {
     cleanup();
@@ -2203,7 +2324,7 @@ TEST_CASE(borrow_aliased_results_stay_independent)
     REQUIRE(function);
     behavior_function_prepare_borrows(function);
     behavior_function_prepare_borrows(helper_function);
-    REQUIRE(helper_function->builds_results);
+    REQUIRE(!helper_function->builds_results);
     pin_value output = { .type = PIN_BOOL };
     REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
     REQUIRE(!output.b);
@@ -2237,5 +2358,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
     RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);
     RUN_TEST_CASE(borrow_aliased_results_stay_independent);
+    RUN_TEST_CASE(borrow_update_after_union_keep_builds_nothing);
     pu_clear_setup();
 }

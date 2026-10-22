@@ -10,6 +10,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1815,6 +1816,7 @@ static bool share_derived(const share_flow *s, int base)
 static void share_scatter(share_flow *s, bool tainted)
 {
     share_taint(s, &s->memory, tainted);
+    share_taint(s, &s->returned, tainted);
     share_taint(s, &s->retyped, true);
     for (int cell = 0; cell < acount(s->f->data_values); cell++) {
         share_taint(s, &s->cells[cell], tainted);
@@ -1898,11 +1900,10 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_UNION_KEEP: {
                 /* A payload value it keeps keeps what it reaches; it copies
                  * those its mask leaves out, as a snapshot does. */
-                int steps = EFFECT_STEPS;
-                origin keep = bank_origin(f, pc, host->first + 1, 0, &steps);
+                int keep = s->cell_literals[host->first + 1];
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_first - host->first - 2; k++) {
-                    bool kept = !keep.constant || (k < 64 && (keep.bits >> k & 1));
+                    bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
                     output |= kept && share_cell(s, host->first + 2 + k);
                 }
                 break;
@@ -2064,9 +2065,18 @@ static void share_instruction(share_flow *s, int pc)
                 share_taint(s, &s->cells[address], value);
                 share_taint(s, &s->texts[address], text);
                 share_set(s, &s->contents[address], s->addresses[i->left]);
-                share_set(s, &s->cell_literals[address], s->literals[i->left]);
+                /* Only a whole I32 keeps its literal; other writes may
+                 * change part of a wider value. */
+                share_set(
+                    s,
+                    &s->cell_literals[address],
+                    f->data_values[address].initial.type == PIN_I32
+                        ? s->literals[i->left]
+                        : SHARE_UNKNOWN
+                );
             } else if (address == SHARE_RESULTS) {
                 share_taint(s, &s->results, value || text);
+                share_taint(s, &s->returned, value || text);
             } else {
                 share_scatter(s, value);
                 share_taint(s, &s->text_memory, text);
@@ -2181,9 +2191,52 @@ static int *share_column(int count)
     }
     return column;
 }
+/* Whether a result-storage update may run after union_keep has kept a value,
+ * which the union would then share with the local it updates. */
+static bool updates_kept(const share_flow *s)
+{
+    const behavior_function *f = s->f;
+    int count = acount(f->instructions), *pending = NULL;
+    bool *seen = xcalloc((size_t)count + 1, sizeof *seen), updates = false;
+    for (int pc = 0; pc < count; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op != BF_HOST_CALL ||
+            execution_intrinsic_kind(intrinsic(&f->host_calls[i->target])) !=
+                EXECUTION_INTRINSIC_UNION_KEEP) {
+            continue;
+        }
+        if (s->cell_literals[f->host_calls[i->target].first + 1] != 0) {
+            apush(pending, pc);
+        }
+    }
+    while (acount(pending) && !updates) {
+        int pc = pending[acount(pending) - 1], targets[2];
+        asetlen(pending, acount(pending) - 1);
+        for (int k = 0, n = behavior_function_successors(f, pc, targets); k < n; k++) {
+            if (seen[targets[k]]) {
+                continue;
+            }
+            seen[targets[k]] = true;
+            const behavior_function_instruction *next = &f->instructions[targets[k]];
+            if (next->op == BF_HOST_CALL) {
+                uint64_t id = intrinsic(&f->host_calls[next->target]);
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                updates |= execution_intrinsic_in_result(id) &&
+                           (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+                            kind == EXECUTION_INTRINSIC_ARRAY_STORE ||
+                            kind == EXECUTION_INTRINSIC_ARRAY_EXTEND);
+            }
+            apush(pending, targets[k]);
+        }
+    }
+    afree(pending);
+    free(seen);
+    return updates;
+}
 /* One definition's own rules, ignoring what its callees do. Results start
  * tainted: they hold the caller's result cells until written. With `built`,
- * what the definition builds in its caller's storage is tainted too.
+ * what the definition builds in its caller's storage is tainted too, and no
+ * result-storage update may follow a union_keep that may keep a value.
  * `returned`, when given, says whether a result may reach the caller's. */
 static bool share_local(const behavior_function *f, bool built, bool *returned)
 {
@@ -2208,6 +2261,10 @@ static bool share_local(const behavior_function *f, bool built, bool *returned)
             initial.container == PIN_CONTAINER_SINGLE && initial.i >= 0) {
             s.cell_literals[cell] = initial.i;
         }
+        if (initial.type == PIN_U64 &&
+            initial.container == PIN_CONTAINER_SINGLE && initial.u64 <= INT_MAX) {
+            s.cell_literals[cell] = (int)initial.u64;
+        }
     }
     int passes = 0;
     do {
@@ -2216,7 +2273,7 @@ static bool share_local(const behavior_function *f, bool built, bool *returned)
             share_instruction(&s, pc);
         }
     } while (s.changed && !s.unsafe && ++passes < SHARE_PASSES);
-    bool safe = !s.unsafe && !s.changed;
+    bool safe = !s.unsafe && !s.changed && !(built && updates_kept(&s));
     if (returned) {
         *returned = s.returned;
     }
@@ -2238,13 +2295,17 @@ static int by_definition(const void *a, const void *b)
     uintptr_t y = (uintptr_t)(*(behavior_function *const *)b);
     return (x > y) - (x < y);
 }
-/* Without `built`, what the definition builds is its own, so a result that
- * reaches the caller's came from its arguments or other data: moving it would
- * let the caller's results share that data. */
+/* A definition with one result builds it in its caller's storage when only
+ * the updates that run there change what it builds, none after union_keep
+ * keeps a value, and no result may be the caller's own data. Without `built`,
+ * what the definition builds is its own, so a result that reaches the
+ * caller's came from its arguments or other data: moving it would let the
+ * caller's result share that data. Two results could share what they reach. */
 bool execution_builds_safely(const behavior_function *f)
 {
     bool returned = true;
-    return share_local(f, true, NULL) && share_local(f, false, &returned) && !returned;
+    return f->result_count <= 1 && share_local(f, true, NULL) &&
+           share_local(f, false, &returned) && !returned;
 }
 void execution_prepare_argument_sharing(behavior_function *root)
 {

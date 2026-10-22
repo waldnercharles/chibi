@@ -266,6 +266,8 @@ void behavior_function_borrow_snapshots(behavior_function *function, const bool 
 void behavior_function_prepare_borrows(behavior_function *function);
 /* Sets builds_results from the frozen function's host calls. */
 void behavior_function_note_results(behavior_function *function);
+/* The instructions control may reach next from `pc`; returns their count. */
+int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);
 bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);

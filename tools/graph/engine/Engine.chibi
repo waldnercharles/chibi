@@ -87,10 +87,13 @@ pub Program :: (target: string) -> bool {
     return false;
 }
 
-// Where an executable is written: the build directory, as CMake writes the
-// root project's.
+// Where an executable is written: below the build directory where CMake
+// writes it (ProgramDirectory).
 pub Executable :: (build_dir: string, target: string) -> string {
-    return Join([build_dir, "/", target]);
+    if (ProgramDirectory(target) == "") {
+        return Join([build_dir, "/", target]);
+    }
+    return Join([build_dir, "/", ProgramDirectory(target), "/", target]);
 }
 
 // What CMake gives an executable's link before its objects: the language
@@ -248,13 +251,19 @@ Embed :: (source_root: string, build_dir: string, target: string) {
 }
 
 // A define with the values CMake substitutes: {source_root}, {build_type},
-// and {sha256:PATH} for a file's SHA-256.
-Expand :: (source_root: string, profile: Profile, define: string) -> string {
+// {sha256:PATH} for a file's SHA-256 and {program:NAME} for where an
+// executable is written.
+Expand :: (source_root: string, build_dir: string, profile: Profile, define: string) -> string {
     if (build.before(define, "{") == define) {
         return define;
     }
     text := build.replace(define, "{source_root}", source_root);
     text = build.replace(text, "{build_type}", profile.build_type);
+    if (build.before(text, "{program:") != text) {
+        rest := build.after(text, "{program:");
+        program := Executable(build_dir, build.before(rest, "}"));
+        text = Join([build.before(text, "{program:"), program, build.after(rest, "}")]);
+    }
     if (build.before(text, "{sha256:") == text) {
         return text;
     }
@@ -269,7 +278,7 @@ Expand :: (source_root: string, profile: Profile, define: string) -> string {
 // in the template, which is small; build values are never freed, and
 // searching the text as byte lists fill it copied it for every absent one.
 // False when an input is missing or an output cannot be written.
-Configure :: (source_root: string, build_dir: string, target: string) -> bool {
+Configure :: (source_root: string, build_dir: string, profile: Profile, target: string) -> bool {
     for (configure in Configures(target)) {
         input := Resolve(source_root, build_dir, "", build.after(configure, "="));
         if (!build.file_exists(input)) {
@@ -281,7 +290,8 @@ Configure :: (source_root: string, build_dir: string, target: string) -> bool {
             for (substitution in Substitutions(target)) {
                 placeholder := Join(["@", build.before(substitution, "="), "@"]);
                 if (build.before(template, placeholder) != template) {
-                    text = build.replace(text, placeholder, Substitute(source_root, build.after(substitution, "=")));
+                    text = build.replace(text, placeholder,
+                                         Substitute(source_root, build_dir, profile, build.after(substitution, "=")));
                 }
             }
         }
@@ -307,8 +317,28 @@ Configured :: (target: string) -> string[] {
 }
 
 // A substitution's value: `bytes:PATH` as the C initializer CMake writes from
-// file(READ ... HEX), or `cstring:PATH` as the lines of a C string literal.
-Substitute :: (source_root: string, value: string) -> string {
+// file(READ ... HEX), `cstring:PATH` as the lines of a C string literal, or
+// `compiler:ARGUMENT` as an escaped initializer line for each of the
+// profile's C compiler, its C flags and ARGUMENT, if any, as
+// test/tools/CMakeLists.txt writes them.
+Substitute :: (source_root: string, build_dir: string, profile: Profile, value: string) -> string {
+    if (build.before(value, ":") == "compiler") {
+        arguments := [profile.compiler];
+        arguments.extend(DebugDirectoryFlags(profile, build_dir));
+        arguments.extend(BuildTypeFlags(profile.build_type));
+        if (profile.sanitizers != "") {
+            arguments.extend([Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
+        }
+        if (build.after(value, ":") != "") {
+            arguments.append(build.after(value, ":"));
+        }
+        lines: string[] = [];
+        for (argument in arguments) {
+            escaped := build.replace(build.replace(argument, "\\", "\\\\"), "\"", "\\\"");
+            lines.append(Join(["    \"", escaped, "\",\n"]));
+        }
+        return strings.Join(lines, "");
+    }
     path := Join([source_root, "/", build.after(value, ":")]);
     if (build.before(value, ":") == "bytes") {
         return build.byte_list(path);
@@ -372,8 +402,22 @@ Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: st
     return compiled;
 }
 
+// Whether building a program needs a target: a library it links, a program
+// it runs (Runs) or a library such a program links.
+pub Needed :: (program: string, target: string) -> bool {
+    if (Linked(program, target)) {
+        return true;
+    }
+    for (run in Runs(program)) {
+        if (run == target || Linked(run, target)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Whether an executable links a library.
-pub Linked :: (program: string, target: string) -> bool {
+Linked :: (program: string, target: string) -> bool {
     linked := Links(program);
     linked.extend(LinkedObjects(program));
     for (name in linked) {
@@ -429,8 +473,12 @@ pub LinkCommands :: (tools: c.Tools, profile: Profile, source_root: string, buil
 }
 
 // Where an include directory the tables name is: staged headers below the
-// build's sdk directory, otherwise where Resolve finds it.
+// build's sdk directory, `.` for the source root, otherwise where Resolve
+// finds it.
 IncludeDirectory :: (source_root: string, build_dir: string, third_party: string, include: string) -> string {
+    if (include == ".") {
+        return source_root;
+    }
     if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
         return Join([build_dir, "/sdk/", include]);
     }
@@ -445,11 +493,11 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
                      language: string) -> string[] {
     flags: string[] = [];
     for (define in Defines(target)) {
-        flags.append(Join(["-D", Expand(source_root, profile, define)]));
+        flags.append(Join(["-D", Expand(source_root, build_dir, profile, define)]));
     }
     flags.extend(ProfileDefines(target, profile));
     for (define in SourceDefines(target, file)) {
-        flags.append(Join(["-D", Expand(source_root, profile, define)]));
+        flags.append(Join(["-D", Expand(source_root, build_dir, profile, define)]));
     }
     for (include in SourceIncludes(target, file)) {
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
@@ -486,6 +534,22 @@ Clang :: (profile: Profile) -> bool {
     return profile.compiler_id == "Clang" || profile.compiler_id == "AppleClang";
 }
 
+// The flag root CMakeLists.txt adds to each language's flags for a ccache
+// build's debug directory, when debug info is on.
+DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
+    if (profile.debug_compilation_dir == "" ||
+        (profile.build_type != "Debug" && profile.build_type != "RelWithDebInfo")) {
+        return [];
+    }
+    if (Clang(profile)) {
+        return [Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir])];
+    }
+    if (profile.compiler_id == "GNU") {
+        return [Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir])];
+    }
+    return [];
+}
+
 // What CMake adds for each build type with Clang and GCC.
 BuildTypeFlags :: (build_type: string) -> string[] {
     if (build_type == "Debug") {
@@ -516,13 +580,8 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
     if (language == "objc") {
         flags.extend(["-x", "objective-c"]);
     }
-    if (language != "objc" && profile.debug_compilation_dir != "" &&
-        (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo")) {
-        if (Clang(profile)) {
-            flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
-        } else if (profile.compiler_id == "GNU") {
-            flags.append(Join(["-fdebug-prefix-map=", build_dir, "=", profile.debug_compilation_dir]));
-        }
+    if (language != "objc") {
+        flags.extend(DebugDirectoryFlags(profile, build_dir));
     }
     flags.extend(BuildTypeFlags(profile.build_type));
     standard := Standard(target);
@@ -649,7 +708,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         kept := Rewritten(target);
         kept.extend(Configured(target));
         if (!Rewrite(source_root, build_dir, profile.third_party, target) ||
-            !Configure(source_root, build_dir, target) ||
+            !Configure(source_root, build_dir, profile, target) ||
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));

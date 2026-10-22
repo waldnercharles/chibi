@@ -81,7 +81,8 @@ Missing allowed names read as empty strings; other names are capability errors.
 `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
 1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
-256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
+1,023 arguments totaling at most 64 KiB, as many as the process layer passes
+and about twice the 497 of `test_tools`' link. A step's own stdout and stderr each hold up to
 1 MiB for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
@@ -362,11 +363,13 @@ instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. CMake still builds them and
 everything else, and `build-graph` checks that their compile commands agree;
-`build-graph-support` compiles only `chibi_support`. Building every library
-the graph owns is a manual check, about 280 s with sanitizers at a load average of 12;
+`build-graph-support` compiles only `chibi_support`. Building everything the
+graph owns, `test_tools` included, is a manual check, about 32 minutes with
+sanitizers and no compiler cache at a load average of 5;
 `build-graph-archive` compiles SLJIT and a math-header library from the
-archive, and `build-graph-generated` generates the native type sources and
-rewrites the codec headers.
+archive, `build-graph-generated` generates the native type sources and
+rewrites the codec headers, and `build-graph-programs` checks that naming
+`test_tools` also builds the programs it runs.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -383,7 +386,7 @@ reflection tool `reflect`, the build host, the compiler host, the `chibi`
 launcher and the host, concurrency, policy-worker and benchmark test drivers,
 the first two over the header set the graph stages below
 `BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
-player, `chibi-compile`, `chibi_ctl` and `test_language`, whose
+player, `chibi-compile`, `chibi_ctl`, `test_language` and `test_tools`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
@@ -396,11 +399,19 @@ as it records compiles. An object library (`ObjectLibrary`, as
 `LinkedObjects` put its objects before the executable's own. On macOS the
 graph also compiles the tooling tests' SDK contract consumers, object
 libraries over staged SDK headers and the fixtures it copies to
-`BUILD/test/tools/testing/include`, as `test/tools/CMakeLists.txt` does. A
-target's defines take the same `{source_root}` placeholder as a source's.
+`BUILD/test/tools/testing/include`, as `test/tools/CMakeLists.txt` does,
+and links `test_tools` over them. A target's defines take the same
+placeholders as a source's, and `{program:NAME}` names where an executable
+is written: below the build directory where CMake writes it
+(`ProgramDirectory`: `sdk/` for the SDK's programs, `bin/chibi_ctl`, and the
+test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
+writes the profile's C compiler and C flags, then ARGUMENT, as C string
+initializer lines; `test_tools` exports C with them. An include of `.` is
+the source root.
 Every run
 writes `BUILD/link_commands.json` beside the compile commands. Naming a
-program with `--target` also builds the libraries it links. `reflect` takes libclang from the profile
+program with `--target` also builds the libraries it links and the programs
+it runs (`Runs`, CMake's `add_dependencies`), with theirs. `reflect` takes libclang from the profile
 (`--libclang-include`, `--libclang-library`), and the graph finds clang's
 builtin headers as `tools/reflect/resource.cmake` does, by asking that
 libclang's `clang -print-resource-dir`.

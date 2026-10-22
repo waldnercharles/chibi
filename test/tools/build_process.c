@@ -537,6 +537,43 @@ static bool primitive_backend(const chibi_build_result *result, behavior_backend
            result->counts.sljit_entries == (backend == BEHAVIOR_SLJIT ? 1u : 0u);
 }
 
+/* A step takes up to 1,023 arguments, as many as the process layer passes and
+ * twice a link of every object and library the tooling tests use, and refuses
+ * more. */
+TEST_CASE(steps_take_up_to_1023_arguments)
+{
+    static const char *const sources[] = {
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1023) { command.append(\"-\"); } "
+        "return build.run(command); }",
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1024) { command.append(\"-\"); } "
+        "return build.run(command); }",
+    };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(sources[0], backend);
+        chibi_build_result result;
+        bool success = chibi_build_invoke(&options, &result);
+        if (!success) {
+            fprintf(stderr, "step arguments: %s\n", result.diagnostic);
+        }
+        REQUIRE(
+            success && result.value == 7 && result.steps == 1 &&
+            primitive_backend(&result, backend)
+        );
+        options = primitive_options(sources[1], backend);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(
+            !strcmp(result.diagnostic, "invalid build process arguments") &&
+            result.steps == 0
+        );
+    }
+    return true;
+}
+
 TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 {
     static const char *source =
@@ -1583,6 +1620,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
+    RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);

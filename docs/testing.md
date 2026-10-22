@@ -2130,7 +2130,8 @@ most two seconds, with shorter deliberate timeout/cancellation budgets; every
 native case clamps its budget to the inherited deadline.
 
 Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
+errors, timeout, active cancellation,
 and descendants whose leader exits first. The private host executes both the
 controlled source and unchanged recording workflow on bytecode and SLJIT, with
 actual backend counters and failure-path assertions. Compiler-enabled full
@@ -2175,16 +2176,22 @@ debug directory, which depends on where a build is), the graph finds the
 rest of its profile on the machine and writes the compile commands of every
 target it owns, including the third-party archive's sources and include
 directories, the options of single sources and C++ and Objective-C sources,
-and each of them (949 on macOS) must equal `compile_commands.json`'s for the same source
+and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
 in the same target, split as the shell splits it, apart from the object path
 and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (twelve on macOS,
+requires each link command it writes in `link_commands.json` (thirteen on macOS,
 eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
 C++ compiler for an executable CMake links as C++, apart from where objects, the
 output and archives sit. A third builds the `chibi` launcher with a compiler
 that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
-are compared, and a manual full build links and runs them. About 23 s.
+are compared, and a manual full build links and runs them. About 25 s.
+
+`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`--commands-only on --target test_tools`: its link commands name
+`test_tools` and the programs it runs (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, the build and compiler hosts), where CMake writes them, and
+no other test driver. macOS only. About 15 s.
 
 `python3 tools/test_policy.py tool build-graph-support` runs three cases in a
 copy of the sources: about ten runs that build only `chibi_support` check
@@ -2226,8 +2233,9 @@ unchanged run compiles nothing and leaves their stamps. On macOS a third
 builds `test_behavior_consumer`, which writes the language tests' configured
 headers (byte initializers, C string lines and copies); they equal CMake's
 and keep their stamps when unchanged. A fourth builds
-`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures;
-they equal CMake's and keep their stamps when unchanged. About 34 s at a load
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
+and `export_compiler.h`, the profile's compiler and C flags; they equal
+CMake's and keep their stamps when unchanged. About 34 s at a load
 average of 4.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless

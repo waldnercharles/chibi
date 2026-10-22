@@ -43,7 +43,7 @@ Count :: (text: string) -> int {
 }
 
 // Whether a target was named with --target, or none were, or a named
-// executable links it.
+// executable needs it (engine.Needed).
 Selected :: (arguments: string[], target: string) -> bool {
     named := false;
     for (i in 0..<length(arguments) - 1) {
@@ -52,7 +52,7 @@ Selected :: (arguments: string[], target: string) -> bool {
             if (arguments[i + 1] == target) {
                 return true;
             }
-            if (engine.Linked(arguments[i + 1], target)) {
+            if (engine.Needed(arguments[i + 1], target)) {
                 return true;
             }
         }

@@ -1,16 +1,16 @@
 # Builds the third-party archive for one target and variant: the libraries
-# the engine links, prebuilt, and the patched sources the SDK compiles itself.
+# the engine links, prebuilt, and the Cute sources the SDK reads directly.
 # CI runs it (.github/workflows/third-party.yml) and publishes the installed
 # tree as a release asset. Builds only download that asset
 # (cmake/third_party.cmake, tools/toolchain/Build.chibi). Temporary: it goes
 # with the rest of CMake once the Chibi build graph exists.
 #
 # The installed tree:
-#   third-party.cmake               imported Chibi::desktop_* targets
-#   lib/chibi-vendor/               prebuilt static libraries
-#   include/chibi/desktop_vendor/   their public headers
-#   share/chibi/licenses/desktop/   their licences
-#   source/<library>/               sources the SDK compiles, with licences
+#   third-party.cmake              imported Chibi::vendor_* targets
+#   lib/chibi-vendor/              prebuilt static libraries
+#   include/chibi/vendor/          their public headers
+#   share/chibi/licenses/vendor/   their licences
+#   source/cute_framework/         Cute headers and decoders, with its licence
 cmake_minimum_required(VERSION 3.25)
 if(CHIBI_SDK_COMPILER_HOST_ONLY)
     project(chibi_compiler_dependencies LANGUAGES C)
@@ -190,35 +190,91 @@ set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
 set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
 add_subdirectory("${rmlui_SOURCE}" rmlui)
 
+# --- Physics, task, JIT and syntax libraries the SDK links ------------------
+# They keep the flags the SDK compiled them with.
+set(sdk_libraries box2d box3d tree_sitter tree_sitter_css tree_sitter_html)
+# Box2D and Box3D round deterministically: no fused multiply-add. Their SIMD
+# paths need Wasm SIMD, which only the threaded web build enables.
+foreach(physics box2d box3d)
+    file(GLOB sources "${${physics}_SOURCE}/src/*.c")
+    add_library(${physics} STATIC ${sources})
+    set_target_properties(${physics} PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED YES
+        POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(${physics} PRIVATE "${${physics}_SOURCE}/src"
+        PUBLIC "${${physics}_SOURCE}/include")
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(${physics} PRIVATE -ffp-contract=off)
+    endif()
+    string(TOUPPER "${physics}" upper)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_WEB_THREADS)
+        target_compile_options(${physics} PRIVATE -msimd128 -msse2)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        target_compile_definitions(${physics} PRIVATE ${upper}_DISABLE_SIMD)
+    endif()
+    if(UNIX)
+        target_link_libraries(${physics} PRIVATE m)
+    endif()
+endforeach()
+set_target_properties(box3d PROPERTIES C_EXTENSIONS YES)
+# Box3D's internal scheduler and timers, and enkiTS, use the platform thread API.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
+    find_package(Threads REQUIRED)
+    target_link_libraries(box3d PRIVATE Threads::Threads)
+    add_library(enkits STATIC "${enkits_SOURCE}/src/TaskScheduler.cpp"
+        "${enkits_SOURCE}/src/TaskScheduler_c.cpp")
+    # Consumers link with the C++ driver; C-only ones still get the C++ runtime.
+    set_target_properties(enkits PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES
+        POSITION_INDEPENDENT_CODE ON LINKER_LANGUAGE CXX)
+    target_include_directories(enkits PUBLIC "${enkits_SOURCE}/src")
+    target_compile_definitions(enkits PUBLIC ENKITS_TASK_PRIORITIES_NUM=3)
+    target_link_libraries(enkits PRIVATE Threads::Threads)
+    if(APPLE)
+        target_link_libraries(enkits PRIVATE c++)
+    elseif(UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        target_link_libraries(enkits PRIVATE stdc++)
+    endif()
+    list(APPEND sdk_libraries enkits)
+endif()
+# The web SDK executes without SLJIT.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_library(sljit STATIC "${sljit_SOURCE}/sljit_src/sljitLir.c")
+    target_compile_definitions(sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
+    target_compile_options(sljit PRIVATE -w)
+    target_include_directories(sljit PUBLIC "${sljit_SOURCE}/sljit_src")
+    list(APPEND sdk_libraries sljit)
+endif()
+add_library(tree_sitter STATIC "${tree_sitter_SOURCE}/lib/src/lib.c")
+target_include_directories(tree_sitter PRIVATE "${tree_sitter_SOURCE}/lib/src"
+    PUBLIC "${tree_sitter_SOURCE}/lib/include")
+target_compile_definitions(tree_sitter PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+target_compile_options(tree_sitter PRIVATE -w)
+foreach(grammar tree_sitter_css tree_sitter_html)
+    add_library(${grammar} STATIC "${${grammar}_SOURCE}/src/parser.c"
+        "${${grammar}_SOURCE}/src/scanner.c")
+    target_include_directories(${grammar} PRIVATE "${${grammar}_SOURCE}/src")
+    target_link_libraries(${grammar} PRIVATE tree_sitter)
+    target_compile_options(${grammar} PRIVATE -w)
+    # Consumers declare the grammar's one function, so the exporter finds no
+    # headers to take the licence from.
+    install(FILES "${${grammar}_SOURCE}/LICENSE" DESTINATION "share/chibi/licenses/vendor/${grammar}")
+endforeach()
+
 # --- The archive ---------------------------------------------------------------
-set(CHIBI_DESKTOP_DEPENDENCY_CONFIG "${CMAKE_CURRENT_BINARY_DIR}/third-party.cmake")
-set(CHIBI_DESKTOP_DEPENDENCY_ROOT ".")
-set(CHIBI_DESKTOP_DEPENDENCY_SCOPE " GLOBAL")
-include("${CHIBI_SDK_ROOT}/sdk/desktop_dependencies.cmake")
-chibi_desktop_dependency(cute imported)
-chibi_desktop_dependency(RmlUi::Core imported)
-install(FILES "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" DESTINATION .)
-# Sources the SDK compiles with its own flags, sanitizers and web variants.
-function(chibi_third_party_source name)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "DIRECTORIES;FILES")
-    foreach(directory IN LISTS arg_DIRECTORIES)
-        get_filename_component(parent "${directory}" DIRECTORY)
-        install(DIRECTORY "${${name}_SOURCE}/${directory}" DESTINATION "source/${name}/${parent}")
-    endforeach()
-    foreach(file IN LISTS arg_FILES)
-        get_filename_component(parent "${file}" DIRECTORY)
-        install(FILES "${${name}_SOURCE}/${file}" DESTINATION "source/${name}/${parent}")
-    endforeach()
-endfunction()
-chibi_third_party_source(box2d DIRECTORIES include src FILES LICENSE)
-chibi_third_party_source(box3d DIRECTORIES include src FILES LICENSE)
-chibi_third_party_source(sljit DIRECTORIES sljit_src FILES LICENSE)
-chibi_third_party_source(enkits DIRECTORIES src FILES License.txt)
-chibi_third_party_source(tree_sitter DIRECTORIES lib/include lib/src FILES LICENSE)
-chibi_third_party_source(tree_sitter_css DIRECTORIES src FILES LICENSE)
-chibi_third_party_source(tree_sitter_html DIRECTORIES src FILES LICENSE)
+set(CHIBI_VENDOR_DEPENDENCY_CONFIG "${CMAKE_CURRENT_BINARY_DIR}/third-party.cmake")
+set(CHIBI_VENDOR_DEPENDENCY_ROOT ".")
+set(CHIBI_VENDOR_DEPENDENCY_SCOPE " GLOBAL")
+include("${CHIBI_SDK_ROOT}/sdk/vendor_dependencies.cmake")
+foreach(library cute RmlUi::Core ${sdk_libraries})
+    chibi_vendor_dependency(${library} imported)
+endforeach()
+install(FILES "${CHIBI_VENDOR_DEPENDENCY_CONFIG}" DESTINATION .)
 # Cute's math headers, single-file image and Vorbis decoders, and runtime shader
 # compiler interface, which the SDK and its tests compile against directly.
-chibi_third_party_source(cute_framework DIRECTORIES include FILES LICENSE
-    libraries/cute/cute_png.h libraries/cute/cute_jpg.h libraries/stb/stb_vorbis.c
-    tools/cute_shader.h)
+set(cute_source source/cute_framework)
+install(DIRECTORY "${cute_framework_SOURCE}/include" DESTINATION ${cute_source})
+install(FILES "${cute_framework_SOURCE}/LICENSE" DESTINATION ${cute_source})
+install(FILES "${cute_framework_SOURCE}/libraries/cute/cute_png.h"
+    "${cute_framework_SOURCE}/libraries/cute/cute_jpg.h" DESTINATION ${cute_source}/libraries/cute)
+install(FILES "${cute_framework_SOURCE}/libraries/stb/stb_vorbis.c"
+    DESTINATION ${cute_source}/libraries/stb)
+install(FILES "${cute_framework_SOURCE}/tools/cute_shader.h" DESTINATION ${cute_source}/tools)

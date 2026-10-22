@@ -2310,15 +2310,14 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
-enkiTS's C++ scheduler from the third-party archive CMake configured with,
-`chibi_vector_capabilities` over the archive's Cute math headers, which the
-graph stages, and the task pool: four C and two C++ files with the profile's
-sanitizers. A second run compiles nothing, the objects sit below
-`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`python3 tools/test_policy.py tool build-graph-archive` builds
+`chibi_vector_capabilities` over the Cute math headers of the third-party
+archive CMake configured with, which the graph stages, and the task pool over
+the archive's prebuilt enkiTS: three C files with the profile's sanitizers. A
+second run compiles nothing, and the staged `cute_math.h` and the shared
 `private/physics` headers equal CMake's; a run naming an archive that is not
-unpacked, or with C++ sources and no C++ compiler, fails before compiling and
-says so. About 32 s at a load average of 10.
+unpacked, or one naming the UI host's C++ sources with no C++ compiler, fails
+before compiling and says so. About 12 s.
 
 `python3 tools/test_policy.py tool build-graph-generated` covers sources and
 headers the graph writes. One case builds `chibi_native_types` with the
@@ -2427,7 +2426,7 @@ passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work
 canonical ABI lookup, NaN comparisons, integer saturation, nominal enums, vector
 conversion and output ownership after input/table retirement. The scoped native
 consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
-`box3d` selects one in-tree check of the `chibi_box3d` package (Box3D v0.1.0,
+`box3d` selects one in-tree check of the archive's prebuilt Box3D (v0.1.0,
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.

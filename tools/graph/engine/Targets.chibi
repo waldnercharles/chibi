@@ -22,7 +22,7 @@ pub Targets :: () -> string[] {
         "chibi_reference_index", "chibi_fmt", "chibi_json", "chibi_asset_json", "chibi_asset_kdl",
         "chibi_asset_text", "chibi_text_capabilities", "chibi_array_capabilities",
         "chibi_field_capabilities", "chibi_input_map", "chibi_builtin_fonts",
-        "chibi_component_presentation", "chibi_save_runtime", "chibi_math", "chibi_execution_sljit",
+        "chibi_component_presentation", "chibi_save_runtime", "chibi_math",
         "chibi_execution", "chibi_core_capabilities", "chibi_behavior_runtime", "chibi_native_prepared",
         "chibi_scene_runtime", "chibi_vector_capabilities", "chibi_math_capabilities",
         "chibi_arithmetic_capabilities", "chibi_tilemap_runtime", "chibi_ui_runtime", "chibi_mesh_runtime",
@@ -30,9 +30,9 @@ pub Targets :: () -> string[] {
         "chibi_native_types", "chibi_spatial_runtime", "chibi_native_bindings", "chibi_entity_runtime",
         "chibi_rhythm_runtime", "chibi_particle_runtime", "chibi_input_runtime",
         "chibi_visual_motion_runtime", "chibi_declared_components", "chibi_visual_catalog",
-        "chibi_scene_authoring", "chibi_scenario_document", "chibi_syntax_runtime", "chibi_ui_syntax",
-        "chibi_language_syntax", "chibi_project_document", "chibi_box2d", "chibi_box3d",
-        "chibi_ui_authoring", "chibi_task_scheduler", "chibi_task_pool_runtime", "chibi_material_runtime",
+        "chibi_scene_authoring", "chibi_scenario_document",
+        "chibi_language_syntax", "chibi_project_document",
+        "chibi_ui_authoring", "chibi_task_pool_runtime", "chibi_material_runtime",
         "chibi_physics_runtime", "chibi_physics3d_runtime", "chibi_visibility_runtime", "chibi_graph_model",
         "chibi_graph_authoring", "chibi_graph_compilation", "chibi_host_native_default",
         "chibi_studio_catalog", "chibi_studio_graph", "chibi_engine", "chibi_image_preparation",
@@ -236,9 +236,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_input_map") {
         return ["src/assets/input_map.c"];
     }
-    if (target == "chibi_execution_sljit") {
-        return ["third-party/source/sljit/sljit_src/sljitLir.c"];
-    }
     if (target == "chibi_execution") {
         return [
             "src/execution/artifact.c", "src/execution/backend.c", "src/execution/borrow.c",
@@ -367,9 +364,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_scenario_document") {
         return ["src/assets/scenario_document.c"];
     }
-    if (target == "chibi_syntax_runtime") {
-        return ["third-party/source/tree_sitter/lib/src/lib.c"];
-    }
     if (target == "chibi_language_syntax") {
         return ["src/language/syntax.c", "src/language/src/parser.c", "src/language/src/scanner.c"];
     }
@@ -382,74 +376,11 @@ Files :: (target: string) -> string[] {
             "src/assets/project_parser29.c", "src/assets/project_parser30.c", "src/assets/project_parser31.c"
         ];
     }
-    if (target == "chibi_box2d") {
-        return [
-            "third-party/source/box2d/src/aabb.c", "third-party/source/box2d/src/arena_allocator.c",
-            "third-party/source/box2d/src/array.c", "third-party/source/box2d/src/bitset.c",
-            "third-party/source/box2d/src/body.c", "third-party/source/box2d/src/broad_phase.c",
-            "third-party/source/box2d/src/constraint_graph.c", "third-party/source/box2d/src/contact.c",
-            "third-party/source/box2d/src/contact_solver.c", "third-party/source/box2d/src/core.c",
-            "third-party/source/box2d/src/distance.c", "third-party/source/box2d/src/distance_joint.c",
-            "third-party/source/box2d/src/dynamic_tree.c", "third-party/source/box2d/src/geometry.c",
-            "third-party/source/box2d/src/hull.c", "third-party/source/box2d/src/id_pool.c",
-            "third-party/source/box2d/src/island.c", "third-party/source/box2d/src/joint.c",
-            "third-party/source/box2d/src/manifold.c", "third-party/source/box2d/src/math_functions.c",
-            "third-party/source/box2d/src/motor_joint.c", "third-party/source/box2d/src/mouse_joint.c",
-            "third-party/source/box2d/src/mover.c", "third-party/source/box2d/src/prismatic_joint.c",
-            "third-party/source/box2d/src/revolute_joint.c", "third-party/source/box2d/src/sensor.c",
-            "third-party/source/box2d/src/shape.c", "third-party/source/box2d/src/solver.c",
-            "third-party/source/box2d/src/solver_set.c", "third-party/source/box2d/src/table.c",
-            "third-party/source/box2d/src/timer.c", "third-party/source/box2d/src/types.c",
-            "third-party/source/box2d/src/weld_joint.c", "third-party/source/box2d/src/wheel_joint.c",
-            "third-party/source/box2d/src/world.c"
-        ];
-    }
-    if (target == "chibi_box3d") {
-        return [
-            "third-party/source/box3d/src/aabb.c", "third-party/source/box3d/src/arena_allocator.c",
-            "third-party/source/box3d/src/bitset.c", "third-party/source/box3d/src/block_allocator.c",
-            "third-party/source/box3d/src/body.c", "third-party/source/box3d/src/broad_phase.c",
-            "third-party/source/box3d/src/capsule.c", "third-party/source/box3d/src/compound.c",
-            "third-party/source/box3d/src/constraint_graph.c", "third-party/source/box3d/src/contact.c",
-            "third-party/source/box3d/src/contact_solver.c", "third-party/source/box3d/src/convex_manifold.c",
-            "third-party/source/box3d/src/core.c", "third-party/source/box3d/src/distance.c",
-            "third-party/source/box3d/src/distance_joint.c", "third-party/source/box3d/src/dynamic_tree.c",
-            "third-party/source/box3d/src/height_field.c", "third-party/source/box3d/src/hull.c",
-            "third-party/source/box3d/src/id_pool.c", "third-party/source/box3d/src/island.c",
-            "third-party/source/box3d/src/joint.c", "third-party/source/box3d/src/manifold.c",
-            "third-party/source/box3d/src/math_functions.c", "third-party/source/box3d/src/mesh.c",
-            "third-party/source/box3d/src/mesh_contact.c", "third-party/source/box3d/src/motor_joint.c",
-            "third-party/source/box3d/src/mover.c", "third-party/source/box3d/src/parallel_for.c",
-            "third-party/source/box3d/src/parallel_joint.c", "third-party/source/box3d/src/physics_world.c",
-            "third-party/source/box3d/src/prismatic_joint.c", "third-party/source/box3d/src/recording.c",
-            "third-party/source/box3d/src/recording_replay.c", "third-party/source/box3d/src/revolute_joint.c",
-            "third-party/source/box3d/src/scheduler.c", "third-party/source/box3d/src/sensor.c",
-            "third-party/source/box3d/src/shape.c", "third-party/source/box3d/src/simd.c",
-            "third-party/source/box3d/src/solver.c", "third-party/source/box3d/src/solver_set.c",
-            "third-party/source/box3d/src/sphere.c", "third-party/source/box3d/src/spherical_joint.c",
-            "third-party/source/box3d/src/table.c", "third-party/source/box3d/src/timer.c",
-            "third-party/source/box3d/src/triangle_manifold.c", "third-party/source/box3d/src/types.c",
-            "third-party/source/box3d/src/weld_joint.c", "third-party/source/box3d/src/wheel_joint.c",
-            "third-party/source/box3d/src/world_snapshot.c"
-        ];
-    }
-    if (target == "chibi_ui_syntax") {
-        return [
-            "third-party/source/tree_sitter_css/src/parser.c", "third-party/source/tree_sitter_css/src/scanner.c",
-            "third-party/source/tree_sitter_html/src/parser.c", "third-party/source/tree_sitter_html/src/scanner.c"
-        ];
-    }
     if (target == "chibi_ui_authoring") {
         return [
             "src/assets/ui_events.c", "src/assets/ui_source.c", "src/assets/ui_source_complete.c",
             "src/assets/ui_source_edit.c", "src/assets/ui_source_format.c", "src/assets/ui_source_hover.c",
             "src/assets/ui_source_resources.c"
-        ];
-    }
-    if (target == "chibi_task_scheduler") {
-        return [
-            "third-party/source/enkits/src/TaskScheduler.cpp",
-            "third-party/source/enkits/src/TaskScheduler_c.cpp"
         ];
     }
     if (target == "chibi_task_pool_runtime") {
@@ -991,9 +922,6 @@ pub HeaderSource :: (target: string) -> string {
     if (target == "chibi_math") {
         return "third-party/source/cute_framework/include";
     }
-    if (target == "chibi_syntax_runtime") {
-        return "third-party/source/tree_sitter/lib/include";
-    }
     return "src";
 }
 
@@ -1257,9 +1185,6 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_scenario_document") {
         return ["assets/scenario_document.h"];
-    }
-    if (target == "chibi_syntax_runtime") {
-        return ["tree_sitter/api.h"];
     }
     if (target == "chibi_language_syntax") {
         return ["language/syntax.h"];
@@ -1893,7 +1818,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_execution") {
         return [
-            "public/execution", "private/execution", "private/types", "third-party/source/sljit/sljit_src",
+            "public/execution", "private/execution", "private/types",
             "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks"
         ];
     }
@@ -2065,43 +1990,25 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_text"
         ];
     }
-    if (target == "chibi_syntax_runtime") {
-        return [
-            "public/syntax_runtime", "third-party/source/tree_sitter/lib/src",
-            "third-party/source/tree_sitter/lib/include"
-        ];
-    }
     if (target == "chibi_language_syntax") {
-        return ["public/language_syntax", "src/language/src", "public/support", "public/syntax_runtime"];
+        return ["public/language_syntax", "src/language/src", "public/support"];
     }
     if (target == "chibi_project_document") {
         return [
             "src/language/src", "public/project_document", "public/input_action", "public/asset_text",
-            "public/asset_values", "public/support", "public/language_syntax", "public/syntax_runtime",
+            "public/asset_values", "public/support", "public/language_syntax",
             "public/json"
         ];
-    }
-    if (target == "chibi_box2d") {
-        return ["third-party/source/box2d/src", "third-party/source/box2d/include"];
-    }
-    if (target == "chibi_box3d") {
-        return ["third-party/source/box3d/src", "third-party/source/box3d/include"];
-    }
-    if (target == "chibi_ui_syntax") {
-        return ["public/syntax_runtime"];
     }
     if (target == "chibi_ui_authoring") {
         return [
             "public/ui_authoring", "private/ui_authoring", "public/text_source", "public/support",
-            "public/text_search", "public/ui_document", "public/ui_document_values", "public/syntax_runtime"
+            "public/text_search", "public/ui_document", "public/ui_document_values"
         ];
-    }
-    if (target == "chibi_task_scheduler") {
-        return ["third-party/source/enkits/src"];
     }
     if (target == "chibi_task_pool_runtime") {
         return [
-            "public/task_pool_runtime", "private/physics", "third-party/source/enkits/src", "public/tasks",
+            "public/task_pool_runtime", "private/physics", "public/tasks",
             "public/support"
         ];
     }
@@ -2123,7 +2030,7 @@ pub Includes :: (target: string) -> string[] {
             "public/tasks", "public/scene_runtime", "public/behavior_runtime", "public/events",
             "public/native_capabilities", "public/capabilities", "public/material_runtime",
             "public/field_catalog", "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
-            "public/spatial_runtime", "third-party/source/box2d/include"
+            "public/spatial_runtime"
         ];
     }
     if (target == "chibi_physics3d_runtime") {
@@ -2131,8 +2038,7 @@ pub Includes :: (target: string) -> string[] {
             "public/physics3d_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
             "public/execution_contract", "public/entity_runtime", "public/execution", "public/tasks",
             "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities",
-            "public/capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime",
-            "third-party/source/box3d/include"
+            "public/capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime"
         ];
     }
     if (target == "chibi_visibility_runtime") {
@@ -2226,20 +2132,20 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_language") {
         return [
             "public/language", "third_party/yyjson", "build/sdk/language/private", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/capabilities", "public/types", "public/json"
+            "public/support", "public/capabilities", "public/types", "public/json"
         ];
     }
     if (target == "chibi_compiler") {
         return [
             "public/compiler", "public/language", "public/language_syntax", "public/support",
-            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks"
         ];
     }
     if (target == "chibi_authoring") {
         return [
             "public/authoring", "private/authoring", "third_party/yyjson", "public/compiler",
-            "public/language", "public/language_syntax", "public/support", "public/syntax_runtime",
+            "public/language", "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/reference_index",
             "public/json", "public/asset_text", "public/asset_values", "public/input_action"
@@ -2252,7 +2158,7 @@ pub Includes :: (target: string) -> string[] {
             "public/behavior_runtime", "public/execution", "public/execution_contract", "public/tasks",
             "public/events", "public/graph_model", "public/reference_index", "public/field_catalog",
             "public/fields", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/capabilities",
             "public/native_capabilities", "public/asset_text", "public/ui_document", "public/text_source",
             "public/text_search", "public/ui_document_values", "public/graph_authoring",
             "public/graph_compilation", "public/shader_runtime", "public/model_runtime", "public/native_types",
@@ -2263,7 +2169,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/source_presentation", "private/source_presentation", "third_party/yyjson",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/capabilities", "public/types",
+            "public/support", "public/capabilities", "public/types",
             "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/graph_model", "public/text_source",
             "public/text_search", "public/json", "public/graph_authoring", "public/events",
@@ -2275,7 +2181,7 @@ pub Includes :: (target: string) -> string[] {
             "public/graph_catalog", "public/graph_model", "public/types", "public/support",
             "public/execution_contract", "public/native_capabilities", "public/capabilities", "public/ecs",
             "public/source_presentation", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/execution", "public/tasks",
+            "public/language_syntax", "public/execution", "public/tasks",
             "public/reference_index", "public/text_source", "public/text_search", "public/graph_compilation",
             "public/graph_authoring", "public/events", "public/asset_values", "public/shader_runtime",
             "public/model_runtime", "public/fields", "public/field_catalog"
@@ -2330,7 +2236,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/source_catalog", "private/source_catalog", "third_party/yyjson", "public/authoring",
             "public/compiler", "public/language", "public/language_syntax", "public/support",
-            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/reference_index", "public/input_map", "public/input_action", "public/prototype_document",
             "public/asset_values", "public/scene_document", "public/scene_runtime", "public/behavior_runtime",
@@ -2351,7 +2257,7 @@ pub Includes :: (target: string) -> string[] {
             "public/image_preparation", "public/image_catalog", "public/mesh_runtime", "public/native_types",
             "public/graph_authoring", "public/graph_compilation", "public/model_runtime", "public/asset_text",
             "public/json", "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/capabilities",
             "public/native_capabilities", "public/input_map", "public/input_action"
         ];
     }
@@ -2382,7 +2288,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/project_compilation", "private/project_compilation", "public/source_catalog",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/capabilities", "public/types",
+            "public/support", "public/capabilities", "public/types",
             "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
@@ -2407,7 +2313,7 @@ pub Includes :: (target: string) -> string[] {
             "public/project_format", "public/native_capabilities", "public/capabilities", "public/types",
             "public/support", "public/execution_contract", "public/project_compilation",
             "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/execution", "public/ecs",
+            "public/language_syntax", "public/execution", "public/ecs",
             "public/tasks", "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
             "public/scene_runtime", "public/behavior_runtime", "public/events", "public/project_document",
@@ -2427,7 +2333,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/project_preparation", "private/project_preparation", "public/project_compilation",
             "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/support", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/support", "public/capabilities",
             "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
@@ -2450,7 +2356,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_build_host") {
         return [
             "private/build-host", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/support", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/support", "public/capabilities",
             "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/source_catalog",
             "public/input_map", "public/input_action", "public/prototype_document", "public/asset_values",
@@ -2461,7 +2367,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "private/build-host", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/support", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/support", "public/capabilities",
             "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index"
         ];
@@ -2472,8 +2378,7 @@ pub Includes :: (target: string) -> string[] {
             "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
             "public/native_prepared", "public/native_capabilities", "public/capabilities",
             "public/text_capabilities", "public/array_capabilities", "public/value_document",
-            "public/asset_values", "public/asset_json", "public/json", "public/language_syntax",
-            "public/syntax_runtime"
+            "public/asset_values", "public/asset_json", "public/json", "public/language_syntax"
         ];
     }
     if (target == "chibi-compiler-host") {
@@ -2491,7 +2396,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler_syntax") {
         return [
-            "private/compiler-syntax", "public/language_syntax", "public/support", "public/syntax_runtime",
+            "private/compiler-syntax", "public/language_syntax", "public/support",
             "public/native_capabilities", "public/capabilities", "public/types", "public/execution_contract"
         ];
     }
@@ -2509,7 +2414,7 @@ pub Includes :: (target: string) -> string[] {
             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/syntax_runtime", "public/capabilities", "public/native_capabilities",
+            "public/capabilities", "public/native_capabilities",
             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
@@ -2549,7 +2454,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "private/compiler-target", "public/project_compilation", "public/source_catalog",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/capabilities", "public/types",
+            "public/support", "public/capabilities", "public/types",
             "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
@@ -2572,7 +2477,7 @@ pub Includes :: (target: string) -> string[] {
             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/syntax_runtime", "public/capabilities", "public/native_capabilities",
+            "public/capabilities", "public/native_capabilities",
             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
@@ -2610,7 +2515,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "test_language") {
         return [
             "build/test/language/testing/include", "public/json", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/asset_json", "public/asset_values",
+            "public/support", "public/asset_json", "public/asset_values",
             "public/native_prepared", "public/native_capabilities", "public/capabilities",
             "public/types", "public/execution_contract", "public/behavior_runtime", "public/execution",
             "public/ecs", "public/tasks", "public/events", "public/math_capabilities",
@@ -2678,7 +2583,7 @@ pub Includes :: (target: string) -> string[] {
             "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
             "public/ecs", "public/types", "public/support", "public/execution_contract",
             "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/capabilities",
             "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
             "public/input_map", "public/input_action", "public/prototype_document",
             "public/asset_values", "public/scene_document", "public/scene_runtime",
@@ -2701,7 +2606,7 @@ pub Includes :: (target: string) -> string[] {
             "public/conversion_capabilities", "public/host_native_default",
             "public/host_native_catalog", "public/spatial_runtime", "public/tilemap_runtime",
             "public/project_compilation", "public/source_catalog", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax", "public/syntax_runtime",
+            "public/compiler", "public/language", "public/language_syntax",
             "public/reference_index", "public/input_map", "public/prototype_document",
             "public/scene_document", "public/project_document", "public/native_prepared",
             "public/shader_preparation", "public/visual_catalog", "public/shader_runtime",
@@ -2740,7 +2645,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_project_declarations_consumer") {
         return [
             "build/test/tools/testing/include", "public/project_document", "public/language_syntax",
-            "public/support", "public/syntax_runtime", "public/authoring", "public/compiler",
+            "public/support", "public/authoring", "public/compiler",
             "public/language", "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/reference_index", "public/json"
@@ -2801,7 +2706,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_source_runtime_consumer") {
         return [
             "build/test/tools/testing/include", "public/authoring", "public/compiler",
-            "public/language", "public/language_syntax", "public/support", "public/syntax_runtime",
+            "public/language", "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/reference_index",
             "public/asset_authoring", "public/prototype_document", "public/asset_values",
@@ -2816,7 +2721,7 @@ pub Includes :: (target: string) -> string[] {
             "build/test/tools/testing/include", "public/project_preparation",
             "public/project_compilation", "public/source_catalog", "public/authoring",
             "public/compiler", "public/language", "public/language_syntax", "public/support",
-            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
@@ -2842,7 +2747,7 @@ pub Includes :: (target: string) -> string[] {
             "build/test/tools/testing/include", "public/project_preparation",
             "public/project_compilation", "public/source_catalog", "public/authoring",
             "public/compiler", "public/language", "public/language_syntax", "public/support",
-            "public/syntax_runtime", "public/capabilities", "public/types", "public/execution",
+            "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/reference_index", "public/input_map", "public/input_action",
             "public/prototype_document", "public/asset_values", "public/scene_document",
@@ -2870,7 +2775,7 @@ pub Includes :: (target: string) -> string[] {
             "public/execution_contract", "public/ecs", "public/tasks", "public/events",
             "public/scene_runtime", "public/value_document", "public/asset_values",
             "private/build-host", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/syntax_runtime", "public/capabilities",
+            "public/language_syntax", "public/capabilities",
             "public/native_capabilities", "public/reference_index", "private/compiler-host",
             "public/shader_runtime", "public/array_capabilities", "public/audio_runtime",
             "public/scene_authoring", "public/native_types", "public/scene_document",
@@ -2888,7 +2793,7 @@ pub Includes :: (target: string) -> string[] {
             "public/host_native_default", "public/host_native_catalog", "public/spatial_runtime",
             "public/tilemap_runtime", "public/platform", "public/asset_text", "public/asset_json",
             "public/json", "public/ui_document", "public/text_source", "public/text_search",
-            "public/ui_document_values", "third-party/source/box3d/include", "public/render",
+            "public/ui_document_values", "public/render",
             "public/ui", "public/ui_documents", "public/graph_compilation", "public/graph_authoring",
             "public/project_preparation", "public/source_presentation", "public/model_authoring",
             "public/model_bake", "public/model_import", "public/asset_authoring",
@@ -2957,10 +2862,10 @@ pub SystemIncludes :: (target: string) -> string[] {
         return ["public/math"];
     }
     if (target == "chibi_physics_runtime") {
-        return ["public/math"];
+        return ["public/math", "third-party/include/chibi/vendor/box2d/1"];
     }
     if (target == "chibi_physics3d_runtime") {
-        return ["public/math"];
+        return ["public/math", "third-party/include/chibi/vendor/box3d/1"];
     }
     if (target == "chibi_visibility_runtime") {
         return ["public/math"];
@@ -2978,7 +2883,7 @@ pub SystemIncludes :: (target: string) -> string[] {
         return ["private/image_preparation"];
     }
     if (target == "chibi_asset_authoring") {
-        return ["public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_player") {
         return ["public/math"];
@@ -2991,114 +2896,122 @@ pub SystemIncludes :: (target: string) -> string[] {
     }
     if (target == "chibi_platform") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi_model_import") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2", "public/math"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2",
+            "public/math",
+            "third-party/include/chibi/vendor/tree_sitter/1"
         ];
     }
     if (target == "chibi_ui_host") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2",
-            "third-party/include/chibi/desktop_vendor/rmlui_core/1",
-            "third-party/include/chibi/desktop_vendor/freetype/1",
-            "third-party/include/chibi/desktop_vendor/freetype/2"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2",
+            "third-party/include/chibi/vendor/rmlui_core/1",
+            "third-party/include/chibi/vendor/freetype/1",
+            "third-party/include/chibi/vendor/freetype/2"
         ];
     }
     if (target == "chibi_renderer") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2", "public/math"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2", "public/math"
         ];
     }
     if (target == "chibi_project_compilation") {
-        return ["private/sound_preparation", "public/math"];
+        return ["private/sound_preparation", "third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_project_format") {
-        return ["public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_project_preparation") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi_automation") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi-player") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2", "public/math"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2", "public/math"
         ];
     }
     if (target == "chibi-compile") {
-        return ["public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_ctl") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "test_language") {
-        return ["public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_sdk_contracts") {
         return ["public/math"];
@@ -3107,36 +3020,36 @@ pub SystemIncludes :: (target: string) -> string[] {
         return ["public/math"];
     }
     if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["public/math"];
+        return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
     }
     if (target == "chibi_native_consumer") {
-        return ["public/math"];
+        return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
     }
     if (target == "chibi_particle_consumer") {
         return ["public/math"];
     }
     if (target == "chibi_png_consumer") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi_render_consumer") {
         return [
-            "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2", "public/math"
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2", "public/math"
         ];
     }
     if (target == "chibi_mesh_preparation_consumer") {
@@ -3144,54 +3057,109 @@ pub SystemIncludes :: (target: string) -> string[] {
     }
     if (target == "chibi_model_import_consumer") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "public/math", "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi_source_runtime_consumer") {
-        return ["public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
     }
     if (target == "chibi_source_features_consumer") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "chibi_graph_consumer") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2"
         ];
     }
     if (target == "test_tools") {
         return [
-            "public/math", "third-party/include/chibi/desktop_vendor/cute/1",
-            "third-party/include/chibi/desktop_vendor/cute/2",
-            "third-party/include/chibi/desktop_vendor/cute/3",
-            "third-party/include/chibi/desktop_vendor/cute/4",
-            "third-party/include/chibi/desktop_vendor/cute/5",
-            "third-party/include/chibi/desktop_vendor/physfs_static/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/1",
-            "third-party/include/chibi/desktop_vendor/SDL3_Headers/2"
+            "third-party/include/chibi/vendor/tree_sitter/1",
+            "public/math",
+            "third-party/include/chibi/vendor/cute/1",
+            "third-party/include/chibi/vendor/cute/2",
+            "third-party/include/chibi/vendor/cute/3",
+            "third-party/include/chibi/vendor/cute/4",
+            "third-party/include/chibi/vendor/cute/5",
+            "third-party/include/chibi/vendor/physfs_static/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/1",
+            "third-party/include/chibi/vendor/SDL3_Headers/2",
+            "third-party/include/chibi/vendor/box3d/1"
         ];
+    }
+    if (target == "chibi_execution") {
+        return ["third-party/include/chibi/vendor/sljit/1"];
+    }
+    if (target == "chibi_language_syntax") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_project_document") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_ui_authoring") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_task_pool_runtime") {
+        return ["third-party/include/chibi/vendor/enkits/1"];
+    }
+    if (target == "chibi_language") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_compiler") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_authoring") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_source_presentation") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_graph_catalog") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_source_catalog") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_build_host") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi-build-host") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_compiler_host") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_compiler_syntax") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
+    }
+    if (target == "chibi_project_declarations_consumer") {
+        return ["third-party/include/chibi/vendor/tree_sitter/1"];
     }
     return [];
 }
@@ -3204,17 +3172,8 @@ pub Defines :: (target: string) -> string[] {
     if (target == "chibi_asset_text") {
         return ["KDL_STATIC_LIB=1"];
     }
-    if (target == "chibi_execution_sljit") {
-        return ["SLJIT_WX_EXECUTABLE_ALLOCATOR=1"];
-    }
     if (target == "chibi_execution") {
         return ["CHIBI_HAVE_SJLIT=1"];
-    }
-    if (target == "chibi_syntax_runtime") {
-        return ["_DARWIN_C_SOURCE", "_DEFAULT_SOURCE"];
-    }
-    if (target == "chibi_task_scheduler") {
-        return ["ENKITS_TASK_PRIORITIES_NUM=3"];
     }
     if (target == "chibi_task_pool_runtime") {
         return ["CHIBI_HAS_ENKITS=1", "ENKITS_TASK_PRIORITIES_NUM=3"];
@@ -3365,9 +3324,6 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_asset_kdl") {
         return ["-w"];
     }
-    if (target == "chibi_execution_sljit") {
-        return ["-w"];
-    }
     if (target == "chibi_execution" && build.platform() == "Linux") {
         return ["-ffunction-sections", "-fdata-sections"];
     }
@@ -3376,18 +3332,6 @@ pub Options :: (target: string) -> string[] {
     }
     if (target == "chibi_scene_authoring") {
         return ["-ffp-contract=off"];
-    }
-    if (target == "chibi_syntax_runtime") {
-        return ["-w"];
-    }
-    if (target == "chibi_box2d") {
-        return ["-ffp-contract=off"];
-    }
-    if (target == "chibi_box3d") {
-        return ["-ffp-contract=off"];
-    }
-    if (target == "chibi_ui_syntax") {
-        return ["-w"];
     }
     if (target == "chibi_material_runtime") {
         return ["-ffp-contract=off"];
@@ -3561,16 +3505,9 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
 }
 
 // Include directories one source adds before its target's, as CMake's
-// INCLUDE_DIRECTORIES source property adds them: each tree-sitter grammar
-// includes its own parser headers, and test_tools' C export cases the
-// testing headers.
+// INCLUDE_DIRECTORIES source property adds them: test_tools' C export cases
+// the testing headers.
 pub SourceIncludes :: (target: string, file: string) -> string[] {
-    if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_css/")) {
-        return ["third-party/source/tree_sitter_css/src"];
-    }
-    if (target == "chibi_ui_syntax" && strings.HasPrefix(file, "third-party/source/tree_sitter_html/")) {
-        return ["third-party/source/tree_sitter_html/src"];
-    }
     if (target == "test_language" && Listed(LanguageTestsOverSource(), file)) {
         return ["src"];
     }
@@ -3580,22 +3517,10 @@ pub SourceIncludes :: (target: string, file: string) -> string[] {
     return [];
 }
 
-// The C standard a target compiles with, its CMake C_STANDARD with GNU
-// extensions: Box2D and Box3D declare C17.
-pub Standard :: (target: string) -> string {
-    if (target == "chibi_box2d" || target == "chibi_box3d") {
-        return "gnu17";
-    }
-    return "gnu23";
-}
-
 // The C++ standard a target's C++ sources compile with, its CMake
-// CXX_STANDARD with GNU extensions, or empty for none: enkiTS declares C++11
-// and the UI host, over RmlUi, C++17.
+// CXX_STANDARD with GNU extensions, or empty for none: the UI host, over RmlUi,
+// declares C++17.
 pub CxxStandard :: (target: string) -> string {
-    if (target == "chibi_task_scheduler") {
-        return "gnu++11";
-    }
     if (target == "chibi_ui_host") {
         return "gnu++17";
     }
@@ -3632,12 +3557,6 @@ Listed :: (names: string[], name: string) -> bool {
         }
     }
     return false;
-}
-
-// Whether a target compiles as position-independent code, its CMake
-// POSITION_INDEPENDENT_CODE.
-pub PositionIndependent :: (target: string) -> bool {
-    return target == "chibi_box2d" || target == "chibi_box3d" || target == "chibi_task_scheduler";
 }
 
 // Headers a header set configures below its private root, `HEADER=INPUT`, as
@@ -3990,10 +3909,11 @@ pub Links :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "chibi_support", "chibi_source_catalog", "chibi_authoring", "chibi_compiler", "chibi_language",
-            "chibi_language_syntax", "chibi_syntax_runtime", "chibi_reference_index", "chibi_json",
-            "chibi_input_map", "chibi_prototype_document", "chibi_scene_document", "chibi_asset_text",
-            "chibi_asset_kdl", "chibi_asset_values", "chibi_scene_runtime", "chibi_behavior_runtime",
-            "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_events", "chibi_ui_document",
+            "chibi_language_syntax", "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a",
+            "chibi_reference_index", "chibi_json", "chibi_input_map", "chibi_prototype_document",
+            "chibi_scene_document", "chibi_asset_text", "chibi_asset_kdl", "chibi_asset_values",
+            "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_ui_document",
             "chibi_text_source", "chibi_text_search", "chibi_ui_document_values", "chibi_text_capabilities",
             "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities", "chibi_capabilities",
             "chibi_types", "chibi_support", "-lm"
@@ -4002,265 +3922,265 @@ pub Links :: (target: string) -> string[] {
     if (target == "chibi-compiler-host") {
         return [
             "chibi_asset_text", "chibi_asset_values", "chibi_json", "chibi_native_prepared",
-            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_events",
-            "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities",
-            "chibi_capabilities", "chibi_value_document", "chibi_types", "chibi_asset_json", "chibi_json",
-            "chibi_language_syntax", "chibi_syntax_runtime", "chibi_asset_values", "chibi_support", "-lm",
-            "chibi_asset_kdl"
+            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_text_capabilities",
+            "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities", "chibi_capabilities",
+            "chibi_value_document", "chibi_types", "chibi_asset_json", "chibi_json", "chibi_language_syntax",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_asset_values", "chibi_support",
+            "-lm", "chibi_asset_kdl"
         ];
     }
     if (target == "chibi") {
         return [
             "chibi_project_document", "chibi_support", "chibi_json", "chibi_asset_text", "chibi_asset_values",
-            "chibi_asset_kdl", "chibi_language_syntax", "chibi_support", "-lm", "chibi_syntax_runtime"
+            "chibi_asset_kdl", "chibi_language_syntax", "chibi_support", "-lm",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a"
         ];
     }
     if (target == "chibi-player" && build.platform() == "Darwin") {
         return [
             "chibi_renderer", "chibi_player", "chibi_native_prepared", "chibi_host_native_default",
             "chibi_declared_components", "chibi_ui_host", "chibi_platform",
-            "third-party/lib/chibi-vendor/libchibi_desktop_cute.a", "-framework", "IOKit", "-framework",
+            "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "-framework", "IOKit", "-framework",
             "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework", "Network",
-            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo",
-            "-framework", "CoreFoundation",
-            "third-party/lib/chibi-vendor/libchibi_desktop_physfs_static.a", "-framework", "IOKit",
-            "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_desktop_SDL3_static.a",
+            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework",
+            "CoreFoundation", "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a", "-framework",
+            "IOKit", "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a",
             "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker",
-            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit",
-            "-framework", "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio",
-            "-framework", "AudioToolbox", "-framework", "AVFoundation", "-framework", "Foundation",
-            "-framework", "GameController", "-framework", "Metal", "-framework", "QuartzCore",
-            "-Xlinker", "-weak_framework", "-Xlinker", "CoreHaptics", "chibi_text_search",
-            "chibi_builtin_fonts", "third-party/lib/chibi-vendor/libchibi_desktop_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_desktop_freetype.a", "chibi_engine",
-            "chibi_scheduling", "chibi_ui_document_values", "chibi_ui_documents",
-            "chibi_visual_catalog", "chibi_model_runtime", "-framework", "Metal", "-framework",
-            "Foundation", "chibi_image_catalog", "chibi_ui_runtime", "chibi_value_document",
-            "chibi_asset_values", "chibi_rhythm_runtime", "chibi_host_native_catalog",
+            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit", "-framework",
+            "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio", "-framework", "AudioToolbox",
+            "-framework", "AVFoundation", "-framework", "Foundation", "-framework", "GameController",
+            "-framework", "Metal", "-framework", "QuartzCore", "-Xlinker", "-weak_framework", "-Xlinker",
+            "CoreHaptics", "chibi_text_search", "chibi_builtin_fonts",
+            "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "chibi_engine", "chibi_scheduling",
+            "chibi_ui_document_values", "chibi_ui_documents", "chibi_visual_catalog", "chibi_model_runtime",
+            "-framework", "Metal", "-framework", "Foundation", "chibi_image_catalog", "chibi_ui_runtime",
+            "chibi_value_document", "chibi_asset_values", "chibi_rhythm_runtime", "chibi_host_native_catalog",
             "chibi_core_capabilities", "chibi_array_capabilities", "chibi_field_capabilities",
             "chibi_state_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
             "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_text_capabilities",
             "chibi_fmt", "chibi_native_bindings", "chibi_audio_runtime", "chibi_url_runtime",
             "chibi_vector_capabilities", "chibi_math_capabilities", "chibi_arithmetic_capabilities",
-            "chibi_visual_motion_runtime", "chibi_physics3d_runtime", "chibi_box3d",
-            "chibi_visibility_runtime", "chibi_physics_runtime", "chibi_material_runtime",
-            "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_particle_runtime",
-            "chibi_save_runtime", "chibi_json", "chibi_field_catalog", "chibi_fields",
-            "chibi_task_pool_runtime", "chibi_task_scheduler", "-lc++", "chibi_entity_runtime",
-            "chibi_tilemap_runtime", "chibi_scene_runtime", "chibi_box2d", "chibi_input_runtime",
-            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities",
-            "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
-            "chibi_execution_sljit", "chibi_events", "chibi_types", "chibi_support", "-lm"
+            "chibi_visual_motion_runtime", "chibi_physics3d_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_visibility_runtime",
+            "chibi_physics_runtime", "chibi_material_runtime", "chibi_shader_runtime", "chibi_mesh_runtime",
+            "chibi_particle_runtime", "chibi_save_runtime", "chibi_json", "chibi_field_catalog", "chibi_fields",
+            "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
+            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_scene_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
+            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities", "chibi_capabilities",
+            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
+            "chibi_support", "-lm"
         ];
     }
     if (target == "chibi-compile" && build.platform() == "Darwin") {
         return [
-            "chibi_project_compilation", "chibi_project_document", "chibi_behavior_runtime",
-            "chibi_asset_json", "chibi_project_format", "chibi_project_compilation",
-            "chibi_native_prepared", "chibi_shader_preparation", "chibi_player", "chibi_engine",
-            "chibi_scheduling", "chibi_visual_catalog", "chibi_graph_catalog",
-            "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings",
-            "chibi_audio_runtime", "chibi_url_runtime", "chibi_rhythm_runtime", "chibi_ui_runtime",
-            "chibi_visual_motion_runtime", "chibi_physics3d_runtime", "chibi_box3d",
+            "chibi_project_compilation", "chibi_project_document", "chibi_behavior_runtime", "chibi_asset_json",
+            "chibi_project_format", "chibi_project_compilation", "chibi_native_prepared",
+            "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_scheduling",
+            "chibi_visual_catalog", "chibi_graph_catalog", "chibi_host_native_default",
+            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_audio_runtime", "chibi_url_runtime",
+            "chibi_rhythm_runtime", "chibi_ui_runtime", "chibi_visual_motion_runtime",
+            "chibi_physics3d_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
             "chibi_visibility_runtime", "chibi_physics_runtime", "chibi_material_runtime",
-            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime",
-            "chibi_save_runtime", "chibi_mesh_runtime", "chibi_task_pool_runtime",
-            "chibi_task_scheduler", "-lc++", "chibi_box2d", "chibi_asset_authoring",
-            "chibi_graph_compilation", "chibi_field_capabilities", "chibi_model_runtime",
-            "chibi_field_catalog", "chibi_fields", "chibi_ui_authoring", "chibi_ui_syntax",
-            "chibi_builtin_fonts", "chibi_ui_documents", "chibi_image_preparation",
-            "chibi_image_catalog", "chibi_shader_runtime", "chibi_compiler_syntax",
-            "chibi_compiler_json", "chibi_project_document", "chibi_source_catalog",
-            "chibi_ui_document", "chibi_ui_document_values", "chibi_prototype_document",
-            "chibi_scene_document", "chibi_scene_runtime", "chibi_source_presentation",
-            "chibi_graph_authoring", "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities",
-            "chibi_core_capabilities", "chibi_state_capabilities", "chibi_selection_capabilities",
-            "chibi_set_capabilities", "chibi_comparison_capabilities", "chibi_conversion_capabilities",
-            "chibi_vector_capabilities", "chibi_math_capabilities", "chibi_arithmetic_capabilities",
-            "chibi_value_document", "chibi_text_source", "chibi_text_search", "chibi_graph_model",
-            "chibi_authoring", "chibi_reference_index", "chibi_compiler", "chibi_language",
-            "chibi_json", "chibi_language_syntax", "chibi_syntax_runtime",
-            "chibi_component_presentation", "chibi_scenario_document", "chibi_input_runtime",
-            "chibi_behavior_runtime", "chibi_events", "chibi_native_capabilities",
-            "chibi_spatial_runtime", "chibi_input_map", "chibi_asset_text", "chibi_asset_kdl",
-            "chibi_asset_values", "chibi_declared_components", "chibi_execution",
-            "chibi_execution_sljit", "chibi_capabilities", "chibi_native_types", "chibi_ecs",
-            "chibi_types", "chibi_support", "-lm"
+            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime",
+            "chibi_mesh_runtime", "chibi_task_pool_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_asset_authoring",
+            "chibi_graph_compilation", "chibi_field_capabilities", "chibi_model_runtime", "chibi_field_catalog",
+            "chibi_fields", "chibi_ui_authoring",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a", "chibi_builtin_fonts",
+            "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog", "chibi_shader_runtime",
+            "chibi_compiler_syntax", "chibi_compiler_json", "chibi_project_document", "chibi_source_catalog",
+            "chibi_ui_document", "chibi_ui_document_values", "chibi_prototype_document", "chibi_scene_document",
+            "chibi_scene_runtime", "chibi_source_presentation", "chibi_graph_authoring",
+            "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_core_capabilities",
+            "chibi_state_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
+            "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_vector_capabilities",
+            "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document",
+            "chibi_text_source", "chibi_text_search", "chibi_graph_model", "chibi_authoring",
+            "chibi_reference_index", "chibi_compiler", "chibi_language", "chibi_json", "chibi_language_syntax",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_component_presentation",
+            "chibi_scenario_document", "chibi_input_runtime", "chibi_behavior_runtime", "chibi_events",
+            "chibi_native_capabilities", "chibi_spatial_runtime", "chibi_input_map", "chibi_asset_text",
+            "chibi_asset_kdl", "chibi_asset_values", "chibi_declared_components", "chibi_execution",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_native_types",
+            "chibi_ecs", "chibi_types", "chibi_support", "-lm"
         ];
     }
     if (target == "chibi_ctl" && build.platform() == "Darwin") {
         return [
             "chibi_automation", "chibi_asset_authoring", "chibi_asset_json", "chibi_asset_text",
             "chibi_authoring", "chibi_behavior_runtime", "chibi_component_presentation", "chibi_ecs",
-            "chibi_execution", "chibi_field_catalog", "chibi_graph_authoring",
-            "chibi_graph_compilation", "chibi_graph_model", "chibi_graph_catalog",
-            "chibi_host_native_default", "chibi_image_preparation", "chibi_json",
-            "chibi_model_authoring", "chibi_model_import", "chibi_model_runtime",
-            "chibi_native_capabilities", "chibi_native_types", "chibi_platform",
-            "chibi_project_document", "chibi_project_preparation", "chibi_project_compilation",
-            "chibi_project_format", "chibi_prototype_document", "chibi_reference_index",
-            "chibi_renderer", "chibi_scenario_document", "chibi_scene_document",
-            "chibi_shader_preparation", "chibi_source_catalog", "chibi_source_presentation",
-            "chibi_studio_capabilities", "chibi_studio_graph", "chibi_support", "chibi_text_search",
-            "chibi_text_source", "chibi_types", "chibi_ui_host", "chibi_ui_authoring",
+            "chibi_execution", "chibi_field_catalog", "chibi_graph_authoring", "chibi_graph_compilation",
+            "chibi_graph_model", "chibi_graph_catalog", "chibi_host_native_default", "chibi_image_preparation",
+            "chibi_json", "chibi_model_authoring", "chibi_model_import", "chibi_model_runtime",
+            "chibi_native_capabilities", "chibi_native_types", "chibi_platform", "chibi_project_document",
+            "chibi_project_preparation", "chibi_project_compilation", "chibi_project_format",
+            "chibi_prototype_document", "chibi_reference_index", "chibi_renderer", "chibi_scenario_document",
+            "chibi_scene_document", "chibi_shader_preparation", "chibi_source_catalog",
+            "chibi_source_presentation", "chibi_studio_capabilities", "chibi_studio_graph", "chibi_support",
+            "chibi_text_search", "chibi_text_source", "chibi_types", "chibi_ui_host", "chibi_ui_authoring",
             "chibi_ui_document", "chibi_ui_runtime", "chibi_visual_catalog", "chibi_model_bake",
             "chibi_studio_catalog", "chibi_component_presentation", "chibi_project_compilation",
             "chibi_asset_authoring", "chibi_graph_catalog", "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings", "chibi_image_preparation",
-            "chibi_project_document", "chibi_native_prepared", "chibi_compiler_syntax",
-            "chibi_compiler_json", "chibi_rhythm_runtime", "chibi_shader_preparation", "chibi_player",
-            "chibi_declared_components", "chibi_engine", "chibi_audio_runtime", "chibi_url_runtime",
-            "chibi_visual_motion_runtime", "chibi_physics3d_runtime", "chibi_box3d",
+            "chibi_project_document", "chibi_native_prepared", "chibi_compiler_syntax", "chibi_compiler_json",
+            "chibi_rhythm_runtime", "chibi_shader_preparation", "chibi_player", "chibi_declared_components",
+            "chibi_engine", "chibi_audio_runtime", "chibi_url_runtime", "chibi_visual_motion_runtime",
+            "chibi_physics3d_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
             "chibi_visibility_runtime", "chibi_physics_runtime", "chibi_material_runtime",
-            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime",
-            "chibi_save_runtime", "chibi_box2d", "chibi_input_runtime", "chibi_spatial_runtime",
-            "chibi_task_pool_runtime", "chibi_task_scheduler", "chibi_scheduling",
-            "chibi_source_catalog", "chibi_prototype_document", "chibi_scene_document",
-            "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_input_map",
-            "chibi_source_presentation", "chibi_authoring", "chibi_reference_index", "chibi_compiler",
-            "chibi_language", "chibi_language_syntax", "chibi_graph_compilation", "chibi_field_catalog",
-            "chibi_graph_authoring", "chibi_asset_text", "chibi_asset_kdl", "chibi_graph_model",
-            "chibi_events", "chibi_conversion_capabilities", "chibi_core_capabilities",
+            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
+            "chibi_spatial_runtime", "chibi_task_pool_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "chibi_scheduling", "chibi_source_catalog",
+            "chibi_prototype_document", "chibi_scene_document", "chibi_scene_runtime", "chibi_behavior_runtime",
+            "chibi_input_map", "chibi_source_presentation", "chibi_authoring", "chibi_reference_index",
+            "chibi_compiler", "chibi_language", "chibi_language_syntax", "chibi_graph_compilation",
+            "chibi_field_catalog", "chibi_graph_authoring", "chibi_asset_text", "chibi_asset_kdl",
+            "chibi_graph_model", "chibi_events", "chibi_conversion_capabilities", "chibi_core_capabilities",
             "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_comparison_capabilities",
-            "chibi_vector_capabilities", "chibi_text_capabilities", "chibi_fmt",
-            "chibi_state_capabilities", "chibi_array_capabilities", "chibi_selection_capabilities",
-            "chibi_set_capabilities", "chibi_field_capabilities", "chibi_fields",
-            "chibi_studio_capabilities", "chibi_execution", "chibi_execution_sljit", "chibi_platform",
-            "chibi_json", "third-party/lib/chibi-vendor/libchibi_desktop_cute.a", "-framework", "IOKit",
-            "-framework", "Security", "-framework", "QuartzCore", "-framework", "MetalKit",
-            "-framework", "Network", "-framework", "VideoToolbox", "-framework", "CoreMedia",
-            "-framework", "CoreVideo", "-framework", "CoreFoundation",
-            "third-party/lib/chibi-vendor/libchibi_desktop_physfs_static.a", "-framework", "IOKit",
-            "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_desktop_SDL3_static.a",
+            "chibi_vector_capabilities", "chibi_text_capabilities", "chibi_fmt", "chibi_state_capabilities",
+            "chibi_array_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
+            "chibi_field_capabilities", "chibi_fields", "chibi_studio_capabilities", "chibi_execution",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_platform", "chibi_json",
+            "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "-framework", "IOKit", "-framework",
+            "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework", "Network",
+            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework",
+            "CoreFoundation", "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a", "-framework",
+            "IOKit", "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a",
             "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker",
-            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit",
-            "-framework", "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio",
-            "-framework", "AudioToolbox", "-framework", "AVFoundation", "-framework", "Foundation",
-            "-framework", "GameController", "-framework", "Metal", "-framework", "QuartzCore",
-            "-Xlinker", "-weak_framework", "-Xlinker", "CoreHaptics", "chibi_builtin_fonts",
-            "chibi_ui_documents", "third-party/lib/chibi-vendor/libchibi_desktop_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_desktop_freetype.a", "-lc++", "chibi_ui_authoring",
-            "chibi_ui_syntax", "chibi_syntax_runtime", "chibi_ui_document", "chibi_text_source",
-            "chibi_text_search", "chibi_ui_document_values", "chibi_ui_runtime", "chibi_value_document",
-            "chibi_asset_values", "chibi_visual_catalog", "chibi_model_runtime",
+            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit", "-framework",
+            "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio", "-framework", "AudioToolbox",
+            "-framework", "AVFoundation", "-framework", "Foundation", "-framework", "GameController",
+            "-framework", "Metal", "-framework", "QuartzCore", "-Xlinker", "-weak_framework", "-Xlinker",
+            "CoreHaptics", "chibi_builtin_fonts", "chibi_ui_documents",
+            "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "-lc++", "chibi_ui_authoring",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_ui_document",
+            "chibi_text_source", "chibi_text_search", "chibi_ui_document_values", "chibi_ui_runtime",
+            "chibi_value_document", "chibi_asset_values", "chibi_visual_catalog", "chibi_model_runtime",
             "chibi_native_capabilities", "chibi_capabilities", "chibi_native_types", "chibi_ecs",
-            "chibi_image_catalog", "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_types",
-            "chibi_support", "-lm", "-framework", "Metal", "-framework", "Foundation"
+            "chibi_image_catalog", "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_types", "chibi_support",
+            "-lm", "-framework", "Metal", "-framework", "Foundation"
         ];
     }
     if (target == "test_language" && build.platform() == "Darwin") {
         return [
             "chibi_json", "chibi_language_syntax", "chibi_asset_json", "chibi_native_prepared",
-            "chibi_native_prepared", "chibi_math_capabilities", "chibi_project_compilation",
-            "chibi_asset_text", "chibi_value_document", "chibi_array_capabilities", "chibi_authoring",
-            "chibi_source_catalog", "chibi_input_map", "chibi_source_presentation",
-            "chibi_behavior_runtime", "chibi_field_catalog", "chibi_field_capabilities",
-            "chibi_project_document", "chibi_prototype_document", "chibi_scene_document",
-            "chibi_ui_authoring", "chibi_ui_document", "chibi_text_capabilities",
+            "chibi_native_prepared", "chibi_math_capabilities", "chibi_project_compilation", "chibi_asset_text",
+            "chibi_value_document", "chibi_array_capabilities", "chibi_authoring", "chibi_source_catalog",
+            "chibi_input_map", "chibi_source_presentation", "chibi_behavior_runtime", "chibi_field_catalog",
+            "chibi_field_capabilities", "chibi_project_document", "chibi_prototype_document",
+            "chibi_scene_document", "chibi_ui_authoring", "chibi_ui_document", "chibi_text_capabilities",
             "chibi_state_capabilities", "chibi_arithmetic_capabilities", "chibi_core_capabilities",
-            "chibi_graph_model", "chibi_graph_authoring", "chibi_graph_compilation",
-            "chibi_mesh_runtime", "chibi_ui_documents", "chibi_entity_runtime", "chibi_ui_runtime",
-            "chibi_native_prepared", "chibi_ui_syntax", "chibi_shader_preparation", "chibi_player",
-            "chibi_engine", "chibi_scheduling", "chibi_visual_catalog", "chibi_graph_catalog",
+            "chibi_graph_model", "chibi_graph_authoring", "chibi_graph_compilation", "chibi_mesh_runtime",
+            "chibi_ui_documents", "chibi_entity_runtime", "chibi_ui_runtime", "chibi_native_prepared",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a", "chibi_shader_preparation",
+            "chibi_player", "chibi_engine", "chibi_scheduling", "chibi_visual_catalog", "chibi_graph_catalog",
             "chibi_source_presentation", "chibi_host_native_default", "chibi_ui_runtime",
-            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_audio_runtime",
-            "chibi_url_runtime", "chibi_rhythm_runtime", "chibi_visual_motion_runtime",
-            "chibi_physics3d_runtime", "chibi_box3d", "chibi_visibility_runtime",
-            "chibi_physics_runtime", "chibi_material_runtime", "chibi_mesh_runtime",
-            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime",
-            "chibi_save_runtime", "chibi_task_pool_runtime", "chibi_task_scheduler", "-lc++",
-            "chibi_box2d", "chibi_input_runtime", "chibi_spatial_runtime", "chibi_asset_authoring",
-            "chibi_authoring", "chibi_compiler", "chibi_language", "chibi_prototype_document",
-            "chibi_scene_document", "chibi_scene_runtime", "chibi_ui_document",
-            "chibi_ui_document_values", "chibi_graph_compilation", "chibi_field_catalog",
-            "chibi_field_capabilities", "chibi_graph_authoring", "chibi_math_capabilities",
-            "chibi_asset_text", "chibi_asset_kdl", "chibi_value_document", "chibi_array_capabilities",
-            "chibi_text_capabilities", "chibi_fmt", "chibi_state_capabilities",
-            "chibi_arithmetic_capabilities", "chibi_core_capabilities", "chibi_graph_model",
-            "chibi_asset_values", "chibi_conversion_capabilities", "chibi_comparison_capabilities",
-            "chibi_vector_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
-            "chibi_fields", "chibi_model_runtime", "chibi_reference_index", "chibi_declared_components",
-            "chibi_native_types", "chibi_text_source", "chibi_text_search", "chibi_builtin_fonts",
-            "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog",
+            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_audio_runtime", "chibi_url_runtime",
+            "chibi_rhythm_runtime", "chibi_visual_motion_runtime", "chibi_physics3d_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_visibility_runtime",
+            "chibi_physics_runtime", "chibi_material_runtime", "chibi_mesh_runtime", "chibi_entity_runtime",
+            "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime", "chibi_task_pool_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
+            "chibi_spatial_runtime", "chibi_asset_authoring", "chibi_authoring", "chibi_compiler",
+            "chibi_language", "chibi_prototype_document", "chibi_scene_document", "chibi_scene_runtime",
+            "chibi_ui_document", "chibi_ui_document_values", "chibi_graph_compilation", "chibi_field_catalog",
+            "chibi_field_capabilities", "chibi_graph_authoring", "chibi_math_capabilities", "chibi_asset_text",
+            "chibi_asset_kdl", "chibi_value_document", "chibi_array_capabilities", "chibi_text_capabilities",
+            "chibi_fmt", "chibi_state_capabilities", "chibi_arithmetic_capabilities", "chibi_core_capabilities",
+            "chibi_graph_model", "chibi_asset_values", "chibi_conversion_capabilities",
+            "chibi_comparison_capabilities", "chibi_vector_capabilities", "chibi_selection_capabilities",
+            "chibi_set_capabilities", "chibi_fields", "chibi_model_runtime", "chibi_reference_index",
+            "chibi_declared_components", "chibi_native_types", "chibi_text_source", "chibi_text_search",
+            "chibi_builtin_fonts", "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog",
             "chibi_shader_runtime", "chibi_compiler_syntax", "chibi_language_syntax",
-            "chibi_syntax_runtime", "chibi_compiler_json", "chibi_json", "chibi_native_capabilities",
-            "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
-            "chibi_execution_sljit", "chibi_events", "chibi_types", "chibi_support", "-lm"
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_compiler_json", "chibi_json",
+            "chibi_native_capabilities", "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution",
+            "chibi_ecs", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
+            "chibi_support", "-lm"
         ];
     }
     if (target == "test_tools" && build.platform() == "Darwin") {
         return [
-            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document",
-            "chibi_shader_runtime", "chibi_authoring", "chibi_execution", "chibi_array_capabilities",
-            "chibi_audio_runtime", "chibi_scene_authoring", "chibi_scene_document",
-            "chibi_scene_authoring", "chibi_source_catalog", "chibi_authoring",
-            "chibi_project_compilation", "chibi_image_preparation", "chibi_scenario_document",
-            "chibi_player", "chibi_engine", "chibi_entity_runtime", "chibi_comparison_capabilities",
-            "chibi_conversion_capabilities", "chibi_host_native_default", "chibi_physics_runtime",
-            "chibi_physics3d_runtime", "chibi_material_runtime", "chibi_task_pool_runtime",
-            "chibi_spatial_runtime", "chibi_tilemap_runtime", "chibi_mesh_runtime",
+            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_shader_runtime",
+            "chibi_authoring", "chibi_execution", "chibi_array_capabilities", "chibi_audio_runtime",
+            "chibi_scene_authoring", "chibi_scene_document", "chibi_scene_authoring", "chibi_source_catalog",
+            "chibi_authoring", "chibi_project_compilation", "chibi_image_preparation",
+            "chibi_scenario_document", "chibi_player", "chibi_engine", "chibi_entity_runtime",
+            "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_default",
+            "chibi_physics_runtime", "chibi_physics3d_runtime", "chibi_material_runtime",
+            "chibi_task_pool_runtime", "chibi_spatial_runtime", "chibi_tilemap_runtime", "chibi_mesh_runtime",
             "chibi_tilemap_runtime", "chibi_shader_runtime", "chibi_platform", "chibi_asset_text",
-            "chibi_asset_json", "chibi_asset_text", "chibi_ui_document", "chibi_fmt",
-            "chibi_particle_runtime", "chibi_platform", "chibi_project_document", "chibi_text_source",
-            "chibi_project_document", "chibi_language_syntax", "chibi_authoring", "chibi_json",
-            "chibi_box3d", "chibi_renderer", "chibi_shader_preparation", "chibi_graph_compilation",
-            "chibi_graph_authoring", "chibi_project_preparation", "chibi_image_preparation",
-            "chibi_model_authoring", "chibi_shader_preparation", "chibi_mesh_runtime",
-            "chibi_graph_authoring", "chibi_graph_compilation", "chibi_graph_model",
-            "chibi_model_import", "chibi_mesh_runtime", "chibi_graph_authoring",
-            "chibi_graph_compilation", "chibi_native_types", "chibi_asset_text", "chibi_platform",
-            "chibi_authoring", "chibi_asset_authoring", "chibi_arithmetic_capabilities",
+            "chibi_asset_json", "chibi_asset_text", "chibi_ui_document", "chibi_fmt", "chibi_particle_runtime",
+            "chibi_platform", "chibi_project_document", "chibi_text_source", "chibi_project_document",
+            "chibi_language_syntax", "chibi_authoring", "chibi_json", "chibi_renderer",
+            "chibi_shader_preparation", "chibi_graph_compilation", "chibi_graph_authoring",
+            "chibi_project_preparation", "chibi_image_preparation", "chibi_model_authoring",
+            "chibi_shader_preparation", "chibi_mesh_runtime", "chibi_graph_authoring",
+            "chibi_graph_compilation", "chibi_graph_model", "chibi_model_import", "chibi_mesh_runtime",
+            "chibi_graph_authoring", "chibi_graph_compilation", "chibi_native_types", "chibi_asset_text",
+            "chibi_platform", "chibi_authoring", "chibi_asset_authoring", "chibi_arithmetic_capabilities",
             "chibi_project_preparation", "chibi_component_presentation", "chibi_graph_catalog",
             "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_particle_runtime",
             "chibi_save_runtime", "chibi_studio_capabilities", "chibi_graph_authoring",
-            "chibi_graph_compilation", "chibi_asset_text", "chibi_vector_capabilities",
-            "chibi_automation", "chibi_project_preparation", "chibi_renderer", "chibi_graph_catalog",
-            "chibi_graph_authoring", "chibi_reference_index", "chibi_prototype_document",
-            "chibi_scene_document", "chibi_native_types", "chibi_project_preparation",
-            "chibi_asset_json", "chibi_renderer", "chibi_studio_catalog", "chibi_model_authoring",
-            "chibi_model_bake", "chibi_model_import", "chibi_ui_host", "chibi_platform",
-            "third-party/lib/chibi-vendor/libchibi_desktop_cute.a", "-framework", "IOKit", "-framework",
-            "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework", "Network",
-            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo",
-            "-framework", "CoreFoundation",
-            "third-party/lib/chibi-vendor/libchibi_desktop_physfs_static.a", "-framework", "IOKit",
-            "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_desktop_SDL3_static.a",
-            "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker",
-            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit",
-            "-framework", "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio",
-            "-framework", "AudioToolbox", "-framework", "AVFoundation", "-framework", "Foundation",
-            "-framework", "GameController", "-framework", "Metal", "-framework", "QuartzCore",
-            "-Xlinker", "-weak_framework", "-Xlinker", "CoreHaptics",
-            "third-party/lib/chibi-vendor/libchibi_desktop_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_desktop_freetype.a", "-framework", "Metal",
-            "-framework", "Foundation", "chibi_project_format", "chibi_project_compilation",
-            "chibi_source_catalog", "chibi_image_preparation", "chibi_host_native_default",
-            "chibi_host_native_catalog", "chibi_native_bindings", "chibi_rhythm_runtime",
-            "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_audio_runtime",
-            "chibi_physics3d_runtime", "chibi_box3d", "chibi_scheduling", "chibi_visibility_runtime",
-            "chibi_physics_runtime", "chibi_material_runtime", "chibi_entity_runtime",
-            "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime",
-            "chibi_task_pool_runtime", "chibi_task_scheduler", "-lc++", "chibi_box2d",
-            "chibi_url_runtime", "chibi_ui_runtime", "chibi_visual_motion_runtime",
-            "chibi_visual_catalog", "chibi_mesh_runtime", "chibi_image_catalog",
-            "chibi_asset_authoring", "chibi_graph_catalog", "chibi_native_prepared",
-            "chibi_ui_authoring", "chibi_ui_document", "chibi_ui_document_values", "chibi_ui_syntax",
-            "chibi_builtin_fonts", "chibi_ui_documents", "chibi_compiler_syntax", "chibi_compiler_json",
-            "chibi_scenario_document", "chibi_input_runtime", "chibi_spatial_runtime",
-            "chibi_project_document", "chibi_component_presentation", "chibi_prototype_document",
-            "chibi_scene_document", "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_input_map",
-            "chibi_source_presentation", "chibi_authoring", "chibi_reference_index", "chibi_compiler",
-            "chibi_language", "chibi_language_syntax", "chibi_syntax_runtime", "chibi_text_source",
-            "chibi_text_search", "chibi_json", "chibi_declared_components", "chibi_native_types",
-            "chibi_studio_graph", "chibi_graph_compilation", "chibi_graph_authoring",
+            "chibi_graph_compilation", "chibi_asset_text", "chibi_vector_capabilities", "chibi_automation",
+            "chibi_project_preparation", "chibi_renderer", "chibi_graph_catalog", "chibi_graph_authoring",
+            "chibi_reference_index", "chibi_prototype_document", "chibi_scene_document", "chibi_native_types",
+            "chibi_project_preparation", "chibi_asset_json", "chibi_renderer", "chibi_studio_catalog",
+            "chibi_model_authoring", "chibi_model_bake", "chibi_model_import", "chibi_ui_host",
+            "chibi_platform", "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "-framework", "IOKit",
+            "-framework", "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework",
+            "Network", "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo",
+            "-framework", "CoreFoundation", "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a",
+            "-framework", "IOKit", "-framework", "Foundation",
+            "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a", "-framework", "CoreMedia",
+            "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker", "-weak_framework", "-Xlinker",
+            "UniformTypeIdentifiers", "-framework", "IOKit", "-framework", "ForceFeedback", "-framework",
+            "Carbon", "-framework", "CoreAudio", "-framework", "AudioToolbox", "-framework", "AVFoundation",
+            "-framework", "Foundation", "-framework", "GameController", "-framework", "Metal", "-framework",
+            "QuartzCore", "-Xlinker", "-weak_framework", "-Xlinker", "CoreHaptics",
+            "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "-framework", "Metal", "-framework",
+            "Foundation", "chibi_project_format", "chibi_project_compilation", "chibi_source_catalog",
+            "chibi_image_preparation", "chibi_host_native_default", "chibi_host_native_catalog",
+            "chibi_native_bindings", "chibi_rhythm_runtime", "chibi_shader_preparation", "chibi_player",
+            "chibi_engine", "chibi_audio_runtime", "chibi_physics3d_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_scheduling",
+            "chibi_visibility_runtime", "chibi_physics_runtime", "chibi_material_runtime",
+            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_particle_runtime", "chibi_save_runtime",
+            "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_url_runtime", "chibi_ui_runtime",
+            "chibi_visual_motion_runtime", "chibi_visual_catalog", "chibi_mesh_runtime", "chibi_image_catalog",
+            "chibi_asset_authoring", "chibi_graph_catalog", "chibi_native_prepared", "chibi_ui_authoring",
+            "chibi_ui_document", "chibi_ui_document_values",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
+            "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a", "chibi_builtin_fonts",
+            "chibi_ui_documents", "chibi_compiler_syntax", "chibi_compiler_json", "chibi_scenario_document",
+            "chibi_input_runtime", "chibi_spatial_runtime", "chibi_project_document",
+            "chibi_component_presentation", "chibi_prototype_document", "chibi_scene_document",
+            "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_input_map", "chibi_source_presentation",
+            "chibi_authoring", "chibi_reference_index", "chibi_compiler", "chibi_language",
+            "chibi_language_syntax", "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a",
+            "chibi_text_source", "chibi_text_search", "chibi_json", "chibi_declared_components",
+            "chibi_native_types", "chibi_studio_graph", "chibi_graph_compilation", "chibi_graph_authoring",
             "chibi_value_document", "chibi_array_capabilities", "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_asset_text", "chibi_asset_kdl", "chibi_graph_model",
             "chibi_arithmetic_capabilities", "chibi_math_capabilities", "chibi_vector_capabilities",
             "chibi_events", "chibi_asset_values", "chibi_text_capabilities", "chibi_fmt",
             "chibi_core_capabilities", "chibi_state_capabilities", "chibi_selection_capabilities",
-            "chibi_set_capabilities", "chibi_field_catalog", "chibi_field_capabilities",
-            "chibi_model_runtime", "chibi_shader_runtime", "chibi_fields", "chibi_studio_capabilities",
-            "chibi_execution", "chibi_ecs", "chibi_execution_sljit", "chibi_native_capabilities",
+            "chibi_set_capabilities", "chibi_field_catalog", "chibi_field_capabilities", "chibi_model_runtime",
+            "chibi_shader_runtime", "chibi_fields", "chibi_studio_capabilities", "chibi_execution", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_capabilities",
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];
     }

@@ -1001,8 +1001,9 @@ libraries, as Odin's `vendor/` keeps them, published as GitHub release assets
 instead of committed. `third_party/archives.tsv` pins one archive per target
 and variant (release, ASan+UBSan, ThreadSanitizer) by SHA-256; `Build.chibi`
 unpacks it into the clone's `.git/chibi/third_party`, which its worktrees
-share, and the SDK compiles the small libraries it owns from
-the archive's patched sources. The FetchContent declarations, configure-time
+share. The SDK links the archive's libraries, including the small ones it
+exports as its own targets (Box2D, Box3D, SLJIT, enkiTS, tree-sitter and its
+grammars), and installs copies of them. The FetchContent declarations, configure-time
 patching, `dependency_package.py`, `fetchcontent_cache.py`, the package
 decision `Build.chibi` took over from `configure_inputs.py package-enabled`,
 their tests and CI cache keys are deleted, as are the engine's unused Zep copy

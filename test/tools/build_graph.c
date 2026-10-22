@@ -811,23 +811,21 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
     return true;
 }
 
-/* The graph compiles a third-party archive's sources and stages its headers:
- * SLJIT, enkiTS's C++ scheduler and the Cute math headers that
- * chibi_vector_capabilities includes as system headers, with the task pool's
+/* The graph compiles over a third-party archive's headers and stages them:
+ * the Cute math headers that chibi_vector_capabilities includes as system
+ * headers, and the task pool over the archive's prebuilt enkiTS, with its
  * shared private/physics headers. A second run compiles nothing, and a run
- * whose archive is not unpacked or that has no C++ compiler says so before it
- * compiles. */
-TEST_CASE(archive_sources_compile_and_stage)
+ * whose archive is not unpacked, or that has C++ sources and no C++ compiler,
+ * says so before it compiles. */
+TEST_CASE(archive_headers_compile_and_stage)
 {
     char build_dir[GRAPH_PATH], path[GRAPH_PATH], theirs[GRAPH_PATH];
     join(build_dir, suite, "archive");
-    const char *const archive_targets[] = {
-        "--target", "chibi_execution_sljit",
-        "--target", "chibi_vector_capabilities",
-        "--target", "chibi_task_scheduler",
-        "--target", "chibi_task_pool_runtime",
-        NULL
-    };
+    const char *const archive_targets[] = { "--target",
+                                            "chibi_vector_capabilities",
+                                            "--target",
+                                            "chibi_task_pool_runtime",
+                                            NULL };
     char missing[GRAPH_PATH];
     join(missing, suite, "no archive");
     const char *const unpacked[] = { "--third-party", missing, NULL };
@@ -835,21 +833,18 @@ TEST_CASE(archive_sources_compile_and_stage)
     char *log = tool_read(log_path);
     REQUIRE(log && strstr(log, "the third-party archive is not unpacked"));
     free(log);
-    /* C++ sources need a C++ compiler. */
+    /* The UI host's C++ sources need a C++ compiler. */
     const char *const no_cxx[] = { "--cxx-compiler", "none", NULL };
-    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, no_cxx, archive_targets) == -1);
+    const char *const cxx_target[] = { "--target", "chibi_ui_host", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, no_cxx, cxx_target) == -1);
     log = tool_read(log_path);
     REQUIRE(log && strstr(log, "no C++ compiler was found"));
     free(log);
     join(path, build_dir, "objects");
     REQUIRE(access(path, F_OK));
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 6);
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 3);
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 0);
-    join(path, build_dir, "objects/chibi_execution_sljit/third-party/source/sljit/sljit_src/sljitLir.c.o");
-    REQUIRE(!access(path, R_OK));
-    join(path, build_dir, "lib/libchibi_execution_sljit.a");
-    REQUIRE(!access(path, R_OK));
-    join(path, build_dir, "objects/chibi_task_scheduler/third-party/source/enkits/src/TaskScheduler.cpp.o");
+    join(path, build_dir, "lib/libchibi_task_pool_runtime.a");
     REQUIRE(!access(path, R_OK));
     /* The math headers and the private/physics directory the task pool shares
      * with physics are staged as CMake stages them. */
@@ -1387,12 +1382,12 @@ void test_build_graph_reflect(const char *host, const char *cmake_build)
     tool_remove_tree(suite);
 }
 
-/* A separate route: SLJIT's and enkiTS's compiles with sanitizers take
- * seconds. */
+/* A separate route: compiles over the archive's prebuilt libraries and
+ * staged headers take seconds. */
 void test_build_graph_archive(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
-    RUN_TEST_CASE(archive_sources_compile_and_stage);
+    RUN_TEST_CASE(archive_headers_compile_and_stage);
     tool_remove_tree(suite);
 }
 

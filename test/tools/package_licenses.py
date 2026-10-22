@@ -59,8 +59,8 @@ add_library(notice_fixture STATIC IMPORTED)
 set_target_properties(notice_fixture PROPERTIES
     IMPORTED_LOCATION "{dependency.as_posix()}/libfixture.a"
     INTERFACE_INCLUDE_DIRECTORIES "{dependency.as_posix()}/api")
-include("{ROOT.as_posix()}/sdk/desktop_dependencies.cmake")
-chibi_desktop_dependency(notice_fixture imported)
+include("{ROOT.as_posix()}/sdk/vendor_dependencies.cmake")
+chibi_vendor_dependency(notice_fixture imported)
 ''')
     build = output / 'build'
     sdk = output / 'sdk'
@@ -83,7 +83,7 @@ chibi_desktop_dependency(notice_fixture imported)
         if path.is_file():
             expected[license_root / 'fonts/nerd-fonts-symbols-only' / path.relative_to(nerd)] = path
     for name in ('LICENSE', 'NOTICE'):
-        expected[license_root / 'desktop/notice_fixture' / name] = dependency / name
+        expected[license_root / 'vendor/notice_fixture' / name] = dependency / name
     for relative, original in expected.items():
         assert (sdk / relative).read_bytes() == original.read_bytes(), relative
     assert not list((sdk / license_root).rglob('*.ttf')), 'Font bytes leaked into notices'

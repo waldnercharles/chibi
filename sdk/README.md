@@ -234,8 +234,8 @@ CHIBI_TOOLS_BUILD_DIR=build-tools \
 
 Set `CHIBI_TOOLS_BUILD_DIR` if the dispatcher was built outside `build-tools`.
 This is an explicit standalone gate; default cross-platform tooling does not run
-it automatically. Its five pico cases share the unchanged 60-second supervisor
-limit. Its fifteen commands on Linux each keep the 10-second child limit.
+it automatically. Its six pico cases share the unchanged 60-second supervisor
+limit. Its eighteen commands on Linux each keep the 10-second child limit.
 External tooling configuration/build is separate; all in-test CMake configuration,
 compiler detection and tiny fixture compilation remain inside the supervisor and
 child deadlines.

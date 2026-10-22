@@ -33,7 +33,8 @@ option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI package
 option(CHIBI_SDK_COMPILER_HOST_ONLY "Build only the prepared compiler's native runtime" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
-# Prebuilt libraries and the third-party sources the SDK compiles.
+# The compiler's recovery runtime builds pinned portable sources. Normal SDK
+# builds install copies of the prebuilt libraries and their imported targets.
 if(CHIBI_SDK_COMPILER_HOST_ONLY)
     set(CHIBI_SDK_BUILD_COMPILER ON)
     set(CHIBI_SDK_BUILD_NATIVE OFF)
@@ -41,6 +42,8 @@ if(CHIBI_SDK_COMPILER_HOST_ONLY)
     add_subdirectory("${CHIBI_SDK_ROOT}/third_party" compiler-dependencies)
 else()
     include("${CHIBI_SDK_ROOT}/cmake/third_party.cmake")
+    include(vendor_dependencies.cmake)
+    install(FILES "${CHIBI_VENDOR_DEPENDENCY_CONFIG}" DESTINATION lib/cmake/Chibi)
 endif()
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
 if(CHIBI_WEB_THREADS)
@@ -58,7 +61,6 @@ endif()
 if(CHIBI_SDK_BUILD_DESKTOP AND NOT CHIBI_SDK_BUILD_NATIVE)
     message(FATAL_ERROR "Desktop runtime requires CHIBI_SDK_BUILD_NATIVE")
 endif()
-set(CHIBI_SDK_NEEDS_THREADS OFF)
 
 # Windows executables read and write file names as UTF-8, as elsewhere.
 # Installed CMake consumers add share/chibi/windows/chibi.manifest themselves.
@@ -95,6 +97,18 @@ function(chibi_sdk_headers target visibility)
     endforeach()
     target_include_directories(${target} ${visibility}
         $<BUILD_INTERFACE:${root}> $<INSTALL_INTERFACE:include/chibi/${owner}>)
+endfunction()
+
+# Exports Chibi::<name> as the given prebuilt libraries of the third-party
+# archive; the SDK installs copies of them.
+function(chibi_sdk_vendor target name)
+    add_library(${target} INTERFACE)
+    add_library(Chibi::${name} ALIAS ${target})
+    set_target_properties(${target} PROPERTIES EXPORT_NAME ${name})
+    foreach(library IN LISTS ARGN)
+        chibi_vendor_dependency(Chibi::vendor_${library} owner)
+        target_link_libraries(${target} INTERFACE ${owner})
+    endforeach()
 endfunction()
 
 add_library(chibi_support STATIC
@@ -409,22 +423,26 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_link_libraries(chibi_asset_json PUBLIC chibi_asset_values chibi_json)
     list(APPEND CHIBI_SDK_TARGETS chibi_asset_json)
     include(asset_text.cmake)
-    set(tree_sitter_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter")
-    configure_file("${tree_sitter_root}/lib/include/tree_sitter/api.h"
-        "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h" COPYONLY)
-    install(FILES "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h"
-        DESTINATION include/chibi/syntax_runtime/tree_sitter)
-    install(FILES "${tree_sitter_root}/LICENSE"
-        DESTINATION share/chibi/licenses/tree-sitter)
-    add_library(chibi_syntax_runtime STATIC "${tree_sitter_root}/lib/src/lib.c")
-    set_target_properties(chibi_syntax_runtime PROPERTIES EXPORT_NAME syntax_runtime)
-    target_include_directories(chibi_syntax_runtime PUBLIC
-        $<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/syntax_runtime>
-        $<INSTALL_INTERFACE:include/chibi/syntax_runtime>)
-    target_include_directories(chibi_syntax_runtime PRIVATE "${tree_sitter_root}/lib/src"
-        "${tree_sitter_root}/lib/include")
-    target_compile_definitions(chibi_syntax_runtime PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
-    target_compile_options(chibi_syntax_runtime PRIVATE -w)
+    if(CHIBI_SDK_COMPILER_HOST_ONLY)
+        set(tree_sitter_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter")
+        configure_file("${tree_sitter_root}/lib/include/tree_sitter/api.h"
+            "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h" COPYONLY)
+        install(FILES "${CHIBI_SDK_HEADER_ROOT}/syntax_runtime/tree_sitter/api.h"
+            DESTINATION include/chibi/syntax_runtime/tree_sitter)
+        install(FILES "${tree_sitter_root}/LICENSE"
+            DESTINATION share/chibi/licenses/tree-sitter)
+        add_library(chibi_syntax_runtime STATIC "${tree_sitter_root}/lib/src/lib.c")
+        set_target_properties(chibi_syntax_runtime PROPERTIES EXPORT_NAME syntax_runtime)
+        target_include_directories(chibi_syntax_runtime PUBLIC
+            $<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/syntax_runtime>
+            $<INSTALL_INTERFACE:include/chibi/syntax_runtime>)
+        target_include_directories(chibi_syntax_runtime PRIVATE "${tree_sitter_root}/lib/src"
+            "${tree_sitter_root}/lib/include")
+        target_compile_definitions(chibi_syntax_runtime PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+        target_compile_options(chibi_syntax_runtime PRIVATE -w)
+    else()
+        chibi_sdk_vendor(chibi_syntax_runtime syntax_runtime tree_sitter)
+    endif()
     add_subdirectory("${CHIBI_SDK_ROOT}/src/language" language)
 endif()
 

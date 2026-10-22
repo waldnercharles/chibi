@@ -774,7 +774,8 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
         flags.extend(DebugDirectoryFlags(profile, build_dir));
     }
     flags.extend(BuildTypeFlags(profile.build_type));
-    standard := Standard(target);
+    // Every C source compiles as C23 with GNU extensions.
+    standard := "gnu23";
     if (language == "cxx") {
         standard = CxxStandard(target);
     }
@@ -789,9 +790,6 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
     }
     if (profile.sysroot != "") {
         flags.extend(["-isysroot", profile.sysroot]);
-    }
-    if (PositionIndependent(target)) {
-        flags.append("-fPIC");
     }
     if (profile.warnings) {
         flags.extend([

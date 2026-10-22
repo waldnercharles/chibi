@@ -307,10 +307,10 @@ TOOLS = {
                             '--build-graph-reflect',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
                             GRAPH_REFERENCE],
-    # One case: the graph compiles SLJIT and enkiTS's C++ from the third-party
-    # archive, chibi_vector_capabilities over the archive's staged Cute math
-    # headers and the task pool (four C and two C++ files with the profile's
-    # sanitizers), then finds them current.
+    # One case: the graph compiles chibi_vector_capabilities over the
+    # third-party archive's staged Cute math headers and the task pool over its
+    # prebuilt enkiTS (three C files with the profile's sanitizers), then finds
+    # them current.
     'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-archive',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
@@ -338,9 +338,9 @@ TOOLS = {
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
-    # Eight offline desktop dependency/configuration cases; twenty direct children, each <=10s.
+    # Six offline vendor dependency/configuration cases; eighteen direct children on Linux, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # Two configured-ownership cases:22children,14rejects,13tiny C units and one PCH.
+    # Two configured-ownership cases:23children,15rejects,13tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],

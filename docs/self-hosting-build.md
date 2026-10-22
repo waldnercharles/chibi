@@ -324,7 +324,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   adds that before `sdk/desktop.cmake` enables Objective-C, a CMake defect the
   graph copies so their commands stay equal.
 
-`graph:engine`'s `Targets.chibi` lists the 110 libraries the graph owns on
+`graph:engine`'s `Targets.chibi` lists the 104 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
@@ -332,25 +332,24 @@ over ckdl) and the libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
 `chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
 engine component KDL are generated sources, `chibi_save_runtime`, and
-`chibi_execution` with SLJIT and the header-only `chibi_math` from the
-third-party archive, with the libraries that need only those (the behavior,
-scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
+`chibi_execution` over the third-party archive's prebuilt SLJIT and the
+header-only `chibi_math` from it, with the libraries that need only those (the
+behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
 Studio capabilities, the prepared native catalog, model baking and the scene
 and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
 whose sources `reflect` writes, with the libraries over them (the spatial,
 entity, rhythm, particle, input and visual motion runtimes, declared
 components, the visual catalog, scene authoring and the scenario document),
-and from the archive tree-sitter's runtime (`chibi_syntax_runtime`), its CSS
-and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
-project syntax documents and UI authoring over them, and enkiTS's C++ task
-scheduler with the task pool, material, physics, visibility, graph model,
-authoring and compilation, Studio catalog and graph, engine and default
-native catalog libraries over it, and image preparation, the language,
+and, over the archive's prebuilt tree-sitter runtime, CSS and HTML grammars,
+Box2D and Box3D, the language and project syntax documents and UI authoring,
+and over its prebuilt enkiTS task scheduler the task pool, material, physics,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and default native catalog libraries over it, and image preparation, the language,
 compiler, authoring, asset authoring, graph catalog, model authoring, shader
 preparation, source catalog and presentation and player libraries, and over
 the desktop Cute archive the platform, model import, UI host (C++17 over
 RmlUi) and renderer (with its Objective-C GPU clock on macOS) and the project
-compilation, format and preparation libraries: 685 sources in 106 archives.
+compilation, format and preparation libraries: 594 sources in 100 archives.
 `ExportName` names the targets whose CMake `EXPORT_NAME` differs, as
 `chibi_ui_host` stages `public/ui` and `chibi_renderer` `public/render`. A name that is no target, such as `chibi_physics` or
 `chibi_graph`, lists the headers of a `private/NAME` directory several
@@ -391,13 +390,15 @@ a subset with `--target` also stages the headers of every library its
 includes name. On macOS `make build` builds them with the graph; elsewhere
 CMake still does, and `build-graph` checks that their compile commands agree
 with a configured CMake build's; `build-graph-support` compiles only
-`chibi_support`. Building everything, `test_tools` included, takes about 25
-to 32 minutes with sanitizers and no compiler cache at a load average of 5;
-`build-graph-archive` compiles SLJIT and a math-header library from the
-archive, `build-graph-generated` generates the native type sources and
-rewrites the codec headers, `build-graph-programs` checks that naming
-`test_tools` also builds the programs it runs, and `build-graph-resources`
-that the launcher's and `chibi_ctl`'s resources equal CMake's.
+`chibi_support`. Before the dependency-parser and join improvements, building
+everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
+and no compiler cache at a load average of 5.
+`build-graph-archive` compiles a math-header library and the task pool over
+the archive's headers and prebuilt libraries; `build-graph-generated`
+generates the native type sources and rewrites the codec headers,
+`build-graph-programs` checks that naming `test_tools` also builds the programs
+it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
+resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads

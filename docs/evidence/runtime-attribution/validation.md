@@ -25,8 +25,8 @@ application acceptance or completion of all B04/L14 work.
 
 ## Fixed focused results
 
-Each admitted production-supervisor invocation ran serially under the original
-shared 60-second deadline, with no changed repetitions or environment workload
+Each production-supervisor invocation ran serially, with no changed repetitions
+or environment workload
 knobs. Configuration and compilation were timed separately.
 
 | Target | Cases | Assertions | Seconds | Exit |
@@ -66,7 +66,7 @@ was not expanded or reconstructed.
 
 The prepared workflow totals six producer cases/199 assertions, twelve separate
 runtime-only consumer cases/629 assertions and one parent case/five assertions.
-All four complete commands used their unchanged shared 60-second supervisor
+All four complete commands used their production-supervisor
 deadlines. No unexpected failure, sanitizer finding, crash or timeout occurred.
 Expected failure messages inside tooling policy/package tests are their passing
 negative controls, not failed top-level invocations.

@@ -58,7 +58,7 @@ wall times are not isolated benchmarks or timing-speedup evidence.
 ## Exact bounded validation
 
 All four optimized commands ran serially on the same clean checkpoint, under
-the unchanged whole-command 60-second production supervisor:
+the production supervisor:
 
 | Route | Cases | Assertions | Seconds |
 |---|---:|---:|---:|
@@ -99,7 +99,7 @@ redundant same-arena allocation; this does not reuse another PR's waiver or
 clear another PR's hold. Ordinary published-head, integration, review and
 server-required checks remain separate release obligations.
 
-Reproduce admitted routes against coherent builds using
+Reproduce the selected routes against coherent builds using
 `python3 tools/test_policy.py tool <route>`, with `CHIBI_LANGUAGE_BUILD_DIR`
 and `CHIBI_WASM_BUILD_DIR` selecting the matching native/Wasm build and the
 pinned Node first on PATH. Do not infer full-suite coverage from these routes.

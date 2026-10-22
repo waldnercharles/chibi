@@ -173,8 +173,8 @@ Track language friction and discuss each package's semantics before porting it.
   changing or deleting Python, shell, Make, CMake, packaging, reflection, test
   supervision, browser, or release code. Every deletion must satisfy the caller
   and equivalence gate recorded there.
-- Read [`docs/testing.md`](docs/testing.md) before adding or running checks. Full
-  native, render, Studio, and other quarantined suites are disabled, not passed.
+- Read [`docs/testing.md`](docs/testing.md) before adding or running checks.
+  Select coverage from the affected contracts and report what actually ran.
 - Read the current language architecture and contracts before compiler work:
   [`docs/code-language.md`](docs/code-language.md),
   [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
@@ -193,7 +193,7 @@ rebase of unpublished commits. Never import an open branch merely to pre-resolve
 a possible conflict.
 
 Before publication, repeat that check, reconcile any landed overlap, review the
-complete combined diff, and run affected admitted checks on the exact candidate.
+complete combined diff, and run affected selected checks on the exact candidate.
 Attribute old results to the tree that produced them. Rerun a passing check only
 when integration or later edits changed the contract it covers.
 
@@ -322,15 +322,13 @@ Required behavior:
 
 - Preserve every argv element, including empty strings and shell metacharacters.
 - Set an explicit working directory and an allowlisted environment without
-  mutating the parent process. Preserve supervision metadata such as
-  `CHIBI_TEST_DEADLINE` when present.
+  mutating the parent process. Preserve process ownership and cancellation.
 - Bound captured stdout/stderr and report truncation.
 - Return normal child exits as `0..255` and signal termination as a negative
   signal number. Spawn failure, timeout, cancellation, invalid input, and host
   failure are capability errors with stable diagnostics, not invented exit codes.
-- Apply one inherited deadline, then cancel and reap the complete process group.
-  The test host uses the inherited shared deadline. An unsupervised invocation
-  requires the finite `--timeout-ms` budget.
+- Apply the caller's explicit operation deadline, then cancel and reap the
+  complete process group. The CLI requires a positive `--timeout-ms` argument.
 - Retain all borrowed Chibi values for the full child lifetime and release them
   on success, failure, timeout, and cancellation.
 - Reject the build capabilities when an ordinary game program requests them.
@@ -346,8 +344,7 @@ Completion criteria:
 - Linux and macOS implement and run the real-process cases. Windows keeps the
   stage-zero path until equivalent start, poll, stop, timeout, and process-tree
   behavior exists; record that gap and do not select the new host on Windows.
-- Build the exact candidate separately. Each admitted execution command shares
-  its inherited 60-second deadline. Changed C is formatted with clang-format 22,
+- Build the exact candidate separately. Changed C is formatted with clang-format 22,
   and an independent review finds no unresolved correctness or lifetime issue.
 
 ### M2. Drive the existing build from Chibi
@@ -498,7 +495,7 @@ million/sixteen million; effects retains 34 requests, 68 calls and ten parses
 at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
 runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
 not whole-call or aggregate instruction ceilings. Each route remains outside
-aggregates under one unchanged production 60-second deadline. Hosted run
+aggregates. Hosted run
 39138442670 at source `ec13962865b093bbeb2693a46ec6dc22fac6e498` passed
 union members, record members, unit analysis and type relations, with execution
 identity, expected pico summaries and production deadlines verified. Effects
@@ -507,15 +504,13 @@ admitted complete three-source C syntax diagnostic reproduced one error in the
 Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
 cleanly. The local and its sole use are now named `isUnordered`, preserving
 reduction logic and all fixtures. Corrected-source syntax passed all three
-complete-source cases and nine assertions in 0.072 seconds under the unchanged
-production 60-second supervisor. That earlier run's sanitized status SHA-256 is
+complete-source cases and nine assertions in 0.072 seconds. That earlier run's sanitized status SHA-256 is
 `6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
 The corrected source `b57ac78c53c170139d8f807158c076f971a2202b` subsequently
 passed all five complete semantic selectors in
 [run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564):
 union 3 cases, effects 4, records 5, unit analysis 3 and type relations 4.
-Execution identity, exact pico summaries and each separate production 60-second
-deadline passed. Configuration took 3s and build 15s; integer-second execution
+Execution identity and exact pico summaries were verified. Configuration took 3s and build 15s; integer-second execution
 times were 7s, 1s, 1s, 3s and 0s respectively. PR #444 merged at
 `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb`; its tree exactly matches tested tree
 `09d520fe2a5723226126b0879faaee390e87b7b9`. The sanitized status SHA-256 is
@@ -523,7 +518,7 @@ times were 7s, 1s, 1s, 3s and 0s respectively. PR #444 merged at
 This evidence belongs to that semantic tree. The transport integration rebuilds
 shared frontend and language-driver archives and still needs its own strict
 product-link audit, both full transport selectors and all five complete semantic
-selectors, independently admitted with separate unchanged 60-second deadlines.
+selectors, with independent review of the combined contracts.
 No raw hosted diagnostics or source contents are exported.
 Those compiler-only results do not replace the native adapter build or tests.
 Complete authored semantic analysis, lowering, artifact production, stage one
@@ -781,10 +776,10 @@ small path joins remain collectable. Invalid target names now fail before
 profile discovery or writes. No new native capability or protocol change is
 needed. A sanitizer test-driver rebuild passed in 247 s on a partially
 built tree. The native, materials, projects, language and tooling groups passed
-under their separate production 60-second deadlines, as did compile/link
+along with compile/link
 command parity and the expanded target/parser regression. Current clean-build
 and focused validation evidence is tracked in PR #655. Full native/render/Studio
-and other quarantined coverage remain disabled, not passed.
+coverage was not established by these focused results.
 
 Next: packaging the SDK from the graph's build, the browser builds and Linux
 (which needs a Linux archive the owner approves).
@@ -1062,8 +1057,7 @@ project policy called by allowed dependencies belongs in `.chibi`.
 Last verified checkpoint: 2026-10-19, the #420 integration of `main` at
 `07eb2abaa` into `codex/toolchain-cleanup-20261017` at `f6633ace1`, verified
 locally on macOS arm64 (Homebrew Clang 23, Debug, ASan/UBSan; Release for the
-bootstrap checks). Each command ran once under its own production 60-second
-deadline:
+bootstrap checks). Each command ran once:
 
 | Check | Result |
 | --- | --- |
@@ -1142,7 +1136,7 @@ over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
 | Host symbols (`nm -a`) | No `execution_prepared_write`, `semantic_*`, `lower_*` or `authoring_packages_prepare`. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Each selector ran once under its own unchanged production 60-second deadline.
+Each selector ran once.
 The hosted Linux ELF audit (`.github/scripts/transport-boundary-audit.py`) was not
 run; its archive closure and all 19 pinned source inventories match this build's
 File API/compile database, and the writer exclusion holds on Darwin's dead-strip
@@ -1154,8 +1148,7 @@ preparation and built in Studio run `39112128113` (configure 3s, build 17s).
 For both bytecode and SLJIT attempts, the independent C witnesses passed before
 the authored calls exposed the intended zero-ID mismatch and recursive
 callable-depth failure. Each focused
-selector completed in about 1s under its own unchanged 60-second production
-supervisor. Verified sanitized status evidence SHA256:
+selector completed in about 1s. Verified sanitized status evidence SHA256:
 `d4ec88911f4523f3231d0332fb12cb03e97c1e9386c5cb411fc58dc15c647313`.
 The expected-red job remains failed; this records the regression, not a pass.
 
@@ -1174,8 +1167,8 @@ differential in hosted run `39112565011`: 25 raw and four analyzed requests,
 58 authored attempts across both backends, and owned results surviving
 input/package teardown. Configuration took 5s, build 14s and the single
 production-supervised execution 2s. Its sanitized evidence hash is recorded
-above; the merged tree exactly matches that tested source tree. Budget arguments
-and the single 60-second deadline remain unchanged. The supplied instruction
+above; the merged tree exactly matches that tested source tree. Instruction-budget arguments
+remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
 
 The independently reviewed additive type-relations component passed its first
@@ -1202,8 +1195,7 @@ standalone tooling parent that consumes scheduler/render C++ targets now
 activates CXX through a narrow production include, leaving pure C consumers
 alone. On macOS, `language-semantic` (42 cases), `language-incremental` (13),
 `unit-fixtures` (2), `language-unit-analysis-chibi` (3) and the eight-case
-`desktop-dependencies` route pass, each under its own production 60-second
-deadline, as do the five CI aggregates. The desktop OpenGL case previously
+`desktop-dependencies` route pass, as do the five CI aggregates. The desktop OpenGL case previously
 expected Linux relocation on every host; it now asserts that other hosts reject
 the same absolute paths as unowned. The earlier hosted Linux build failure was
 never classified and Linux remains unmeasured for this adapter.
@@ -1221,8 +1213,7 @@ Project format 25 migrates `cast<T>` sources and their sidecars; Studio's
 `projects/studio` uses `cast<` and upgrades when opened. The authored scalar
 folder mirrors the mode matrix. Unsigned ordered comparison and subtraction are
 still unsupported by the verifier and backends. On macOS the five CI aggregates,
-the Wasm group and 40 focused language and tool selectors pass, each under its
-own 60-second deadline; Linux is unmeasured.
+the Wasm group and 40 focused language and tool selectors pass; Linux is unmeasured.
 
 The bounded authored package compiler (PR #449,
 `tools/compiler/bounded_compiler`) now runs. Stage zero prepares its 18-file
@@ -1468,8 +1459,7 @@ The bootstrap also requires an explicit final return after the infinite loop.
 | `make test-tools` | 125 cases / 27,270 assertions, 26.627s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Every execution route uses one production 60-second ceiling. The callable route
-has 30 calls at two million instructions, 31 parses and four private JSON calls.
+The callable route has 30 calls at two million instructions, 31 parses and four private JSON calls.
 Its header source is below 64 KiB; seven dependencies are below 48 KiB each.
 Inputs are below 512 bytes/256 nodes/depth 32. Output caps are ten symbols, two
 scopes, three functions, two defaults, one body and four uses/diagnostics; this
@@ -1533,8 +1523,7 @@ remains open, conflicted and explicitly held at
 `c541133b689c620a377982ee339c017b6d12b263`. Neither branch was imported.
 M3's installed Linux/macOS evidence remains in its committed checkpoint. This
 checkpoint does not establish a new installed-SDK or Linux claim.
-Full native/render/Studio, browser/device and other quarantined suites
-remain disabled, not passed.
+Full native/render/Studio and browser/device suites were not run at this checkpoint.
 
 ### M5 snapshot-to-reader composition
 
@@ -1544,6 +1533,6 @@ package-local/global document maps in graph-member order, which is sorted by
 path. It consumes the snapshot's raw flags and syntax root without reparsing or
 resolving names. `language-snapshot-reader-chibi` passes 3 cases / 61,885
 assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
-assertions in 6.6s on macOS, each under its own production 60-second deadline.
+assertions in 6.6s on macOS.
 It does not implement header composition, semantic phases, exports, lowering,
 artifact output or `Checked`, and makes no M5/self-hosting completion claim.

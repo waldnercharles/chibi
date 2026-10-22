@@ -471,8 +471,7 @@ shipped `core:strings`: writing it with the authored writer on bytecode under
 ASan took 22 s, and stage one compiling it in the package compiler's imports
 sample added about 24 s of CPU. The writer now writes modules above 512 KiB on
 the compiled backend only, and the imports sample has its own selector, but
-each further core package spends more of the compiler tests' 60-second
-budgets.
+each further core package adds to compiler-test execution time.
 
 - Odin, Go, Rust and Zig keep debug information beside the code (DWARF, PDB)
   rather than in it, and release builds strip it.
@@ -881,9 +880,8 @@ source loading with `build source could not be read`.
 
 The installed `/opt/homebrew/bin/python3.12` used the same clock epoch as the
 native host. Selecting its `libexec/bin` directory in the task's PATH allowed
-the documented bootstrap workflow to finish inside one shared 60-second
-deadline. Emscripten also needed `EMSDK_PYTHON` set to that interpreter. No
-global interpreter or deadline limits were changed.
+the documented bootstrap workflow to finish. Emscripten also needed
+`EMSDK_PYTHON` set to that interpreter. No global interpreter settings were changed.
 
 Suggestion: toolchain startup should validate the supported Python clock
 contract and diagnose an expired inherited deadline separately from a source

@@ -23,14 +23,14 @@ fixture and recording host perform no file, process, network, clock, sleep or
 GPU operations and create no ECS entities or frames. The existing pico_unit
 driver and production supervisor retain their normal timing and process control.
 
-The admitted `language-build-workflow` tooling command passed all eight cases
-and 90 assertions under the shared 60-second production deadline. Actual backend
+The `language-build-workflow` tooling command passed all eight cases
+and 90 assertions. Actual backend
 entry counters verify bytecode and SLJIT execution, including failure paths; a
 requested backend label alone is not evidence. The finite run took 0.056 seconds
 on the measured Linux host; this is a test measurement, not a performance claim.
 The exact standalone language target was built separately. Broader native,
 materials, projects, language and tooling groups were not run for this proof;
-unmeasured and quarantined checks are not passed.
+unexecuted checks are not passed.
 
 ## Private process host
 
@@ -55,8 +55,8 @@ the text and array natives every host offers, such as `format_text` and
 it with a diagnostic. Relative source paths resolve from
 the explicit root. The CLI uses bytecode; the private C invocation API also
 supports SLJIT. Tests verify backend entry counters. Source preparation and
-execution share the invocation budget. A supervised invocation may omit
-`--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
+execution share the caller's invocation budget. Every CLI invocation supplies
+a positive `--timeout-ms` argument.
 
 Every private native is named under `build.`, as Zig's build API sits under
 `std.Build`: `build.run`, `build.read_file`, `build.join` and so on. The
@@ -75,8 +75,8 @@ environment.
 
 The environment snapshot includes compiler, flags, CMake, SDK, cache-directory,
 ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths,
-the GitHub CLI's `GH_TOKEN` for archive downloads and the inherited test
-deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
+the GitHub CLI's `GH_TOKEN` for archive downloads.
+`environment_names` in `build_host.c` owns the explicit allowlist.
 Missing allowed names read as empty strings; other names are capability errors.
 `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
@@ -107,9 +107,8 @@ number. Invalid input, spawn failure, timeout, cancellation and host failure
 are capability errors with stable diagnostics. The CLI maps a returned negative
 signal number to the conventional `128 + signal` exit status.
 
-One absolute deadline bounds every child, including the inherited production
-test deadline. The native clock matches Python's supervisor on each platform:
-macOS uptime excludes sleep, while Linux uses `CLOCK_MONOTONIC`. The host kills
+The caller's absolute operation deadline bounds its children. The native clock
+uses macOS uptime excluding sleep or Linux `CLOCK_MONOTONIC`. The host kills
 the complete child process group and reaps its direct child on termination,
 including when a leader exits before its descendants. This is process-group
 cleanup, not containment of children that deliberately create detached sessions.
@@ -545,7 +544,7 @@ and incompatible native signatures must reject before invocation.
 The existing Linux/Darwin `chibi-compiler-host` has an optional private
 `--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
 `--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
-finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
+finite caller-supplied `--timeout-ms N`. Binary output and
 `--batch` are mutually exclusive. `--output-bytes FILE` writes a `byte[]`
 result that is not a compiler, such as stage one's closure of a game's
 modules, without loading it as one, and fails when the entry returns no
@@ -730,9 +729,7 @@ process loads and executes the compiler just built, and the outputs must have
 identical hashes. Each invocation also performs the recovery checks above,
 including an internal fixed-point compile when recorded sources changed.
 
-The two invocations and manifest promotion share one 59-second deadline inside
-a hard 60-second step. Timeout terminates the active process tree. Each job
-uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
+Each job uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
 with seed/runtime identities, input inventory, revision, platform, cleared
 environment and timings. The comparison job requires matching compiler bytes
 across all three platforms. Every job is nonadvisory; skipped or failed

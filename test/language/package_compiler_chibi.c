@@ -4155,8 +4155,8 @@ static bool takes_project_identities(int b)
 /* Stage zero's build of stage one passes arguments without copying them to
  * every function but those that run once per compile. One that pushes onto an
  * array argument, or stores a uint64 into a field of a local record, copies
- * every argument on each call, and so does every function that calls it;
- * each took stage one compiling itself past its 60-second ceiling. */
+ * every argument on each call, and so does every function that calls it,
+ * slowing stage one compiling itself. */
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());

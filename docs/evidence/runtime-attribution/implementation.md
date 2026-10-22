@@ -193,7 +193,7 @@ desktop product setup that the root `make build` target would configure.
   `ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`. LSan is excluded
   as in the existing workspace validation contract; no leak-detector claim.
 - `build-attribution-wasm`: serial Emscripten Release, no pthread option,
-  runtime NDEBUG and test `-UNDEBUG`, run only through Node after admission.
+  runtime NDEBUG and test `-UNDEBUG`, run through Node.
   Emsdk 6.0.10 supplies Clang24 and Node24.19.0. The proposed command explicitly
   selects that Node through PATH; the CMake emulator setting alone does not
   select the Node used by the production supervisor. This is generated-Wasm
@@ -207,17 +207,14 @@ all. The separately built no-op-hook control remains optional, **not implemented
 or admitted**, and no overhead percentage is claimed. Sanitized timings are
 correctness-only observations, never performance evidence.
 
-Proposed new invocations, each through the unchanged hard60-second production
-supervisor (no suite/chunk bypass):
+Proposed new invocations through the production supervisor:
 
 - `CHIBI_LANGUAGE_BUILD_DIR=build-attribution-sanitize ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 python3 tools/test_policy.py tool language-runtime-attribution`
 - `CHIBI_LANGUAGE_BUILD_DIR=build-attribution-native python3 tools/test_policy.py tool language-runtime-attribution`
 - `PATH="../chibi-tools/emsdk/node/24.19.0_64bit/bin:$PATH" CHIBI_WASM_BUILD_DIR=build-attribution-wasm python3 tools/test_policy.py tool wasm-runtime-attribution`
 
 The candidate also adds the selector to existing language/Wasm aggregate
-registrations so normal dispatcher coverage does not silently omit it. This does
-not authorize running those groups now. The coordinator must select/admit the
-existing affected-contract closure on exact binaries, including applicable
+registrations so normal dispatcher coverage does not silently omit it. Select
+the existing affected-contract checks on the candidate binaries, including applicable
 copy/type, program/task, execution/inspection, activation/borrow and checked-write
-contracts, within the unchanged policy. Source review and first finite runtime
-admission precede every new command. Unavailable required checks remain blockers.
+contracts. Review the source, workload and oracle, then run the selected checks. Unavailable required checks remain blockers.

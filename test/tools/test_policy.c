@@ -66,10 +66,12 @@ static const char driver_routes
          "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
          "    print(Path(command[0]).name, command[-1])\n"
          "    sys.exit(0)\n"
-         /* Every group owns unique selectors; grouped Release chibi_ctl, chibi
+         /* Main CPU/Wasm groups own unique selectors; Release chibi_ctl, chibi
           * and chibi-compile users belong to the target that builds them. */
          "if sys.argv[2] == 'misplaced-selectors':\n"
-         "    names = [n for group in policy.GROUPS.values() for n in group]\n"
+         "    names = [n for key in ('native', 'materials', 'projects', "
+         "'language', 'wasm')\n"
+         "             for n in policy.GROUPS[key]]\n"
          "    ctl = {n for n, command in policy.TOOLS.items()\n"
          "           if any(Path(a).name in ('chibi_ctl', 'chibi', "
          "'chibi-compile') for a in command[1:])}\n"
@@ -107,13 +109,21 @@ static const char driver_source[] =
     "records)\n"
     "        sys.exit(0)\n"
     "    if action == 'exit':\n"
-    "        result = policy.run_commands([[worker, 'exit', sys.argv[5]]], 6)\n"
+    "        result = policy.run_commands([[worker, 'exit', sys.argv[5]]])\n"
     "    elif action == 'aggregate':\n"
     "        result = policy.run_commands([[worker, 'sleep', '1.4'],\n"
     "            [worker, 'sleep', '1.4'], [worker, 'mark', root]], 2)\n"
-    "    elif action == 'expired':\n"
-    "        os.environ[policy.DEADLINE] = str(time.monotonic() - 1)\n"
-    "        result = policy.run_commands([[worker, 'mark', root]], 6)\n"
+    "    elif action == 'sequence':\n"
+    "        result = policy.run_commands([[worker, 'sleep', '.05'],\n"
+    "            [worker, 'mark', root]])\n"
+    "    elif action == 'timeout-options':\n"
+    "        for duration in (0, -1, float('inf'), float('nan')):\n"
+    "            try:\n"
+    "                policy.run_commands([[worker, 'mark', root]], duration)\n"
+    "            except ValueError:\n"
+    "                continue\n"
+    "            raise RuntimeError('invalid timeout accepted')\n"
+    "        result = policy.run_commands([[worker, 'exit', '0']], 120)\n"
     "    elif action == 'no-reader':\n"
     "        result = policy.supervise([[worker, 'mark', root]])\n"
     "    elif action == 'portable':\n"
@@ -130,15 +140,12 @@ static const char driver_source[] =
     "        open(root + '/sibling-release', 'w').close()\n"
     "        sibling.wait(timeout=4)\n"
     "    elif action == 'nested':\n"
-    "        deadline = time.monotonic() + 2\n"
-    "        open(root + '/deadline', 'w').write(str(deadline))\n"
-    "        os.environ[policy.DEADLINE] = str(deadline)\n"
     "        result = policy.run_commands([[sys.executable, __file__, "
     "sys.argv[1],\n"
-    "            'inner', worker, root]], 60)\n"
+    "            'inner', worker, root]], 2)\n"
     "    elif action == 'inner':\n"
     "        result = policy.run_commands([[worker, 'descendant', root, '1', "
-    "'0']], 60)\n"
+    "'0']])\n"
     "    else:\n"
     "        if action in ('missing-proc', 'pending'): "
     "os.environ['CHIBI_POLICY_FIXTURE'] = action\n"
@@ -205,10 +212,10 @@ static int run(const char *action, const char *argument)
 
 static void reset_markers()
 {
-    const char *names[] = { "started",       "escaped",
-                            "sibling",       "last-command",
-                            "deadline",      "cleanup-entered",
-                            "sibling-ready", "sibling-release" };
+    const char *names[] = { "started",         "escaped",
+                            "sibling",         "last-command",
+                            "cleanup-entered", "sibling-ready",
+                            "sibling-release" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char filename[PATH_MAX];
         path(filename, names[i]);
@@ -638,14 +645,17 @@ TEST_CASE(studio_resources_require_recorded_generation)
     return true;
 }
 
-TEST_CASE(exit_and_aggregate_deadlines)
+TEST_CASE(exit_sequence_and_optional_timeout)
 {
     REQUIRE(run("exit", "0") == 0);
     REQUIRE(run("exit", "7") == 7);
     REQUIRE(run("aggregate", NULL) == 124);
     REQUIRE(!exists("last-command"));
-    REQUIRE(run("expired", NULL) == 124);
+    REQUIRE(run("timeout-options", NULL) == 0);
     REQUIRE(!exists("last-command"));
+    REQUIRE(run("sequence", NULL) == 0);
+    REQUIRE(exists("last-command"));
+    reset_markers();
     return true;
 }
 
@@ -685,24 +695,11 @@ TEST_CASE(unavailable_discovery_refuses_before_launch)
 }
 
 #ifdef __linux__
-TEST_CASE(nested_setsid_inherits_deadline)
+TEST_CASE(nested_cancellation_cleans_detached_descendants)
 {
     reset_markers();
     REQUIRE(run("nested", NULL) == 124);
     REQUIRE(exists("started"));
-    char filename[PATH_MAX];
-    path(filename, "deadline");
-    char *expected = tool_read(filename);
-    path(filename, "started");
-    char *record = tool_read(filename);
-    int pid;
-    double inherited;
-    bool same_deadline = expected && record &&
-                         sscanf(record, "%d %lf", &pid, &inherited) == 2 &&
-                         strtod(expected, NULL) == inherited;
-    free(expected);
-    free(record);
-    REQUIRE(same_deadline);
     REQUIRE(!exists("escaped"));
     return true;
 }
@@ -757,12 +754,12 @@ void test_tool_test_policy()
     RUN_TEST_CASE(studio_collider_requires_twenty_six_clean_frames);
     RUN_TEST_CASE(studio_resources_require_recorded_generation);
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
-    RUN_TEST_CASE(exit_and_aggregate_deadlines);
+    RUN_TEST_CASE(exit_sequence_and_optional_timeout);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);
     RUN_TEST_CASE(unavailable_discovery_refuses_before_launch);
 #ifdef __linux__
-    RUN_TEST_CASE(nested_setsid_inherits_deadline);
+    RUN_TEST_CASE(nested_cancellation_cleans_detached_descendants);
     RUN_TEST_CASE(orphan_setsid_cleanup);
     RUN_TEST_CASE(missing_proc_uses_portable_discovery);
     RUN_TEST_CASE(pending_termination_still_cleans_up);

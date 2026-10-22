@@ -54,7 +54,7 @@ copy-elision work needs its own semantic proof and measurement.
 
 The corrected bounded program selectors pass all 114 cases:
 
-| Build | Assertions | Time under production 60-second supervisor |
+| Build | Assertions | Production-supervisor wall time |
 | --- | ---: | ---: |
 | Native ASan/UBSan, bytecode and actual SLJIT | 8,249 | 2.033 s |
 | Node, bytecode and actual Wasm | 8,237 | 0.518 s |
@@ -77,7 +77,7 @@ reviewed fixed blob before rebuilding.
 The frozen, clean candidate
 `760fb3138ac6c359f0fa3a635067ebeb58eb51fe` then passed broader interaction checks:
 
-| Existing command | Cases | Assertions | Shared 60-second supervisor time | Log |
+| Existing command | Cases | Assertions | Production-supervisor wall time | Log |
 | --- | ---: | ---: | ---: | --- |
 | Native language aggregate, 28 selectors | 345 | 21,952 | 14.572 s | `native-language-group.log` |
 | Node Wasm aggregate, 16 selectors | 204 | 20,388 | 2.859 s | `wasm-group.log` |

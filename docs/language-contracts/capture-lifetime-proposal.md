@@ -105,5 +105,5 @@ unsupported refs, transitive suspend/retention/reentry rejection, owner/generati
 invalidation and cleanup on failure. Compare bytecode with actual SLJIT and
 actual Wasm. Exercise both real comparator and filter decisions, repeated rebuild
 and independent instances, count environment copies/retained bytes, and preserve
-last-good output if construction fails. Admit the exact bounded workload under
-the unchanged production supervisor before running it.
+last-good output if construction fails. Review the workload and oracle, then run
+the affected checks through the production supervisor and report their results.

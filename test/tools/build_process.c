@@ -37,17 +37,7 @@ static double now()
 
 static double deadline_after(double seconds)
 {
-    double deadline = now() + seconds;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        double shared = strtod(inherited, &end);
-        assert(end != inherited && !*end && shared > 0);
-        if (shared < deadline) {
-            deadline = shared;
-        }
-    }
-    return deadline;
+    return now() + seconds;
 }
 
 static chibi_process_capture_result capture(const char *const *argv, const char *const *envp, double seconds)
@@ -64,15 +54,12 @@ TEST_CASE(argv_cwd_and_explicit_environment)
     REQUIRE(!setenv("CHIBI_BUILD_SECRET", "parent-only", 1));
     REQUIRE(!unsetenv("CHIBI_BUILD_ALLOWED"));
     const char *argv[] = { worker_path, "build-argv", "", "space \"quote\";$literal*", NULL };
-    const char *envp[] = { "PATH=/usr/bin:/bin",
-                           "CHIBI_BUILD_ALLOWED=child-only",
-                           "CHIBI_TEST_DEADLINE=123.5",
-                           NULL };
+    const char *envp[] = { "PATH=/usr/bin:/bin", "CHIBI_BUILD_ALLOWED=child-only", NULL };
     chibi_process_capture_result result = capture(argv, envp, 2);
     REQUIRE(result.error == CHIBI_PROCESS_OK);
     REQUIRE(result.status == 23);
     char expected[1024];
-    snprintf(expected, sizeof expected, "cwd=%s\nallowed=child-only\nsecret=\ndeadline=123.5\narg=0:\narg=23:space \"quote\";$literal*\n", root);
+    snprintf(expected, sizeof expected, "cwd=%s\nallowed=child-only\nsecret=\narg=0:\narg=23:space \"quote\";$literal*\n", root);
     REQUIRE(!strcmp(output, expected));
     REQUIRE(!strcmp(errors, "worker-stderr\n"));
     REQUIRE(!out.truncated && !err.truncated);
@@ -232,14 +219,12 @@ TEST_CASE(authored_fixture_runs_real_children_on_each_backend)
         REQUIRE(result.counts.sljit_entries == (b == 1 ? 1u : 0u));
         REQUIRE(!result.counts.wasm_entries);
         char expected[1024];
-        const char *deadline = getenv("CHIBI_TEST_DEADLINE");
         snprintf(
             expected,
             sizeof expected,
-            "cwd=%s\nallowed=\nsecret=\ndeadline=%s\narg=0:\narg=23:space "
+            "cwd=%s\nallowed=\nsecret=\narg=0:\narg=23:space "
             "\"quote\";$literal*\n",
-            root,
-            deadline ? deadline : ""
+            root
         );
         REQUIRE(!strcmp(result.stdout_text, expected));
         REQUIRE(!strcmp(result.stderr_text, "worker-stderr\n"));

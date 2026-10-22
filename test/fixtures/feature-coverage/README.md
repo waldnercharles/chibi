@@ -47,8 +47,8 @@ printf '%s\n' '{"contract":1,"operation":"preview_scene","kind":"scene","name":"
 ```
 
 Use the same preview request for `RenderingVisibility`. For `PlanarSurfaces`,
-use 320 by 240 pixels. Keep the native preview limits and the shared 60-second
-test deadline. See `docs/agent-execution.md` and `docs/testing.md`.
+use 320 by 240 pixels. Keep the native preview resource limits. See
+`docs/agent-execution.md` and `docs/testing.md`.
 
 The imported ramp's source is `sources/RenderWedge.gltf`, eight triangles with
 flat normals, a green material and no external resources. Its native

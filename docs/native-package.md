@@ -91,7 +91,8 @@ runtime SDK before deriving the player package. `RUNTIME_SDK_BUILD_DIR` and
 Use a compiler-enabled installed SDK for `chibi-compile` and the separate Studio
 package for authoring. See [runtime authoring](runtime-authoring.md) for preparation,
 resource retention, and exact SDK pins. Packaging checks do not establish rendered
-game acceptance; runtime execution and GPU checks retain their admission limits.
+game acceptance; runtime execution and GPU checks need their affected-contract
+evidence and required hardware.
 
 The workflow below records the retired combined product and its earlier evidence.
 Its commands and package layout do not describe the current deployment contract.
@@ -183,7 +184,7 @@ artifact with `chibi-compile` and run it with the installed `chibi-player`.
 
 Engine-owned web deployment is retired and its publisher removed; deployment
 belongs to the extracted Studio product.
-Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
+Engine CI compiles owned SDK/CLI targets and runs selected C tooling checks.
 Historical browser publication fixtures do not establish current deployment.
 
 ## Build and verify

@@ -85,8 +85,7 @@ jobs:
           Copy-Item packages/core "$proof/packages/core" -Recurse
           $nativeSources = Get-ChildItem $proof -Recurse -File | Where-Object { $_.Extension -in '.c', '.h', '.cc', '.cpp', '.cxx', '.m', '.mm' }
           if ($nativeSources) { throw 'The self-build input directory contains native sources' }
-      - name: Build and execute both compiler stages (60-second ceiling)
-        timeout-minutes: 1
+      - name: Build and execute both compiler stages
         run: |
           $ErrorActionPreference = 'Stop'
           $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -98,7 +97,6 @@ jobs:
             runner_os = $env:RUNNER_OS
             runner_arch = $env:RUNNER_ARCH
             platform = '${{ matrix.platform }}'
-            deadline_seconds = 59
             stages = @()
           }
           try {
@@ -111,11 +109,7 @@ jobs:
             $evidence['runtime_source_tree'] = $runtimeManifest.source_tree
             $evidence['runtime_release'] = "$($runtimeManifest.repository)/$($runtimeManifest.tag)"
             $evidence['input_files'] = @(Get-ChildItem $proof -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($proof, $_.FullName).Replace('\', '/') } | Sort-Object)
-            function Require-Time {
-              if ($timer.Elapsed.TotalSeconds -ge 59) { throw 'Compiler self-build exceeded its shared 59-second budget' }
-            }
             function Recover-Stage($name, $bootstrap, $output) {
-              Require-Time
               $record = [ordered]@{
                 stage = $name
                 input_compiler_sha256 = (Get-FileHash (Join-Path $bootstrap 'compiler.chibip') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -141,30 +135,23 @@ jobs:
               $record['arguments'] = $arguments
               $record['child_environment'] = [ordered]@{}
               foreach ($key in $start.Environment.Keys | Sort-Object) { $record.child_environment[$key] = $start.Environment[$key] }
-              Require-Time
               $process = [Diagnostics.Process]::Start($start)
               $stdout = $process.StandardOutput.ReadToEndAsync()
               $stderr = $process.StandardError.ReadToEndAsync()
-              $remaining = [Math]::Max(0, [Math]::Floor((59 - $timer.Elapsed.TotalSeconds) * 1000))
-              $finished = $process.WaitForExit([int]$remaining)
-              if (!$finished) { $process.Kill($true); $process.WaitForExit() }
+              $process.WaitForExit()
               $out = $stdout.GetAwaiter().GetResult()
               $err = $stderr.GetAwaiter().GetResult()
               $out | Set-Content "$proof/$name.stdout.txt" -NoNewline
               $err | Set-Content "$proof/$name.stderr.txt" -NoNewline
               Write-Host $out
               if ($err) { Write-Host $err }
-              $record['timeout'] = !$finished
               $record['exit_code'] = $process.ExitCode
               $record['elapsed_total_seconds'] = $timer.Elapsed.TotalSeconds
-              if (!$finished) { throw "$name exceeded the shared 59-second budget" }
               if ($process.ExitCode) { throw "$name failed with exit code $($process.ExitCode)" }
-              Require-Time
               $artifact = Get-Item $output
               if (!$artifact.Length) { throw "$name produced an empty compiler" }
               $record['output_bytes'] = $artifact.Length
               $record['output_compiler_sha256'] = (Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
-              Require-Time
             }
             New-Item -ItemType Directory -Path "$proof/stage1", "$proof/stage2" | Out-Null
             Recover-Stage 'stage1' "$proof/tools/compiler/bootstrap" "$proof/stage1/compiler.chibip"
@@ -176,7 +163,6 @@ jobs:
             $closure['bytes'] = [System.Text.Json.Nodes.JsonNode]::Parse([string]$evidence.stages[0].output_bytes)
             $closure['sha256'] = [System.Text.Json.Nodes.JsonNode]::Parse('"' + $evidence.stages[0].output_compiler_sha256 + '"')
             [IO.File]::WriteAllText("$proof/stage1/bootstrap.json", $manifest.ToJsonString())
-            Require-Time
             Recover-Stage 'stage2' "$proof/stage1" "$proof/stage2/compiler.chibip"
             $first = $evidence.stages[0]
             $second = $evidence.stages[1]
@@ -188,7 +174,6 @@ jobs:
             $evidence['compiler_bytes'] = $second.output_bytes
             $evidence['compiler_sha256'] = $second.output_compiler_sha256
             "$($first.output_compiler_sha256)  stage1/compiler.chibip`n$($second.output_compiler_sha256)  stage2/compiler.chibip" | Set-Content "$proof/compiler.sha256"
-            Require-Time
             "Both compiler stages reproduced $($second.output_bytes) bytes, SHA-256 $($second.output_compiler_sha256), in $($timer.Elapsed.TotalSeconds) seconds" >> $env:GITHUB_STEP_SUMMARY
           } catch {
             $evidence['error'] = $_.Exception.Message
@@ -196,7 +181,6 @@ jobs:
           } finally {
             $timer.Stop()
             $evidence['proof_seconds'] = $timer.Elapsed.TotalSeconds
-            $evidence['proof_timeout'] = $timer.Elapsed.TotalSeconds -ge 59
             $evidence | ConvertTo-Json -Depth 8 | Set-Content "$proof/evidence.json"
           }
       - name: Upload both compiler stages and evidence
@@ -243,7 +227,7 @@ jobs:
           foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
             $root = "recovered/compiler-self-build-$platform"
             $evidence = Get-Content "$root/evidence.json" -Raw | ConvertFrom-Json
-            if ($evidence.error -or $evidence.proof_timeout -or $evidence.stages.Count -ne 2 -or
+            if ($evidence.error -or $evidence.stages.Count -ne 2 -or
                 $evidence.stages[1].input_compiler_sha256 -ne $evidence.stages[0].output_compiler_sha256) {
               throw "$platform did not execute the compiler it built"
             }

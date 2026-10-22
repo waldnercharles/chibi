@@ -79,7 +79,7 @@ not live payload_capacity. Allocation counters do not measure peak or total memo
 
 The paired native measurement used Clang 19.1.7, Release `-O3`, SLJIT and VM,
 sanitizers off and test assertions enabled. Baseline and optimized executables
-ran sequentially on CPU 2 under the unchanged 60-second supervisor. Timed loop
+ran sequentially on CPU 2 through the production supervisor. Timed loop
 bodies and workloads match the benchmark-only baseline above; new correctness
 assertions run outside the timed loops. Each row reports the median of five
 trials, with the full minimum-to-maximum range in parentheses. This is a shared
@@ -192,7 +192,7 @@ tree provide the baseline for unchanged activation, array and two-system
 reduction benchmark bodies. The candidate uses Clang 19.1.7, Release `-O3`,
 SLJIT, assertions enabled and sanitizers off. Runs are sequential, with CPU 2
 for activation/array fixtures and CPUs 2–3 for reductions. Configuration and
-builds finish before measurement; every selector keeps the 60-second supervisor.
+builds finish before measurement; every selector uses the production supervisor.
 The following values are medians of five trials, with minimum–maximum ranges.
 
 | Two-system fixture, µs/pass | Main baseline | Complete reuse and metadata cache |

@@ -101,8 +101,7 @@ def signature(source: Path, build: Path, profile: str, program: Path,
                              stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
         except FileNotFoundError:
             metadata.append((str(path), None))
-    ignored = {"PWD", "OLDPWD", "SHLVL", "_", "CHIBI_TEST_DEADLINE",
-               "CHIBI_TEST_PROCESS_GROUP", "CHIBI_QUIET_LOG"}
+    ignored = {"PWD", "OLDPWD", "SHLVL", "_", "CHIBI_RUNNER_PROCESS_GROUP", "CHIBI_QUIET_LOG"}
     environment = {name: value for name, value in os.environ.items() if name not in ignored}
     value = [[profile, str(program), *arguments], str(source), str(build), metadata, environment]
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()

@@ -129,7 +129,16 @@ import:
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
-  literals and `alias.U.V` variants. A local hides an alias of the same name.
+  literals and `alias.U.V` variants. Imported declarations must be `pub`.
+  Private helpers remain usable throughout their own package, including across
+  files, and a public function may return a value of a private type without
+  exposing that type's name. A local hides an alias of the same name.
+
+Privacy applies to source imports. Prepared modules retain private callable
+entries just as stage zero does; package privacy is not a host-invocation
+security boundary. Private union constructor accesses receive a specific
+private-name diagnostic here, where stage zero currently reports an unknown
+callable or value. Both reject the source.
 
 Anything else is rejected with its source position. Implicit widening of call arguments,
 element stores, literal
@@ -193,9 +202,13 @@ against (`docs/testing.md#game-equivalence`). Events, components and the
 fields of game types match their names as the catalog matches them: exactly,
 else loosely, ignoring case, spaces, underscores and hyphens.
 
-A behavior may hold integer and floating states with literal initial values,
+A behavior may hold integer, floating, boolean, string and entity state,
 member procedures, and `on` handlers of the game's events with scalar
-payloads. A
+payloads. State types may be inferred from boolean, string and numeric literals.
+An entity state may omit its default and starts empty; the other supported
+scalar states require a default. A typed `null` default gives the type's zero
+value. Strings preserve all bytes, including embedded NUL, and assignments keep
+an instance-owned copy after the handler returns. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
 event's payload, one parameter per field in payload order. As in stage zero,
@@ -406,7 +419,7 @@ x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
 ## Test
 
 Four groups of samples each have two selectors, one for each backend the
-compiler runs on, each under its own 60 s ceiling. The bytecode selector also
+compiler runs on. The bytecode selector also
 compares each module with stage zero's. Times are from macOS arm64, Debug +
 ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
 stage zero preparing stage one:

@@ -11,6 +11,12 @@ on:
       release:
         description: Release tag for the new archives, such as third-party-2026-10-20
         required: true
+      source_pr:
+        description: Optional reviewed source PR for an atomic source-plus-pins integration
+        required: false
+      main_sha:
+        description: Exact current main SHA, required together with source_pr
+        required: false
 
 # Build jobs compile upstream code, so only the publish job can write.
 permissions:
@@ -25,6 +31,8 @@ jobs:
     timeout-minutes: 2
     env:
       RELEASE: ${{ inputs.release }}
+      SOURCE_PR: ${{ inputs.source_pr }}
+      SOURCE_MAIN_SHA: ${{ inputs.main_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,9 +146,13 @@ jobs:
       pull-requests: write
     env:
       RELEASE: ${{ inputs.release }}
+      SOURCE_PR: ${{ inputs.source_pr }}
+      SOURCE_MAIN_SHA: ${{ inputs.main_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: archives

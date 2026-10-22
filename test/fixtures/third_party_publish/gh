@@ -4,6 +4,20 @@ set -eu
 printf '%s\n' "$*" >> "$MOCK_GH_STATE/calls"
 if [ "$1" = api ]; then
     case "$2" in
+        */pulls\?head=owner:prepared-source\&state=all|*/pulls\?head=owner:prepared%2Fsource%23review%261\&state=all)
+            if [ -f "$MOCK_GH_STATE/api-denied" ]; then printf '{"status":"403"}'; exit 1; fi
+            if [ -f "$MOCK_GH_STATE/pin-branch-after-local-commit" ] || [ -f "$MOCK_GH_STATE/pin-pr-after-local-commit.json" ]; then
+                if git show-ref --verify --quiet "refs/heads/pin-$RELEASE"; then
+                    if [ -f "$MOCK_GH_STATE/pin-branch-after-local-commit" ]; then
+                        git push origin "$(cat "$MOCK_GH_STATE/pin-branch-after-local-commit"):refs/heads/pin-$RELEASE" >/dev/null 2>&1
+                        rm "$MOCK_GH_STATE/pin-branch-after-local-commit"
+                    fi
+                    if [ -f "$MOCK_GH_STATE/pin-pr-after-local-commit.json" ]; then
+                        mv "$MOCK_GH_STATE/pin-pr-after-local-commit.json" "$MOCK_GH_STATE/pr.json"
+                    fi
+                fi
+            fi
+            if [ -f "$MOCK_GH_STATE/source-pr.json" ]; then cat "$MOCK_GH_STATE/source-pr.json"; else printf '[]'; fi ;;
         */pulls\?*)
             if [ -f "$MOCK_GH_STATE/api-denied" ]; then printf '{"status":"403"}'; exit 1; fi
             if [ -f "$MOCK_GH_STATE/pr.json" ]; then cat "$MOCK_GH_STATE/pr.json"; else printf '[]'; fi ;;
@@ -29,6 +43,17 @@ elif [ "$1 $2" = 'release upload' ]; then
     printf '{"name":"%s","state":"uploaded","size":%s,"digest":"sha256:%s"}\n' "$name" "$size" "$digest" >> "$MOCK_GH_STATE/assets"
     if [ -f "$MOCK_GH_STATE/move-tag" ]; then
         git push --force origin "$(cat "$MOCK_GH_STATE/move-tag"):refs/tags/$3" >/dev/null 2>&1
+    fi
+    if [ -f "$MOCK_GH_STATE/source-pr-after-upload.json" ]; then
+        mv "$MOCK_GH_STATE/source-pr-after-upload.json" "$MOCK_GH_STATE/source-pr.json"
+    fi
+    if [ -f "$MOCK_GH_STATE/move-main" ]; then
+        git push origin "$(cat "$MOCK_GH_STATE/move-main"):refs/heads/main" >/dev/null 2>&1
+        rm "$MOCK_GH_STATE/move-main"
+    fi
+    if [ -f "$MOCK_GH_STATE/move-source" ]; then
+        git push origin "$(cat "$MOCK_GH_STATE/move-source"):refs/heads/prepared-source" >/dev/null 2>&1
+        rm "$MOCK_GH_STATE/move-source"
     fi
 elif [ "$1 $2" = 'pr create' ]; then
     touch "$MOCK_GH_STATE/pr-created"

@@ -16,6 +16,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -675,7 +676,7 @@ static bool value_tasks(pin_value value, int depth)
         }
         pin_value member = { .type = field->type, .type_name = field->type_name };
         if (value.ptr && field->type != PIN_TASK) {
-            pin_read_field(value.ptr, field, &member);
+            pin_read_field(NULL, value.ptr, field, &member);
         }
         if (value_tasks(member, depth + 1)) {
             return true;

@@ -1,14 +1,18 @@
 #include "support/arena.h"
+#include "support/asset_json.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
+#include "types/value_format.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-/* Four fixed C document cases. No compiler, authored backend, I/O or workers. */
+/* Five fixed C document cases. No compiler, authored backend, I/O or workers. */
 static arena source, owned;
 static av_doc *doc;
 static const type_field fields[] = {
@@ -68,12 +72,15 @@ static bool check_row(const pin_value *value, int number)
     REQUIRE(arena_contains(&owned, value->ptr));
     for (int i = 0; i < 12; i++) {
         pin_value field;
-        pin_read_field(value->ptr, &value->record->type.fields[i], &field);
+        REQUIRE(!pin_read_field(&owned, value->ptr, &value->record->type.fields[i], &field));
         if (i < 5) {
             char text[32];
             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
-            REQUIRE(field.str && !strcmp(field.str, text));
-            REQUIRE(arena_contains(&owned, field.str));
+            REQUIRE(
+                field.text && pin_text(field).length == strlen(text) &&
+                !memcmp(pin_text(field).bytes, text, strlen(text))
+            );
+            REQUIRE(arena_contains(&owned, field.text));
         } else if (i < 7) {
             REQUIRE(field.i == number + i);
         } else {
@@ -238,8 +245,8 @@ TEST_CASE(record_document_raw_roots)
     size_t expected = value.record->bytes + value.record->type.size;
     for (int i = 0; i < 5; i++) {
         pin_value field;
-        pin_read_field(value.ptr, &value.record->type.fields[i], &field);
-        expected += strlen(field.str) + 1;
+        REQUIRE(!pin_read_field(&owned, value.ptr, &value.record->type.fields[i], &field));
+        expected += sizeof(pin_string) + pin_text(field).length + 1;
     }
     arena_free(&source);
     av_doc_free(doc);
@@ -313,7 +320,7 @@ TEST_CASE(record_document_packed_rows_survive_collection)
     for (int i = 0; i < 2; i++) {
         pin_value row = pin_array_get(rows, i), field_value;
         REQUIRE(row.record == rows->record);
-        pin_read_field(row.ptr, &row.record->type.fields[0], &field_value);
+        REQUIRE(!pin_read_field(&owned, row.ptr, &row.record->type.fields[0], &field_value));
         REQUIRE(field_value.type == PIN_I32 && field_value.i == values[i]);
     }
     collect(NULL);
@@ -322,9 +329,86 @@ TEST_CASE(record_document_packed_rows_survive_collection)
     REQUIRE(bytes == 0);
     return true;
 }
+TEST_CASE(string_document_bytes)
+{
+    static const char nul[] = { 'A', 0, 'B' };
+    static const char invalid[] = { 'A', 0, (char)0xff, (char)0xc0, (char)0xaf };
+    static const char utf8[] = "caf\xc3\xa9";
+    const char *inputs[] = { nul, invalid, utf8 };
+    size_t sizes[] = { sizeof nul, sizeof invalid, sizeof utf8 - 1 };
+    doc = av_doc_new();
+    for (int i = 0; i < 3; i++) {
+        pin_value value, decoded;
+        REQUIRE(!pin_value_text(&source, &value, inputs[i], sizes[i]));
+        av_value *document = pin_value_to_document(doc, &value);
+        REQUIRE(document && (i != 1 ? av_is_str(document) : av_is_obj(document)));
+        char *json = av_json_write(document);
+        REQUIRE(json);
+        av_doc *parsed = av_json_read(json);
+        free(json);
+        REQUIRE(parsed);
+        char error[128];
+        REQUIRE(!pin_value_read_document(
+            &owned,
+            (pin_value){ .type = PIN_STR, .type_name = i == 1 ? "TextAlias" : NULL },
+            av_doc_root(parsed),
+            &decoded,
+            error,
+            sizeof error
+        ));
+        av_doc_free(parsed);
+        REQUIRE(pin_text(decoded).length == sizes[i]);
+        REQUIRE(!memcmp(pin_text(decoded).bytes, inputs[i], sizes[i]));
+        REQUIRE(arena_contains(&owned, decoded.text));
+        REQUIRE(
+            i == 1 ? decoded.type_name && !strcmp(decoded.type_name, "TextAlias") &&
+                         arena_contains(&owned, decoded.type_name)
+                   : !decoded.type_name
+        );
+        if (i == 0) {
+            REQUIRE(!strcmp(pin_value_to_string(&decoded), "A\\x00B"));
+        } else if (i == 2) {
+            REQUIRE(!strcmp(pin_value_to_string(&decoded), utf8));
+        }
+    }
+    arena_free(&source);
+    av_doc_free(doc);
+    doc = av_doc_new();
+    char error[128];
+    pin_value sentinel = { .type = PIN_I32, .i = 91 }, output = sentinel;
+    REQUIRE(pin_value_read_document(
+        &owned,
+        (pin_value){ .type = PIN_NAME },
+        av_strn(doc, nul, sizeof nul),
+        &output,
+        error,
+        sizeof error
+    ));
+    REQUIRE(output.type == sentinel.type && output.i == sentinel.i);
+    for (int mode = 0; mode < 4; mode++) {
+        av_value *encoded = av_obj(doc), *bytes = av_arr(doc);
+        av_arr_append(
+            bytes,
+            mode == 0   ? av_uint(doc, 256)
+            : mode == 1 ? av_real(doc, 1)
+            : mode == 2 ? av_sint(doc, -1)
+                        : av_uint(doc, 0)
+        );
+        av_obj_set(doc, encoded, "bytes", bytes);
+        if (mode == 3) {
+            av_obj_set(doc, encoded, "extra", av_bool(doc, true));
+        }
+        REQUIRE(
+            pin_value_read_document(&owned, (pin_value){ .type = PIN_STR }, encoded, &output, error, sizeof error)
+        );
+        REQUIRE(output.type == sentinel.type && output.i == sentinel.i);
+    }
+    return true;
+}
 void test_language_record_document()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(string_document_bytes);
     RUN_TEST_CASE(record_document_roundtrip);
     RUN_TEST_CASE(record_document_rejections);
     RUN_TEST_CASE(record_document_raw_roots);

@@ -6,6 +6,7 @@
 #include "runtime/component_catalog.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -357,11 +358,15 @@ TEST_CASE(runtime_snapshots)
     REQUIRE(near(max[0], 1.0625f));
     REQUIRE(render_shader_model_stats().bounds_updates == second.bounds_updates);
 
-    pin_value inputs[3] = { { .type = PIN_HANDLE,
-                              .type_name = "ecs.entity",
-                              .u64 = ecs_entity_to_u64(entities[0]) },
-                            { .type = PIN_STR, .str = "Radius" },
-                            { .type = PIN_F32, .f = 2.5f } };
+    pin_value inputs[3] = {
+        { .type = PIN_HANDLE,
+          .type_name = "ecs.entity",
+          .u64 = ecs_entity_to_u64(entities[0]) },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "Radius",
+                                       .length = sizeof("Radius") - 1 } },
+        { .type = PIN_F32, .f = 2.5f }
+    };
     REQUIRE(!RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL));
     REQUIRE(
         render_shader_model_snapshot(id, world, entities[0], text[0], payload, min, max, &empty, &error)
@@ -371,6 +376,14 @@ TEST_CASE(runtime_snapshots)
     memcpy(previous, payload, sizeof previous);
     uint64_t hash = render_shader_overrides_hash(world);
     render_model_stats before_invalid = render_shader_model_stats();
+    const pin_string *valid_name = inputs[1].text;
+    const char nul_name[] = "Radius\0shadow";
+    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
+    inputs[1].text = &invalid_name;
+    const char *invalid_text = RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL);
+    REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));
+    REQUIRE(render_shader_overrides_hash(world) == hash);
+    inputs[1].text = valid_name;
     inputs[2].f = 100;
     REQUIRE(RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL));
     REQUIRE(render_shader_overrides_hash(world) == hash);
@@ -468,11 +481,13 @@ TEST_CASE(scoped_runtime_identity)
             }
         }
         REQUIRE(name);
-        pin_value inputs[3] = { { .type = PIN_HANDLE,
-                                  .type_name = "ecs.entity",
-                                  .u64 = ecs_entity_to_u64(entity) },
-                                { .type = PIN_STR, .str = name },
-                                { .type = PIN_F32, .f = 4 + i } };
+        pin_value inputs[3] = {
+            { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = ecs_entity_to_u64(entity) },
+            { .type = PIN_STR,
+              .text = &(const pin_string){ .bytes = name,
+                                           .length = (uint32_t)strlen(name) } },
+            { .type = PIN_F32, .f = 4 + i }
+        };
         const char *failure = RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL);
         if (failure) {
             fprintf(stderr, "Set Shape Parameter '%s': %s\n", name, failure);

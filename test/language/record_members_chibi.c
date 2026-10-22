@@ -13,6 +13,7 @@
 #include "toolchain/compiler_json.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "unit_algebra_chibi_source.h"
 
@@ -22,8 +23,7 @@
 /* Frozen proposal: 8 selection + 13 member + 3 refreshed-fact boundary +
  * 2 publication-continuation requests = 26, once on each backend = 52 calls,
  * each supplies budget 500,000, inherited/reset per activation; no total
- * instruction ceiling is implied. One shared production 60s execution
- * deadline covers all work. Eight compiler inputs/backend =16 parses;
+ * instruction ceiling is implied. Eight compiler inputs/backend =16 parses;
  * 16 fixed fact-source parses give32 total. Sources <=256 bytes/128 nodes,
  * depth32; one scope/symbol, <=3 definitions, two variants, three prior names,
  * <=4 diagnostics/1 use/1 publication per member. Four runtime JSON calls
@@ -79,7 +79,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int expected)
@@ -98,8 +98,8 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
 {
     pin_value v;
     REQUIRE(
-        read(row, name, &v) && v.type == PIN_STR && v.str &&
-        !strcmp(v.str, expected ? expected : "")
+        read(row, name, &v) && v.type == PIN_STR && pin_text(v).bytes &&
+        !strcmp(pin_text(v).bytes, expected ? expected : "")
     );
     return true;
 }
@@ -242,8 +242,8 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
     REQUIRE(
         value_type(b, &v[0], expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
-        v[2].u64 == expected->id && v[3].type == PIN_STR && v[3].str &&
-        !strcmp(v[3].str, expected->name ? expected->name : "")
+        v[2].u64 == expected->id && v[3].type == PIN_STR && pin_text(v[3]).bytes &&
+        !strcmp(pin_text(v[3]).bytes, expected->name ? expected->name : "")
     );
     REQUIRE(
         value_type(b, &v[4], expected->definition_type) &&
@@ -471,13 +471,13 @@ static bool owned(arena *owner, const pin_value *value, int depth)
                 type->fields[i].name && arena_contains(owner, type->fields[i].name)
             );
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(owner, value->ptr, &type->fields[i], &field));
             REQUIRE(owned(owner, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(owner, value->str));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
@@ -499,8 +499,8 @@ static bool reading_value(
     );
     REQUIRE(
         v[1].type == PIN_BOOL && v[1].b == (expected->unit != NULL) &&
-        v[2].type == PIN_STR && v[2].str &&
-        !strcmp(v[2].str, expected->unit ? expected->unit : "")
+        v[2].type == PIN_STR && pin_text(v[2]).bytes &&
+        !strcmp(pin_text(v[2]).bytes, expected->unit ? expected->unit : "")
     );
     REQUIRE(
         expected->diagnostic_count <= 4 && expected->use_count <= 4 &&
@@ -612,7 +612,10 @@ static pin_value previous_names(const char *const *names, int count)
         size_t bytes = strlen(names[i]) + 1;
         char *copy = arena_alloc(&input, bytes);
         memcpy(copy, names[i], bytes);
-        values->items[i] = (pin_value){ .type = PIN_STR, .str = copy };
+        const char *error = pin_value_text(&input, &values->items[i], copy, bytes - 1);
+        if (error) {
+            abort();
+        }
     }
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = values };
 }
@@ -626,7 +629,9 @@ static bool member_output(
 {
     const pin_value *v;
     REQUIRE(tagged(backend, out, MEMBERS, "Member", "Discovered", 7, &v));
-    REQUIRE(v[0].type == PIN_STR && !strcmp(v[0].str, expected->field.name));
+    REQUIRE(
+        v[0].type == PIN_STR && !strcmp(pin_text(v[0]).bytes, expected->field.name)
+    );
     REQUIRE(v[1].type == PIN_U64 && v[1].u64 == expected->field.id);
     REQUIRE(v[3].type == PIN_BOOL && v[3].b == expected->field.has_default);
     REQUIRE(v[4].type == PIN_I32 && v[4].i == node_index(expected->default_node));
@@ -960,7 +965,7 @@ TEST_CASE(record_members_outputs_outlive_all_producers)
         REQUIRE(has_kept[b] && owned(&retained[b], &kept[b], 0));
         const pin_value *v, *a;
         REQUIRE(unpack(&kept[b], 7, &v));
-        REQUIRE(v[0].type == PIN_STR && !strcmp(v[0].str, "label"));
+        REQUIRE(v[0].type == PIN_STR && !strcmp(pin_text(v[0]).bytes, "label"));
         REQUIRE(v[1].type == PIN_U64 && v[1].u64 == script_catalog_id("record-field", "label"));
         REQUIRE(v[3].type == PIN_BOOL && !v[3].b && v[4].type == PIN_I32 && v[4].i == -1);
         REQUIRE(v[5].type == PIN_BOOL && !v[5].b && unpack(&v[2], 7, &a));

@@ -70,7 +70,7 @@ The assistant provided proposed, unexecuted syntax examples in message
 a returned counter, a synchronous predicate, and eventual recursive capture.
 That earlier comparison is superseded by the owner's following request; shared
 mutation and proper cycle reclamation remain selected. No implementation, runtime
-result or new test admission follows from providing examples.
+result or test execution follows from providing examples.
 
 ## Requested optional lambda syntax and inferred results
 

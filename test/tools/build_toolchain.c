@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 static const char *worker_path, *host_path;
+static chibi_build_compiler *build_compiler;
 static char suite[256], root[512], program_path[1024];
 static char *program;
 static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
@@ -101,6 +102,7 @@ static void reset_fixture(const char *name, int backend)
 static bool invoke(const char *const *arguments, int count, int backend, int value)
 {
     chibi_build_options options = {
+        .compiler = build_compiler,
         .root = root,
         .source_path = program_path,
         .source_text = program,
@@ -227,25 +229,7 @@ TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler)
         write_file("compiler", "compiler identity changed\n");
         REQUIRE(invoke(changed, 4, b, 0));
         REQUIRE(trace_count("CONFIGURE\n") == 6);
-        /* A tighter inherited supervisor deadline changes execution metadata,
-         * without granting any process additional aggregate time. */
-        const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-        char *saved_deadline = inherited ? strdup(inherited) : NULL;
-        double deadline = chibi_build_now() + 5;
-        if (inherited && strtod(inherited, NULL) < deadline) {
-            deadline = strtod(inherited, NULL);
-        }
-        char deadline_text[64];
-        snprintf(deadline_text, sizeof deadline_text, "%.9f", deadline);
-        assert(!setenv("CHIBI_TEST_DEADLINE", deadline_text, 1));
-        bool warm = invoke(changed, 4, b, 0);
-        if (saved_deadline) {
-            assert(!setenv("CHIBI_TEST_DEADLINE", saved_deadline, 1));
-        } else {
-            assert(!unsetenv("CHIBI_TEST_DEADLINE"));
-        }
-        free(saved_deadline);
-        REQUIRE(warm);
+        REQUIRE(invoke(changed, 4, b, 0));
         REQUIRE(trace_count("CONFIGURE\n") == 6 && trace_count("BUILD\n") == 8);
     }
     return true;
@@ -398,6 +382,28 @@ TEST_CASE(third_party_archives_download_once_and_refuse_another_hash)
         REQUIRE(count_in("gh.trace", "gh release download") == 2);
         REQUIRE(store_holds(stored, 1));
         assert(!unsetenv("GH_TOKEN"));
+    }
+    return true;
+}
+
+/* For a build the Chibi graph compiles, the third-party mode prepares the
+ * archives this host's target pins, once, and runs no CMake. */
+TEST_CASE(third_party_mode_prepares_archives_without_cmake)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("third-party mode", b);
+        char file[1024], target[32], sha256[65];
+        fixture_archive(sha256);
+        host_target(target);
+        write_manifest(target, sha256);
+        const char *arguments[] = { "third-party", "graph build" };
+        REQUIRE(invoke(arguments, 2, b, 0));
+        REQUIRE(invoke(arguments, 2, b, 0));
+        REQUIRE(count_in("gh.trace", "gh release download") == 1);
+        snprintf(file, sizeof file, ".git/chibi/third_party/%s/third-party.cmake", sha256);
+        REQUIRE(file_contains(file, "# fixture archive\n"));
+        path(file, root, "cmake.trace");
+        REQUIRE(access(file, F_OK));
     }
     return true;
 }
@@ -577,6 +583,10 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
     path(log, root, "cli.log");
     const char *arguments[] = {
         host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
         "--root",
         root,
         "--source",
@@ -627,7 +637,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     tool_write(overrides, recipes);
     char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
-    path(previous, root, "protocol-4 host");
+    path(previous, root, "protocol-6 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
@@ -635,7 +645,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    /* A protocol-4 host answers the query but runs only library-form programs. */
+    /* A protocol-6 host answers the query but lacks the natives the graph uses. */
     const char *hosts[] = { missing, old, previous, current };
     for (int i = 0; i < 4; i++) {
         char host_option[1200];
@@ -659,6 +669,18 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
 void test_build_toolchain(const char *worker, const char *host)
 {
     host_path = host;
+    char error[256] = { 0 };
+    build_compiler = chibi_build_compiler_load(
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        error,
+        sizeof error
+    );
+    if (!build_compiler) {
+        fprintf(stderr, "build compiler: %s\n", error);
+    }
+    assert(build_compiler);
+
     worker_path = worker;
     strcpy(suite, "/tmp/chibi-toolchain-XXXXXX");
     assert(mkdtemp(suite));
@@ -678,6 +700,7 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(configuration_ignores_retired_dependency_switches);
     RUN_TEST_CASE(third_party_archives_download_once_and_refuse_another_hash);
+    RUN_TEST_CASE(third_party_mode_prepares_archives_without_cmake);
     RUN_TEST_CASE(cmake_loader_downloads_a_missing_archive_once);
     RUN_TEST_CASE(third_party_store_keeps_what_worktrees_pin);
 
@@ -694,6 +717,8 @@ void test_build_toolchain(const char *worker, const char *host)
         }
         free(saved_environment[i]);
     }
+    chibi_build_compiler_free(build_compiler);
+    build_compiler = NULL;
     free(program);
     tool_remove_tree(suite);
 }

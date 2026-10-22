@@ -1,4 +1,5 @@
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/value_copy.h"
 #include "graph/modeling/model_expand_internal.h"
 #include "graph/modeling/model_profile_paths.h"
 #include "graph/nodes/core_nodes.h"
@@ -749,11 +750,12 @@ static int material_value(expander *e, const scope *s, const node *n)
                 strcmp(pin->type_name, "MaterialAsset") ||
                 pin->container != PIN_CONTAINER_SINGLE || pin->binding ||
                 graph_input_source(p->parent->graph, p->instance, i, &from, &from_pin) ||
-                !pin->default_value.str || !*pin->default_value.str) {
+                !graph_text_cstring(p->parent->graph, pin->default_value) ||
+                !*graph_text_cstring(p->parent->graph, pin->default_value)) {
                 model_expand_error(e, p->parent, p->instance, "Model material override requires a literal MaterialAsset name");
                 return -2;
             }
-            material = pin->default_value.str;
+            material = graph_text_cstring(p->parent->graph, pin->default_value);
             if (!material_dependency(e, p->parent, p->instance, material)) {
                 return -2;
             }

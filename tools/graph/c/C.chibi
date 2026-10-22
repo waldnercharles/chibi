@@ -83,7 +83,8 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
     for (input in recorded) {
         lines.extend([input, build.file_stamp(input)]);
     }
-    return Join([strings.Join(lines, "\n"), "\n"]);
+    lines.append("");
+    return build.join(lines, "\n");
 }
 
 // Whether output was built by command from inputs that have not changed since.
@@ -120,37 +121,81 @@ Current :: (command: string[], output: string) -> bool {
 
 // The prerequisites a compiler's -MD file lists: everything after the target,
 // with line continuations joined and escaped spaces, `#` and `$` restored.
+// Read bytes once and treat each continuation as a space. Only a token that
+// needs unescaping allocates host text, so a cold build does not retain copies
+// of every depfile in the host's bounded value storage.
 pub Dependencies :: (text: string) -> string[] {
-    joined := strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", " "), "\\\n", " ");
-    colon := strings.Index(joined, ": ");
-    if (colon < 0) {
+    bytes := strings.Bytes(text);
+    count := length(bytes);
+    first := -1;
+    i := 0;
+    while (i + 1 < count) {
+        if (bytes[i] == 58) {
+            if (bytes[i + 1] == 32) {
+                first = i + 2;
+                break;
+            }
+            if (i + 2 < count && bytes[i + 1] == 92 && bytes[i + 2] == 10) {
+                first = i + 3;
+                break;
+            }
+            if (i + 3 < count && bytes[i + 1] == 92 && bytes[i + 2] == 13 && bytes[i + 3] == 10) {
+                first = i + 4;
+                break;
+            }
+        }
+        i += 1;
+    }
+    if (first < 0) {
         return [];
     }
-    rest := strings.Slice(joined, colon + 2, strings.ByteLength(joined));
-    bytes := strings.Bytes(rest);
     paths: string[] = [];
     start := -1;
     escaped := false;
-    for (i in 0..<length(bytes)) {
+    needs_unescape := false;
+    i = first;
+    while (i < count) {
         byte := bytes[i];
+        advance := 1;
+        if (byte == 92 && i + 1 < count) {
+            if (bytes[i + 1] == 10) {
+                byte = 32;
+                advance = 2;
+            } else if (i + 2 < count && bytes[i + 1] == 13 && bytes[i + 2] == 10) {
+                byte = 32;
+                advance = 3;
+            }
+        }
         space := byte == 32 || byte == 9 || byte == 10 || byte == 13;
         if (space && !escaped) {
             if (start >= 0) {
-                paths.append(Unescape(strings.Slice(rest, start, i - start)));
+                path := strings.Slice(text, start, i - start);
+                if (needs_unescape) {
+                    path = Unescape(path);
+                }
+                paths.append(path);
                 start = -1;
+                needs_unescape = false;
             }
         } else if (start < 0) {
             start = i;
         }
+        needs_unescape = needs_unescape || byte == 92 || byte == 36;
         escaped = byte == 92 && !escaped;
+        i += advance;
     }
     if (start >= 0) {
-        paths.append(Unescape(strings.Slice(rest, start, length(bytes) - start)));
+        path := strings.Slice(text, start, count - start);
+        if (needs_unescape) {
+            path = Unescape(path);
+        }
+        paths.append(path);
     }
     return paths;
 }
 Unescape :: (path: string) -> string {
-    return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(path, "\\ ", " "), "\\#", "#"), "$$", "$");
+    joined := build.replace(build.replace(path, "\\\r\n", " "), "\\\n", " ");
+    return build.replace(build.replace(build.replace(joined, "\\ ", " "), "\\#", "#"), "$$", "$");
 }
 
 // Whether a source must compile: its object is missing, or was built by
@@ -182,7 +227,7 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
     return {
         owner: target.name,
         object: object,
-        command: strings.Join(command, "\n"),
+        command: build.join(command, "\n"),
         handle: build.start(started)
     };
 }
@@ -213,7 +258,7 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
     build.make_directory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/")));
     build.remove(target.output);
     return build.run(archive) == 0 && build.run([tools.ranlib, target.output]) == 0 &&
-           build.write_file(Record(target.output), RecordText(strings.Join(archive, "\n"), objects, target.output));
+           build.write_file(Record(target.output), RecordText(build.join(archive, "\n"), objects, target.output));
 }
 
 // Copies each header that differs to its place below a staged include root,
@@ -270,7 +315,7 @@ Quote :: (text: string) -> string {
     if (build.before(text, "\\") == text && build.before(text, "\"") == text) {
         return Join(["\"", text, "\""]);
     }
-    return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
+    return Join(["\"", build.replace(build.replace(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
 }
 
 // An executable's link command, as CMake writes it: the compiler, `flags`, the
@@ -290,7 +335,7 @@ pub LinkEntry :: (command: string[], output: string) -> string {
     for (argument in command) {
         arguments.append(Quote(argument));
     }
-    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"]);
+    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", build.join(arguments, ", "), "]}"]);
 }
 
 // A compile_commands.json entry for a source, in the `arguments` form clangd
@@ -302,7 +347,7 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
     }
     return Join([
         "{\"directory\": ", Quote(target.root), ", \"file\": ", Quote(source), ", \"output\": ",
-        Quote(Object(target, source)), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"
+        Quote(Object(target, source)), ", \"arguments\": [", build.join(arguments, ", "), "]}"
     ]);
 }
 
@@ -332,7 +377,7 @@ pub Step :: (command: string[], inputs: string[], output: string) -> int {
     }
     build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
     if (build.run(command) != 0 ||
-        !build.write_file(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
+        !build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;

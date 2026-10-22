@@ -4,6 +4,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -88,6 +89,7 @@ static bool key_layout(unsigned char **key, const type_desc *type, int depth)
             !key_text(key, field->type_name) || !key_text(key, field->name) ||
             !key_word(key, field->offset) || !key_word(key, field->size) ||
             !key_word(key, field->range_contract) ||
+            !key_word(key, field->text_descriptor) ||
             !key_bytes(key, &field->min, sizeof field->min) ||
             !key_bytes(key, &field->max, sizeof field->max) ||
             !key_bytes(key, &field->range_default, sizeof field->range_default) ||
@@ -180,8 +182,12 @@ static bool key_value(unsigned char **key, const pin_value *value, int depth)
         case PIN_ENUM: return key_bytes(key, &value->e, sizeof value->e);
         case PIN_F32: return key_bytes(key, &value->f, sizeof value->f);
         case PIN_F64: return key_bytes(key, &value->d, sizeof value->d);
-        case PIN_NAME:
-        case PIN_STR: return key_text(key, value->str);
+        case PIN_NAME: return key_text(key, value->str);
+        case PIN_STR: {
+            pin_string text = pin_text(*value);
+            return key_word(key, text.length) &&
+                   key_bytes(key, text.bytes, text.length);
+        }
         case PIN_STRUCT: return key_struct(key, value, depth);
         case PIN_UNION: {
             const pin_union *tagged = value->ptr;

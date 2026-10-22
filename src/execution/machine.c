@@ -4,10 +4,12 @@
 #include "execution/borrow.h"
 #include "execution/component_write.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/random.h"
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -47,8 +49,8 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
-        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
+        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
         ctx->error_message = i->op == BF_QUERY_VARIABLE
                                ? "Query variable is not bound"
                            : i->op == BF_COMPONENT_READ
@@ -317,10 +319,9 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_STRING_EQUAL:
-            out->b = behavior_string_equal(
-                (const char *)(uintptr_t)behavior_scalar_bits(a),
-                (const char *)(uintptr_t)behavior_scalar_bits(b)
-            );
+            out->b = f->slots[i->left] == PIN_STR
+                       ? behavior_text_equal(a.text, b.text)
+                       : behavior_string_equal(a.str, b.str);
             break;
         case BF_INDEX: {
             uintptr_t pointer = (uintptr_t)behavior_scalar_bits(a) +
@@ -333,8 +334,13 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_COPY_STRING: {
-            const char *text = a.str ? a.str : i->value.str;
-            out->str = text ? ctx->copy_string(ctx->value_storage, text) : NULL;
+            if (i->type == PIN_STR) {
+                const pin_string *text = a.text ? a.text : i->value.text;
+                out->text = text ? ctx->copy_text(ctx->value_storage, text) : NULL;
+            } else {
+                const char *text = a.str ? a.str : i->value.str;
+                out->str = text ? ctx->copy_string(ctx->value_storage, text) : NULL;
+            }
             break;
         }
         case BF_COPY_ARRAY: {
@@ -358,7 +364,16 @@ int execution_machine_step(execution_machine *m, int pc)
         case BF_INTERN_STRING: {
             const ecs_execution_view *world = (const ecs_execution_view *)(uintptr_t)
                 behavior_scalar_bits(b);
-            out->str = world->intern_string(world, a.str);
+            if (i->type == PIN_STR) {
+                const pin_string *text = behavior_function_intern_text(ctx, world, a.text);
+                if (!text) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                    goto done;
+                }
+                out->text = text;
+            } else {
+                out->str = world->intern_string(world, a.str);
+            }
             break;
         }
         case BF_STORE_VALUE:
@@ -416,7 +431,9 @@ int execution_machine_step(execution_machine *m, int pc)
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
                                : call->value
                                    ? call->value(
-                                         ctx->value_storage,
+                                         execution_intrinsic_in_result(spec->capability_id)
+                                             ? ctx->result_storage
+                                             : ctx->value_storage,
                                          ctx->data->values + spec->first,
                                          spec->result_first - spec->first,
                                          ctx->data->values + spec->result_first
@@ -798,6 +815,11 @@ int execution_machine_step(execution_machine *m, int pc)
             goto done;
         default: {
             if (behavior_function_bitwise(i->op)) {
+                if ((i->op == BF_SHL || i->op == BF_SHR) &&
+                    !behavior_scalar_shift_count_valid(i->type, behavior_scalar_bits(b))) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                    goto done;
+                }
                 *out = behavior_scalar_from_bits(
                     i->type,
                     behavior_scalar_bitwise_bits(

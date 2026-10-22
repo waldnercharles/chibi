@@ -18,6 +18,10 @@ Each entry starts with its class:
 A **Decision** records the owner's choice; nothing here is implemented unless
 the entry says so.
 
+The [package library plan](package-library-plan.md) prioritizes prerequisites
+for selected Odin-inspired packages. Add package evidence to the matching entry
+here; the plan records scheduling and package decision records own proposed APIs.
+
 ## Stage one rejects untyped locals
 
 Stage one. Before #558 an untyped number literal was a `number`, so
@@ -183,6 +187,13 @@ as C#'s `unchecked(expr)`: `hash = uint64(wrap: (hash ^ b) * Prime)`. Trapping
 can be relaxed later without breaking code; wrapping could not be tightened
 later without breaking code that relied on it.
 
+Decision (2026-10-21): shifts reject a negative count or a count greater than
+or equal to the operand width, including inside `T(wrap: expr)`. Shifted-out
+bits are discarded. Implemented locally across the VM, SLJIT, generated C,
+Wasm and typed constant folders. A regression also preserves earlier writes
+when an unused shift fails in an optimized function. Default checked arithmetic
+and lexical wrapping remain pending. See the [numeric contract](package-numeric-contract.md).
+
 ## Stage one has no character literals
 
 Stage one. Stage zero has character literals and `char` since #530: `'a'`
@@ -326,6 +337,12 @@ compiling itself from 28 to 41 seconds; the same steps in their own
 Suggestion: strings that carry their length and may hold any byte, with
 slices that share the bytes once ownership allows it.
 
+Decision (2026-10-21): strings are immutable, carry their byte length and may
+hold arbitrary bytes, including NUL. UTF-8 validation and decoding are explicit
+operations; validity is not a global string invariant. Storage, lifetime and
+boundary migration are tracked in [package foundations](package-foundations.md).
+Implementation is pending.
+
 ### Stage one does not check pub
 
 Stage one. Before #552 every top-level declaration was exported, so Odin's
@@ -343,11 +360,16 @@ projects' `library` blocks follow once they become packages.
 
 Implemented for stage zero in #552: it exports only `pub` declarations and
 names a private one an import reaches, and `core:strings` keeps its two
-splitters to itself. Stage one parses `pub` but exports every package
-declaration, so on its own it would accept an import of a private one.
+splitters to itself. Stage one originally parsed `pub` without restricting
+imported access.
 
-Suggestion: stage one's exports keep only `pub` declarations, as stage zero's
-and Rust's and Zig's do.
+Implemented locally on 2026-10-20 in `codex/odin-package-foundations-20261020`:
+stage one rejects imported private functions, constants and named types while
+allowing helpers across files of the same package. Focused imports checks pass
+on bytecode and SLJIT. This is an unmerged change. Prepared modules retain private
+callable entries, as stage zero does; source visibility does not restrict an
+explicit host invocation. Private union access gets a clearer private-name
+diagnostic than stage zero's current unknown-callable/value diagnostic.
 
 ### No way to build a string
 
@@ -441,7 +463,7 @@ Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
 references to elements and entries. Consider marking reference arguments at
 the call site.
 
-### Library growth spends the compiler tests' budgets
+### Library growth increases compiler-test execution time
 
 Toolchain. At #503 the 16 KB package prepared to an 837 KB module, about 52
 times its source, mostly per-function debug metadata. Harnesses embed the
@@ -449,8 +471,7 @@ shipped `core:strings`: writing it with the authored writer on bytecode under
 ASan took 22 s, and stage one compiling it in the package compiler's imports
 sample added about 24 s of CPU. The writer now writes modules above 512 KiB on
 the compiled backend only, and the imports sample has its own selector, but
-each further core package spends more of the compiler tests' 60-second
-budgets.
+each further core package adds to compiler-test execution time.
 
 - Odin, Go, Rust and Zig keep debug information beside the code (DWARF, PDB)
   rather than in it, and release builds strip it.
@@ -458,6 +479,30 @@ budgets.
 Suggestion: keep debug metadata out of the prepared form the writer and the
 compiler tests process, or make it optional, and give harnesses that only test
 imports a fixed core fixture.
+
+### A small change can exceed a function's verifier storage budget
+
+Toolchain and runtime. During the package-visibility prerequisite on 2026-10-20,
+adding the private-member check to the compiler's large `EmitBody` function made
+stage-zero preparation fail with "definition exceeds verifier storage budget".
+The focused imports check failed during preparation in 1.537 seconds, before
+running package cases. Moving the check to the existing `ValueStep` and
+`CallStep` functions kept the change within the existing limit.
+
+`src/execution/function_builder.c` bounds its defined-operands matrix to 64 MiB:
+instruction count times `(slot count / 64 + 1)` 64-bit words. A source edit can
+increase either dimension, so source line count does not predict the limit.
+The diagnostic reports neither dimension nor the estimated storage.
+
+- The [JVM Code attribute](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.7.3)
+  has an explicit per-method limit of fewer than 65,536 code bytes. Chibi's
+  constraint instead depends on verification work, which needs its own
+  explanation and measurements.
+
+Suggestion: include the function, instruction count, slot count, required bytes
+and allowed bytes in the diagnostic. Investigate a less dense verifier state
+representation if measured compiler functions keep reaching the limit. Keep
+the verification bound and use small owning functions in the meantime.
 
 ## Calls nest at most 64 deep
 
@@ -486,6 +531,28 @@ callers.
 Suggestion: export templates, instantiating each at the caller with the
 callee package's declarations in scope, as Odin does. Until then `pub` does
 not export a template either (#552).
+
+## Constant calls don't infer template type bindings
+
+Language. Constant evaluation does not infer the `$T` binding in a template
+parameter such as `value: $T`. In a package declaring the language guide's
+`Identity :: (value: $T) -> T { return value }`, `One :: Identity(1)` fails
+with "Unknown type 'T'", reported at `$T` rather than at the call. A function
+body calling `Identity(1)` specializes (#528).
+
+Templates with concrete parameter types can run at compile time. For example,
+`Times :: (value: int, $N: int) -> int { return value * N }` lets
+`One :: Times(2, 3)` bind both integer arguments before evaluating the body.
+Type-returning templates also support compile-time evaluation.
+
+- Zig calls generic functions from `comptime` code and constant initializers;
+  Jai's `#run`, D's compile-time function evaluation and C++ `constexpr`
+  function templates run templates too. Odin has no compile-time calls.
+
+Suggestion: infer type bindings for a template called from a constant as a
+runtime call does, then evaluate the specialization. Until then, diagnose
+the call that needs an inferred template type binding, rather than reporting
+an unknown type in its declaration.
 
 ## A pattern test fails as a call argument
 
@@ -803,6 +870,23 @@ operators went into the behavior input instead.
 Suggestion: recovery compares what the closure links: the value layout,
 prepared ABI, instruction names, and each native's identity, ABI and ports.
 
+## An old Python breaks inherited host deadlines on macOS
+
+Toolchain. During the 2026-10-21 package-foundation checks, the system Python
+3.9.6 reported a process-relative `time.monotonic()` value near zero. Native
+hosts use `CLOCK_UPTIME_RAW`, whose value was over one million seconds. Passing
+the supervisor's absolute deadline to the build host therefore failed before
+source loading with `build source could not be read`.
+
+The installed `/opt/homebrew/bin/python3.12` used the same clock epoch as the
+native host. Selecting its `libexec/bin` directory in the task's PATH allowed
+the documented bootstrap workflow to finish. Emscripten also needed
+`EMSDK_PYTHON` set to that interpreter. No global interpreter settings were changed.
+
+Suggestion: toolchain startup should validate the supported Python clock
+contract and diagnose an expired inherited deadline separately from a source
+read failure. The current workaround is explicit interpreter selection.
+
 ## A string literal cannot span lines
 
 Language. A string literal ends at its line, and nothing marks one as raw, so
@@ -862,3 +946,35 @@ table aside for them (the PR that removed the old handler forms).
 
 Suggestion: declare an event's payload as a record in `.chibi` source, which
 the compilers, Studio, migrations and tests then share.
+
+### Saved text still uses a C-string JSON boundary
+
+Runtime boundary checkpoint (2026-10-21). Ordinary `string` values preserve
+arbitrary bytes, but the existing save text API persists a JSON object of UTF-8
+text keys and values. Its authored adapter rejects embedded NUL before calling
+`save_set`, and the store validates JSON encoding before changing an entry or
+revision, rejecting malformed UTF-8. Reading a missing entry can still return
+an arbitrary-byte fallback string without persisting it. This limitation belongs
+to the save format, not to the `string` invariant. Lossless binary saved values
+need a separately reviewed encoding/API contract; no replacement or truncation
+is performed at the existing boundary.
+
+### Preview diagnostic JSON still requires UTF-8
+
+Runtime boundary checkpoint (2026-10-21). Execution logs and preview log storage
+retain explicit byte lengths, including embedded NUL. The existing controller
+JSON transport can escape NUL but still cannot serialize malformed UTF-8 as a
+JSON string. Serialization failure remains explicit; bytes are not replaced or
+silently truncated. A lossless transport encoding needs its own response-contract
+review and is not implied by the runtime string invariant.
+
+### Record construction repeats some string copies
+
+The descriptor cutover gives authored string fields owned storage, including
+when an input string already belongs to the destination arena. The bounded
+row-array attribution fixture records 45 additional copied text bytes per
+constructed row from five nine-byte field copies, plus five empty terminators
+once per nonempty invocation. This remains linear, but same-owner retention
+could remove redundant copies.
+Review it with shared slices and escaped-value lifetimes; keeping an arbitrary
+borrowed pointer would not preserve the ownership contract.

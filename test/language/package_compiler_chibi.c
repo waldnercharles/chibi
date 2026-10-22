@@ -28,6 +28,7 @@
 #include "types/catalog.h"
 #include "types/copy.h"
 #include "types/map.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
 
@@ -63,14 +64,12 @@ enum
 typedef struct
 {
     const char *function, *arguments, *expected;
+    const char *diagnostic;
 } sample_call;
-/* Each group of samples runs under its own selector, so each selector stays
- * within its time ceiling: unions, constants, patterns and integer types
- * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
- * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare, and the moves, reads in place and array methods
- * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
- * references, arrays and ranges (COLLECTION_SAMPLES). */
+/* Focused selectors group unions, constants, patterns and integer types
+ * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
+ * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
+ * ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
@@ -92,20 +91,237 @@ typedef enum
  * arrays nothing changes in place, and its CopiedWalk copies the array its loop
  * changes. A `variants` sample calls no native: its Kept functions return
  * variants that keep their payload values, and its Copied function builds one
- * it keeps after a change. */
+ * it keeps after a change. A `built` sample calls no native: its Built
+ * functions build the arrays they return in their caller's storage, and its
+ * Copied function, which assigns its array, does not. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants;
+    bool core, updates, boxed, game, moves, aliases, variants, built,
+        same_rejection, c_string_probe, host_effects;
     sample_call calls[CALLS];
     const char *message;
+    const char *oracle_message;
     int line, column;
 } sample;
+static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
+{
+    const char *value = NULL;
+    size_t nul = 0;
+    const char *error = pin_text_cstring(storage, arguments[0], &value, &nul);
+    if (error) {
+        return error;
+    }
+    result->i = (int)strlen(value);
+    return NULL;
+}
+static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
+{
+    result->i = arguments[0].i;
+    return NULL;
+}
+static const native_parameter_definition INTEGER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
+static const native_parameter_definition CSTRING_INPUT[] = {
+    { .name = "value",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_STR,
+      .type_name = "const char *",
+      .c_string = true },
+};
+static const native_parameter_definition CSTRING_OUTPUT[] = {
+    { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
+#define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
+    { .canonical_name = CANONICAL,                                             \
+      .source_name = SOURCE,                                                   \
+      .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
+      .inputs = INPUT,                                                         \
+      .input_count = 1,                                                        \
+      .outputs = CSTRING_OUTPUT,                                               \
+      .output_count = 1,                                                       \
+      .completion_output = -1,                                                 \
+      .pure = PURE }
+static const native_capability_definition CSTRING_DEFINITIONS[] = {
+    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
+    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
+};
+#undef PROBE_DEFINITION
+static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call INTEGER_CALL = { .value = integer_probe };
+static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
+static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+#define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
+    {                                                                          \
+        .canonical_name = CANONICAL, .implementation = {                       \
+            .call = &CALL,                                                     \
+            .access = &ACCESS                                                  \
+        }                                                                      \
+    }
+static const native_definition_binding CSTRING_BINDINGS[] = {
+    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
+    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
+};
+#undef PROBE_BINDING
+static const native_definition_pack CSTRING_PACK = {
+    .definitions = CSTRING_DEFINITIONS,
+    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
+    .bindings = CSTRING_BINDINGS,
+    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
+};
 static const sample samples[] = {
+    { .name = "typed constant shifts discard bits",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Sign: int : 1 << 31;\n"
+                "Zero: byte : 128 << 1;\n"
+                "Small: int8 : 64 << 1;\n"
+                "Unsigned: uint : 4294967295 << 1;\n"
+                "Floor: int : -3 >> 1;\n"
+                "Wide: int64 : 1 << 63;\n"
+                "ReadSign :: () -> int { return Sign; }\n"
+                "ReadZero :: () -> byte { return Zero; }\n"
+                "ReadSmall :: () -> int8 { return Small; }\n"
+                "ReadUnsigned :: () -> uint { return Unsigned; }\n"
+                "ReadFloor :: () -> int { return Floor; }\n"
+                "ReadWide :: () -> int64 { return Wide; }",
+      .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
+                 { .function = "ReadZero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "ReadSmall", .arguments = "[]", .expected = "[-128]" },
+                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[4294967294]" },
+                 { .function = "ReadFloor", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "ReadWide",
+                   .arguments = "[]",
+                   .expected = "[-9223372036854775808]" } } },
+    { .name = "constant negative shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 << -1;",
+      .message = "Constant shift count is outside the type",
+      .line = 2,
+      .column = 12 },
+    { .name = "constant shift count at width",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 >> 32;",
+      .message = "Constant shift count is outside the type",
+      .line = 2,
+      .column = 12 },
+    { .name = "private imported function",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return lib.Hidden(); }",
+      .library = "package lib\nHidden :: () -> int { return 7; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported constant",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return lib.Hidden; }",
+      .library = "package lib\nHidden :: 7;",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported constant expression",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\nValue :: "
+                "lib.Hidden + 1;",
+      .library = "package lib\nHidden :: 7;",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value: lib.Hidden = lib.Make(); return "
+                "value.x; }",
+      .library = "package lib\nHidden :: struct { x: int; }\n"
+                 "pub Make :: () -> Hidden { return {x: 7}; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: (value: lib.Hidden) -> int { return value.x; }",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported record result",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> lib.Hidden { return lib.Make(); }",
+      .library = "package lib\nHidden :: struct { x: int; }\n"
+                 "pub Make :: () -> Hidden { return {x: 7}; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported union payload type",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Wrapper :: union { Some(value: lib.Hidden) }",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported map value type",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { values: [int: lib.Hidden] = [:]; return 0; "
+                "}",
+      .library = "package lib\nHidden :: struct { x: int; }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private imported union constructor",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value := lib.Hidden.Some(7); return 0; }",
+      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .oracle_message = "Unknown callable 'lib.Hidden.Some'",
+      .same_rejection = true },
+    { .name = "private imported union value",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { value := lib.Hidden.None; return 0; }",
+      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+      .message = "'lib.Hidden' is private: declare it pub to use it from "
+                 "another package",
+      .same_rejection = true },
+    { .name = "private package implementation",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return Helper(3) + lib.Value(3) + "
+                "lib.Make(3).x; }\n"
+                "Shadow :: (lib: Local) -> int { return lib.Hidden; }\n"
+                "Local :: struct { Hidden: int; }",
+      .more = "package facts\nHelper :: (value: int) -> int { return value + "
+              "1; }",
+      .library = "package lib\nHidden :: 7;\n"
+                 "Secret :: struct { x: int; }\n"
+                 "Twice :: (value: int) -> int { return value * 2; }\n"
+                 "pub Value :: (value: int) -> int { return Twice(value) + "
+                 "Hidden; }\n"
+                 "pub Make :: (value: int) -> Secret { return {x: value}; }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[20]" },
+                 { .function = "Shadow", .arguments = "[{\"Hidden\":11}]", .expected = "[11]" } } },
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
-      .calls = { { "Answer", "[]", "[42]" } } },
+      .calls = { { .function = "Answer", .arguments = "[]", .expected = "[42]" } } },
     { .name = "named results",
       .source = "package facts\nPair :: (x: int) -> (kind: int, end: int) {\n  "
                 "  end = x + 1;\n"
@@ -115,22 +331,24 @@ static const sample samples[] = {
                 "Rest(x);\n"
                 "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
                 "1000 + q.high;\n}",
-      .calls = { { "Use", "[3]", "[2434]" } } },
+      .calls = { { .function = "Use", .arguments = "[3]", .expected = "[2434]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
-      .calls = { { "Add", "[3,4]", "[12]" }, { "Add", "[-5,2]", "[0]" } } },
+      .calls = { { .function = "Add", .arguments = "[3,4]", .expected = "[12]" },
+                 { .function = "Add", .arguments = "[-5,2]", .expected = "[0]" } } },
     { .name = "loops",
       .source = "package facts\nSum :: (n: int) -> int {\n"
                 "    total: int = 0;\n    i: int = 0;\n"
                 "    while (i < n) { total += i; i += 1; }\n    return "
                 "total;\n}",
-      .calls = { { "Sum", "[10]", "[45]" }, { "Sum", "[0]", "[0]" } } },
+      .calls = { { .function = "Sum", .arguments = "[10]", .expected = "[45]" },
+                 { .function = "Sum", .arguments = "[0]", .expected = "[0]" } } },
     { .name = "recursion",
       .source = "package facts\nFib :: (n: int) -> int {\n"
                 "    if (n < 2) { return n; }\n    return Fib(n - 1) + Fib(n - "
                 "2);\n}",
-      .calls = { { "Fib", "[15]", "[610]" } } },
+      .calls = { { .function = "Fib", .arguments = "[15]", .expected = "[610]" } } },
     { .name = "control",
       .source = "package facts\nCount :: (n: int) -> int {\n"
                 "    found: int = 0;\n    i: int = 0;\n"
@@ -139,16 +357,16 @@ static const sample samples[] = {
                 "        if (i % 3 == 0 || i % 5 == 0) { continue; } else { "
                 "found += 1; }\n    }\n"
                 "    return found;\n}",
-      .calls = { { "Count", "[15]", "[8]" } } },
+      .calls = { { .function = "Count", .arguments = "[15]", .expected = "[8]" } } },
     { .name = "logic",
       .source = "package facts\nEven :: (n: int) -> bool { return !(n % "
                 "2 != 0) && n >= 0; }\n"
                 "Both :: (a: int, b: int) -> bool { return Even(a) && "
                 "Even(b) || a == b; }",
-      .calls = { { "Even", "[4]", "[true]" },
-                 { "Even", "[-4]", "[false]" },
-                 { "Both", "[2,4]", "[true]" },
-                 { "Both", "[3,3]", "[true]" } } },
+      .calls = { { .function = "Even", .arguments = "[4]", .expected = "[true]" },
+                 { .function = "Even", .arguments = "[-4]", .expected = "[false]" },
+                 { .function = "Both", .arguments = "[2,4]", .expected = "[true]" },
+                 { .function = "Both", .arguments = "[3,3]", .expected = "[true]" } } },
     { .name = "records",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -167,11 +385,9 @@ static const sample samples[] = {
                 "    while (i < n) { acc = Moved(acc, i); i += 1; }\n"
                 "    first := acc;\n    acc = Moved(acc, 100);\n"
                 "    return Sum(acc) + Sum(Make(1, 2)) + first.x;\n}",
-      .calls = { { "Make", "[1,2]", "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
-                 { "Moved",
-                   "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]",
-                   "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
-                 { "Total", "[5]", "[123]" } } },
+      .calls = { { .function = "Make", .arguments = "[1,2]", .expected = "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
+                 { .function = "Moved", .arguments = "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]", .expected = "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
+                 { .function = "Total", .arguments = "[5]", .expected = "[123]" } } },
     { .name = "moved values",
       .group = IMPORT_SAMPLES,
       .moves = true,
@@ -189,10 +405,12 @@ static const sample samples[] = {
                 "Copied :: (notes: Note[]) -> int {\n"
                 "    note := notes[0];\n    note.count += 5;\n"
                 "    return note.count + notes[0].count;\n}",
-      .calls = { { "MovedNote", "[3]", "[{\"text\":\"a\",\"count\":3}]" },
-                 { "MovedResults", "[]", "[12]" },
-                 { "MovedSecond", "[4]", "[5]" },
-                 { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+      .calls = { { .function = "MovedNote", .arguments = "[3]", .expected = "[{\"text\":\"a\",\"count\":3}]" },
+                 { .function = "MovedResults", .arguments = "[]", .expected = "[12]" },
+                 { .function = "MovedSecond", .arguments = "[4]", .expected = "[5]" },
+                 { .function = "Copied",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1}]]",
+                   .expected = "[7]" } } },
     { .name = "returned variants",
       .group = IMPORT_SAMPLES,
       .variants = true,
@@ -223,9 +441,37 @@ static const sample samples[] = {
           "CopiedHold :: (xs: int[]) -> int {\n"
           "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
           "    switch h { case .Some(items, name): return items[0]; }\n}",
-      .calls = { { "Total", "[]", "[241]" },
-                 { "Changed", "[]", "[17]" },
-                 { "CopiedHold", "[[5,6]]", "[5]" } } },
+      .calls = { { .function = "Total", .arguments = "[]", .expected = "[241]" },
+                 { .function = "Changed", .arguments = "[]", .expected = "[17]" },
+                 { .function = "CopiedHold", .arguments = "[[5,6]]", .expected = "[5]" } } },
+    { .name = "built results",
+      .group = IMPORT_SAMPLES,
+      .built = true,
+      .source = "package facts\n"
+                "Holder :: union { Some(items: int[], name: string) }\n"
+                "BuiltCount :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { xs.append(i); i += 1; }\n"
+                "    return xs;\n}\n"
+                "BuiltPair :: (n: int, ys: int[]) -> Holder {\n"
+                "    xs: int[] = [7];\n    xs.extend(BuiltCount(n));\n    "
+                "xs[0] = 9;\n"
+                "    if (n == 0) { return Holder.Some(ys, \"none\"); }\n"
+                "    return Holder.Some(xs, \"pair\");\n}\n"
+                "CopiedCount :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n    xs = BuiltCount(n);\n    return "
+                "xs;\n}\n"
+                "Total :: () -> int {\n"
+                "    a := BuiltCount(3);\n    ys: int[] = [4, 5];\n"
+                "    b := BuiltPair(2, ys);\n    c := BuiltPair(0, ys);\n    "
+                "ys[0] = 6;\n"
+                "    total: int = a[2] * 1000 + CopiedCount(4)[3] * 100;\n"
+                "    switch b { case .Some(items, name): total += items[0] * "
+                "10 + items[2]; }\n"
+                "    switch c { case .Some(items, name): total += items[0] * "
+                "10000; }\n"
+                "    return total;\n}",
+      .calls = { { .function = "Total", .arguments = "[]", .expected = "[42391]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -241,8 +487,14 @@ static const sample samples[] = {
                 "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
                 "total += note.count; }\n"
                 "    return total;\n}",
-      .calls = { { "AliasedSum", "[[{\"text\":\"a\",\"count\":1},{\"text\":\"b\",\"count\":2}]]", "[103]" },
-                 { "CopiedWalk", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}]]", "[3]" } } },
+      .calls = { { .function = "AliasedSum",
+                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
+                                "\"b\",\"count\":2}]]",
+                   .expected = "[103]" },
+                 { .function = "CopiedWalk",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
+                                "\"y\",\"count\":2}]]",
+                   .expected = "[3]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -262,12 +514,12 @@ static const sample samples[] = {
                 "Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; "
                 "ys.append(3); return xs.length(); }\n"
                 "Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }",
-      .calls = { { "Build", "[3]", "[[200,100,2,1,0,7]]" },
-                 { "Count", "[[1,2,3]]", "[35]" },
-                 { "Has", "[[1,2],2]", "[true]" },
-                 { "Sliced", "[[5,6,7,8]]", "[[6,7]]" },
-                 { "Separate", "[]", "[2]" },
-                 { "Grow", "[[5]]", "[[5,1]]" } } },
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[[200,100,2,1,0,7]]" },
+                 { .function = "Count", .arguments = "[[1,2,3]]", .expected = "[35]" },
+                 { .function = "Has", .arguments = "[[1,2],2]", .expected = "[true]" },
+                 { .function = "Sliced", .arguments = "[[5,6,7,8]]", .expected = "[[6,7]]" },
+                 { .function = "Separate", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Grow", .arguments = "[[5]]", .expected = "[[5,1]]" } } },
     { .name = "array method in an expression",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = "
@@ -287,12 +539,12 @@ static const sample samples[] = {
                 "Quoted :: () -> string { text: string = "
                 "\"a\\\"b\\u0041\"; "
                 "return text; }",
-      .calls = { { "Name", "[\"\"]", "[\"nobody\"]" },
-                 { "Name", "[\"ada\"]", "[\"ada\"]" },
-                 { "Same", "[\"x\",\"x\"]", "[true]" },
-                 { "Same", "[\"x\",\"y\"]", "[false]" },
-                 { "Differ", "[\"x\",\"y\"]", "[true]" },
-                 { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+      .calls = { { .function = "Name", .arguments = "[\"\"]", .expected = "[\"nobody\"]" },
+                 { .function = "Name", .arguments = "[\"ada\"]", .expected = "[\"ada\"]" },
+                 { .function = "Same", .arguments = "[\"x\",\"x\"]", .expected = "[true]" },
+                 { .function = "Same", .arguments = "[\"x\",\"y\"]", .expected = "[false]" },
+                 { .function = "Differ", .arguments = "[\"x\",\"y\"]", .expected = "[true]" },
+                 { .function = "Quoted", .arguments = "[]", .expected = "[\"a\\\"bA\"]" } } },
     /* Records and union payloads hold float and double values; an integer
      * stored there converts as stage zero converts it. */
     { .name = "floating fields",
@@ -307,7 +559,8 @@ static const sample samples[] = {
                 "    switch Shape.Circle(r) { case .Circle(radius): return "
                 "radius * radius; case .Dot: return 0.0; }\n"
                 "}\n",
-      .calls = { { "Make", "[1.5,3]", "[7.0]" }, { "Area", "[1.5]", "[2.25]" } } },
+      .calls = { { .function = "Make", .arguments = "[1.5,3]", .expected = "[7.0]" },
+                 { .function = "Area", .arguments = "[1.5]", .expected = "[2.25]" } } },
     /* int8, int16, uint16 and uint as stage zero computes them: mixed
      * operands widen to the type that holds both, and records hold them. */
     { .name = "narrow integers",
@@ -321,11 +574,11 @@ static const sample samples[] = {
                 "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
                 "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
                 "int(p.a) + int(p.b); }\n",
-      .calls = { { "Narrow", "[-5,300,9,-7]", "[605]" },
-                 { "Mixed", "[-3,200]", "[197]" },
-                 { "Big", "[4000000000,-1]", "[3999999999]" },
-                 { "Store", "[]", "[65535]" },
-                 { "Make", "[-2]", "[5]" } } },
+      .calls = { { .function = "Narrow", .arguments = "[-5,300,9,-7]", .expected = "[605]" },
+                 { .function = "Mixed", .arguments = "[-3,200]", .expected = "[197]" },
+                 { .function = "Big", .arguments = "[4000000000,-1]", .expected = "[3999999999]" },
+                 { .function = "Store", .arguments = "[]", .expected = "[65535]" },
+                 { .function = "Make", .arguments = "[-2]", .expected = "[5]" } } },
     /* uint64 and byte have every operator, unsigned ordering and division
      * included, as stage zero computes them. */
     { .name = "unsigned arithmetic",
@@ -337,13 +590,15 @@ static const sample samples[] = {
           "Bytes :: (a: byte, b: byte) -> byte { return a + b * 2 - 1; }\n"
           "Order :: (a: byte, b: byte) -> bool { return a > b && a >= 3; }\n"
           "Shift :: (a: byte) -> byte { return (a << 1) >> 2; }\n",
-      .calls = { { "Diff", "[10,3]", "[7]" },
-                 { "Less", "[9223372036854775808,1]", "[false]" },
-                 { "Less", "[1,9223372036854775808]", "[true]" },
-                 { "Div", "[18446744073709551615,10]", "[1844674407370955166]" },
-                 { "Bytes", "[20,30]", "[79]" },
-                 { "Order", "[5,3]", "[true]" },
-                 { "Shift", "[12]", "[6]" } } },
+      .calls = { { .function = "Diff", .arguments = "[10,3]", .expected = "[7]" },
+                 { .function = "Less", .arguments = "[9223372036854775808,1]", .expected = "[false]" },
+                 { .function = "Less", .arguments = "[1,9223372036854775808]", .expected = "[true]" },
+                 { .function = "Div",
+                   .arguments = "[18446744073709551615,10]",
+                   .expected = "[1844674407370955166]" },
+                 { .function = "Bytes", .arguments = "[20,30]", .expected = "[79]" },
+                 { .function = "Order", .arguments = "[5,3]", .expected = "[true]" },
+                 { .function = "Shift", .arguments = "[12]", .expected = "[6]" } } },
     /* Constants fold integer expressions of literals and other constants,
      * declared in any order and in an imported package. */
     { .name = "constant expressions",
@@ -360,7 +615,7 @@ static const sample samples[] = {
                 "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
                 "int64(Small) + int64(Low); }\n",
       .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
-      .calls = { { "Folded", "[]", "[56553]" } } },
+      .calls = { { .function = "Folded", .arguments = "[]", .expected = "[56553]" } } },
     /* An omitted argument takes its parameter's literal default. */
     { .name = "defaults",
       .source = "package facts\n"
@@ -373,10 +628,10 @@ static const sample samples[] = {
                 "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
                 "3); }\n"
                 "Hello :: () -> string { return Greet(); }\n",
-      .calls = { { "Add", "[5,6,7]", "[18]" },
-                 { "Use", "[]", "[32]" },
-                 { "Hello", "[]", "[\"HI you\"]" },
-                 { "Greet", "[\"ada\",false]", "[\"ada\"]" } } },
+      .calls = { { .function = "Add", .arguments = "[5,6,7]", .expected = "[18]" },
+                 { .function = "Use", .arguments = "[]", .expected = "[32]" },
+                 { .function = "Hello", .arguments = "[]", .expected = "[\"HI you\"]" },
+                 { .function = "Greet", .arguments = "[\"ada\",false]", .expected = "[\"ada\"]" } } },
     /* An integer switch tests its arms in order and runs the default arm
      * after them all, wherever it is written. */
     { .name = "integer switch",
@@ -396,10 +651,10 @@ static const sample samples[] = {
                 "100; }\n"
                 "    }\n"
                 "    return total;\n}\n",
-      .calls = { { "Kind", "[61]", "[1]" },
-                 { "Kind", "[-62]", "[2]" },
-                 { "Kind", "[7]", "[0]" },
-                 { "Spaces", "[[32,10,32,5]]", "[102]" } } },
+      .calls = { { .function = "Kind", .arguments = "[61]", .expected = "[1]" },
+                 { .function = "Kind", .arguments = "[-62]", .expected = "[2]" },
+                 { .function = "Kind", .arguments = "[7]", .expected = "[0]" },
+                 { .function = "Spaces", .arguments = "[[32,10,32,5]]", .expected = "[102]" } } },
     /* Range loops count as stage zero's do: inclusive and half-open,
      * forward and reversed, ending at a bound without wrapping; `for x, i`
      * names an array's item and its index, and `for <` walks it backwards. */
@@ -438,16 +693,16 @@ static const sample samples[] = {
                 "    total: int = 0;\n"
                 "    for < x, i in xs { total = total * 100 + x * 10 + i; }\n"
                 "    return total;\n}\n",
-      .calls = { { "Sum", "[1,4]", "[10]" },
-                 { "Below", "[5]", "[8]" },
-                 { "Down", "[3]", "[321]" },
-                 { "DownBelow", "[3]", "[210]" },
-                 { "DownBelow", "[0]", "[0]" },
-                 { "Count", "[2147483646,2147483647]", "[4]" },
-                 { "Count", "[-2147483648,-2147483647]", "[4]" },
-                 { "Small", "[3]", "[4]" },
-                 { "Keys", "[[5,6,7]]", "[20]" },
-                 { "Back", "[[1,2,3]]", "[322110]" } } },
+      .calls = { { .function = "Sum", .arguments = "[1,4]", .expected = "[10]" },
+                 { .function = "Below", .arguments = "[5]", .expected = "[8]" },
+                 { .function = "Down", .arguments = "[3]", .expected = "[321]" },
+                 { .function = "DownBelow", .arguments = "[3]", .expected = "[210]" },
+                 { .function = "DownBelow", .arguments = "[0]", .expected = "[0]" },
+                 { .function = "Count", .arguments = "[2147483646,2147483647]", .expected = "[4]" },
+                 { .function = "Count", .arguments = "[-2147483648,-2147483647]", .expected = "[4]" },
+                 { .function = "Small", .arguments = "[3]", .expected = "[4]" },
+                 { .function = "Keys", .arguments = "[[5,6,7]]", .expected = "[20]" },
+                 { .function = "Back", .arguments = "[[1,2,3]]", .expected = "[322110]" } } },
     { .name = "arrays",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -491,17 +746,20 @@ static const sample samples[] = {
                 "total += p.x * 10; }\n    }\n"
                 "    counts: int[] = [0, 0, 0];\n    counts[Index(2)] += 7;\n"
                 "    return total + counts[2];\n}",
-      .calls = { { "Squares", "[4]", "[[0,1,4,9]]" },
-                 { "Total", "[[0,1,4,9]]", "[10]" },
-                 { "Edit", "[]", "[3528]" },
-                 { "Points", "[3]", "[[{\"x\":0,\"y\":0},{\"x\":1,\"y\":2},{\"x\":2,\"y\":4}]]" },
-                 { "SumY", "[[{\"x\":5,\"y\":1},{\"x\":0,\"y\":2}]]", "[8]" },
-                 { "Words", "[]", "[[\"b\",\"c\"]]" },
-                 { "Counts", "[3]", "[4]" },
-                 { "Pick", "[[1,2],2]", NULL },
-                 { "Nested",
-                   "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
-                   "[57]" } } },
+      .calls = { { .function = "Squares", .arguments = "[4]", .expected = "[[0,1,4,9]]" },
+                 { .function = "Total", .arguments = "[[0,1,4,9]]", .expected = "[10]" },
+                 { .function = "Edit", .arguments = "[]", .expected = "[3528]" },
+                 { .function = "Points", .arguments = "[3]", .expected = "[[{\"x\":0,\"y\":0},{\"x\":1,\"y\":2},{\"x\":2,\"y\":4}]]" },
+                 { .function = "SumY",
+                   .arguments = "[[{\"x\":5,\"y\":1},{\"x\":0,\"y\":2}]]",
+                   .expected = "[8]" },
+                 { .function = "Words", .arguments = "[]", .expected = "[[\"b\",\"c\"]]" },
+                 { .function = "Counts", .arguments = "[3]", .expected = "[4]" },
+                 { .function = "Pick", .arguments = "[[1,2],2]", .expected = NULL },
+                 { .function = "Nested",
+                   .arguments = "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":"
+                                "3,\"y\":0}]]",
+                   .expected = "[57]" } } },
     { .name = "maps",
       .group = COLLECTION_SAMPLES,
       .source =
@@ -557,16 +815,18 @@ static const sample samples[] = {
           "    a := Make(3);\n    b := a;\n    b[0] = \"changed\";\n    delete "
           "b[2];\n"
           "    return format_text(\"{}|{}\", Join(a), Join(b));\n}",
-      .calls = { { "Ages", "[]", "[4136]" },
-                 { "Name", "[2]", "[\"two\"]" },
-                 { "Name", "[3]", "[\"\"]" },
-                 { "Y", "[\"a\"]", "[2]" },
-                 { "Y", "[\"b\"]", NULL },
-                 { "Flag", "[]", "[false]" },
-                 { "Count", "[5]", "[111109000]" },
-                 { "Points", "[]", "[405]" },
-                 { "Walk", "[]", "[\"Ada4Cid2Bea5 95911\"]" },
-                 { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
+      .calls = { { .function = "Ages", .arguments = "[]", .expected = "[4136]" },
+                 { .function = "Name", .arguments = "[2]", .expected = "[\"two\"]" },
+                 { .function = "Name", .arguments = "[3]", .expected = "[\"\"]" },
+                 { .function = "Y", .arguments = "[\"a\"]", .expected = "[2]" },
+                 { .function = "Y", .arguments = "[\"b\"]", .expected = NULL },
+                 { .function = "Flag", .arguments = "[]", .expected = "[false]" },
+                 { .function = "Count", .arguments = "[5]", .expected = "[111109000]" },
+                 { .function = "Points", .arguments = "[]", .expected = "[405]" },
+                 { .function = "Walk", .arguments = "[]", .expected = "[\"Ada4Cid2Bea5 95911\"]" },
+                 { .function = "Copies",
+                   .arguments = "[]",
+                   .expected = "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -593,10 +853,10 @@ static const sample samples[] = {
                 "    return total;\n}\n"
                 "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(p); "
                 "return p.x * 100 + p.y; }",
-      .calls = { { "Run", "[]", "[6121340]" },
-                 { "Inc", "[1]", "[2]" },
-                 { "Count", "[]", "[12]" },
-                 { "Moved", "[]", "[1007]" } } },
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[6121340]" },
+                 { .function = "Inc", .arguments = "[1]", .expected = "[2]" },
+                 { .function = "Count", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Moved", .arguments = "[]", .expected = "[1007]" } } },
     { .name = "reference literal",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
@@ -673,13 +933,13 @@ static const sample samples[] = {
                 "    return Pair(Shape.Empty, Shape.Empty) * 10 + "
                 "Pair(Shape.Empty, Shape.Circle(1)) * 100 + Pair(Shape.Box(3, "
                 "4), Shape.Empty);\n}",
-      .calls = { { "Score", "[5]", "[156]" },
-                 { "Kinds", "[]", "[111]" },
-                 { "Nested", "[]", "[123]" },
-                 { "Make", "[1]", "[{\"tag\":6300533083688230396,\"values\":[2,5]}]" },
-                 { "Make", "[2]", "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
-                 { "Make", "[3]", "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
-                 { "Make", "[4]", "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
+      .calls = { { .function = "Score", .arguments = "[5]", .expected = "[156]" },
+                 { .function = "Kinds", .arguments = "[]", .expected = "[111]" },
+                 { .function = "Nested", .arguments = "[]", .expected = "[123]" },
+                 { .function = "Make", .arguments = "[1]", .expected = "[{\"tag\":6300533083688230396,\"values\":[2,5]}]" },
+                 { .function = "Make", .arguments = "[2]", .expected = "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
+                 { .function = "Make", .arguments = "[3]", .expected = "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
+                 { .function = "Make", .arguments = "[4]", .expected = "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
     { .name = "imports",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -724,13 +984,13 @@ static const sample samples[] = {
                  "        case .Nothing: return 0;\n"
                  "    }\n    return -1;\n}",
       .core = true,
-      .calls = { { "Total", "[4]", "[17]" },
-                 { "Local", "[]", "[9]" },
-                 { "Shapes", "[]", "[73]" },
-                 { "Match", "[6]", "[6]" },
-                 { "Measure", "[\"zebra\"]", "[551]" },
-                 { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
-                 { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
+      .calls = { { .function = "Total", .arguments = "[4]", .expected = "[17]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[9]" },
+                 { .function = "Shapes", .arguments = "[]", .expected = "[73]" },
+                 { .function = "Match", .arguments = "[6]", .expected = "[6]" },
+                 { .function = "Measure", .arguments = "[\"zebra\"]", .expected = "[551]" },
+                 { .function = "Echo", .arguments = "[{\"x\":1,\"y\":2}]", .expected = "[{\"x\":1,\"y\":2}]" },
+                 { .function = "Points", .arguments = "[3]", .expected = "[[{\"x\":3,\"y\":3}]]" } } },
     /* An assert fails the call when its condition is false, with its
      * message or its condition's source; it names its arguments as the core
      * catalog does. */
@@ -743,12 +1003,17 @@ static const sample samples[] = {
                 "    assert(n < 100);\n"
                 "    assert(condition: n != 7, message: \"\");\n"
                 "    assert((n != 8), (\"not eight\"));\n"
+                "    assert(n != 9, \"a\\u0000b\");\n"
                 "    return n * 2;\n}",
-      .calls = { { "Double", "[3]", "[6]" },
-                 { "Double", "[-1]", NULL },
-                 { "Double", "[200]", NULL },
-                 { "Double", "[7]", NULL },
-                 { "Double", "[8]", NULL } } },
+      .calls = { { .function = "Double", .arguments = "[3]", .expected = "[6]" },
+                 { .function = "Double", .arguments = "[-1]", .expected = NULL },
+                 { .function = "Double", .arguments = "[200]", .expected = NULL },
+                 { .function = "Double", .arguments = "[7]", .expected = NULL },
+                 { .function = "Double", .arguments = "[8]", .expected = NULL },
+                 { .function = "Double",
+                   .arguments = "[9]",
+                   .expected = NULL,
+                   .diagnostic = "Assertion failed: a\\0b" } } },
     /* Package and imported constants. `lib.Scaled(2)` takes a default that
      * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
      * the package's other file declares, whose occurrence is that file's. */
@@ -776,11 +1041,11 @@ static const sample samples[] = {
                  "pub High: int : 2147483647;\n"
                  "pub Scaled :: (n: int, by: int = 1) -> int { return n * "
                  "Step * by; }",
-      .calls = { { "Sum", "[3]", "[148]" },
-                 { "Hidden", "[]", "[1]" },
-                 { "Limits", "[]", "[-1]" },
-                 { "Scale", "[]", "[200]" },
-                 { "Tripled", "[]", "[6]" } } },
+      .calls = { { .function = "Sum", .arguments = "[3]", .expected = "[148]" },
+                 { .function = "Hidden", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Limits", .arguments = "[]", .expected = "[-1]" },
+                 { .function = "Scale", .arguments = "[]", .expected = "[200]" },
+                 { .function = "Tripled", .arguments = "[]", .expected = "[6]" } } },
     { .name = "patterns",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -824,16 +1089,16 @@ static const sample samples[] = {
                 "    return total;\n}\n"
                 "Empty :: (k: int) -> bool { return Make(k) is "
                 ".Nothing; }",
-      .calls = { { "Score", "[0]", "[5]" },
-                 { "Score", "[1]", "[100]" },
-                 { "Score", "[2]", "[34]" },
-                 { "Score", "[3]", "[-1]" },
-                 { "Score", "[4]", "[0]" },
-                 { "Kind", "[2]", "[7]" },
-                 { "Kind", "[4]", "[-5]" },
-                 { "Count", "[]", "[10]" },
-                 { "Walk", "[]", "[33]" },
-                 { "Empty", "[4]", "[true]" } } },
+      .calls = { { .function = "Score", .arguments = "[0]", .expected = "[5]" },
+                 { .function = "Score", .arguments = "[1]", .expected = "[100]" },
+                 { .function = "Score", .arguments = "[2]", .expected = "[34]" },
+                 { .function = "Score", .arguments = "[3]", .expected = "[-1]" },
+                 { .function = "Score", .arguments = "[4]", .expected = "[0]" },
+                 { .function = "Kind", .arguments = "[2]", .expected = "[7]" },
+                 { .function = "Kind", .arguments = "[4]", .expected = "[-5]" },
+                 { .function = "Count", .arguments = "[]", .expected = "[10]" },
+                 { .function = "Walk", .arguments = "[]", .expected = "[33]" },
+                 { .function = "Empty", .arguments = "[4]", .expected = "[true]" } } },
     { .name = "shadowing",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -846,7 +1111,8 @@ static const sample samples[] = {
                 "U :: union { A(x: int) | B }\n"
                 "Arm :: () -> int { u := U.A(7); switch u { case .A(n): "
                 "n: int = 2; return n; case .B: return 0; } return -1; }",
-      .calls = { { "Shadow", "[3]", "[13]" }, { "Arm", "[]", "[2]" } } },
+      .calls = { { .function = "Shadow", .arguments = "[3]", .expected = "[13]" },
+                 { .function = "Arm", .arguments = "[]", .expected = "[2]" } } },
     { .name = "integers",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -870,15 +1136,15 @@ static const sample samples[] = {
                 "*= 3; return x; }\n"
                 "Narrow :: (v: int64) -> int { return int(v); }\n"
                 "Clamp :: (v: int) -> byte { return byte(clamp: v); }",
-      .calls = { { "Hash", "[[1,2,3]]", "[11570874782335668893]" },
-                 { "Bytes", "[]", "[[1,2,255,44,200]]" },
-                 { "High", "[1]", "[256]" },
-                 { "Mixed", "[2,5000000000]", "[5000000002]" },
-                 { "Store", "[4]", "[42]" },
-                 { "Narrow", "[7]", "[7]" },
-                 { "Narrow", "[5000000000]", NULL },
-                 { "Clamp", "[300]", "[255]" },
-                 { "Clamp", "[-5]", "[0]" } } },
+      .calls = { { .function = "Hash", .arguments = "[[1,2,3]]", .expected = "[11570874782335668893]" },
+                 { .function = "Bytes", .arguments = "[]", .expected = "[[1,2,255,44,200]]" },
+                 { .function = "High", .arguments = "[1]", .expected = "[256]" },
+                 { .function = "Mixed", .arguments = "[2,5000000000]", .expected = "[5000000002]" },
+                 { .function = "Store", .arguments = "[4]", .expected = "[42]" },
+                 { .function = "Narrow", .arguments = "[7]", .expected = "[7]" },
+                 { .function = "Narrow", .arguments = "[5000000000]", .expected = NULL },
+                 { .function = "Clamp", .arguments = "[300]", .expected = "[255]" },
+                 { .function = "Clamp", .arguments = "[-5]", .expected = "[0]" } } },
     { .name = "wide values",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -896,11 +1162,11 @@ static const sample samples[] = {
                 "    switch t { case .Bits(value): return value; case .None: "
                 "return 0; }\n"
                 "    return 0;\n}",
-      .calls = { { "Shifts", "[1]", "[16]" },
-                 { "Equal", "[3,3]", "[true]" },
-                 { "Twice", "[]", "[-10000000000]" },
-                 { "Negative", "[-1]", "[true]" },
-                 { "Pick", "[5]", "[5000000035]" } } },
+      .calls = { { .function = "Shifts", .arguments = "[1]", .expected = "[16]" },
+                 { .function = "Equal", .arguments = "[3,3]", .expected = "[true]" },
+                 { .function = "Twice", .arguments = "[]", .expected = "[-10000000000]" },
+                 { .function = "Negative", .arguments = "[-1]", .expected = "[true]" },
+                 { .function = "Pick", .arguments = "[5]", .expected = "[5000000035]" } } },
     { .name = "wide records",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -922,20 +1188,26 @@ static const sample samples[] = {
                 "    total: int64 = 0;\n"
                 "    for (e in es) { total += e.delta + int64(e.small); }\n"
                 "    return total;\n}",
-      .calls = { { "Make",
-                   "[3]",
-                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
-                   "\"delta\":-4999999997,\"name\":\"e\"}]" },
-                 { "Mix",
-                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
-                   "\"delta\":-4999999997,\"name\":\"e\"}]",
-                   "[3000000025]" },
-                 { "Bump",
-                   "[{\"flag\":false,\"id\":18446744073709551614,\"small\":200,"
-                   "\"count\":-1,\"delta\":-4999999997,\"name\":\"x\"}]",
-                   "[{\"flag\":false,\"id\":18446744073709551615,\"small\":7,"
-                   "\"count\":-1,\"delta\":-9999999994,\"name\":\"x\"}]" },
-                 { "Total", "[3]", "[-14999999994]" } } },
+      .calls = { { .function = "Make",
+                   .arguments = "[3]",
+                   .expected = "[{\"flag\":true,\"id\":3000000021,\"small\":3,"
+                               "\"count\":3,"
+                               "\"delta\":-4999999997,\"name\":\"e\"}]" },
+                 { .function = "Mix",
+                   .arguments = "[{\"flag\":true,\"id\":3000000021,\"small\":3,"
+                                "\"count\":3,"
+                                "\"delta\":-4999999997,\"name\":\"e\"}]",
+                   .expected = "[3000000025]" },
+                 { .function = "Bump",
+                   .arguments = "[{\"flag\":false,\"id\":18446744073709551614,"
+                                "\"small\":200,"
+                                "\"count\":-1,\"delta\":-4999999997,\"name\":"
+                                "\"x\"}]",
+                   .expected = "[{\"flag\":false,\"id\":18446744073709551615,"
+                               "\"small\":7,"
+                               "\"count\":-1,\"delta\":-9999999994,\"name\":"
+                               "\"x\"}]" },
+                 { .function = "Total", .arguments = "[3]", .expected = "[-14999999994]" } } },
     { .name = "inferred arrays",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -954,10 +1226,10 @@ static const sample samples[] = {
                 ":= [p, p]; return points[1].y + length(points); }\n"
                 "Wide :: () -> uint64 { bits := [uint64(1), 2, 0xFF]; "
                 "return bits[1] + bits[2]; }",
-      .calls = { { "Sizes", "[3]", "[73]" },
-                 { "Words", "[]", "[3]" },
-                 { "Points", "[]", "[4]" },
-                 { "Wide", "[]", "[257]" } } },
+      .calls = { { .function = "Sizes", .arguments = "[3]", .expected = "[73]" },
+                 { .function = "Words", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Points", .arguments = "[]", .expected = "[4]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[257]" } } },
     { .name = "boxed elements",
       .group = TYPE_SAMPLES,
       .boxed = true,
@@ -992,16 +1264,25 @@ static const sample samples[] = {
                 "    total: int = 0;\n"
                 "    for (point in points) { total += point.y; }\n"
                 "    return total + points[i].x * 100;\n}",
-      .calls = { { "BoxedWord", "[[\"a\",\"b\",\"c\"],1]", "[\"b\"]" },
-                 { "BoxedWord", "[[\"a\"],1]", NULL },
-                 { "BoxedWord", "[[\"a\"],-1]", NULL },
-                 { "BoxedWords", "[[\"a\",\"b\",\"b\"]]", "[2]" },
-                 { "BoxedNotes", "[[{\"text\":\"x\",\"count\":1},{\"text\":\"y\",\"count\":2}],1]", "[203]" },
-                 { "BoxedNotes", "[[{\"text\":\"x\",\"count\":1}],1]", NULL },
-                 { "BoxedShapes", "[2]", "[517]" },
-                 { "BoxedShapes", "[1]", "[17]" },
-                 { "BoxedShapes", "[3]", NULL },
-                 { "PackedPoints", "[[{\"x\":1,\"y\":2},{\"x\":3,\"y\":4}],1]", "[306]" } } },
+      .calls = { { .function = "BoxedWord",
+                   .arguments = "[[\"a\",\"b\",\"c\"],1]",
+                   .expected = "[\"b\"]" },
+                 { .function = "BoxedWord", .arguments = "[[\"a\"],1]", .expected = NULL },
+                 { .function = "BoxedWord", .arguments = "[[\"a\"],-1]", .expected = NULL },
+                 { .function = "BoxedWords", .arguments = "[[\"a\",\"b\",\"b\"]]", .expected = "[2]" },
+                 { .function = "BoxedNotes",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
+                                "\"y\",\"count\":2}],1]",
+                   .expected = "[203]" },
+                 { .function = "BoxedNotes",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1}],1]",
+                   .expected = NULL },
+                 { .function = "BoxedShapes", .arguments = "[2]", .expected = "[517]" },
+                 { .function = "BoxedShapes", .arguments = "[1]", .expected = "[17]" },
+                 { .function = "BoxedShapes", .arguments = "[3]", .expected = NULL },
+                 { .function = "PackedPoints",
+                   .arguments = "[[{\"x\":1,\"y\":2},{\"x\":3,\"y\":4}],1]",
+                   .expected = "[306]" } } },
     { .name = "formatting",
       .source = "package facts\n"
                 "Label :: (n: int, name: string) -> string { return "
@@ -1011,9 +1292,11 @@ static const sample samples[] = {
                 "Mixed :: (flag: bool) -> string { big: uint64 = "
                 "0xFFFFFFFFFFFFFFFF; return format_text(\"{} {} {}\", flag, "
                 "big, int64(-3)); }",
-      .calls = { { "Label", "[3,\"x\"]", "[\"3:x\"]" },
-                 { "Plain", "[]", "[\"plain\"]" },
-                 { "Mixed", "[true]", "[\"true 18446744073709551615 -3\"]" } } },
+      .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
+                 { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
+                 { .function = "Mixed",
+                   .arguments = "[true]",
+                   .expected = "[\"true 18446744073709551615 -3\"]" } } },
     { .name = "native results",
       .source = "package facts\n"
                 "Decode :: (literal: string) -> string {\n"
@@ -1025,10 +1308,12 @@ static const sample samples[] = {
                 "compiler_json_string(literal).Valid; }\n"
                 "Length :: (literal: string) -> int { return "
                 "compiler_json_string(literal).ByteLength; }",
-      .calls = { { "Decode", "[\"\\\"a\\\\u00e9\\\"\"]", "[\"a\303\251/3\"]" },
-                 { "Decode", "[\"bad\"]", "[\"?\"]" },
-                 { "Valid", "[\"\\\"x\\\"\"]", "[true]" },
-                 { "Length", "[\"\\\"abc\\\"\"]", "[3]" } } },
+      .calls = { { .function = "Decode",
+                   .arguments = "[\"\\\"a\\\\u00e9\\\"\"]",
+                   .expected = "[\"a\303\251/3\"]" },
+                 { .function = "Decode", .arguments = "[\"bad\"]", .expected = "[\"?\"]" },
+                 { .function = "Valid", .arguments = "[\"\\\"x\\\"\"]", .expected = "[true]" },
+                 { .function = "Length", .arguments = "[\"\\\"abc\\\"\"]", .expected = "[3]" } } },
     { .name = "written parameters",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
@@ -1043,7 +1328,7 @@ static const sample samples[] = {
                 "    b: Point = {x: 3, y: 4};\n"
                 "    return xs[0] * 1000 + length(ys) * 100 + ys[0] * 10 + "
                 "Swap(a, b) - a.x * 34;\n}",
-      .calls = { { "Caller", "[]", "[1390]" } } },
+      .calls = { { .function = "Caller", .arguments = "[]", .expected = "[1390]" } } },
     { .name = "field assignment",
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; open: bool; }\n"
@@ -1063,7 +1348,7 @@ static const sample samples[] = {
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
-      .calls = { { "Fields", "[4]", "[\"a 10 true 6 #7 7\"]" } } },
+      .calls = { { .function = "Fields", .arguments = "[4]", .expected = "[\"a 10 true 6 #7 7\"]" } } },
     { .name = "record push",
       .source = "package facts\nNode :: struct { kind: string; start: int; }\n"
                 "Build :: (count: int) -> int {\n"
@@ -1076,7 +1361,7 @@ static const sample samples[] = {
                 "    }\n"
                 "    return length(nodes);\n}",
       .updates = true,
-      .calls = { { "Build", "[3]", "[3]" } } },
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[3]" } } },
     { .name = "extension",
       .source = "package facts\nBuild :: (count: int) -> int {\n"
                 "    xs: int[] = [];\n"
@@ -1087,7 +1372,7 @@ static const sample samples[] = {
                 "    }\n"
                 "    return length(xs);\n}",
       .updates = true,
-      .calls = { { "Build", "[3]", "[6]" } } },
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[6]" } } },
     { .name = "map updates",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBuild :: (count: int) -> int {\n"
@@ -1102,7 +1387,7 @@ static const sample samples[] = {
                 "    for (value in squares) { total += 1; }\n"
                 "    return total;\n}",
       .updates = true,
-      .calls = { { "Build", "[3]", "[1]" } } },
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[1]" } } },
     { .name = "map loop names",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () -> int {\n"
@@ -1110,7 +1395,7 @@ static const sample samples[] = {
                 "    for (k, v in m) { total += k * 10 + v; }\n"
                 "    v: int = 3;\n    k: int = 4;\n"
                 "    return total * 100 + v + k;\n}",
-      .calls = { { "Answer", "[]", "[1207]" } } },
+      .calls = { { .function = "Answer", .arguments = "[]", .expected = "[1207]" } } },
     { .name = "duplicate map loop names",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nAnswer :: () { m: [int: int] = [:]; for (x, x "
@@ -1142,9 +1427,9 @@ static const sample samples[] = {
     { .name = "bounds",
       .source = "package facts\nPick :: (xs: int[], i: int) -> int { "
                 "return xs[i]; }",
-      .calls = { { "Pick", "[[1,2],1]", "[2]" },
-                 { "Pick", "[[1,2],-1]", NULL },
-                 { "Pick", "[[],0]", NULL } } },
+      .calls = { { .function = "Pick", .arguments = "[[1,2],1]", .expected = "[2]" },
+                 { .function = "Pick", .arguments = "[[1,2],-1]", .expected = NULL },
+                 { .function = "Pick", .arguments = "[[],0]", .expected = NULL } } },
     { .name = "unknown name",
       .source = "package facts\nAnswer :: () -> int { return missing; }",
       .message = "Unknown name 'missing'",
@@ -1455,12 +1740,33 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of uint64",
       .line = 2,
       .column = 35 },
-    { .name = "untyped local",
-      .source = "package facts\nOne :: () -> int { x := 5; return 1; }",
-      .message = "an untyped number is a double; give the local an integer "
-                 "type",
+    { .name = "inferred numeric locals",
+      .source = "package facts\n"
+                "Bump :: (x: ref int) { x += 1; }\n"
+                "ByReference :: () -> int { x := 0; Bump(x); return x; }\n"
+                "One :: () -> int { x := 5; return x; }\n"
+                "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
+                "xs[x] = 9; return xs[x] + x; }\n"
+                "Negative :: () -> int { x := -1; x += 2; return x; }\n"
+                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "x; }\n"
+                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> double { x := 1e3; return x; }",
+      .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
+                 { .function = "One", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Index", .arguments = "[]", .expected = "[10]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2147483649]" },
+                 { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
+    { .name = "inferred integer refuses float assignment",
+      .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
+                "= fraction; return x; }",
+      .message = "assigned value differs from its local",
       .line = 2,
-      .column = 25 },
+      .column = 45 },
     { .name = "conversion arity",
       .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
                 "}",
@@ -1560,12 +1866,81 @@ static const sample samples[] = {
       .message = "Duplicate field 'a'",
       .line = 2,
       .column = 26 },
-    { .name = "embedded NUL",
-      .source = "package facts\nBad :: () -> string { return "
-                "\"a\\u0000b\"; }",
-      .message = "Invalid string or embedded NUL",
+    { .name = "byte-preserving strings",
+      .source = "package facts\nBinary :: () -> string { return \"a\\u0000b\"; "
+                "}\nDefault :: (value: string = \"a\\u0000b\") -> string { "
+                "return value; }\nReadDefault :: () -> string { return "
+                "Default(); }\nEqual :: () -> bool { return \"a\\u0000b\" == "
+                "\"a\\u0000c\"; }",
+      .calls = { { .function = "Binary", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
+                 { .function = "ReadDefault", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
+                 { .function = "Equal", .arguments = "[]", .expected = "[false]" } } },
+    { .name = "qualified native calls",
+      .c_string_probe = true,
+      .host_effects = true,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Probe :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Caller :: () -> int { return Probe(); }\n"
+                "Recursive :: (n: int) -> int { if (n <= 0) { return Probe(); "
+                "} return Recursive(n - 1); }\n"
+                "ImportedHost :: () -> int { return lib.Through(); }\n"
+                "Length :: () -> int { return native.length(\"four\"); }\n"
+                "Text :: () -> int { return native . overload(\"three\"); }\n"
+                "Integer :: (value: int) -> int { return native . "
+                "overload(value); }",
+      .library = "package lib\npub Through :: () -> int { return "
+                 "native.probe(\"lib\"); }" },
+    { .name = "qualified native import and local precedence",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\n"
+                "Imported :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Local :: () -> int { native: int[] = [1, 2]; "
+                "native.append(3); return length(native); }",
+      .library = "package lib\npub probe :: (value: string) -> int { return "
+                 "99; }",
+      .calls = { { .function = "Imported", .arguments = "[]", .expected = "[99]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "qualified native missing",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return native.absent(); }",
+      .message = "Unknown function 'native.absent'",
       .line = 2,
-      .column = 30 },
+      .column = 35 },
+    { .name = "qualified native ambiguous",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return "
+                "native.PROBE_ONE(\"x\"); }",
+      .message = "Ambiguous function 'native.PROBE_ONE'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native import missing",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\nCall :: () -> "
+                "int { return native.probe(\"x\"); }",
+      .library = "package lib\npub Other :: () -> int { return 0; }",
+      .message = "Unknown function 'probe'",
+      .line = 3,
+      .column = 35 },
+    { .name = "qualified native local shadow",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { native: int = 1; return "
+                "native.probe(\"x\"); }",
+      .message = "call needs a function name",
+      .line = 2,
+      .column = 45 },
+    { .name = "C-string dynamic boundary compiles", .c_string_probe = true, .source = "package facts\nDynamic :: (value: string) -> int { return cstring_probe(value); }" },
+    { .name = "C-string literal boundary",
+      .c_string_probe = true,
+      .source = "package facts\nOne :: () -> int { return "
+                "cstring_probe(\"a\\u0000b\"); }",
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .same_rejection = true },
+    { .name = "C-string parenthesized boundary",
+      .c_string_probe = true,
+      .source = "package facts\nOne :: () -> int { return "
+                "cstring_probe((\"\\u0000b\")); }",
+      .message = "C-string boundary 'value' cannot accept NUL at byte 0",
+      .same_rejection = true },
 };
 enum
 {
@@ -1574,22 +1949,28 @@ enum
 static compiler_fixture fixture, oracle;
 /* The compiler host's natives, and those with the core pack a game links,
  * which declares assert. */
-static native_capabilities *linked[2];
+static native_capabilities *linked[2][2];
 /* Compile's native tables for the host and for a game, per compiler backend,
  * built once from `linked`. */
-static pin_value linked_tables[2][2][3];
+static pin_value linked_tables[2][2][2][3];
+static pin_value linked_effects[2][2][2];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
 
 static void cleanup()
 {
+    type_catalog_set_project(NULL);
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
-    native_capabilities_free(linked[0]);
-    native_capabilities_free(linked[1]);
-    linked[0] = linked[1] = NULL;
+    for (int game = 0; game < 2; game++) {
+        for (int probe = 0; probe < 2; probe++) {
+            native_capabilities_free(linked[game][probe]);
+        }
+    }
+    memset(linked, 0, sizeof linked);
     memset(linked_tables, 0, sizeof linked_tables);
+    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
     compiler_host_free(host);
@@ -1599,10 +1980,9 @@ static void cleanup()
 }
 static pin_value text(const char *s)
 {
-    size_t bytes = strlen(s) + 1;
-    char *copy = arena_alloc(&input, bytes);
-    memcpy(copy, s, bytes);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    pin_value value = { 0 };
+    assert(!pin_value_text(&input, &value, s, strlen(s)));
+    return value;
 }
 static pin_value strings(const char *const *items, int count)
 {
@@ -1616,14 +1996,16 @@ static bool put(pin_value *row, const char *name, int value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == PIN_I32);
-    pin_write_field(row->ptr, field, (pin_value){ .type = PIN_I32, .i = value });
+    REQUIRE(
+        !pin_write_field(&input, row->ptr, field, (pin_value){ .type = PIN_I32, .i = value })
+    );
     return true;
 }
 static bool put_value(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static pin_value row(int b, const char *name)
@@ -1668,24 +2050,40 @@ static int port_storage(script_type type)
 }
 /* The data functions the compiler host links: no flow, outcomes or
  * suspension. */
-static bool natives(int b, bool game, pin_value *out)
+static bool natives(int b, bool game, bool probe, pin_value *out)
 {
-    if (linked_tables[game][b][0].ptr) {
-        memcpy(out, linked_tables[game][b], sizeof linked_tables[game][b]);
+    if (linked_tables[game][probe][b][0].ptr) {
+        memcpy(out, linked_tables[game][probe][b], sizeof linked_tables[game][probe][b]);
         return true;
     }
-    if (!linked[game]) {
-        const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                                 NATIVE_ARRAY_DEFINITION_PACK,
-                                                 COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK,
-                                                 CORE_DEFINITION_PACK };
+    if (!linked[game][probe]) {
+        const native_definition_pack packs[] = {
+            NATIVE_TEXT_DEFINITION_PACK,   NATIVE_ARRAY_DEFINITION_PACK,
+            COMPILER_JSON_DEFINITION_PACK, COMPILER_SYNTAX_DEFINITION_PACK,
+            CORE_DEFINITION_PACK,          CSTRING_PACK
+        };
         char error[256];
-        linked[game] = native_capabilities_from_definition_packs(NULL, 0, packs, game ? 5 : 4, error, sizeof error);
-        REQUIRE(linked[game]);
+        native_definition_pack selected[6];
+        int count = 4;
+        memcpy(selected, packs, (size_t)count * sizeof *selected);
+        if (game) {
+            selected[count++] = CORE_DEFINITION_PACK;
+        }
+        if (probe) {
+            selected[count++] = CSTRING_PACK;
+        }
+        linked[game][probe] = native_capabilities_from_definition_packs(
+            NULL,
+            0,
+            selected,
+            count,
+            error,
+            sizeof error
+        );
+        REQUIRE(linked[game][probe]);
     }
-    const script_catalog *catalog = native_capabilities_catalog(linked[game]);
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    const script_catalog *catalog = native_capabilities_catalog(linked[game][probe]);
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *effects = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
         if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
@@ -1704,6 +2102,7 @@ static bool natives(int b, bool game, pin_value *out)
             (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
         ));
         apush(functions, function);
+        apush(effects, ((pin_value){ .type = PIN_I32, .i = (int)c->effects }));
         for (int j = 0; j < c->parameter_count + c->result_count; j++) {
             const script_catalog_parameter *declared = j < c->parameter_count
                                                          ? &c->parameters[j]
@@ -1713,6 +2112,11 @@ static bool natives(int b, bool game, pin_value *out)
             REQUIRE(put_value(&port, "name", text(declared->name ? declared->name : "")));
             REQUIRE(put(&port, "storage", port_storage(type)));
             REQUIRE(put(&port, "container", (int)type.container));
+            REQUIRE(put_value(
+                &port,
+                "c_string",
+                (pin_value){ .type = PIN_BOOL, .b = declared->c_string }
+            ));
             apush(ports, port);
         }
         apush(identities, ((pin_value){ .type = PIN_U64, .u64 = c->id }));
@@ -1730,17 +2134,19 @@ static bool natives(int b, bool game, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    memcpy(linked_tables[game][b], out, sizeof linked_tables[game][b]);
+    linked_effects[game][probe][b] = rows(effects, acount(effects), PIN_I32, NULL);
+    memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
     afree(functions);
     afree(ports);
     afree(identities);
+    afree(effects);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static uint64_t variant_tag(int b, const char *union_name, const char *variant)
@@ -1765,9 +2171,10 @@ static bool prepare()
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK };
+                                       COMPILER_SYNTAX_DEFINITION_PACK,
+                                       CSTRING_PACK };
     REQUIRE(
-        compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 2)
+        compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3)
     );
     return true;
 }
@@ -1809,7 +2216,14 @@ static pin_value files(const source_package_input *inputs, int count, bool sourc
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
  * links: with `game`, also the core pack a game links. */
-static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
+static bool arguments_for(
+    int b,
+    bool game,
+    bool probe,
+    const source_package_input *inputs,
+    int count,
+    pin_value args[ARGUMENTS]
+)
 {
     const char *collection_names[] = { "core" };
     const char *collection_paths[] = { "/sdk/core" };
@@ -1850,16 +2264,39 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
     args[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, game, &args[9]));
+    REQUIRE(natives(b, game, probe, &args[9]));
     return true;
 }
-static bool compile(int b, bool game, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
+/* Ordinary compilation and bootstrap use only production host natives. */
+static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
 {
-    pin_value args[ARGUMENTS];
-    REQUIRE(arguments(b, game, inputs, count, args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
-    );
+    return arguments_for(b, game, false, inputs, count, args);
+}
+static bool compile(
+    int b,
+    bool game,
+    bool probe,
+    bool effects,
+    const source_package_input *inputs,
+    int count,
+    uintptr_t budget,
+    pin_value *out
+)
+{
+    pin_value args[ARGUMENTS + 1];
+    REQUIRE(arguments_for(b, game, probe, inputs, count, args));
+    args[ARGUMENTS] = linked_effects[game][probe][b];
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        effects ? "CompileWithEffects" : "Compile",
+        args,
+        ARGUMENTS + effects,
+        budget,
+        &detached,
+        out
+    ));
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -1893,6 +2330,9 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     bool passed = valid && result.flow_status == FLOW_OK;
     bool expected = call->expected ? passed && !strcmp(result.json, call->expected)
                                    : !passed;
+    if (call->diagnostic) {
+        expected = expected && strstr(result.diagnostic, call->diagnostic);
+    }
     if (!expected) {
         fprintf(
             stderr,
@@ -2082,8 +2522,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     /* The natives the stage-one target links. */
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
+                                       CSTRING_PACK,
                                        CORE_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 3 : 2));
+    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 4 : 3));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -2291,6 +2732,17 @@ static int union_calls(const behavior_function *f, const node_host_call *call)
     }
     return count;
 }
+/* Variants built in the caller's storage, keeping the locals built there. */
+static int kept_unions(const behavior_function *f)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id ==
+                 (execution_intrinsic_id(&EXECUTION_union_keep_call) |
+                  EXECUTION_INTRINSIC_IN_RESULT);
+    }
+    return count;
+}
 /* A returned variant keeps its payload values, which the return copies to the
  * caller; one kept in a local copies them, since the local's array changes. */
 static bool moves_returned_variants(const unsigned char *bytes, size_t length)
@@ -2321,7 +2773,7 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
             execution_module_function_info f = execution_module_function_at(module, i);
             bool keep = !strncmp(f.entry, "Kept", 4),
                  copy = !strncmp(f.entry, "Copied", 6);
-            int moves = union_calls(f.body, &EXECUTION_union_move_call),
+            int moves = kept_unions(f.body),
                 makes = union_calls(f.body, &EXECUTION_union_make_call);
             kept += keep;
             copied += copy;
@@ -2334,6 +2786,53 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
     }
     package_collection_free(packages);
     REQUIRE(kept == 3 && copied == 1 && !wrong);
+    return true;
+}
+/* A function builds a local array it returns in its caller's storage; one
+ * whose local it assigns does not. */
+static bool builds_results(const unsigned char *bytes, size_t length)
+{
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256];
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler built load: %s\n", error);
+    }
+    REQUIRE(packages);
+    int built = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; execution_module_id(module) == root &&
+                        i < execution_module_function_count(module);
+             i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool build = !strncmp(f.entry, "Built", 5),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            built += build;
+            copied += copy;
+            if ((build && !f.body->builds_results) || (copy && f.body->builds_results)) {
+                fprintf(
+                    stderr,
+                    "package compiler %s builds results: %d\n",
+                    f.entry,
+                    f.body->builds_results
+                );
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
 /* A loop over an array nothing changes, and a local that reads an element of
@@ -2477,12 +2976,12 @@ static void literal_reading(const char *text, bool *finite, uint64_t *wide, bool
 }
 static bool literal_agrees(int b, const char *spelling, bool negative)
 {
-    char text[2100];
-    snprintf(text, sizeof text, "%s%s", negative ? "-" : "", spelling);
+    char spelling_text[2100];
+    snprintf(spelling_text, sizeof spelling_text, "%s%s", negative ? "-" : "", spelling);
     bool finite, fits;
     uint64_t wide, narrow;
-    literal_reading(text, &finite, &wide, &fits, &narrow);
-    pin_value args[] = { (pin_value){ .type = PIN_STR, .str = spelling },
+    literal_reading(spelling_text, &finite, &wide, &fits, &narrow);
+    pin_value args[] = { text(spelling),
                          (pin_value){ .type = PIN_BOOL, .b = negative } };
     pin_value out;
     REQUIRE(
@@ -2500,7 +2999,7 @@ static bool literal_agrees(int b, const char *spelling, bool negative)
             stderr,
             "package compiler literal %s: expected %d %016llx %d %08llx, read "
             "%d %016llx %d %08llx\n",
-            text,
+            spelling_text,
             finite,
             (unsigned long long)wide,
             fits,
@@ -2583,9 +3082,10 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
                                              COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+                                             COMPILER_SYNTAX_DEFINITION_PACK,
+                                             CSTRING_PACK };
     char error[256];
-    *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    *native = native_capabilities_from_definition_packs(NULL, 0, packs, 5, error, sizeof error);
     assert(*native);
     native_prepared_context context = { .native = *native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
@@ -2608,9 +3108,45 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     }
     return packages;
 }
-/* Each module of stage one's closure has the function and statement points of
- * the stage-zero module with its ID that oracle_closure prepared. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length)
+/* Compare serialized function flags, independently of the runtime's derived
+ * effect summary. Direct, recursive and imported HOST callers must retain it. */
+static bool same_host_effects(const execution_module *expected, const execution_module *actual)
+{
+    bool same = true;
+    int observed = 0;
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const execution_module_function *x = &expected->plan.functions[i];
+        const execution_module_function *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == x->id) {
+                y = &actual->plan.functions[j];
+            }
+        }
+        bool host_call = x->id == function_id("Probe") ||
+                         x->id == function_id("Caller") ||
+                         x->id == function_id("Recursive") ||
+                         x->id == function_id("ImportedHost") ||
+                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
+        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
+        observed += host_call;
+        REQUIRE(y);
+        if (x->effects != y->effects) {
+            fprintf(
+                stderr,
+                "stored function effects %016llx: stage zero=%u stage one=%u\n",
+                (unsigned long long)x->id,
+                x->effects,
+                y->effects
+            );
+        }
+        same &= x->effects == y->effects;
+    }
+    REQUIRE(observed > 0);
+    return same;
+}
+/* Each module retains stage zero's source points, watches and, when supplied,
+ * effects for the target's natives. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
     package_collection *packages = read_packages(bytes, length, &native);
@@ -2627,18 +3163,109 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
                          : NULL;
         }
         alike = expected && same_points(expected, module) &&
-                same_watches(expected, module);
+                same_watches(expected, module) &&
+                (!host_effects || same_host_effects(expected, module));
     }
     package_collection_free(packages);
     native_capabilities_free(native);
     return alike;
 }
-/* The samples of `group` compiled by stage one on compiler backend `b`.
- * Stage one compiles slowest on the bytecode backend, so each backend has a
- * selector of its own; only it compares with stage zero's closure. */
+/* Each compiler backend has a focused selector. Bytecode compares source
+ * points with stage zero; both compare explicit target effects. */
+static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+{
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(s, inputs);
+    source_package_snapshot_options options = { .project_root = "/compiler",
+                                                .files = inputs,
+                                                .file_count = count };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    script_lower_bindings bindings = authoring_native_bindings(fixture.native);
+    authoring_packages *packages = authoring_packages_prepare(
+        snapshot,
+        native_capabilities_catalog(fixture.native),
+        &bindings,
+        BEHAVIOR_BYTECODE,
+        NULL
+    );
+    REQUIRE(packages && !authoring_packages_valid(packages));
+    const authoring_package *root = NULL;
+    for (int p = 0; p < authoring_packages_count(packages); p++) {
+        const authoring_package *candidate = authoring_packages_at(packages, p);
+        if (!strcmp(candidate->identity, "project:facts")) {
+            root = candidate;
+        }
+    }
+    REQUIRE(root && root->diagnostic_count);
+    const script_diagnostic *expected = &root->diagnostics[0];
+    bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
+                expected->range.line == line && expected->range.column == column;
+    if (!same) {
+        fprintf(
+            stderr,
+            "stage zero %s: %s at %d:%d; stage one at %d:%d\n",
+            s->name,
+            expected->message,
+            expected->range.line,
+            expected->range.column,
+            line,
+            column
+        );
+    }
+    authoring_packages_free(packages);
+    REQUIRE(same);
+    return true;
+}
+static bool rejects_malformed_effects()
+{
+    static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
+    pin_value args[ARGUMENTS + 1];
+    REQUIRE(arguments_for(0, false, false, &bad_source, 1, args));
+    const pin_array *declared = linked_effects[0][0][0].ptr;
+    REQUIRE(declared && declared->count > 0);
+    for (int i = 0; i < 3; i++) {
+        int count = i ? declared->count : 0;
+        pin_array *masks = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+        for (int j = 0; j < count; j++) {
+            masks->items[j] = (pin_value){ .type = PIN_I32,
+                                           .i = j      ? 0
+                                              : i == 1 ? -1
+                                                       : 128 };
+        }
+        args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
+                                       .container = PIN_CONTAINER_ARRAY,
+                                       .ptr = masks };
+        pin_value out, message, document;
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            0,
+            PACKAGE,
+            "CompileWithEffects",
+            args,
+            ARGUMENTS + 1,
+            COMPILE_BUDGET,
+            &detached,
+            &out
+        ));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(&value->values[0], "document", &document));
+        REQUIRE(
+            !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
+            document.i == -1
+        );
+        arena_free(&detached);
+    }
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
+    if (group == BASE_SAMPLES && b == 0) {
+        REQUIRE(rejects_malformed_effects());
+    }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
         if (s->group != group) {
@@ -2647,7 +3274,9 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, s->game, inputs, count, COMPILE_BUDGET, &out));
+        REQUIRE(
+            compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out)
+        );
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -2658,21 +3287,25 @@ static bool run_samples(sample_group group, int b)
                 get(&value->values[0], "line", &line) &&
                 get(&value->values[0], "column", &column)
             );
-            if (strcmp(message.str, s->message) || line.i != s->line ||
-                column.i != s->column) {
+            bool position = s->same_rejection
+                              ? rejects_like_oracle(
+                                    s,
+                                    pin_text(message).bytes,
+                                    line.i,
+                                    column.i
+                                )
+                              : line.i == s->line && column.i == s->column;
+            if (strcmp(pin_text(message).bytes, s->message) || !position) {
                 fprintf(
                     stderr,
                     "package compiler %s: %s at %d:%d\n",
                     s->name,
-                    message.str,
+                    pin_text(message).bytes,
                     line.i,
                     column.i
                 );
             }
-            REQUIRE(
-                !strcmp(message.str, s->message) && line.i == s->line &&
-                column.i == s->column
-            );
+            REQUIRE(!strcmp(pin_text(message).bytes, s->message) && position);
             arena_free(&detached);
             continue;
         }
@@ -2685,7 +3318,7 @@ static bool run_samples(sample_group group, int b)
                 stderr,
                 "package compiler %s rejected: %s at %d:%d\n",
                 s->name,
-                message.str,
+                pin_text(message).bytes,
                 line.i,
                 column.i
             );
@@ -2701,8 +3334,10 @@ static bool run_samples(sample_group group, int b)
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
-                   (b || (oracle_closure(s, &expected, &expected_length) &&
-                          points_like_oracle(bytes, length)));
+                   (!s->built || builds_results(bytes, length)) &&
+                   ((b && !s->host_effects) ||
+                    (oracle_closure(s, &expected, &expected_length) &&
+                     points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
@@ -2899,14 +3534,17 @@ static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, s->game, inputs, count, args));
+    pin_value args[ARGUMENTS + 1], out;
+    REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
+    args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
+    int argument_count = ARGUMENTS + s->host_effects;
+    const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
     REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
     );
     const pin_union *value = out.ptr;
     size_t length, expected_length;
-    char *json = document_json(args, ARGUMENTS, &length);
+    char *json = document_json(args, argument_count, &length);
     bool compiled = value->tag == tag(1, "Compiled");
     unsigned char *expected = compiled
                                 ? closure_bytes(value, &expected_length)
@@ -2917,7 +3555,7 @@ static bool stage_two_sample(const sample *s)
         compiler_host_bytes again = { 0 };
         same = compiler_host_invoke_bytes(
                    host,
-                   script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
+                   script_catalog_id("package-symbol", s->host_effects ? "project:package_compiler:1:CompileClosureWithEffects:callable" : "project:package_compiler:1:CompileClosure:callable"),
                    json,
                    length,
                    SELF_BUDGET,
@@ -2936,7 +3574,12 @@ static bool stage_two_sample(const sample *s)
         }
         free(again.bytes);
     } else {
-        uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+        uint64_t entry = script_catalog_id(
+            "package-symbol",
+            s->host_effects
+                ? "project:package_compiler:1:CompileWithEffects:callable"
+                : "project:package_compiler:1:Compile:callable"
+        );
         bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
         same = called && result.flow_status == FLOW_OK &&
                result.length == expected_length &&
@@ -3005,7 +3648,7 @@ TEST_CASE(package_compiler_compiles_itself)
         fprintf(
             stderr,
             "package compiler stage one rejected: %s at %d:%d\n",
-            message.str,
+            pin_text(message).bytes,
             line.i,
             column.i
         );
@@ -3017,6 +3660,23 @@ TEST_CASE(package_compiler_compiles_itself)
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
+    REQUIRE(host);
+    size_t target_length;
+    char *target_json = compiler_host_target_json(host, &target_length);
+    yyjson_doc *target = yyjson_read(target_json, target_length, 0);
+    yyjson_doc *compiled_arguments = yyjson_read(json, json_length, 0);
+    REQUIRE(target && compiled_arguments);
+    bool target_equal = true;
+    for (size_t i = 0; i < 6; i++) {
+        target_equal &= yyjson_equals(
+            yyjson_arr_get(yyjson_doc_get_root(target), i),
+            yyjson_arr_get(yyjson_doc_get_root(compiled_arguments), TARGET_ARGUMENT + i)
+        );
+    }
+    yyjson_doc_free(compiled_arguments);
+    yyjson_doc_free(target);
+    free(target_json);
+    REQUIRE(target_equal);
     compiler_host_bytes again = { 0 };
     bool invoked = host &&
                    compiler_host_invoke_bytes(
@@ -3085,8 +3745,102 @@ static const char COUNTER[] = "// Behavior state that survives between steps, "
                               "        self.Spot.x = steps\n"
                               "    }\n"
                               "}\n";
+static const char
+    TEXT_STATE[] = "TextState :: behavior {\n"
+                   "    label: string = \"seed\"\n"
+                   "    Copy :: (value: string) -> string { return value; }\n"
+                   "    on Tick :: () {\n"
+                   "        if label == \"seed\" {\n"
+                   "            label = Copy(\"a\\u0000b\")\n"
+                   "            self.Spot.x = 1\n"
+                   "        } else {\n"
+                   "            label = Copy(\"seed\")\n"
+                   "            self.Spot.x = 2\n"
+                   "        }\n"
+                   "    }\n}\n";
 static const behavior_sample behavior_samples[] = {
     { "Counter", COUNTER },
+    { "BoolState",
+      "BoolState :: behavior {\n"
+      "    active: bool = true\n"
+      "    on Tick :: () {\n"
+      "        if active { self.Spot.x = 1; } else { self.Spot.x = 2; }\n"
+      "        active = !active\n"
+      "    }\n}\n" },
+    { "InferredState",
+      "InferredState :: behavior {\n"
+      "    active := false\n"
+      "    count := 1\n"
+      "    angle := 0.5\n"
+      "    hex := 0x1e\n"
+      "    wide := 4294967297\n"
+      "    on Tick :: () {\n"
+      "        active = !active\n"
+      "        count += 1\n"
+      "        angle += 0.5\n"
+      "        if active { self.Spot.x = count; } else { self.Spot.x = angle; "
+      "}\n"
+      "    }\n}\n" },
+    { "EntityState",
+      "EntityState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "    }\n}\n" },
+    { "EntityNullState",
+      "EntityNullState :: behavior {\n"
+      "    target: entity = null\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntityZeroState",
+      "EntityZeroState :: behavior {\n"
+      "    target: entity = 0\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntitySignedZeroState",
+      "EntitySignedZeroState :: behavior {\n"
+      "    negative: entity = -0\n"
+      "    positive: entity = +0.0\n"
+      "    on Tick :: () {\n"
+      "        negative = self\n"
+      "        positive = self\n"
+      "        negative = -0.0\n"
+      "        positive = +0\n"
+      "    }\n}\n" },
+    { "EntityResetState",
+      "EntityResetState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = self; }\n"
+      "        if ticks == 1 { target = null; }\n"
+      "        if ticks == 2 { target = self; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
+    { "EntityEqualState",
+      "EntityEqualState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "    }\n}\n" },
+    { "TextState", TEXT_STATE },
+    { "InferredTextState",
+      "InferredTextState :: behavior {\n"
+      "    label := \"a\\u0000b\"\n"
+      "    on Tick :: () {\n"
+      "        if label == \"a\\u0000b\" { self.Spot.x += 1; }\n"
+      "    }\n}\n" },
+    { "ScalarNullState",
+      "ScalarNullState :: behavior {\n"
+      "    active: bool = null\n"
+      "    count: int = null\n"
+      "    label: string = null\n"
+      "    on Tick :: () {\n"
+      "        if !active && label == \"\" { self.Spot.x = count; }\n"
+      "    }\n}\n" },
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
     { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
@@ -3144,9 +3898,11 @@ static const behavior_rejection behavior_rejections[] = {
       "}\n}\n",
       "Assignment requires a writable value",
       false },
-    { "Named :: behavior {\n    label: string = \"\"\n    on Tick :: () {\n    "
-      "}\n}\n",
-      "state needs a number type",
+    { "Missing :: behavior { flag: bool; }", "'flag' requires a default value", true },
+    { "Missing :: behavior { count: int; }", "'count' requires a default value", true },
+    { "Missing :: behavior { label: string; }", "'label' requires a default value", true },
+    { "Nonzero :: behavior { target: entity = 1; }",
+      "entity default requires null or zero",
       false },
     { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
       "{\n    }\n}\n",
@@ -3360,6 +4116,7 @@ static bool game_arguments(int b, pin_value *out)
             REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
             REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
             REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
+            REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
             REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
             REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
             REQUIRE(put(&field, "read", -1));
@@ -3457,7 +4214,7 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
             stderr,
             "stage one behavior %s rejected: %s at %d:%d\n",
             identity,
-            message.str,
+            pin_text(message).bytes,
             line.i,
             column.i
         );
@@ -3472,7 +4229,14 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
                                          .type = link_game_type,
                                          .event = link_game_event };
     char error[256] = { 0 };
-    *module = execution_prepared_read(bytes, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    *module = execution_prepared_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
     if (!*module) {
         fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
     }
@@ -3541,8 +4305,11 @@ static bool same_declarations(const execution_module *expected, const execution_
     REQUIRE(a->state_count == e->state_count);
     for (int i = 0; i < e->state_count; i++) {
         REQUIRE(a->states[i].id == e->states[i].id);
-        REQUIRE(a->states[i].initial.type == e->states[i].initial.type);
-        REQUIRE(a->states[i].initial.i == e->states[i].initial.i);
+        REQUIRE(pin_value_equal(&a->states[i].initial, &e->states[i].initial));
+        REQUIRE(!strcmp(
+            a->states[i].initial.type_name ? a->states[i].initial.type_name : "",
+            e->states[i].initial.type_name ? e->states[i].initial.type_name : ""
+        ));
     }
     REQUIRE(a->event_count == e->event_count);
     for (int i = 0; i < e->event_count; i++) {
@@ -3610,7 +4377,7 @@ static bool plays_alike(execution_module *expected, execution_module *actual)
                 a.instance,
                 expected->plan.states[i].id
             );
-            alike = kept && held && kept->type == held->type && kept->i == held->i;
+            alike = kept && held && pin_value_equal(kept, held);
         }
         if (!alike) {
             fprintf(
@@ -3671,7 +4438,7 @@ static bool rejects(int b, const behavior_rejection *rejection)
                     get(&value->values[0], "message", &message) &&
                     get(&value->values[0], "line", &line) &&
                     get(&value->values[0], "column", &column) &&
-                    !strcmp(message.str, rejection->message);
+                    !strcmp(pin_text(message).bytes, rejection->message);
     if (rejected && rejection->stage_zero) {
         script_diagnostic expected = stage_zero_diagnostic(rejection->source);
         rejected = !strcmp(expected.message, rejection->message) &&
@@ -3706,14 +4473,19 @@ static bool takes_project_identities(int b)
 /* Stage zero's build of stage one passes arguments without copying them to
  * every function but those that run once per compile. One that pushes onto an
  * array argument, or stores a uint64 into a field of a local record, copies
- * every argument on each call, and so does every function that calls it;
- * each took stage one compiling itself past its 60-second ceiling. */
+ * every argument on each call, and so does every function that calls it,
+ * slowing stage one compiling itself. */
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",           "CompileClosure",
-                                 "CompileBehavior",   "CompileBehaviors",
-                                 "BehaviorRejection", "Declare",
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "Declare",
                                  "DeclarePackage" };
     const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
                                           ->module->plan;
@@ -3779,9 +4551,74 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
          i++) {
         passed = rejects(1, &behavior_rejections[i]);
     }
+    const char *const invalid_entity_defaults[] = {
+        "Invalid :: behavior { target: entity = ~0; }",
+        "Invalid :: behavior { target: entity = !0; }",
+    };
+    for (size_t i = 0; passed && i < sizeof invalid_entity_defaults /
+                                         sizeof *invalid_entity_defaults;
+         i++) {
+        REQUIRE(stage_zero_diagnostic(invalid_entity_defaults[i]).message[0]);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
+            REQUIRE(((pin_union *)out.ptr)->tag == tag(b, "Rejected"));
+            arena_free(&detached);
+        }
+    }
     passed = passed && takes_project_identities(1);
     type_catalog_set_project(NULL);
     REQUIRE(passed);
+    return true;
+}
+/* A temporary string returned by a member call becomes instance-owned state.
+ * Updating one owner must leave another owner's state and bytes independent. */
+TEST_CASE(package_compiler_keeps_text_state_per_owner)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    execution_module *module = NULL;
+    REQUIRE(stage_one_behavior(1, "TextState", TEXT_STATE, &module));
+    player p = { 0 };
+    REQUIRE(play(module, &p));
+    ecs_entity other = ecs_world_create_entity(p.world);
+    spot initial = { .w = 9 };
+    REQUIRE(ecs_world_record_add(p.world, other, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(p.world) == ECS_OK);
+    execution_instance *second = execution_program_attach(p.program, ecs_entity_to_u64(other));
+    REQUIRE(second);
+    uint64_t state = script_catalog_id("symbol", "TextState:1:label");
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int first = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(first == FLOW_OK);
+    const pin_value *first_value = execution_instance_state(p.instance, state);
+    const pin_value *second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "seed", 4 }));
+    behavior_run_scope_begin(&runs);
+    int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(repeated == FLOW_OK && other_result == FLOW_OK);
+    first_value = execution_instance_state(p.instance, state);
+    second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "seed", 4 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(
+        TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
+                                               : runs.counts.sljit_entries > 0
+    );
+    REQUIRE(!runs.counts.overflow && !runs.counts.bytecode_entries);
+    stop(&p);
+    execution_module_free(module);
+    type_catalog_set_project(NULL);
     return true;
 }
 void test_language_package_compiler_chibi()
@@ -3854,6 +4691,7 @@ void test_language_package_compiler_chibi_behaviors_rest()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+    RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_sharing()

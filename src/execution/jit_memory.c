@@ -1,5 +1,6 @@
 #include "ecs/execution.h"
 #include "execution/jit_internal.h"
+#include "types/text.h"
 #if CHIBI_HAVE_SJLIT
 #include "support/array.h"
 
@@ -81,7 +82,7 @@ static bool short_string_equal(
     for (int pc = 0; pc < acount(m->function->instructions); pc++) {
         const behavior_function_instruction *constant = &m->function->instructions[pc];
         if (constant->op == BF_CONSTANT && constant->output == i->right &&
-            behavior_scalar_string(constant->type)) {
+            constant->type == PIN_NAME) {
             text = constant->value.str ? constant->value.str : "";
             break;
         }
@@ -490,7 +491,14 @@ bool behavior_jit_memory(
         }
         slot(m, i->left, SLJIT_R0, 0);
         slot(m, i->right, SLJIT_R1, 0);
-        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(32, P, P), SLJIT_IMM, (sljit_sw)behavior_string_equal);
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS2(32, P, P),
+            SLJIT_IMM,
+            m->function->slots[i->left] == PIN_STR ? (sljit_sw)behavior_text_equal
+                                                   : (sljit_sw)behavior_string_equal
+        );
         sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_R0, 0);
         return true;
     }
@@ -516,7 +524,15 @@ bool behavior_jit_memory(
     }
     if (i->op == BF_COPY_STRING || i->op == BF_INTERN_STRING) {
         slot(m, i->left, SLJIT_R1, 0);
-        if (i->op == BF_INTERN_STRING) {
+        if (i->op == BF_INTERN_STRING && i->type == PIN_STR) {
+            slot(m, i->left, SLJIT_R2, 0);
+            slot(m, i->right, SLJIT_R1, 0);
+            sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+            sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS3(P, P, P, P), SLJIT_IMM, (sljit_sw)behavior_function_intern_text);
+            struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+            behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
+            bind(c, ok);
+        } else if (i->op == BF_INTERN_STRING) {
             slot(m, i->right, SLJIT_R0, 0);
             sljit_emit_icall(
                 c,
@@ -526,16 +542,11 @@ bool behavior_jit_memory(
                 offsetof(ecs_execution_view, intern_string)
             );
         } else {
-            if (i->value.str) {
+            const void *fallback = i->type == PIN_STR ? (const void *)i->value.text
+                                                      : (const void *)i->value.str;
+            if (fallback) {
                 struct sljit_jump *present = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
-                sljit_emit_op1(
-                    c,
-                    SLJIT_MOV_P,
-                    SLJIT_R1,
-                    0,
-                    SLJIT_IMM,
-                    (sljit_sw)i->value.str
-                );
+                sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R1, 0, SLJIT_IMM, (sljit_sw)fallback);
                 bind(c, present);
             }
             sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_IMM, 0);
@@ -553,7 +564,8 @@ bool behavior_jit_memory(
                 SLJIT_CALL,
                 SLJIT_ARGS2(P, P, P),
                 SLJIT_MEM1(m->context),
-                offsetof(behavior_function_context, copy_string)
+                i->type == PIN_STR ? offsetof(behavior_function_context, copy_text)
+                                   : offsetof(behavior_function_context, copy_string)
             );
             bind(c, empty);
         }

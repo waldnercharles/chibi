@@ -151,13 +151,17 @@ static pin_value struct_binary(pin_value aggregate, pin_value other, int operati
         const type_field *field = &type->fields[i];
         pin_value left;
         pin_value right;
-        pin_read_field(aggregate.ptr, field, aggregate_left ? &left : &right);
+        if (pin_read_field(a, aggregate.ptr, field, aggregate_left ? &left : &right)) {
+            return (pin_value){ .type = PIN_FLOW };
+        }
         if (other.type == PIN_STRUCT) {
             const type_field *peer = find_field(other_type, field->name);
             if (!peer) {
                 return (pin_value){ .type = PIN_FLOW };
             }
-            pin_read_field(other.ptr, peer, aggregate_left ? &right : &left);
+            if (pin_read_field(a, other.ptr, peer, aggregate_left ? &right : &left)) {
+                return (pin_value){ .type = PIN_FLOW };
+            }
         } else if (aggregate_left) {
             right = field_scalar(other, field->type);
         } else {
@@ -171,7 +175,9 @@ static pin_value struct_binary(pin_value aggregate, pin_value other, int operati
             result.type = PIN_F32;
             result.f = (float)result.d;
         }
-        pin_write_field(memory, field, result);
+        if (pin_write_field(a, memory, field, result)) {
+            return (pin_value){ .type = PIN_FLOW };
+        }
     }
     return (pin_value){ .type = PIN_STRUCT, .type_name = type->name, .ptr = memory };
 }

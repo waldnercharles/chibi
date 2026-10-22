@@ -163,7 +163,7 @@ pub FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) ->
 // path validity, root ownership and diagnostics remain authored policy.
 pub ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
     decoded := compiler_json_string(request.literal);
-    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+    if (!decoded.valid || strings.IndexByte(decoded.value, 0) >= 0) {
         return ImportError("Invalid import string or embedded NUL", request);
     }
     path := decoded.value;

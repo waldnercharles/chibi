@@ -3,6 +3,7 @@
 #include "execution/function.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -85,9 +86,15 @@ static const char *request(scene_flow *flow, const char *name)
     return flow->message;
 }
 
-static const char *load(void *service, const pin_value *in, pin_value *)
+static const char *load(const behavior_function_context *ctx, void *service, const pin_value *in, pin_value *)
 {
-    return request(service, in[0].str ? in[0].str : "");
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, in[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
+    return request(service, text);
 }
 
 static const char *reload(void *service, const pin_value *, pin_value *)
@@ -103,15 +110,19 @@ static const char *current(
     pin_value *out
 )
 {
-    assert(ctx->copy_string);
     const scene_flow *flow = service;
-    out[0].str = ctx->copy_string(ctx->value_storage, flow->current);
+    pin_value value;
+    const char *text_error = pin_value_text(ctx->value_storage, &value, flow->current, strlen(flow->current));
+    if (text_error) {
+        return text_error;
+    }
+    out[0].text = value.text;
     return NULL;
 }
 
 const node_host_call SCENE_LOAD_CALL = {
     .service = "game.scenes",
-    .invoke = load,
+    .context = load,
     .missing_service = missing,
 };
 const node_host_call SCENE_RELOAD_CALL = {

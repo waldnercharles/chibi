@@ -315,7 +315,7 @@ if(CHIBI_REFLECT_EXECUTABLE)
         CHIBI_REFLECT_PATH="${CHIBI_REFLECT_EXECUTABLE}")
 endif()
 
-# The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
+# The in-tree build checks the archive's Box3D directly.
 if(TARGET chibi_box3d)
     target_sources(test_tools PRIVATE box3d.c)
     target_link_libraries(test_tools PRIVATE Chibi::box3d)
@@ -552,3 +552,4 @@ target_include_directories(benchmark_trials PRIVATE "${CHIBI_TOOL_ROOT}/src")
 target_compile_definitions(benchmark_trials PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_features(benchmark_trials PRIVATE c_std_11)
 target_compile_options(benchmark_trials PRIVATE -Wall -Wextra -Werror)
+add_dependencies(test_tools benchmark_trials)

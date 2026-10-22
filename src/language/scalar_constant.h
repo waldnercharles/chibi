@@ -11,6 +11,7 @@
  * have floating results. Admissibility alone does not validate those families.
  * The analysis owns literal strings; output is published only on success. */
 const char *script_scalar_evaluate(
+    arena *storage,
     const script_analysis *,
     int expression,
     pin_type expected,

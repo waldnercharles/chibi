@@ -15,6 +15,7 @@
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
 
@@ -252,7 +253,14 @@ static bool value_quota(const pin_value *value, int depth, quota *q)
     if (value->container != PIN_CONTAINER_SINGLE) {
         return false;
     }
-    if (value->type == PIN_STR || value->type == PIN_NAME) {
+    if (value->type == PIN_STR) {
+        size_t length = pin_text(*value).length;
+        size_t overhead = sizeof(pin_string) + 1;
+        size_t room = COMPILER_HOST_MAX_BYTES - q->bytes;
+        return room >= overhead && length <= (room - overhead) / 6 &&
+               charge(q, overhead + length * 6);
+    }
+    if (value->type == PIN_NAME) {
         return string_size(q, value->str);
     }
     if (value->type == PIN_UNION) {
@@ -282,7 +290,9 @@ static bool value_quota(const pin_value *value, int depth, quota *q)
             if (!string_size(q, type->fields[i].name)) {
                 return false;
             }
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            if (pin_read_field(NULL, value->ptr, &type->fields[i], &field)) {
+                return false;
+            }
             if (!value_quota(&field, depth + 1, q)) {
                 return false;
             }

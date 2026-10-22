@@ -2,8 +2,10 @@
 
 #include "authoring/source_prototype_flow.h"
 #include "runtime/input_action.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -353,7 +355,16 @@ static void expressions(authoring_navigation *index, int document)
             !strcmp(ts_node_type(node), "member_expression")
         ) {
             node = name_node(node);
-            target = action_target(index, expression->constant.str);
+            arena storage = { 0 };
+            const char *name;
+            const char *error = pin_text_cstring(&storage, expression->constant, &name, NULL);
+            if (!error) {
+                target = action_target(index, name);
+            }
+            arena_free(&storage);
+            if (error) {
+                continue;
+            }
         } else {
             continue;
         }

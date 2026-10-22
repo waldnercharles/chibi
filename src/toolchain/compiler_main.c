@@ -19,6 +19,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /* This private host admits no game/native reflected type packs. */
 int type_catalog_pack_count()
@@ -41,9 +44,9 @@ static double now()
     struct timespec value;
 #ifdef __APPLE__
     /* Match Python time.monotonic and the process supervisor: excludes sleep. */
-    const clockid_t clock = CLOCK_UPTIME_RAW;
+    const int clock = CLOCK_UPTIME_RAW;
 #else
-    const clockid_t clock = CLOCK_MONOTONIC;
+    const int clock = CLOCK_MONOTONIC;
 #endif
     return clock_gettime(clock, &value) ? INFINITY
                                         : (double)value.tv_sec + value.tv_nsec / 1e9;
@@ -55,7 +58,11 @@ static bool ready(double deadline)
 static unsigned char *read_binary(const char *path, size_t *length, size_t limit, double deadline)
 {
     *length = 0;
+#ifdef _WIN32
+    int fd = open(path, O_RDONLY | _O_NOINHERIT);
+#else
     int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+#endif
     if (fd < 0) {
         return NULL;
     }
@@ -92,7 +99,7 @@ static unsigned char *read_binary(const char *path, size_t *length, size_t limit
     free(bytes);
     return NULL;
 }
-/* Linux/Darwin: same-directory rename is the sole commit point. This is
+/* Same-directory rename is the sole commit point. This is
  * atomic visibility, not fsync-backed durability. A hard kill may leave staging. */
 static bool write_binary(const char *path, const unsigned char *bytes, size_t length, double deadline)
 {
@@ -111,7 +118,12 @@ static bool write_binary(const char *path, const unsigned char *bytes, size_t le
         free(temporary);
         return false;
     }
+#ifdef _WIN32
+    bool ok = SetHandleInformation((HANDLE)_get_osfhandle(fd), HANDLE_FLAG_INHERIT, 0) !=
+              0;
+#else
     bool ok = fcntl(fd, F_SETFD, FD_CLOEXEC) == 0;
+#endif
     size_t used = 0;
     while (ok && used < length) {
         if (!ready(deadline)) {
@@ -166,7 +178,7 @@ static int usage()
     fprintf(
         stderr,
         "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
-        "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
+        "--backend bytecode|sljit --budget N --timeout-ms N [--batch | "
         "--output-artifact FILE | --output-bytes FILE]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
         "[--seed DIR [--revision TEXT] | --recover FILE]\n"
@@ -261,27 +273,19 @@ int main(int argc, char **argv)
                         (boot.seed || !boot.revision) && !(boot.seed && boot.output);
         return alone && complete ? bootstrap(&boot) : usage();
     }
-    if (!artifact || !input || !entry || !budget ||
+    if (!artifact || !input || !entry || !budget || !timeout ||
         backend == BEHAVIOR_UNAVAILABLE || (batch && output_artifact)) {
         return usage();
     }
-    double deadline = timeout ? now() + (double)timeout / 1000 : INFINITY;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        errno = 0;
-        double value = strtod(inherited, &end);
-        if (errno || end == inherited || *end || !isfinite(value) || value <= 0) {
-            fprintf(stderr, "invalid inherited compiler deadline\n");
-            return 1;
-        }
-        if (value < deadline) {
-            deadline = value;
-        }
-    }
+    double deadline = now() + (double)timeout / 1000;
     if (!isfinite(deadline)) {
         return usage();
     }
+#ifdef _WIN32
+    if (signal(SIGINT, cancel) == SIG_ERR || signal(SIGTERM, cancel) == SIG_ERR) {
+        return 1;
+    }
+#else
     struct sigaction action = { .sa_handler = cancel };
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL)) {
@@ -295,6 +299,7 @@ int main(int argc, char **argv)
         }
         /* Keep SIGPIPE ignored through normal stdio cleanup at exit. */
     }
+#endif
     size_t artifact_size, input_size;
     unsigned char *artifact_bytes = read_binary(artifact, &artifact_size, COMPILER_HOST_MAX_BYTES, deadline);
     if (!artifact_bytes) {

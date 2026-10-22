@@ -541,7 +541,8 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         if (field->type == value && field->offset == offset &&
-            field->size == behavior_scalar_size(value)) {
+            field->size == behavior_scalar_size(value) &&
+            (value != PIN_STR || field->text_descriptor)) {
             return true;
         }
         if (field->type == PIN_STRUCT && field->type_name && offset >= field->offset &&
@@ -999,6 +1000,10 @@ static const char *verify_instruction(const behavior_function *f, int pc)
                      behavior_scalar_string(f->slots[i->right])),
                 "invalid string comparison"
             );
+            CHECK(
+                (f->slots[i->left] == PIN_STR) == (f->slots[i->right] == PIN_STR),
+                "string comparison mixes text descriptors and native names"
+            );
             break;
         case BF_BRANCH:
             CHECK(SLOT(i->left, PIN_BOOL), "branch condition must be bool"); /* fall through */
@@ -1096,7 +1101,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
     pin_value output = f->data_values[host->result_first].initial;
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return count == 1 && INPUT(0, PIN_STR) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1105,7 +1110,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_STRING_NEXT:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
                    OUTPUT(
-                       (id & UINT64_C(0xffffffff)) == EXECUTION_INTRINSIC_STRING_ITEM
+                       execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_STRING_ITEM
                            ? PIN_STR
                            : PIN_I32
                    );
@@ -1152,10 +1157,14 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    pin_map_key_supported(values[2].initial) &&
                    OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_SNAPSHOT:
-            return count == 1 && same_type(values[0].initial, output);
+            return count == 1 && (same_type(values[0].initial, output) ||
+                                  (INPUT(0, PIN_NAME) && OUTPUT(PIN_STR)) ||
+                                  (INPUT(0, PIN_STR) && OUTPUT(PIN_NAME)));
         case EXECUTION_INTRINSIC_UNION_MAKE:
-        case EXECUTION_INTRINSIC_UNION_MOVE:
             return count >= 1 && INPUT(0, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_UNION_KEEP:
+            return count >= 2 && INPUT(0, PIN_U64) && INPUT(1, PIN_U64) &&
+                   OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_UNION_TEST:
             if (count < 2 || !INPUT(0, PIN_UNION) || !OUTPUT(PIN_BOOL)) {
                 return false;
@@ -1337,6 +1346,7 @@ static bool context_address(size_t offset)
         FIELD(variable_storage)
         FIELD(value_owner)
         FIELD(value_storage)
+        FIELD(result_storage)
         FIELD(watches)
         FIELD(edges)
         FIELD(watch_storage)
@@ -2000,7 +2010,7 @@ static const char *verify_metadata(const behavior_function *f)
 /* Every cycle must cross a runtime step check. Remove check vertices and prove
  * the remaining control graph acyclic with a linear topological traversal.
  * Fixed-step entry proofs cannot bound any cycle, even one containing checks. */
-static int successors(const behavior_function *f, int pc, int targets[2])
+int behavior_function_successors(const behavior_function *f, int pc, int targets[2])
 {
     behavior_function_op op = f->instructions[pc].op;
     int count = 0;
@@ -2023,7 +2033,7 @@ static bool checked_control(const behavior_function *f)
             continue;
         }
         vertices++;
-        int targets[2], n = successors(f, pc, targets);
+        int targets[2], n = behavior_function_successors(f, pc, targets);
         for (int edge = 0; edge < n; edge++) {
             int target = targets[edge];
             if (f->root_steps || f->instructions[target].op != BF_CHECK) {
@@ -2037,7 +2047,7 @@ static bool checked_control(const behavior_function *f)
         }
     }
     while (head < tail) {
-        int targets[2], n = successors(f, queue[head++], targets);
+        int targets[2], n = behavior_function_successors(f, queue[head++], targets);
         for (int edge = 0; edge < n; edge++) {
             int target = targets[edge];
             if ((!f->root_steps && f->instructions[target].op == BF_CHECK)) {
@@ -2101,7 +2111,7 @@ static bool defined_operands(const behavior_function *f)
             behavior_scalar_integer(i->type) && i->target >= 0) {
             define_slot(next, i->target);
         }
-        int targets[2], edges = successors(f, pc, targets);
+        int targets[2], edges = behavior_function_successors(f, pc, targets);
         for (int edge = 0; edge < edges; edge++) {
             int target = targets[edge];
             uint64_t *to = before + (size_t)target * words;

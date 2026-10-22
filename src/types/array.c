@@ -8,6 +8,7 @@
 #include "types/map.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -183,6 +184,17 @@ static char *arena_string(arena *a, const char *s, pin_copy_kind kind)
         pin_copy_record(kind, size);
     }
     return copy;
+}
+
+static int copy_text(arena *storage, pin_value *out, const pin_value *source)
+{
+    pin_string text = pin_text(*source);
+    pin_value copy;
+    if (pin_value_text(storage, &copy, text.bytes, text.length)) {
+        return -1;
+    }
+    out->text = copy.text;
+    return 0;
 }
 
 pin_array *pin_array_new(pin_type element_type, const char *type_name, int capacity)
@@ -394,7 +406,7 @@ pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src)
     return array_clone_arena(a, src);
 }
 
-static int snapshot_fields(arena *a, const type_desc *type, void *data, int depth)
+static int snapshot_fields(arena *a, const type_desc *type, void *data, int depth, type_resolver resolver)
 {
     if (!type || !type->size || !data || depth == 16) {
         return -1;
@@ -406,17 +418,27 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
         }
         unsigned char *member = (unsigned char *)data + field->offset;
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_resolve(resolver, field->type_name);
             if (!nested || !nested->size || nested->size != field->size ||
-                snapshot_fields(a, nested, member, depth + 1)) {
+                snapshot_fields(a, nested, member, depth + 1, resolver)) {
                 return -1;
             }
         } else if (value_string(field->type)) {
             if (field->size != sizeof(const char *)) {
                 return -1;
             }
-            const char *text = *(const char **)member;
-            *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
+            if (field->type == PIN_STR && field->text_descriptor) {
+                pin_value source = { .type = PIN_STR,
+                                     .text = *(const pin_string **)member },
+                          copy;
+                if (copy_text(a, &copy, &source)) {
+                    return -1;
+                }
+                *(const pin_string **)member = copy.text;
+            } else {
+                const char *text = *(const char **)member;
+                *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
+            }
         } else if (field->type == PIN_UNION) {
             if (field->size != sizeof(void *)) {
                 return -1;
@@ -431,13 +453,20 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
     return 0;
 }
 
-int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
+int pin_struct_snapshot_fields_resolved(arena *a, const type_desc *type, void *data, type_resolver resolver)
 {
-    int result = snapshot_fields(a, type, data, 0);
+    if (resolver.find && a->collectable) {
+        return -1;
+    }
+    int result = snapshot_fields(a, type, data, 0, resolver);
     if (!result) {
         pin_arena_trace_struct(a, data, type);
     }
     return result;
+}
+int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
+{
+    return pin_struct_snapshot_fields_resolved(a, type, data, (type_resolver){ 0 });
 }
 static int snapshot_record(arena *a, pin_value *dst, const pin_value *src, const type_desc *type)
 {
@@ -489,7 +518,10 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
         }
         return src->ptr && !dst->ptr ? -1 : 0;
     }
-    if (value_string(src->type)) {
+    if (src->type == PIN_STR) {
+        return copy_text(a, dst, src);
+    }
+    if (src->type == PIN_NAME) {
         dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
         return 0;
     }
@@ -802,7 +834,10 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
     if (src->type == PIN_UNION) {
         return pin_union_copy(dst, src);
     }
-    if (value_string(src->type) && src->str) {
+    if (src->type == PIN_STR) {
+        return copy_text(NULL, dst, src);
+    }
+    if (src->type == PIN_NAME && src->str) {
         dst->str = xstrdup(src->str);
         if (pin_copy_current) {
             pin_copy_record(PIN_COPY_TEXT, strlen(src->str) + 1);
@@ -836,7 +871,10 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         }
         return !src->ptr || dst->ptr ? 0 : -1;
     }
-    if (value_string(src->type) && src->str) {
+    if (src->type == PIN_STR) {
+        return copy_text(a, dst, src);
+    }
+    if (src->type == PIN_NAME && src->str) {
         dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
     }
     return 0;
@@ -851,7 +889,9 @@ void pin_value_destroy(pin_value *value)
         pin_map_free(value->ptr);
     } else if (value->container >= PIN_CONTAINER_ARRAY) {
         pin_array_free((pin_array *)value->ptr);
-    } else if (value_string(value->type)) {
+    } else if (value->type == PIN_STR) {
+        free((void *)value->text);
+    } else if (value->type == PIN_NAME) {
         free((void *)value->str);
     } else if (value->type == PIN_UNION) {
         pin_union_destroy(value->ptr);
@@ -876,7 +916,7 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         return pin_array_equal((const pin_array *)a->ptr, (const pin_array *)b->ptr);
     }
     if (value_string(a->type)) {
-        return strcmp(a->str ? a->str : "", b->str ? b->str : "") == 0;
+        return pin_text_equal(pin_text(*a), pin_text(*b));
     }
     if (a->type == PIN_UNION) {
         const pin_union *left = a->ptr, *right = b->ptr;
@@ -910,8 +950,27 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         }
         for (int i = 0; i < type->field_count; i++) {
             pin_value left, right;
-            pin_read_field(a->ptr, &type->fields[i], &left);
-            pin_read_field(b->ptr, &type->fields[i], &right);
+            const type_field *field = &type->fields[i];
+            if (field->type == PIN_STR) {
+                const void *x = (const char *)a->ptr + field->offset;
+                const void *y = (const char *)b->ptr + field->offset;
+                if (field->text_descriptor) {
+                    left = (pin_value){ .type = PIN_STR,
+                                        .text = *(const pin_string *const *)x };
+                    right = (pin_value){ .type = PIN_STR,
+                                         .text = *(const pin_string *const *)y };
+                } else {
+                    left = (pin_value){ .type = PIN_NAME,
+                                        .str = *(const char *const *)x };
+                    right = (pin_value){ .type = PIN_NAME,
+                                         .str = *(const char *const *)y };
+                }
+            } else {
+                if (pin_read_field(NULL, a->ptr, field, &left) ||
+                    pin_read_field(NULL, b->ptr, field, &right)) {
+                    return 0;
+                }
+            }
             if (!pin_value_equal(&left, &right)) {
                 return 0;
             }

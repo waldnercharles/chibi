@@ -73,8 +73,8 @@ The smallest complete example is Play Sound:
    `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
    A scenario, which supplies its own scene, frames and input:
    `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
-   Check `behavior_failures` and the state evidence. Keep frame counts
-   small; the 60-second policy applies.
+   Check `behavior_failures` and the state evidence. Choose enough frames to
+   exercise the scenario.
 
 ## Change saved projects (migration)
 

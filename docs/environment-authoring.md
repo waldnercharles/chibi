@@ -64,7 +64,7 @@ Validation on the candidate:
 | Installed SDK | SDK packaging and a standalone controller build passed. The same material-bake selector passed against that controller in 1.406s. The bake consumer object also compiled using only exported SDK headers. |
 | Native build and formatting | `make build` and the controller/test-tools targets passed; changed C/header files pass clang-format 22 and `git diff --check`. |
 
-Tests ran under the production 60-second supervisor. Native source tests used
+Tests ran under the production supervisor. Native source tests used
 ASan/UBSan; the packaged SDK used its separate Debug configuration. Build time
 is excluded from the test timings. Independent reviews covered API ownership,
 derivative nesting, parameter identities, provenance and resource bounds; the
@@ -73,7 +73,7 @@ reported findings were fixed before the final relevant checks.
 The attempted full standalone installed `test_tools` build hit existing warning
 errors in unrelated graph/render test sources. That aggregate did not pass;
 installed-SDK evidence is limited to the successful consumer object and controller
-checks above. Full native/render suites remain quarantined. Those E0 checks did not establish Studio, GPU, browser/device or deployment
+checks above. Full native/render suites were not run. Those E0 checks did not establish Studio, GPU, browser/device or deployment
 acceptance. The separate E1 renderer evidence follows below. Local logs, package identity
 and remaining build artifacts are recorded in `.chibi/environment-authoring`.
 
@@ -124,7 +124,7 @@ Current candidate validation:
 | Build and SDK | Native products, controller/test tools and SDK packaging passed. The existing `chibi_native_consumer` object target, including the new seam/checkpoint cases, compiled against the installed SDK with no engine source-header include path. This is exported-header compilation evidence; the installed aggregate test driver was not run for E1. |
 | Execution policy and formatting | Six production execution-policy cases passed (61 assertions); changed C/header files pass clang-format 22 and the diff passes whitespace checks. |
 
-All tests use the production 60-second supervisor. The GPU case records the
+All tests use the production supervisor. The GPU case records the
 actual `CF_BACKEND_TYPE_METAL` backend and pixel hashes in
 `.chibi/environment-authoring/terrain-seams/evidence.txt`, beside its PNGs.
 The agent capability probe checks Vulkan and reports its loader unavailable on
@@ -174,13 +174,12 @@ readiness. See [terrain-storage.md](terrain-storage.md) for the complete contrac
 | Installed public headers | `chibi_native_consumer`, including the new storage cases, compiled against the installed SDK without engine source-header includes. |
 | Formatting and policy | Authored formatting and validation pass: 16 assets, zero errors/warnings. The six execution-policy cases pass with 61 assertions. |
 
-Each test uses the production 60-second supervisor. Native CPU tests use
+Each test uses the production supervisor. Native CPU tests use
 ASan/UBSan; installed compiler/player checks use the packaged Debug SDK. Build
 time is separate. The first render check caught inverted example coordinates
 and an inline HUD; both were corrected and the affected checks passed afterward.
 Astra reviewed request lifetimes, scheduling, atomic writes, namespace isolation,
-controller contracts and SDK dependencies. Full native/render suites remain
-quarantined. Browser binary persistence, Studio UI and deployment are unverified.
+controller contracts and SDK dependencies. Full native/render suites were not run. Browser binary persistence, Studio UI and deployment are unverified.
 Both repositories remain uncommitted candidates; no merge, push or deployment is
 implied. Logs, the prepared example, PNG and source/package identities are in
 `.chibi/environment-authoring` in the engine worktree.
@@ -252,14 +251,14 @@ absorption, filter plus scene alpha, half graph opacity and zero-opacity cutout.
 Visible-color assertions prevent an empty render from passing. Final native
 selected execution took 2.270s; the six execution-policy cases also pass with
 61 assertions in 0.339s. Astra independently reviewed the contract, fixture,
-resource bounds and selector admission. All checks use the 60-second supervisor.
+resource bounds and selector review. All checks use the production supervisor.
 
 The regression measures raw visible and absorption buffers, not a final lit cave
 or a performance guarantee. The public contract is in
 [rendering-3d.md](rendering-3d.md#meshes). Logs, numeric Metal readbacks and the
 separate packaged-shader verification are recorded in
 `.chibi/environment-authoring`; package identity and tested shader hashes belong
-in its candidate manifest. Full render suites remain quarantined, and browser,
+in its candidate manifest. Full render suites were not run, and browser,
 Studio, Depth-mode exclusion and directional HRC lighting are not covered here.
 
 ### Later shared renderer checkpoints
@@ -444,12 +443,10 @@ character rigging, animation timelines, movie rendering, or voxel caves.
 
 ## Validation and delivery
 
-Use C/pico_unit checks in the owning dispatchers under the production 60-second
-supervisor. Run admitted affected-contract selectors and groups, including
-`make test-native` when applicable, and the relevant builds. GPU opt-in does not
-re-enable quarantined legacy full render/Studio suites or other unadmitted
-aggregates. Build/configuration time is separate. Preserve each command's
-current admission and quarantine status.
+Use C/pico_unit checks in the owning dispatchers. Run affected-contract selectors
+and groups, including `make test-native` when applicable, and the relevant
+builds. Preserve backend, hardware and explicit hold requirements, and report
+build/configuration time separately from test execution.
 
 Before landing, independently review the exact candidate and record its source
 tree, checks, package identity and remaining holds. Engine tests, installed SDK

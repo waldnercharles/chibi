@@ -20,12 +20,23 @@ repository. Nothing is fetched or compiled from upstream during a normal build.
   (ThreadSanitizer). Sanitized builds link the matching variant; every other
   build links `release`.
 
-An archive holds Cute Framework (with SDL3, PhysicsFS, Box2D, Box3D and, on
-Linux, s2n-tls) and RmlUi (with FreeType) as static libraries, their headers
-and licences, and an imported-target file, `third-party.cmake`. It also holds
-the patched sources the SDK compiles itself under `source/`: Box2D, Box3D,
-SLJIT, enkiTS, tree-sitter and its CSS and HTML grammars, and the Cute headers
-and single-file decoders the SDK compiles against.
+An archive holds static libraries with their headers and licences, and
+`third-party.cmake`, which defines an imported `Chibi::vendor_<library>` target
+for each:
+
+- Cute Framework, with SDL3, PhysicsFS, its own Box2D and Box3D and, on Linux,
+  s2n-tls; RmlUi, with FreeType.
+- Box2D, Box3D, enkiTS (not in `web` or `web-player`), SLJIT (native only),
+  tree-sitter and its CSS and HTML grammars. The SDK exports them as
+  `Chibi::box2d`, `Chibi::box3d`, `Chibi::task_scheduler`,
+  `Chibi::execution_sljit`, `Chibi::syntax_runtime` and `Chibi::ui_syntax`.
+  They keep the flags the SDK compiled them with: Box2D and Box3D without
+  floating-point contraction and with SIMD only in `web-threads` among the web
+  targets, enkiTS with three task priorities, SLJIT with its W^X allocator.
+
+The SDK installs copies of the libraries it links. The archive also holds Cute's
+math headers, image and Vorbis decoders and runtime shader compiler header under
+`source/cute_framework/`, which the SDK compiles against directly.
 
 ## Building the archives
 
@@ -33,13 +44,27 @@ and single-file decoders the SDK compiles against.
 patches in its directory here in the listed order, builds one target and
 variant, and installs the archive tree. `.github/workflows/third-party.yml`
 runs it for every target and variant, uploads the archives to a new release
-and opens a pull request that updates `archives.tsv`. GitHub starts no
-workflow for a pull request the workflow's own token opens, so close and
-reopen that pull request to run its checks. Only the publishing job holds a
-token that can write; the jobs that compile upstream code check out without
-credentials. Archives can also be built locally the same way (the macOS and web
+and opens a pull request that updates `archives.tsv`. Only the publishing job
+holds a token that can write; jobs compiling upstream code check out without
+credentials. If repository policy blocks Actions from opening the PR, retain the
+release and pin branch. The publication owner verifies the original run's source,
+artifacts, published digests and pin-branch ownership before opening the missing
+PR through existing authorized access. Required checks and review still apply.
+Do not overwrite assets, force-push the branch or reopen a closed pin PR.
+Archives can also be built locally the same way (the macOS and web
 archives of the first releases were) and uploaded with `gh release upload`. To change a library,
 change its commit or patches in `CMakeLists.txt` and run that workflow.
+
+For an atomic dependency source change plus matching pins, first prepare an
+independently reviewed source PR and exact same-repository source branch.
+Dispatch that branch with a fresh release tag and paired `source_pr` and
+`main_sha` inputs. Main must still equal that frozen SHA and be ancestral to the
+source; source branch and PR ownership/head/base must still match. The helper
+rechecks these bindings before publication and pin changes, and creates a draft
+integration PR containing the source changes plus one pin-only child commit.
+It leaves the original source PR untouched. Explicit holds and required checks
+must be cleared by their owner; selecting a source PR does not clear them.
+See [publication recovery](../docs/testing.md#prepared-source-dependency-releases).
 
 ## Patches
 

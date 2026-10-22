@@ -105,6 +105,44 @@ char *script_analyzer_name_copy(analyzer *a, TSNode node)
     free(text);
     return result;
 }
+pin_value script_analyzer_string_value(analyzer *a, TSNode node)
+{
+    char *source = script_analyzer_text_copy(a, node);
+    yyjson_doc *document = yyjson_read(source, strlen(source), YYJSON_READ_ALLOW_INVALID_UNICODE);
+    yyjson_val *decoded = document ? yyjson_doc_get_root(document) : NULL;
+    pin_value value = { .type = PIN_STR };
+    const char *error = !yyjson_is_str(decoded) ? "Invalid string literal"
+                                                : pin_value_text(
+                                                      &a->out->constants,
+                                                      &value,
+                                                      yyjson_get_str(decoded),
+                                                      yyjson_get_len(decoded)
+                                                  );
+    if (error) {
+        script_analyzer_diagnostic(a, node, "%s", error);
+    }
+    yyjson_doc_free(document);
+    free(source);
+    return value;
+}
+void script_analyzer_c_string_argument(analyzer *a, TSNode node, int expression, const char *boundary)
+{
+    pin_value value;
+    if (script_analyzer_scalar_constant(a, expression, PIN_STR, &value)) {
+        return;
+    }
+    pin_string text = pin_text(value);
+    const char *nul = text.length ? memchr(text.bytes, 0, text.length) : NULL;
+    if (nul) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "C-string boundary '%s' cannot accept NUL at byte %zu",
+            boundary,
+            (size_t)(nul - text.bytes)
+        );
+    }
+}
 /* A character literal reads as a string literal does, with \' for its own
  * quote, as Odin's rune literals take the string escapes. */
 bool script_analyzer_character_value(analyzer *a, TSNode node, int *value)

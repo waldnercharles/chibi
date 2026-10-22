@@ -39,8 +39,8 @@ zero render captures, render passes and geometry compiles.
 
 ## Verification
 
-All runtime commands used `tools/test_policy.py` with a 60-second deadline,
-including fixture setup and process cleanup. Builds ran separately.
+All runtime commands used `tools/test_policy.py`, including fixture setup and
+process cleanup. Builds ran separately.
 
 | Check | Result | Complete runtime |
 | --- | --- | --- |
@@ -66,5 +66,5 @@ needed for these cases.
 Independent source review found no blocker in the contracts, failure propagation,
 retirement or profiling API cleanup. It is not a GitHub approval. No new overall
 Studio speedup is claimed. Broad native/render/Studio/browser/backend gates remain
-quarantined and unverified, with existing PR holds and required CI still binding.
+unverified, with existing PR holds and required CI still binding.
 The duplicate capture's retirement does not clear those requirements.

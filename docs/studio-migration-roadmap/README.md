@@ -17,7 +17,7 @@ or their product-parity gates.
 2. `roadmap.md` renders that register as a human-readable checklist.
 3. `studio-path-coverage.csv` accounts for all 867 paths in the supplied exact-tree inventory. Every product source/header has an explicit primary package; shared responsibilities list additional packages. It retains the original immutable source URL, blob SHA, responsibility, candidate disposition and evidence level.
 4. `validation.json` records counts, dependency checks, source fingerprints and mapping completeness. It is document validation only, not an application test result.
-5. `source/plan.md` and `source/studio-file-inventory.csv` preserve the complete source evidence (CSV line endings normalized to LF; original fingerprint retained in validation.json). References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
+5. `source/plan.md` is a curated copy with obsolete test-gate prose omitted. The [original unmodified plan](https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md) remains pinned in Git; `validation.json` records its original hash separately from the current copy's hash. `source/studio-file-inventory.csv` uses LF line endings and replaces retired test-policy build-membership wording with factual unrun coverage. Original source paths, identities and other fields are retained. References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
 
 The package count is a decomposition for coordination, not an obligation to create one PR per package. A package can become a narrow stack when independently reviewable subcontracts require it; several compatible packages can share one PR only if ownership, dependencies and exact-head evidence stay clear. Every package must ultimately link its real PR(s), or carry a reviewed, reasoned not-needed disposition if it is conditional. A draft placeholder is not feature completion.
 
@@ -25,7 +25,7 @@ The `native-reload-audit.md` report verifies that a new native-reload deletion f
 
 The supplementary [current language contract](../language-contracts/v1.md) records
 L00's source-backed current semantics at engine `62906a504fee6b2e0bd6349a8eeff1450529cd90`,
-with existing admitted C fixture mappings and a separately labelled capture
+with existing C fixture mappings and a separately labelled capture
 lifetime proposal. It is a documentation prerequisite only: no runtime result,
 new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
@@ -50,7 +50,7 @@ remain open; this note does not alter the frozen generated ledger.
 
 ## Regeneration and maintenance
 
-This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
+This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source identities stay pinned; the curated plan's current hash is recorded separately from its original identity. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
 
 From the repository root, the documentation-only regeneration command is:
 
@@ -68,7 +68,7 @@ git diff --check
 git diff --exit-code -- docs/studio-migration-roadmap/
 ```
 
-After intentional snapshot edits, inspect the expected diff, run the same generator again, and verify the second run introduces no additional changes. Keep original `source/` fingerprints unchanged. Recheck the 95-package/867-path results and obtain independent documentation review before publication. Product readiness remains governed by its separate admitted C/pico_unit evidence.
+After intentional snapshot edits, inspect the expected diff, run the same generator again, and verify the second run introduces no additional changes. Preserve the original source identities and record the current curated-copy hash separately. Recheck the 95-package/867-path results and obtain independent documentation review before publication. Product readiness remains governed by its separate affected-contract C/pico_unit evidence.
 
 The generator refuses before any output write if an existing coverage CSV contains a non-baseline `tracking_status`, a nonempty `implementation_pr` or `exact_head_evidence`, or lacks those tracking columns. This prevents later implementation progress from being silently erased. If it refuses, preserve the recorded fields and first change to a reviewed status-preserving maintenance workflow; do not clear progress fields to bypass the guard. The current empty baseline remains deterministic.
 
@@ -134,9 +134,9 @@ GitHub `main` grammar was reread on 15 October 2026. Blob `ba6b8d5b6bb31dac14c5f
 
 ## Work that can proceed while answers are pending
 
-These are runnable scopes once source/toolchain access and required test admission are actually available; they are not a claim that all builds can run in the current environment.
+These are runnable scopes once source/toolchain access and the required capabilities are available; they are not a claim that all builds can run in the current environment.
 
-1. **B00–B02:** source/SDK oracle, exhaustive feature/command/ownership matrix and admitted selector map. Baseline source analysis can begin immediately; actual health checks wait for recovered tools.
+1. **B00–B02:** source/SDK oracle, exhaustive feature/command/ownership matrix and selected test map. Baseline source analysis can begin immediately; actual health checks wait for recovered tools.
 2. **B03–B04:** differential trace/recording architecture and missing attribution; preserve three-way comparison and single-owner side effects.
 3. **L00, L07, L14, L24:** existing semantic conformance, module-scale specimens, lifetime/FFI/string/task/generation retention, and representative game/effect tests. Do not duplicate RCAP.
 4. **L16–L18:** verified operation descriptors, bounded typed-call/native/Wasm import design and safe query-region optimization after existing foundation dependencies. No visible syntax needed.
@@ -159,7 +159,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 - Stack PRs only on eligible, reviewed dependency content; explicit holds must not enter through a base or cherry-pick. An unapproved syntax branch is not a workaround for a decision gate.
 - Keep feature-local native/authored switches only as transitional validation; one side owns mutations. Remove each old policy path once that slice's evidence is accepted, preserving rollback oracle outside shipped duplicate product code.
 - A stacked PR must identify its parent and incremental diff. Rebase/merge/conflict changes invalidate affected prior exact-head evidence. Independently review/test the actual integrated candidate.
-- Owner-authorized autonomous merging requires coordinating-worker confirmation that required independent review, addressed material findings, admitted tests, applicable builds and server checks pass for the exact head with clean integration. The phrase “all of three comments” is not a three-comment cap and never permits ignoring unresolved findings. Retain branches. No protection bypass or release of unrelated holds.
+- Owner-authorized autonomous merging requires coordinating-worker confirmation that required independent review, addressed material findings, affected tests, applicable builds and server checks pass for the exact head with clean integration. The phrase “all of three comments” is not a three-comment cap and never permits ignoring unresolved findings. Retain branches. No protection bypass or release of unrelated holds.
 - PR status is not feature readiness. An open draft that honestly records blockers satisfies publication progress only; completion requires the package and stage gates.
 
 ## Acceptance gates applied to every package
@@ -168,7 +168,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 
 **G1: Review.** Independent review covers the exact candidate and affected contract interactions. Address every material finding or obtain its explicit accepted disposition. An approval on an earlier head is insufficient for changed semantics. Update PR scope/tests/blockers accurately.
 
-**G2: Tests/builds.** Only admitted C/pico_unit selectors through the unchanged hard 60-second production supervisor. Build/configure time separate. No aggregate/quarantined/native/render/Studio suite reconstruction from chunks. Required unavailable affected-contract or server coverage blocks landing unless an admitted replacement/explicit scoped decision is valid. Distinguish passed/failed/not-run. Language work compares reference bytecode with actual SLJIT and actual Wasm execution, not an inspection fallback.
+**G2: Tests/builds.** Run the C/pico_unit checks for the affected contracts and report build/configure time separately. Required unavailable affected-contract or server coverage blocks landing unless a valid scoped decision supplies equivalent evidence. Distinguish passed/failed/not-run. Language work compares reference bytecode with actual SLJIT and actual Wasm execution, not an inspection fallback.
 
 **G3: Semantic/lifetime.** Positive and negative/fallback cases, exact error/evaluation order, numerics/IDs, ownership/snapshots/ref aliases, effects/threading, structural invalidation/reacquisition, owner close/cancel/reload, immutable generation compatibility and last-valid-draft isolation.
 
@@ -176,7 +176,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 
 **G5: Performance.** Representative real small/typical/stress distributions, cold preparation versus warm execution, allocations/copied/retained/peak bytes and source attribution, host calls/UI work, no idle regression or unexplained asymptotic/memory-retention regression. Numeric budgets follow measured evidence; no unsupported whole-app speedup inference.
 
-**G6: Tooling/recovery.** Parser/analyzer/lowering/formatter/graph/debug/source maps/serialization/reload agree. One editor undo, atomic writes, invalid draft handling, compatible schema identity, recoverable staging and truthful errors. All authored examples compile under admitted checks.
+**G6: Tooling/recovery.** Parser/analyzer/lowering/formatter/graph/debug/source maps/serialization/reload agree. One editor undo, atomic writes, invalid draft handling, compatible schema identity, recoverable staging and truthful errors. All authored examples compile under the selected checks.
 
 **G7: Cutover.** Remove touched old C policy and duplicate routes; provisional native labels require function-level justification. Preserve a reproducible oracle and recovery route. Final default switch requires exact shipping-pair acceptance and platform coverage; unavailable coverage is never silently passed.
 
@@ -202,7 +202,7 @@ Every workload in plan 7.2 must have a claimed scope/evidence or explicit blocke
 - Spawn/despawn/hierarchy churn and stale references
 - Hot strings/arrays/records/dictionaries and algorithmic scaling
 
-Long-session or platform proof that cannot run under current admission remains a readiness blocker to resolve; this checklist does not authorize a long test or quarantined capture.
+Missing long-session or platform evidence remains a readiness blocker when the affected contract requires it.
 
 ## Product edge-case matrix
 

@@ -13,10 +13,12 @@
 #include "toolchain/compiler_json.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "unit_algebra_chibi_source.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Fifteen raw-tree requests, thirty Register calls, two million instructions
@@ -89,24 +91,26 @@ static int bits(unsigned n)
 static pin_value text(const char *s)
 {
     s = s ? s : "";
-    size_t size = strlen(s) + 1;
-    char *copy = arena_alloc(&input, size);
-    memcpy(copy, s, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, s, strlen(s));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool read(const pin_value *row, const char *name, pin_value *out)
 {
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool int_field(const pin_value *row, const char *name, int expected)
@@ -125,8 +129,8 @@ static bool string_field(const pin_value *row, const char *name, const char *exp
 {
     pin_value value;
     REQUIRE(
-        read(row, name, &value) && value.type == PIN_STR && value.str &&
-        !strcmp(value.str, expected ? expected : "")
+        read(row, name, &value) && value.type == PIN_STR && pin_text(value).bytes &&
+        !strcmp(pin_text(value).bytes, expected ? expected : "")
     );
     return true;
 }
@@ -338,13 +342,15 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         REQUIRE(t && t->field_count <= 22);
         for (int i = 0; i < t->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &t->fields[i], &field);
+            REQUIRE(!pin_read_field(&input, value->ptr, &t->fields[i], &field));
             REQUIRE(owned(storage, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);

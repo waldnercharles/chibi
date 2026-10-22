@@ -4,6 +4,7 @@
 #include "runtime/material_field.h"
 #include "runtime/material_field_prepared.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -530,7 +531,9 @@ TEST_CASE(library_calls_evaluate_every_field_operation_as_programs_do)
     REQUIRE(FIELD_CONSTANT_CALL.invoke(NULL, in, &out));
     REQUIRE(!FIELD_CONSTANT_CALL.invoke(NULL, &in[1], &out) && out.f == 1);
     /* Sample reads have no value outside a field program. */
-    pin_value name = { .type = PIN_STR, .str = "Bias" };
+    pin_value name = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "Bias",
+                                                    .length = sizeof("Bias") - 1 } };
     REQUIRE(FIELD_X_CALL.invoke(NULL, NULL, &out));
     REQUIRE(FIELD_Y_CALL.invoke(NULL, NULL, &out));
     REQUIRE(FIELD_Z_CALL.invoke(NULL, NULL, &out));

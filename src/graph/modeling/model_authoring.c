@@ -1,6 +1,7 @@
 #include "graph/modeling/model_authoring.h"
 
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/value_copy.h"
 #include "support/array.h"
 
 #include <stdarg.h>
@@ -82,8 +83,10 @@ int model_instance_override(
             int index = graph_add_pin(g, instance, false, &pin);
             pin_value value = pin.default_value;
             if (material) {
-                value.str = parameter->reference_asset ? parameter->reference_asset
-                                                       : "";
+                const char *asset = parameter->reference_asset ? parameter->reference_asset
+                                                               : "";
+                value = graph_text_value(g, asset, strlen(asset));
+                value.type_name = type_name;
             } else if (declaration.type == PIN_STRUCT) {
                 value.ptr = declaration.defaults;
             } else {

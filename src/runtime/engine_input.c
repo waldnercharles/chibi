@@ -1,11 +1,13 @@
 #include "runtime/engine_input.h"
 
+#include "execution/function.h"
 #include "execution/status.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
 #include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -592,31 +594,53 @@ static const input_button *named_button(const engine_input *input, const char *a
     return index < 0 ? NULL : &input->buttons[index];
 }
 
-static const char *action_held(void *service, const pin_value *in, pin_value *out)
+static const char *action_held(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *out
+)
 {
-    if (!in[0].str || !in[0].str[0]) {
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, in[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
+    if (!text || !text[0]) {
         return "Action Held requires an action name";
     }
-    const input_button *button = named_button(service, in[0].str);
+    const input_button *button = named_button(service, text);
     out[0].b = button && button->pressed;
     return NULL;
 }
 
-static const char *action_pressed(void *service, const pin_value *in, pin_value *out)
+static const char *action_pressed(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *in,
+    pin_value *out
+)
 {
-    if (!in[0].str || !in[0].str[0]) {
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, in[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
+    if (!text || !text[0]) {
         return "Action Pressed requires an action name";
     }
-    const input_button *button = named_button(service, in[0].str);
+    const input_button *button = named_button(service, text);
     out[0].b = button && button->stepped;
     return NULL;
 }
 
 const node_host_call INPUT_HELD_CALL = { .service = INPUT_SERVICE,
-                                         .invoke = action_held,
+                                         .context = action_held,
                                          .optional_service = true };
 const node_host_call INPUT_PRESSED_CALL = { .service = INPUT_SERVICE,
-                                            .invoke = action_pressed,
+                                            .context = action_pressed,
                                             .optional_service = true };
 static const char *controller_connected(void *service, const pin_value *in, pin_value *out)
 {

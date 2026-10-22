@@ -16,6 +16,17 @@ static void path(char *out, const char *base, const char *name)
     assert(n > 0 && n < 1024);
 }
 
+static const char *cmake_system(const char *name)
+{
+    if (!strcmp(name, "opengl-nonlinux")) {
+        return "-DCMAKE_SYSTEM_NAME=Darwin";
+    }
+    if (!strncmp(name, "opengl", 6) || !strcmp(name, "unowned")) {
+        return "-DCMAKE_SYSTEM_NAME=Linux";
+    }
+    return NULL;
+}
+
 static int configure(const char *name)
 {
     char build[1024], producer[1024], prefix[1200], mode[100];
@@ -25,8 +36,10 @@ static int configure(const char *name)
     assert(n > 0 && (size_t)n < sizeof prefix);
     n = snprintf(mode, sizeof mode, "-DCASE=%s", name);
     assert(n > 0 && (size_t)n < sizeof mode);
-    const char *args[] = { "cmake", "-S", producer, "-B",   build, "-G",
-                           "Ninja", root, mode,     prefix, NULL };
+    const char *args[] = {
+        "cmake", "-S",   producer,           "-B", build, "-G", "Ninja", root,
+        mode,    prefix, cmake_system(name), NULL
+    };
     return tool_run(args, directory, log_path);
 }
 
@@ -47,8 +60,11 @@ static bool relocated(const char *name)
     assert(n > 0 && (size_t)n < sizeof prefix_arg);
     n = snprintf(mode, sizeof mode, "-DCASE=%s", name);
     assert(n > 0 && (size_t)n < sizeof mode);
-    const char *args[] = { "cmake", "-S",    consumer,   "-B", consumer_build,
-                           "-G",    "Ninja", prefix_arg, mode, NULL };
+    const char *args[] = {
+        "cmake", "-S",    consumer,   "-B", consumer_build,
+        "-G",    "Ninja", prefix_arg, mode, cmake_system(name),
+        NULL
+    };
     REQUIRE(tool_run(args, directory, log_path) == 0);
     return true;
 }
@@ -86,14 +102,17 @@ TEST_CASE(mismatched_crypto_metadata_is_rejected)
 
 TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
 {
-#ifdef __linux__
     REQUIRE(relocated("opengl"));
-#else
-    /* Only Linux recreates FindOpenGL's absolute library roles; other hosts
-     * link frameworks or import libraries, so the same paths stay unowned. */
-    REQUIRE(rejected("opengl", "unowned absolute link"));
-#endif
+    REQUIRE(relocated("opengl-targets"));
+    REQUIRE(rejected("opengl-spoofed", "does not match discovered library"));
+    REQUIRE(rejected("opengl-nonlinux", "unowned absolute link"));
     REQUIRE(rejected("unowned", "unowned absolute link"));
+    return true;
+}
+
+TEST_CASE(archive_libraries_keep_languages_and_licences)
+{
+    REQUIRE(relocated("archive"));
     return true;
 }
 
@@ -244,6 +263,27 @@ TEST_CASE(publish_tracks_packaged_sources_and_licenses)
     return true;
 }
 
+TEST_CASE(public_studio_checkout_requires_no_extra_credentials)
+{
+    char filename[1024];
+    path(filename, tool_root(), ".github/workflows/ci.yml");
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *studio = strstr(text, "  studio:\n");
+    const char *end = studio ? strstr(studio, "  format:\n") : NULL;
+    const char *checkout = studio ? strstr(studio, "repository: waldnercharles/chibi-studio")
+                                  : NULL;
+    const char *credentials = studio ? strstr(studio, "persist-credentials: false")
+                                     : NULL;
+    bool public_checkout = studio && end && checkout && credentials &&
+                           !strstr(text, "CHIBI_STUDIO_TOKEN") && checkout < end &&
+                           !strstr(studio, "github.event.pull_request.head.repo.full_name") &&
+                           credentials < end;
+    free(text);
+    REQUIRE(public_checkout);
+    return true;
+}
+
 void test_tool_desktop_dependencies()
 {
     strcpy(directory, "/tmp/chibi-desktop-dependencies-XXXXXX");
@@ -253,12 +293,14 @@ void test_tool_desktop_dependencies()
     int n = snprintf(root, sizeof root, "-DCHIBI_ROOT=%s", tool_root());
     assert(n > 0 && (size_t)n < sizeof root);
     RUN_TEST_CASE(publish_tracks_packaged_sources_and_licenses);
+    RUN_TEST_CASE(public_studio_checkout_requires_no_extra_credentials);
     RUN_TEST_CASE(publish_checks_pins_before_installing_toolchains);
     RUN_TEST_CASE(publish_requires_valid_unique_release_pins);
     RUN_TEST_CASE(discovered_crypto_has_relocatable_owners);
     RUN_TEST_CASE(supplied_crypto_keeps_its_provider_contract);
     RUN_TEST_CASE(mismatched_crypto_metadata_is_rejected);
     RUN_TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail);
+    RUN_TEST_CASE(archive_libraries_keep_languages_and_licences);
     RUN_TEST_CASE(tooling_languages_follow_native_packages);
     tool_remove_tree(directory);
 }

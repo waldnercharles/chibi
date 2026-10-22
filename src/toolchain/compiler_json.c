@@ -2,6 +2,7 @@
 
 #include "execution/function.h"
 #include "support/arena.h"
+#include "types/text.h"
 
 #include <limits.h>
 #include <string.h>
@@ -9,9 +10,9 @@
 
 static const char *decode_string(
     const behavior_function_context *context,
-    void *,
     const pin_value *arguments,
-    pin_value *results
+    pin_value *results,
+    yyjson_read_flag flags
 )
 {
     if (!context || !context->value_storage || !arguments || !results ||
@@ -20,13 +21,13 @@ static const char *decode_string(
     }
     arena *storage = context->value_storage;
     results[0].b = false;
-    results[1].str = "";
+    results[1].text = NULL;
     results[2].i = 0;
-    const char *literal = arguments[0].str;
-    if (!literal) {
+    pin_string literal = pin_text(arguments[0]);
+    if (!literal.length) {
         return NULL;
     }
-    yyjson_doc *document = yyjson_read(literal, strlen(literal), 0);
+    yyjson_doc *document = yyjson_read(literal.bytes, literal.length, flags);
     yyjson_val *value = document ? yyjson_doc_get_root(document) : NULL;
     if (!yyjson_is_str(value)) {
         yyjson_doc_free(document);
@@ -37,14 +38,33 @@ static const char *decode_string(
         yyjson_doc_free(document);
         return "JSON string length exceeds integer range";
     }
-    char *copy = arena_alloc(storage, length + 1);
-    memcpy(copy, yyjson_get_str(value), length);
-    copy[length] = 0;
+    const char *error = pin_value_text(storage, &results[1], yyjson_get_str(value), length);
     yyjson_doc_free(document);
+    if (error) {
+        return error;
+    }
     results[0].b = true;
-    results[1].str = copy;
     results[2].i = (int)length;
     return NULL;
+}
+
+static const char *decode_metadata_string(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *results
+)
+{
+    return decode_string(context, arguments, results, 0);
+}
+static const char *decode_value_string(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *results
+)
+{
+    return decode_string(context, arguments, results, YYJSON_READ_ALLOW_INVALID_UNICODE);
 }
 
 static const native_parameter_definition INPUTS[] = {
@@ -65,12 +85,24 @@ static const native_capability_definition DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(OUTPUTS),
       .completion_output = -1,
       .pure = true },
+    { .canonical_name = "Compiler JSON Value String",
+      .source_name = "compiler_json_value_string",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = INPUTS,
+      .input_count = NATIVE_COUNT(INPUTS),
+      .outputs = OUTPUTS,
+      .output_count = NATIVE_COUNT(OUTPUTS),
+      .completion_output = -1,
+      .pure = true },
 };
-static const node_host_call CALL = { .context = decode_string };
+static const node_host_call CALL = { .context = decode_metadata_string };
+static const node_host_call VALUE_CALL = { .context = decode_value_string };
 static const node_access ACCESS = { .flags = NODE_EFFECT_PURE };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = "Compiler JSON String",
       .implementation = { .call = &CALL, .access = &ACCESS } },
+    { .canonical_name = "Compiler JSON Value String",
+      .implementation = { .call = &VALUE_CALL, .access = &ACCESS } },
 };
 const native_definition_pack COMPILER_JSON_DEFINITION_PACK = {
     .definitions = DEFINITIONS,

@@ -148,8 +148,8 @@ CHIBI_TOOLS_BUILD_DIR=build-verify/sdk-consumer \
   python3 tools/test_policy.py tool native-tools
 ```
 
-The last command uses the existing production test supervisor and its aggregate
-60-second deadline. Configuration and compilation are separate from that deadline.
+The last command uses the existing production test supervisor. Report
+configuration and compilation time separately from test execution.
 
 `test/language` also supports `CHIBI_INSTALLED_SDK=ON`. Its `--headless` case
 prepares source with the compiler and hands the module to a separately compiled
@@ -234,11 +234,10 @@ CHIBI_TOOLS_BUILD_DIR=build-tools \
 
 Set `CHIBI_TOOLS_BUILD_DIR` if the dispatcher was built outside `build-tools`.
 This is an explicit standalone gate; default cross-platform tooling does not run
-it automatically. Its five pico cases share the unchanged 60-second supervisor
-limit. Its fifteen commands on Linux each keep the 10-second child limit.
+it automatically. Its six pico cases run eighteen commands on Linux, each with
+the existing 10-second child timeout.
 External tooling configuration/build is separate; all in-test CMake configuration,
-compiler detection and tiny fixture compilation remain inside the supervisor and
-child deadlines.
+compiler detection and tiny fixture compilation remain inside those child timeouts.
 
 The fixture checks newly discovered crypto target visibility and relocated static
 archive/header ownership, unchanged caller-provided targets, rejection of
@@ -262,8 +261,8 @@ CHIBI_TOOLS_BUILD_DIR=build-tools \
   python3 tools/test_policy.py tool package-ownership
 ```
 
-The one pico case has three sequential blocks and a 15-child success ceiling
-under the same 60-second supervisor and 10-second child limits. It builds
+The one pico case has three sequential blocks and up to 15 child commands,
+each with the existing 10-second timeout. It builds
 six tiny C translation units and one precompiled header with CMake/Ninja, installs
 the fixture, and checks production packaging metadata. It never executes the
 produced programs. The positive check covers renamed/relocated archives, folded

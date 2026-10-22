@@ -3,10 +3,12 @@
 #include "authoring/source_asset.h"
 #include "authoring/source_literal.h"
 #include "language/syntax.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/text_edit.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -22,6 +24,7 @@ typedef struct
     const script_catalog *catalog;
     char *error;
     size_t size;
+    arena storage;
 } context;
 
 typedef struct
@@ -117,7 +120,11 @@ static bool symbol(context *c, char **out, const char *name)
 }
 static bool quoted(context *c, char **out, const char *text)
 {
-    pin_value value = { .type = PIN_STR, .str = (char *)text };
+    pin_value value;
+    const char *error = pin_value_text(&c->storage, &value, text, strlen(text));
+    if (error) {
+        return fail(c, error);
+    }
     char *literal = authoring_source_literal(
         c->catalog,
         (script_type){ .storage = PIN_STR },
@@ -216,10 +223,14 @@ static bool typed(context *c, char **out, script_type expected, const pin_value 
             return fail(c, "Prototype record field exceeds its reflected payload");
         }
         pin_value item;
-        pin_read_field(value->ptr, nf, &item);
+        const char *error = pin_read_field(&c->storage, value->ptr, nf, &item);
+        if (error) {
+            return fail(c, error);
+        }
         /* Omitted nullable strings retain zero initialization. The static
          * loader accepts string literals, not null, for authored strings. */
-        if ((item.type == PIN_STR || item.type == PIN_NAME) && !item.str) {
+        if ((item.type == PIN_NAME && !item.str) ||
+            (item.type == PIN_STR && !item.text)) {
             continue;
         }
         if ((written++ && !append(c, out, ", ")) || !symbol(c, out, nf->name) ||
@@ -708,7 +719,7 @@ static char *remove_behavior(context *c, const snapshot *s, av_value *array, con
     afree(edits);
     return source;
 }
-static bool write_path(void *data, const type_desc *type, const char *path, pin_value value)
+static bool write_path(arena *storage, void *data, const type_desc *type, const char *path, pin_value value)
 {
     const char *dot = strchr(path, '.');
     size_t size = dot ? (size_t)(dot - path) : strlen(path);
@@ -718,11 +729,15 @@ static bool write_path(void *data, const type_desc *type, const char *path, pin_
             continue;
         }
         if (!dot) {
-            pin_write_field(data, f, value);
-            return true;
+            return !pin_write_field(storage, data, f, value);
         }
-        return f->type == PIN_STRUCT &&
-               write_path((char *)data + f->offset, type_catalog_find(f->type_name), dot + 1, value);
+        return f->type == PIN_STRUCT && write_path(
+                                            storage,
+                                            (char *)data + f->offset,
+                                            type_catalog_find(f->type_name),
+                                            dot + 1,
+                                            value
+                                        );
     }
     return false;
 }
@@ -749,7 +764,7 @@ static char *set_field(
     pin_value previous;
     char *previous_text = NULL;
     if (leaf->type.storage != PIN_HANDLE &&
-        !pin_read_field_path(current->data, desc->type, op->field, &previous) &&
+        !pin_read_field_path(&c->storage, current->data, desc->type, op->field, &previous) &&
         typed(c, &previous_text, leaf->type, &previous, 0)) {
         char *previous_literal = finish(previous_text);
         bool unchanged = !strcmp(previous_literal, literal);
@@ -793,8 +808,8 @@ static char *set_field(
         top[length] = 0;
         pin_value whole;
         const script_catalog_field *top_field = named_field(type, top, length);
-        bool ok = write_path(copy, desc->type, op->field, op->value) &&
-                  !pin_read_field_path(copy, desc->type, top, &whole);
+        bool ok = write_path(&c->storage, copy, desc->type, op->field, op->value) &&
+                  !pin_read_field_path(&c->storage, copy, desc->type, top, &whole);
         text = NULL;
         ok = ok && typed(c, &text, top_field->type, &whole, 0);
         free(literal);
@@ -986,26 +1001,33 @@ bool authoring_prototype_source_edit(
     if (size) {
         error[0] = 0;
     }
-    context c = { registry, catalog, error, size };
+    context c = { .registry = registry, .catalog = catalog, .error = error, .size = size };
     if (count && !catalog) {
-        return fail(&c, "Prototype source edits require a reflected script catalog");
+        bool failed = fail(&c, "Prototype source edits require a reflected script catalog");
+        arena_free(&c.storage);
+        return failed;
     }
     if (count < 0 || count > AUTHORING_PROTOTYPE_EDIT_MAX_OPERATIONS ||
         (count && !operations)) {
-        return fail(&c, "Prototype source edit exceeds operation limit");
+        bool failed = fail(&c, "Prototype source edit exceeds operation limit");
+        arena_free(&c.storage);
+        return failed;
     }
     if (!validate_operations(&c, operations, count)) {
+        arena_free(&c.storage);
         return false;
     }
     snapshot s = { 0 };
     if (!prepare(&c, xstrdup(source), &s)) {
         snapshot_free(&s);
+        arena_free(&c.storage);
         return false;
     }
     bool materialized = false;
     for (int i = 0; i < count; i++) {
         if (!apply(&c, &s, &operations[i], &materialized)) {
             snapshot_free(&s);
+            arena_free(&c.storage);
             return false;
         }
     }
@@ -1016,6 +1038,7 @@ bool authoring_prototype_source_edit(
     s.source = NULL;
     s.value = NULL;
     snapshot_free(&s);
+    arena_free(&c.storage);
     return true;
 }
 void authoring_prototype_edit_result_free(authoring_prototype_edit_result *result)

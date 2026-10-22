@@ -12,6 +12,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/copy.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@ static behavior_function *function;
 static behavior_function *helper_function;
 static behavior_function_context context;
 static behavior_function_activation activation;
-static arena storage;
+static arena storage, string_inputs;
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -50,6 +51,7 @@ static void release_run()
 static void cleanup()
 {
     release_run();
+    arena_free(&string_inputs);
     if (test_activation) {
         program_activation_free(test_activation);
     }
@@ -785,6 +787,7 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
     REQUIRE(guarded() == 1);
     for (int mode = 0; mode < 4; mode++) {
         for (int variant = 0; variant < 8; variant++) {
+            const pin_string retained_text = { "retained", sizeof("retained") - 1 };
             pin_value item = { .type = PIN_F64, .d = 7 };
             pin_array array = { .element_type = PIN_F64,
                                 .count = 1,
@@ -797,7 +800,7 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             } else if (variant == 1) {
                 array.count = 0;
             } else if (variant == 3) {
-                item = (pin_value){ .type = PIN_STR, .str = "retained" };
+                item = (pin_value){ .type = PIN_STR, .text = &retained_text };
             } else if (variant == 4) {
                 array.element_type = PIN_I32;
             } else if (variant == 5) {
@@ -829,8 +832,13 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             );
             if (variant == 3) {
                 pin_array *retained = context.data->values[result_bank].ptr;
-                REQUIRE(pin_array_get(retained, 0).str != item.str);
-                REQUIRE(!strcmp(pin_array_get(retained, 0).str, item.str));
+                REQUIRE(
+                    pin_text(pin_array_get(retained, 0)).bytes != pin_text(item).bytes
+                );
+                REQUIRE(!strcmp(
+                    pin_text(pin_array_get(retained, 0)).bytes,
+                    pin_text(item).bytes
+                ));
             }
         }
     }
@@ -1594,8 +1602,10 @@ static behavior_function *authored_function(int index)
 }
 static pin_value strings(pin_array *array, pin_value *items, const char *const *texts, int count)
 {
+    pin_string *descriptors = arena_alloc(&string_inputs, (size_t)count * sizeof *descriptors);
     for (int i = 0; i < count; i++) {
-        items[i] = (pin_value){ .type = PIN_STR, .str = texts[i] };
+        descriptors[i] = (pin_string){ texts[i], (uint32_t)strlen(texts[i]) };
+        items[i] = (pin_value){ .type = PIN_STR, .text = &descriptors[i] };
     }
     *array = (pin_array){ .element_type = PIN_STR,
                           .count = count,
@@ -1638,7 +1648,10 @@ TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
         pin_copy_scope_begin(&copies);
         int status = begin(&input, 1, &output, NULL, 0);
         pin_copy_scope_end(&copies);
-        REQUIRE(status == FLOW_OK && output.i == 1116 && !strcmp(items[0].str, "a"));
+        REQUIRE(
+            status == FLOW_OK && output.i == 1116 &&
+            !strcmp(pin_text(items[0]).bytes, "a")
+        );
         copied[run] = copies.counts.text_bytes;
     }
     REQUIRE(copied[0] * 8 < copied[1]);
@@ -1678,7 +1691,10 @@ TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
     pin_value input = strings(&array, items, texts, 2);
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-        REQUIRE(output.i == 12 && !strcmp(items[0].str, "a") && !strcmp(items[1].str, "b"));
+        REQUIRE(
+            output.i == 12 && !strcmp(pin_text(items[0]).bytes, "a") &&
+            !strcmp(pin_text(items[1]).bytes, "b")
+        );
     }
     return true;
 }
@@ -1703,11 +1719,633 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     pin_value input = strings(&array, items, texts, 1);
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-        REQUIRE(output.i == 1 && !strcmp(items[0].str, "a"));
+        REQUIRE(output.i == 1 && !strcmp(pin_text(items[0]).bytes, "a"));
     }
     return true;
 }
 
+/* Pushes 2.0 onto the local array `local`, in the caller's storage when
+ * `built`. */
+static void push_item(int local, bool built)
+{
+    int number = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 2 } },
+        false
+    );
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, { .type = PIN_F64 } },
+              done = { .type = PIN_BOOL };
+    int push = behavior_function_builder_host(
+        builder,
+        &EXECUTION_array_push_call,
+        &EXECUTION_assignment_access,
+        headers,
+        2,
+        &done,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_array_push_call) |
+                  (built ? EXECUTION_INTRINSIC_IN_RESULT : 0);
+    assert(behavior_function_builder_host_identity(builder, push, id, execution_intrinsic_abi(id)));
+    int first = behavior_function_builder_host_first(builder, push);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS));
+    put_address(first, host_address(local));
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_F64,
+                                          .left = number,
+                                          .right = host_address(first + 1),
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = push,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+}
+/* A function builds a value in its caller's storage, and may move it there
+ * at return, only when nothing but the updates that run there changes it: a
+ * plain push onto it or a raw write through it would leave it reaching the
+ * callee's own storage. */
+TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere)
+{
+    enum
+    {
+        BUILT_PUSH,
+        PLAIN_PUSH,
+        RAW_WRITE,
+        GROWN_THEN_PLAIN,
+        VALUE_ARGUMENT,
+        RAW_ARGUMENT
+    };
+    for (int kind = BUILT_PUSH; kind <= RAW_ARGUMENT; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+        int local = behavior_function_builder_values(builder, &array_shape, 1);
+        if (kind == GROWN_THEN_PLAIN) {
+            /* A built push puts the empty local's array in the caller's
+             * storage; a plain push would then grow it here. */
+            push_item(local, true);
+            push_item(local, false);
+            emit((behavior_function_instruction){ .op = BF_END });
+            char grown[256];
+            function = behavior_function_builder_finish(builder, grown, sizeof grown);
+            REQUIRE(function && !function->builds_results);
+            continue;
+        }
+        if (kind == VALUE_ARGUMENT || kind == RAW_ARGUMENT) {
+            /* A helper takes the built array as a copied value, or as a raw
+             * address it could write through. */
+            behavior_function_builder *outer = builder;
+            builder = behavior_function_builder_new();
+            pin_value raw = { .type = BF_POINTER_TYPE };
+            behavior_function_builder_signature(
+                builder,
+                kind == RAW_ARGUMENT ? &raw : &array_shape,
+                1,
+                NULL,
+                0,
+                NULL,
+                0
+            );
+            if (kind == RAW_ARGUMENT) {
+                assert(
+                    behavior_function_builder_kind(builder, BEHAVIOR_BANK_ARGUMENT, 0, BEHAVIOR_ADDRESS)
+                );
+            }
+            emit((behavior_function_instruction){ .op = BF_END });
+            char helper[256];
+            behavior_function_free(helper_function);
+            helper_function = behavior_function_builder_finish(builder, helper, sizeof helper);
+            behavior_function_builder_free(builder);
+            builder = outer;
+            REQUIRE(helper_function);
+        }
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        int made = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        );
+        put_address(local, made);
+        int number = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = PIN_F64,
+                                             .value = { .type = PIN_F64, .d = 2 } },
+            false
+        );
+        if (kind == VALUE_ARGUMENT || kind == RAW_ARGUMENT) {
+            pin_value raw = { .type = BF_POINTER_TYPE };
+            int call = behavior_function_builder_call(
+                builder,
+                helper_function,
+                kind == RAW_ARGUMENT ? &raw : &array_shape,
+                1,
+                NULL,
+                0
+            );
+            int argument = behavior_function_builder_call_first(builder, call);
+            if (kind == RAW_ARGUMENT) {
+                assert(
+                    behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, argument, BEHAVIOR_ADDRESS)
+                );
+            }
+            int array = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = host_address(local),
+                                                 .offset = offsetof(pin_value, d) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = array,
+                                                  .right = host_address(argument),
+                                                  .offset = offsetof(pin_value, d) });
+            emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+        } else if (kind == RAW_WRITE) {
+            int array = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = host_address(local),
+                                                 .offset = offsetof(pin_value, d) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = PIN_F64,
+                                                  .left = number,
+                                                  .right = first_item(array) });
+        } else {
+            push_item(local, kind == BUILT_PUSH);
+        }
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "built results %d: %s\n", kind, error);
+        }
+        REQUIRE(
+            function && function->builds_results ==
+                            (kind == BUILT_PUSH || kind == VALUE_ARGUMENT)
+        );
+        if (kind == RAW_ARGUMENT) {
+            /* Once argument sharing is known, a raw address may reach a callee
+             * that changes no argument, and not one that may. */
+            for (int copying = 1; copying >= 0; copying--) {
+                function->argument_sharing = BEHAVIOR_SHARING_UNKNOWN;
+                helper_function->argument_sharing = copying ? BEHAVIOR_SHARING_COPY
+                                                            : BEHAVIOR_SHARING_SAFE;
+                behavior_function_prepare_borrows(function);
+                REQUIRE(function->builds_results == !copying);
+            }
+        }
+    }
+    return true;
+}
+/* A function that returns an argument the caller shared rather than copied
+ * builds no results in the caller's storage, so its result is a copy: the
+ * caller's later push leaves the result as it was. */
+TEST_CASE(borrow_shared_argument_returned_is_copied)
+{
+    cleanup();
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &array_shape, 1, &array_shape, 1, NULL, 0);
+    int unused = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_assignment_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                     EXECUTION_INTRINSIC_IN_RESULT;
+    assert(
+        behavior_function_builder_host_identity(builder, unused, built, execution_intrinsic_abi(built))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = unused,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int original = value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_ARGUMENT,
+                                         .value = array_shape },
+        true
+    );
+    int name = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = BF_POINTER_TYPE,
+                                         .value = { .type = BF_POINTER_TYPE } },
+        true
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                          .type = PIN_F64,
+                                          .left = original,
+                                          .right = name,
+                                          .value = array_shape });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    helper_function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!helper_function) {
+        fprintf(stderr, "shared argument helper: %s\n", error);
+    }
+    REQUIRE(helper_function);
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value count = { .type = PIN_I32 };
+    behavior_function_builder_signature(builder, NULL, 0, &count, 1, NULL, 0);
+    int local = behavior_function_builder_values(builder, &array_shape, 1);
+    int make = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_value_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t plain = execution_intrinsic_id(&EXECUTION_construct_call);
+    assert(
+        behavior_function_builder_host_identity(builder, make, plain, execution_intrinsic_abi(plain))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = make,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    put_address(
+        local,
+        value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        )
+    );
+    push_item(local, false);
+    int call = behavior_function_builder_call(builder, helper_function, &array_shape, 1, &array_shape, 1);
+    put_address(
+        behavior_function_builder_call_first(builder, call),
+        value(
+            (behavior_function_instruction){ .op = BF_LOAD,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = host_address(local),
+                                             .offset = offsetof(pin_value, d) },
+            true
+        )
+    );
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    push_item(local, false);
+    int returned = value(
+        (behavior_function_instruction){
+            .op = BF_LOAD,
+            .type = BF_POINTER_TYPE,
+            .left = host_address(behavior_function_builder_call_results(builder, call)),
+            .offset = offsetof(pin_value, d) },
+        true
+    );
+    int length = value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = PIN_I32,
+                                         .left = returned,
+                                         .offset = offsetof(pin_array, count) },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = length });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "shared argument caller: %s\n", error);
+    }
+    REQUIRE(function);
+    behavior_function_prepare_borrows(function);
+    behavior_function_prepare_borrows(helper_function);
+    REQUIRE(
+        !helper_function->builds_results && helper_function->argument_sharing == BEHAVIOR_SHARING_SAFE
+    );
+    pin_value output = { .type = PIN_I32 };
+    REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
+    REQUIRE(output.i == 1);
+    return true;
+}
+/* A result read through an argument may be part of the caller's data, as an
+ * inner array of a shared nested array is, so moving it would let the caller's
+ * result share it: such a function builds no results. */
+TEST_CASE(borrow_result_reached_through_argument_builds_nothing)
+{
+    enum
+    {
+        BUILT,
+        ARGUMENT,
+        THROUGH_ARGUMENT,
+        WRITTEN_ARGUMENT,
+        KINDS
+    };
+    for (int kind = 0; kind < KINDS; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, &array_shape, 1, &array_shape, 1, NULL, 0);
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        int returned = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = host_address(behavior_function_builder_host_results(builder, make)),
+                .offset = offsetof(pin_value, d) },
+            true
+        );
+        if (kind != BUILT) {
+            returned = value(
+                (behavior_function_instruction){ .op = BF_ARRAY,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .target = BF_ARGUMENT,
+                                                 .value = array_shape },
+                true
+            );
+        }
+        if (kind == THROUGH_ARGUMENT) {
+            returned = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = returned,
+                                                 .offset = offsetof(pin_array, data) },
+                true
+            );
+        }
+        if (kind == WRITTEN_ARGUMENT) {
+            /* Written into the result buffer, as stage one publishes. */
+            int results = value(
+                (behavior_function_instruction){
+                    .op = BF_CONTEXT,
+                    .type = BF_POINTER_TYPE,
+                    .offset = offsetof(behavior_function_context, results) },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = returned,
+                                                  .right = results,
+                                                  .offset = offsetof(pin_value, d) });
+        } else {
+            int name = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .value = { .type = BF_POINTER_TYPE } },
+                true
+            );
+            emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                                  .type = PIN_F64,
+                                                  .left = returned,
+                                                  .right = name,
+                                                  .value = array_shape });
+        }
+        emit((behavior_function_instruction){ .op = BF_RETURN });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "reached result %d: %s\n", kind, error);
+        }
+        REQUIRE(function);
+        REQUIRE(function->builds_results == (kind == BUILT));
+    }
+    return true;
+}
+/* union_keep shares a value it keeps with the local that holds it, so a
+ * result-storage update after it would change the union too: such a function
+ * builds no results. Updates before it, or after one whose mask keeps
+ * nothing and no instruction writes, leave the union as it was built. */
+TEST_CASE(borrow_update_after_union_keep_builds_nothing)
+{
+    enum
+    {
+        UPDATE_BEFORE,
+        UPDATE_AFTER,
+        KEEPS_NOTHING,
+        MASK_WRITTEN,
+        KINDS
+    };
+    for (int kind = 0; kind < KINDS; kind++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+        int local = behavior_function_builder_values(builder, &array_shape, 1);
+        int make = behavior_function_builder_host(
+            builder,
+            &EXECUTION_construct_call,
+            &EXECUTION_assignment_access,
+            &array_shape,
+            1,
+            &array_shape,
+            1
+        );
+        uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                         EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = make,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        put_address(
+            local,
+            value(
+                (behavior_function_instruction){
+                    .op = BF_LOAD,
+                    .type = BF_POINTER_TYPE,
+                    .left = host_address(behavior_function_builder_host_results(builder, make)),
+                    .offset = offsetof(pin_value, d) },
+                true
+            )
+        );
+        if (kind == UPDATE_BEFORE) {
+            push_item(local, true);
+        }
+        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                               { .type = PIN_U64,
+                                 .u64 = kind == KEEPS_NOTHING || kind == MASK_WRITTEN
+                                          ? 0
+                                          : 1 },
+                               array_shape },
+                  made = { .type = PIN_UNION };
+        int keep = behavior_function_builder_host(
+            builder,
+            &EXECUTION_union_keep_call,
+            &EXECUTION_assignment_access,
+            inputs,
+            3,
+            &made,
+            1
+        );
+        uint64_t id = execution_intrinsic_id(&EXECUTION_union_keep_call) |
+                      EXECUTION_INTRINSIC_IN_RESULT;
+        assert(
+            behavior_function_builder_host_identity(builder, keep, id, execution_intrinsic_abi(id))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = keep,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        if (kind == MASK_WRITTEN) {
+            /* A later write, here after the keep, makes its mask unknown. */
+            int all = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = PIN_U64,
+                                                 .value = { .type = PIN_U64, .u64 = 1 } },
+                false
+            );
+            emit((behavior_function_instruction){
+                .op = BF_WRITE,
+                .type = PIN_U64,
+                .left = all,
+                .right = host_address(behavior_function_builder_host_first(builder, keep) + 1),
+                .offset = offsetof(pin_value, d) });
+        }
+        if (kind != UPDATE_BEFORE) {
+            push_item(local, true);
+        }
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "update after keep %d: %s\n", kind, error);
+        }
+        REQUIRE(function);
+        REQUIRE(function->builds_results == (kind == UPDATE_BEFORE || kind == KEEPS_NOTHING));
+    }
+    return true;
+}
+/* A function with two results builds neither in its caller's storage, since
+ * both could reach one value: returning one built value twice gives the
+ * caller two independent copies. */
+TEST_CASE(borrow_aliased_results_stay_independent)
+{
+    cleanup();
+    builder = behavior_function_builder_new();
+    pin_value pair[] = { array_shape, array_shape };
+    behavior_function_builder_signature(builder, NULL, 0, pair, 2, NULL, 0);
+    int make = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_assignment_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t built = execution_intrinsic_id(&EXECUTION_construct_call) |
+                     EXECUTION_INTRINSIC_IN_RESULT;
+    assert(
+        behavior_function_builder_host_identity(builder, make, built, execution_intrinsic_abi(built))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = make,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int made = value(
+        (behavior_function_instruction){
+            .op = BF_LOAD,
+            .type = BF_POINTER_TYPE,
+            .left = host_address(behavior_function_builder_host_results(builder, make)),
+            .offset = offsetof(pin_value, d) },
+        true
+    );
+    int name = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = BF_POINTER_TYPE,
+                                         .value = { .type = BF_POINTER_TYPE } },
+        true
+    );
+    for (int result = 0; result < 2; result++) {
+        emit((behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                              .type = PIN_F64,
+                                              .left = made,
+                                              .right = name,
+                                              .target = result,
+                                              .value = array_shape });
+    }
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    helper_function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!helper_function) {
+        fprintf(stderr, "aliased results helper: %s\n", error);
+    }
+    REQUIRE(helper_function);
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value same = { .type = PIN_BOOL };
+    behavior_function_builder_signature(builder, NULL, 0, &same, 1, NULL, 0);
+    int call = behavior_function_builder_call(builder, helper_function, NULL, 0, pair, 2);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    int results = behavior_function_builder_call_results(builder, call), arrays[2];
+    for (int result = 0; result < 2; result++) {
+        arrays[result] = value(
+            (behavior_function_instruction){ .op = BF_LOAD,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = host_address(results + result),
+                                             .offset = offsetof(pin_value, d) },
+            true
+        );
+    }
+    int equal = value(
+        (behavior_function_instruction){ .op = BF_EQ,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = arrays[0],
+                                         .right = arrays[1] },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_BOOL, .left = equal });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "aliased results caller: %s\n", error);
+    }
+    REQUIRE(function);
+    behavior_function_prepare_borrows(function);
+    behavior_function_prepare_borrows(helper_function);
+    REQUIRE(!helper_function->builds_results);
+    pin_value output = { .type = PIN_BOOL };
+    REQUIRE(begin(NULL, 0, &output, NULL, 0) == FLOW_OK);
+    REQUIRE(!output.b);
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -1732,5 +2370,10 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
+    RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
+    RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
+    RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);
+    RUN_TEST_CASE(borrow_aliased_results_stay_independent);
+    RUN_TEST_CASE(borrow_update_after_union_keep_builds_nothing);
     pu_clear_setup();
 }

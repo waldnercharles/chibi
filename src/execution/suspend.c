@@ -175,6 +175,7 @@ bool behavior_function_finalize(behavior_function *f, size_t arena_budget)
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         f->uses_storage |= i->op == BF_COPY_ARRAY || i->op == BF_COPY_STRING ||
+                           (i->op == BF_INTERN_STRING && i->type == PIN_STR) ||
                            i->op == BF_INVOKE ||
                            (i->op == BF_HOST_CALL &&
                             f->host_calls[i->target].call->value);

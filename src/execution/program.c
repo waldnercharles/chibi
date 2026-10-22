@@ -18,6 +18,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -695,7 +696,7 @@ static int select_state(void *owner, const behavior_state_selection *selection, 
     int count = selection->outputs;
     if (flags & BEHAVIOR_STATE_RESET) {
         if (state->type == PIN_STR) {
-            memset((char *)state->str, '0', (size_t)count);
+            memset((char *)pin_text(*state).bytes, '0', (size_t)count);
         }
         return -1;
     }
@@ -703,9 +704,11 @@ static int select_state(void *owner, const behavior_state_selection *selection, 
         char *used = arena_alloc(&instance->selections, (size_t)count + 1);
         memset(used, '0', (size_t)count);
         used[count] = 0;
-        *state = (pin_value){ .type = PIN_STR, .str = used };
+        const char *error = pin_value_text(&instance->selections, state, used, (size_t)count);
+        assert(!error);
+        (void)error;
     }
-    return behavior_state_select((char *)state->str, count, start, flags);
+    return behavior_state_select((char *)pin_text(*state).bytes, count, start, flags);
 }
 execution_instance *execution_program_instance(execution_program *p, uint64_t owner)
 {

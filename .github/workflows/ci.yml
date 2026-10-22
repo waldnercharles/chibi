@@ -63,15 +63,15 @@ jobs:
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT=/usr/lib/llvm-18
       # After make build, whose build/reflect the reflection identity cases run.
-      - name: Tooling and process integrations (one 60-second deadline)
+      - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER=clang-18
-      - name: Native selectors (one 60-second deadline)
+      - name: Native selectors
         run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Material selectors (one 60-second deadline)
+      - name: Material selectors
         run: make test-materials LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Project selectors (one 60-second deadline)
+      - name: Project selectors
         run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Language selectors (one 60-second deadline)
+      - name: Language selectors
         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
   native-macos:
@@ -103,15 +103,15 @@ jobs:
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
       # After make build, whose build/reflect the reflection identity cases run.
-      - name: Tooling and process integrations (one 60-second deadline)
+      - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER="$CC"
-      - name: Native selectors (one 60-second deadline)
+      - name: Native selectors
         run: make test-native LIBCLANG_ROOT="$LLVM"
-      - name: Material selectors (one 60-second deadline)
+      - name: Material selectors
         run: make test-materials LIBCLANG_ROOT="$LLVM"
-      - name: Project selectors (one 60-second deadline)
+      - name: Project selectors
         run: make test-projects LIBCLANG_ROOT="$LLVM"
-      - name: Language selectors (one 60-second deadline)
+      - name: Language selectors
         run: make test-language-all LIBCLANG_ROOT="$LLVM"
 
   windows:
@@ -144,9 +144,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
       - name: Build the SDK tools
         run: cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
-      # The 60-second test ceiling; the test supervisor is POSIX-only.
       - name: Compile a project
-        timeout-minutes: 1
         run: build/sdk/chibi-compile.exe --project-root "$PWD/test/fixtures/studio" --output "$env:RUNNER_TEMP/game.chibip"
 
   studio-windows:
@@ -162,19 +160,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Require Studio checkout access
-        env:
-          TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
-        shell: bash
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Add a CHIBI_STUDIO_TOKEN secret that can read waldnercharles/chibi-studio."
-            exit 1
-          fi
       - uses: actions/checkout@v4
         with:
           repository: waldnercharles/chibi-studio
-          token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
           path: chibi-studio
           persist-credentials: false
       # No third-party actions run beside the checkouts, and CMake and Ninja are
@@ -204,27 +192,16 @@ jobs:
 
   studio:
     name: Studio build and startup
-    # Pull requests from forks and Dependabot get no secrets, so they can't check out Studio.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    # Studio is public; the read-only workflow token can check it out for every PR.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Require Studio checkout access
-        env:
-          TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Add a CHIBI_STUDIO_TOKEN secret that can read waldnercharles/chibi-studio."
-            exit 1
-          fi
       - uses: actions/checkout@v4
         with:
           repository: waldnercharles/chibi-studio
-          token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
           path: chibi-studio
+          persist-credentials: false
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -243,7 +220,7 @@ jobs:
       - name: Two hidden Studio frames
         shell: bash
         run: |
-          timeout --kill-after=10 60 xvfb-run -a build-studio/bin/chibi-dev \
+          xvfb-run -a build-studio/bin/chibi-dev \
             --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
           ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
 

@@ -13,6 +13,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
@@ -24,8 +25,8 @@
  * The two authored generations remain prepared across all 28 constructions.
  * There are 56 Build and 348 query calls, 684 packed files and 590 packed
  * imports. Only the two 256-file Builds receive a 50-million instruction
- * ceiling; every other call receives 100000. The shared production deadline
- * still bounds the entire route. No filesystem or processes are used. */
+ * ceiling; every other call receives 100000. No filesystem or processes are
+ * used. */
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 static native_capabilities *native;
 static authoring_packages *owners[2];
@@ -217,12 +218,18 @@ static bool write(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&storage, row->ptr, field, value));
     return true;
 }
 static pin_value text(const char *value)
 {
-    return (pin_value){ .type = PIN_STR, .str = value ? value : "" };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&inputs, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static pin_value integer(int value)
 {
@@ -292,7 +299,7 @@ static bool field(const pin_value *record, const char *name, pin_type type, pin_
     REQUIRE(
         record->type == PIN_STRUCT && record->ptr && descriptor && descriptor->type == type
     );
-    pin_read_field(record->ptr, descriptor, value);
+    REQUIRE(!pin_read_field(&storage, record->ptr, descriptor, value));
     REQUIRE(value->type == type && value->container == PIN_CONTAINER_SINGLE);
     return true;
 }
@@ -307,7 +314,7 @@ static bool string(const pin_value *record, const char *name, const char *expect
 {
     pin_value value;
     REQUIRE(field(record, name, PIN_STR, &value));
-    REQUIRE(value.str && !strcmp(value.str, expected));
+    REQUIRE(pin_text(value).bytes && !strcmp(pin_text(value).bytes, expected));
     return true;
 }
 static const script_catalog_variant *variant(int backend, const pin_value *value, const char *name)

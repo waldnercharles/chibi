@@ -5,6 +5,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -252,9 +253,10 @@ static bool literal_facts()
             (e->constant.type != PIN_STR && e->constant.type != PIN_NAME)) {
             continue;
         }
-        if (!e->constant.str || e->type.storage != e->constant.type ||
+        if (!pin_text(e->constant).bytes || e->type.storage != e->constant.type ||
             !(e->type.flags & SCRIPT_TYPE_LITERAL) ||
-            e->type.parameter != script_catalog_id("union-literal", e->constant.str)) {
+            e->type.parameter !=
+                script_catalog_id("union-literal", pin_text(e->constant).bytes)) {
             return false;
         }
     }
@@ -329,8 +331,8 @@ static bool contract(int index)
             for (int i = 0; i < 12; i++) {
                 const script_expression *v = &analysis
                                                   ->expressions[e->arguments[i].value];
-                if (v->kind != SCRIPT_EXPR_CONSTANT || !v->constant.str ||
-                    strcmp(v->constant.str, glyphs[i])) {
+                if (v->kind != SCRIPT_EXPR_CONSTANT || !pin_text(v->constant).bytes ||
+                    strcmp(pin_text(v->constant).bytes, glyphs[i])) {
                     return false;
                 }
             }
@@ -521,9 +523,9 @@ static bool lookup(behavior_backend backend, int index)
     counts.sljit += runs.counts.sljit_entries;
     REQUIRE(
         result.type == PIN_STR && result.container == PIN_CONTAINER_SINGLE &&
-        result.str
+        pin_text(result).bytes
     );
-    REQUIRE(!strcmp(result.str, glyphs[index]));
+    REQUIRE(!strcmp(pin_text(result).bytes, glyphs[index]));
     finish_call();
     return true;
 }

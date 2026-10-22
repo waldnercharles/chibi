@@ -110,10 +110,10 @@ behavior for the inspector's 4 MiB/512-value limits.
 
 The companion checkpoint evidence lists independent exact-source/build reviews,
 finite C/pico_unit commands and preserved failures. All runtime commands use the
-existing production supervisor's 60-second whole-route ceiling. Generated-C and
-installed-consumer children also retain the existing 10-second child ceiling.
-New routes are standalone, outside aggregate groups; none re-enables quarantined
-suites. Configuration/build timing is separate from runtime measurement.
+production supervisor. Generated-C and installed-consumer children also retain
+the existing 10-second child ceiling. New routes are standalone, outside aggregate
+groups; they do not establish a full-suite pass. Configuration/build timing is
+separate from runtime measurement.
 
 Native checkpoints use ASan/UBSan with leak detection disabled because the
 available tracing environment cannot execute LeakSanitizer. A prior supported

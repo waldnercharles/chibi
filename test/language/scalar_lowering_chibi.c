@@ -12,6 +12,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -29,8 +30,7 @@
  * add no authored or target invocation. Context budget 500000 is supplied to
  * Lower; it is inherited/reset by child calls and is NOT a global work ceiling.
  * Target bodies contain no calls, loops, native callbacks, tasks or IO; their
- * supplied budget is 128. One production 60-second supervisor deadline covers
- * the fixture; configuration/build timing is separate. */
+ * supplied budget is 128. Configuration/build timing is separate. */
 enum
 {
     CASES = 8,
@@ -258,7 +258,7 @@ static bool put(pin_value *v, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(v), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(v->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, v->ptr, field, value));
     return true;
 }
 static bool ints(pin_value *v, const char *const *names, const int *values, int count)
@@ -398,7 +398,7 @@ static bool pack(int b, const facts *f, pin_value *out)
         size_t n = strlen(f->documents[i].path) + 1;
         char *text = arena_alloc(&input, n);
         memcpy(text, f->documents[i].path, n);
-        documents->items[i] = (pin_value){ .type = PIN_STR, .str = text };
+        REQUIRE(!pin_value_text(&input, &documents->items[i], text, n - 1));
     }
     a[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = documents };
     const char *keys[] = { "schema",     "prepared",       "pointer_storage",
@@ -535,13 +535,13 @@ static bool owned(arena *owner, const pin_value *v, int depth)
         );
         for (int i = 0; i < type->field_count; i++) {
             pin_value value;
-            pin_read_field(v->ptr, &type->fields[i], &value);
+            REQUIRE(!pin_read_field(owner, v->ptr, &type->fields[i], &value));
             REQUIRE(owned(owner, &value, depth + 1));
         }
         return true;
     }
     if (v->type == PIN_STR) {
-        REQUIRE(v->str && arena_contains(owner, v->str));
+        REQUIRE(pin_text(*v).bytes && arena_contains(owner, pin_text(*v).bytes));
         return true;
     }
     REQUIRE(v->type == PIN_I32 || v->type == PIN_BOOL || v->type == PIN_U64);
@@ -551,7 +551,7 @@ static bool get(const pin_value *v, const char *key, pin_value *out)
 {
     const type_field *f = pin_type_field_path(pin_value_type(v), key);
     REQUIRE(f);
-    pin_read_field(v->ptr, f, out);
+    REQUIRE(!pin_read_field(&input, v->ptr, f, out));
     return true;
 }
 static scalar_lowering_builder holder;
@@ -748,7 +748,7 @@ TEST_CASE(scalar_lowering_fixed_plans_and_detached_executables_match)
                     get(&diagnostics->items[0], "range", &range)
                 );
                 REQUIRE(
-                    !strcmp(message.str, i == 6 ? "scalar lowering supports only ordinary Bool and I32 types" : "unsupported scalar lowering expression kind")
+                    !strcmp(pin_text(message).bytes, i == 6 ? "scalar lowering supports only ordinary Bool and I32 types" : "unsupported scalar lowering expression kind")
                 );
                 REQUIRE(range.i == (i == 6 ? f->analysis.expression_count : 0));
                 arena_free(&outputs[b][i]);

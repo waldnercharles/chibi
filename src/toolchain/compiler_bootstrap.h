@@ -35,4 +35,13 @@ bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t si
  * when there is one. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);
 
+struct compiler_host;
+
+/* Loads one owned, validated current compiler generation. Matching source
+ * hashes admit the recorded closure directly, after checksum, version, ABI and
+ * source-completeness validation. Changed sources go through the existing
+ * recovery/fixpoint path. This writes no files and has no persistent cache.
+ * Release the result with compiler_host_free. */
+struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);
+
 #endif

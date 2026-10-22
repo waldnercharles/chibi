@@ -3,6 +3,7 @@
 #include "yyjson.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,18 +32,19 @@ static int inspect()
 {
     /* Only production packaging functions run in Python. C owns the fixture,
      * mutations and assertions; produced fixture executables never run. */
-    const char *script = "import json,sys\nfrom pathlib import Path\n"
-                         "sys.path.insert(0,str(Path(sys.argv[1])/'tools'))\n"
-                         "import package_sdk as p\n"
-                         "p.ROOT=Path(sys.argv[2]);b=Path(sys.argv[3]);s=Path("
-                         "sys.argv[4])\n"
-                         "c=p.cache_values(b);r=p.build_identity(b,c)\n"
-                         "f=p.package_files(s);i=p.installed_archive_owners(r,"
-                         "f,'',False)\n"
-                         "t=p.installed_private_tools(r,f,s)\n"
-                         "e=p.engine_manifest(b/'engine-stage',r)\n"
-                         "print(json.dumps({'compiled':r,'installation':i,'"
-                         "files':f,'engine':e},sort_keys=True))\n";
+    const char
+        *script = "import json,sys\nfrom pathlib import Path\n"
+                  "sys.path.insert(0,str(Path(sys.argv[1])/'tools'))\n"
+                  "import package_sdk as p\n"
+                  "p.ROOT=Path(sys.argv[2]);b=Path(sys.argv[3]);s=Path("
+                  "sys.argv[4])\n"
+                  "c=p.cache_values(b);r=p.build_identity(b,c)\n"
+                  "f=p.package_files(s);i=p.installed_archive_owners(r,"
+                  "f)\n"
+                  "t=p.installed_private_tools(r,f,s)\n"
+                  "e=p.engine_manifest(b/'engine-stage',r)\n"
+                  "print(json.dumps({'compiled':r,'installation':i,'"
+                  "files':f,'engine':e,'private_tools':t},sort_keys=True))\n";
     const char *args[] = { "python3", "-B",  "-c",  script, tool_root(),
                            source,    build, stage, NULL };
     return tool_run(args, directory, log_path);
@@ -378,11 +380,11 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
 }
 
 #if defined(__linux__) || defined(__APPLE__)
-TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
+static bool private_tool_fixture(bool windows)
 {
-    path(source, directory, "make-source");
-    path(build, directory, "make-build");
-    path(stage, directory, "make-installed");
+    path(source, directory, windows ? "windows-source" : "make-source");
+    path(build, directory, windows ? "windows-build" : "make-build");
+    path(stage, directory, windows ? "windows-installed" : "make-installed");
     REQUIRE(mkdir(source, 0700) == 0);
     char filename[1024];
     path(filename, source, "src");
@@ -394,21 +396,21 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
     path(filename, source, "src/main.c");
     tool_write(filename, "#include \"host.h\"\nint main(void) { return host_value(); }\n");
     path(filename, source, "CMakeLists.txt");
-    tool_write(
-        filename,
+    char cmake[4096];
+    int length = snprintf(
+        cmake,
+        sizeof cmake,
         "cmake_minimum_required(VERSION 3.25)\nproject(private_tool C)\n"
         "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n"
         "set(CHIBI_SDK_BUILD_COMPILER ON CACHE BOOL \"\")\n"
         "set(CHIBI_SDK_BUILD_NATIVE OFF CACHE BOOL \"\")\n"
-        "add_library(chibi_build_host OBJECT src/host.c)\n"
-        "add_executable(chibi-build-host src/main.c)\n"
-        "target_link_libraries(chibi-build-host PRIVATE chibi_build_host)\n"
         "add_library(chibi_compiler_host OBJECT src/host.c)\n"
         "add_executable(chibi-compiler-host src/main.c)\n"
         "target_link_libraries(chibi-compiler-host PRIVATE "
         "chibi_compiler_host)\n"
-        "install(TARGETS chibi-build-host chibi-compiler-host RUNTIME "
-        "DESTINATION libexec/chibi)\n"
+        "%s"
+        "install(TARGETS chibi-compiler-host RUNTIME DESTINATION "
+        "libexec/chibi)\n"
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.c\" source_hash)\n"
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.h\" header_hash)\n"
         "file(WRITE \"${CMAKE_BINARY_DIR}/chibi_engine_metadata.json\" "
@@ -418,8 +420,18 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
         "\\\"version\\\":1,\\\"source\\\":\\\"src/host.c\\\","
         "\\\"header\\\":\\\"src/"
         "host.h\\\",\\\"sha256\\\":\\\"${source_hash}\\\","
-        "\\\"header_sha256\\\":\\\"${header_hash}\\\"}}}\\n\")\n"
+        "\\\"header_sha256\\\":\\\"${header_hash}\\\"}}}\\n\")\n",
+        windows ? "set_target_properties(chibi-compiler-host PROPERTIES SUFFIX "
+                  "\".exe\")\n"
+                : "add_library(chibi_build_host OBJECT src/host.c)\n"
+                  "add_executable(chibi-build-host src/main.c)\n"
+                  "target_link_libraries(chibi-build-host PRIVATE "
+                  "chibi_build_host)\n"
+                  "install(TARGETS chibi-build-host RUNTIME DESTINATION "
+                  "libexec/chibi)\n"
     );
+    REQUIRE(length > 0 && (size_t)length < sizeof cmake);
+    tool_write(filename, cmake);
     char prefix[1200];
     snprintf(prefix, sizeof prefix, "-DCMAKE_INSTALL_PREFIX=%s", stage);
     const char *configure[] = {
@@ -432,6 +444,12 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
     REQUIRE(tool_run(compile, directory, log_path) == 0);
     const char *install[] = { "cmake", "--install", build, NULL };
     REQUIRE(tool_run(install, directory, log_path) == 0);
+    return true;
+}
+
+TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
+{
+    REQUIRE(private_tool_fixture(false));
     REQUIRE(inspect() == 0);
     yyjson_doc *doc = yyjson_read_file(log_path, 0, NULL, NULL);
     REQUIRE(doc);
@@ -456,6 +474,102 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
     yyjson_doc_free(doc);
     return true;
 }
+
+TEST_CASE(windows_private_compiler_owns_exe_without_a_posix_build_host)
+{
+    REQUIRE(private_tool_fixture(true));
+    /* Compile tiny native files with the Windows output name, then select the
+     * Windows packaging contract. No fixture executable runs, and this is not
+     * a Windows compiler or PE-format validation. */
+    char metadata[1024], filename[1024], saved[1024];
+    path(metadata, build, "CMakeFiles");
+    DIR *files = opendir(metadata);
+    REQUIRE(files);
+    struct dirent *entry;
+    int systems = 0;
+    while ((entry = readdir(files))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+            continue;
+        }
+        char folder[1024];
+        path(folder, metadata, entry->d_name);
+        path(filename, folder, "CMakeSystem.cmake");
+        if (!access(filename, F_OK)) {
+            tool_write(filename, "set(CMAKE_SYSTEM_NAME \"Windows\")\n");
+            systems++;
+        }
+    }
+    REQUIRE(!closedir(files));
+    REQUIRE(systems == 1);
+    REQUIRE(inspect() == 0);
+    yyjson_doc *doc = yyjson_read_file(log_path, 0, NULL, NULL);
+    REQUIRE(doc);
+    yyjson_val *result = yyjson_doc_get_root(doc);
+    yyjson_val *compiled = yyjson_obj_get(result, "compiled");
+    yyjson_val *tools = yyjson_obj_get(compiled, "private_executables");
+    REQUIRE(yyjson_obj_size(tools) == 1);
+    REQUIRE(!yyjson_obj_get(tools, "chibi-build-host"));
+    yyjson_val *compiler = yyjson_obj_get(tools, "chibi-compiler-host");
+    REQUIRE(text_is(compiler, "path", "chibi-compiler-host.exe"));
+    const char *installed = "libexec/chibi/chibi-compiler-host.exe";
+    REQUIRE(text_is(compiler, "install_path", installed));
+    yyjson_val *private_tools = yyjson_obj_get(result, "private_tools");
+    REQUIRE(yyjson_obj_size(private_tools) == 1);
+    REQUIRE(text_is(private_tools, "chibi-compiler-host", installed));
+    REQUIRE(!yyjson_obj_get(private_tools, "chibi-build-host"));
+    yyjson_val *objects = yyjson_obj_get(compiled, "objects");
+    REQUIRE(yyjson_obj_size(objects) == 2);
+    const char *owned = "CMakeFiles/chibi_compiler_host.dir/src/host.c.o";
+    const char *checksum = yyjson_get_str(
+        yyjson_obj_get(yyjson_obj_get(objects, owned), "sha256")
+    );
+    REQUIRE(checksum && text_is(yyjson_obj_get(compiler, "link_inputs"), owned, checksum));
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "executables")) == 0);
+    yyjson_doc_free(doc);
+
+    path(filename, stage, installed);
+    path(saved, directory, "saved-windows-compiler");
+    REQUIRE(!rename(filename, saved));
+    int status = inspect();
+    REQUIRE(!rename(saved, filename));
+    REQUIRE(diagnostic(status, "Installed private executable differs from compiled evidence:"));
+    REQUIRE(!rename(filename, saved));
+    tool_write(filename, "corrupt compiler executable\n");
+    REQUIRE(!chmod(filename, 0700));
+    status = inspect();
+    REQUIRE(!unlink(filename) && !rename(saved, filename));
+    REQUIRE(diagnostic(status, "Installed private executable differs from compiled evidence:"));
+
+    path(filename, stage, "libexec/chibi/chibi-build-host");
+    tool_write(filename, "unexpected POSIX-only tool\n");
+    REQUIRE(!chmod(filename, 0700));
+    status = inspect();
+    REQUIRE(!unlink(filename));
+    REQUIRE(
+        diagnostic(status, "Installed private executables differ from the configured tool contract")
+    );
+
+    path(filename, build, "CMakeFiles/chibi-compiler-host.dir/link.txt");
+    char *link = tool_read(filename);
+    REQUIRE(link);
+    char *object = strstr(link, owned);
+    REQUIRE(object);
+    char *changed = strdup(link);
+    REQUIRE(changed);
+    size_t offset = (size_t)(object - link);
+    memmove(
+        changed + offset,
+        changed + offset + strlen(owned),
+        strlen(changed + offset + strlen(owned)) + 1
+    );
+    tool_write(filename, changed);
+    status = inspect();
+    tool_write(filename, link);
+    free(changed);
+    free(link);
+    REQUIRE(diagnostic(status, "Private host object has no installed executable owner:"));
+    return true;
+}
 #endif
 
 void test_tool_package_ownership()
@@ -478,6 +592,7 @@ void test_tool_package_ownership()
     RUN_TEST_CASE(configured_artifacts_preserve_complete_object_ownership);
 #if defined(__linux__) || defined(__APPLE__)
     RUN_TEST_CASE(makefiles_private_tool_owns_direct_host_objects);
+    RUN_TEST_CASE(windows_private_compiler_owns_exe_without_a_posix_build_host);
 #endif
     tool_remove_tree(directory);
     if (saved_archive_date) {

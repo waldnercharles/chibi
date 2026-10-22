@@ -54,13 +54,13 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #ifdef CHIBI_TEST_BUILD_PROCESS
 void test_tool_build_process(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
-void test_build_graph(const char *host);
-void test_build_graph_support(const char *host);
-void test_build_graph_reflect(const char *host);
-void test_build_graph_archive(const char *host);
-void test_build_graph_generated(const char *host);
-void test_build_graph_programs(const char *host);
-void test_build_graph_resources(const char *host);
+void test_build_graph(const char *host, const char *cmake_build);
+void test_build_graph_support(const char *host, const char *cmake_build);
+void test_build_graph_reflect(const char *host, const char *cmake_build);
+void test_build_graph_archive(const char *host, const char *cmake_build);
+void test_build_graph_generated(const char *host, const char *cmake_build);
+void test_build_graph_programs(const char *host, const char *cmake_build);
+void test_build_graph_resources(const char *host, const char *cmake_build);
 #endif
 void test_tool_desktop_dependencies();
 void test_tool_third_party_publish();
@@ -80,6 +80,7 @@ void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
 void test_tool_types();
 void test_tool_ecs();
+void test_tool_ecs_strings();
 void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
@@ -530,7 +531,7 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
-    if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
+    if (argc == 4 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
                       !strcmp(argv[1], "--build-graph-archive") ||
@@ -541,19 +542,19 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-graph")) {
-            test_build_graph(argv[2]);
+            test_build_graph(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-support")) {
-            test_build_graph_support(argv[2]);
+            test_build_graph_support(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-reflect")) {
-            test_build_graph_reflect(argv[2]);
+            test_build_graph_reflect(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-archive")) {
-            test_build_graph_archive(argv[2]);
+            test_build_graph_archive(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-programs")) {
-            test_build_graph_programs(argv[2]);
+            test_build_graph_programs(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-resources")) {
-            test_build_graph_resources(argv[2]);
+            test_build_graph_resources(argv[2], argv[3]);
         } else {
-            test_build_graph_generated(argv[2]);
+            test_build_graph_generated(argv[2], argv[3]);
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
@@ -769,6 +770,13 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--ecs-strings")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_ecs_strings();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
         tool_init();
         pu_display_time(true);
@@ -948,6 +956,8 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--desktop-dependencies");
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
+    bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
@@ -1128,12 +1138,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
-        !preview_components && !shader_parameters && !source_edit && !new_asset &&
-        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
-        !third_party_publish && !package_ownership && !unit && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !scene_hierarchy &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
+        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
+        !package_ownership && !unit && !test_runner && !validation_plan &&
+        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
+        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
         !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
@@ -1155,9 +1165,11 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
-            "--desktop-dependencies | --package-ownership | --unit | "
+            "--desktop-dependencies | --third-party-publish | "
+            "--package-ownership | --unit | "
+            "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
-            "--ecs-query | "
+            "--ecs-query | --ecs-strings | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
             "--terrain-storage | "
@@ -1546,6 +1558,10 @@ int main(int argc, char **argv)
         test_tool_prototype_expansion(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (test_runner) {
+        test_tool_test_policy();
+    } else if (validation_plan) {
+        test_tool_validation_plan();
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {
@@ -1561,6 +1577,8 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();
+        test_tool_desktop_dependencies();
+        test_tool_third_party_publish();
         test_tool_collab();
         test_tool_test_policy();
         test_tool_validation_plan();

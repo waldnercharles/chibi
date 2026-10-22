@@ -76,6 +76,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
             yyjson_mut_obj_add_str(doc, port, "name", declared->name ? declared->name : "");
             yyjson_mut_obj_add_int(doc, port, "storage", port_storage(declared->type));
             yyjson_mut_obj_add_int(doc, port, "container", (int)declared->type.container);
+            yyjson_mut_obj_add_bool(doc, port, "c_string", declared->c_string);
         }
         yyjson_mut_arr_add_uint(doc, identities, c->id);
         yyjson_mut_arr_add_uint(doc, identities, script_catalog_capability_abi(catalog, c));
@@ -132,6 +133,20 @@ char *compiler_target_json(const script_catalog *catalog, size_t *length)
     yyjson_mut_val *target = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, target);
     add_target(doc, target, catalog);
+    return written(doc, length);
+}
+
+char *compiler_target_effects_json(const script_catalog *catalog, size_t *length)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *capability = &catalog->capabilities[i];
+        if (callable(capability)) {
+            yyjson_mut_arr_add_uint(doc, root, capability->effects);
+        }
+    }
     return written(doc, length);
 }
 /* Each event, with a range of payload fields, then the fields. */
@@ -215,6 +230,7 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
             yyjson_mut_obj_add_int(doc, field, "storage", (int)f->type.storage);
             yyjson_mut_obj_add_uint(doc, field, "offset", f->offset);
             yyjson_mut_obj_add_bool(doc, field, "writable", f->writable);
+            yyjson_mut_obj_add_bool(doc, field, "c_string", f->c_string);
             yyjson_mut_obj_add_int(
                 doc,
                 field,

@@ -1,10 +1,14 @@
+#include "ecs/execution.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/service.h"
 #include "execution/wasm_jit.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -290,11 +294,27 @@ bool behavior_function_own(behavior_function *f)
         }
     }
     afree(owner.records);
+    behavior_function_note_derived(f);
     f->frozen = true;
     return true;
 invalid:
     afree(owner.records);
     return false;
+}
+
+void behavior_function_note_derived(behavior_function *f)
+{
+    f->binds_world = f->component_access;
+    for (int i = 0; i < acount(f->argument_kinds); i++) {
+        f->binds_world |= f->argument_kinds[i] == BEHAVIOR_REFERENCE;
+    }
+    f->builds_results = false;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
+    }
+    /* A result moves only when execution_builds_safely proves that nothing
+     * else changes or shares what the function builds there. */
+    f->builds_results = f->builds_results && execution_builds_safely(f);
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
@@ -579,6 +599,38 @@ static const char *copy_string(void *storage, const char *text)
     memcpy(copy, text, size);
     return copy;
 }
+static const pin_string *copy_text(void *storage, const pin_string *text)
+{
+    if (!text) {
+        return NULL;
+    }
+    pin_value value;
+    const char *error = pin_value_text(storage, &value, text->bytes, text->length);
+    assert(!error);
+    (void)error;
+    return value.text;
+}
+const pin_string *behavior_function_intern_text(
+    behavior_function_context *context,
+    const ecs_execution_view *world,
+    const pin_string *text
+)
+{
+    pin_value source = { .type = PIN_STR, .text = text }, result;
+    const char *bytes;
+    context->error_message = pin_text_cstring(context->value_storage, source, &bytes, NULL);
+    if (context->error_message) {
+        return NULL;
+    }
+    const char *interned = world->intern_string(world, bytes);
+    context->error_message = pin_value_text(
+        context->value_storage,
+        &result,
+        interned,
+        pin_text(source).length
+    );
+    return context->error_message ? NULL : result.text;
+}
 static pin_array *copy_array(void *storage, const pin_array *array)
 {
     pin_array *copy = pin_array_snapshot_to_arena(storage, array);
@@ -588,7 +640,9 @@ static pin_array *copy_array(void *storage, const pin_array *array)
 void behavior_function_bind_storage(behavior_function_context *ctx, arena *storage)
 {
     ctx->value_storage = storage;
+    ctx->result_storage = storage;
     ctx->copy_string = copy_string;
+    ctx->copy_text = copy_text;
     ctx->copy_array = copy_array;
 }
 

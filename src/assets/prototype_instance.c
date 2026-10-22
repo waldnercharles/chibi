@@ -1,6 +1,7 @@
 #include "assets/prototype_instance.h"
 
 #include "runtime/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "types/array.h"
 #include "types/catalog.h"
@@ -36,6 +37,7 @@ static bool plain(const type_field *field)
 
 prototype_field *prototype_instance_overrides(const prototype *base, const ecs_world *world, ecs_entity entity)
 {
+    arena storage = { 0 };
     prototype_field *found = NULL;
     for (int i = 0; i < acount(base->components); i++) {
         const prototype_component *component = &base->components[i];
@@ -48,15 +50,17 @@ prototype_field *prototype_instance_overrides(const prototype *base, const ecs_w
             const type_field *field = &desc->type->fields[f];
             pin_value value = { 0 }, inherited = { 0 };
             if (!plain(field) ||
-                ecs_component_read_field(world, entity, desc->id, f, &value) != ECS_OK) {
+                ecs_component_read_field(&storage, world, entity, desc->id, f, &value) !=
+                    ECS_OK) {
                 continue;
             }
-            pin_read_field(component->data, field, &inherited);
+            pin_read_field(&storage, component->data, field, &inherited);
             if (!pin_value_equal(&value, &inherited)) {
                 apush(found, ((prototype_field){ desc, f }));
             }
         }
     }
+    arena_free(&storage);
     return found;
 }
 
@@ -68,10 +72,11 @@ void prototype_apply_instance(
     int count
 )
 {
+    arena storage = { 0 };
     for (int i = 0; i < count; i++) {
         const ecs_component_desc *desc = fields[i].component;
         pin_value value = { 0 };
-        ecs_component_read_field(world, entity, desc->id, fields[i].field, &value);
+        ecs_component_read_field(&storage, world, entity, desc->id, fields[i].field, &value);
         prototype_write_field(
             prototype,
             desc->name,
@@ -79,6 +84,7 @@ void prototype_apply_instance(
             value
         );
     }
+    arena_free(&storage);
 }
 
 prototype *prototype_from_instance(

@@ -27,10 +27,21 @@ static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage;
 static pin_value result;
-static const script_catalog_capability run = { .id = 10,
-                                               .name = "Run",
-                                               .kind = SCRIPT_CAPABILITY_EVENT };
-static const script_catalog catalog = { .capabilities = &run, .capability_count = 1 };
+static const script_catalog_parameter assert_parameters[] = {
+    { .name = "Condition", .type = { .storage = PIN_BOOL }, .has_default = true },
+    { .name = "Message", .type = { .storage = PIN_STR }, .has_default = true },
+};
+static const script_catalog_capability capabilities[] = {
+    { .id = 10, .name = "Run", .kind = SCRIPT_CAPABILITY_EVENT },
+    { .id = 11,
+      .name = "assert",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = assert_parameters,
+      .parameter_count = 2,
+      .pure = true },
+};
+static const script_catalog catalog = { .capabilities = capabilities,
+                                        .capability_count = 2 };
 
 static void cleanup()
 {
@@ -116,7 +127,7 @@ TEST_CASE(generic_argument_types_specialize_once_and_execute)
     const char *source = "Generic :: behavior { result: retain int = 0; real: "
                          "retain double = 0; "
                          "Identity :: (value: $T) -> T { return value } "
-                         "on Run { result = Identity(int(7)) + "
+                         "on Run :: () { result = Identity(int(7)) + "
                          "Identity(int(8)); "
                          "real = Identity(double(2.5)); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -166,7 +177,7 @@ TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
         "Size :: Factorial(5); "
         "Scale :: (value: $T, $N: int) -> T { return value * N } "
         "Gain :: (value:$T,$Amount:double)->T{return value*Amount} "
-        "on Run { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
+        "on Run :: () { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -189,7 +200,7 @@ TEST_CASE(compile_time_conversions_follow_runtime_modes)
                   "Clamped :: (n: int) -> int8 { return int8(clamp: n) } "
                   "Exact :: (n: int) -> int8 { return int8(n) } "
                   "W :: Wrapped(300); C :: Clamped(300); E :: Exact(100); "
-                  "on Run { wrapped = int(W); clamped = int(C); exact = "
+                  "on Run :: () { wrapped = int(W); clamped = int(C); exact = "
                   "int(E); } }";
     const char *expected[] = { "wrapped", "clamped", "exact" };
     const int values[] = { 44, 127, 100 };
@@ -208,7 +219,7 @@ TEST_CASE(compile_time_conversions_follow_runtime_modes)
 TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type)
 {
     REQUIRE(
-        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run { direct:int=int(7); casted:=Identity(int(7)); typed:=Identity(direct); decimal:=Identity(double(2.5)); } }")
+        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run :: () { direct:int=int(7); casted:=Identity(int(7)); typed:=Identity(direct); decimal:=Identity(double(2.5)); } }")
     );
     int identities = 0;
     bool casted = false, typed = false, decimal = false;
@@ -238,7 +249,7 @@ TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type)
 TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
 {
     REQUIRE(
-        analyze("Nested :: behavior { First::(values:$T[])->T{return values[0]} on Run { items:Map<string,int>[]=[{\"one\":1}]; first:=First(items); } }")
+        analyze("Nested :: behavior { First::(values:$T[])->T{return values[0]} on Run :: () { items:[string:int][]=[[\"one\":1]]; first:=First(items); } }")
     );
     bool nested = false;
     for (int i = 0; i < analysis->symbol_count; i++) {
@@ -260,7 +271,8 @@ TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref)
                   "Increment::(value:ref $T){value+=1} "
                   "Borrow::(item:ref int){copy:=Identity(item); "
                   "Increment(item); copied=copy;} "
-                  "on Run { value:int=4; Borrow(value); changed=value; } }";
+                  "on Run :: () { value:int=4; Borrow(value); changed=value; } "
+                  "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(compile(source, backends[backend]));
@@ -377,10 +389,59 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
     }
     return true;
 }
+static bool reported(const char *message)
+{
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        if (!strcmp(analysis->diagnostics[i].message, message)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* assert runs at compile time too, where a false one is a compile error. */
+TEST_CASE(generic_compile_time_assert_fails_compilation)
+{
+    REQUIRE(analyze(
+        "Good :: library { Half :: (n: int) -> int { assert(n >= 0); return n "
+        "/ 2 } "
+        "Size :: Half(4) }"
+    ));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0, \"n is "
+        "negative\"); "
+        "return n / 2 } Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n is negative"));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0); return n / "
+        "2 } "
+        "Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
+    /* Arguments bind by name or position; an empty message is no message. */
+    REQUIRE(analyze(
+        "Good :: library { Half :: (n: int) -> int { "
+        "assert(message: \"negative\", condition: n >= 0); return n / 2 } "
+        "Size :: Half(4) }"
+    ));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { "
+        "assert(n >= 0, message: \"negative\"); return n / 2 } Size :: "
+        "Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: negative"));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0, \"\"); "
+        "return n / 2 } Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
+    return true;
+}
 TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
 {
     const char *invalid[] = {
-        "Bad :: behavior { Same :: (a: $T, b: T) -> T { return a } on Run { x "
+        "Bad :: behavior { Same :: (a: $T, b: T) -> T { return a } on Run :: "
+        "() { x "
         ":= Same(int(1), true) } }",
         "Bad :: behavior { n: retain int = 3; Add :: (x: int) -> int { return "
         "x + n } Value :: Add(1) }",
@@ -391,7 +452,7 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         "Bad :: behavior { Forever :: (n: int) -> int { return Forever(n) } "
         "Value :: Forever(1) }",
         "Bad :: behavior { Identity :: (value:$T)->T{return value} "
-        "on Run { x:=Identity(missing:true) } }",
+        "on Run :: () { x:=Identity(missing:true) } }",
         "Bad :: behavior { Narrow :: (n: int) -> int8 { return int8(n) } "
         "Value :: Narrow(300) }",
         "Bad :: library { Pick :: (A: Type) -> Type { x := int8(round: 300); "
@@ -453,7 +514,7 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
         "Assigned :: TypedAssign(); Diff :: Subtract(b:2,a:10); Deep :: "
         "Count(120); "
         "Text :: Echo(\"owned text\"); "
-        "on Run { result := Label(1, \"owned binding\") } }"
+        "on Run :: () { result := Label(1, \"owned binding\") } }"
     ));
     bool fraction = false, whole = false, difference = false, text = false;
     bool local = false, assigned = false;
@@ -686,10 +747,10 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
 }
 TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
 {
-    const char
-        *source = "Strings :: behavior { result:retain string=\"\"; "
-                  "Echo::(value:string)->string{return value} "
-                  "Text::Echo(\"owned after analysis\"); on Run{result=Text} }";
+    const char *source = "Strings :: behavior { result:retain string=\"\"; "
+                         "Echo::(value:string)->string{return value} "
+                         "Text::Echo(\"owned after analysis\"); on Run :: () "
+                         "{result=Text} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -736,6 +797,7 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors);
     RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);
     RUN_TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions);
+    RUN_TEST_CASE(generic_compile_time_assert_fails_compilation);
     RUN_TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded);
     RUN_TEST_CASE(generic_empty_record_bindings_specialize_once);
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);

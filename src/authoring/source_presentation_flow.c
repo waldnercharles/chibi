@@ -46,6 +46,9 @@ static const char *statement_name(source_projection *p, const script_statement *
         p->analysis->functions[p->function].kind == SCRIPT_FUNCTION_HANDLER) {
         return "End Event";
     }
+    if (s->reverse) {
+        return s->kind == SCRIPT_STMT_FOR ? "For Reverse" : "For Each Reverse";
+    }
     if (s->kind != SCRIPT_STMT_ASSIGN && s->kind != SCRIPT_STMT_DECLARE &&
         s->kind != SCRIPT_STMT_REDUCE) {
         return names[s->kind];
@@ -215,7 +218,7 @@ static node *statement_box(source_projection *p, int index)
                  : entity_receiver ? "Entity"
                                    : "Object";
         } else if (s->kind == SCRIPT_STMT_FOR) {
-            name = i ? "Last" : "First";
+            name = !i ? "First" : s->exclusive ? "Before" : "Last";
         } else if (s->kind == SCRIPT_STMT_FOREACH) {
             name = "Collection";
         }
@@ -398,7 +401,8 @@ static source_flow_target expression_flow(source_projection *p, int index, sourc
     }
     bool lazy = e->kind == SCRIPT_EXPR_FALLBACK ||
                 (e->kind == SCRIPT_EXPR_BINARY &&
-                 (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR));
+                 (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR ||
+                  e->op == SCRIPT_OP_COALESCE));
     if (lazy || source_view_expression_action(p, index)) {
         node *n = source_view_expression(p, index);
         int input = exec_pin(n, false, NULL);
@@ -551,17 +555,32 @@ static source_flow_target statement(source_projection *p, int index, source_flow
     }
     return entry;
 }
+/* The title of a `where` clause's node. */
+static const char *query_title(script_query_kind kind)
+{
+    switch (kind) {
+        case SCRIPT_QUERY_HAS: return "Has";
+        case SCRIPT_QUERY_ALL: return "All";
+        case SCRIPT_QUERY_ANY: return "Any";
+        case SCRIPT_QUERY_NOT: return "Not";
+        case SCRIPT_QUERY_RELATION: return "Related";
+        case SCRIPT_QUERY_GENERATOR: return "Generate";
+        case SCRIPT_QUERY_VALUE: return "Where";
+        case SCRIPT_QUERY_CHANGED: return "Changed";
+    }
+    assert(false);
+    return NULL;
+}
 node *source_view_query(source_projection *p, int index)
 {
     const script_query *q = &p->analysis->queries[index];
-    const char *names[] = { "Has", "All", "Any", "Not" };
     pin_spec *inputs = NULL, *outputs = NULL;
     script_type boolean = { .storage = PIN_BOOL };
     for (int i = 0; i < q->child_count; i++) {
         apush(inputs, source_view_data_pin(p, "Predicate", boolean));
     }
     apush(outputs, source_view_data_pin(p, "Matches", boolean));
-    const char *name = names[q->kind];
+    const char *name = query_title(q->kind);
     char *label = NULL;
     for (int i = 0; q->component && i < p->catalog->type_count; i++) {
         const script_catalog_type *type = &p->catalog->types[i];
@@ -718,16 +737,20 @@ void source_view_function_graph(source_projection *p, int index)
     memset(p->statements, 0, (size_t)p->analysis->statement_count * sizeof *p->statements);
     pin_spec *inputs = NULL, *outputs = NULL;
     apush(outputs, source_view_flow_pin(p, "Then"));
+    const script_catalog_capability *event = f->kind == SCRIPT_FUNCTION_HANDLER
+                                               ? source_view_capability(p, f->event)
+                                               : NULL;
     for (int i = 0; i < f->parameter_count; i++) {
         const script_symbol *s = &p->analysis->symbols[f->parameters[i]];
-        apush(outputs, source_view_data_pin(p, s->name, s->type));
+        /* A payload field the handler leaves out shows the field's name. */
+        const char *pin = !s->name[0] && event && i < event->parameter_count
+                            ? event->parameters[i].name
+                            : s->name;
+        apush(outputs, source_view_data_pin(p, pin, s->type));
     }
     node *entry = source_view_box(p, f->entry ? f->entry : "Entry", NODE_DISPLAY_EVENT, inputs, outputs);
-    if (f->kind == SCRIPT_FUNCTION_HANDLER) {
-        const script_catalog_capability *event = source_view_capability(p, f->event);
-        if (event) {
-            entry->reference_name = source_view_own(p->graph, event->name);
-        }
+    if (event) {
+        entry->reference_name = source_view_own(p->graph, event->name);
     }
     entry->disabled = f->disabled;
     p->graph->entry_id = entry->id;

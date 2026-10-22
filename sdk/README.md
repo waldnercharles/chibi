@@ -121,8 +121,8 @@ Set `CHIBI_SDK_BUILD_NATIVE=ON` to include the engine's built-in component layou
 and the entity, audio, rhythm and vector packages. Standalone native builds require
 `CHIBI_REFLECT_EXECUTABLE`, a native host reflection generator. When its libclang
 needs an explicit builtin-header directory, supply
-`CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers are pinned independently
-of the renderer and can be supplied through `CHIBI_CUTE_MATH_INCLUDE_DIR`.
+`CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers come from the
+third-party archive's Cute sources, without its renderer.
 `Chibi::entity_runtime` owns entity commands, retained prototype generations and
 the source execution adapter. These optional packages do not require Studio or
 the language parser. The complete player and the remaining native capabilities
@@ -165,10 +165,8 @@ Run it through `python3 tools/test_policy.py tool language-headless`, setting
 `SDK_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF"`
 for a release configuration. The iteration default is Debug with sanitizers off.
 
-The compiler SDK installs packaging tools and `install_game_runtime.py` under
-`share/chibi/tools`. The installer includes its project-manifest reader and runs
-without an engine checkout. Supply `--package` and an explicit `--config` containing
-absolute game paths. Installed tools leave the SDK file inventory unchanged.
+The compiler SDK installs its packaging tools under `share/chibi/tools`. Installed
+tools leave the SDK file inventory unchanged.
 
 For browser Studio, `make package-web-sdk` configures the same packages with
 Emscripten and SLJIT disabled. Browser behavior execution defaults to the Wasm
@@ -224,9 +222,9 @@ packs remain part of the final application and must outlive their values.
 
 ## Linux desktop dependency validation
 
-When changing Linux dependency discovery, the s2n FetchContent declaration,
-dependency-package exports, or desktop SDK ownership/relocation, build the tooling
-dispatcher and run this focused check on Linux before publishing:
+When changing Linux dependency discovery, s2n-tls in the third-party archive, or
+desktop SDK ownership/relocation, build the tooling dispatcher and run this
+focused check on Linux before publishing:
 
 ```sh
 make tools-build
@@ -236,29 +234,22 @@ CHIBI_TOOLS_BUILD_DIR=build-tools \
 
 Set `CHIBI_TOOLS_BUILD_DIR` if the dispatcher was built outside `build-tools`.
 This is an explicit standalone gate; default cross-platform tooling does not run
-it automatically. Its seven pico cases share the unchanged 60-second supervisor
-limit. The sixteen-command success ceiling retains each 10-second child limit.
+it automatically. Its five pico cases share the unchanged 60-second supervisor
+limit. Its fifteen commands on Linux each keep the 10-second child limit.
 External tooling configuration/build is separate; all in-test CMake configuration,
 compiler detection and tiny fixture compilation remain inside the supervisor and
 child deadlines.
 
 The fixture checks newly discovered crypto target visibility and relocated static
 archive/header ownership, unchanged caller-provided targets, rejection of
-mismatched OpenSSL metadata, exclusion of s2n's unused CBMC git submodule, exact
-FindOpenGL role remapping with rejection of an unowned same-basename path, and
-clean/reused import of the existing dependency-package export. The cached control
-models the pinned s2n Linux interface, including its direct Threads/dl/rt/m links.
-A separate LANGUAGES NONE configure child checks the production enkiTS acquisition
-block with and without the SDK-owned scheduler, preserving exact pins/options and
-avoiding duplicate acquisition. Its FetchContent stubs perform no retrieval or
-dependency build.
+mismatched OpenSSL metadata, and exact FindOpenGL role remapping with rejection
+of an unowned same-basename path.
 
 Synthetic archives and deterministic discovery modules establish CMake metadata
-and relocation behavior. The cached producer runs ordinary compiler detection;
-none of the cases builds a dependency or executes a fixture program. Also build
-and package the actual intended SDK configuration and verify a relocated installed
-consumer when those contracts change. Record its real source revision, provider
-selection, and configured desktop backend set. These focused checks do not by
+and relocation behavior. None of the cases builds a dependency or executes a
+fixture program. Also build and package the actual intended SDK configuration and
+verify a relocated installed consumer when those contracts change. Record its real
+source revision, provider selection, and configured desktop backend set. These focused checks do not by
 themselves establish Fedora-host, cryptographic, application, or GPU acceptance.
 
 ## Ninja package ownership validation

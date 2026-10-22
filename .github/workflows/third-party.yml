@@ -1,0 +1,153 @@
+name: Third-party archives
+
+# Builds every third-party archive (third_party/CMakeLists.txt), publishes them
+# as a new release and opens a pull request that pins them in
+# third_party/archives.tsv. Run it after changing a library's commit or patches.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag for the new archives, such as third-party-2026-10-20
+        required: true
+
+# Build jobs compile upstream code, so only the publish job can write.
+permissions:
+  contents: read
+
+env:
+  EMSDK_VERSION: 6.0.10
+
+jobs:
+  native:
+    name: ${{ matrix.target }} ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-arm64, linux-x64]
+        variant: [release, address-undefined, thread]
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - variant: release
+            sanitizers: ''
+          - variant: address-undefined
+            sanitizers: address,undefined
+          - variant: thread
+            sanitizers: thread
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the compilers the engine builds with
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            brew install llvm
+            echo "CC=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+            echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ninja-build clang-18 libssl-dev \
+              libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
+              libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+            echo "CC=clang-18" >> "$GITHUB_ENV"
+            echo "CXX=clang++-18" >> "$GITHUB_ENV"
+          fi
+          python3 -m venv "$RUNNER_TEMP/cmake"
+          "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
+      - name: Build the archive
+        shell: bash
+        run: |
+          cmake -S third_party -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCHIBI_SANITIZERS='${{ matrix.sanitizers }}'
+          cmake --build "$RUNNER_TEMP/build"
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/archive"
+          tar -czf "third-party-${{ matrix.target }}-${{ matrix.variant }}.tar.gz" -C "$RUNNER_TEMP/archive" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-${{ matrix.target }}-${{ matrix.variant }}
+          path: third-party-${{ matrix.target }}-${{ matrix.variant }}.tar.gz
+
+  web:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: web
+            options: ''
+          - target: web-threads
+            options: -DCHIBI_WEB_THREADS=ON
+          - target: web-player
+            options: -DCHIBI_WEB_PLAYER=ON
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+      - name: Install CMake and Ninja
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cmake"
+          "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
+      - name: Build the archive
+        run: |
+          emcmake cmake -S third_party -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.options }}
+          cmake --build "$RUNNER_TEMP/build"
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/archive"
+          tar -czf "third-party-${{ matrix.target }}-release.tar.gz" -C "$RUNNER_TEMP/archive" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-${{ matrix.target }}-release
+          path: third-party-${{ matrix.target }}-release.tar.gz
+
+  publish:
+    needs: [native, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RELEASE: ${{ inputs.release }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: archives
+          merge-multiple: true
+      - name: Publish the release and pin it
+        run: |
+          # Like engine releases, never "latest": consumers fetch exact tags.
+          gh release create "$RELEASE" archives/*.tar.gz --target "$GITHUB_SHA" --title "$RELEASE" --prerelease --latest=false \
+            --notes "Third-party archives built by ${{ github.workflow }} from ${{ github.sha }}."
+          {
+            echo "# repository ${{ github.repository }}"
+            printf '# target\tvariant\trelease\tsha256\n'
+            for archive in archives/*.tar.gz; do
+              name=$(basename "$archive" .tar.gz)
+              name=${name#third-party-}
+              case "$name" in
+                *-address-undefined) variant=address-undefined ;;
+                *) variant=${name##*-} ;;
+              esac
+              target=${name%-"$variant"}
+              printf '%s\t%s\t%s\t%s\n' "$target" "$variant" "$RELEASE" "$(sha256sum "$archive" | cut -d ' ' -f 1)"
+            done
+          } > third_party/archives.tsv
+          git switch -c "pin-$RELEASE"
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+            commit -m "Pin the $RELEASE third-party archives" third_party/archives.tsv
+          git push origin "pin-$RELEASE"
+          gh pr create --head "pin-$RELEASE" --title "Pin the $RELEASE third-party archives" \
+            --body "Archives built by ${{ github.workflow }} run ${{ github.run_id }} and published as release $RELEASE."

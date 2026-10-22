@@ -201,6 +201,60 @@ static uint64_t sorted_world_hash(bool reversed)
     return hash;
 }
 
+typedef struct
+{
+    const char *text;
+    int count;
+} label;
+static const type_field label_fields[] = {
+    { .name = "text",
+      .type = PIN_STR,
+      .offset = offsetof(label, text),
+      .size = sizeof(const char *),
+      .type_name = "const char *" },
+    { .name = "count",
+      .type = PIN_I32,
+      .offset = offsetof(label, count),
+      .size = sizeof(int),
+      .type_name = "int" },
+};
+static const type_desc label_type = {
+    .name = "sdk.ecs.world_label",
+    .size = sizeof(label),
+    .fields = label_fields,
+    .field_count = 2,
+};
+static const ecs_component_desc label_desc = {
+    .id = 807,
+    .key = "sdk.ecs.world_label",
+    .name = "Label",
+    .element_size = sizeof(label),
+    .type = &label_type,
+    .index = ECS_INDEX_BITSET,
+};
+static uint64_t labeled_world_hash(const char *text)
+{
+    ecs_world *w = ecs_world_new();
+    assert(ecs_world_register_component(w, &label_desc, NULL) == ECS_OK);
+    label value = { text, 3 };
+    assert(ecs_world_record_add(w, ecs_world_create_entity(w), label_desc.id, &value, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(w) == ECS_OK);
+    uint64_t hash = ecs_world_hash(w);
+    ecs_world_free(w);
+    return hash;
+}
+
+/* Two worlds whose string fields hold the same text at different addresses
+ * hash alike, as game-equivalence compares worlds across processes. */
+TEST_CASE(ecs_world_hash_reads_strings_by_text)
+{
+    char first[] = "Leader", second[] = "Leader", other[] = "Lead";
+    REQUIRE(first != second);
+    REQUIRE(labeled_world_hash(first) == labeled_world_hash(second));
+    REQUIRE(labeled_world_hash(first) != labeled_world_hash(other));
+    return true;
+}
+
 TEST_CASE(ecs_sort_keys_make_results_independent_of_recording_order)
 {
     uint64_t forward = sorted_world_hash(false);
@@ -595,6 +649,7 @@ void test_tool_ecs_world()
     RUN_TEST_CASE(ecs_sparse_component_ids_survive_registry_growth);
     RUN_TEST_CASE(ecs_rows_share_one_flat_column_per_component);
     RUN_TEST_CASE(ecs_sort_keys_make_results_independent_of_recording_order);
+    RUN_TEST_CASE(ecs_world_hash_reads_strings_by_text);
     RUN_TEST_CASE(ecs_structural_errors_leave_counts_and_generations_coherent);
     RUN_TEST_CASE(ecs_growth_keeps_low_rows_and_mixed_index_queries_ordered);
     RUN_TEST_CASE(ecs_iteration_rejects_growth_and_registration);

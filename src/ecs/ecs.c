@@ -2274,6 +2274,26 @@ int ecs_world_unobserve(ecs_world *world, int observer)
     return ECS_OK;
 }
 
+/* A component's bytes, each string field by its text, so the hash sees what
+ * the world holds rather than where its strings were allocated. */
+static uint64_t component_hash(uint64_t hash, const ecs_component *component, const unsigned char *data)
+{
+    const type_desc *type = component->desc.type;
+    size_t at = 0;
+    for (int i = 0; type && i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_STR || field->offset < at) {
+            continue;
+        }
+        hash = hash_bytes(hash, data + at, field->offset - at);
+        const char *text;
+        memcpy(&text, data + field->offset, sizeof text);
+        hash = text ? hash_bytes(hash, text, strlen(text) + 1)
+                    : hash_bytes(hash, "", 0);
+        at = field->offset + sizeof text;
+    }
+    return hash_bytes(hash, data + at, component->desc.element_size - at);
+}
 uint64_t ecs_world_hash(const ecs_world *world)
 {
     if (!world) {
@@ -2297,11 +2317,7 @@ uint64_t ecs_world_hash(const ecs_world *world)
                 hash = hash_bytes(hash, name, strlen(name));
                 continue;
             }
-            hash = hash_bytes(
-                hash,
-                component_address(component, slot),
-                component->desc.element_size
-            );
+            hash = component_hash(hash, component, component_address(component, slot));
         }
         for (int i = 0; i < acount(world->relationships); i++) {
             hash = relationship_hash(&world->relationships[i], slot, hash);

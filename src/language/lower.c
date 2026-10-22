@@ -50,6 +50,7 @@ typedef struct
     int cached_argument, cached_value;
     bool pattern_cached;
     int pattern_expression, pattern_value;
+    script_occurrences *occurrences; /* Made by the first debugger point. */
 } lower;
 static uint64_t document_id(const script_analysis *analysis, script_range range)
 {
@@ -279,6 +280,8 @@ static int expression(lower *, int);
 static void debug_input(lower *, const script_expression *, int ordinal, int value, script_type);
 static void debug_point(lower *, script_record_kind, int record, script_range);
 static int condition_value(lower *, int);
+static int coalesce(lower *, const script_expression *);
+static int present(lower *, int, script_type, script_range);
 static uint64_t function_id(const script_analysis *, int);
 static const script_symbol *action_symbol(lower *l, const script_expression *expression)
 {
@@ -330,9 +333,81 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
 {
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
+/* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
+ * the surrogates. As a uint64 a negative value lies above the range, and
+ * value - 0xD800 falls below 0x800 only for a surrogate. */
+static void char_check(lower *l, int slot, pin_type storage, script_range range)
+{
+    static const char message[] = "Value does not fit in char";
+    int wide = storage == PIN_U64
+                 ? slot
+                 : value_op(
+                       l,
+                       (behavior_function_instruction){ .op = BF_CAST,
+                                                        .type = PIN_U64,
+                                                        .left = slot,
+                                                        .target = BEHAVIOR_CAST_WRAP },
+                       range
+                   );
+    int high = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x10FFFF }, range);
+    int in_range = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_LE, .type = PIN_U64, .left = wide, .right = high },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = in_range,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
+    int offset = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        range
+    );
+    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int scalar = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = scalar,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = message },
+        range
+    );
+}
 /* Implicit conversions are lossless; explicit T(value) carries its mode. */
 static int convert_mode(lower *l, int slot, script_type from, script_type to, behavior_cast_mode mode, script_range range)
 {
+    if (script_type_char(to) && !script_type_char(from) && from.storage >= PIN_I8 &&
+        from.storage <= PIN_U64 && !(from.flags & SCRIPT_TYPE_UNTYPED)) {
+        char_check(l, slot, from.storage, range);
+        if (slot_type(from) == PIN_I32) {
+            return slot;
+        }
+        return value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_CAST,
+                                             .type = PIN_I32,
+                                             .left = slot,
+                                             .target = BEHAVIOR_CAST_WRAP },
+            range
+        );
+    }
     if (((to.flags & SCRIPT_TYPE_UNION) && to.container == PIN_CONTAINER_SINGLE &&
          !(to.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
          ((from.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
@@ -432,13 +507,56 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
         range
     );
 }
-/* A fractional value, such as a `number`, truncates to the int an array index
- * or a range bound takes. Integers keep their width: casts only narrow floats. */
+/* The source text of a range in its own document. */
+static const char *range_text(const lower *l, script_range range)
+{
+    return l->a->document_count ? l->a->documents[range.document].text : l->a->text;
+}
+/* assert fails the call, as a checked conversion does, with its message or,
+ * as Odin's #caller_expression, its condition's source text. */
+static int assertion(lower *l, const script_expression *e)
+{
+    int condition = -1;
+    const char *message = NULL;
+    script_range text = { 0 };
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_expression *value = &l->a->expressions[e->arguments[i].value];
+        if (e->arguments[i].parameter == 0) {
+            condition = expression(l, e->arguments[i].value);
+            text = value->range;
+            continue;
+        }
+        if (value->kind != SCRIPT_EXPR_CONSTANT) {
+            error(l, value->range, "assert's message is a string constant");
+            return -1;
+        }
+        message = value->constant.str;
+    }
+    if (condition < 0) {
+        return -1;
+    }
+    bool own = !message || !*message;
+    int length = own ? text.end - text.start : (int)strlen(message);
+    size_t size = sizeof "Assertion failed: " + (size_t)length;
+    char *failure = arena_alloc(&l->module->storage, size);
+    snprintf(failure, size, "Assertion failed: %.*s", length, own ? range_text(l, text) + text.start : message);
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = condition,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = failure },
+        e->range
+    );
+    return -1;
+}
+/* An array index or a range bound as an int: a narrower integer such as a
+ * byte widens. A floating value needs int(x) before it gets here. */
 static int int_slot(lower *l, int value, script_range range)
 {
     script_type from = l->a->expressions[value].type;
     int slot = expression(l, value);
-    if (from.storage != PIN_F32 && from.storage != PIN_F64) {
+    if (slot_type(from) == PIN_I32) {
         return slot;
     }
     return convert(l, slot, from, (script_type){ .storage = PIN_I32 }, range);
@@ -537,17 +655,21 @@ static int binary(lower *l, script_operator op, int left, int right, script_type
             range
         );
     }
-    return value_op(
+    bool comparison = code >= BF_LT && code <= BF_NE;
+    int result = value_op(
         l,
         (behavior_function_instruction){ .op = code,
-                                         .type = code >= BF_LT && code <= BF_NE
-                                                   ? slot_type(operand)
-                                                   : slot_type(type),
+                                         .type = comparison ? slot_type(operand)
+                                                            : slot_type(type),
                                          .left = left,
                                          .right = right,
                                          .target = -1 },
         range
     );
+    if (script_type_char(type) && !comparison) {
+        char_check(l, result, PIN_I32, range);
+    }
+    return result;
 }
 static int short_circuit(lower *l, const script_expression *e)
 {
@@ -698,10 +820,11 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_STATE_DEMAND:
                     case EXECUTION_INTRINSIC_STATE_TRANSITION:
                     case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
-                    case EXECUTION_INTRINSIC_EVENT_READ:
                     case EXECUTION_INTRINSIC_ARRAY_PUSH:
                     case EXECUTION_INTRINSIC_ARRAY_STORE:
                     case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+                    case EXECUTION_INTRINSIC_MAP_STORE:
+                    case EXECUTION_INTRINSIC_MAP_DELETE:
                         kind = BEHAVIOR_ADDRESS;
                         break;
                     default: break;
@@ -816,6 +939,16 @@ static int union_get(lower *l, int value, uint64_t tag, int field, bool whole, s
                             { .type = PIN_BOOL, .b = whole } };
     int slots[] = { value, -1, -1, -1 };
     return primitive(l, &EXECUTION_union_get_call, &EXECUTION_value_access, headers, slots, 4, result, range);
+}
+/* The value an optional or a union of source type holds as type. */
+static int unwrap(lower *l, int value, script_type source, script_type type, uint64_t tag, int field, script_range range)
+{
+    bool nested_optional = (source.flags & SCRIPT_TYPE_UNION) &&
+                           !(source.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+                           (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL);
+    bool whole = type.storage == PIN_UNION &&
+                 type.container == PIN_CONTAINER_SINGLE && !nested_optional;
+    return union_get(l, value, tag, field, whole, type, range);
 }
 static int union_construct(lower *l, const script_expression *e)
 {
@@ -1028,6 +1161,30 @@ static int reference_read(lower *l, int descriptor, script_type type, script_ran
         &descriptor,
         1,
         type,
+        range
+    );
+}
+/* Reads an assignment's target; an absent map key reads its value type's zero. */
+static int target_read(lower *l, int descriptor, int index, script_range range)
+{
+    const script_expression *e = &l->a->expressions[index];
+    if (e->kind != SCRIPT_EXPR_INDEX || !e->argument_count) {
+        return reference_read(l, descriptor, e->type, range);
+    }
+    int absent = e->arguments[0].value;
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, initial(l, e->type) };
+    int slots[] = {
+        descriptor,
+        convert(l, expression(l, absent), l->a->expressions[absent].type, e->type, range)
+    };
+    return primitive(
+        l,
+        &EXECUTION_reference_read_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        e->type,
         range
     );
 }
@@ -2486,6 +2643,51 @@ static int local_slot(lower *l, int local, pin_type type, script_range range)
 {
     return value_op(l, (behavior_function_instruction){ .op = BF_LOCAL, .type = type, .left = local }, range);
 }
+/* `a ?? b` keeps a's value when a holds one and evaluates b only when it is
+ * nil; both branches save into one local. */
+static int coalesce(lower *l, const script_expression *e)
+{
+    script_type source = l->a->expressions[e->left].type;
+    pin_type slot = slot_type(e->type);
+    int optional = expression(l, e->left);
+    int local = behavior_function_builder_local(l->builder, (pin_value){ .type = slot });
+    value_root(l, BEHAVIOR_BANK_LOCAL, local, e->type);
+    int branch = emit(
+        l,
+        (behavior_function_instruction){ .op = BF_BRANCH,
+                                         .left = present(l, optional, source, e->range),
+                                         .target = -1 },
+        e->range
+    );
+    int fallback = convert(
+        l,
+        expression(l, e->right),
+        l->a->expressions[e->right].type,
+        e->type,
+        e->range
+    );
+    emit(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SAVE, .type = slot, .left = fallback, .target = local },
+        e->range
+    );
+    int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, e->range);
+    behavior_function_builder_patch_target(l->builder, branch, l->pc);
+    int value = e->type.flags & SCRIPT_TYPE_OPTIONAL
+                  ? optional
+                  : unwrap(l, optional, source, e->type, 0, 0, e->range);
+    emit(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SAVE, .type = slot, .left = value, .target = local },
+        e->range
+    );
+    behavior_function_builder_patch_target(l->builder, end, l->pc);
+    return local_slot(l, local, slot, e->range);
+}
 static void flow_result(
     lower *l,
     const script_expression *e,
@@ -2956,20 +3158,23 @@ static int call(lower *l, const script_expression *e)
     }
     if (!linked || (!host.call && !host.function && !host.command &&
                     !host.query && host.intrinsic != BF_DELAY &&
-                    host.intrinsic != BF_OWNER && host.intrinsic != BF_DELTA)) {
+                    host.intrinsic != BF_OWNER && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
         return -1;
     }
     if (host.function) {
         return external_call(l, e, cap, host);
     }
-    if (host.intrinsic == BF_OWNER || host.intrinsic == BF_DELTA) {
+    if (host.intrinsic == BF_ASSERT) {
+        return assertion(l, e);
+    }
+    if (host.intrinsic == BF_OWNER) {
         if (l->initializing || e->argument_count || cap->parameter_count ||
             cap->result_count != 1) {
             error(l, e->range, "Context intrinsic requires one result and no arguments");
             return -1;
         }
-        pin_type storage = host.intrinsic == BF_OWNER ? PIN_HANDLE : PIN_F32;
+        pin_type storage = PIN_HANDLE;
         int slot = value_op(
             l,
             (behavior_function_instruction){ .op = host.intrinsic, .type = storage },
@@ -3298,6 +3503,26 @@ static int component_value(lower *l, const script_expression *e, bool presence)
     );
     return pointer;
 }
+/* Whether an optional value holds one: a nil optional is all zero. */
+static int present(lower *l, int value, script_type type, script_range range)
+{
+    pin_type slot = slot_type(type);
+    int zero = kind_op(
+        l,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = slot,
+                                         .value = { .type = slot } },
+        range,
+        bank_kind(l, BEHAVIOR_BANK_SLOT, value)
+    );
+    return value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_NE, .type = slot, .left = value, .right = zero },
+        range
+    );
+}
 static int condition_value(lower *l, int index)
 {
     const script_expression *e = &l->a->expressions[index];
@@ -3324,23 +3549,7 @@ static int condition_value(lower *l, int index)
             true
         );
     }
-    int value = expression(l, index);
-    pin_type type = slot_type(e->type);
-    int zero = kind_op(
-        l,
-        (behavior_function_instruction){ .op = BF_CONSTANT,
-                                         .type = type,
-                                         .value = { .type = type } },
-        e->range,
-        bank_kind(l, BEHAVIOR_BANK_SLOT, value)
-    );
-    return value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_NE, .type = type, .left = value, .right = zero },
-        e->range
-    );
+    return present(l, expression(l, index), e->type, e->range);
 }
 static const script_expression *tuple_signature(lower *l, int source)
 {
@@ -3376,6 +3585,19 @@ static bool sole_output(lower *l, const script_expression *e)
     int function = call->entry >= 0 ? call->entry : call->right;
     return function >= 0 && acount(l->a->functions[function].results) == 1 &&
            e->member == l->a->symbols[l->a->functions[function].results[0]].id;
+}
+/* A system runs once per step with no arguments: its step's payload is Tick's
+ * one field, the step the context holds, which a system reads by name. */
+static int system_step(lower *l, const script_symbol *s, script_range range)
+{
+    const script_catalog_capability
+        *tick = script_catalog_capability_by_id(l->catalog, l->catalog->tick_event);
+    assert(tick && tick->parameter_count == 1);
+    (void)tick;
+    int slot = value_op(l, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }, range);
+    script_type actual = s->type;
+    actual.storage = PIN_F32;
+    return convert(l, slot, actual, s->type, range);
 }
 static int symbol_value(lower *l, const script_expression *e)
 {
@@ -3477,6 +3699,10 @@ static int symbol_value(lower *l, const script_expression *e)
                                              .left = l->variables[e->symbol] },
             e->range
         );
+    }
+    if (s->kind == SCRIPT_PARAMETER && s->function >= 0 &&
+        l->a->functions[s->function].kind == SCRIPT_FUNCTION_SYSTEM) {
+        return system_step(l, s, e->range);
     }
     if (l->parameters[e->symbol] >= 0) {
         if ((s->type.flags & SCRIPT_TYPE_REFERENCE) ||
@@ -4041,13 +4267,18 @@ static void discard_call_results(lower *l, const script_expression *e, int first
 }
 static behavior_source_point debug_origin(lower *l, script_record_kind kind, int record, script_range range)
 {
-    return (behavior_source_point){ .occurrence = script_record_id(l->a, kind, record),
-                                    .meaning = script_record_meaning(l->a, kind, record),
-                                    .start = range.start,
-                                    .end = range.end,
-                                    .line = range.line,
-                                    .column = range.column,
-                                    .kind = kind };
+    if (!l->occurrences) {
+        l->occurrences = script_occurrences_new(l->a);
+    }
+    return (behavior_source_point){
+        .occurrence = script_record_id(l->occurrences, kind, record),
+        .meaning = script_record_meaning(l->a, kind, record),
+        .start = range.start,
+        .end = range.end,
+        .line = range.line,
+        .column = range.column,
+        .kind = kind
+    };
 }
 static void debug_point(lower *l, script_record_kind kind, int record, script_range range)
 {
@@ -4142,17 +4373,16 @@ static int expression_value(lower *l, int index)
         case SCRIPT_EXPR_UNION: return union_construct(l, e);
         case SCRIPT_EXPR_IS:
         case SCRIPT_EXPR_AS: return union_pattern(l, e);
-        case SCRIPT_EXPR_UNWRAP: {
-            int value = expression(l, e->left);
-            script_type source = l->a->expressions[e->left].type;
-            bool nested_optional = (source.flags & SCRIPT_TYPE_UNION) &&
-                                   !(source.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
-                                   (e->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL);
-            bool whole = e->type.storage == PIN_UNION &&
-                         e->type.container == PIN_CONTAINER_SINGLE &&
-                         !nested_optional;
-            return union_get(l, value, e->tag, (int)e->offset, whole, e->type, e->range);
-        }
+        case SCRIPT_EXPR_UNWRAP:
+            return unwrap(
+                l,
+                expression(l, e->left),
+                l->a->expressions[e->left].type,
+                e->type,
+                e->tag,
+                (int)e->offset,
+                e->range
+            );
         case SCRIPT_EXPR_STORE: {
             const script_symbol *action = action_symbol(l, e);
             if (action && action->disabled) {
@@ -4170,16 +4400,30 @@ static int expression_value(lower *l, int index)
             int array = expression(l, e->left);
             script_type collection = l->a->expressions[e->left].type;
             if (collection.container == PIN_CONTAINER_MAP) {
+                /* An absent key reads the value type's zero when it has one. */
                 script_type key = script_catalog_key_type(l->catalog, collection);
-                pin_value headers[] = { initial(l, collection), initial(l, key) };
-                int slots[] = { array, expression(l, e->right) };
+                pin_value headers[] = { initial(l, collection),
+                                        initial(l, key),
+                                        initial(l, e->type) };
+                int slots[] = { array, expression(l, e->right), -1 };
+                int count = 2;
+                if (e->argument_count) {
+                    int absent = e->arguments[0].value;
+                    slots[count++] = convert(
+                        l,
+                        expression(l, absent),
+                        l->a->expressions[absent].type,
+                        e->type,
+                        e->range
+                    );
+                }
                 return primitive(
                     l,
                     &EXECUTION_map_get_call,
                     &EXECUTION_value_access,
                     headers,
                     slots,
-                    2,
+                    count,
                     e->type,
                     e->range
                 );
@@ -4257,23 +4501,19 @@ static int expression_value(lower *l, int index)
             if (e->op == SCRIPT_OP_NONE) {
                 return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
             }
-            if (e->op == SCRIPT_OP_NEG) {
-                return value_op(
+            if (e->op == SCRIPT_OP_NEG || e->op == SCRIPT_OP_BIT_NOT) {
+                int result = value_op(
                     l,
-                    (behavior_function_instruction){ .op = BF_NEG,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
+                    (behavior_function_instruction){
+                        .op = e->op == SCRIPT_OP_NEG ? BF_NEG : BF_BIT_NOT,
+                        .type = slot_type(e->type),
+                        .left = left },
                     e->range
                 );
-            }
-            if (e->op == SCRIPT_OP_BIT_NOT) {
-                return value_op(
-                    l,
-                    (behavior_function_instruction){ .op = BF_BIT_NOT,
-                                                     .type = slot_type(e->type),
-                                                     .left = left },
-                    e->range
-                );
+                if (script_type_char(e->type)) {
+                    char_check(l, result, PIN_I32, e->range);
+                }
+                return result;
             }
             if (e->op == SCRIPT_OP_NOT) {
                 pin_type operand = l->a->expressions[e->left].type.flags &
@@ -4302,6 +4542,9 @@ static int expression_value(lower *l, int index)
             if (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR) {
                 return short_circuit(l, e);
             }
+            if (e->op == SCRIPT_OP_COALESCE) {
+                return coalesce(l, e);
+            }
             if (e->op == SCRIPT_OP_EQ || e->op == SCRIPT_OP_NE) {
                 int optional = l->a->expressions[e->left].kind == SCRIPT_EXPR_NIL
                                  ? e->right
@@ -4328,8 +4571,13 @@ static int expression_value(lower *l, int index)
                                     ? e->type
                                     : l->a->expressions[e->left].type;
             if (e->type.storage == PIN_BOOL && script_type_numeric(operand)) {
-                /* Integers compare in the type holding both, as arithmetic does. */
+                /* Integers compare in the type holding both, as arithmetic does;
+                 * a char beside another integer compares as that integer. */
                 script_type other = l->a->expressions[e->right].type;
+                if (script_type_char(operand) != script_type_char(other)) {
+                    operand.nominal = script_type_char(operand) ? 0 : operand.nominal;
+                    other.nominal = script_type_char(other) ? 0 : other.nominal;
+                }
                 pin_type common = behavior_scalar_common_integer(
                     operand.storage,
                     other.storage
@@ -4413,33 +4661,11 @@ static int expression_value(lower *l, int index)
                 l->a->symbols[receiver->symbol].kind == SCRIPT_PARAMETER) {
                 int ordinal = (int)e->offset;
                 int source = l->a->symbols[receiver->symbol].function;
-                if (source >= 0 && source != l->payload_function &&
-                    l->a->functions[source].kind == SCRIPT_FUNCTION_HANDLER) {
-                    pin_value headers[] = { { .type = BF_POINTER_TYPE },
-                                            { .type = PIN_U64,
-                                              .u64 = function_id(l->a, source) },
-                                            { .type = PIN_I32, .i = ordinal } };
-                    int slots[] = { value_op(
-                                        l,
-                                        (behavior_function_instruction){
-                                            .op = BF_CONTEXT,
-                                            .type = BF_POINTER_TYPE,
-                                            .target = 1 },
-                                        e->range
-                                    ),
-                                    -1,
-                                    -1 };
-                    return primitive(
-                        l,
-                        &EXECUTION_event_read_call,
-                        &EXECUTION_assignment_access,
-                        headers,
-                        slots,
-                        3,
-                        e->type,
-                        e->range
-                    );
-                }
+                /* Only the handler that receives a payload reads it. */
+                assert(
+                    source < 0 || source == l->payload_function ||
+                    l->a->functions[source].kind != SCRIPT_FUNCTION_HANDLER
+                );
                 if (source == l->payload_function) {
                     ordinal += l->payload_first;
                 }
@@ -4923,9 +5149,10 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
-/* A writable local or result array kept in its own bank. Every store into it
- * snapshots, so the local exclusively owns its items and may grow in place. */
-static bool owned_local_array(lower *l, int expression)
+/* A writable local or result array or map kept in its own bank. Every store
+ * into it snapshots, so the local exclusively owns its items and may grow in
+ * place. */
+static bool owned_local(lower *l, int expression, pin_container container)
 {
     const script_expression *e = &l->a->expressions[expression];
     if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
@@ -4933,7 +5160,7 @@ static bool owned_local_array(lower *l, int expression)
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
     return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
-           s->type.container == PIN_CONTAINER_ARRAY && !s->boxed &&
+           s->type.container == container && !s->boxed &&
            !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
                               SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
            l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
@@ -4962,7 +5189,7 @@ static bool self_call(lower *l, const script_expression *e, int symbol, const ch
            l->a->expressions[array].symbol == symbol &&
            !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
 }
-/* `xs = array_add(xs, x)`, `xs = append(xs, ys)` and `xs[i] = x` on an owned
+/* `xs = append(xs, x)`, `xs = extend(xs, ys)` and `xs[i] = x` on an owned
  * local update its array in place, so building an array is linear rather
  * than quadratic. */
 static bool in_place_array(lower *l, const script_statement *s)
@@ -4972,11 +5199,11 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     const script_expression *target = &l->a->expressions[s->expression],
                             *rhs = &l->a->expressions[s->second];
-    bool owned = owned_local_array(l, s->expression);
-    bool push = owned && self_call(l, rhs, target->symbol, "Array Add");
-    bool extend = owned && self_call(l, rhs, target->symbol, "Append");
+    bool owned = owned_local(l, s->expression, PIN_CONTAINER_ARRAY);
+    bool push = owned && self_call(l, rhs, target->symbol, "Append");
+    bool extend = owned && self_call(l, rhs, target->symbol, "Extend");
     bool store = target->kind == SCRIPT_EXPR_INDEX &&
-                 owned_local_array(l, target->left);
+                 owned_local(l, target->left, PIN_CONTAINER_ARRAY);
     if (!push && !extend && !store) {
         return false;
     }
@@ -5032,6 +5259,81 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     return true;
 }
+/* `m[k] = v` and `delete m[k]` on an owned local map update it in place, so
+ * building a map is linear rather than quadratic. */
+static bool in_place_map(lower *l, const script_statement *s)
+{
+    if (s->op != SCRIPT_OP_NONE) {
+        return false;
+    }
+    const script_expression *target = &l->a->expressions[s->expression],
+                            *rhs = &l->a->expressions[s->second];
+    bool store = target->kind == SCRIPT_EXPR_INDEX &&
+                 owned_local(l, target->left, PIN_CONTAINER_MAP);
+    bool remove = rhs->kind == SCRIPT_EXPR_MAP_REMOVE &&
+                  owned_local(l, s->expression, PIN_CONTAINER_MAP) &&
+                  l->a->expressions[rhs->left].kind == SCRIPT_EXPR_SYMBOL &&
+                  l->a->expressions[rhs->left].symbol == target->symbol &&
+                  !(l->a->expressions[rhs->right].effects & SCRIPT_EFFECT_WRITE);
+    if (!store && !remove) {
+        return false;
+    }
+    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
+    script_type collection = l->a->symbols[symbol].type;
+    script_type key = script_catalog_key_type(l->catalog, collection);
+    script_type item = script_catalog_element_type(l->catalog, collection);
+    int key_expression = store ? target->right : rhs->right;
+    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
+    if (remove) {
+        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
+    }
+    pin_value headers[3] = { { .type = BF_POINTER_TYPE },
+                             initial(l, key),
+                             initial(l, item) };
+    int slots[3];
+    slots[1] = convert(
+        l,
+        expression(l, key_expression),
+        l->a->expressions[key_expression].type,
+        key,
+        s->range
+    );
+    if (store) {
+        slots[2] = convert(
+            l,
+            expression(l, s->second),
+            l->a->expressions[s->second].type,
+            item,
+            s->range
+        );
+    }
+    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
+    slots[0] = value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = local_address(l, symbol) },
+        s->range
+    );
+    primitive(
+        l,
+        store ? &EXECUTION_map_store_call : &EXECUTION_map_delete_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        store ? 3 : 2,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
+    /* The debugger watches the removal's result, as it watches an in-place
+     * array append's. */
+    if (remove) {
+        int result = expression_value(l, rhs->left);
+        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
+        debug_watch(l, s->second, result, rhs->type, true, 0);
+    }
+    return true;
+}
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
@@ -5076,7 +5378,7 @@ static void assign(lower *l, const script_statement *s)
         store_tuple(l, l->a->expressions[index].symbol, expression(l, s->second), s->second, s->range);
         return;
     }
-    if (in_place_array(l, s)) {
+    if (in_place_array(l, s) || in_place_map(l, s)) {
         return;
     }
     int saved_expression = l->target_expression,
@@ -5093,12 +5395,7 @@ static void assign(lower *l, const script_statement *s)
     l->target_reference = destination;
     l->target_value = !compound ? -1
                     : direct    ? expression(l, index)
-                                : reference_read(
-                                      l,
-                                      destination,
-                                      l->a->expressions[index].type,
-                                      s->range
-                                  );
+                                : target_read(l, destination, index, s->range);
     l->target_cached = compound;
     int value = expression(l, s->second);
     /* Retain the destination for simple writes without replacing RHS reads. */
@@ -5455,13 +5752,46 @@ static void statement(lower *l, int index)
         case SCRIPT_STMT_FOR: {
             int first = int_slot(l, s->expression, s->range),
                 last = int_slot(l, s->second, s->range);
-            store_symbol(l, s->symbol, first, s->range);
+            /* `for <` counts down from last, `..<` stops before it. A reversed
+             * half-open range starts at last - 1 only after first < last proves
+             * that cannot wrap. Equality ends an inclusive range before its
+             * step, so neither INT_MAX nor INT_MIN wraps. */
+            int start = s->reverse ? last : first, stop = s->reverse ? first : last;
+            int empty = -1;
+            if (s->reverse && s->exclusive) {
+                int nonempty = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_LT, .type = PIN_I32, .left = first, .right = last },
+                    s->range
+                );
+                int enter = emit(
+                    l,
+                    (behavior_function_instruction){ .op = BF_BRANCH,
+                                                     .left = nonempty,
+                                                     .target = -1 },
+                    s->range
+                );
+                empty = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
+                behavior_function_builder_patch_target(l->builder, enter, l->pc);
+                int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
+                start = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_SUB, .type = PIN_I32, .left = last, .right = one },
+                    s->range
+                );
+            }
+            bool counted = !s->exclusive || s->reverse;
+            store_symbol(l, s->symbol, start, s->range);
             int bound = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
             emit(
                 l,
                 (
                     behavior_function_instruction
-                ){ .op = BF_SAVE, .type = PIN_I32, .left = last, .target = bound },
+                ){ .op = BF_SAVE, .type = PIN_I32, .left = stop, .target = bound },
                 s->range
             );
             int again = l->pc;
@@ -5472,7 +5802,7 @@ static void statement(lower *l, int index)
                                                  .left = l->locals[s->symbol] },
                 s->range
             );
-            last = value_op(
+            int limit = value_op(
                 l,
                 (behavior_function_instruction){ .op = BF_LOCAL,
                                                  .type = PIN_I32,
@@ -5481,9 +5811,12 @@ static void statement(lower *l, int index)
             );
             int condition = value_op(
                 l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_LE, .type = PIN_I32, .left = current, .right = last },
+                (behavior_function_instruction){ .op = s->reverse ? BF_GE
+                                                     : counted    ? BF_LE
+                                                                  : BF_LT,
+                                                 .type = PIN_I32,
+                                                 .left = current,
+                                                 .right = limit },
                 s->range
             );
             int branch = emit(
@@ -5509,40 +5842,48 @@ static void statement(lower *l, int index)
                                                  .left = l->locals[s->symbol] },
                 s->range
             );
-            last = value_op(
-                l,
-                (behavior_function_instruction){ .op = BF_LOCAL,
-                                                 .type = PIN_I32,
-                                                 .left = bound },
-                s->range
-            );
-            /* Test equality before increment, so an INT_MAX upper bound never wraps. */
-            int done = value_op(
-                l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_EQ, .type = PIN_I32, .left = current, .right = last },
-                s->range
-            );
-            int at_bound = emit(
-                l,
-                (behavior_function_instruction){ .op = BF_BRANCH,
-                                                 .left = done,
-                                                 .target = -1 },
-                s->range
-            );
+            int at_bound = -1;
+            if (counted) {
+                limit = value_op(
+                    l,
+                    (behavior_function_instruction){ .op = BF_LOCAL,
+                                                     .type = PIN_I32,
+                                                     .left = bound },
+                    s->range
+                );
+                int done = value_op(
+                    l,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_EQ, .type = PIN_I32, .left = current, .right = limit },
+                    s->range
+                );
+                at_bound = emit(
+                    l,
+                    (behavior_function_instruction){ .op = BF_BRANCH,
+                                                     .left = done,
+                                                     .target = -1 },
+                    s->range
+                );
+            }
             int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
             int next = value_op(
                 l,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_ADD, .type = PIN_I32, .left = current, .right = one },
+                (behavior_function_instruction){ .op = s->reverse ? BF_SUB : BF_ADD,
+                                                 .type = PIN_I32,
+                                                 .left = current,
+                                                 .right = one },
                 s->range
             );
             store_symbol(l, s->symbol, next, s->range);
             emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = again }, s->range);
             behavior_function_builder_patch_target(l->builder, end, l->pc);
-            behavior_function_builder_patch_target(l->builder, at_bound, l->pc);
+            if (at_bound >= 0) {
+                behavior_function_builder_patch_target(l->builder, at_bound, l->pc);
+            }
+            if (empty >= 0) {
+                behavior_function_builder_patch_target(l->builder, empty, l->pc);
+            }
             loop_finish(l, advance, l->pc);
             return;
         }
@@ -5624,12 +5965,26 @@ static void statement(lower *l, int index)
                 );
             }
             int ordinal = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
-            int zero = constant(l, (pin_value){ .type = PIN_I32 }, s->range);
+            /* `for <` visits an array from its last item down to index 0. */
+            int zero = constant(l, (pin_value){ .type = PIN_I32 }, s->range),
+                start = zero;
+            if (s->reverse) {
+                int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
+                start = value_op(
+                    l,
+                    (behavior_function_instruction){
+                        .op = BF_SUB,
+                        .type = PIN_I32,
+                        .left = array_count(l, array, s->range),
+                        .right = one },
+                    s->range
+                );
+            }
             emit(
                 l,
                 (
                     behavior_function_instruction
-                ){ .op = BF_SAVE, .type = PIN_I32, .left = zero, .target = ordinal },
+                ){ .op = BF_SAVE, .type = PIN_I32, .left = start, .target = ordinal },
                 s->range
             );
             int again = l->pc;
@@ -5702,9 +6057,10 @@ static void statement(lower *l, int index)
                                  : array_count(l, array, s->range);
                 condition = value_op(
                     l,
-                    (
-                        behavior_function_instruction
-                    ){ .op = BF_LT, .type = PIN_I32, .left = index, .right = count },
+                    (behavior_function_instruction){ .op = s->reverse ? BF_GE : BF_LT,
+                                                     .type = PIN_I32,
+                                                     .left = index,
+                                                     .right = s->reverse ? zero : count },
                     s->range
                 );
             }
@@ -5804,29 +6160,30 @@ static void statement(lower *l, int index)
                 s->range
             );
             int one = constant(l, (pin_value){ .type = PIN_I32, .i = 1 }, s->range);
-            int next = text
-                         ? string_cursor(
-                               l,
-                               &EXECUTION_string_next_call,
-                               value_op(
-                                   l,
-                                   (behavior_function_instruction){ .op = BF_LOCAL,
-                                                                    .type = BF_POINTER_TYPE,
-                                                                    .left = saved_array },
-                                   s->range
-                               ),
-                               index,
-                               (script_type){ .storage = PIN_I32 },
-                               s->range
-                           )
-                         : value_op(
-                               l,
-                               (behavior_function_instruction){ .op = BF_ADD,
-                                                                .type = PIN_I32,
-                                                                .left = index,
-                                                                .right = one },
-                               s->range
-                           );
+            int next = text ? string_cursor(
+                                  l,
+                                  &EXECUTION_string_next_call,
+                                  value_op(
+                                      l,
+                                      (behavior_function_instruction){
+                                          .op = BF_LOCAL,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = saved_array },
+                                      s->range
+                                  ),
+                                  index,
+                                  (script_type){ .storage = PIN_I32 },
+                                  s->range
+                              )
+                            : value_op(
+                                  l,
+                                  (behavior_function_instruction){
+                                      .op = s->reverse ? BF_SUB : BF_ADD,
+                                      .type = PIN_I32,
+                                      .left = index,
+                                      .right = one },
+                                  s->range
+                              );
             emit(
                 l,
                 (
@@ -6287,6 +6644,7 @@ behavior_function_builder *script_lower_evaluator_reference(
     }
     emit_value_evaluator(&l, expressions, types, count, range);
     free(l.variables);
+    script_occurrences_free(l.occurrences);
     if (l.failed) {
         snprintf(
             message,
@@ -7500,6 +7858,7 @@ static execution_module_plan *lower_analysis(
     }
     free(l.constant_values);
     afree(l.loops);
+    script_occurrences_free(l.occurrences);
     m->diagnostic_count = acount(m->diagnostics);
     m->valid = !l.failed;
     if (!m->valid) {

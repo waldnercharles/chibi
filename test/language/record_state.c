@@ -41,7 +41,8 @@ static const script_catalog empty_catalog;
 static const script_lower_bindings bindings;
 static const char
     behavior[] = "Store :: behavior { row: Rows.Row = {key: \"initial\", "
-                 "label: \"initial\"}; rows: Rows.Row[] = []; on Set(text) { "
+                 "label: \"initial\"}; rows: Rows.Row[] = []; on Set :: (text: "
+                 "string) { "
                  "empty: Rows.Row[] = []; rows = empty; row = {key: text, "
                  "label: text}; rows = [row, row, row]; } }";
 static void retire_source()

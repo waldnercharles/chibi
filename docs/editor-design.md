@@ -1,7 +1,7 @@
 # Editor design and implementation plan
 
 The September 6 usability review and proposed next refactor are in
-[Editor usability review](/Users/cwaldner/Personal/c-blueprints/docs/reviews/editor-ux-2026-09-06/review.md).
+[Editor usability review](reviews/editor-ux-2026-09-06/review.md).
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 
@@ -930,11 +930,10 @@ not have the original distance, so neither reproduces this operation. Keep the
 dependency change reproducible against the pinned Cute revision rather than
 modifying only the generated build checkout.
 
-The checked-in `cmake/patches/cute-interior-border.patch` adds
-`cf_draw_push_interior_border`, paired with the existing outline pop. Configure
-applies the patch to fresh or populated dependency checkouts, accepts an already
-applied patch, and fails on a mismatch. Cute compiles its built-in GLSL at runtime;
-rebuilding consumes the patched shader header without an offline compiler.
+The prebuilt Cute carries `third_party/cute_framework/interior-border.patch`,
+which adds `cf_draw_push_interior_border`, paired with the existing outline pop.
+Cute compiles its built-in GLSL at runtime; rebuilding consumes the patched
+shader header without an offline compiler.
 
 Appearance Border Width now uses interior coverage without expanding body
 bounds. Glow remains an independent local effect. Interior borders conservatively
@@ -1332,8 +1331,8 @@ Behavior event graphs also expose their typed event outputs in the same input
 binding picker. Choosing an event output stores the event and pin identity on
 the target input, so the value can be used anywhere in that event's graph
 without another data edge. `Delta Time` remains a compact context node; when
-the active event declares a real `DeltaSeconds` or `Delta Seconds` output, its
-payload supplies that context automatically.
+the active event declares a real `dt` output, its payload supplies that context
+automatically.
 
 Material, Shape, and Shader Library nodes stack outputs above options and inputs.
 Inputs use the node width for labeled numeric values, vector axes, range endpoints,

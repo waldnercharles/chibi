@@ -45,7 +45,8 @@ make build JOBS=4 BUILD_TARGET=test_suite
 python3 docs/research/cut61-iframe-profile/run.py
 ```
 
-Historical `run.py.txt` executed exactly five sequential copies of:
+The historical runner (removed on 2026-10-20; Git keeps `run.py.txt`)
+executed exactly five sequential copies of:
 
 ```sh
 CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 CHIBI_IFRAME_PROFILE=1 build/test_suite --kit-documents

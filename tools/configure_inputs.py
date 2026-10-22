@@ -21,19 +21,14 @@ def cache_values(build: Path) -> dict[str, str]:
     return values
 
 
-
-
 def signature(source: Path, build: Path, profile: str, program: Path,
               arguments: list[str]) -> str:
     if profile not in ("native", "tool-host"):
         raise ValueError("expected native or tool-host profile")
     values = cache_values(build)
     cache = build / "CMakeCache.txt"
-    files = {cache, build / ".chibi-config", build / ".chibi-dependency-package.cmake",
-             build / ".chibi-fetchcontent-cache.cmake", program}
-    for name in ("configure_inputs.py", "dependency_package.py", "fetchcontent_cache.py"):
-        files.add(program.parent / name)
-        files.add(Path(__file__).resolve().parent / name)
+    files = {cache, build / ".chibi-config", program, program.parent / "configure_inputs.py",
+             Path(__file__).resolve()}
     generator = values.get("CMAKE_GENERATOR")
     if generator == "Ninja":
         rules = build / "build.ninja"
@@ -61,19 +56,9 @@ def signature(source: Path, build: Path, profile: str, program: Path,
     files.update(dependencies)
     tracked = subprocess.run([
         "git", "-C", str(source), "ls-files", "-co", "--exclude-standard", "-z",
-        "--", "*CMakeLists.txt", "*.cmake", "cmake/patches/*", "tools/configure*",
-        "tools/dependency_package.py", "tools/fetchcontent_cache.py",
+        "--", "*CMakeLists.txt", "*.cmake", "tools/configure*",
     ], check=True, capture_output=True).stdout
     files.update(source / os.fsdecode(name) for name in tracked.split(b"\0") if name)
-    for directory in ("third_party/ckdl", "third_party/fmt", "third_party/yyjson"):
-        files.update(path for path in (source / directory).rglob("*") if path.is_file())
-    package = values.get("CHIBI_DEPENDENCY_PACKAGE")
-    if package:
-        export = Path(package)
-        marker = export.parent.parent / "complete.json"
-        if not export.is_file() or not marker.is_file():
-            raise ValueError("dependency package is incomplete")
-        files.update((export, marker))
     for name, value in values.items():
         if re.fullmatch(r"CMAKE_(?:C|CXX|OBJC|OBJCXX)_COMPILER(?:_LAUNCHER)?|"
                         r"CMAKE_(?:AR|RANLIB|LINKER|MAKE_PROGRAM)", name):

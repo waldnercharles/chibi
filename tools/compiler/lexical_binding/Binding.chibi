@@ -5,7 +5,7 @@ import strings "core:strings"
 
 // Borrowed tables become ordinary owned invocation values at the ABI boundary.
 // Indices and scope-parent chains retain the analyzer's structural invariants.
-Scope :: struct {
+pub Scope :: struct {
     parent: int;
     function: int;
     start: int;
@@ -14,7 +14,7 @@ Scope :: struct {
     column: int;
     document: int;
 }
-Symbol :: struct {
+pub Symbol :: struct {
     name: string;
     kind: int;
     scope: int;
@@ -25,15 +25,15 @@ Symbol :: struct {
     column: int;
     document: int;
 }
-Function :: struct {
+pub Function :: struct {
     symbol: int;
     scope: int;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(scopes: Scope[], symbols: Symbol[], functions: Function[],
            ids: uint64[], document_keys: string[])
 }
-Context :: struct {
+pub Context :: struct {
     identity: string;
     scope: int;
     function: int;
@@ -41,7 +41,7 @@ Context :: struct {
     has_identity: bool;
     has_documents: bool;
 }
-Request :: struct {
+pub Request :: struct {
     name: string;
     kind: int;
     start: int;
@@ -50,12 +50,12 @@ Request :: struct {
     column: int;
     document: int;
 }
-Declaration :: union {
+pub Declaration :: union {
     Appended(id: uint64, diagnostics: syntax.Diagnostic[])
     | Existing(symbol: int, diagnostics: syntax.Diagnostic[])
 }
 
-FunctionKind: int : 1;
+pub FunctionKind: int : 1;
 MacroKind: int : 2;
 StateKind: int : 4;
 SharedStateKind: int : 5;
@@ -64,7 +64,7 @@ ResultKind: int : 7;
 LocalKind: int : 8;
 ActionKind: int : 9;
 
-FindName :: (environment: Environment, scope: int, name: string) -> int {
+pub FindName :: (environment: Environment, scope: int, name: string) -> int {
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
             current := scope;
@@ -83,7 +83,7 @@ FindName :: (environment: Environment, scope: int, name: string) -> int {
             return -1;
     }
 }
-FindStorage :: (environment: Environment, scope: int, name: string, kind: int) -> int {
+pub FindStorage :: (environment: Environment, scope: int, name: string, kind: int) -> int {
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
             current := scope;
@@ -102,7 +102,7 @@ FindStorage :: (environment: Environment, scope: int, name: string, kind: int) -
             return -1;
     }
 }
-FindCallable :: (environment: Environment, scope: int, name: string) -> int {
+pub FindCallable :: (environment: Environment, scope: int, name: string) -> int {
     found := FindName(environment, scope, name);
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
@@ -138,7 +138,7 @@ Previous :: (symbol: Symbol, message: string) -> syntax.Diagnostic {
 
 // The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
 // one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
-ID :: (prefix: string, name: string) -> uint64 {
+pub ID :: (prefix: string, name: string) -> uint64 {
     hash: uint64 = 14695981039346656037;
     prime: uint64 = 1099511628211;
     index: int = 0;
@@ -195,10 +195,10 @@ SymbolID :: (environment: Environment, context: Context, request: Request, resul
 
 // Admission reports diagnostics in source order and still permits appending
 // reserved Cancelled when no duplicate exists, matching the current analyzer.
-Declare :: (environment: Environment, context: Context, request: Request) -> Declaration {
+pub Declare :: (environment: Environment, context: Context, request: Request) -> Declaration {
     diagnostics: syntax.Diagnostic[] = [];
     if (request.name == "Cancelled") {
-        diagnostics = array_add(diagnostics, Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));
+        diagnostics.append(Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));
     }
     existing := FindName(environment, context.scope, request.name);
     packageDeclaration := context.has_documents && context.scope == context.package_scope;
@@ -222,9 +222,9 @@ Declare :: (environment: Environment, context: Context, request: Request) -> Dec
                 resultParameter = symbols[existing].kind == ParameterKind;
             }
             if (existing >= 0 && symbols[existing].scope == context.scope && !resultParameter) {
-                diagnostics = array_add(diagnostics, Diagnostic(request, format_text("Duplicate declaration '{}'", request.name)));
+                diagnostics.append(Diagnostic(request, format_text("Duplicate declaration '{}'", request.name)));
                 if (packageDeclaration) {
-                    diagnostics = array_add(diagnostics, Previous(symbols[existing], format_text("Previous declaration '{}' is here", request.name)));
+                    diagnostics.append(Previous(symbols[existing], format_text("Previous declaration '{}' is here", request.name)));
                 }
                 return Declaration.Existing(existing, diagnostics);
             }

@@ -15,7 +15,7 @@ import strings "core:strings"
 // An explicit package source snapshot is the complete input. No native source
 // analyzer, package preparer, finalizer or old compiler is reachable from this
 // entry; only the raw parser is native. Stage zero still builds this closure.
-Result :: union {
+pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
     Compiled(module: uint64, function_id: uint64, bytes: byte[])
 }
@@ -174,7 +174,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
             variables: lower.Variable[] = [];
             ids: uint64[] = [];
             output: lower.Result = {expression: result, type: result_type};
-            ranges := array_add(expression_ranges, ExpressionRange(tree, function, document));
+            ranges := append(expression_ranges, ExpressionRange(tree, function, document));
             facts := lower.Request.Tables([boolean, integer], expressions, symbols, variables,
                                           [output], literals, ids, ranges, keys, abi, length(ranges) - 1);
             plan := lower.Lower(facts);
@@ -183,7 +183,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
                     return SourceFailure(tree, expression, document, diagnostics[0].message);
                 case .Ready(target, variable_ids, defaults, results, slots, locals, origins, documents, code):
                     module := binding.ID("module", identity);
-                    prepared := Prepare(plan, module, function_id, name, prepared_abi, opcodes);
+                    prepared := Prepare(plan, module, function_id, name, prepared_abi, pointer_size, opcodes);
                     if (length(prepared) == 0 || length(prepared) > 65536) {
                         return SourceFailure(tree, function, document, "bounded prepared payload exceeds its output limit");
                     }
@@ -220,7 +220,7 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
                     strings.ByteLength(item.identity) > 240) {
                     return InputFailure(-1, "bounded package syntax or identity exceeds its limit");
                 }
-                keys = array_add(keys, item.key);
+                keys.append(item.key);
             }
             function: int = -1;
             document: int = -1;
@@ -265,8 +265,8 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
 
 // `prepared_abi` is the target's prepared header ABI, and `opcodes` the
 // instruction each scalar wire opcode names on it.
-Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
-            prepared_abi: uint64, opcodes: int[]) -> Result {
+pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
+                prepared_abi: uint64, opcodes: int[]) -> Result {
     if (length(paths) < 1 || length(paths) > 3 || length(sources) != length(paths)) {
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }
@@ -284,8 +284,8 @@ Compile :: (project: string, paths: string[], sources: string[], abi: lower.Targ
             return InputFailure(index, "bounded source path or text exceeds its limit");
         }
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
-        inputs = array_add(inputs, input);
-        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
+        inputs.append(input);
+        sizes.append(uint64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,

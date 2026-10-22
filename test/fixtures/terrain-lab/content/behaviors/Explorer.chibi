@@ -3,7 +3,7 @@
 Explorer :: behavior {
     terrain: entity
     terrainIdentity := "terrain-lab-quarry-v1"
-    facing := 1
+    facing := 1.0
     jumpHeld := false
     digHeld := false
     saveHeld := false
@@ -13,7 +13,7 @@ Explorer :: behavior {
     storageAction := 0
     digCount := 0
 
-    on Begin {
+    on Begin :: () {
         terrain = globals.Terrain
         Present()
     }
@@ -100,7 +100,7 @@ Explorer :: behavior {
         globals.DigTarget.Transform = DigPoint()
     }
 
-    on Tick {
+    on Tick :: () {
         PollStorage()
         horizontal := self.Input.Move.x
         if abs(horizontal) > 0.1 {

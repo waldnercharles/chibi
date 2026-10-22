@@ -1,3 +1,5 @@
+// Applies accepted damage and reports actual health loss. Died handlers run
+// before destruction; active dashes reject Damage.
 HealthBehavior :: behavior {
 
     macro HealthChanged(Current: double, RemainingHealth: double) -> () {
@@ -9,13 +11,13 @@ HealthBehavior :: behavior {
             goto False;
         }
     }
-    on Damage as damage(Amount: int = 0, Source: handle<ecs.entity> = 0) {
-        if (convert<To_Real>(damage.Amount) > 0) {
-            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: damage.Amount, Source: damage.Source);
+    on Damage :: (Amount: int, Source: handle<ecs.entity>) {
+        if (convert<To_Real>(Amount) > 0) {
+            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: Amount, Source: Source);
         } else {
         }
     }
-    on Died as died(Source: handle<ecs.entity> = 0) {
+    on Died :: () {
         if (double(self.Health.current) <= 0) {
             await Notify_Encounter();
             destroy_entity(Entity: self);
@@ -25,20 +27,18 @@ HealthBehavior :: behavior {
     Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<ecs.entity> = 0) -> () {
 
         action current_remaininghealth = HealthChanged(Current: plain double = convert<To_Real>(Current), RemainingHealth: plain double = double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(Maximum))));
-        after entry {
-            if (convert<To_Real>(Current) > 0) {
-                if (self.Dash != nil) {
-                    if (double(self.Dash.remaining) > 0) {
-                        return ();
-                    } else {
-                        current_remaininghealth();
-                    }
+        if (convert<To_Real>(Current) > 0) {
+            if (self.Dash != nil) {
+                if (double(self.Dash.remaining) > 0) {
+                    return ();
                 } else {
                     current_remaininghealth();
                 }
             } else {
-                return ();
+                current_remaininghealth();
             }
+        } else {
+            return ();
         }
         after current_remaininghealth.True {
             current := Current
@@ -58,15 +58,13 @@ HealthBehavior :: behavior {
     }
     Notify_Encounter :: () -> () {
 
-        after entry {
-            if (self.EncounterMember != nil) {
-                for (foreach_2 in find_entities_with_component(Component: Encounter)) {
-                    send_event<RefreshEncounter>(Entity: foreach_2);
-                }
-                return ();
-            } else {
-                return ();
+        if (self.EncounterMember != nil) {
+            for (foreach_2 in find_entities_with_component(Component: Encounter)) {
+                send_event<RefreshEncounter>(Entity: foreach_2);
             }
+            return ();
+        } else {
+            return ();
         }
     }
 }

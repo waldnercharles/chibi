@@ -1,7 +1,13 @@
+// An authored wave announcement expands a thin red band through floor cells and
+// expires after 0.8 seconds.
 WavePulseBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    // State
     Age: float = 0.0
-    action age_2 = set_variable<Age>(Age + delta_time())
-    on Tick {
+    action age_2 = set_variable<Age>(Age + Step)
+    on Tick :: (dt: float s) {
+        Step = dt
         age_2()
     }
     after age_2 {

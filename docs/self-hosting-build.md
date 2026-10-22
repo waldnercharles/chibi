@@ -6,9 +6,9 @@ bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
 
 ## First increment
 
-`test/language/BuildWorkflow.chibi` is an ordinary library whose `Build`
+`test/language/BuildWorkflow.chibi` is an ordinary package whose `Build`
 function constructs argv arrays, requests configuration, stops on failure and
-requests the build only after success. Its `RunBuildStep` capability exists only
+requests the build only after success. Its `build.run` capability exists only
 in the C test's private catalog. The host copies borrowed arguments into fixed
 recording storage and supplies deterministic statuses. Nothing launches CMake.
 CMake embeds the one source fixture into the existing language test driver.
@@ -40,38 +40,67 @@ game catalogs and public SDK library exports. Windows retains the
 existing stage-zero path; its equivalent process-tree implementation is pending.
 
 ```text
-chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]
+chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]
 ```
 
 The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
-named zero-argument function returning `int`. Relative source paths resolve from
+named zero-argument function returning `int`. The file is the one file of the
+package at its directory, so it starts with a `package` header. With `--core`,
+it may import that collection's packages, such as `core:strings`; a relative
+`--core` resolves from the root. Each `--collection NAME=DIR`, at most eight,
+adds another collection the program imports as `NAME:`, as Odin's
+`-collection:name=path` does. Besides the `build.` natives, a program has
+the text and array natives every host offers, such as `format_text` and
+`length`. Nothing resumes a build program, so waiting or starting a task fails
+it with a diagnostic. Relative source paths resolve from
 the explicit root. The CLI uses bytecode; the private C invocation API also
 supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
 `--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
 
-The private catalog includes `RunBuildStep(arguments: string[]) -> int`,
-`RunBuildProbe(arguments: string[]) -> int` and
-`BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
+Every private native is named under `build.`, as Zig's build API sits under
+`std.Build`: `build.run`, `build.read_file`, `build.join` and so on. The
+qualifier is part of each native's catalog name, the way an imported package's
+functions are named, so a build program needs no import, and an unqualified or
+`Build`-prefixed name is an unknown callable.
+
+The private catalog includes `build.run(arguments: string[]) -> int`,
+`build.probe(arguments: string[]) -> int` and
+`build.environment(name: string) -> string`. A step runs direct argv in the root
 directory. PATH lookup selects the executable separately from the authored
 `argv[0]`, preserving every argument, including empty strings and shell syntax.
 No shell interprets the arguments. The host copies the root, arguments and
 allowlisted environment for the child lifetime and never changes parent cwd or
 environment.
 
-The environment snapshot includes compiler, flags, CMake, SDK, dependency-cache,
-ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths
-and the inherited test deadline. `environment_names` in `build_host.c` owns the
-explicit allowlist. Missing allowed names read as empty strings; other names
-are capability errors. `BuildEnvironmentNames()` lists the allowed names the
+The environment snapshot includes compiler, flags, CMake, SDK, cache-directory,
+ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths,
+the GitHub CLI's `GH_TOKEN` for archive downloads and the inherited test
+deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
+Missing allowed names read as empty strings; other names are capability errors.
+`build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
-1 MiB. Each invocation permits 64 steps, probes included, and each step permits
-256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
-1 MiB, one build text value, for `BuildLastStdout` and `BuildLastStderr`. A
+1 MiB. Each invocation permits 4,096 steps, probes included, and each step permits
+1,023 arguments totaling at most 64 KiB, as many as the process layer passes
+and about twice the 497 of `test_tools`' link. A step's own stdout and stderr each hold up to
+1 MiB for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
 the result and CLI. A probe's output is data only: compiler reports and tool
 queries stay out of the build's output and leave room for its diagnostics.
+
+`build.start(arguments: string[]) -> int` begins a reported step and returns
+its handle at once; `build.wait(handle: int) -> int` waits for that step and
+gives its status as `build.run` would. While a program waits for one step, the
+host drains every other started step's output, so steps that write more than a
+pipe holds still finish. Up to 64 started steps run at once, and each counts
+toward the invocation's steps. A wait makes its step's output the last output
+and reports it, so the result holds output in wait order. A handle can be
+waited for once. Steps the program never waits for are killed with their
+process groups when it returns, and a wait past the deadline fails the
+program. Like Zig's `std.process.Child` `spawn` and `wait`, this is how a build
+graph runs independent compiles in parallel; the compiles are ordinary steps,
+not a separate executor such as Ninja.
 
 Child exits return `0..255`; signal termination returns the negative signal
 number. Invalid input, spawn failure, timeout, cancellation and host failure
@@ -101,7 +130,7 @@ Run it through the private host with an explicit engine source checkout as root:
 ```sh
 SDK/libexec/chibi/chibi-build-host --root SOURCE \
   --source SDK/share/chibi/tools/toolchain/Build.chibi \
-  --entry Build --timeout-ms 1800000 -- \
+  --core SDK/share/chibi/core --entry Build --timeout-ms 1800000 -- \
   tool-host BUILD --target chibi-build-host --jobs 8 -- \
   -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF
 ```
@@ -113,27 +142,60 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 3
+On macOS `make build` compiles with the Chibi build graph instead of CMake
+(since 2026-10-22). `Build.chibi third-party BUILD_DIR` prepares the pinned
+third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
+the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
+`release` from `make build-debug` and `make build-release`) and
+`CCACHE_BASEDIR` set to the checkout, as CMake sets it, and `--all-commands
+on`, which writes every target's compile commands; it links the root
+`compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
+no longer apply there; the graph finds the profile's toolchain on the
+machine. Without a current host, `make stage-zero-build` builds the first
+one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
+graph-reference` configures that tree with the sanitizer profile and builds
+what the build-graph checks compare with. Linux, the SDK, web and Studio
+builds still use CMake as below, so a source, define or library CMake gains
+belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
+the graph's commands equal CMake's again.
+
+The graph parses compiler dependency files in Chibi, reading their bytes once
+and treating line continuations as spaces. It unescapes only paths that need
+it. Large record and command-database joins use the existing `build.join`
+primitive rather than repeatedly copying an accumulated prefix. Small path
+joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
+Unknown or missing `--target` names fail before toolchain discovery or writes.
+
+Elsewhere `make build` uses this program when its private host reports protocol version 7
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
-file primitives and probes and the redesigned syntax. A cold build or an older host
+file primitives and probes and the redesigned syntax, version 4 names the
+natives under `build.`, version 5 runs programs as packages that may import
+`core:`, version 6 has the array methods and the natives `append` and
+`extend` of project version 32, and version 7 has what the macOS graph build
+needs: `build.replace`, `build.byte_list` and steps of up to 1,023
+arguments. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
-path and builds the host for subsequent invocations. `BUILD_HOST` and
+path and builds the host for subsequent invocations (on macOS in
+`BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 
 The program gives explicit compiler/toolchain/preload options precedence over
 fresh-build defaults, retains cached selections, and discovers the matching
 macOS SDK. The configuration stamp tracks caller arguments, environment,
-loaded CMake files, new configuration files, dependency inputs and compiler/tool
-identities. It is written atomically only after successful configuration. Build
+loaded CMake files, new configuration files and compiler/tool identities. It is written atomically only after successful configuration. Build
 targets and parallelism do not invalidate configuration.
 
-The program also decides whether immutable dependency packages may serve a
-configuration: a `FETCHCONTENT_*` definition, a set `CHIBI_SJLIT_SOURCE_DIR` or a
-`FETCHCONTENT_SOURCE_DIR_*` outside the build's `_deps` selects private sources
-and declines them. Definitions replace cached values, and a missing source counts
-as private.
+Before configuring, the program makes sure the cache holds every third-party
+archive `third_party/archives.tsv` pins for its host (`third_party/README.md`).
+It downloads a missing one with `gh release download`, refuses it unless its
+SHA-256 matches, unpacks it with `tar` beside the store and renames it into
+`.git/chibi/third_party/<sha256>` in the clone's Git directory, which all its
+worktrees share, then passes that store to CMake as `CHIBI_THIRD_PARTY_CACHE`.
+CMake picks the archive for the build's variant. Afterwards the program removes
+archives that no worktree's `third_party/archives.tsv` pins
+(`git worktree list`).
 
 On macOS the program finds the SDK itself when neither `SDKROOT`, the cache nor
 an explicit definition names one. It splits the selected compiler into words as
@@ -142,18 +204,17 @@ Python's `shlex.split` does, unless the compiler names one file, probes its
 following links; `xcrun --show-sdk-path` answers otherwise. Apple clang's report
 is about 4.1 KiB.
 
-Three installed Python helpers remain transitional dependencies:
-`configure_inputs.py` retains the read-only signature probe;
-`dependency_package.py` and `fetchcontent_cache.py` retain dependency acquisition
-and cache ownership until dependencies are vendored. Their replacement and
-removal gates remain in the toolchain inventory. CMake still owns the stage-zero
+One installed Python helper remains a transitional dependency:
+`configure_inputs.py` retains the read-only signature probe. Its replacement and
+removal gate remains in the toolchain inventory. CMake still owns the stage-zero
 graph.
 
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,
 last-process output, the file primitives below and string/array operations. File
-and text values are limited to 1 MiB, arrays to 8,192 entries and 1 MiB of text,
-and retained helper storage to 32 MiB per invocation. Last-output accessors
+and text values are limited to 16 MiB, enough for a build graph's
+`compile_commands.json`, arrays to 8,192 entries and 16 MiB of text, and
+retained helper storage to 256 MiB of arena blocks per invocation. Last-output accessors
 reject truncation and embedded NUL bytes, so authored protocol parsing cannot
 accept a partial result. Returned values remain owned by the invocation until it
 finishes; parent cwd and environment are never mutated.
@@ -168,19 +229,22 @@ small layer: one-level directory iteration with walks built over it
 copy that keeps permissions, rename, and single-entry removal with recursive
 removal built over it. Hashing lives in their libraries
 (`std.crypto.hash.sha2`, `core:crypto`). The host keeps to that layer; walks
-and recursive removal are authored Chibi. Dependencies will be vendored, as
+and recursive removal are authored Chibi. Dependencies come prebuilt, as
 Odin vendors its libraries, so the dependency fetch and caches, and the
-interprocess lock they needed, go away rather than move.
+interprocess lock they needed, went away rather than moved.
 
 | Primitive | Result |
 | --- | --- |
-| `BuildFileKind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
-| `BuildFileStamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
-| `BuildListDirectory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
-| `BuildCopyFile(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
-| `BuildRename(source, destination) -> bool` | `rename(2)`. |
-| `BuildRemove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
-| `BuildHashFile(path) -> string`, `BuildHashText(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `build.file_kind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
+| `build.file_stamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
+| `build.list_directory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 16 MiB of names. |
+| `build.copy_file(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
+| `build.rename(source, destination) -> bool` | `rename(2)`. |
+| `build.remove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
+| `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `build.embed_file(input, output, symbol) -> bool` | Writes a C file defining `const unsigned char symbol[]` with a regular input file's bytes (at most 64 MiB) and `symbol_size`, in the form `cmake/embed_binary.cmake` writes, so the bytes need no Chibi loop. An output that already holds that text is left alone and keeps its stamp; the result says whether it changed. A symbol that is not a C identifier or an input that is not a regular file fails the program. |
+| `build.replace(text, find, with) -> string` | Text with every occurrence of a non-empty `find` replaced by `with`, left to right, in one native pass; `core:strings.ReplaceAll` scans byte by byte in the interpreter, and rewriting Cute's 96 KB of codec headers took it 11 s. A result past the text limit fails the program. |
+| `build.byte_list(path) -> string` | A regular file's bytes as `0xHH,` for each, the C initializer CMake writes from `file(READ ... HEX)` and its `0x\\1,` replacement, so embedding a source needs no Chibi loop. At most 3.2 MiB of input, a fifth of the text limit. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -189,12 +253,230 @@ the bootstrap artifact's digests.
 
 These primitives do not yet cover everything the Python does. The configuration
 signature hashes the full environment; children see only the allowlist, so
-`BuildEnvironmentNames` suffices. Once dependencies are vendored it no longer
-tracks dependency packages or source caches. Packaging also needs sizes,
+`build.environment_names` suffices. It no longer tracks dependency packages or
+source caches. Packaging also needs sizes,
 modification-time order, symbolic-link reads and unique staging directories.
-Each invocation has a 100,000-step execution budget, which bounds authored
-walks over large SDK trees; a walk of thousands of files needs a larger budget
-or a native tree operation. Add each with the move that first calls it.
+Each invocation may run 100 million instructions, as a package test may; the
+build graph raised it from 100,000 because it parses a dependency file per
+object. `chibi_build_options.instruction_budget` sets a smaller one. The
+deadline still bounds the time.
+
+## Build graph (M6)
+
+The build graph replaces CMake's internal build graph one target at a time
+(PLAN.md M6). Its library is the `graph:` collection in `tools/graph`, and
+`tools/toolchain/Graph.chibi` is the program that runs it:
+
+```sh
+build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
+  --core packages/core --collection graph=tools/graph --entry Libraries \
+  --timeout-ms 600000 -- --build "$PWD/build-graph" --profile sanitizer
+```
+
+- `graph:c` compiles C sources into static libraries. Its functions read like
+  Jai's `BuildCpp` rather than a declarative target language: `c.Stale`,
+  `c.Start`, `c.Finish` and `c.Archive` take a `c.Tools` record (compiler,
+  optional launcher such as ccache, archiver, ranlib, jobs) and a `c.Library`
+  (root, object directory, archive). Sources and flags are arrays beside the
+  record, because records hold only scalar fields.
+- `graph:engine` lists the libraries it owns in dependency order (`Targets`)
+  and gives each one's sources, public and private headers and the libraries
+  whose headers it uses, by name. `engine.Build` stages every selected
+  library's headers, then starts the compiles that changed across all of them,
+  up to `jobs` at once, then archives each. A compile needs only staged
+  headers, so no library waits for another's archive. The graph executes the
+  compiles itself through `build.start` and `build.wait`, as Zig's build
+  runner does, with no Ninja.
+- Every run first writes `BUILD/compile_commands.json` in the `arguments` form,
+  as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
+  repeated, builds only the named libraries.
+- Each compile writes `-MD` dependencies. After it succeeds, the graph writes
+  a record beside the object: the command, then the path and, on its own
+  line, the `build.file_stamp` of every input and of the object. A later run
+  recompiles a source when its record is missing, its command differs, or any
+  recorded stamp changed; the archive is rebuilt when an object was or its own
+  record differs. A failed compile leaves no record, so the next run retries
+  it. Records are read with `build.lines`, because `core:strings` copies the
+  rest of the text at each line and an up-to-date run took seconds. Paths and
+  stamps are separate lines because build values are never freed: with 362
+  sources an up-to-date run reads about 6 MB of records, and splitting each
+  line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
+  arena blocks, about 128 MB of values.
+- Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
+  and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
+  CMake stages them. A header is copied only when its contents differ, so
+  unchanged headers keep their stamps, and a staged file no header names is
+  removed, as `chibi_sdk_headers` does.
+- A compile's flags are its defines, then the source's own include
+  directories, then the target's in CMake's order (staged `public/NAME` and
+  `private/NAME` directories, source-tree directories such as
+  `third_party/fmt`, or `third-party/` directories in the third-party
+  archive), then its system include directories as `-isystem`, such as the
+  staged Cute math headers, then the profile flags root `CMakeLists.txt`
+  adds, in its order: the ccache debug directory, the build type's flags,
+  the target's `-std` (`gnu23` unless it declares another), `-arch` and
+  `-isysroot`, `-fPIC` for position-independent targets, the warning set,
+  the sanitizers and Clang's `-Wno-gnu-zero-variadic-macro-arguments`; then
+  the target's own options, such as `-w` for vendored C, and the source's.
+  A C++ source takes the target's C++ standard, or no `-std` when it declares
+  none. An Objective-C source starts with `-x objective-c`, takes CMake's
+  `gnu2x` for C23 and has no ccache debug directory: root `CMakeLists.txt`
+  adds that before `sdk/desktop.cmake` enables Objective-C, a CMake defect the
+  graph copies so their commands stay equal.
+
+`graph:engine`'s `Targets.chibi` lists the 110 libraries the graph owns on
+macOS and Linux, from `chibi_support` through the shader, model and image
+runtimes, the native capability tables, the documents and fields libraries,
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
+over ckdl) and the libraries over them, and three header-only libraries
+(`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
+`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
+engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_execution` with SLJIT and the header-only `chibi_math` from the
+third-party archive, with the libraries that need only those (the behavior,
+scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
+Studio capabilities, the prepared native catalog, model baking and the scene
+and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
+whose sources `reflect` writes, with the libraries over them (the spatial,
+entity, rhythm, particle, input and visual motion runtimes, declared
+components, the visual catalog, scene authoring and the scenario document),
+and from the archive tree-sitter's runtime (`chibi_syntax_runtime`), its CSS
+and HTML grammars (`chibi_ui_syntax`), Box2D and Box3D, with the language and
+project syntax documents and UI authoring over them, and enkiTS's C++ task
+scheduler with the task pool, material, physics, visibility, graph model,
+authoring and compilation, Studio catalog and graph, engine and default
+native catalog libraries over it, and image preparation, the language,
+compiler, authoring, asset authoring, graph catalog, model authoring, shader
+preparation, source catalog and presentation and player libraries, and over
+the desktop Cute archive the platform, model import, UI host (C++17 over
+RmlUi) and renderer (with its Objective-C GPU clock on macOS) and the project
+compilation, format and preparation libraries: 685 sources in 106 archives.
+`ExportName` names the targets whose CMake `EXPORT_NAME` differs, as
+`chibi_ui_host` stages `public/ui` and `chibi_renderer` `public/render`. A name that is no target, such as `chibi_physics` or
+`chibi_graph`, lists the headers of a `private/NAME` directory several
+libraries include, as CMake stages it; `PrivateDirectory` stages a target's
+private headers elsewhere, as the language's sit below
+`BUILD/sdk/language/private`. A `Rewrites` entry `HEADER=INPUT` writes a
+private header from INPUT with each `Renames` pair replaced
+(`build.replace`), as `sdk/images.cmake` gives Cute's codecs private symbols,
+only when its text changed, and staging keeps it; a missing input or a failed
+write fails the build. For
+each it gives sources, the directory its public headers
+come from (`src`, `third_party/yyjson` for `chibi_json`, or the archive's Cute
+headers for `chibi_math`), public and private
+headers, include directories, defines, options, options of single sources
+(CMake's `COMPILE_OPTIONS` source property, such as `-ffp-contract=off` for the
+transform and particle kernels), include directories of single sources, which
+come first (`INCLUDE_DIRECTORIES`, each grammar's parser headers), the C
+standard (`gnu23`, or `gnu17` for Box2D and Box3D's `C_STANDARD 17`), whether it
+is position-independent (`-fPIC`) and embedded files. A generated source is a
+`build/` path, below the build directory where CMake writes it. An
+`Embeds` entry `OUTPUT=SYMBOL=INPUT` writes the generated source OUTPUT with
+`build.embed_file`, before any compile. A header set's `Configures` entry
+`HEADER=INPUT` writes HEADER below its private root as CMake's
+`configure_file` does when its text changed, and staging keeps it: a
+`.in` INPUT with each `@NAME@` of the target's `Substitutions` replaced
+(`bytes:PATH` through `build.byte_list`, `cstring:PATH` as C string lines),
+any other INPUT copied; the language tests embed the Chibi sources they
+compile this way. A source's own defines (`SourceDefines`, CMake's
+`COMPILE_DEFINITIONS` source property) follow the target's, with
+`{source_root}`, `{build_type}` and `{sha256:PATH}` filled in. A target whose `Generator` is
+`reflect` first makes the graph build `reflect` and stage the math headers,
+then run it as root `CMakeLists.txt`'s `generate_runtime_registry` does, to
+write `BUILD/generated/native_types.c` and `native_capabilities.c`; `c.Step`
+records the run as a link is recorded, over the inputs CMake names, and
+reruns it only when one changed. `--reflect PATH` runs another reflect
+instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
+a subset with `--target` also stages the headers of every library its
+includes name. On macOS `make build` builds them with the graph; elsewhere
+CMake still does, and `build-graph` checks that their compile commands agree
+with a configured CMake build's; `build-graph-support` compiles only
+`chibi_support`. Building everything, `test_tools` included, takes about 25
+to 32 minutes with sanitizers and no compiler cache at a load average of 5;
+`build-graph-archive` compiles SLJIT and a math-header library from the
+archive, `build-graph-generated` generates the native type sources and
+rewrites the codec headers, `build-graph-programs` checks that naming
+`test_tools` also builds the programs it runs, and `build-graph-resources`
+that the launcher's and `chibi_ctl`'s resources equal CMake's.
+
+A `third-party/` path in the tables is below the unpacked third-party archive
+that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
+`third_party/archives.tsv`'s pin for the host's target and the profile's
+variant (the sanitized archive matching the profile's sanitizers, except with
+Apple clang) and finds it below `.git/chibi/third_party` in the clone's Git
+directory. The graph does not download it; `Build.chibi` or CMake's configure
+does, and a run that needs it stops and says so when nothing is pinned for the
+host or the archive is not unpacked.
+`--third-party DIR` names another. Objects of its sources sit below
+`objects/TARGET/third-party/`.
+The graph also links executables. `engine.Programs` lists them (the
+reflection tool `reflect`, the build host, the compiler host, the `chibi`
+launcher and the host, concurrency, policy-worker and benchmark test drivers,
+the first two over the header set the graph stages below
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
+player, `chibi-compile`, `chibi_ctl`, `test_language` and `test_tools`, whose
+`Links` name the desktop archive's libraries as `third-party/` paths and its
+frameworks as CMake orders them; Linux's follow its archive). An executable
+over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
+executable link (the language and link
+flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
+then the profile's external libraries and `Links` in CMake's order, which
+may name a library twice and holds `-lm` where CMake puts it) and records it
+as it records compiles. An object library (`ObjectLibrary`, as
+`chibi_build_host`) compiles but is not archived; an executable's
+`LinkedObjects` put its objects before the executable's own. On macOS the
+graph also compiles the tooling tests' SDK contract consumers, object
+libraries over staged SDK headers and the fixtures it copies to
+`BUILD/test/tools/testing/include`, as `test/tools/CMakeLists.txt` does,
+and links `test_tools` over them. A target's defines take the same
+placeholders as a source's, and `{program:NAME}` names where an executable
+is written: below the build directory where CMake writes it
+(`ProgramDirectory`: `sdk/` for the SDK's programs, `bin/chibi_ctl`, and the
+test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
+writes the profile's C compiler and C flags, then ARGUMENT, as C string
+initializer lines; `test_tools` exports C with them. An include of `.` is
+the source root.
+A target's `Resources` (`DESTINATION=SOURCE`; a directory copies every file
+below it) are written before any compile, as root `CMakeLists.txt`
+configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
+`chibi test`, `chibi doc` and the players read as installed ones do, and
+`chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
+identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
+`sdk/artifact_formats.cmake` does: the SDK version from
+`sdk/CMakeLists.txt`, the project version from `src/assets/project.h`, the
+platform, processors and backends, and each of `ArtifactFormats`' versions
+with the SHA-256 of the sources and headers that own it. A target's
+`SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
+ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+`test/language/CMakeLists.txt` writes the language corpus `test_language`
+reads.
+Every run
+writes `BUILD/link_commands.json` beside the compile commands. Naming a
+program with `--target` also builds the libraries it links and the programs
+it runs (`Runs`, CMake's `add_dependencies`), with theirs. `reflect` takes libclang from the profile
+(`--libclang-include`, `--libclang-library`), and the graph finds clang's
+builtin headers as `tools/reflect/resource.cmake` does, by asking that
+libclang's `clang -print-resource-dir`.
+
+A run finds its profile on the machine unless told otherwise
+(`graph:engine`'s `Profile.chibi`). `--profile` names the Makefile's
+`sanitizer` (the default), `debug` or `release` profile. The compiler is `CC`,
+or Homebrew LLVM's clang as the Makefile prefers it, or `cc`, and its kind
+comes from its `--version` banner. The C++ compiler, which compiles `.cpp`
+sources with the same flags and the target's C++ standard, is `CXX` or the
+`clang++`, `g++` or `c++` beside the compiler, or the one on `PATH` for the
+compiler's kind; a run that compiles C++ without one stops and says so. On macOS the architecture comes from
+`uname -m` and the SDK from `SDKROOT`, the compiler's `-###` report (resolved
+through its versioned link, as `Build.chibi` resolves it) or `xcrun`. ccache,
+when found, launches compiles and, for a build below the source tree, sets the
+debug directory CMake sets. libclang comes from root `CMakeLists.txt`'s
+hints. `ar` is the one on PATH and `ranlib` LLVM's beside the compiler. Each
+explicit option still overrides what it names. Writing the compile commands
+escapes an argument only when the host's `build.before` finds a backslash or
+quote in it, because `core:strings.ReplaceAll` scans byte by byte in the
+interpreter: with 218 commands it took 7 s, and then 2.4 s.
+
+Windows keeps CMake: the build host has no Windows process support yet.
 
 ## Bootstrap and backend milestones
 
@@ -210,7 +492,11 @@ or a native tree operation. Add each with the move that first calls it.
    used from the existing C compiler; self-hosting is not a prerequisite. Compare
    complete workloads against bytecode/SLJIT, including compile/startup/reload
    cost, steady-state/tail latency, memory, artifact size, diagnostics and ABI.
-   Require matching semantics, not assumed speedups.
+   Require matching semantics, not assumed speedups. On 2026-10-20 the
+   compiler's own workload ruled it out for now: SLJIT's generated code was
+   6.2% of stage one's samples while it compiled the compiler, and the rest
+   was C runtime value copies and per-call resets that an LLVM backend would
+   still call (`PLAN.md` M5).
 
 ## Testing and library replacement
 
@@ -259,8 +545,11 @@ The existing Linux/Darwin `chibi-compiler-host` has an optional private
 `--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
 `--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
 finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
-`--batch` are mutually exclusive. Without the new switch, JSON stdout and JSON
-batch behavior are unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
+`--batch` are mutually exclusive. `--output-bytes FILE` writes a `byte[]`
+result that is not a compiler, such as stage one's closure of a game's
+modules, without loading it as one, and fails when the entry returns no
+bytes. Without either switch, JSON stdout and JSON batch behavior are
+unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
 selection, cache and installed-format contracts do not change.
 
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
@@ -332,7 +621,9 @@ folder). It runs in two steps:
    stage zero, compiles the compiler sources to stage two and has the compiler
    host compile them again with stage two, to the same bytes. With
    `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The target
+   arguments there as `compiler.chibip` and `compile.json`. The compiler is
+   compiled without debugger points and watches: its `debug` argument is
+   false, and the seed must say so. The target
    leaves the seed in `build-release/bootstrap.seed` and removes it after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
@@ -391,7 +682,8 @@ check takes one compile, about 11 s, or two when the sources changed, about
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
 tools/compiler --core packages/core` and needs neither stage zero, nor a
-compiler built from Chibi, nor a network. Git stores the artifact by content,
+compiler built from Chibi, nor a network. `--recover FILE` also writes the
+compiler it recovers, which `tools/toolchain/StageOne.chibi` runs. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
 before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
 target is the value layout and prepared ABI rather than an operating system,

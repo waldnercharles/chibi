@@ -1,2 +1,2 @@
-cmake/patches/*.patch -whitespace
+third_party/*/*.patch -whitespace
 *.chibip binary

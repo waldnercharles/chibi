@@ -1,470 +1,467 @@
-ToolchainBuild :: library {
-    Join :: (parts: string[]) -> string {
-        return BuildJoin(parts, "");
+package toolchain
+
+Join :: (parts: string[]) -> string {
+    return build.join(parts, "");
+}
+Helper :: (name: string) -> string {
+    return build.join([build.program_directory(), "..", name], "/");
+}
+Definition :: (argument: string) -> string {
+    if (!build.starts_with(argument, "-D")) {
+        return "";
     }
-    Helper :: (name: string) -> string {
-        return BuildJoin([BuildProgramDirectory(), "..", name], "/");
-    }
-    Definition :: (argument: string) -> string {
-        if (!BuildStartsWith(argument, "-D")) {
-            return "";
-        }
-        return BuildBefore(BuildBefore(BuildAfter(argument, "-D"), "="), ":");
-    }
-    Normalize :: (arguments: string[]) -> string[] {
-        result: string[] = [];
-        split := false;
-        for (argument in arguments) {
-            if (split) {
-                result = BuildConcat(result, [Join(["-D", argument])]);
-                split = false;
-            } else if (argument == "-D") {
-                split = true;
-            } else {
-                result = BuildConcat(result, [argument]);
-            }
-        }
+    return build.before(build.before(build.after(argument, "-D"), "="), ":");
+}
+Normalize :: (arguments: string[]) -> string[] {
+    result: string[] = [];
+    split := false;
+    for (argument in arguments) {
         if (split) {
-            result = BuildConcat(result, ["-D"]);
+            result = build.concat(result, [Join(["-D", argument])]);
+            split = false;
+        } else if (argument == "-D") {
+            split = true;
+        } else {
+            result = build.concat(result, [argument]);
         }
-        return result;
     }
-    Cached :: (cache: string, name: string) -> string {
-        prefix := Join([name, ":"]);
-        for (line in BuildLines(cache)) {
-            if (BuildStartsWith(line, prefix)) {
-                return BuildAfter(line, "=");
-            }
+    if (split) {
+        result = build.concat(result, ["-D"]);
+    }
+    return result;
+}
+Cached :: (cache: string, name: string) -> string {
+    prefix := Join([name, ":"]);
+    for (line in build.lines(cache)) {
+        if (build.starts_with(line, prefix)) {
+            return build.after(line, "=");
         }
+    }
+    return "";
+}
+Contains :: (text: string, part: string) -> bool {
+    return build.before(text, part) != text;
+}
+// The kind of file a path names once links are followed, "" for none.
+Kind :: (path: string) -> string {
+    resolved := build.resolve_path(path);
+    if (resolved == "") {
         return "";
     }
-    Contains :: (text: string, part: string) -> bool {
-        return BuildBefore(text, part) != text;
-    }
-    // The kind of file a path names once links are followed, "" for none.
-    Kind :: (path: string) -> string {
-        resolved := BuildResolvePath(path);
-        if (resolved == "") {
-            return "";
+    return build.file_kind(resolved);
+}
+// The separator that occurs first in text, or "" when none does.
+Earliest :: (text: string, separators: string[]) -> string {
+    found := "";
+    prefix := text;
+    for (separator in separators) {
+        before := build.before(text, separator);
+        if (before != prefix && build.starts_with(prefix, before)) {
+            found = separator;
+            prefix = before;
         }
-        return BuildFileKind(resolved);
     }
-    // The separator that occurs first in text, or "" when none does.
-    Earliest :: (text: string, separators: string[]) -> string {
-        found := "";
-        prefix := text;
-        for (separator in separators) {
-            before := BuildBefore(text, separator);
-            if (before != prefix && BuildStartsWith(prefix, before)) {
-                found = separator;
-                prefix = before;
+    return found;
+}
+// Text split into words as a POSIX shell splits it, without expansion,
+// like Python's shlex.split: blanks separate words, single quotes keep
+// their text, a backslash keeps the next byte, and inside double quotes
+// only a double quote or backslash can be escaped. An unclosed quote or a
+// trailing backslash splits into no words.
+Words :: (text: string) -> string[] {
+    unquoted := [" ", "\t", "\r", "\n", "'", "\"", "\\"];
+    words: string[] = [];
+    word := "";
+    started := false;
+    quote := "";
+    rest := text;
+    while (true) {
+        separators := unquoted;
+        if (quote == "'") {
+            separators = ["'"];
+        } else if (quote == "\"") {
+            separators = ["\"", "\\"];
+        }
+        separator := Earliest(rest, separators);
+        if (separator == "") {
+            if (quote != "") {
+                return [];
             }
+            if (rest != "" || started) {
+                words = build.concat(words, [Join([word, rest])]);
+            }
+            return words;
         }
-        return found;
-    }
-    // Text split into words as a POSIX shell splits it, without expansion,
-    // like Python's shlex.split: blanks separate words, single quotes keep
-    // their text, a backslash keeps the next byte, and inside double quotes
-    // only a double quote or backslash can be escaped. An unclosed quote or a
-    // trailing backslash splits into no words.
-    Words :: (text: string) -> string[] {
-        unquoted := [" ", "\t", "\r", "\n", "'", "\"", "\\"];
-        words: string[] = [];
-        word := "";
-        started := false;
-        quote := "";
-        rest := text;
-        while (true) {
-            separators := unquoted;
-            if (quote == "'") {
-                separators = ["'"];
+        part := build.before(rest, separator);
+        rest = build.after(rest, separator);
+        word = Join([word, part]);
+        started = started || part != "";
+        if (separator == "\\") {
+            if (rest == "") {
+                return [];
+            }
+            escapable := unquoted;
+            if (quote == "\"") {
+                escapable = ["\"", "\\"];
+            }
+            escaped := "";
+            for (candidate in escapable) {
+                if (build.starts_with(rest, candidate)) {
+                    escaped = candidate;
+                }
+            }
+            // Outside quotes an ordinary byte stays at the front of rest.
+            if (escaped != "") {
+                word = Join([word, escaped]);
+                rest = build.after(rest, escaped);
             } else if (quote == "\"") {
-                separators = ["\"", "\\"];
+                word = Join([word, "\\"]);
             }
-            separator := Earliest(rest, separators);
-            if (separator == "") {
-                if (quote != "") {
-                    return [];
-                }
-                if (rest != "" || started) {
-                    words = BuildConcat(words, [Join([word, rest])]);
-                }
-                return words;
+            started = true;
+        } else if (separator == "'" || separator == "\"") {
+            if (quote == "") {
+                quote = separator;
+            } else {
+                quote = "";
             }
-            part := BuildBefore(rest, separator);
-            rest = BuildAfter(rest, separator);
-            word = Join([word, part]);
-            started = started || part != "";
-            if (separator == "\\") {
-                if (rest == "") {
-                    return [];
-                }
-                escapable := unquoted;
-                if (quote == "\"") {
-                    escapable = ["\"", "\\"];
-                }
-                escaped := "";
-                for (candidate in escapable) {
-                    if (BuildStartsWith(rest, candidate)) {
-                        escaped = candidate;
-                    }
-                }
-                // Outside quotes an ordinary byte stays at the front of rest.
-                if (escaped != "") {
-                    word = Join([word, escaped]);
-                    rest = BuildAfter(rest, escaped);
-                } else if (quote == "\"") {
-                    word = Join([word, "\\"]);
-                }
-                started = true;
-            } else if (separator == "'" || separator == "\"") {
-                if (quote == "") {
-                    quote = separator;
-                } else {
-                    quote = "";
-                }
-                started = true;
-            } else if (started) {
-                words = BuildConcat(words, [word]);
-                word = "";
-                started = false;
-            }
+            started = true;
+        } else if (started) {
+            words = build.concat(words, [word]);
+            word = "";
+            started = false;
         }
-        return words;
     }
-    // The SDK the -isysroot of a compiler driver's -### report names, followed
-    // through links, or "" when the driver cannot run or names no directory.
-    // The report is data, so it stays out of the build's output.
-    CompilerSDK :: (compiler: string) -> string {
-        command := [compiler];
-        if (Kind(compiler) != "file") {
-            command = Words(compiler);
-        }
-        if (BuildLength(command) == 0 || BuildFindExecutable(command[0]) == "") {
-            return "";
-        }
-        RunBuildProbe(BuildConcat(command, ["-###", "-x", "c", "-fsyntax-only", "-"]));
-        for (line in BuildLines(BuildLastStderr())) {
-            if (!Contains(line, "-isysroot")) {
-                continue;
-            }
-            words := Words(line);
-            if (BuildLength(words) == 0) {
-                return "";
-            }
-            index: int = 0;
-            while (index < BuildLength(words) && words[index] != "-isysroot") {
-                index += 1;
-            }
-            if (index + 1 < BuildLength(words) && Kind(words[index + 1]) == "directory") {
-                return BuildResolvePath(words[index + 1]);
-            }
-        }
+    return words;
+}
+// The SDK the -isysroot of a compiler driver's -### report names, followed
+// through links, or "" when the driver cannot run or names no directory.
+// The report is data, so it stays out of the build's output.
+CompilerSDK :: (compiler: string) -> string {
+    command := [compiler];
+    if (Kind(compiler) != "file") {
+        command = Words(compiler);
+    }
+    if (build.length(command) == 0 || build.find_executable(command[0]) == "") {
         return "";
     }
-    SourceOverride :: (name: string) -> bool {
-        return BuildStartsWith(name, "FETCHCONTENT_SOURCE_DIR_") || name == "CHIBI_SJLIT_SOURCE_DIR";
+    build.probe(build.concat(command, ["-###", "-x", "c", "-fsyntax-only", "-"]));
+    for (line in build.lines(build.last_stderr())) {
+        if (!Contains(line, "-isysroot")) {
+            continue;
+        }
+        words := Words(line);
+        if (build.length(words) == 0) {
+            return "";
+        }
+        index: int = 0;
+        while (index < build.length(words) && words[index] != "-isysroot") {
+            index += 1;
+        }
+        if (index + 1 < build.length(words) && Kind(words[index + 1]) == "directory") {
+            return build.resolve_path(words[index + 1]);
+        }
     }
-    // A set SLJIT source is private, and so is a FetchContent source outside
-    // BUILD/_deps. A missing source counts as private; CMake rejects it anyway.
-    PrivateSource :: (build: string, name: string, value: string) -> bool {
-        if (value == "") {
-            return false;
+    return "";
+}
+NativeArguments :: (buildDir: string, arguments: string[]) -> string[] {
+    cachePath := Join([buildDir, "/CMakeCache.txt"]);
+    cache := build.read_file(cachePath);
+    selected := build.environment("CC") != "" ||
+                build.environment("CXX") != "" ||
+                build.environment("CMAKE_TOOLCHAIN_FILE") != "";
+    for (argument in Normalize(arguments)) {
+        name := Definition(argument);
+        if (name == "CMAKE_C_COMPILER" || name == "CMAKE_CXX_COMPILER" ||
+            name == "CMAKE_TOOLCHAIN_FILE" || argument == "--toolchain" ||
+            build.starts_with(argument, "--toolchain=") || build.starts_with(argument, "-C")) {
+            selected = true;
         }
-        if (name == "CHIBI_SJLIT_SOURCE_DIR") {
-            return true;
-        }
-        source := BuildResolvePath(value);
-        dependencies := Join([BuildResolvePath(build), "/_deps"]);
-        return source != dependencies && !BuildStartsWith(source, Join([dependencies, "/"]));
     }
-    // Whether a definition or the build's cache selects private dependency
-    // sources, which immutable dependency packages cannot serve. Any
-    // FETCHCONTENT_* definition does; for source overrides a definition
-    // replaces the cached value. Entries follow CMake's NAME[:TYPE]=VALUE form.
-    PrivateSources :: (build: string, arguments: string[]) -> bool {
-        overrides: Map<string, string> = {};
-        for (line in BuildLines(BuildReadFile(Join([build, "/CMakeCache.txt"])))) {
-            name := BuildBefore(line, ":");
-            typed := BuildAfter(line, ":");
-            if (SourceOverride(name) && !Contains(name, "=") && !Contains(name, "#") &&
-                Contains(typed, "=") && BuildBefore(typed, "=") != "") {
-                overrides[name] = BuildAfter(typed, "=");
-            }
-        }
-        for (argument in Normalize(arguments)) {
-            definition := BuildAfter(argument, "-D");
-            head := BuildBefore(definition, "=");
-            name := BuildBefore(head, ":");
-            value := BuildAfter(definition, "=");
-            if (!BuildStartsWith(argument, "-D") || !Contains(definition, "=") || name == "" ||
-                (head != name && BuildAfter(head, ":") == "") || Contains(value, "\n")) {
-                continue;
-            }
-            if (BuildStartsWith(name, "FETCHCONTENT_")) {
-                return true;
-            }
-            if (SourceOverride(name)) {
-                overrides[name] = value;
-            }
-        }
-        for (name, value in overrides) {
-            if (PrivateSource(build, name, value)) {
-                return true;
-            }
-        }
-        return false;
+    result := arguments;
+    if (build.platform() == "Linux" && !build.file_exists(cachePath) && !selected &&
+        build.find_executable("clang") != "" && build.find_executable("clang++") != "") {
+        result = build.concat(result, ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]);
     }
-    NativeArguments :: (build: string, arguments: string[]) -> string[] {
-        cachePath := Join([build, "/CMakeCache.txt"]);
-        cache := BuildReadFile(cachePath);
-        selected := BuildEnvironment("CC") != "" ||
-                    BuildEnvironment("CXX") != "" ||
-                    BuildEnvironment("CMAKE_TOOLCHAIN_FILE") != "";
-        for (argument in Normalize(arguments)) {
-            name := Definition(argument);
-            if (name == "CMAKE_C_COMPILER" || name == "CMAKE_CXX_COMPILER" ||
-                name == "CMAKE_TOOLCHAIN_FILE" || argument == "--toolchain" ||
-                BuildStartsWith(argument, "--toolchain=") || BuildStartsWith(argument, "-C")) {
-                selected = true;
-            }
-        }
-        result := arguments;
-        if (BuildPlatform() == "Linux" && !BuildFileExists(cachePath) && !selected &&
-            BuildFindExecutable("clang") != "" && BuildFindExecutable("clang++") != "") {
-            result = BuildConcat(result, ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]);
-        }
-        return result;
+    return result;
+}
+NativeSDK :: (cache: string, arguments: string[]) -> string {
+    sdk := build.environment("SDKROOT");
+    compiler := build.environment("CC");
+    if (compiler == "") {
+        compiler = "cc";
     }
-    NativeSDK :: (cache: string, arguments: string[]) -> string {
-        sdk := BuildEnvironment("SDKROOT");
-        compiler := BuildEnvironment("CC");
-        if (compiler == "") {
-            compiler = "cc";
+    cachedSDK := Cached(cache, "CMAKE_OSX_SYSROOT");
+    cachedCompiler := Cached(cache, "CMAKE_C_COMPILER");
+    if (cachedSDK != "") {
+        sdk = cachedSDK;
+    }
+    if (cachedCompiler != "") {
+        compiler = cachedCompiler;
+    }
+    for (argument in Normalize(arguments)) {
+        name := Definition(argument);
+        if (name == "CMAKE_OSX_SYSROOT") {
+            sdk = build.after(argument, "=");
         }
-        cachedSDK := Cached(cache, "CMAKE_OSX_SYSROOT");
-        cachedCompiler := Cached(cache, "CMAKE_C_COMPILER");
-        if (cachedSDK != "") {
-            sdk = cachedSDK;
+        if (name == "CMAKE_C_COMPILER") {
+            compiler = build.after(argument, "=");
         }
-        if (cachedCompiler != "") {
-            compiler = cachedCompiler;
-        }
-        for (argument in Normalize(arguments)) {
-            name := Definition(argument);
-            if (name == "CMAKE_OSX_SYSROOT") {
-                sdk = BuildAfter(argument, "=");
-            }
-            if (name == "CMAKE_C_COMPILER") {
-                compiler = BuildAfter(argument, "=");
-            }
-        }
-        if (sdk != "") {
-            return sdk;
-        }
-        sdk = CompilerSDK(compiler);
-        if (sdk == "" && RunBuildProbe(["xcrun", "--show-sdk-path"]) == 0) {
-            sdk = BuildTrim(BuildLastStdout());
-        }
+    }
+    if (sdk != "") {
         return sdk;
     }
-    CacheRoot :: () -> string {
-        root := BuildEnvironment("CHIBI_FETCHCONTENT_CACHE_DIR");
-        if (root == "") {
-            base := BuildEnvironment("XDG_CACHE_HOME");
-            if (base != "") {
-                root = Join([base, "/chibi-fetchcontent"]);
-            } else {
-                base = BuildEnvironment("HOME");
-                if (base != "") {
-                    root = Join([base, "/.cache/chibi-fetchcontent"]);
-                }
-            }
-        }
-        if (root == "" || BuildFindExecutable("python3") == "" || !BuildMakeDirectory(root)) {
-            return "";
-        }
-        return BuildResolvePath(root);
+    sdk = CompilerSDK(compiler);
+    if (sdk == "" && build.probe(["xcrun", "--show-sdk-path"]) == 0) {
+        sdk = build.trim(build.last_stdout());
     }
-    Signature :: (profile: string, build: string, arguments: string[]) -> string {
-        if (!BuildFileExists(Join([build, "/CMakeCache.txt"]))) {
-            return "";
+    return sdk;
+}
+// Removes a file, link or directory tree; true when nothing is left.
+RemoveTree :: (path: string) -> bool {
+    if (build.file_kind(path) == "directory") {
+        for (name in build.list_directory(path)) {
+            if (!RemoveTree(Join([path, "/", name]))) {
+                return false;
+            }
         }
-        command := BuildConcat([
-            "python3", Helper("configure_inputs.py"), "signature", BuildRoot(), build,
-            profile, Join([BuildProgramDirectory(), "/Build.chibi"]), "--"
-        ], arguments);
-        if (RunBuildStep(command) != 0) {
-            return "";
-        }
-        return BuildTrim(BuildLastStdout());
     }
-    Configure :: (profile: string, build: string, arguments: string[]) -> int {
-        stamp := Join([build, "/.chibi-toolchain-config-inputs"]);
-        signature := Signature(profile, build, arguments);
-        if (signature != "" && signature == BuildTrim(BuildReadFile(stamp))) {
-            return 0;
+    return build.remove(path);
+}
+// Where unpacked third-party archives live, one directory per SHA-256:
+// .git/chibi/third_party in the clone's Git directory, which all of its
+// worktrees share, or .chibi/third_party in a checkout without Git.
+// cmake/third_party.cmake looks there too.
+ThirdPartyCache :: () -> string {
+    if (build.probe(["git", "-C", build.root(), "rev-parse", "--path-format=absolute",
+                     "--git-common-dir"]) == 0) {
+        return Join([build.trim(build.last_stdout()), "/chibi/third_party"]);
+    }
+    return Join([build.root(), "/.chibi/third_party"]);
+}
+// This host's target as third_party/archives.tsv names it.
+ThirdPartyTarget :: () -> string {
+    if (build.probe(["uname", "-m"]) != 0) {
+        return "";
+    }
+    machine := build.trim(build.last_stdout());
+    os := "linux";
+    if (build.platform() == "Darwin") {
+        os = "macos";
+    }
+    if (machine == "arm64" || machine == "aarch64") {
+        return Join([os, "-arm64"]);
+    }
+    return Join([os, "-x64"]);
+}
+// Downloads one archive with the GitHub CLI, checks its SHA-256 and
+// unpacks it into cache/SHA256. Another build may publish it first.
+ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, release: string,
+                      asset: string, sha256: string) -> bool {
+    destination := Join([cache, "/", sha256]);
+    partial := Join([destination, ".", build.hash_text(build.resolve_path(buildDir)), ".partial"]);
+    file := Join([partial, "/", asset]);
+    tree := Join([partial, "/tree"]);
+    if (!RemoveTree(partial) || !build.make_directory(tree)) {
+        return false;
+    }
+    build.report(Join(["downloading ", asset, " from ", repository, " ", release]));
+    ok := build.run(["gh", "release", "download", release, "--repo", repository,
+                     "--pattern", asset, "--dir", partial]) == 0;
+    if (ok && build.hash_file(file) != sha256) {
+        build.report(Join([asset, " does not match the SHA-256 third_party/archives.tsv pins"]));
+        ok = false;
+    }
+    ok = ok && build.run(["tar", "-xzf", file, "-C", tree]) == 0;
+    ok = ok && (build.rename(tree, destination) ||
+                build.file_kind(Join([destination, "/third-party.cmake"])) == "file");
+    return RemoveTree(partial) && ok;
+}
+// Makes sure the cache holds every archive third_party/archives.tsv lists
+// for this host's target; cmake/third_party.cmake picks the build's variant.
+ThirdParty :: (cache: string, buildDir: string) -> bool {
+    target := ThirdPartyTarget();
+    repository := "";
+    for (line in build.lines(build.read_file(Join([build.root(), "/third_party/archives.tsv"])))) {
+        if (build.starts_with(line, "# repository ")) {
+            repository = build.after(line, "# repository ");
         }
-        if (!BuildMakeDirectory(build)) {
-            BuildReport("cannot create the build directory");
-            return 1;
+        if (build.starts_with(line, "#") || build.before(line, "\t") != target) {
+            continue;
         }
-        selected := NativeArguments(build, arguments);
-        if (BuildPlatform() == "Darwin") {
-            sdk := NativeSDK(BuildReadFile(Join([build, "/CMakeCache.txt"])), selected);
-            if (sdk == "") {
-                BuildReport("cannot discover the selected compiler SDK");
-                return 1;
+        variant := build.before(build.after(line, "\t"), "\t");
+        release := build.before(build.after(build.after(line, "\t"), "\t"), "\t");
+        sha256 := build.after(build.after(build.after(line, "\t"), "\t"), "\t");
+        asset := Join(["third-party-", target, "-", variant, ".tar.gz"]);
+        if (build.file_kind(Join([cache, "/", sha256, "/third-party.cmake"])) != "file" &&
+            !ThirdPartyArchive(cache, buildDir, repository, release, asset, sha256)) {
+            return false;
+        }
+    }
+    return true;
+}
+// Removes unpacked archives that no worktree of this clone pins, so the
+// cache holds only what its checkouts can link. Downloads in progress
+// (".partial") stay. Without Git nothing is pruned.
+PruneThirdParty :: (cache: string) -> bool {
+    if (build.probe(["git", "-C", build.root(), "worktree", "list", "--porcelain"]) != 0) {
+        return true;
+    }
+    pinned := "|";
+    for (line in build.lines(build.last_stdout())) {
+        if (!build.starts_with(line, "worktree ")) {
+            continue;
+        }
+        manifest := Join([build.after(line, "worktree "), "/third_party/archives.tsv"]);
+        for (row in build.lines(build.read_file(manifest))) {
+            if (!build.starts_with(row, "#")) {
+                pinned = Join([pinned, build.after(build.after(build.after(row, "\t"), "\t"), "\t"), "|"]);
             }
-            selected = BuildConcat(selected, [Join(["-DCMAKE_OSX_SYSROOT=", sdk])]);
         }
-        root := BuildRoot();
-        packageEnabled := BuildEnvironment("CHIBI_DEPENDENCY_PACKAGES");
-        package: string = "";
-        if (packageEnabled == "" || packageEnabled == "1") {
-            normalized := Normalize(selected);
-            if (BuildLength(normalized) > 0 && normalized[BuildLength(normalized) - 1] == "-D") {
-                BuildReport("-D requires a definition");
-                return 1;
-            }
-            packageEnabled = "1";
-            if (PrivateSources(build, selected)) {
-                packageEnabled = "0";
-            }
+    }
+    for (name in build.list_directory(cache)) {
+        if (!Contains(name, ".") && !Contains(pinned, Join(["|", name, "|"])) &&
+            !RemoveTree(Join([cache, "/", name]))) {
+            return false;
         }
-        if (packageEnabled == "1") {
-            status := RunBuildStep(BuildConcat([
-                "python3", Helper("dependency_package.py"), "prepare", "--source-dir", root,
-                "--build-dir", build, "--profile", "native", "--"
-            ], selected));
-            if (status != 0) {
-                BuildReport("dependency preparation failed");
-                return status;
-            }
-            package = BuildTrim(BuildLastStdout());
-        } else {
-            if (!BuildWriteFile(Join([build, "/.chibi-dependency-package.cmake"]),
-                "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)\nunset(CHIBI_DEPENDENCY_SOURCE_ROOT CACHE)\n")) {
-                return 1;
-            }
-        }
-        cache := CacheRoot();
-        if (cache != "" && RunBuildStep([
-            "python3", Helper("fetchcontent_cache.py"), "fingerprint", "--source-dir", root
-        ]) != 0) {
-            cache = "";
-        }
-        if (package != "" || cache == "") {
-            if (!BuildWriteFile(Join([build, "/.chibi-fetchcontent-cache.cmake"]), "")) {
-                return 1;
-            }
-        } else {
-            prepare := ["python3", Helper("fetchcontent_cache.py"), "prepare",
-                        "--source-dir", root, "--build-dir", build, "--cache-root", cache];
-            for (argument in Normalize(selected)) {
-                if (Definition(argument) == "CHIBI_ENABLE_TRACY") {
-                    value := BuildAfter(argument, "=");
-                    if (value == "ON" || value == "TRUE" || value == "1") {
-                        prepare = BuildConcat(prepare, ["--tracy"]);
-                    }
-                }
-            }
-            status := RunBuildStep(prepare);
-            if (status != 0) {
-                return status;
-            }
-        }
-        source := root;
-        if (profile == "tool-host") {
-            source = Join([root, "/sdk"]);
-        }
-        configure := ["cmake", "-S", source, "-B", build];
-        if (!BuildFileExists(Join([build, "/CMakeCache.txt"])) &&
-            BuildEnvironment("CMAKE_GENERATOR") == "" && BuildFindExecutable("ninja") != "") {
-            configure = BuildConcat(configure, ["-G", "Ninja"]);
-        }
-        configure = BuildConcat(configure, ["-C", Join([build, "/.chibi-fetchcontent-cache.cmake"]),
-                                           "-C", Join([build, "/.chibi-dependency-package.cmake"])]);
-        status := RunBuildStep(BuildConcat(configure, selected));
-        if (status != 0) {
-            BuildReport("native configuration failed");
-            return status;
-        }
-        if (package == "" && cache != "" && RunBuildStep([
-            "python3", Helper("fetchcontent_cache.py"), "publish", "--source-dir", root,
-            "--build-dir", build, "--cache-root", cache
-        ]) != 0) {
-            BuildReport("warning: could not publish FetchContent source cache");
-        }
-        signature = Signature(profile, build, arguments);
-        if (signature != "" && !BuildWriteFile(stamp, Join([signature, "\n"]))) {
-            BuildReport("cannot save configuration input stamp");
-            return 1;
-        }
+    }
+    return true;
+}
+Signature :: (profile: string, buildDir: string, arguments: string[]) -> string {
+    if (!build.file_exists(Join([buildDir, "/CMakeCache.txt"]))) {
+        return "";
+    }
+    command := build.concat([
+        "python3", Helper("configure_inputs.py"), "signature", build.root(), buildDir,
+        profile, Join([build.program_directory(), "/Build.chibi"]), "--"
+    ], arguments);
+    if (build.run(command) != 0) {
+        return "";
+    }
+    return build.trim(build.last_stdout());
+}
+Configure :: (profile: string, buildDir: string, arguments: string[]) -> int {
+    // The build directory names this configure's download scratch, so two
+    // configures never share one; it must exist to resolve.
+    if (!build.make_directory(buildDir)) {
+        build.report("cannot create the build directory");
+        return 1;
+    }
+    cache := ThirdPartyCache();
+    if (!build.make_directory(cache) || !ThirdParty(cache, buildDir) || !PruneThirdParty(cache)) {
+        build.report("cannot prepare the third-party archives");
+        return 1;
+    }
+    stamp := Join([buildDir, "/.chibi-toolchain-config-inputs"]);
+    signature := Signature(profile, buildDir, arguments);
+    if (signature != "" && signature == build.trim(build.read_file(stamp))) {
         return 0;
     }
-    Build :: () -> int {
-        arguments := BuildArguments();
-        if (BuildLength(arguments) < 2) {
-            BuildReport("usage: native|tool-host BUILD_DIR [--target NAME] [--jobs N] [--configure-only] -- CMAKE_ARGUMENTS");
-            return 2;
+    selected := NativeArguments(buildDir, arguments);
+    if (build.platform() == "Darwin") {
+        sdk := NativeSDK(build.read_file(Join([buildDir, "/CMakeCache.txt"])), selected);
+        if (sdk == "") {
+            build.report("cannot discover the selected compiler SDK");
+            return 1;
         }
-        profile := arguments[0];
-        if (profile != "native" && profile != "tool-host") {
-            BuildReport("unknown build profile");
-            return 2;
-        }
-        build := arguments[1];
-        configure: string[] = [];
-        targets: string[] = [];
-        jobs: string = "";
-        configureOnly := false;
-        tail := false;
-        index: int = 2;
-        while (index < BuildLength(arguments)) {
-            argument := arguments[index];
-            index += 1;
-            if (tail) {
-                configure = BuildConcat(configure, [argument]);
-            } else if (argument == "--") {
-                tail = true;
-            } else if (argument == "--configure-only") {
-                configureOnly = true;
-            } else if ((argument == "--target" || argument == "--jobs") && index < BuildLength(arguments)) {
-                if (argument == "--target") {
-                    targets = BuildConcat(targets, [arguments[index]]);
-                } else {
-                    jobs = arguments[index];
-                }
-                index += 1;
-            } else {
-                BuildReport("invalid toolchain build option");
-                return 2;
-            }
-        }
-        if (profile == "tool-host") {
-            configure = BuildConcat([
-                "-DCHIBI_SDK_BUILD_COMPILER=ON", "-DCHIBI_SDK_BUILD_NATIVE=OFF", "-DCHIBI_SDK_BUILD_DESKTOP=OFF"
-            ], configure);
-            if (BuildLength(targets) == 0) {
-                targets = ["chibi-build-host"];
-            }
-        }
-        status := Configure(profile, build, configure);
-        if (status != 0 || configureOnly) {
-            return status;
-        }
-        command := ["cmake", "--build", build];
-        if (BuildLength(targets) > 0) {
-            command = BuildConcat(command, BuildConcat(["--target"], targets));
-        }
-        if (jobs != "") {
-            command = BuildConcat(command, ["--parallel", jobs]);
-        }
-        status = RunBuildStep(command);
-        if (status != 0) {
-            BuildReport("native build failed");
-        }
+        selected = build.concat(selected, [Join(["-DCMAKE_OSX_SYSROOT=", sdk])]);
+    }
+    source := build.root();
+    if (profile == "tool-host") {
+        source = Join([source, "/sdk"]);
+    }
+    configure := ["cmake", "-S", source, "-B", buildDir, Join(["-DCHIBI_THIRD_PARTY_CACHE=", cache])];
+    if (!build.file_exists(Join([buildDir, "/CMakeCache.txt"])) &&
+        build.environment("CMAKE_GENERATOR") == "" && build.find_executable("ninja") != "") {
+        configure = build.concat(configure, ["-G", "Ninja"]);
+    }
+    status := build.run(build.concat(configure, selected));
+    if (status != 0) {
+        build.report("native configuration failed");
         return status;
     }
+    signature = Signature(profile, buildDir, arguments);
+    if (signature != "" && !build.write_file(stamp, Join([signature, "\n"]))) {
+        build.report("cannot save configuration input stamp");
+        return 1;
+    }
+    return 0;
+}
+// Prepares only the third-party archives, for a build the Chibi graph
+// (tools/toolchain/Graph.chibi) compiles instead of CMake.
+PrepareThirdParty :: (buildDir: string) -> int {
+    cache := ThirdPartyCache();
+    if (!build.make_directory(buildDir) || !build.make_directory(cache) || !ThirdParty(cache, buildDir) ||
+        !PruneThirdParty(cache)) {
+        build.report("cannot prepare the third-party archives");
+        return 1;
+    }
+    return 0;
+}
+Build :: () -> int {
+    arguments := build.arguments();
+    if (build.length(arguments) < 2) {
+        build.report("usage: native|tool-host BUILD_DIR [--target NAME] [--jobs N] [--configure-only] -- CMAKE_ARGUMENTS");
+        build.report("       third-party BUILD_DIR");
+        return 2;
+    }
+    profile := arguments[0];
+    if (profile == "third-party" && build.length(arguments) == 2) {
+        return PrepareThirdParty(arguments[1]);
+    }
+    if (profile != "native" && profile != "tool-host") {
+        build.report("unknown build profile");
+        return 2;
+    }
+    buildDir := arguments[1];
+    configure: string[] = [];
+    targets: string[] = [];
+    jobs: string = "";
+    configureOnly := false;
+    tail := false;
+    index: int = 2;
+    while (index < build.length(arguments)) {
+        argument := arguments[index];
+        index += 1;
+        if (tail) {
+            configure = build.concat(configure, [argument]);
+        } else if (argument == "--") {
+            tail = true;
+        } else if (argument == "--configure-only") {
+            configureOnly = true;
+        } else if ((argument == "--target" || argument == "--jobs") && index < build.length(arguments)) {
+            if (argument == "--target") {
+                targets = build.concat(targets, [arguments[index]]);
+            } else {
+                jobs = arguments[index];
+            }
+            index += 1;
+        } else {
+            build.report("invalid toolchain build option");
+            return 2;
+        }
+    }
+    if (profile == "tool-host") {
+        configure = build.concat([
+            "-DCHIBI_SDK_BUILD_COMPILER=ON", "-DCHIBI_SDK_BUILD_NATIVE=OFF", "-DCHIBI_SDK_BUILD_DESKTOP=OFF"
+        ], configure);
+        if (build.length(targets) == 0) {
+            targets = ["chibi-build-host"];
+        }
+    }
+    status := Configure(profile, buildDir, configure);
+    if (status != 0 || configureOnly) {
+        return status;
+    }
+    command := ["cmake", "--build", buildDir];
+    if (build.length(targets) > 0) {
+        command = build.concat(command, build.concat(["--target"], targets));
+    }
+    if (jobs != "") {
+        command = build.concat(command, ["--parallel", jobs]);
+    }
+    status = build.run(command);
+    if (status != 0) {
+        build.report("native build failed");
+    }
+    return status;
 }

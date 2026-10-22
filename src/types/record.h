@@ -37,9 +37,14 @@ const pin_record *pin_record_init(
     const type_field *fields,
     int count
 );
-/* Reuse only a closure already owned by storage; otherwise copy it once. */
+/* Reuse only a closure already owned by storage; otherwise copy it once.
+ * Descriptors are immutable once created, so callers validate a record where
+ * it enters (prepared code, value documents), not on every copy. */
 const pin_record *pin_record_snapshot(arena *storage, const pin_record *);
 bool pin_record_valid(const pin_record *);
+/* Whether each nested field still names a plain catalog type of the size the
+ * record laid out. The project catalog can change after a record is created. */
+bool pin_record_current(const pin_record *);
 bool pin_record_same(const pin_record *, const pin_record *);
 /* Authored values resolve their carried layout; native values retain catalog
  * lookup. A conflicting carried/name identity never falls back to the catalog. */

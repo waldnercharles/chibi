@@ -1,5 +1,5 @@
 TileProbe :: behavior {
-    on Tick(dt) {
+    on Tick :: () {
         origin := self.GlobalTransform2D.position
         frame := tilemap_frame_at(self, origin + vec2(4, 4))
         filled := tilemap_occupied_in_box(self, origin, origin + vec2(32, 32))

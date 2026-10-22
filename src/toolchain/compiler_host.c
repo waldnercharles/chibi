@@ -46,7 +46,7 @@ compiler_host *compiler_host_load(
     size_t error_size
 )
 {
-    if (backend != BEHAVIOR_BYTECODE && backend != BEHAVIOR_SLJIT) {
+    if (!behavior_backend_available(backend)) {
         message(error, error_size, "unsupported compiler host backend");
         return NULL;
     }
@@ -518,7 +518,7 @@ static bool invoke(
     }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
-    out->flow_status = behavior_function_run(function, &context, host->backend == BEHAVIOR_SLJIT);
+    out->flow_status = behavior_function_run(function, &context, host->backend != BEHAVIOR_BYTECODE);
     behavior_run_scope_end(&scope);
     out->counts = scope.counts;
     if (out->flow_status != FLOW_OK || !context.returned) {
@@ -654,6 +654,11 @@ static void sum_counts(behavior_run_counts *total, const behavior_run_counts *va
     sum_counter(
         &total->inspection_bytecode_fallbacks,
         value->inspection_bytecode_fallbacks,
+        &total->overflow
+    );
+    sum_counter(
+        &total->size_bytecode_fallbacks,
+        value->size_bytecode_fallbacks,
         &total->overflow
     );
 }

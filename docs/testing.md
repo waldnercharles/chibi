@@ -37,20 +37,45 @@ make test-tools          # tooling and process integrations, separate build-tool
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-projects` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
-`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
+`make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
+launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
+`chibi_ctl` for `validate-project`, `prototype-expansion`, `controller` and
+`render-fixture`, `chibi-compile` for `published-docs`, and the launcher for
+`chibi-cli`. `validate-project` starts `chibi_ctl` dozens of times; each
 start builds the authoring catalog, and under ASan those starts alone take
 longer than the deadline. The project selectors left the native group when it
 reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
 coverage, mesh files, project validation and model import alone took 33 s.
 
+`published-docs` copies `docs/site.kdl` and every page, package folder and
+grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
+which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
+must parse, and each whole package must analyze, so a language change that
+breaks one fails `make test-projects` instead of the next site build. The site
+it writes stays out of the source tree. The same selector checks documentation
+fixtures for rendering, package references, and rejection of invalid original
+snippets. These compiler-only cases need no player or launcher. The Release
+`--docs` took 0.2–1.0 s on an M-series Mac under load; the sanitized one took 5–9 s.
+
+`chibi-cli` runs seventeen launcher cases: each command over a fake sibling
+compiler and player, the launcher's own `version` and `doctor`, and the real
+`chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
+package trees. Its `doc` case checks forwarding to the compiler; the real
+compiler's documentation cases run under `published-docs`.
+
+`python3 tools/test_policy.py tool language-docs-markdown` checks the authored
+renderer on both bytecode and the compiled backend, including grammar-derived
+highlighting, incomplete-fragment recovery, exact source slices, escaping,
+whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
+Those presentation checks are separate from the original-snippet validation
+above, which cannot access the generator's private parser native.
+
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced and that Release `chibi_ctl`, except
+the drivers `make test-build` produced and those Release tools, except
 `language-package-compiler-chibi-bootstrap`, which runs the Release
 `test_language` that `make test-bootstrap` builds; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
-build.
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
+`CHIBI_COMPILE` to use another build.
 
 `python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
 checked-in fixture projects with Release `chibi_ctl --format --check`, under
@@ -246,7 +271,10 @@ frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
 
-Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. `make
+test-wasm` also runs the package compiler's base samples on both backends
+(`wasm-package-compiler-chibi` and `-compiled`); every other package-compiler
+selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples, and run under the production 60-second deadline. Configuration and
@@ -448,9 +476,10 @@ hover sentences. It passes 128 assertions in 0.51 seconds with ASan/UBSan.
 purity, defaults, moves and variable promotion reaching every call, Collapse to
 Macro and Expand Node, and catalog problems of two linked shader libraries. It
 passes 170 assertions in 0.50 seconds with ASan/UBSan.
-`--vector-nodes` runs one case on the vector kernels: normalize at extremes,
-zero scale and the palette's Direction To through a saved graph. It passes 42
-assertions in 0.20 seconds with ASan/UBSan.
+`--vector-nodes` runs two cases on the vector kernels: normalize at extremes,
+zero scale and the palette's Direction To through a saved graph, and a vector
+of floats scaled by integers of each width on either side. It passes 54
+assertions in under a second with ASan/UBSan.
 
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
@@ -553,21 +582,17 @@ material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
 `--project-declarations` is one standalone pico compatibility case under the
-shared 60-second ceiling. Its four exact
-fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi`,
-`VirtualList.chibi` and their sidecars from Studio
-`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (36,450 bytes total). Each source must
-migrate from version 23 to 24 and repeat that step unchanged. Explicit retention
-and syntax migrations then produce current-grammar source for parsing. One
+shared 60-second ceiling. Its two exact
+fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi` and
+`VirtualList.chibi` from Studio
+`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (7,147 bytes total). Each source must
+migrate from version 23 to 24 and repeat that step unchanged. Explicit retention,
+syntax, conversion, entry and after-entry migrations then produce current-grammar
+source for parsing. One
 successful content transaction must produce exactly the version-24 direct migrated
 source.
-Both original sidecars are already stale: the public source-binding check must
-fail before migration, and afterward their full bytes, historical source hashes
-and 104/41 anchors must remain unchanged and valid JSON. This does not claim
-valid-bound anchor remapping; the existing
-`program_version_23_declarations_and_switch_migrate` case covers that contract.
 A second transaction adds one 32-byte malformed source and must reject it with
-its actual path, leaving all five input files byte-identical and no `.migrating`
+its actual path, leaving all three input files byte-identical and no `.migrating`
 files. The fixture prints each source name before its migration assertion so a
 rejected rewrite identifies the original source and current-parser diagnostic.
 
@@ -581,13 +606,10 @@ check exact rewrite exclusions for comments, strings, member and already-quoted
 call targets, plus unchanged current `not(value)` syntax with a unary CST node
 and no call node.
 
-The redesigned success-path ceiling is six declaration migration calls, four
-retention/syntax migration calls, three explicit current parses, four metadata
-checks and two content transactions over four then five input files. Including
-the migration implementation, there are at most 63 current/historical syntax
-parses (twenty declaration, twelve retention/syntax, three explicit, twelve
-successful content and sixteen rejected content) and six simultaneous
-content/staging files. This updated workload requires independent exact-source
+The success-path ceiling is six declaration migration calls, ten later-step
+migration calls, three explicit current parses and two content transactions over
+two then three input files, with at most four simultaneous content/staging
+files. This updated workload requires independent exact-source
 admission before execution under the unchanged production 60-second ceiling.
 There is no authored execution, backend, renderer, child process, network or
 additional corpus. The test object consumes only explicitly linked public
@@ -595,8 +617,8 @@ additional corpus. The test object consumes only explicitly linked public
 `Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
 all default aggregates. At `c4a9ed52`, this fixed route passed one case and
 60 assertions, exit 0 in 0.082 supervised seconds. That historical run predates
-the redesigned migration chain. The current 63-parse bound is source-derived,
-not an instrumented count. Already-current `not(value)` keeps the existing
+the redesigned migration chain. On 2026-10-20 the route passed one case and 72
+assertions in 0.6 seconds on macOS. Already-current `not(value)` keeps the existing
 unchanged early return; this is not general version-aware
 call/unary disambiguation.
 
@@ -1192,18 +1214,19 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately and use
 one shared 60-second deadline; this focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
-C cases for dependency execution, alias isolation, self imports, owned exported
+`python3 tools/test_policy.py tool language-package-imports` selects thirteen
+fixed C cases for dependency execution, alias isolation, self imports, `pub`
+visibility and its private-member diagnostics, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
 generations, constrained generics and constant defaults. It also checks owned
 union payload defaults and malformed public export bindings. Cached closures
 track sibling addition, path-only renames and removal across the dependency
 chain while an unrelated package is reused; failed generations publish no module
 or exports, are never cache hits, and repair replaces them while a separately
-retained valid module keeps working. The workload has 59 preparations, 210
-parses, 113 import declarations, at most 189 package visits before reuse, and 48
+retained valid module keeps working. The workload has 67 preparations, 226
+parses, 121 import declarations, at most 205 package visits before reuse, and 50
 direct calls with instruction budgets of 2,000.
-One catalog snapshot and one additional parse/nine semantic-only analyses cover
+One catalog snapshot and one additional parse/ten semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
 Build separately and run under one shared 60-second deadline. This focused
@@ -1252,22 +1275,27 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects six fixed C
+`python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
-`markdown`, `site`, `reference` and `grammar` packages with `core:strings` per
-case, rendering blocks, tables and site links, laying out navigation and
-generating a package reference and a grammar page on bytecode and SLJIT, each
-call under a 2,000,000-instruction budget. There is no filesystem, process, service or
-GPU work. This focused route is outside the language aggregate.
+`markdown`, `site`, `reference`, `grammar`, `compiler_syntax` and
+`syntax_diagnostics` packages with `core:strings` per case. The fixture opts into
+the existing private Tree-sitter bridge. Cases render blocks, tables and site
+links, lay out navigation, generate a package reference and a grammar page, and
+check grammar roles, exact escaped source bytes, recovery and GitHub theme colors
+on bytecode and SLJIT. A fence uses at most three parses: its original source,
+then declaration/signature contexts only when needed; synthetic context never
+reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
+There is no filesystem, process, service or GPU work. This focused route is
+outside the language aggregate and retains the shared 60-second ceiling.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C
 cases for the shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
-package, with eight tests. They cover discovery order, names and positions,
-passes, a failed `expect` reported inside its helper, an out-of-range read, an
-exhausted 100,000-instruction budget, a wait and a task start on bytecode and
-SLJIT. There is no filesystem, process, service or GPU work. This focused route
+package, with nine tests. They cover discovery order, names and positions,
+passes, a failed `assert` reported inside its helper, an `assert` without a
+message reported by its condition, an out-of-range read, an exhausted
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
 is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
@@ -1604,9 +1632,9 @@ Independently review before the first run, build separately and use one shared
 
 `python3 tools/test_policy.py tool language-type-relations-chibi` selects four
 C/pico_unit cases for the five pure catalog type relations. The finite tables
-contain 18 equality, 15 numeric, 36 assignment, 33 catalog-assignment and nine
-canonicalization requests: 111 requests, each once on bytecode and SLJIT, for
-222 direct authored calls with a supplied budget argument of 50,000. Outlined
+contain 18 equality, 15 numeric, 37 assignment, 33 catalog-assignment and nine
+canonicalization requests: 112 requests, each once on bytecode and SLJIT, for
+224 direct authored calls with a supplied budget argument of 50,000. Outlined
 and inline child activations inherit/reset that budget; it is not a complete
 invocation or aggregate instruction ceiling. Five fixed compiler sources below
 32 KiB per backend produce ten preparation parses. Raw maxima are
@@ -1867,9 +1895,10 @@ takes about 6 s.
   the order stage one reaches them. Each compiles alone, so stage one can
   pass one story before it compiles another.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
-  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
-  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
-  `build/sdk/chibi-compile` until stage one compiles stories.
+  --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
+  entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
+  select them. Both default to `build/sdk/chibi-compile`;
+  `game-equivalence-stage-one` takes stage one's route as the candidate.
 - **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
   `chibi-build-host`. Its `Rebuild` entry compiles each story with each
   compiler and plays them, and `Diff` compares two traces.
@@ -1882,18 +1911,28 @@ takes about 6 s.
     each module's name and ID (`--native` checks that function);
   - one line per fixed step, from frame 0 (after Begin) to the scenario's
     last frame: hashes of the ECS world, saved state, materials, physics
-    bodies, contacts and events, and UI text. Frame N is the world after N
+    bodies, contacts and events, and UI text. The ECS hash reads a string
+    field by its text, not its address, since the two compilers allocate
+    differently (`ecs_world_hash_reads_strings_by_text`). Frame N is the world after N
     steps, so input keyed at step K first shows in frame K + 1.
 - **Cases.**
   - Assembling each story from the modules of its own artifact, with
     `authoring_project_assemble`, writes that artifact again byte for byte.
     A source without its module, or a module of no source, is refused. This
     is the assembly a stage-one route uses for modules stage one compiled.
-  - `chibi-compile --project-root ROOT --stage-one-target FILE` exports what a
-    story's behavior links against, for stage one. The test compares its
-    types with the requirements of the module stage zero writes for Counter
-    (all 112, in order: ID, layout, storage, size and name). It also compares
-    the module's events (ID, ABI and payload fields) and the entity type.
+    `chibi-compile --modules` refuses a file that is no closure and writes no
+    artifact.
+  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports stage
+    one's `CompileBehaviors` input for a story: its executable sources' identities
+    and texts, then what they link against. For Counter, the test checks the
+    behavior's identity and source. It compares the types with the
+    requirements of the module stage zero writes (all 112, in order: ID,
+    layout, storage, size and name), and the module's events (ID, ABI and
+    payload fields) and entity type, that the operators that combine
+    records hold `+` as the native `add`, that the globals hold `self` of
+    the owner's type, and that the record makes hold `vec2` making a `CF_V2`
+    of its `x` and `y`. Only the types modules require are compared;
+    namespaces such as `SceneGlobals` are listed too.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.
@@ -1901,10 +1940,27 @@ takes about 6 s.
     frames, is refused rather than matched; the observer removes the trace
     unless every story played.
 
+`make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
+every story with `chibi-compile` and with stage one's route,
+`tools/toolchain/StageOne.chibi`, and compares them as above. The route:
+1. recovers stage one from the bootstrap artifact and the compiler sources
+   with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and
+   keeps it under `.chibi/stage-one` for the digest of those sources, the
+   artifact and the host, replacing the closure kept for an older digest;
+2. exports stage one's input with `chibi-compile --stage-one-input`;
+3. runs stage one's `CompileBehaviors` on it with `chibi-compiler-host
+   --output-bytes`. When stage one rejects a behavior, the route reports
+   `BehaviorRejection`'s identity, line, column and message;
+4. assembles the artifact with `chibi-compile --modules`.
+
+`CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
+takes about 19 s when it recovers stage one and 2 s once it is kept.
+
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects fifteen tooling
-cases and two cases in one child producer. Build `test_language`, `test_tools`
+`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
+cases and two cases in one child producer. One checks that `--output-bytes`
+writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
 preparations), serializes its executable modules and checks that reversed record
@@ -2074,7 +2130,8 @@ most two seconds, with shorter deliberate timeout/cancellation budgets; every
 native case clamps its budget to the inherited deadline.
 
 Cases cover exact argv and cwd, explicit environment and parent isolation,
-separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
+errors, timeout, active cancellation,
 and descendants whose leader exits first. The private host executes both the
 controlled source and unchanged recording workflow on bytecode and SLJIT, with
 actual backend counters and failure-path assertions. Compiler-enabled full
@@ -2090,23 +2147,117 @@ vectors, and environment names. Their fixed file workload is about 10 MiB and 8,
 files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
-installed authored build program, and an eighth on macOS. Five cases make 50 API
+`python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
+installed authored build program, and a ninth on macOS. Six cases make 44 API
 invocations across bytecode and SLJIT, and the macOS case seven more that
-alternate them; one runs the host CLI with exact tail arguments. Twelve tiny Git
-roots, thirteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+alternate them; one runs the host CLI with exact tail arguments. Fourteen tiny Git
+roots, fifteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
 cover compiler/environment/cache precedence, explicit typed and split
-definitions, loaded inputs, compiler identity, private dependency overrides and
-their precedence over the cache, failure/retry and exact argument forwarding.
+definitions, loaded inputs, compiler identity, retired dependency switches, a
+third-party archive downloaded once through a `gh` stand-in, reused, refused
+for another SHA-256 and pruned unless a worktree pins it, failure/retry and
+exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
-missing host, one that fails the protocol query and one that reports protocol 2,
+missing host, one that fails the protocol query and one that reports protocol 3,
 and authored orchestration for a compatible host, including paths with spaces;
 four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
+
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
+configured CMake build: on macOS, where `make build` uses the graph, the one
+`make graph-reference` configures in `build-cmake`, elsewhere `build`;
+`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each link command it writes in `link_commands.json` (thirteen on macOS,
+eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
+C++ compiler for an executable CMake links as C++, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 25 s.
+
+`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`--commands-only on --target test_tools --target chibi`: its link commands
+name them and the programs they run (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
+writes them, and no other test driver (macOS only). A second case names `chibi_support`:
+its compile database lists only that library's compiles, and with
+`--all-commands on` every target's, on macOS as many as CMake's. A third case
+rejects four fixed invalid target requests before discovery or output creation:
+an unknown target, a valid and unknown pair, a missing value, and another option
+instead of a value. A fourth case calls the authored `graph:c.Dependencies`
+parser through the bytecode CLI, with one short escaped-path fixture containing
+LF and CRLF continuations, two empty or targetless texts, and one fixed
+128-header file below 16 KiB. It checks exact paths and counts without compiler
+children, frames or GPU work. At most eight host subprocesses retain the existing
+50-second child limit and one shared 60-second supervisor deadline.
+
+`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+the launcher and `chibi_ctl` with a compiler that always fails: before any
+compile it writes `share/chibi` and `controller_resources`, all 213 files equal
+to CMake's (the build identity `engine.json` and the core and documentation
+sources) or, for the shaders, which CMake copies to `controller_resources`
+only when it configures, to `src/render/shaders`; an unchanged run leaves
+the identity's stamps. A second case runs it for `test_language`, whose
+`corpus.txt` must equal CMake's. macOS only. About 32 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
+that an unchanged build compiles nothing, that changing a source, a header or
+the flags or deleting an object recompiles exactly what depends on it, that a
+staged header nothing publishes is removed, and that a source that fails to
+compile keeps no record and is retried alone. The archive must link a program
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
+
+`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`reflect` from the graph (27 C files with the profile's sanitizers), requires
+its link command to equal CMake's `build.ninja` statement apart from where
+objects, the output and archives sit, and runs it as CMake does, over the Cute
+math headers the graph staged from the third-party archive: its
+`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
+About 42 s at a load average of 11; with other builds running, its first graph
+run can exceed its 50 s share.
+
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
+enkiTS's C++ scheduler from the third-party archive CMake configured with,
+`chibi_vector_capabilities` over the archive's Cute math headers, which the
+graph stages, and the task pool: four C and two C++ files with the profile's
+sanitizers. A second run compiles nothing, the objects sit below
+`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or with C++ sources and no C++ compiler, fails before compiling and
+says so. About 32 s at a load average of 10.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. On macOS a third
+builds `test_behavior_consumer`, which writes the language tests' configured
+headers (byte initializers, C string lines and copies); they equal CMake's
+and keep their stamps when unchanged. A fourth builds
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
+and `export_compiler.h`, the profile's compiler and C flags; they equal
+CMake's and keep their stamps when unchanged. About 34 s at a load
+average of 4.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
@@ -2707,8 +2858,8 @@ review covered the grammar, semantic kinds, authoring equivalence and migration.
   check per-owner helper retention, system versus query-row ownership, copied
   values, membership reentry and publication/restart identity. Each dispatch has
   a 1000-instruction budget. Two migration cases use small literal sources and
-  one temporary directory to check execution, idempotence, metadata remapping
-  and refusal before staged replacement.
+  one temporary directory to check execution, idempotence and refusal before
+  staged replacement.
 - `language`, `language-semantic`, `language-format` and `language-navigation`:
   accepted/rejected binding forms, ordinary value types, storage restrictions,
   formatter/minimizer ownership preservation and source intelligence. Numeric
@@ -2838,8 +2989,9 @@ the fixture targets, fetch dependencies, execute fixture code or use a GPU.
 CMake's compiler identification/try-compile subprocesses remain part of each
 bounded configuration child.
 
-The whole existing selector now has eight C cases and twenty direct children
-(previously seven/sixteen). Its existing ten-second child limits and one shared
+The whole selector has five C cases and fifteen direct children on Linux
+(eight and twenty before the dependency package, its s2n pin and enkiTS
+acquisition cases were removed, 2026-10-20). Its existing ten-second child limits and one shared
 production 60-second route deadline remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
 Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK

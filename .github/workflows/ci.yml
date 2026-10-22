@@ -25,6 +25,9 @@ concurrency:
 env:
   CC: clang-18
   CXX: clang++-18
+  # Builds download their pinned third-party archive from this repository's
+  # releases (third_party/archives.tsv) with the GitHub CLI.
+  GH_TOKEN: ${{ github.token }}
   # Native builds and players need a runtime directory and a silent audio device.
   XDG_RUNTIME_DIR: /tmp/chibi-runtime
   SDL_AUDIODRIVER: dummy
@@ -39,7 +42,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 libclang-18-dev libclang-rt-18-dev \
+          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
@@ -47,36 +50,18 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-      - name: Identify dependency sources
-        id: deps
-        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      # Only main saves the caches; pull requests restore them.
-      - name: Restore dependencies
-        id: dependency-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          # Holds the Debug and Release dependency packages.
-          key: native-deps-debug-release-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
-          restore-keys: native-deps-debug-release-${{ runner.os }}-clang18-
+      - name: Verify installed and archived license notices
+        run: python3 test/tools/package_licenses.py
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
       # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
-      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
-      - name: Build an unsanitized chibi_ctl (Release)
-        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Save dependencies
-        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT=/usr/lib/llvm-18
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations (one 60-second deadline)
         run: make test-tools TOOLS_C_COMPILER=clang-18
@@ -108,35 +93,15 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-      - name: Identify dependency sources
-        id: deps
-        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      # Only main saves the caches; pull requests restore them.
-      - name: Restore dependencies
-        id: dependency-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          # Holds the Debug and Release dependency packages.
-          key: native-deps-debug-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.deps.outputs.key }}
-          restore-keys: native-deps-debug-release-${{ runner.os }}-${{ runner.arch }}-
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT="$LLVM"
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT="$LLVM"
-      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
-      - name: Build an unsanitized chibi_ctl (Release)
-        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT="$LLVM"
-      - name: Save dependencies
-        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations (one 60-second deadline)
         run: make test-tools TOOLS_C_COMPILER="$CC"
@@ -151,6 +116,9 @@ jobs:
 
   windows:
     name: Engine build and compile smoke test (Windows)
+    # Paused: third_party/archives.tsv has no Windows archive until the build
+    # host runs on Windows.
+    if: false
     runs-on: windows-2022
     timeout-minutes: 45
     # The Windows port is new; keep this row advisory until it has passed once.
@@ -183,9 +151,8 @@ jobs:
 
   studio-windows:
     name: Studio build (Windows)
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    # Paused with the Windows engine build above.
+    if: false
     runs-on: windows-2022
     timeout-minutes: 45
     # Studio on Windows is new; keep this row advisory until it has passed once.
@@ -261,7 +228,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 libclang-18-dev xvfb \
+          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev xvfb \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
@@ -269,29 +236,8 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-      - name: Identify dependency sources
-        id: deps
-        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      # Only main saves the caches; pull requests restore them.
-      - name: Restore dependencies
-        id: dependency-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: studio-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
-          restore-keys: studio-deps-${{ runner.os }}-clang18-
       - name: Package the SDK
         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Save dependencies
-        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       - name: Build Studio against the packaged SDK
         run: make studio-build STUDIO_SOURCE="$PWD/chibi-studio" STUDIO_SDK_PREFIX=dist/sdk
       - name: Two hidden Studio frames

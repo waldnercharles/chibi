@@ -39,7 +39,6 @@ typedef struct
     scene_document *scene;
     char *rml; /* a ui asset's markup */
     char *name;
-    char *metadata;
     bool deleted;
     const reference **references;
 } loaded;
@@ -1185,20 +1184,16 @@ static bool finish(work *w, refactor_plan *plan)
         }
         if (text && !l->name && same_text(text, w->project->texts[l->asset])) {
             free(text);
-            free(l->metadata);
-            l->metadata = NULL;
             continue;
         }
         apush(
             plan->edits,
             ((refactor_edit){ .asset = l->asset,
                               .text = text,
-                              .metadata = l->metadata,
                               .name = l->name,
                               .references = l->references })
         );
         l->name = NULL;
-        l->metadata = NULL;
         l->references = NULL;
     }
     asort(plan->edits, edit_order);
@@ -1210,7 +1205,6 @@ static void work_free(work *w)
     for (int i = 0; i < acount(w->assets); i++) {
         release(w->assets[i]);
         free(w->assets[i]->name);
-        free(w->assets[i]->metadata);
         afree(w->assets[i]->references);
         free(w->assets[i]);
     }
@@ -1423,7 +1417,6 @@ void refactor_plan_free(refactor_plan *plan)
 {
     for (int i = 0; i < acount(plan->edits); i++) {
         free(plan->edits[i].text);
-        free(plan->edits[i].metadata);
         free(plan->edits[i].name);
         afree(plan->edits[i].references);
     }

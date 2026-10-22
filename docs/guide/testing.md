@@ -1,7 +1,11 @@
 # Testing
 
-Tests are Chibi functions. Mark a package-level function that takes and
-returns nothing with `@test`, and check what it computes with `expect`:
+Use `@test` on a package function with no parameters and no result.
+Use `assert` to check its output.
+
+## Write a test
+
+Save this file as `packages/scoring/Scoring.chibi`:
 
 ```chibi
 package scoring
@@ -12,45 +16,52 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
-`expect(condition, message)` does nothing when the condition holds. When it
-does not, the test fails with `Expectation failed: message` at the position of
-the `expect` call, even inside a function the test calls.
+Run the package tests:
 
-## Running tests
-
-`chibi test [ROOT]` prepares every package below ROOT, the working directory
-by default, and runs each test alone:
+```sh
+chibi test packages
+```
 
 ```text
 PASS scoring.DoublesPoints
-FAIL scoring.HalvesPoints
-  /work/scoring/Scoring.chibi:14:5: Expectation failed: four halves to two
-2 tests, 1 failed
+1 tests, 0 failed
 ```
 
-It exits 0 when every test passes and 1 when one fails or a package is
-invalid, so it fits a pre-commit hook or CI.
+`chibi test [ROOT]` finds each package below ROOT. Without a path, it uses
+the working directory. Each package source starts with `package NAME`.
+Keep tests beside the package functions they check.
 
-## What a test can do
+## Read a failure
 
-A test runs without a game. Its packages may call the functions that need no
-running game: core, text, arrays, vectors, math and value operations. A
-package that calls anything else, such as audio or entities, does not compile
-for `chibi test`, which reports where.
+`assert(condition, message)` fails when the condition is false. The failure
+reports the location of the assertion, including assertions in called functions:
 
-A test also fails:
+```text
+FAIL scoring.DoublesPoints
+  /work/packages/scoring/Scoring.chibi:9:5: Assertion failed: three doubles to six
+1 tests, 1 failed
+```
 
-- on any runtime failure, such as reading past the end of an array;
-- when it waits, with `await` or `yield`, or starts a task, because nothing
-  would resume it;
-- after 100 million instructions, so a loop that never ends still stops.
+Without a message, `assert` reports the condition's source text.
+The command exits with 0 when all tests pass. It exits with 1 when a test
+fails or a package is invalid.
 
-## Where tests live
+## Test limits
 
-ROOT holds only package files, each starting with `package NAME`, and tests
-sit beside the code they check. A game project's behaviors and libraries are
-not packages, so they hold no tests yet.
+Each test runs alone, without a game. Packages can use core, text, array,
+vector, math and value operations. Functions that need a running game, such
+as audio or entity functions, cannot compile for `chibi test`.
+
+A test fails when it:
+
+- reads past an array boundary or causes another runtime error
+- waits with `await` or `yield`
+- starts a task
+- reaches 100 million instructions
+
+TODO: Tests in game behavior and library source. The command currently accepts
+package source only.

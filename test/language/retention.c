@@ -140,7 +140,7 @@ TEST_CASE(retention_helpers_keep_owner_state_and_copy_plain_values)
                  ":: () -> int { visits: retain int = 0; seen: retain = false; "
                  "fresh: int = 0; fresh += 1; visits += 1; seen = true; copy: "
                  "int = visits; copy += 100; copied = copy; return visits + "
-                 "fresh; } on Run { result = Next() + Next(); } }";
+                 "fresh; } on Run :: () { result = Next() + Next(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(source, backends[b]));
@@ -234,10 +234,10 @@ TEST_CASE(retention_helper_identity_preserves_values_until_restart)
 {
     const char *before = "Counter :: behavior { result: int = 0; Next :: () -> "
                          "int { visits: retain int = 0; visits += 1; return "
-                         "visits; } on Run { result = Next(); } }";
+                         "visits; } on Run :: () { result = Next(); } }";
     const char *after = "Counter :: behavior { result: int = 0; Next :: () -> "
                         "int { visits: retain int = 100; visits += 1; return "
-                        "visits; } on Run { result = Next(); } }";
+                        "visits; } on Run :: () { result = Next(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(prepare(before, backends[b]));

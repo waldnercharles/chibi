@@ -4,11 +4,6 @@
     "sha256": "fae9952169c2afff133e46bb296fc4c467333a24eeb23840bd12f8cfe0678530",
     "source": "projects/arena2d/content/behaviors/MaterialImpactHealth.chibi"
   },
-  "content/behaviors/MaterialImpactHealth.chibi.meta": {
-    "purpose": "material impact to ECS component update",
-    "sha256": "4b65ba2b5d0f65817b22dc8cc1f9d1f91d48b55d41ddd2d9614aec95bdd57ffb",
-    "source": "projects/arena2d/content/behaviors/MaterialImpactHealth.chibi.meta"
-  },
   "content/events/Material Impact.kdl": {
     "purpose": "material impact payload dispatch",
     "sha256": "d57898ee3f520364fe2344140d8caa9db4811dc534be90321b40bc25421137d2",
@@ -28,11 +23,6 @@
     "purpose": "field library registration and replacement",
     "sha256": "7c277ea5f214211b3dcf1ae3cce3fd2d2116230582b68cf790e934895ca6f721",
     "source": "projects/arena2d/content/libraries/FieldShapes.chibi"
-  },
-  "content/libraries/FieldShapes.chibi.meta": {
-    "purpose": "field library registration and replacement",
-    "sha256": "5592e42398f449adfa417b410515e1faca76621c9947bc366248874f3dbcb094",
-    "source": "projects/arena2d/content/libraries/FieldShapes.chibi.meta"
   },
   "content/materials/ArenaFloor.kdl": {
     "purpose": "CPU shader contour and beat arithmetic assertions",

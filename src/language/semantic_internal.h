@@ -88,8 +88,10 @@ typedef struct
     int requested_count;
     int pending_specializations;
     TSNode awaited; /* The call an enclosing await applies to. */
+    TSNode changing; /* The array method call a statement makes, which may change its array. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
+    bool query; /* Analyzing a system's `where`, which reports its own reads. */
 } analyzer;
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
@@ -105,6 +107,8 @@ bool script_analyzer_native_capability(const analyzer *, uint64_t);
 int script_analyzer_package_function(analyzer *, TSNode, const char *);
 int script_analyzer_package_constant(analyzer *, TSNode);
 bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
+/* Whether a qualified name names a declaration its package keeps private. */
+bool script_analyzer_private_member(const analyzer *, TSNode, const char *name);
 bool script_analyzer_generic_declare(analyzer *, TSNode);
 void script_analyzer_generic_prepare(analyzer *, TSNode);
 int script_analyzer_generic_call(analyzer *, TSNode, int symbol, int **arguments);
@@ -150,6 +154,9 @@ bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text);
 char *script_analyzer_text_copy(const analyzer *a, TSNode node);
 void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...);
 char *script_analyzer_name_copy(analyzer *a, TSNode node);
+/* The one Unicode scalar a character literal holds; false after diagnosing
+ * a malformed, empty or longer literal. */
+bool script_analyzer_character_value(analyzer *a, TSNode node, int *value);
 int script_analyzer_scope_new(analyzer *a, TSNode node);
 int script_analyzer_lookup_name(const analyzer *a, const char *name);
 int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);
@@ -195,7 +202,15 @@ int script_analyzer_authored_parameter_index(
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
+int script_analyzer_map_operation(analyzer *, TSNode, script_expression_kind, int map, TSNode key);
+bool script_analyzer_map_method(analyzer *, TSNode function, const char *name);
+/* The array function method `member` calls on an array, or NULL. */
+const script_catalog_capability *script_analyzer_array_method(analyzer *, TSNode member);
+/* Whether an array function returns its array changed, so its method changes
+ * the array in place, as `append` does and `slice` does not. */
+bool script_analyzer_array_changer(const script_catalog_capability *);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
+script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
@@ -221,6 +236,16 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body);
 void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);
 void script_analyzer_handler(analyzer *a, TSNode node);
+/* Binds the payload fields `list` names, by name, as parameters of function
+ * in payload order; unlisted fields bind unnamed parameters. */
+void script_analyzer_named_payload(
+    analyzer *a,
+    int function,
+    TSNode list,
+    const script_catalog_parameter *payload,
+    int count,
+    const char *event
+);
 uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
 void script_analyzer_binding_reads(analyzer *a, script_binding *binding, int index, int depth);
 void script_analyzer_binding(analyzer *a, TSNode node);

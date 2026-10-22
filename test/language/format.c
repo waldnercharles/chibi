@@ -1,5 +1,4 @@
 #include "authoring/source_format.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -10,7 +9,6 @@
 
 static script_syntax *source, *formatted;
 static char *text, *again;
-static char *metadata, *remapped;
 static authoring_format_map edit_map;
 static script_analysis *state_before, *state_after;
 
@@ -23,12 +21,9 @@ static void cleanup()
     script_syntax_free(formatted);
     free(text);
     free(again);
-    free(metadata);
-    free(remapped);
     authoring_format_map_free(&edit_map);
     source = formatted = NULL;
     text = again = NULL;
-    metadata = remapped = NULL;
 }
 
 static bool format(const char *input)
@@ -123,16 +118,47 @@ static bool map_reproduces_source()
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types. */
+TEST_CASE(source_format_keeps_named_payload_fields)
+{
+    REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
+    REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
+    REQUIRE(format("Motion :: system(p: Position) on Tick ::(dt:s) {\np.x += dt\n}\n"));
+    REQUIRE(strstr(text, "system(p: Position) on Tick :: (dt: s) {"));
+    return true;
+}
 TEST_CASE(source_format_spaces_typed_constant_colons)
 {
     REQUIRE(format("L :: library {\n    Limit:int:5\n    Mask :: 255\n}\n"));
     REQUIRE(strstr(text, "Limit: int : 5") && strstr(text, "Mask :: 255"));
     return true;
 }
+TEST_CASE(source_format_spaces_reverse_and_half_open_loops)
+{
+    REQUIRE(
+        format("L :: library {\n    F :: (n: int) {\n        for<i in 0 ..< n {}\n        for <x in [1] {}\n    }\n}\n")
+    );
+    REQUIRE(strstr(text, "for < i in 0..<n {}") && strstr(text, "for < x in [1] {}"));
+    return true;
+}
 TEST_CASE(source_format_keeps_attributes_on_their_line)
 {
     REQUIRE(format("package facts\n@test\nAdds :: () { }\n@ test Second :: () { }\n"));
     REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: () {}\n@test Second :: () {}\n"));
+    return true;
+}
+TEST_CASE(source_format_spaces_pub_and_aligns_after_it)
+{
+    REQUIRE(format(
+        "package facts\n@test pub   Adds :: () { }\npub Limit:int:5;\n"
+        "pub Sum :: (first: int,\nsecond: int) -> int {\n    return first;\n}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n@test pub Adds :: () {}\npub Limit: int : 5;\n"
+        "pub Sum :: (first: int,\n            second: int) -> int {\n    "
+        "return first;\n}\n"
+    ));
     return true;
 }
 TEST_CASE(source_format_spaces_variant_patterns)
@@ -268,8 +294,8 @@ TEST_CASE(source_format_hugs_struct_braces)
 }
 TEST_CASE(source_format_options_preserve_defaults)
 {
-    const char
-        *input = "Demo :: behavior{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
+    const char *input = "Demo :: behavior{value:=[\n1,\n2];on Tick :: "
+                        "(){value[0]+=1;}}";
     REQUIRE(configured(input, authoring_format_defaults()));
     char error[192];
     char *legacy = authoring_source_format(source, error, sizeof error);
@@ -292,7 +318,7 @@ TEST_CASE(source_format_options_preserve_defaults)
 
 TEST_CASE(source_format_configures_indentation)
 {
-    const char *input = "Demo :: behavior{on Tick{call(\n1,\n2);}}";
+    const char *input = "Demo :: behavior{on Tick :: (){call(\n1,\n2);}}";
     const int widths[] = { 1, 2, 16 };
     for (int i = 0; i < 3; i++) {
         authoring_format_options options = { .indent_width = widths[i] };
@@ -303,7 +329,9 @@ TEST_CASE(source_format_configures_indentation)
         cleanup();
     }
     REQUIRE(configured(input, (authoring_format_options){ .indent_width = 4, .use_tabs = true }));
-    REQUIRE(!strcmp(text, "Demo :: behavior {\n\ton Tick {\n\t\tcall(\n\t\t\t1,\n\t\t\t2);\n\t}\n}\n"));
+    REQUIRE(
+        !strcmp(text, "Demo :: behavior {\n\ton Tick :: () {\n\t\tcall(\n\t\t\t1,\n\t\t\t2);\n\t}\n}\n")
+    );
     return true;
 }
 
@@ -376,7 +404,7 @@ TEST_CASE(source_format_reflow_preserves_comments)
     REQUIRE(configured(
         "/* module\r\n comment */\r\nDemo :: behavior{x:=[1, // first\r\n2, /* "
         "hé "
-        "*/ 3];on Tick{call(\"// exact\",/* x\ny */\"é\");}} // end",
+        "*/ 3];on Tick :: (){call(\"// exact\",/* x\ny */\"é\");}} // end",
         (authoring_format_options){ .indent_width = 2, .preferred_width = 12 }
     ));
     REQUIRE(strstr(text, "/* module\r\n comment */"));
@@ -534,9 +562,9 @@ TEST_CASE(source_format_preserves_package_separators)
 
 TEST_CASE(source_format_block_layout)
 {
-    REQUIRE(format("Demo :: behavior{count:=1;on Tick{count+=2;}}"));
+    REQUIRE(format("Demo :: behavior{count:=1;on Tick :: (){count+=2;}}"));
     REQUIRE(
-        !strcmp(text, "Demo :: behavior {\n    count := 1;\n    on Tick {\n        count += 2;\n    }\n}\n")
+        !strcmp(text, "Demo :: behavior {\n    count := 1;\n    on Tick :: () {\n        count += 2;\n    }\n}\n")
     );
     return true;
 }
@@ -596,10 +624,11 @@ TEST_CASE(source_format_measured_signatures)
 
 TEST_CASE(source_format_preserves_comments_and_literals)
 {
-    const char *input = "// module comment\nquoted_name :: behavior { "
-                        "label: string=\"héllo { // }\"; // trailing\n"
-                        "/* first\n second */ on Begin { print(label); /* "
-                        "inline */ } }";
+    const char
+        *input = "// module comment\nquoted_name :: behavior { "
+                 "label: string=\"héllo { // }\"; // trailing\n"
+                 "/* first\n second */ on Begin :: () { print(label); /* "
+                 "inline */ } }";
     REQUIRE(format(input));
     REQUIRE(strstr(text, "// module comment\n"));
     REQUIRE(strstr(text, "\"héllo { // }\""));
@@ -630,7 +659,7 @@ TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
         "Move :: system(p:Position) without Disabled{query p;\n"
-        "on Tick(dt:float){for(i in 0..3){p.x+=float(i);}\n"
+        "on Tick :: (dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
         "F :: (x:array<int>)->(r:int){return(g<int>(x[0]));}}"
@@ -661,7 +690,7 @@ TEST_CASE(source_format_query_header_words)
         "Move :: system(position:Transform,velocity:Velocity? "
         ") join aim:Targets.Transform? where not Disabled and "
         "(Targets.Active or ancestor(ChildOf).Active) and has(Targets)"
-        "{on Tick{position.x+=1;}}"
+        "{on Tick :: (){position.x+=1;}}"
     ));
     REQUIRE(
         strstr(text, "where not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
@@ -723,96 +752,6 @@ TEST_CASE(source_format_incomplete_source_is_unchanged)
     return true;
 }
 
-TEST_CASE(source_metadata_preserves_bound_identities)
-{
-    const char *input = "// exact comment\nDemo :: behavior{count:=1;on "
-                        "Tick{count+=2;}}";
-    REQUIRE(format(input));
-    char json[256];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"}],"
-        "\"nodes\":[{\"id\":41,\"position\":[2,3]}]}",
-        (size_t)(strstr(input, "count+=") - input)
-    );
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    REQUIRE(authoring_source_metadata_matches(metadata, input));
-    remapped = authoring_source_metadata_remap(metadata, source, formatted);
-    REQUIRE(remapped);
-    REQUIRE(authoring_source_metadata_matches(remapped, text));
-    REQUIRE(!authoring_source_metadata_matches(remapped, input));
-    char anchor[64];
-    snprintf(anchor, sizeof anchor, "\"start\":%zu", (size_t)(strstr(text, "count +=") - text));
-    REQUIRE(strstr(remapped, anchor));
-    REQUIRE(strstr(remapped, "\"id\":41"));
-    REQUIRE(strstr(remapped, "\"position\":[2,3]"));
-    return true;
-}
-
-TEST_CASE(source_metadata_rejects_stale_or_changed_tokens)
-{
-    const char *input = "Demo :: behavior{count:=1;}";
-    source = script_parse(input);
-    formatted = script_parse("Demo :: behavior { count := 2; }");
-    const char *json = "{\"version\":2,\"anchors\":[{\"start\":17,\"id\":41,"
-                       "\"kind\":\"value\"}]}";
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    REQUIRE(!authoring_source_metadata_remap(metadata, source, formatted));
-    REQUIRE(!authoring_source_metadata_remap(metadata, formatted, formatted));
-    REQUIRE(!authoring_source_metadata_bind("[]", input));
-    script_syntax_free(formatted);
-    formatted = script_parse("Demo :: behavior { count := 1; }");
-    free(metadata);
-    metadata = authoring_source_metadata_bind("{\"version\":2,\"anchors\":[{\"start\":1,\"id\":41,\"kind\":\"value\"}]}", input);
-    REQUIRE(metadata);
-    REQUIRE(!authoring_source_metadata_remap(metadata, source, formatted));
-    return true;
-}
-
-TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors)
-{
-    const char *
-        input = "Repeated :: behavior{count:int=0;on Tick{count+=1;count+=1;}}";
-    REQUIRE(format(input));
-    REQUIRE(!strcmp(text, again));
-    const char *first = strstr(input, "count+=1");
-    REQUIRE(first);
-    const char *second = strstr(first + 1, "count+=1");
-    REQUIRE(second && first != second);
-    char json[384];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"},"
-        "{\"start\":%zu,\"id\":42,\"kind\":\"node\"}],"
-        "\"nodes\":[{\"id\":41,\"position\":[2,3]},{\"id\":42,\"position\":[5,"
-        "7]}]}",
-        (size_t)(first - input),
-        (size_t)(second - input)
-    );
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    remapped = authoring_source_metadata_remap(metadata, source, formatted);
-    REQUIRE(remapped && authoring_source_metadata_matches(remapped, text));
-    first = strstr(text, "count += 1");
-    REQUIRE(first);
-    second = strstr(first + 1, "count += 1");
-    REQUIRE(second && first != second);
-    char first_anchor[80], second_anchor[80];
-    snprintf(first_anchor, sizeof first_anchor, "\"start\":%zu,\"id\":41", (size_t)(first - text));
-    snprintf(second_anchor, sizeof second_anchor, "\"start\":%zu,\"id\":42", (size_t)(second - text));
-    REQUIRE(strstr(remapped, first_anchor));
-    REQUIRE(strstr(remapped, second_anchor));
-    REQUIRE(strstr(remapped, "\"id\":41,\"position\":[2,3]"));
-    REQUIRE(strstr(remapped, "\"id\":42,\"position\":[5,7]"));
-    return true;
-}
-
 static const script_catalog_parameter tick[] = { { .name = "dt",
                                                    .type = { .storage = PIN_F32 } } };
 static const script_catalog_capability capabilities[] = {
@@ -850,6 +789,7 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b;\n"
+        "        return;\n"
         "    }\n"
         "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return(a * 2.0);\n"
@@ -868,6 +808,7 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b\n"
+        "        return\n"
         "    }\n"
         "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return a * 2.0\n"
@@ -885,6 +826,30 @@ TEST_CASE(source_minimize_drops_redundant_text)
     return true;
 }
 
+TEST_CASE(source_minimize_treats_character_literals_as_literals)
+{
+    REQUIRE(minimize(
+        "Demo :: library {\n"
+        "    Next :: (c: char = 'a') -> char {\n"
+        "        d: char = ('b');\n"
+        "        return d;\n"
+        "    }\n"
+        "    Use :: () -> char {\n"
+        "        return Next('a');\n"
+        "    }\n"
+        "}\n",
+        "Demo :: library {\n"
+        "    Next :: (c: char = 'a') -> char {\n"
+        "        d := 'b'\n"
+        "        return d\n"
+        "    }\n"
+        "    Use :: () -> char {\n"
+        "        return Next()\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_minimize_reaches_a_fixed_point)
 {
     /* Each round drops only the outermost of nested redundant parentheses. */
@@ -924,24 +889,24 @@ static bool minimize_valid(const script_catalog *in, const char *input, const ch
 TEST_CASE(source_minimize_preserves_wrapper_comments)
 {
     const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
-                        "r = (/* before hé */ a /* after */) } }";
+                        "r = (/* before hé */ a /* after */); return } }";
     REQUIRE(minimize_valid(&catalog, input, input));
     cleanup();
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = (// before\r\n a // after\r\n); } }",
+        "r = (// before\r\n a // after\r\n); return; } }",
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = (// before\r\n a // after\r\n) } }"
+        "r = (// before\r\n a // after\r\n); return } }"
     ));
     cleanup();
     /* Copied operand comments do not prevent removing outer parentheses. */
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = ((a /* same */ + a /* same */ + a)); } }",
+        "r = ((a /* same */ + a /* same */ + a)); return; } }",
         "Demo :: library { F :: (a: float) -> (r: float) { "
-        "r = a /* same */ + a /* same */ + a } }"
+        "r = a /* same */ + a /* same */ + a; return } }"
     ));
     return true;
 }
@@ -951,11 +916,11 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0); } }",
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0) } }"
     ));
@@ -963,31 +928,25 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x := F(a: 1.0, /* separator */ b: 2.0); } }",
         "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
-        "{ r = a + b } "
+        "{ r = a + b; return } "
         "Use :: () { x := F(1.0, /* separator */ 2.0) } }"
     ));
     return true;
 }
 
-TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
+TEST_CASE(source_minimize_preserves_cast_and_storage_comments)
 {
-    REQUIRE(minimize_valid(
-        &catalog,
-        "Demo :: behavior { on Tick /* alias */ as frame { x := frame.dt; } }",
-        "Demo :: behavior { on Tick /* alias */ as frame { x := frame.dt } }"
-    ));
-    cleanup();
     REQUIRE(minimize_valid(
         &catalog,
         "Demo :: library { total: retain /* declared */ float = 0.0\n"
         "F :: () -> (r: float) { r = float(/* cast */ state./* member "
-        "*/total); } }",
+        "*/total); return; } }",
         "Demo :: library { total: /* declared */ float = 0.0\n"
         "F :: () -> (r: float) { r = float(/* cast */ state./* member "
-        "*/total) } }"
+        "*/total); return } }"
     ));
     return true;
 }
@@ -995,7 +954,7 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
 TEST_CASE(source_minimize_distinguishes_comments_from_strings)
 {
     REQUIRE(
-        minimize_valid(&catalog, "Demo :: library { F :: () -> (r: string) { r = (\"/* text */ // text\"); } }", "Demo :: library { F :: () -> (r: string) { r = \"/* text */ // text\" } }")
+        minimize_valid(&catalog, "Demo :: library { F :: () -> (r: string) { r = (\"/* text */ // text\"); return; } }", "Demo :: library { F :: () -> (r: string) { r = \"/* text */ // text\"; return } }")
     );
     return true;
 }
@@ -1003,7 +962,7 @@ TEST_CASE(source_minimize_distinguishes_comments_from_strings)
 TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer)
 {
     const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
-                        "r = (/* before hé */ a /* after */) } }";
+                        "r = (/* before hé */ a /* after */); return } }";
     char *minimized = authoring_source_minimize(input, &catalog, "Demo");
     REQUIRE(minimized && !strcmp(input, minimized));
     bool valid = configured(
@@ -1026,7 +985,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
 {
     const char *input = "Demo :: library { count: retain int = 0\n"
                         "F :: () -> (r: int) { local: retain int = 1\n"
-                        "r = (/* keep */ state.count + local); } }";
+                        "r = (/* keep */ state.count + local); return; } }";
     REQUIRE(format(input));
     REQUIRE(strstr(text, "count: retain int = 0"));
     REQUIRE(strstr(text, "local: retain int = 1"));
@@ -1035,20 +994,45 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     REQUIRE(minimize_valid(
         &catalog,
         input,
-        "Demo :: library { count: int = 0\n"
-        "F :: () -> (r: int) { local: retain int = 1\n"
-        "r = (/* keep */ count + local) } }"
+        "Demo :: library { count := 0\n"
+        "F :: () -> (r: int) { local: retain = 1\n"
+        "r = (/* keep */ count + local); return } }"
     ));
     free(again);
     char error[192];
     again = authoring_source_format(formatted, error, sizeof error);
     REQUIRE(again);
-    REQUIRE(strstr(again, "count: int = 0") && !strstr(again, "count: retain"));
-    REQUIRE(strstr(again, "local: retain int = 1"));
+    REQUIRE(strstr(again, "count := 0") && !strstr(again, "count: retain"));
+    REQUIRE(strstr(again, "local: retain = 1"));
     REQUIRE(strstr(again, "r = (/* keep */ count + local)"));
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types. */
+TEST_CASE(source_minimize_keeps_named_payload_fields)
+{
+    REQUIRE(minimize(
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick :: (dt: float s) {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n",
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick :: (dt: float s) {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_minimize_keeps_argument_order)
 {
     /* Arguments run in source order, so out-of-order labels stay. */
@@ -1268,16 +1252,48 @@ static const script_catalog component_catalog = {
     .entity_type = 40,
     .tick_event = 30,
 };
-
+/* An `after` list that repeats the results' own names drops; one that
+ * renames them stays. */
+static const script_catalog_parameter measured[] = {
+    { .name = "Value", .type = { .storage = PIN_F64 } },
+};
+static const char *const measure_completion[] = { "Completed" };
+static const script_catalog_capability measure_capabilities[] = {
+    { .id = 30, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 },
+    { .id = 31,
+      .name = "Measure",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .results = measured,
+      .result_count = 1,
+      .outcomes = measure_completion,
+      .outcome_count = 1,
+      .completion_outcome = 0 },
+};
+static const script_catalog measure_catalog = { .capabilities = measure_capabilities,
+                                                .capability_count = 2 };
+TEST_CASE(source_minimize_drops_repeated_result_lists)
+{
+    const char
+        *prefix = "Demo :: behavior { saved: double = 0; action update = "
+                  "Measure(); on Tick :: () { update() } ";
+    char input[512], expected[512];
+    snprintf(input, sizeof input, "%safter update(Value) { saved = Value } }", prefix);
+    snprintf(expected, sizeof expected, "%safter update { saved = Value } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, expected));
+    cleanup();
+    snprintf(input, sizeof input, "%safter update(moved) { saved = moved } }", prefix);
+    REQUIRE(minimize_in(&measure_catalog, input, input));
+    return true;
+}
 TEST_CASE(source_minimize_preserves_accessor_and_operator_comments)
 {
     REQUIRE(minimize_in(
         &component_catalog,
-        "Demo :: behavior { on Tick { if has_velocity(/* present */) { "
+        "Demo :: behavior { on Tick :: () { if has_velocity(/* present */) { "
         "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
         "multiply */ 3.0), self); "
         "} } }",
-        "Demo :: behavior { on Tick { if has_velocity(/* present */) { "
+        "Demo :: behavior { on Tick :: () { if has_velocity(/* present */) { "
         "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
         "multiply */ 3.0), self); "
         "} } }"
@@ -1290,7 +1306,7 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
     char error[256];
     const char
         *input = "Demo :: behavior {\n"
-                 "    on Tick {\n"
+                 "    on Tick :: () {\n"
                  "        if has_velocity() {\n"
                  "            set_velocity_x(multiply(get_velocity().Value.x, "
                  "2.0))\n"
@@ -1313,7 +1329,7 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
     script_catalog invalid_catalog = component_catalog;
     invalid_catalog.types = &invalid_type;
     text = authoring_source_migrate_generated(
-        "Demo :: behavior { on Tick { current := get_velocity(); } }",
+        "Demo :: behavior { on Tick :: () { current := get_velocity(); } }",
         &invalid_catalog,
         "Demo",
         error,
@@ -1337,7 +1353,7 @@ TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results)
     const char *input = "Demo :: behavior { saved: double = 0; "
                         "action update = set_velocity_x(Target: self, Value: "
                         "saved + 1); "
-                        "on Tick { update(); } after update { saved = "
+                        "on Tick :: () { update(); } after update { saved = "
                         "update.Value.x; } }";
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
@@ -1361,7 +1377,7 @@ TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers)
         *input = "Demo :: behavior { Write :: (value: Velocity) -> (Value: "
                  "Velocity) "
                  "{ self.Velocity = value; /* retained */ return value; } "
-                 "action update = Write({x: 1}); on Tick { update(); } }";
+                 "action update = Write({x: 1}); on Tick :: () { update(); } }";
     char error[256];
     text = authoring_source_canonical(input, &component_catalog, "Demo", error, sizeof error);
     REQUIRE(text);
@@ -1405,16 +1421,11 @@ TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner)
     again = authoring_source_minimize(input, &native, "Demo");
     REQUIRE(again && !strcmp(again, input));
     char error[256];
-    int *positions = NULL;
-    text = authoring_source_migrate_generated_mapped(input, &native, "Demo", &positions, error, sizeof error);
+    text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
     if (!text) {
         fprintf(stderr, "migration: %s\n", error);
     }
     REQUIRE(text);
-    REQUIRE(positions && positions[strlen(input)] == (int)strlen(text));
-    REQUIRE(!strncmp(text + positions[strstr(input, "Self()") - input], "self", 4));
-    REQUIRE(!strncmp(text + positions[strstr(input, "F ::") - input], "F ::", 4));
-    free(positions);
     REQUIRE(strstr(text, "e := self") && strstr(text, "self.Velocity.x"));
     REQUIRE(strstr(text, "self.Velocity != nil"));
     REQUIRE(
@@ -1477,7 +1488,7 @@ TEST_CASE(source_migration_commutes_stable_self_with_deferred_receiver)
     const char *input = "Demo :: behavior { target: entity = self; saved: "
                         "entity = self; "
                         "action attach = set_link_parent(self, target); "
-                        "on Tick { attach(); } after attach { saved = "
+                        "on Tick :: () { attach(); } after attach { saved = "
                         "attach.Value.parent; } }";
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
@@ -1498,7 +1509,7 @@ TEST_CASE(source_migration_commutes_stable_self_with_deferred_receiver)
 TEST_CASE(source_minimize_keeps_generic_component_calls)
 {
     const char *input = "Demo :: behavior {\n"
-                        "    on Tick {\n"
+                        "    on Tick :: () {\n"
                         "        if has_component(\"Velocity\", self) {\n"
                         "            e := self\n"
                         "        }\n"
@@ -1616,9 +1627,9 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "F :: () -> number { count: retain number = 1\n"
         "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
         "}",
-        "Demo :: system() { total: retain = 0\n"
-        "F :: () -> number { count: retain = 1\n"
-        "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
+        "Demo :: system() { total: retain number = 0\n"
+        "F :: () -> number { count: retain number = 1\n"
+        "integer: retain = 1\nfractional: retain float = 1\nreturn count } "
         "}"
     ));
     cleanup();
@@ -1627,7 +1638,7 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "Demo :: behavior { count: retain = 1\nAdvance :: (dt: number) { "
         "elapsed: retain number = 0\nelapsed += dt } }",
         "Demo :: behavior { count:= 1\nAdvance :: (dt: number) { "
-        "elapsed: retain = 0\nelapsed += dt } }"
+        "elapsed: retain number = 0\nelapsed += dt } }"
     ));
     return true;
 }
@@ -1639,14 +1650,18 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
         "Size:int){items:Element[];}"
         "Identity::(value:$ T)->T=>{return value;}"
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
-        "Use::(){scores:Map<string,int>={\"Ada\":1,[key]:2};"
+        "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
+        "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
         "for item:ref in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
     REQUIRE(strstr(text, "Identity :: (value: $T) -> T => {"));
     REQUIRE(strstr(text, "ProductType(L, R)"));
-    REQUIRE(strstr(text, "scores: Map<string, int>"));
-    REQUIRE(strstr(text, "\"Ada\": 1, [key]: 2"));
+    REQUIRE(strstr(text, "scores: [string: int] = [\"Ada\": 1, key: 2]"));
+    REQUIRE(strstr(text, "empty: [int: int] = [:]"));
+    REQUIRE(strstr(text, "delete scores[key]"));
+    REQUIRE(strstr(text, "gone := key not in scores"));
+    REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
     REQUIRE(strstr(text, "for item: ref in items {"));
     return true;
 }
@@ -1679,8 +1694,11 @@ void test_language_root_state()
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_keeps_named_payload_fields);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
+    RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
+    RUN_TEST_CASE(source_format_spaces_pub_and_aligns_after_it);
     RUN_TEST_CASE(source_format_spaces_variant_patterns);
     RUN_TEST_CASE(source_format_aligns_bracket_continuations);
     RUN_TEST_CASE(source_format_aligns_operator_continuations);
@@ -1707,18 +1725,18 @@ void test_language_format()
     RUN_TEST_CASE(source_format_query_header_words);
     RUN_TEST_CASE(source_format_query_generators_and_value_filters);
     RUN_TEST_CASE(source_format_incomplete_source_is_unchanged);
-    RUN_TEST_CASE(source_metadata_preserves_bound_identities);
-    RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);
-    RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_treats_character_literals_as_literals);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_preserves_wrapper_comments);
     RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);
-    RUN_TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments);
+    RUN_TEST_CASE(source_minimize_preserves_cast_and_storage_comments);
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
     RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
+    RUN_TEST_CASE(source_minimize_keeps_named_payload_fields);
+    RUN_TEST_CASE(source_minimize_drops_repeated_result_lists);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

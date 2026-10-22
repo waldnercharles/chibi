@@ -5,10 +5,10 @@ import named "project:named_binding"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 
-Selection :: union {
+pub Selection :: union {
     Selected(symbol: int, definition: int, diagnostics: syntax.Diagnostic[])
 }
-Member :: union {
+pub Member :: union {
     Discovered(name: string, id: uint64, annotation: reader.Reading,
                has_default: bool, default_node: int, admissible: bool,
                diagnostics: syntax.Diagnostic[])
@@ -16,8 +16,8 @@ Member :: union {
 
 // Authored-record bits are raw metadata aligned with the complete merged
 // catalog. All decisions, including original-order lookup and origin, live here.
-Select :: (environment: reader.Environment, authored_records: bool[],
-           tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
+pub Select :: (environment: reader.Environment, authored_records: bool[],
+               tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
     empty: syntax.Diagnostic[] = [];
     if (!reader.Kind(tree, node, "record_declaration")) {
         return Selection.Selected(-1, -1, empty);
@@ -64,8 +64,8 @@ Select :: (environment: reader.Environment, authored_records: bool[],
 // handles default_node separately, then supplies refreshed facts for the next
 // member. Previous names include every earlier field, even invalid ones.
 // Defaults are discovered, never read, resolved, checked or evaluated here.
-Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
-         previous_names: string[], scope: int, document: int) -> Member {
+pub Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
+             previous_names: string[], scope: int, document: int) -> Member {
     token := reader.Field(tree, member, "name");
     switch reader.Name(tree, token, document) {
         case .Name(name, name_diagnostics):
@@ -74,22 +74,22 @@ Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
             switch annotation {
                 case .Read(value, has_unit, unit, updated, errors, uses, publications):
                     for (error in errors) {
-                        diagnostics = array_add(diagnostics, error);
+                        diagnostics.append(error);
                     }
                     admissible := true;
                     switch value {
                         case .Typed(storage, container, flags, nominal, parameter):
                             if (name == "" || nominal != 0 || flags != 0 || container != 0 ||
                                 (storage != 13 && storage != 6 && storage != 1)) {
-                                diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
-                                                                                       "Record fields require nonoptional string, int or bool values"));
+                                diagnostics.append(reader.Diagnostic(tree, member, document,
+                                                                     "Record fields require nonoptional string, int or bool values"));
                                 admissible = false;
                             }
                     }
                     for (previous in previous_names) {
                         if (previous == name) {
-                            diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
-                                                                                   format_text("Duplicate record field '{}'", name)));
+                            diagnostics.append(reader.Diagnostic(tree, member, document,
+                                                                 format_text("Duplicate record field '{}'", name)));
                             admissible = false;
                         }
                     }

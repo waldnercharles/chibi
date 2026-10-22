@@ -305,7 +305,7 @@ static bool nested_spawn_outlives_frame(behavior_backend backend)
         "        await spawn_prototype(Child)\n"
         "        made += 1\n"
         "    }\n"
-        "    on Begin {\n"
+        "    on Begin :: () {\n"
         "        await Make()\n"
         "        made += 1\n"
         "    }\n"
@@ -439,7 +439,7 @@ static bool synchronous_batch_path(behavior_backend backend)
     REQUIRE(!Input_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(
-        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
+        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) on Tick :: (dt: float s) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
     );
     Input_get(f.world, owner)->move.x = 2;
     Movement_get(f.world, owner)->speed = 3;
@@ -636,7 +636,7 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
             "Input.chibi",
             "systems/Input.chibi",
             "InputWatch :: system(controls:Input){ pulses:retain double=0; on "
-            "Pulse{pulses+=1;} }",
+            "Pulse :: () {pulses+=1;} }",
             authoring_language_catalog_view(input_catalog),
             &bindings,
             backends[b]
@@ -908,7 +908,7 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
             &f,
             "Chains :: system( h:Health) join middle in self.Targets join "
             "target in middle.Targets join a:Aim from target { ticks:retain "
-            "double=0; pulses:retain double=0; on Begin { pulses+=1; } "
+            "double=0; pulses:retain double=0; on Begin :: () { pulses+=1; } "
             "ticks+=1; if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
             backends[backend]
         ));

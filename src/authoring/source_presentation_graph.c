@@ -102,8 +102,8 @@ void source_view_origin(
     );
     source_presentation_origin o = {
         .identity = script_catalog_id("source-presentation", identity),
-        .occurrence = script_record_id(p->analysis, (script_record_kind)kind, record),
-        .node_occurrence = script_record_id(p->analysis, (script_record_kind)node_kind, node_record),
+        .occurrence = script_record_id(p->occurrences, (script_record_kind)kind, record),
+        .node_occurrence = script_record_id(p->occurrences, (script_record_kind)node_kind, node_record),
         .semantic = semantic,
         .capability = capability,
         .graph = p->graph->graph_id,

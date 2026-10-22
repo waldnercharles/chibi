@@ -89,9 +89,9 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
-        "on Tick as frame(dt: float) { count += int(dt); }\n"
+        "on Tick :: (dt: float) { count += int(dt); }\n"
         "after pending.Completed { destroy(self); }\n"
-        "events Other { on Begin { pending.start(); } }\n"
+        "events Other { on Begin :: () { pending.start(); } }\n"
         "}"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -100,10 +100,68 @@ TEST_CASE(language_declarations_actions_and_bindings)
     TSNode handler = ts_node_named_child(body, 6);
     REQUIRE(!strcmp(ts_node_type(handler), "handler"));
     REQUIRE(node_text(field(handler, "kind"), "on"));
-    REQUIRE(node_text(field(handler, "alias"), "frame"));
+    REQUIRE(node_text(field(handler, "binding"), "::"));
     return true;
 }
 
+/* `on X :: (a: T)` names payload fields: the handler keeps its kind, name,
+ * parameters and body, and marks the binding. */
+TEST_CASE(language_handlers_name_payload_fields)
+{
+    parse("Demo :: behavior { on Tick :: (dt: s) { } on Begin :: () { } }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode body = declaration_body();
+    for (uint32_t i = 0; i < 2; i++) {
+        TSNode handler = ts_node_named_child(body, i);
+        REQUIRE(!strcmp(ts_node_type(handler), "handler"));
+        REQUIRE(node_text(field(handler, "kind"), "on"));
+        REQUIRE(node_text(field(handler, "binding"), "::"));
+        REQUIRE(
+            !ts_node_is_null(field(handler, "parameters")) &&
+            !ts_node_is_null(field(handler, "body"))
+        );
+    }
+    TSNode parameter = ts_node_named_child(field(ts_node_named_child(body, 0), "parameters"), 0);
+    REQUIRE(
+        node_text(field(parameter, "name"), "dt") &&
+        node_text(field(parameter, "type"), "s")
+    );
+    parse("Demo :: behavior { after spawned :: () { } }");
+    REQUIRE(original->diagnostic_count > 0);
+    /* Version 30 removed the positional, aliased and bare `on` forms and the
+     * `after` alias; `after` keeps its results list. */
+    const char *removed[] = {
+        "Demo :: behavior { on Tick { } }",
+        "Demo :: behavior { on Tick(dt) { } }",
+        "Demo :: behavior { on Tick as tick { } }",
+        "Demo :: behavior { action go = Go(); after go as done { } }",
+    };
+    for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+        parse(removed[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
+    parse("Demo :: behavior { action go = delay(Duration: 1); after go(seconds) { } }");
+    REQUIRE(original->diagnostic_count == 0);
+    return true;
+}
+/* A system names its step's payload fields after its query clauses. */
+TEST_CASE(language_systems_name_their_step)
+{
+    parse("Motion :: system(p: Position) where p.x > 0 on Tick :: (dt: s) { p.x += dt }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    REQUIRE(!strcmp(ts_node_type(system), "system"));
+    REQUIRE(
+        node_text(field(system, "event"), "Tick") &&
+        node_text(field(system, "binding"), "::")
+    );
+    TSNode parameter = ts_node_named_child(field(system, "payload"), 0);
+    REQUIRE(
+        node_text(field(parameter, "name"), "dt") &&
+        node_text(field(parameter, "type"), "s")
+    );
+    return true;
+}
 TEST_CASE(language_retained_binding_syntax)
 {
     parse(
@@ -141,9 +199,11 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
         "} "
         "Composed :: (value: ref Vector(float, 2)[]) -> Vector(float, 2)? { "
         "return nil; } "
-        "Use :: () { values: Map<string, int> = {\"Ada\": 1, [key]: 2, 3: 4}; "
+        "Use :: () { values: [string: int] = [\"Ada\": 1, key: 2, 3: 4]; "
         "for key, value in values { consume(key, value); } "
-        "for item: ref in items { item += 1; } } }"
+        "for item: ref in items { item += 1; } "
+        "delete values[key]; gone := key not in values; empty: [int: bool] = "
+        "[:]; } }"
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
@@ -170,9 +230,17 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     TSNode use = ts_node_named_child(body, 4);
     TSNode statements = field(use, "body");
     TSNode value = field(ts_node_named_child(statements, 0), "value");
-    REQUIRE(!strcmp(ts_node_type(value), "struct_expression"));
-    REQUIRE(node_text(field(ts_node_named_child(value, 0), "name"), "\"Ada\""));
+    TSNode map = field(field(ts_node_named_child(statements, 0), "type"), "map");
+    REQUIRE(node_text(field(map, "key"), "string") && node_text(field(map, "value"), "int"));
+    REQUIRE(!strcmp(ts_node_type(value), "map_expression"));
+    REQUIRE(node_text(field(ts_node_named_child(value, 0), "key"), "\"Ada\""));
     REQUIRE(node_text(field(ts_node_named_child(value, 1), "key"), "key"));
+    REQUIRE(node_text(field(ts_node_named_child(value, 2), "value"), "4"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(statements, 3)), "delete_statement"));
+    TSNode gone = field(ts_node_named_child(statements, 4), "value");
+    REQUIRE(!strcmp(ts_node_type(field(gone, "operator")), "not_in"));
+    TSNode empty = field(ts_node_named_child(statements, 5), "value");
+    REQUIRE(!strcmp(ts_node_type(empty), "map_expression") && !ts_node_named_child_count(empty));
     TSNode loop = ts_node_named_child(statements, 1);
     REQUIRE(!strcmp(ts_node_type(loop), "for_statement"));
     REQUIRE(node_text(field(loop, "key"), "key"));
@@ -217,15 +285,15 @@ TEST_CASE(language_obsolete_symbol_spellings_rejected)
         "Old :: behavior { int value = 0; }",
         "Old :: library { \"Run\" :: () {} }",
         "Old :: behavior { \"count\" := 0; }",
-        "Old :: behavior { on Tick { foreach value in [] {} } }",
-        "Old :: behavior { on Tick { \"done\": goto \"done\"; } }",
+        "Old :: behavior { on Tick :: () { foreach value in [] {} } }",
+        "Old :: behavior { on Tick :: () { \"done\": goto \"done\"; } }",
         "Old :: library { Run :: () { return.\"Done\"; } }",
         "Old :: library { Run :: (value: struct<\"Position\">) {} }",
         "Old :: library { Run :: () { \"Call\"(); } }",
-        "Old :: behavior { on Tick { self.\"Health\" = 0; } }",
-        "Old :: behavior { on Tick { call(\"Value\": 0); } }",
+        "Old :: behavior { on Tick :: () { self.\"Health\" = 0; } }",
+        "Old :: behavior { on Tick :: () { call(\"Value\": 0); } }",
         "Old :: library { return :: () {} }",
-        "Old :: behavior { on Tick { for ref item in items {} } }",
+        "Old :: behavior { on Tick :: () { for ref item in items {} } }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         parse(invalid[i]);
@@ -352,7 +420,7 @@ TEST_CASE(language_system_queries_and_control_flow)
     parse(
         "Motion :: system(position: Transform, velocity: Velocity, damping: "
         "Igniter?) "
-        "without Collider, Body {\n"
+        "without Collider, Body on Tick :: (dt: float s) {\n"
         "query components();\n"
         "position += velocity * dt;\n"
         "if damping { damping.heat = 0; } else if dt > 0 { position = "
@@ -466,7 +534,7 @@ TEST_CASE(language_query_header_and_cancel_deadline)
         "Home :: system(position: Transform, aim: Targets.Transform, "
         "parent: Velocity? from ancestor(ChildOf) "
         ") where position and (aim or not parent) {\n"
-        "on Tick { charge := Charge(); cancel charge after 1.5 }\n"
+        "on Tick :: () { charge := Charge(); cancel charge after 1.5 }\n"
         "}"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -501,7 +569,7 @@ TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
     parse("Old :: library { function Compute() { return 1 } }");
     REQUIRE(original->diagnostic_count > 0);
-    parse("Old :: behavior { on Tick { match (1) { case 1 { return } } } }");
+    parse("Old :: behavior { on Tick :: () { match (1) { case 1 { return } } } }");
     REQUIRE(original->diagnostic_count > 0);
     return true;
 }
@@ -517,6 +585,17 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode difference = field(ts_node_named_child(body, 1), "value");
     REQUIRE(node_text(field(difference, "right"), "1"));
     REQUIRE(node_text(field(field(difference, "left"), "operator"), "-"));
+    /* `??` groups to the right and binds above comparison. */
+    parse("Expressions :: behavior { chosen := a ?? b ?? c + 1 < d }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode comparison = field(ts_node_named_child(declaration_body(), 0), "value");
+    REQUIRE(node_text(field(comparison, "operator"), "<"));
+    TSNode coalesce = field(comparison, "left");
+    REQUIRE(
+        node_text(field(coalesce, "operator"), "??") &&
+        node_text(field(coalesce, "left"), "a")
+    );
+    REQUIRE(node_text(field(coalesce, "right"), "b ?? c + 1"));
     parse(syntax_corpus_cases[SYNTAX_CORPUS_CALLS].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode statements = field(ts_node_named_child(declaration_body(), 0), "body");
@@ -774,6 +853,8 @@ void test_language_syntax()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
+    RUN_TEST_CASE(language_handlers_name_payload_fields);
+    RUN_TEST_CASE(language_systems_name_their_step);
     RUN_TEST_CASE(language_retained_binding_syntax);
     RUN_TEST_CASE(language_unified_declarations_and_generic_map_shapes);
     RUN_TEST_CASE(language_authored_asset_declarations);

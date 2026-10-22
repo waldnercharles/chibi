@@ -6,35 +6,35 @@ import strings "core:strings"
 // canonical, names are identifiers other than _, files number at most 256, and
 // every import's file index refers to this input. Neither parsing nor disk IO
 // belongs to this component. Package indices preserve input discovery order.
-File :: struct {
+pub File :: struct {
     path: string;
     directory: string;
     name: string;
 }
-Import :: struct {
+pub Import :: struct {
     file: int;
     directory: string;
     alias: string;
     explicit_alias: bool;
 }
-Package :: struct {
+pub Package :: struct {
     directory: string;
     name: string;
     member_start: int;
     member_count: int;
 }
-Binding :: struct {
+pub Binding :: struct {
     name: string;
     file: int;
     target: int;
     import_index: int;
 }
-Edge :: struct {
+pub Edge :: struct {
     from: int;
     to: int;
     import_index: int;
 }
-Error :: struct {
+pub Error :: struct {
     code: int;
     file: int;
     import_index: int;
@@ -42,20 +42,20 @@ Error :: struct {
     related_import: int;
     cycle_count: int;
 }
-Graph :: union {
+pub Graph :: union {
     Accepted(packages: Package[], members: int[], file_packages: int[],
              order: int[], edges: Edge[], bindings: Binding[])
     | Rejected(error: Error, cycle: int[])
 }
 
 OK: int : 0;
-DuplicateFile: int : 1;
-HeaderMismatch: int : 2;
-DuplicateName: int : 3;
-Missing: int : 4;
-ImportName: int : 5;
-DuplicateImport: int : 6;
-Cycle: int : 7;
+pub DuplicateFile: int : 1;
+pub HeaderMismatch: int : 2;
+pub DuplicateName: int : 3;
+pub Missing: int : 4;
+pub ImportName: int : 5;
+pub DuplicateImport: int : 6;
+pub Cycle: int : 7;
 MaxFiles: int : 256;
 
 Failure :: (error: Error, cycle: int[]) -> Graph {
@@ -100,17 +100,17 @@ SortBindings :: (items: Binding[]) -> Binding[] {
             takeLeft = BindingCompare(left[a], right[b]) <= 0;
         }
         if (takeLeft) {
-            result = array_add(result, left[a]);
+            result.append(left[a]);
             a += 1;
         } else {
-            result = array_add(result, right[b]);
+            result.append(right[b]);
             b += 1;
         }
     }
     return result;
 }
 
-Build :: (files: File[], imports: Import[]) -> Graph {
+pub Build :: (files: File[], imports: Import[]) -> Graph {
     fileCount := length(files);
     packages: Package[] = [];
     bindings: Binding[] = [];
@@ -158,7 +158,7 @@ Build :: (files: File[], imports: Import[]) -> Graph {
             // responsible for this package's declared name and header.
             item: Package = {directory: file.directory, name: file.name,
                              member_start: i, member_count: 0};
-            packages = array_add(packages, item);
+            packages.append(item);
         }
         filePackages[i] = found;
         i += 1;
@@ -225,7 +225,7 @@ Build :: (files: File[], imports: Import[]) -> Graph {
         }
         if (!blank) {
             binding: Binding = {name: alias, file: imported.file, target: target, import_index: i};
-            bindings = array_add(bindings, binding);
+            bindings.append(binding);
         }
         from := filePackages[imported.file];
         exists := false;
@@ -237,7 +237,7 @@ Build :: (files: File[], imports: Import[]) -> Graph {
         }
         if (!exists) {
             edge: Edge = {from: from, to: target, import_index: i};
-            edges = array_add(edges, edge);
+            edges.append(edge);
         }
         i += 1;
     }
@@ -303,7 +303,7 @@ Build :: (files: File[], imports: Import[]) -> Graph {
                         }
                     }
                 }
-                path = array_add(path, importIndex);
+                path.append(importIndex);
                 current = target;
             }
             start := seen[current] - 1;
@@ -332,7 +332,7 @@ Build :: (files: File[], imports: Import[]) -> Graph {
 }
 
 // Like the C facade, indexed queries require accepted graphs and valid indices.
-Count :: (graph: Graph) -> int {
+pub Count :: (graph: Graph) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return length(packages);
@@ -340,7 +340,7 @@ Count :: (graph: Graph) -> int {
             return 0;
     }
 }
-PackageAt :: (graph: Graph, index: int) -> Package {
+pub PackageAt :: (graph: Graph, index: int) -> Package {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return packages[index];
@@ -348,7 +348,7 @@ PackageAt :: (graph: Graph, index: int) -> Package {
             return {directory: "", name: "", member_start: 0, member_count: 0};
     }
 }
-FilePackage :: (graph: Graph, file: int) -> int {
+pub FilePackage :: (graph: Graph, file: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return files[file];
@@ -356,7 +356,7 @@ FilePackage :: (graph: Graph, file: int) -> int {
             return -1;
     }
 }
-Order :: (graph: Graph, ordinal: int) -> int {
+pub Order :: (graph: Graph, ordinal: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             return order[ordinal];
@@ -364,7 +364,7 @@ Order :: (graph: Graph, ordinal: int) -> int {
             return -1;
     }
 }
-Dependency :: (graph: Graph, from: int, to: int) -> int {
+pub Dependency :: (graph: Graph, from: int, to: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             for (edge in edges) {
@@ -377,7 +377,7 @@ Dependency :: (graph: Graph, from: int, to: int) -> int {
             return -1;
     }
 }
-Lookup :: (graph: Graph, file: int, alias: string) -> int {
+pub Lookup :: (graph: Graph, file: int, alias: string) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             lo: int = 0;

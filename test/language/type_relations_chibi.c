@@ -551,6 +551,12 @@ static const relation_case assignment_cases[] = {
       EMPTY,
       TYPE(PIN_I16, 0, 0, 0, 0),
       TYPE(PIN_F64, 0, 0, 0, 0),
+      false },
+    { "integer to double",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_F64, 0, 0, 0, 0),
+      TYPE(PIN_I16, 0, 0, 0, 0),
       true },
     { "expected error before boxed",
       REL_ASSIGNABLE,
@@ -617,7 +623,7 @@ static const relation_case assignment_cases[] = {
       EMPTY,
       TYPE(PIN_I8, 0, 0, 0, 0),
       TYPE(PIN_F64, 0, 0, 0, 0),
-      true },
+      false },
     { "actual optional rejected",
       REL_ASSIGNABLE,
       EMPTY,
@@ -633,8 +639,8 @@ static const relation_case assignment_cases[] = {
     { "optional strips actual boxed before numeric",
       REL_ASSIGNABLE,
       EMPTY,
-      TYPE(PIN_I32, 0, OPTIONAL, 0, 0),
-      TYPE(PIN_F64, 0, OPTIONAL | BOXED, 0, 0),
+      TYPE(PIN_F64, 0, OPTIONAL, 0, 0),
+      TYPE(PIN_I32, 0, OPTIONAL | BOXED, 0, 0),
       true },
     { "name accepts string",
       REL_ASSIGNABLE,
@@ -768,7 +774,7 @@ TEST_CASE(type_relations_scalar_tables_match_native_oracle)
     for (int i = 0; i < COUNT(assignment_cases); i++) {
         REQUIRE(run_relation(&assignment_cases[i]));
     }
-    REQUIRE(parses == 10 && calls == 138);
+    REQUIRE(parses == 10 && calls == 140);
     return true;
 }
 
@@ -978,7 +984,7 @@ TEST_CASE(type_relations_catalog_tables_match_native_oracle)
     for (int i = 0; i < COUNT(catalog_cases); i++) {
         REQUIRE(run_relation(&catalog_cases[i]));
     }
-    REQUIRE(calls == 204);
+    REQUIRE(calls == 206);
     return true;
 }
 static const canonical_case canonical_cases[] = {
@@ -1050,12 +1056,12 @@ TEST_CASE(type_relations_canonical_tables_match_native_oracle)
             }
         }
     }
-    REQUIRE(calls == 222 && parses == 10);
+    REQUIRE(calls == 224 && parses == 10);
     return true;
 }
 TEST_CASE(type_relations_canonical_results_outlive_all_producers)
 {
-    REQUIRE(prepared && calls == 222 && parses == 10);
+    REQUIRE(prepared && calls == 224 && parses == 10);
     cleanup();
     compiler_fixture_free(&fixture);
     prepared = false;

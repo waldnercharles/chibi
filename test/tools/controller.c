@@ -173,8 +173,8 @@ static void setup()
         paths[PROBE],
         "Probe :: behavior {\n"
         "    count := 0\n"
-        "    on Tick { count += Helpers.Twice(1) }\n"
-        "    on Begin { await delay(0.05); count += 100 }\n"
+        "    on Tick :: () { count += Helpers.Twice(1) }\n"
+        "    on Begin :: () { await delay(0.05); count += 100 }\n"
         "}\n"
     );
     write_file(
@@ -186,7 +186,7 @@ static void setup()
     );
     write_file(
         paths[DRIFT],
-        "Drift :: system(position: Transform) {\n"
+        "Drift :: system(position: Transform) on Tick :: (dt: float s) {\n"
         "    position.x += dt\n"
         "}\n"
     );
@@ -344,7 +344,8 @@ TEST_CASE(controller_analysis_and_rename_preview)
 
 TEST_CASE(controller_diagnostics_preserve_source_ranges)
 {
-    const char *broken = "Probe :: behavior { on Tick { missing_call() } }\n";
+    const char
+        *broken = "Probe :: behavior { on Tick :: () { missing_call() } }\n";
     begin("analyze_code", paths[PROBE]);
     yyjson_mut_obj_add_str(request, input, "source", broken);
     send();
@@ -481,7 +482,7 @@ TEST_CASE(controller_inspection_and_execution_status)
     send();
     REQUIRE(run() != 0 && ok(0) && !ok(1));
     REQUIRE(uint_is(get(get(result(0), "graph"), "id"), graph_id));
-    REQUIRE(yyjson_get_str(get(result(0), "metadata")));
+    REQUIRE(!get(result(0), "metadata"));
     nodes = get(get(result(0), "graph"), "nodes");
     yyjson_arr_foreach(nodes, i, count, node)
     {

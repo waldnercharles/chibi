@@ -11,7 +11,6 @@
 #include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_format.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "authoring/source_package_files.h"
 #include "graph/document/serialize.h"
@@ -25,7 +24,6 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -124,67 +122,26 @@ static int settle(bool check, const char *name, const char *path, const char *te
     return 1;
 }
 
-static bool save_code_metadata(const char *path, const char *text, const char *metadata)
-{
-    char *bound = authoring_source_metadata_bind(metadata, text);
-    if (!bound) {
-        return false;
-    }
-    size_t length = strlen(path) + sizeof ".meta.tmp";
-    char *target = xmalloc(length), *temporary = xmalloc(length);
-    snprintf(target, length, "%s.meta", path);
-    snprintf(temporary, length, "%s.meta.tmp", path);
-    bool saved = write_text(temporary, bound) && rename(temporary, target) == 0;
-    if (!saved) {
-        remove(temporary);
-    }
-    free(target);
-    free(temporary);
-    free(bound);
-    return saved;
-}
-
-static char *canonical_source(
-    const formatter *f,
-    const char *text,
-    const char *path,
-    char **metadata,
-    char *error,
-    size_t size
-)
+static char *canonical_source(const formatter *f, const char *text, const char *path, char *error, size_t size)
 {
     if (strlen(text) > CANONICAL_SOURCE_MAX_BYTES) {
         snprintf(error, size, "source exceeds formatter byte limit");
         return NULL;
     }
-    script_syntax *source = script_parse(text);
-    const char *identity = NULL;
     for (int i = 0; i < source_catalog_source_count(f->sources); i++) {
         const source_catalog_source *entry = source_catalog_source_at(f->sources, i);
         if (!strcmp(entry->path, path)) {
-            identity = entry->identity;
+            return authoring_source_canonical(
+                text,
+                source_catalog_view(f->sources),
+                entry->identity,
+                error,
+                size
+            );
         }
     }
-    char *saved = identity
-                    ? authoring_source_canonical(text, source_catalog_view(f->sources), identity, error, size)
-                    : authoring_source_format(source, error, size);
-    if (saved) {
-        size_t length = strlen(path) + sizeof ".meta";
-        char *sidecar_path = xmalloc(length);
-        snprintf(sidecar_path, length, "%s.meta", path);
-        struct stat info;
-        char *sidecar = stat(sidecar_path, &info) == 0 && info.st_size >= 0 &&
-                                (uintmax_t)info.st_size <= CANONICAL_SOURCE_MAX_BYTES
-                          ? file_read_text(sidecar_path)
-                          : NULL;
-        free(sidecar_path);
-        if (sidecar) {
-            script_syntax *formatted = script_parse(saved);
-            *metadata = authoring_source_metadata_remap(sidecar, source, formatted);
-            script_syntax_free(formatted);
-        }
-        free(sidecar);
-    }
+    script_syntax *source = script_parse(text);
+    char *saved = authoring_source_format(source, error, size);
     script_syntax_free(source);
     return saved;
 }
@@ -378,15 +335,12 @@ static char *canonical_asset(
     const asset_family *family,
     const char *text,
     const char *path,
-    char **metadata,
     char *error,
     size_t size
 )
 {
-    *metadata = NULL;
     switch (family->kind) {
-        case FORMAT_SOURCE:
-            return canonical_source(f, text, path, metadata, error, size);
+        case FORMAT_SOURCE: return canonical_source(f, text, path, error, size);
         case FORMAT_GRAPH: return canonical_graph(text, error, size);
         case FORMAT_PROTOTYPE:
             return canonical_prototype(f, text, path, error, size);
@@ -428,10 +382,8 @@ static int format_asset(formatter *f, const asset_entry *entry)
     char error[512] = { 0 };
     char *path = content_path(f, entry->relative);
     char *text = file_read_text(path);
-    char *metadata = NULL;
-    char *canonical = text
-                        ? canonical_asset(f, entry->family, text, path, &metadata, error, sizeof error)
-                        : NULL;
+    char *canonical = text ? canonical_asset(f, entry->family, text, path, error, sizeof error)
+                           : NULL;
     if (canonical && !code_path(path)) {
         char *disk = asset_text_to_disk(canonical, error, sizeof error);
         free(canonical);
@@ -443,12 +395,6 @@ static int format_asset(formatter *f, const asset_entry *entry)
     } else {
         differing = settle(f->check, entry->relative, path, text, canonical);
     }
-    if (!f->check && differing >= 0 && metadata &&
-        !save_code_metadata(path, canonical, metadata)) {
-        fprintf(stderr, "format: could not save metadata for %s\n", entry->relative);
-        differing = -1;
-    }
-    free(metadata);
     free(canonical);
     free(text);
     free(path);

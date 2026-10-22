@@ -264,6 +264,27 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             }
         );
     }
+    bool hidden = false;
+    if (a->import_count && script_analyzer_is(object, "identifier")) {
+        char *qualified = script_analyzer_qualified_name(a, node);
+        hidden = script_analyzer_private_member(a, node, qualified);
+        if (hidden) {
+            script_analyzer_diagnostic(a, node, SCRIPT_PRIVATE_MEMBER, qualified);
+        }
+        free(qualified);
+    }
+    if (hidden) {
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_ERROR,
+                                 .type = script_analyzer_bad_type(),
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
+    }
     if (script_analyzer_is(object, "builtin_reference") &&
         script_analyzer_text_is(a, object, "state")) {
         int symbol = script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
@@ -1075,7 +1096,14 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         }
         value = script_analyzer_field(value, "value");
     }
-    script_type literal = mode == BEHAVIOR_CAST_EXACT
+    bool character = script_type_char(type);
+    if (character && mode != BEHAVIOR_CAST_EXACT) {
+        script_analyzer_diagnostic(a, node, "char converts only with char(value)");
+        mode = BEHAVIOR_CAST_EXACT;
+    }
+    /* char(literal) checks the literal as the conversion would check it. */
+    script_type literal = character ? (script_type){ .storage = PIN_I64 }
+                        : mode == BEHAVIOR_CAST_EXACT
                             ? type
                             : script_analyzer_conversion_operand(a, value);
     script_expression result = { .kind = SCRIPT_EXPR_CAST,
@@ -1093,6 +1121,9 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         !(actual.flags & SCRIPT_TYPE_ERROR)) {
         script_analyzer_diagnostic(a, node, "wrap and clamp convert between integer types");
     }
+    if (character && numeric && !integers) {
+        script_analyzer_diagnostic(a, node, "char converts from an integer");
+    }
     if (!numeric && script_catalog_type_assignable(a->catalog, type, actual)) {
         return result.left;
     }
@@ -1101,9 +1132,18 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     }
     /* A compile-time integer that does not fit is an error, not a runtime trap. */
     pin_value constant, converted;
-    if (integers && mode == BEHAVIOR_CAST_EXACT &&
+    if (character && integers && !script_type_char(actual) &&
+        !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant)) {
+        uint64_t bits = behavior_scalar_bits(constant);
+        bool negative = behavior_scalar_signed(constant.type) && (int64_t)bits < 0;
+        if (negative || bits > 0x10FFFF || (bits >= 0xD800 && bits <= 0xDFFF)) {
+            script_analyzer_diagnostic(a, node, "Constant does not fit in char");
+        }
+    } else if (
+        integers && mode == BEHAVIOR_CAST_EXACT &&
         !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant) &&
-        !behavior_scalar_cast(constant, type.storage, mode, &converted)) {
+        !behavior_scalar_cast(constant, type.storage, mode, &converted)
+    ) {
         script_analyzer_diagnostic(
             a,
             node,
@@ -1116,6 +1156,38 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     }
     result.effects = script_analyzer_expr_effects(a, result.left);
     return script_analyzer_expr_add(a, result);
+}
+/* `xs.f(...)` calls the array function f with xs first. */
+const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNode member)
+{
+    char *name = script_analyzer_name_copy(a, member);
+    const script_catalog_capability *found = NULL;
+    for (int i = 0; !found && i < a->catalog->capability_count; i++) {
+        const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+        if (candidate->kind == SCRIPT_CAPABILITY_FUNCTION && candidate->parameter_count &&
+            candidate->parameters[0].type.container == PIN_CONTAINER_ARRAY &&
+            script_analyzer_native_capability(a, candidate->id) &&
+            script_name_matches(candidate->name, name)) {
+            found = candidate;
+        }
+    }
+    free(name);
+    return found;
+}
+/* The array functions that return their array changed; `slice` returns a new one. */
+static const char *const ARRAY_CHANGERS[] = {
+    "append",  "add_unique",   "extend",      "set_array_elem",
+    "insert",  "remove_index", "remove_item", "clear",
+    "reverse", "swap",         "resize",
+};
+bool script_analyzer_array_changer(const script_catalog_capability *function)
+{
+    for (size_t i = 0; i < sizeof ARRAY_CHANGERS / sizeof *ARRAY_CHANGERS; i++) {
+        if (script_name_matches(function->name, ARRAY_CHANGERS[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
@@ -1283,6 +1355,17 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 }
                 free(method);
             }
+            if (!capability && function_index < 0 &&
+                script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_ARRAY) {
+                TSNode member = script_analyzer_field(target, "member");
+                capability = script_analyzer_array_method(a, member);
+                if (capability && script_analyzer_array_changer(capability) &&
+                    !ts_node_eq(a->changing, node)) {
+                    char *method = script_analyzer_name_copy(a, member);
+                    script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
+                    free(method);
+                }
+            }
         }
         /* Numeric type names always convert; other types yield to a
          * capability of the same name, such as a literal node. */
@@ -1300,6 +1383,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
         if (!capability && function_index < 0 && !strcmp(name, "cast")) {
             script_analyzer_diagnostic(a, target, "cast<T>(value) was removed; write T(value)");
+        } else if (!capability && function_index < 0 && script_analyzer_private_member(a, target, name)) {
+            script_analyzer_diagnostic(a, target, SCRIPT_PRIVATE_MEMBER, name);
         } else if (!capability && function_index < 0) {
             script_analyzer_diagnostic(a, target, "%s callable '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
         }

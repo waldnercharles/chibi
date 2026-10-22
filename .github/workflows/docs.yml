@@ -17,6 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # The pinned third-party archive downloads from this repository's releases.
+  GH_TOKEN: ${{ github.token }}
   CC: clang-18
   CXX: clang++-18
 
@@ -30,24 +32,13 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 libclang-18-dev libclang-rt-18-dev \
+          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-      - name: Identify dependency sources
-        id: deps
-        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: native-deps-debug-release-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
-          restore-keys: native-deps-debug-release-${{ runner.os }}-clang18-
       - name: Build chibi and chibi-compile
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build the site

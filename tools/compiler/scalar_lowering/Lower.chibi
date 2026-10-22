@@ -3,14 +3,14 @@ package scalar_lowering
 // Private wire schema 1, pinned to the typed IR at 9bf6e275. No callbacks.
 // Flags are deliberately zero-only in this slice. State defaults are facts,
 // not evaluated here. Native target rows contain layout facts only.
-Type :: struct {
+pub Type :: struct {
     storage: int;
     container: int;
     flags: int;
     nominal_slot: int;
     parameter_slot: int;
 }
-Expression :: struct {
+pub Expression :: struct {
     kind: int;
     op: int;
     left: int;
@@ -20,32 +20,32 @@ Expression :: struct {
     literal: int;
     range: int;
 }
-Symbol :: struct {
+pub Symbol :: struct {
     kind: int;
     id_slot: int;
     type: int;
 }
-Variable :: struct {
+pub Variable :: struct {
     id_slot: int;
     type: int;
     literal: int;
 }
-Result :: struct {
+pub Result :: struct {
     expression: int;
     type: int;
 }
-Literal :: struct {
+pub Literal :: struct {
     storage: int;
     payload: int;
 }
-Range :: struct {
+pub Range :: struct {
     start: int;
     end: int;
     line: int;
     column: int;
     document: int;
 }
-Target :: struct {
+pub Target :: struct {
     schema: int;
     prepared: int;
     pointer_storage: int;
@@ -53,7 +53,7 @@ Target :: struct {
     payload_offset: int;
     results_offset: int;
 }
-Request :: union {
+pub Request :: union {
     Tables(types: Type[], expressions: Expression[], symbols: Symbol[],
            variables: Variable[], results: Result[], literals: Literal[], ids: uint64[],
            ranges: Range[], documents: string[], target: Target, range: int)
@@ -91,7 +91,7 @@ Diagnostic :: struct {
     range: int;
     message: string;
 }
-Plan :: union {
+pub Plan :: union {
     Rejected(diagnostics: Diagnostic[])
     | Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
             slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
@@ -144,7 +144,7 @@ ShiftRight: int : 28;
 Reject :: (range: int, message: string) -> Plan {
     diagnostics: Diagnostic[] = [];
     item: Diagnostic = {range: range, message: message};
-    return Plan.Rejected(array_add(diagnostics, item));
+    return Plan.Rejected(append(diagnostics, item));
 }
 ValidIndex :: (index: int, count: int) -> bool {
     return index >= 0 && index < count;
@@ -192,15 +192,15 @@ Emit :: (output: Emitter, item: Instruction, origin: Range, storage: int, kind: 
             if (storage != 0) {
                 item.output = length(slots);
                 slot: Slot = {storage: storage, kind: kind};
-                slots = array_add(slots, slot);
+                slots.append(slot);
             }
             if (item.op == Save) {
                 local := locals[item.target];
                 local.kind = slots[item.left].kind;
                 locals[item.target] = local;
             }
-            origins = array_add(origins, origin);
-            code = array_add(code, item);
+            origins.append(origin);
+            code.append(item);
             return Emitter.Emitted(slots, locals, origins, code);
     }
 }
@@ -226,7 +226,7 @@ AddLocal :: (output: Emitter) -> Emitter {
     switch output {
         case .Emitted(slots, locals, origins, code):
             item: Local = {storage: Boolean, payload: 0, kind: 0};
-            return Emitter.Emitted(slots, array_add(locals, item), origins, code);
+            return Emitter.Emitted(slots, append(locals, item), origins, code);
     }
 }
 Patch :: (output: Emitter, pc: int, target: int) -> Emitter {
@@ -243,7 +243,7 @@ NewFrame :: (expression: int) -> Frame {
     return {expression: expression, phase: 0, left: -1, local: -1, branch_pc: -1, skip: -1};
 }
 
-Lower :: (request: Request) -> Plan {
+pub Lower :: (request: Request) -> Plan {
     switch request {
         case .Tables(types, expressions, symbols, variables, results, literals, ids, ranges, documents, abi, request_range):
             // Finite component contract, independent of the executor's budget.
@@ -303,8 +303,8 @@ Lower :: (request: Request) -> Plan {
                     }
                     earlier += 1;
                 }
-                variable_ids = array_add(variable_ids, identity);
-                defaults = array_add(defaults, literals[variable.literal]);
+                variable_ids.append(identity);
+                defaults.append(literals[variable.literal]);
                 index += 1;
             }
             symbol_variables: int[] = [];
@@ -329,7 +329,7 @@ Lower :: (request: Request) -> Plan {
                 if (types[symbol.type].storage != defaults[found].storage) {
                     return Reject(request_range, "scalar lowering state signature differs from its type");
                 }
-                symbol_variables = array_add(symbol_variables, found);
+                symbol_variables.append(found);
                 index += 1;
             }
             // Validate every raw row, including rows unreachable from the results.
@@ -412,7 +412,7 @@ Lower :: (request: Request) -> Plan {
                     return Reject(request_range, "scalar lowering admits identity result conversions only");
                 }
                 header: Literal = {storage: types[result.type].storage, payload: 0};
-                headers = array_add(headers, header);
+                headers.append(header);
                 index += 1;
             }
             slots: Slot[] = [];
@@ -423,7 +423,7 @@ Lower :: (request: Request) -> Plan {
             frames: Frame[] = [];
             index = 0;
             while (index < 257) {
-                frames = array_add(frames, NewFrame(-1));
+                frames.append(NewFrame(-1));
                 index += 1;
             }
             visits: int = 0;

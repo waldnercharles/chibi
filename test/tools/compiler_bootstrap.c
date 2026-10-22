@@ -1,5 +1,6 @@
 #include "compiler_bootstrap.h"
 
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -51,6 +52,25 @@ static bool log_has(const char *text)
     return has;
 }
 
+/* A file's bytes, or NULL. */
+static unsigned char *read_bytes(const char *path, size_t *length)
+{
+    FILE *file = fopen(path, "rb");
+    unsigned char *bytes = NULL;
+    long size = file && !fseek(file, 0, SEEK_END) ? ftell(file) : -1;
+    if (size > 0 && !fseek(file, 0, SEEK_SET)) {
+        bytes = xmalloc((size_t)size);
+        if (fread(bytes, 1, (size_t)size, file) != (size_t)size) {
+            free(bytes);
+            bytes = NULL;
+        }
+    }
+    if (file) {
+        fclose(file);
+    }
+    *length = bytes ? (size_t)size : 0;
+    return bytes;
+}
 /* The compiler sources' contract. */
 static void contract(int version, int minimum)
 {
@@ -133,6 +153,10 @@ TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options)
                                compiler,  "--core",      core, "--revision",
                                "r",       NULL };
     REQUIRE(tool_run(revision, root, log_path) == 1 && log_has("usage:"));
+    const char *seeded[] = { host_path, "--bootstrap", root, "--compiler",
+                             compiler,  "--core",      core, "--seed",
+                             root,      "--recover",   "x",  NULL };
+    REQUIRE(tool_run(seeded, root, log_path) == 1 && log_has("usage:"));
     return true;
 }
 
@@ -272,7 +296,7 @@ TEST_CASE(bootstrap_write_checks_the_seed)
     write_file(
         "seed/compile.json",
         "[\"/project\", [\"core\"], [\"/sdk/core\"], [\"two/A.chibi\"], "
-        "[\"package other\\n\"], {}, 0, "
+        "[\"package other\\n\"], false, {}, 0, "
         "[], [], [], []]"
     );
     REQUIRE(
@@ -313,7 +337,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
 /* The compiler sources and core collection of HEAD, exported by git rather
  * than taken from the working tree, recover the compiler from the artifact:
  * its own bytes when it was written from them, otherwise a compiler that
- * compiles them to itself. */
+ * compiles them to itself. --recover writes that compiler. */
 TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
 {
     char archive[256];
@@ -328,11 +352,25 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
     REQUIRE(tool_run(extract, root, log_path) == 0);
     snprintf(compiler, sizeof compiler, "%s/tools/compiler", root);
     snprintf(core, sizeof core, "%s/packages/core", root);
+    char recovered[256], closure[4096];
+    path(recovered, "recovered.chibip");
+    snprintf(closure, sizeof closure, "%s/compiler.chibip", artifact_path);
     const char *argv[] = { host_path,    "--bootstrap", artifact_path,
                            "--compiler", compiler,      "--core",
-                           core,         NULL };
+                           core,         "--recover",   recovered,
+                           NULL };
     REQUIRE(tool_run_within(argv, root, log_path, RECOVERY_SECONDS) == 0);
-    REQUIRE(log_has("recovered the compiler of revision ") || log_has("that compiles them to itself"));
+    bool own = log_has("recovered the compiler of revision ");
+    REQUIRE(own || log_has("that compiles them to itself"));
+    size_t length = 0, expected = 0;
+    unsigned char *bytes = read_bytes(recovered, &length);
+    unsigned char *original = read_bytes(closure, &expected);
+    bool written = bytes && length &&
+                   (!own || (original && length == expected &&
+                             !memcmp(bytes, original, length)));
+    free(bytes);
+    free(original);
+    REQUIRE(written);
     return true;
 }
 

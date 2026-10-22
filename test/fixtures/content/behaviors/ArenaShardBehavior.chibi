@@ -1,21 +1,28 @@
+// The twelve original box-frame beams keep their source pose and material,
+// separate outward, tumble at independent rates, arc above the floor, and
+// shrink away after 0.55 seconds.
 ArenaShardBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    // State
     Age: float = 0.0
     Pitch_Rate: float = 0.0
     Roll_Rate: float = 0.0
     Lift: float = 0.0
     Birth_Scale: float = 1.0
-    action age_2 = set_variable<Age>(Age + delta_time())
-    on Tick {
+    action age_2 = set_variable<Age>(Age + Step)
+    on Tick :: (dt: float s) {
+        Step = dt
         age_2()
     }
     after age_2 {
-        if Age_Phase(age_2.Value, delta_time()) >= 1.0 {
+        if Age_Phase(age_2.Value, Step) >= 1.0 {
             destroy_entity(self)
         } else {
-            await Advance_Shard_Motion(delta_time(), age_2.Value)
+            await Advance_Shard_Motion(Step, age_2.Value)
         }
     }
-    on Begin {
+    on Begin :: () {
         await Initialize_Shard(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
     Age_Phase :: (Age: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
@@ -37,24 +44,20 @@ ArenaShardBehavior :: behavior {
         return Roll + RollRate * Delta
     }
     Initialize_Shard :: (scale: float = 0.0, Pitch_Rate: double = 0.0, Roll_Rate: double = 0.0, Lift: double = 0.0) {
-        after entry {
-            Birth_Scale = scale
-            state.Pitch_Rate = Pitch_Rate
-            state.Roll_Rate = Roll_Rate
-            state.Lift = Lift
-            return
-        }
+        Birth_Scale = scale
+        state.Pitch_Rate = Pitch_Rate
+        state.Roll_Rate = Roll_Rate
+        state.Lift = Lift
+        return
     }
     Advance_Shard_Motion :: (Seconds: float = 0.0, Age: float = 0.0) {
-        after entry {
-            self.Transform.x = Position_X(self.Transform.x, self.Velocity.x, Seconds)
-            self.Transform.y = Position_Y(self.Transform.y, self.Velocity.y, Seconds)
-            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, Pitch_Rate, Seconds)
-            self.VisualTransform.roll = Roll(self.VisualTransform.roll, Roll_Rate, Seconds)
-            self.VisualTransform.scale = Birth_Scale * Fade(Age_Phase(Age, Seconds))
-            self.Geometry3D.elevation = self.Geometry3D.elevation + double(Lift * Seconds)
-            Lift = Lift - multiply(Seconds, B: plain double = 90.0)
-            return
-        }
+        self.Transform.x = Position_X(self.Transform.x, self.Velocity.x, Seconds)
+        self.Transform.y = Position_Y(self.Transform.y, self.Velocity.y, Seconds)
+        self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, Pitch_Rate, Seconds)
+        self.VisualTransform.roll = Roll(self.VisualTransform.roll, Roll_Rate, Seconds)
+        self.VisualTransform.scale = Birth_Scale * Fade(Age_Phase(Age, Seconds))
+        self.Geometry3D.elevation = self.Geometry3D.elevation + double(Lift * Seconds)
+        Lift = Lift - multiply(Seconds, B: plain double = 90.0)
+        return
     }
 }

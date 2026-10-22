@@ -40,9 +40,10 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool boxed;                   /* A task keeps this local by reference. */
-    bool mixed_tasks;             /* Holds tasks of different functions. */
-    unsigned mutations;           /* Invalidates proofs after assignments. */
+    bool pub;           /* Package declaration other packages import. */
+    bool boxed;         /* A task keeps this local by reference. */
+    bool mixed_tasks;   /* Holds tasks of different functions. */
+    unsigned mutations; /* Invalidates proofs after assignments. */
     uint64_t source_relationship; /* Query component provider; zero is self. */
     int source_traversal;         /* script_query_source */
     int source_variable;          /* Query row variable; zero is self. */
@@ -120,6 +121,7 @@ typedef enum
     SCRIPT_OP_SHIFT_LEFT,
     SCRIPT_OP_SHIFT_RIGHT,
     SCRIPT_OP_BIT_NOT,
+    SCRIPT_OP_COALESCE,
 } script_operator;
 typedef struct
 {
@@ -189,6 +191,8 @@ typedef struct
     script_operator op;
     script_reduction_op reduction;
     unsigned effects;
+    bool reverse;   /* `for <` counts down a range or an array. */
+    bool exclusive; /* A `..<` range stops before its last bound. */
 } script_statement;
 typedef enum
 {
@@ -281,7 +285,14 @@ typedef struct
     const script_catalog *metadata; /* Complete by-ID signature/layout closure. */
     const script_package_export *members;
     int member_count; /* At most 4096 unique identifier names. */
+    /* Declarations without pub, named so a use can say why it fails. */
+    const char *const *private_names;
+    int private_count;
 } script_package_exports;
+/* Whether exports' package declares member without pub. */
+bool script_package_private(const script_package_exports *, const char *member);
+#define SCRIPT_PRIVATE_MEMBER                                                  \
+    "'%s' is private: declare it pub to use it from another package"
 typedef struct
 {
     int document;

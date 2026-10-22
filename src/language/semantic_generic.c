@@ -538,7 +538,9 @@ static char *specialization_name(analyzer *a, generic_template definition, compi
             const script_catalog_type
                 *type = script_catalog_type_by_id(a->catalog, value.type.nominal);
             spelling = type ? (type->source_name ? type->source_name : type->name)
-                            : scalar_name(value.type.storage);
+                     : script_type_char(value.type)
+                         ? "char"
+                         : scalar_name(value.type.storage);
         } else if (behavior_scalar_string(value.value.type)) {
             const char *text = value.value.str ? value.value.str : "";
             quoted = xmalloc(strlen(text) * 6 + 3);
@@ -879,18 +881,28 @@ bool script_analyzer_generic_alias(analyzer *a, TSNode node)
     if (!script_analyzer_compile_expression(a, expression, NULL, &value, &budget)) {
         return true;
     }
+    /* The value keeps its storage; a char result keeps its declared type. */
+    script_type type = { .storage = value.value.type };
+    int function = !imported && symbol >= 0 ? a->out->symbols[symbol].function : -1;
+    if (function >= 0 && acount(a->out->functions[function].results) == 1) {
+        script_type
+            declared = a->out->symbols[a->out->functions[function].results[0]].type;
+        if (script_type_char(declared) && declared.storage == type.storage) {
+            type = declared;
+        }
+    }
     int alias = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
         value.is_type ? SCRIPT_TYPE : SCRIPT_CONSTANT,
-        value.is_type ? value.type : (script_type){ .storage = value.value.type },
+        value.is_type ? value.type : type,
         false
     );
     if (!value.is_type) {
         a->out->symbols[alias].initializer = script_analyzer_expr_add(
             a,
             (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
-                                 .type = { .storage = value.value.type },
+                                 .type = type,
                                  .constant = value.value,
                                  .constant_snapshot = true,
                                  .range = script_analyzer_range(a, expression),

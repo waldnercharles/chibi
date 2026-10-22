@@ -19,16 +19,80 @@ targets.
   not hold up M5. Only the tokenizer exists so far, on the odin-tokenizer
   branch.
 - **`entry`.** Removed from the language. Phase 1 (project version 28):
-  `entry.X` and a bare `entry` became the parameter's own name. Phase 2,
-  under discussion: `after entry` and macro entry and exit paths become
-  ordinary functions returning a union.
+  `entry.X` and a bare `entry` became the parameter's own name. Phase 2a
+  (project version 29): a function has no `after entry`; its statements
+  moved into the function's body. Still under discussion: macro entry and
+  exit paths becoming ordinary functions returning a union, and whether
+  `after` goes entirely.
 - **Named results.** A named, defaulted single result whose name adds nothing
   is dropped. Named results remain where natives need them.
-- **Events.** Under discussion: declare events name-first with a typed
-  payload, along the lines of `Tick :: event (dt: Seconds)`. See "One way to
-  read the step".
+- **Events.** Decided: a handler is written `on Tick :: (dt: s) { ... }`. It
+  names the payload fields it reads, in any order and any subset, each with
+  its type, and `on Begin :: () { }` takes none. Systems declare the step the
+  same way, and `event` goes. Tick's payload is `dt` in seconds (#551).
+  Project version 30 migrates every handler to the new form; a later change
+  removes the old forms from the language. Declarations name-first, `Tick :: event (dt: s)`, may follow.
+  See "One way to read the step".
 
-The remaining entries are proposals.
+## Decisions (owner, 2026-10-21)
+
+- **Strings carry their length.** A Chibi `string` becomes a pointer and a
+  byte length, as in Odin, Go, Rust and Zig, so indexing, length and slicing
+  cost O(1) and a slice may share its parent's bytes. Today `ByteAt`, `Slice`
+  and `ByteLength` measure the text with `strlen` on every call, and the
+  compiler's `Text(forest, text, node)` walks each source up to every node it
+  slices. See "Strings carry their length" below.
+- **One string type.** Chibi code sees a single `string`, with no `cstring`.
+  Native C components keep their NUL-terminated `const char *` fields, and the
+  runtime converts at that boundary.
+- **Arrays change through methods.** `code.append(x)` replaces
+  `code = array_add(code, x)`, and every array function is a method on its
+  first argument. `append` adds an item and `extend` adds an array's items;
+  project version 32 removed `array_add` and the concatenating `append`.
+
+The remaining entries are proposals, except "Strings carry their length",
+which records how the decision above is carried out.
+
+## Strings carry their length
+
+Now: a string value is a `const char *` in `pin_value.str`, in VM slots, in
+data cells and in record fields. Every byte operation measures it, and every
+slice copies its bytes.
+
+Elsewhere: Odin's `string` is `struct { data: [^]u8, len: int }`, beside a
+NUL-terminated `cstring` for C. Go's string header and Rust's `&str` are the
+same pair. Zig's `[]const u8` is a slice, and string literals are also
+NUL-terminated for C. Each shares bytes when it slices.
+
+Representation: slots, data-cell payloads and record fields hold one pointer,
+and SLJIT writes only that payload. So the length cannot live beside the
+pointer in `pin_value`: a JIT write would leave it stale. The pointer instead
+addresses an immutable descriptor, `{const char *bytes; uint32_t length}`,
+whose bytes lie inside a NUL-terminated buffer:
+
+- Values, slots and record fields stay 8 bytes; only what the pointer means
+  changes.
+- `Slice` allocates a descriptor into its parent's bytes and copies none.
+- C needs a NUL-terminated string when it writes a native component field or
+  calls a host API. It gets the descriptor's bytes as they are when
+  `bytes[length]` is the buffer's terminator, which is always in bounds, and a
+  copy otherwise.
+- Reading a native component's `const char *` field measures it once and
+  makes a descriptor.
+- Interned strings, prepared string constants and the wire and document
+  formats carry the length.
+
+Phases, each its own PR:
+
+1. Route every C reader of `pin_value.str` (about 270 sites) and every
+   producer through accessors, `pin_text(value)` for bytes and length and
+   `pin_value_text(...)` to build one. The representation does not change, so
+   the accessor still measures.
+2. Switch the accessors and producers to descriptors, convert at the native
+   component boundary, and bump the prepared format and rebuild the bootstrap
+   artifact.
+3. Make `Slice` share bytes. Make `ByteAt` and `ByteLength` read the length.
+   Add `Bytes`-free compiler paths where they help.
 
 ## Should Terrain Lab be the compiler's checked game?
 
@@ -143,23 +207,21 @@ than the entries above.
 
 ## One way to read the step
 
-A Tick handler can read the step four ways today:
-- `on Tick(dt)` binds it;
-- `event.dt` reads it;
-- `on Tick as tick` names the whole payload, as `tick.dt`;
-- a bare `dt`, as `QuarryCamera` uses it.
-
-All four mean the same thing (`docs/code-language.md` on main, lines
-471-475).
+Resolved for handlers (2026-10-20, #565 and the PR that removed the old
+forms): a Tick handler lists the step's field, `on Tick :: (dt: float s)`. The
+positional list, the `as` alias and `event.dt` no longer parse or analyze.
+Project version 31 removed the globals `dt`, `delta` and `delta_time()`
+(owner decision, 2026-10-20): a handler or system lists `dt`, and a function
+that needs the step takes it as a parameter.
 
 - Godot passes `delta` to `_process`.
 - Unity reads a global, `Time.deltaTime`.
 - Bevy injects `Res<Time>`.
 
-Change: one form. The owner proposes declaring events name-first with a
-typed payload, `Tick :: event (dt: Seconds)`, as other declarations are. A
-handler then lists that payload, checked against the declaration, and the
-other three forms go. Godot's `signal tick(dt: float)` and Pony's
+Change (decided): one form. Events are declared name-first with a typed
+payload, `Tick :: event (dt: s)`, as other declarations are. A handler is
+written `on Tick :: (dt: s) { ... }`; its parameters are checked against the
+declaration, and the other three forms go. Godot's `signal tick(dt: float)` and Pony's
 `be tick(dt: F64)` declare events with typed payloads the same way.
 
 ## Single named results with defaults

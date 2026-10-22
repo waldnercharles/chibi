@@ -1,4 +1,5 @@
 #include "authoring/source_edit_internal.h"
+#include "authoring/source_edit_refactor_internal.h"
 #include "authoring/source_literal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -222,6 +223,41 @@ static const script_catalog_capability *capability(
         }
     }
     return found;
+}
+/* A created handler lists every payload field with its type, so each one can
+ * be wired at once; the fields it does not read can be deleted. A measured
+ * field spells its storage before its unit, as `double charge`, since a lone
+ * name reads as a unit only for a few shorthands. */
+static bool handler_header(
+    const script_catalog *catalog,
+    const char *callee,
+    const script_catalog_capability *event,
+    char **fragment,
+    char *error,
+    size_t size
+)
+{
+    append(fragment, "on %s :: (", callee);
+    for (int i = 0; i < event->parameter_count; i++) {
+        const script_catalog_parameter *field = &event->parameters[i];
+        char *name = quoted(catalog, field->name, error, size), *type = NULL;
+        if (!name) {
+            return false;
+        }
+        if (!source_refactor_type(catalog, field->type, false, &type, error, size)) {
+            free(name);
+            return false;
+        }
+        if (field->unit) {
+            source_refactor_append(&type, " %s", field->unit);
+        }
+        char *spelled = source_refactor_take(&type);
+        append(fragment, "%s%s: %s", i ? ", " : "", name, spelled);
+        free(name);
+        free(spelled);
+    }
+    append(fragment, ") {}\n");
+    return true;
 }
 static void unique_name(const script_analysis *a, char *name, size_t size)
 {
@@ -637,7 +673,9 @@ bool source_edit_capability(
             fail(error, size, "Create event handlers in the declaration body");
             goto done;
         }
-        append(&fragment, "on %s as %s {}\n", callee, name);
+        if (!handler_header(catalog, callee, c, &fragment, error, size)) {
+            goto done;
+        }
     } else {
         append(&call, "%s", callee);
         if (c->state_access != SCRIPT_STATE_ACCESS_NONE) {

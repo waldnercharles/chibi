@@ -9,15 +9,15 @@ import strings "core:strings"
 
 // Complete raw tree, including anonymous children and extras. Fields describe
 // incoming edges. Node indices and byte ranges retain parser invariants.
-Tree :: union {
+pub Tree :: union {
     Raw(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], text: string)
 }
 // The constructor definitions and named merged entries share catalog row order.
 // Each publication appends one row to both views; original raw slots stay stable.
-Environment :: union {
+pub Environment :: union {
     Tables(names: named.Environment, constructors: constructors.Environment, pointer_size: int)
 }
-Reading :: union {
+pub Reading :: union {
     Read(value: named.Value, has_unit: bool, unit: string, environment: Environment,
          diagnostics: syntax.Diagnostic[], uses: named.Use[], publications: constructors.Plan[])
 }
@@ -31,13 +31,13 @@ UnitText :: union {
     Unit(value: string, diagnostics: syntax.Diagnostic[])
 }
 
-Empty :: (environment: Environment, value: named.Value) -> Reading {
+pub Empty :: (environment: Environment, value: named.Value) -> Reading {
     diagnostics: syntax.Diagnostic[] = [];
     uses: named.Use[] = [];
     publications: constructors.Plan[] = [];
     return Reading.Read(value, false, "", environment, diagnostics, uses, publications);
 }
-Field :: (tree: Tree, node: int, name: string) -> int {
+pub Field :: (tree: Tree, node: int, name: string) -> int {
     if (node < 0) {
         return -1;
     }
@@ -53,7 +53,7 @@ Field :: (tree: Tree, node: int, name: string) -> int {
             return -1;
     }
 }
-Kind :: (tree: Tree, node: int, name: string) -> bool {
+pub Kind :: (tree: Tree, node: int, name: string) -> bool {
     if (node < 0) {
         return false;
     }
@@ -62,7 +62,7 @@ Kind :: (tree: Tree, node: int, name: string) -> bool {
             return nodes[node].kind == name;
     }
 }
-Text :: (tree: Tree, node: int) -> string {
+pub Text :: (tree: Tree, node: int) -> string {
     if (node < 0) {
         return "";
     }
@@ -71,7 +71,7 @@ Text :: (tree: Tree, node: int) -> string {
             return strings.Slice(text, nodes[node].start, nodes[node].end - nodes[node].start);
     }
 }
-Request :: (tree: Tree, node: int, scope: int, document: int, text: string) -> named.Request {
+pub Request :: (tree: Tree, node: int, scope: int, document: int, text: string) -> named.Request {
     if (node < 0) {
         request: named.Request = {text: text, scope: scope, start: 0, end: 0, line: 1, column: 1, document: 0};
         return request;
@@ -83,13 +83,13 @@ Request :: (tree: Tree, node: int, scope: int, document: int, text: string) -> n
             return request;
     }
 }
-Diagnostic :: (tree: Tree, node: int, document: int, message: string) -> syntax.Diagnostic {
+pub Diagnostic :: (tree: Tree, node: int, document: int, message: string) -> syntax.Diagnostic {
     request := Request(tree, node, -1, document, "");
     diagnostic: syntax.Diagnostic = {start: request.start, end: request.end, line: request.line,
                                      column: request.column, document: request.document, message: strings.Slice(message, 0, 191)};
     return diagnostic;
 }
-Name :: (tree: Tree, node: int, document: int) -> Decoded {
+pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
     diagnostics: syntax.Diagnostic[] = [];
     raw := Text(tree, node);
     if (strings.ByteAt(raw, 0) != 34) {
@@ -97,20 +97,20 @@ Name :: (tree: Tree, node: int, document: int) -> Decoded {
     }
     decoded := compiler_json_string(raw);
     if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
-        diagnostics = array_add(diagnostics, Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
+        diagnostics.append(Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
         return Decoded.Name("", diagnostics);
     }
     return Decoded.Name(decoded.value, diagnostics);
 }
-AddType :: (types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
+pub AddType :: (types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             slot := length(ids);
-            ids = array_add(ids, nominal);
-            ids = array_add(ids, parameter);
+            ids.append(nominal);
+            ids.append(parameter);
             row: named.Type = {storage: storage, container: container, flags: flags, nominal_slot: slot, parameter_slot: slot + 1};
             index := length(types);
-            types = array_add(types, row);
+            types.append(row);
             return Indexed.Added(types, ids, index);
     }
 }
@@ -133,11 +133,11 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                             switch AddType(types, ids, definition) {
                                 case .Added(new_types, new_ids, type_index):
                                     identity_slot := length(new_ids);
-                                    final_ids := array_add(new_ids, id);
+                                    final_ids := append(new_ids, id);
                                     item: named.Entry = {name: name, source_name: "", key: "", id_slot: identity_slot, type: type_index,
                                                          has_source_name: false, has_key: false, internal: internal, component: false};
-                                    new_merged := array_add(merged, item);
-                                    new_own := array_add(own, item);
+                                    new_merged := append(merged, item);
+                                    new_own := append(own, item);
                                     updated_names = named.Environment.Tables(lexical, new_types, final_ids, new_merged, new_own, native,
                                                                              symbol_types, imports, exports, uses, identity, package_scope, has_native, has_documents, entity_id);
                             }
@@ -158,16 +158,16 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                                     case .Added(rows, pool, type_index):
                                         new_types = rows;
                                         tag_slot := length(pool);
-                                        new_ids = array_add(pool, named.IDAt(output_ids, item.tag_slot));
+                                        new_ids = append(pool, named.IDAt(output_ids, item.tag_slot));
                                         raw: constructors.RawVariant = {tag_slot: tag_slot, type: type_index};
-                                        new_variants = array_add(new_variants, raw);
+                                        new_variants.append(raw);
                                 }
                                 index += 1;
                             }
                             id_slot := length(new_ids);
-                            new_ids = array_add(new_ids, id);
+                            new_ids.append(id);
                             item: constructors.Definition = {id_slot: id_slot, variant_start: variant_start, variant_count: count};
-                            new_definitions := array_add(definitions, item);
+                            new_definitions := append(definitions, item);
                             updated_constructors := constructors.Environment.Tables(new_types, new_ids, new_definitions, new_variants,
                                                                                     capabilities, functions, symbols, results);
                             return Environment.Tables(updated_names, updated_constructors, pointer_size);
@@ -186,10 +186,10 @@ AddUse :: (environment: Environment, use: named.TypeUse) -> Environment {
                         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                      identity, package_scope, has_native, has_documents, entity_id):
                             slot := length(ids);
-                            new_ids := array_add(ids, member);
+                            new_ids := append(ids, member);
                             row: named.Use = {kind: 4, symbol: symbol, member_slot: slot, start: start, end: end,
                                               line: line, column: column, document: document};
-                            new_uses := array_add(uses, row);
+                            new_uses := append(uses, row);
                             new_names := named.Environment.Tables(lexical, types, new_ids, merged, own, native, symbol_types,
                                                                   imports, exports, new_uses, identity, package_scope, has_native, has_documents, entity_id);
                             return Environment.Tables(new_names, constructor_tables, pointer_size);
@@ -213,7 +213,7 @@ Resolve :: (environment: Environment, result: named.Resolution) -> Reading {
                             switch names {
                                 case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, all_uses,
                                              identity, package_scope, has_native, has_documents, entity_id):
-                                    uses = array_add(uses, all_uses[length(all_uses) - 1]);
+                                    uses.append(all_uses[length(all_uses) - 1]);
                             }
                     }
             }
@@ -226,7 +226,7 @@ Prefix :: (reading: Reading, prefix: syntax.Diagnostic[]) -> Reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             combined := prefix;
             for (item in diagnostics) {
-                combined = array_add(combined, item);
+                combined.append(item);
             }
             return Reading.Read(value, has_unit, unit, environment, combined, uses, publications);
     }
@@ -240,13 +240,13 @@ Merge :: (earlier: Reading, later: Reading) -> Reading {
                     all_uses := old_uses;
                     all_publications := old_publications;
                     for (item in diagnostics) {
-                        all_diagnostics = array_add(all_diagnostics, item);
+                        all_diagnostics.append(item);
                     }
                     for (item in uses) {
-                        all_uses = array_add(all_uses, item);
+                        all_uses.append(item);
                     }
                     for (item in publications) {
-                        all_publications = array_add(all_publications, item);
+                        all_publications.append(item);
                     }
                     return Reading.Read(value, has_unit, unit, environment, all_diagnostics, all_uses, all_publications);
             }
@@ -266,10 +266,10 @@ Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
                     all_diagnostics := old_diagnostics;
                     publications := old_publications;
                     for (item in diagnostics) {
-                        all_diagnostics = array_add(all_diagnostics, item);
+                        all_diagnostics.append(item);
                     }
                     if (publish) {
-                        publications = array_add(publications, plan);
+                        publications.append(plan);
                     }
                     return Reading.Read(value, false, "", Publish(environment, plan), all_diagnostics, uses, publications);
             }
@@ -335,7 +335,7 @@ AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             combined := diagnostics;
             for (item in added) {
-                combined = array_add(combined, item);
+                combined.append(item);
             }
             return Reading.Read(value, has_unit, unit, environment, combined, uses, publications);
     }
@@ -343,7 +343,7 @@ AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
 Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -> Reading {
     if (name == "map") {
         errors: syntax.Diagnostic[] = [];
-        errors = array_add(errors, Diagnostic(tree, node, document, "Use Map<K, V> for associative maps"));
+        errors.append(Diagnostic(tree, node, document, "Use [K: V] for associative maps"));
         reading = AppendDiagnostics(reading, errors);
     }
     switch reading {
@@ -400,7 +400,7 @@ FinishUnion :: (reading: Reading, members: named.Value[]) -> Reading {
                                     case .Added(new_rows, new_pool, type_index):
                                         rows = new_rows;
                                         pool = new_pool;
-                                        indices = array_add(indices, type_index);
+                                        indices.append(type_index);
                                 }
                             }
                             facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
@@ -409,7 +409,7 @@ FinishUnion :: (reading: Reading, members: named.Value[]) -> Reading {
             }
     }
 }
-NextMember :: (tree: Tree, first: int) -> int {
+pub NextMember :: (tree: Tree, first: int) -> int {
     switch tree {
         case .Raw(nodes, fields, named_flags, extra_flags, source):
             child := first;
@@ -422,7 +422,7 @@ NextMember :: (tree: Tree, first: int) -> int {
             return -1;
     }
 }
-Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
+pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
     reading := Empty(environment, named.Builtin("invalid"));
     frames: Work[] = [];
     members: named.Value[] = [];
@@ -448,11 +448,11 @@ Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: 
                     }
                     switch reading {
                         case .Read(value, has_unit, unit, live, diagnostics, uses, publications):
-                            members = array_add(members, value);
+                            members.append(value);
                     }
                     next_member := NextMember(tree, work.child);
                     if (next_member >= 0) {
-                        frames = array_add(frames, WorkValue(work.node, 3, nodes[next_member].next_sibling, work.member_start, ""));
+                        frames.append(WorkValue(work.node, 3, nodes[next_member].next_sibling, work.member_start, ""));
                         position = next_member;
                         ready = false;
                         continue;
@@ -504,12 +504,12 @@ Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: 
                                         }
                                         if (count != 1) {
                                             errors: syntax.Diagnostic[] = [];
-                                            errors = array_add(errors, Diagnostic(tree, position, document, "task requires one result type"));
+                                            errors.append(Diagnostic(tree, position, document, "task requires one result type"));
                                             reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position);
                                             ready = true;
                                             continue;
                                         }
-                                        frames = array_add(frames, WorkValue(position, 1, -1, 0, ""));
+                                        frames.append(WorkValue(position, 1, -1, 0, ""));
                                         position = argument;
                                         continue;
                                     }
@@ -526,19 +526,19 @@ Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: 
                                         }
                                         if (argument < 0) {
                                             errors: syntax.Diagnostic[] = [];
-                                            errors = array_add(errors, Diagnostic(tree, position, document, format_text("Type '{}' requires a type argument", name)));
+                                            errors.append(Diagnostic(tree, position, document, format_text("Type '{}' requires a type argument", name)));
                                             reading = Wrap(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, name, document);
                                             ready = true;
                                             continue;
                                         }
-                                        frames = array_add(frames, WorkValue(position, 2, -1, 0, name));
+                                        frames.append(WorkValue(position, 2, -1, 0, name));
                                         position = argument;
                                         continue;
                                     }
                                     tokens: string[] = [];
                                     child = nodes[position].first_child;
                                     while (child >= 0) {
-                                        tokens = array_add(tokens, Text(tree, child));
+                                        tokens.append(Text(tree, child));
                                         child = nodes[child].next_sibling;
                                     }
                                     switch live {
@@ -557,7 +557,7 @@ Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: 
                                 ready = true;
                                 continue;
                             }
-                            frames = array_add(frames, WorkValue(position, 3, nodes[first].next_sibling, length(members), ""));
+                            frames.append(WorkValue(position, 3, nodes[first].next_sibling, length(members), ""));
                             position = first;
                             continue;
                         }
@@ -606,7 +606,7 @@ ReadUnit :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 }
                             }
                             if (type_name) {
-                                diagnostics = array_add(diagnostics, Diagnostic(tree, child, document, format_text("'{}' is a type, not a unit", part)));
+                                diagnostics.append(Diagnostic(tree, child, document, format_text("'{}' is a type, not a unit", part)));
                             }
                         }
                         value = format_text("{}{}", value, part);
@@ -618,7 +618,7 @@ ReadUnit :: (environment: Environment, tree: Tree, node: int, scope: int, docume
     switch units.Parse(true, value) {
         case .Value(kind, terms):
             if (kind == 3) {
-                diagnostics = array_add(diagnostics, Diagnostic(tree, node, document, format_text("Invalid unit '{}'", value)));
+                diagnostics.append(Diagnostic(tree, node, document, format_text("Invalid unit '{}'", value)));
             }
     }
     return UnitText.Unit(value, diagnostics);
@@ -630,13 +630,13 @@ WithUnit :: (reading: Reading, tree: Tree, node: int, scope: int, document: int)
                 case .Unit(unit, errors):
                     all_diagnostics := diagnostics;
                     for (item in errors) {
-                        all_diagnostics = array_add(all_diagnostics, item);
+                        all_diagnostics.append(item);
                     }
                     return Reading.Read(value, true, unit, environment, all_diagnostics, uses, publications);
             }
     }
 }
-Signature :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
+pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
     if (Kind(tree, node, "unit")) {
         return WithUnit(Empty(environment, named.Builtin("number")), tree, node, scope, document);
     }
@@ -647,7 +647,7 @@ Signature :: (environment: Environment, tree: Tree, node: int, scope: int, docum
             case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
                 all_diagnostics := diagnostics;
                 if (!Numeric(value)) {
-                    all_diagnostics = array_add(all_diagnostics, Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
+                    all_diagnostics.append(Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
                 }
                 return Reading.Read(value, has_unit, unit, updated, all_diagnostics, uses, publications);
         }

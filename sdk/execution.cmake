@@ -48,43 +48,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 target_compile_definitions(chibi_execution PRIVATE CHIBI_HAVE_SJLIT=$<BOOL:${CHIBI_ENABLE_SJLIT}>)
 if(CHIBI_ENABLE_SJLIT)
-    if(SLJIT_SOURCE_DIR)
-        set(execution_sljit_source "${SLJIT_SOURCE_DIR}")
-    elseif(CHIBI_SJLIT_SOURCE_DIR)
-        set(execution_sljit_source "${CHIBI_SJLIT_SOURCE_DIR}")
-    else()
-        FetchContent_Declare(chibi_execution_sljit_source
-            GIT_REPOSITORY https://github.com/zherczeg/sljit.git
-            GIT_TAG a0020dd49a21020434ff838fc308626c48cd8f05
-            SOURCE_SUBDIR chibi-sources-only)
-        FetchContent_MakeAvailable(chibi_execution_sljit_source)
-        set(execution_sljit_source "${chibi_execution_sljit_source_SOURCE_DIR}")
-    endif()
-    # Keep dependency caches read-only. The copied entry point resolves its
-    # ARM64 backend locally; other includes still use the original source.
-    set(sljit_patch "${CHIBI_SDK_ROOT}/cmake/patches/sljit-arm64-immediate-negation.patch")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sljit_patch}")
-    set(sljit_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/sljit")
-    foreach(source sljitLir.c sljitNativeARM_64.c)
-        configure_file("${execution_sljit_source}/sljit_src/${source}"
-            "${sljit_patched_root}/${source}" COPYONLY)
-    endforeach()
-    find_package(Git REQUIRED)
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
-            "--directory=${sljit_patched_root}" "${sljit_patch}"
-        RESULT_VARIABLE sljit_patch_result
-        ERROR_VARIABLE sljit_patch_error)
-    if(NOT sljit_patch_result EQUAL 0)
-        message(FATAL_ERROR "Could not patch SLJIT ARM64 immediates: ${sljit_patch_error}")
-    endif()
-    add_library(chibi_execution_sljit STATIC "${sljit_patched_root}/sljitLir.c")
+    set(sljit_root "${CHIBI_THIRD_PARTY_DIR}/source/sljit/sljit_src")
+    add_library(chibi_execution_sljit STATIC "${sljit_root}/sljitLir.c")
     set_target_properties(chibi_execution_sljit PROPERTIES EXPORT_NAME execution_sljit)
-    target_include_directories(chibi_execution_sljit PRIVATE "${execution_sljit_source}/sljit_src")
     target_compile_definitions(chibi_execution_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
     target_compile_options(chibi_execution_sljit PRIVATE -w)
-    target_include_directories(chibi_execution PRIVATE "${execution_sljit_source}/sljit_src")
+    target_include_directories(chibi_execution PRIVATE "${sljit_root}")
     target_link_libraries(chibi_execution PRIVATE chibi_execution_sljit)
     install(TARGETS chibi_execution_sljit EXPORT ChibiTargets ARCHIVE DESTINATION lib)
-    install(FILES "${execution_sljit_source}/LICENSE" DESTINATION share/chibi/licenses/sljit)
+    install(FILES "${CHIBI_THIRD_PARTY_DIR}/source/sljit/LICENSE" DESTINATION share/chibi/licenses/sljit)
 endif()

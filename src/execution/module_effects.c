@@ -10,6 +10,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,16 +54,21 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     }
     int count = host->result_first - host->first;
     int expected = -1;
-    switch ((execution_intrinsic)(host->capability_id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(host->capability_id)) {
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_UNION_MAKE:
             if (count < 1 || host->result_count != 1) {
                 return 0;
             }
             break;
+        case EXECUTION_INTRINSIC_UNION_KEEP:
+            if (count < 2 || host->result_count != 1) {
+                return 0;
+            }
+            break;
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET: {
-            int minimum = (host->capability_id & UINT64_C(0xffffffff)) ==
+            int minimum = execution_intrinsic_kind(host->capability_id) ==
                                   EXECUTION_INTRINSIC_UNION_TEST
                             ? 2
                             : 4;
@@ -413,15 +419,17 @@ static bool predicate_host(const behavior_function *f, int pc)
                !(access->flags & ~allowed) && !host->call->action;
     }
     int steps = EFFECT_STEPS;
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
         }
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
-        case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
-            /* In-place updates write only the function's own local array. */
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+        case EXECUTION_INTRINSIC_MAP_STORE:
+        case EXECUTION_INTRINSIC_MAP_DELETE: {
+            /* In-place updates write only the function's own local collection. */
             origin target = bank_origin(f, pc, host->first, 0, &steps);
             return target.private && target.bank;
         }
@@ -437,6 +445,7 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
         case EXECUTION_INTRINSIC_UNION_MAKE:
+        case EXECUTION_INTRINSIC_UNION_KEEP:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
@@ -1338,6 +1347,7 @@ typedef struct
     int steps;
 } costs;
 
+static bool pointer_value(pin_value v, behavior_value_kind kind);
 static void cost_add(
     costs *c,
     const behavior_function *f,
@@ -1386,13 +1396,33 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         cost_add(c, f, pc, call->capability_id, 0, COST_ALL, "Native call has no verified allocation, copy, or escape contract");
         return;
     }
-    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+    switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
             cost_add(c, f, pc, id, allocate_copy, 0, "String iteration snapshots its cursor or one Unicode scalar");
             return;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_NEXT: return;
+        case EXECUTION_INTRINSIC_UNION_KEEP: {
+            /* It copies each managed payload value its mask leaves out, and
+             * one it keeps that its storage does not hold. */
+            origin keep = bank_origin(f, pc, call->first + 1, 0, &c->steps);
+            unsigned proven = EXECUTION_COST_ALLOCATE, possible = 0;
+            for (int i = 0; i < call->result_first - call->first - 2; i++) {
+                const behavior_function_data_value *payload = &f->data_values[call->first + 2 + i];
+                if (!pointer_value(payload->initial, payload->kind)) {
+                    continue;
+                }
+                bool kept = keep.constant && i < 64 && (keep.bits >> i & 1);
+                if (keep.constant && !kept) {
+                    proven |= EXECUTION_COST_COPY;
+                } else {
+                    possible |= EXECUTION_COST_COPY;
+                }
+            }
+            cost_add(c, f, pc, id, proven, possible, "Union construction in the caller's storage copies the payload values it does not keep");
+            return;
+        }
         case EXECUTION_INTRINSIC_UNION_MAKE: {
             int count = call->result_first - call->first;
             if (count > 1) {
@@ -1443,7 +1473,6 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_ACTION_READ:
-        case EXECUTION_INTRINSIC_EVENT_READ:
             for (int j = 0; j < call->result_count; j++) {
                 if (snapshot_storage(f->data_values[call->result_first + j].initial)) {
                     cost_add(c, f, pc, id, 0, allocate_copy, "Value snapshot can allocate and copy managed payload or type metadata");
@@ -1457,6 +1486,10 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_ARRAY_STORE:
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place array update can grow storage and copy the item");
+            return;
+        case EXECUTION_INTRINSIC_MAP_STORE:
+        case EXECUTION_INTRINSIC_MAP_DELETE:
+            cost_add(c, f, pc, id, 0, allocate_copy, "In-place map update can grow storage, copy the entry and rebuild the index");
             return;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
             cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE, "Reduction retains a scalar contribution until system publication");
@@ -1663,6 +1696,11 @@ typedef struct
     /* Small nonnegative integer constants a slot or cell holds. */
     int *literals, *cell_literals;
     bool memory, results, text_memory, retyped, unsafe, changed;
+    /* Whether a result may be written from a value that reaches the caller's. */
+    bool returned;
+    /* Whether values built in the caller's storage count as the caller's:
+     * then only updates that run there may change them. */
+    bool built;
 } share_flow;
 
 static bool pointer_value(pin_value v, behavior_value_kind kind)
@@ -1778,6 +1816,7 @@ static bool share_derived(const share_flow *s, int base)
 static void share_scatter(share_flow *s, bool tainted)
 {
     share_taint(s, &s->memory, tainted);
+    share_taint(s, &s->returned, tainted);
     share_taint(s, &s->retyped, true);
     for (int cell = 0; cell < acount(s->f->data_values); cell++) {
         share_taint(s, &s->cells[cell], tainted);
@@ -1815,6 +1854,28 @@ static void share_host(share_flow *s, int pc)
     bool output = inputs;
     int root = SHARE_UNKNOWN;
     uint64_t id = intrinsic(host);
+    if (s->built && id && execution_intrinsic_in_result(id)) {
+        /* What it builds is the caller's, the array an update of a local
+         * leaves included; such an update may change it again. */
+        output = execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_CONSTRUCT ||
+                 execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_UNION_KEEP;
+        if (!output) {
+            int updated = s->contents[host->first];
+            if (updated < 0) {
+                share_scatter(s, true);
+            } else {
+                share_taint(s, &s->cells[updated], true);
+                share_set(s, &s->contents[updated], SHARE_UNKNOWN);
+                share_set(s, &s->cell_literals[updated], SHARE_UNKNOWN);
+            }
+        }
+        for (int k = 0; k < host->result_count; k++) {
+            share_taint(s, &s->cells[host->result_first + k], output);
+            share_set(s, &s->contents[host->result_first + k], SHARE_UNKNOWN);
+            share_set(s, &s->cell_literals[host->result_first + k], SHARE_UNKNOWN);
+        }
+        return;
+    }
     if (!id) {
         const node_access *access = host->access;
         unsigned allowed = NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ |
@@ -1823,7 +1884,7 @@ static void share_host(share_flow *s, int pc)
                      !(access->flags & (NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ)) ||
                      (access->flags & ~allowed) || host->call->action;
     } else {
-        switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        switch (execution_intrinsic_kind(id)) {
             /* Copies follow the copied headers; a rewritten one may keep the
              * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -1836,6 +1897,17 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
             case EXECUTION_INTRINSIC_UNION_GET: break;
+            case EXECUTION_INTRINSIC_UNION_KEEP: {
+                /* A payload value it keeps keeps what it reaches; it copies
+                 * those its mask leaves out, as a snapshot does. */
+                int keep = s->cell_literals[host->first + 1];
+                output = s->retyped && inputs;
+                for (int k = 0; k < host->result_first - host->first - 2; k++) {
+                    bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
+                    output |= kept && share_cell(s, host->first + 2 + k);
+                }
+                break;
+            }
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 output = share_cell(s, host->first);
                 root = s->contents[host->first];
@@ -1865,7 +1937,9 @@ static void share_host(share_flow *s, int pc)
             }
             case EXECUTION_INTRINSIC_ARRAY_PUSH:
             case EXECUTION_INTRINSIC_ARRAY_STORE:
-            case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+            case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            case EXECUTION_INTRINSIC_MAP_STORE:
+            case EXECUTION_INTRINSIC_MAP_DELETE: {
                 int target = share_target(s, host->first);
                 s->unsafe |= target < 0;
                 if (target >= 0) {
@@ -1991,9 +2065,18 @@ static void share_instruction(share_flow *s, int pc)
                 share_taint(s, &s->cells[address], value);
                 share_taint(s, &s->texts[address], text);
                 share_set(s, &s->contents[address], s->addresses[i->left]);
-                share_set(s, &s->cell_literals[address], s->literals[i->left]);
+                /* Only a whole I32 keeps its literal; other writes may
+                 * change part of a wider value. */
+                share_set(
+                    s,
+                    &s->cell_literals[address],
+                    f->data_values[address].initial.type == PIN_I32
+                        ? s->literals[i->left]
+                        : SHARE_UNKNOWN
+                );
             } else if (address == SHARE_RESULTS) {
                 share_taint(s, &s->results, value || text);
+                share_taint(s, &s->returned, value || text);
             } else {
                 share_scatter(s, value);
                 share_taint(s, &s->text_memory, text);
@@ -2003,17 +2086,29 @@ static void share_instruction(share_flow *s, int pc)
         case BF_RESULT:
             s->unsafe |= i->indirect;
             share_taint(s, &s->results, s->slots[i->left]);
+            share_taint(s, &s->returned, s->slots[i->left]);
             break;
         case BF_RESULT_PRESENT:
         case BF_RESULT_TYPE_NAME:
         case BF_RESULT_ARRAY:
             share_taint(s, &s->results, s->slots[i->left]);
+            share_taint(s, &s->returned, s->slots[i->left]);
             break;
         case BF_HOST_CALL: share_host(s, pc); break;
         case BF_INVOKE: {
             const behavior_function_invocation *call = &f->calls[i->left];
             const behavior_function *callee = call->function;
             s->unsafe |= call->task;
+            /* A value argument reaches the callee as a copy, or shared with
+             * one that changes none; a raw address to what this definition
+             * builds would let any other callee write through it. */
+            for (int k = 0; s->built && k < call->count; k++) {
+                const behavior_function_data_value *argument = &f->data_values[call->first + k];
+                s->unsafe |= share_cell(s, call->first + k) &&
+                             (argument->kind != BEHAVIOR_VALUE ||
+                              argument->initial.type == BF_POINTER_TYPE) &&
+                             callee->argument_sharing != BEHAVIOR_SHARING_SAFE;
+            }
             /* Authored returns copy managed values; raw pointers keep their bits. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;
@@ -2096,13 +2191,58 @@ static int *share_column(int count)
     }
     return column;
 }
+/* Whether a result-storage update may run after union_keep has kept a value,
+ * which the union would then share with the local it updates. */
+static bool updates_kept(const share_flow *s)
+{
+    const behavior_function *f = s->f;
+    int count = acount(f->instructions), *pending = NULL;
+    bool *seen = xcalloc((size_t)count + 1, sizeof *seen), updates = false;
+    for (int pc = 0; pc < count; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op != BF_HOST_CALL ||
+            execution_intrinsic_kind(intrinsic(&f->host_calls[i->target])) !=
+                EXECUTION_INTRINSIC_UNION_KEEP) {
+            continue;
+        }
+        if (s->cell_literals[f->host_calls[i->target].first + 1] != 0) {
+            apush(pending, pc);
+        }
+    }
+    while (acount(pending) && !updates) {
+        int pc = pending[acount(pending) - 1], targets[2];
+        asetlen(pending, acount(pending) - 1);
+        for (int k = 0, n = behavior_function_successors(f, pc, targets); k < n; k++) {
+            if (seen[targets[k]]) {
+                continue;
+            }
+            seen[targets[k]] = true;
+            const behavior_function_instruction *next = &f->instructions[targets[k]];
+            if (next->op == BF_HOST_CALL) {
+                uint64_t id = intrinsic(&f->host_calls[next->target]);
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                updates |= execution_intrinsic_in_result(id) &&
+                           (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+                            kind == EXECUTION_INTRINSIC_ARRAY_STORE ||
+                            kind == EXECUTION_INTRINSIC_ARRAY_EXTEND);
+            }
+            apush(pending, targets[k]);
+        }
+    }
+    afree(pending);
+    free(seen);
+    return updates;
+}
 /* One definition's own rules, ignoring what its callees do. Results start
- * tainted: they hold the caller's result cells until written. */
-static bool share_local(const behavior_function *f)
+ * tainted: they hold the caller's result cells until written. With `built`,
+ * what the definition builds in its caller's storage is tainted too, and no
+ * result-storage update may follow a union_keep that may keep a value.
+ * `returned`, when given, says whether a result may reach the caller's. */
+static bool share_local(const behavior_function *f, bool built, bool *returned)
 {
     int slots = acount(f->slots), cells = acount(f->data_values),
         locals = acount(f->locals);
-    share_flow s = { .f = f, .results = true };
+    share_flow s = { .f = f, .results = true, .built = built };
     s.slots = xcalloc((size_t)slots + 1, sizeof *s.slots);
     s.cells = xcalloc((size_t)cells + 1, sizeof *s.cells);
     s.locals = xcalloc((size_t)locals + 1, sizeof *s.locals);
@@ -2121,6 +2261,10 @@ static bool share_local(const behavior_function *f)
             initial.container == PIN_CONTAINER_SINGLE && initial.i >= 0) {
             s.cell_literals[cell] = initial.i;
         }
+        if (initial.type == PIN_U64 &&
+            initial.container == PIN_CONTAINER_SINGLE && initial.u64 <= INT_MAX) {
+            s.cell_literals[cell] = (int)initial.u64;
+        }
     }
     int passes = 0;
     do {
@@ -2129,7 +2273,10 @@ static bool share_local(const behavior_function *f)
             share_instruction(&s, pc);
         }
     } while (s.changed && !s.unsafe && ++passes < SHARE_PASSES);
-    bool safe = !s.unsafe && !s.changed;
+    bool safe = !s.unsafe && !s.changed && !(built && updates_kept(&s));
+    if (returned) {
+        *returned = s.returned;
+    }
     free(s.slots);
     free(s.cells);
     free(s.locals);
@@ -2148,6 +2295,18 @@ static int by_definition(const void *a, const void *b)
     uintptr_t y = (uintptr_t)(*(behavior_function *const *)b);
     return (x > y) - (x < y);
 }
+/* A definition with one result builds it in its caller's storage when only
+ * the updates that run there change what it builds, none after union_keep
+ * keeps a value, and no result may be the caller's own data. Without `built`,
+ * what the definition builds is its own, so a result that reaches the
+ * caller's came from its arguments or other data: moving it would let the
+ * caller's result share that data. Two results could share what they reach. */
+bool execution_builds_safely(const behavior_function *f)
+{
+    bool returned = true;
+    return f->result_count <= 1 && share_local(f, true, NULL) &&
+           share_local(f, false, &returned) && !returned;
+}
 void execution_prepare_argument_sharing(behavior_function *root)
 {
     if (!root || root->argument_sharing != BEHAVIOR_SHARING_UNKNOWN) {
@@ -2162,7 +2321,7 @@ void execution_prepare_argument_sharing(behavior_function *root)
     apush(pending, root);
     for (int at = 0; at < acount(pending); at++) {
         behavior_function *f = pending[at];
-        f->argument_sharing = f->frozen && share_local(f)
+        f->argument_sharing = f->frozen && share_local(f, false, NULL)
                                 ? BEHAVIOR_SHARING_PENDING_SAFE
                                 : BEHAVIOR_SHARING_PENDING_COPY;
         for (int i = 0; i < acount(f->calls); i++) {

@@ -10,6 +10,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -20,7 +21,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define BUILD_FILE_LIMIT (1024 * 1024)
+/* A file read or written whole is one build text value. */
+#define BUILD_FILE_LIMIT BUILD_TEXT_LIMIT
+#define BUILD_EMBED_LIMIT (64 * 1024 * 1024)
 #define BUILD_IO_CHUNK 4096
 #define BUILD_IO_COPY_CHUNK 65536
 
@@ -121,7 +124,7 @@ bool build_io_read(
     if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size < 0 ||
         info.st_size > BUILD_FILE_LIMIT) {
         close(fd);
-        *error = "build file must be regular text of at most 1 MiB";
+        *error = "build file must be regular text of at most 16 MiB";
         return false;
     }
     char *text = xmalloc(BUILD_FILE_LIMIT + 1);
@@ -150,7 +153,7 @@ bool build_io_read(
         }
         size += (size_t)count;
         if (size > BUILD_FILE_LIMIT) {
-            *error = "build file exceeds 1 MiB";
+            *error = "build file exceeds 16 MiB";
             break;
         }
     }
@@ -478,4 +481,177 @@ const char *build_io_hash(
         sha256_end(&hash, digest);
     }
     return error;
+}
+
+/* The whole of a regular file of at most limit bytes, in an owned buffer. */
+static const char *read_bytes(
+    const char *root,
+    const char *path,
+    size_t limit,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    const char *refusal,
+    unsigned char **out,
+    size_t *size
+)
+{
+    *out = NULL;
+    *size = 0;
+    char *joined = build_io_path(root, path);
+    int fd = open(joined, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOCTTY);
+    free(joined);
+    struct stat info;
+    if (fd < 0 || fstat(fd, &info) || !S_ISREG(info.st_mode) ||
+        info.st_size < 0 || (size_t)info.st_size > limit) {
+        if (fd >= 0) {
+            close(fd);
+        }
+        return refusal;
+    }
+    unsigned char *bytes = xmalloc((size_t)info.st_size + 1);
+    const char *error = NULL;
+    while (!(error = io_ready(deadline, cancelled))) {
+        ssize_t count = read(fd, bytes + *size, (size_t)info.st_size + 1 - *size);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count < 0 || *size + (size_t)count > (size_t)info.st_size) {
+            error = "build input changed or could not be read";
+        }
+        if (count <= 0 || error) {
+            break;
+        }
+        *size += (size_t)count;
+    }
+    close(fd);
+    if (error) {
+        free(bytes);
+        return error;
+    }
+    *out = bytes;
+    return NULL;
+}
+
+static bool symbol_valid(const char *symbol)
+{
+    if (!isalpha((unsigned char)symbol[0]) && symbol[0] != '_') {
+        return false;
+    }
+    for (const char *c = symbol; *c; c++) {
+        if (!isalnum((unsigned char)*c) && *c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+const char *build_io_byte_list(
+    const char *root,
+    const char *path,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    char **out
+)
+{
+    unsigned char *bytes;
+    size_t size;
+    const char *error = read_bytes(
+        root,
+        path,
+        BUILD_TEXT_LIMIT / 5,
+        deadline,
+        cancelled,
+        "build byte list input must be a regular file of at most 3.2 MiB",
+        &bytes,
+        &size
+    );
+    if (error) {
+        return error;
+    }
+    static const char digits[] = "0123456789abcdef";
+    char *text = xmalloc(size * 5 + 1);
+    for (size_t i = 0; i < size; i++) {
+        memcpy(text + i * 5, "0x", 2);
+        text[i * 5 + 2] = digits[bytes[i] >> 4];
+        text[i * 5 + 3] = digits[bytes[i] & 15];
+        text[i * 5 + 4] = ',';
+    }
+    text[size * 5] = 0;
+    free(bytes);
+    *out = text;
+    return NULL;
+}
+const char *build_io_embed(
+    const char *root,
+    const char *input,
+    const char *output,
+    const char *symbol,
+    double deadline,
+    const volatile sig_atomic_t *cancelled,
+    bool *written
+)
+{
+    *written = false;
+    if (!symbol_valid(symbol)) {
+        return "build embed symbol must be a C identifier";
+    }
+    unsigned char *bytes;
+    size_t size;
+    const char *error = read_bytes(
+        root,
+        input,
+        BUILD_EMBED_LIMIT,
+        deadline,
+        cancelled,
+        "build embed input must be a regular file of at most 64 MiB",
+        &bytes,
+        &size
+    );
+    if (error) {
+        return error;
+    }
+    /* Each byte becomes "0xNN, ", each row of sixteen ends its line, and the
+     * head and tail name the array and its size. */
+    size_t length = strlen(symbol);
+    size_t capacity = size * 6 + size / 16 * 5 + 2 * length + 128;
+    char *text = xmalloc(capacity);
+    size_t at = (size_t)
+        snprintf(text, capacity, "#include <stddef.h>\n\nconst unsigned char %s[] = {\n    ", symbol);
+    static const char digits[] = "0123456789abcdef";
+    for (size_t i = 0; i < size; i++) {
+        if (i && i % 16 == 0) {
+            memcpy(text + at, "\n    ", 5);
+            at += 5;
+        }
+        text[at++] = '0';
+        text[at++] = 'x';
+        text[at++] = digits[bytes[i] >> 4];
+        text[at++] = digits[bytes[i] & 15];
+        text[at++] = ',';
+        if (i + 1 < size && (i + 1) % 16) {
+            text[at++] = ' ';
+        }
+    }
+    at += (size_t)
+        snprintf(text + at, capacity - at, "\n};\nconst size_t %s_size = sizeof %s;\n", symbol, symbol);
+    free(bytes);
+    /* An unchanged output keeps its stamp, so nothing rebuilds from it. */
+    unsigned char *previous;
+    size_t previous_size;
+    char *joined = build_io_path(root, output);
+    bool same = !read_bytes(root, output, at, deadline, cancelled, "", &previous, &previous_size) &&
+                previous_size == at && !memcmp(previous, text, at);
+    free(previous);
+    if (same) {
+        free(joined);
+        free(text);
+        return NULL;
+    }
+    char *temporary;
+    int fd = temporary_file(joined, &temporary);
+    *written = fd >= 0 &&
+               publish(fd, write_all(fd, text, at, deadline, cancelled), temporary, joined, deadline, cancelled);
+    free(joined);
+    free(text);
+    return *written ? NULL : "build embed output could not be written";
 }

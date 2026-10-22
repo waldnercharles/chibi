@@ -14,7 +14,9 @@ static bool discards_result(const analyzer *a, const script_expression *call)
     }
     const script_catalog_capability
         *native = script_catalog_capability_by_id(a->catalog, call->capability);
-    return native && native->pure;
+    /* An array method that changes its array reports that itself. */
+    return native && native->pure &&
+           !(call->left >= 0 && script_analyzer_array_changer(native));
 }
 
 int script_analyzer_statement_add(analyzer *a, script_statement statement)
@@ -38,6 +40,70 @@ static bool terminates(const script_analysis *a, int index)
     }
     return s->kind == SCRIPT_STMT_IF && terminates(a, s->body) &&
            terminates(a, s->alternative);
+}
+/* Whether a break in this statement leaves the loop around it: one inside a
+ * nested loop leaves that loop instead, and a switch passes it through. */
+static bool breaks_out(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    if (s->kind == SCRIPT_STMT_BREAK) {
+        return true;
+    }
+    if (s->kind == SCRIPT_STMT_WHILE || s->kind == SCRIPT_STMT_FOR ||
+        s->kind == SCRIPT_STMT_FOREACH) {
+        return false;
+    }
+    for (int i = 0; i < s->child_count; i++) {
+        if (breaks_out(a, s->children[i])) {
+            return true;
+        }
+    }
+    return breaks_out(a, s->body) || breaks_out(a, s->alternative);
+}
+/* A while (true) that nothing breaks out of never falls through. */
+static bool endless(const script_analysis *a, const script_statement *s)
+{
+    const script_expression *condition = s->expression >= 0
+                                           ? &a->expressions[s->expression]
+                                           : NULL;
+    return s->kind == SCRIPT_STMT_WHILE && condition &&
+           condition->kind == SCRIPT_EXPR_CONSTANT &&
+           condition->constant.type == PIN_BOOL && condition->constant.b &&
+           !breaks_out(a, s->body);
+}
+/* Go's terminating statement, which Odin's checker also requires at the end
+ * of a procedure with results: control cannot fall past it. */
+static bool ends(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    switch (s->kind) {
+        case SCRIPT_STMT_RETURN:
+        case SCRIPT_STMT_GOTO: return true;
+        case SCRIPT_STMT_BLOCK:
+            return s->child_count && ends(a, s->children[s->child_count - 1]);
+        case SCRIPT_STMT_IF: return ends(a, s->body) && ends(a, s->alternative);
+        case SCRIPT_STMT_WHILE: return endless(a, s);
+        case SCRIPT_STMT_MATCH: {
+            bool exhaustive = s->expression >= 0 &&
+                              (a->expressions[s->expression].type.flags &
+                               SCRIPT_TYPE_UNION);
+            for (int i = 0; i < s->child_count; i++) {
+                const script_statement *arm = &a->statements[s->children[i]];
+                exhaustive |= arm->expression < 0;
+                if (!ends(a, arm->body)) {
+                    return false;
+                }
+            }
+            return exhaustive;
+        }
+        default: return false;
+    }
 }
 static bool reads_result(const script_analysis *a, int index, int symbol, int depth)
 {
@@ -127,11 +193,49 @@ static bool union_result_paths(
         bool body_falls;
         union_result_paths(a, s->body, symbol, initialized, &body_falls, valid);
     }
+    *falls = !endless(a, s);
     return initialized;
+}
+/* Whether any return lies in this statement. */
+static bool returns(const script_analysis *a, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_statement *s = &a->statements[index];
+    if (s->kind == SCRIPT_STMT_RETURN) {
+        return true;
+    }
+    for (int i = 0; i < s->child_count; i++) {
+        if (returns(a, s->children[i])) {
+            return true;
+        }
+    }
+    return returns(a, s->body) || returns(a, s->alternative);
+}
+/* A function whose `after` handler or macro entry returns may give its
+ * results there, after its body ends; `on` handlers cannot return them. */
+static bool handles_actions(const analyzer *a, int function)
+{
+    for (int i = 0; i < acount(a->out->functions); i++) {
+        const script_function *child = &a->out->functions[i];
+        if (child->parent == function &&
+            (child->kind == SCRIPT_FUNCTION_CONTINUATION ||
+             child->kind == SCRIPT_FUNCTION_MACRO_ENTRY) &&
+            returns(a->out, child->body)) {
+            return true;
+        }
+    }
+    return false;
 }
 void script_analyzer_union_results(analyzer *a, int function, TSNode body)
 {
     const script_function *f = &a->out->functions[function];
+    if (f->kind == SCRIPT_FUNCTION_AUTHORED && acount(f->results) &&
+        !ends(a->out, f->body) && !handles_actions(a, function)) {
+        script_analyzer_diagnostic(a, ts_node_child(body, ts_node_child_count(body) - 1), "Missing return");
+        return;
+    }
     for (int i = 0; i < acount(f->results); i++) {
         int symbol = f->results[i];
         const script_symbol *result = &a->out->symbols[symbol];
@@ -571,6 +675,85 @@ static bool reduction_bounded(const analyzer *a, int index)
     }
     return false;
 }
+/* Whether `call` is a method that changes the array a name holds, such as
+ * `xs.append(x)`. */
+static bool changes_array(analyzer *a, TSNode call)
+{
+    TSNode function = script_analyzer_field(call, "function"),
+           object = script_analyzer_field(function, "object");
+    if (!script_analyzer_is(call, "call_expression") ||
+        !script_analyzer_is(function, "member_expression") ||
+        !script_analyzer_is(object, "identifier")) {
+        return false;
+    }
+    int symbol = script_analyzer_lookup(a, object);
+    const script_catalog_capability *
+        method = symbol >= 0 && a->out->symbols[symbol].type.container == PIN_CONTAINER_ARRAY
+                   ? script_analyzer_array_method(a, script_analyzer_field(function, "member"))
+                   : NULL;
+    return method && script_analyzer_array_changer(method);
+}
+/* `xs.append(x)` and the other methods that change an array assign the name
+ * its changed array, which lowering does in place for a local. */
+static int change_array(analyzer *a, TSNode call, script_statement result)
+{
+    TSNode object = script_analyzer_field(script_analyzer_field(call, "function"), "object");
+    result.kind = SCRIPT_STMT_ASSIGN;
+    int symbol = script_analyzer_lookup(a, object);
+    a->out->symbols[symbol].mutations++;
+    script_analyzer_invalidate_narrowing(a, symbol);
+    result.expression = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    script_expression address = a->out->expressions[result.expression];
+    if (!address.writable) {
+        script_analyzer_diagnostic(a, object, "Changing an array requires a writable value");
+    }
+    TSNode changing = a->changing;
+    a->changing = call;
+    result.second = script_analyzer_expression(a, call, address.type);
+    a->changing = changing;
+    script_analyzer_require_values(a, call, result.expression, result.second);
+    result.effects = address.effects | script_analyzer_expr_effects(a, result.second);
+    if (writes_external_storage(a->out, result.expression)) {
+        result.effects |= SCRIPT_EFFECT_WRITE;
+    }
+    if (address.symbol >= 0) {
+        script_analyzer_use(a, object, address.symbol, SCRIPT_WRITE, address.member);
+    }
+    return script_analyzer_statement_add(a, result);
+}
+/* `delete m[k]` and `m.delete(k)` assign the map without the key, which
+ * lowering does in place for a local. */
+static int delete_key(analyzer *a, TSNode node, script_statement result, TSNode map, TSNode key)
+{
+    result.kind = SCRIPT_STMT_ASSIGN;
+    if (script_analyzer_is(map, "identifier")) {
+        int symbol = script_analyzer_lookup(a, map);
+        if (symbol >= 0) {
+            a->out->symbols[symbol].mutations++;
+            script_analyzer_invalidate_narrowing(a, symbol);
+        }
+    }
+    result.expression = script_analyzer_expression(a, map, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    script_expression address = a->out->expressions[result.expression];
+    if (!address.writable) {
+        script_analyzer_diagnostic(a, map, "Deleting a key requires a writable map");
+    }
+    result.second = script_analyzer_map_operation(
+        a,
+        node,
+        SCRIPT_EXPR_MAP_REMOVE,
+        result.expression,
+        key
+    );
+    result.effects = script_analyzer_expr_effects(a, result.second);
+    if (writes_external_storage(a->out, result.expression)) {
+        result.effects |= SCRIPT_EFFECT_WRITE;
+    }
+    if (address.symbol >= 0) {
+        script_analyzer_use(a, map, address.symbol, SCRIPT_WRITE, address.member);
+    }
+    return script_analyzer_statement_add(a, result);
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {
@@ -743,11 +926,39 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         return script_analyzer_statement_add(a, result);
     }
+    if (script_analyzer_is(node, "delete_statement")) {
+        TSNode target = script_analyzer_field(node, "target");
+        return delete_key(
+            a,
+            node,
+            result,
+            script_analyzer_field(target, "object"),
+            script_analyzer_field(target, "index")
+        );
+    }
     if (script_analyzer_is(node, "expression_statement")) {
         result.kind = SCRIPT_STMT_EXPRESSION;
         TSNode value = { 0 };
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
             value = ts_node_named_child(node, i);
+            TSNode function = script_analyzer_field(value, "function");
+            if (changes_array(a, value)) {
+                return change_array(a, value, result);
+            }
+            if (script_analyzer_is(value, "call_expression") &&
+                script_analyzer_map_method(a, function, "delete")) {
+                TSNode arguments = script_analyzer_field(value, "arguments");
+                if (script_analyzer_named_count(arguments) != 1) {
+                    script_analyzer_diagnostic(a, value, "Map method requires one key");
+                }
+                return delete_key(
+                    a,
+                    value,
+                    result,
+                    script_analyzer_field(function, "object"),
+                    ts_node_named_child(arguments, 0)
+                );
+            }
             if (!ts_node_is_extra(value)) {
                 result.expression = script_analyzer_expression(
                     a,
@@ -866,8 +1077,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.key_symbol = -1;
         TSNode item_name = script_analyzer_field(node, "name");
         bool reference_iteration = !ts_node_is_null(script_analyzer_field(node, "reference"));
+        result.reverse = !ts_node_is_null(script_analyzer_field(node, "reverse"));
         script_type element;
         if (range) {
+            result.exclusive = script_analyzer_text_is(a, script_analyzer_field(node, "bound"), "..<");
             result.expression = script_analyzer_expression(a, first, (script_type){ .storage = PIN_I32 });
             result.second = script_analyzer_expression(
                 a,
@@ -887,6 +1100,21 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 element,
                 script_analyzer_expr_type(a, result.second)
             );
+            /* Ranges never count down, so constant bounds that descend are a
+             * mistake rather than an empty loop. */
+            pin_value low, high;
+            if (!script_analyzer_scalar_constant(a, result.expression, PIN_I32, &low) &&
+                !script_analyzer_scalar_constant(a, result.second, PIN_I32, &high) &&
+                low.i > high.i) {
+                script_analyzer_diagnostic(
+                    a,
+                    node,
+                    result.reverse
+                        ? "Range bounds descend; for < takes the low bound "
+                          "first, as in for < i in 0..10"
+                        : "Range bounds descend; count down with for <"
+                );
+            }
         } else {
             result.expression = script_analyzer_expression(
                 a,
@@ -900,6 +1128,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             if (element.container != PIN_CONTAINER_ARRAY &&
                 element.container != PIN_CONTAINER_MAP && !text) {
                 script_analyzer_diagnostic(a, collection, "For requires an array, Map or string");
+            }
+            if (result.reverse && (element.container != PIN_CONTAINER_ARRAY ||
+                                   a->out->expressions[result.expression].kind ==
+                                       SCRIPT_EXPR_RELATION)) {
+                script_analyzer_diagnostic(a, collection, "for < reverses only ranges and arrays");
             }
             TSNode key = script_analyzer_field(node, "key");
             if (!ts_node_is_null(key)) {

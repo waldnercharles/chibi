@@ -51,8 +51,8 @@ static int end(TSNode node)
     return (int)ts_node_end_byte(node);
 }
 
-/* Equivalence ignores source positions, the spelling of payload aliases and
- * reference markers, which lower to the same reads. */
+/* Equivalence ignores source positions and reference markers, which lower to
+ * the same reads. */
 /* An original analysis, a rewritten one and the catalog both resolve. */
 typedef struct
 {
@@ -97,9 +97,9 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) && x->writable == y->writable &&
-           x->disabled == y->disabled && x->outcome == y->outcome &&
-           ((payload(x) && payload(y)) || same_text(x->name, y->name));
+           (parameter || x->function == y->function) &&
+           x->writable == y->writable && x->disabled == y->disabled &&
+           x->outcome == y->outcome && same_text(x->name, y->name);
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
  * well as their parameters. */
@@ -456,7 +456,7 @@ static bool same_function(const pair *p, const script_function *x, const script_
            same_symbols(p, x->results, y->results, x->result_count) &&
            same_statement(p, x->body, y->body);
 }
-/* Declared symbols in order, without payload aggregates and their aliases. */
+/* Declared symbols in order, without payload aggregates. */
 static int next_declared(const script_analysis *a, int i)
 {
     while (i < a->symbol_count && payload(&a->symbols[i])) {
@@ -613,9 +613,10 @@ static void delete_line(collector *c, TSNode node)
 }
 static bool literal(TSNode value)
 {
-    return is(value, "number") || is(value, "string") || is(value, "boolean") ||
-           is(value, "nil") || is(value, "struct_expression") ||
-           is(value, "array_expression") ||
+    return is(value, "number") || is(value, "string") ||
+           is(value, "character") || is(value, "boolean") || is(value, "nil") ||
+           is(value, "struct_expression") || is(value, "array_expression") ||
+           is(value, "map_expression") ||
            (is(value, "unary_expression") && is(field(value, "operand"), "number"));
 }
 static TSNode argument_value(TSNode argument)
@@ -659,48 +660,14 @@ static void labels(collector *c, TSNode list)
         }
     }
 }
-static int symbol_declared_at(const script_analysis *a, TSNode node)
-{
-    for (int i = 0; i < a->symbol_count; i++) {
-        if (a->symbols[i].declaration.start == start(node) &&
-            a->symbols[i].declaration.end == end(node)) {
-            return i;
-        }
-    }
-    return -1;
-}
-/* `on Event as alias` reads the payload as `event`. */
-static void handler_alias(collector *c, TSNode handler)
-{
-    TSNode name = field(handler, "name"), alias = field(handler, "alias");
-    int symbol = symbol_declared_at(c->analysis, alias);
-    if (symbol < 0) {
-        return;
-    }
-    rewrite r = { 0 };
-    edit(&r, end(name), end(alias), "");
-    for (int i = 0; i < c->analysis->use_count; i++) {
-        const script_use *use = &c->analysis->uses[i];
-        if (use->symbol == symbol && use->range.start != start(alias)) {
-            edit(&r, use->range.start, use->range.end, "event");
-        }
-    }
-    apush(c->rewrites, r);
-}
 static void handler(collector *c, TSNode node)
 {
     TSNode parameters = field(node, "parameters");
-    if (!ts_node_is_null(field(node, "alias"))) {
-        handler_alias(c, node);
-    }
-    if (ts_node_is_null(parameters)) {
+    /* `on X :: (a: T)` names the payload fields it reads, with their types. */
+    if (!ts_node_is_null(field(node, "binding")) || ts_node_is_null(parameters)) {
         return;
     }
-    TSNode before = field(node, "alias");
-    if (ts_node_is_null(before)) {
-        before = field(node, "name");
-    }
-    add(c, end(before), end(parameters), "");
+    add(c, end(field(node, "name")), end(parameters), "");
     /* Payload parameters take their registered types and defaults. */
     for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
         TSNode parameter = ts_node_named_child(parameters, i);
@@ -891,6 +858,7 @@ static bool primary_at(const collector *c, script_range range)
                                              "parenthesized_expression",
                                              "builtin_reference",
                                              "number",
+                                             "character",
                                              "string",
                                              "boolean" };
     for (size_t i = 0; i < sizeof primaries / sizeof *primaries; i++) {
@@ -1356,40 +1324,7 @@ static bool accepts(const oracle *o, const char *text)
     return same;
 }
 /* One round of a pass; returns the new text, or NULL when nothing applied. */
-static int edit_order(const void *a, const void *b)
-{
-    const text_edit *x = a, *y = b;
-    return (x->start > y->start) - (x->start < y->start);
-}
-static void remap_positions(int *positions, int count, const rewrite *rewrites, const bool *accepted)
-{
-    text_edit *edits = NULL;
-    for (int i = 0; i < acount(rewrites); i++) {
-        if (accepted[i]) {
-            for (int j = 0; j < acount(rewrites[i].edits); j++) {
-                apush(edits, rewrites[i].edits[j]);
-            }
-        }
-    }
-    qsort(edits, (size_t)acount(edits), sizeof *edits, edit_order);
-    for (int i = 0; i < count; i++) {
-        int position = positions[i], delta = 0;
-        for (int j = 0; j < acount(edits); j++) {
-            const text_edit *e = &edits[j];
-            if (position < e->start) {
-                break;
-            }
-            if (position < e->end) {
-                position = e->start;
-                break;
-            }
-            delta += (int)strlen(e->text) - (e->end - e->start);
-        }
-        positions[i] = position + delta;
-    }
-    afree(edits);
-}
-static char *round_text(const oracle *o, const char *text, pass phase, int *positions, int position_count)
+static char *round_text(const oracle *o, const char *text, pass phase)
 {
     script_syntax *syntax = script_parse(text);
     script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
@@ -1425,9 +1360,6 @@ static char *round_text(const oracle *o, const char *text, pass phase, int *posi
         }
         result = kept ? apply(text, c.rewrites, accepted, -1) : NULL;
     }
-    if (result && positions) {
-        remap_positions(positions, position_count, c.rewrites, accepted);
-    }
     for (int i = 0; i < count; i++) {
         rewrite_free(&c.rewrites[i]);
     }
@@ -1439,21 +1371,8 @@ static char *round_text(const oracle *o, const char *text, pass phase, int *posi
     return result;
 }
 
-static char *minimize(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    bool migration,
-    int **mapping
-)
+static char *minimize(const char *text, const script_catalog *catalog, const char *identity, bool migration)
 {
-    int position_count = (int)strlen(text) + 1;
-    if (mapping) {
-        *mapping = xmalloc((size_t)position_count * sizeof **mapping);
-        for (int i = 0; i < position_count; i++) {
-            (*mapping)[i] = i;
-        }
-    }
     script_syntax *syntax = script_parse(text);
     script_analysis *original = analyze_source(syntax, catalog, identity, migration);
     char *current = xstrdup(text);
@@ -1467,9 +1386,7 @@ static char *minimize(
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
             /* Each round accepts at least one rewrite, so this ends when
              * nothing is left to drop. */
-            for (char *next; (
-                     next = round_text(&o, current, phase, mapping ? *mapping : NULL, position_count)
-                 );) {
+            for (char *next; (next = round_text(&o, current, phase));) {
                 free(current);
                 current = next;
             }
@@ -1483,7 +1400,7 @@ static char *minimize(
 
 char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
 {
-    return minimize(text, catalog, identity, false, NULL);
+    return minimize(text, catalog, identity, false);
 }
 char *authoring_source_canonical(
     const char *text,
@@ -1506,17 +1423,6 @@ char *authoring_source_canonical(
     char *result = authoring_source_format(syntax, error, size);
     script_syntax_free(syntax);
     return result;
-}
-
-char *authoring_source_migrate_generated(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    char *error,
-    size_t size
-)
-{
-    return authoring_source_migrate_generated_mapped(text, catalog, identity, NULL, error, size);
 }
 
 /* A configured action is a deferred invocation, not a statement. Preserve its
@@ -1763,7 +1669,6 @@ static char *wrap_remaining_writes(
     const char *text,
     const script_catalog *catalog,
     const char *identity,
-    int **positions,
     char *error,
     size_t size
 )
@@ -1794,11 +1699,6 @@ static char *wrap_remaining_writes(
         );
     }
     if (valid) {
-        int count = (int)strlen(text) + 1;
-        *positions = xmalloc((size_t)count * sizeof **positions);
-        for (int i = 0; i < count; i++) {
-            (*positions)[i] = i;
-        }
         if (acount(writers)) {
             TSNode body = field(ts_node_named_child(root, 0), "body");
             apush(definitions, 0);
@@ -1808,9 +1708,6 @@ static char *wrap_remaining_writes(
                 accepted[i] = true;
             }
             result = apply(text, c.rewrites, accepted, -1);
-            if (result) {
-                remap_positions(*positions, count, c.rewrites, accepted);
-            }
             free(accepted);
         } else {
             result = xstrdup(text);
@@ -1826,35 +1723,20 @@ static char *wrap_remaining_writes(
     script_syntax_free(syntax);
     return result;
 }
-char *authoring_source_migrate_generated_mapped(
+char *authoring_source_migrate_generated(
     const char *text,
     const script_catalog *catalog,
     const char *identity,
-    int **positions,
     char *error,
     size_t size
 )
 {
-    int *first = NULL, *wrapped_positions = NULL, *last = NULL;
-    char *reduced = minimize(text, catalog, identity, true, &first);
-    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, &wrapped_positions, error, size);
-    char *current = wrapped ? minimize(wrapped, catalog, identity, true, &last) : NULL;
-    if (current && positions) {
-        *positions = first;
-        first = NULL;
-        for (size_t i = 0; i <= strlen(text); i++) {
-            (*positions)[i] = last[wrapped_positions[(*positions)[i]]];
-        }
-    }
-    free(first);
-    free(wrapped_positions);
-    free(last);
+    char *reduced = minimize(text, catalog, identity, true);
+    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, error, size);
+    char *current = wrapped ? minimize(wrapped, catalog, identity, true) : NULL;
     free(reduced);
     free(wrapped);
     if (!current) {
-        if (positions) {
-            *positions = NULL;
-        }
         return NULL;
     }
     script_syntax *syntax = script_parse(current);
@@ -1879,10 +1761,6 @@ char *authoring_source_migrate_generated_mapped(
     script_syntax_free(syntax);
     if (!valid) {
         free(current);
-        if (positions) {
-            free(*positions);
-            *positions = NULL;
-        }
         return NULL;
     }
     return current;

@@ -1,5 +1,6 @@
 #include "authoring/source_prepare.h"
 #include "host/build_host.h"
+#include "host/build_values.h"
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 #include "host/native_default.h"
 #endif
@@ -250,14 +251,14 @@ TEST_CASE(authored_fixture_runs_real_children_on_each_backend)
 TEST_CASE(authored_capability_errors_do_not_become_exit_codes)
 {
     static const char *sources[] = {
-        "Failure :: library { Build :: () -> int { return "
-        "RunBuildStep([\"/chibi/nonexistent/worker\"]); } }",
-        "Failure :: library { Build :: () -> int { return "
-        "RunBuildStep([\"\"]); "
-        "} }",
-        "Failure :: library { Build :: () -> int { return "
-        "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"), \"sleep\", "
-        "\"3\"]); } }",
+        "package failure\nBuild :: () -> int { return "
+        "build.run([\"/chibi/nonexistent/worker\"]); }",
+        "package failure\nBuild :: () -> int { return "
+        "build.run([\"\"]); "
+        "}",
+        "package failure\nBuild :: () -> int { return "
+        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"), \"sleep\", "
+        "\"3\"]); }",
     };
     static const char *diagnostics[] = {
         "build process spawn failed",
@@ -370,39 +371,42 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
     REQUIRE(game);
     const script_catalog *catalog = native_capabilities_catalog(game);
     static const char *private_names[] = {
-        "RunBuildStep",
-        "BuildEnvironment",
-        "BuildArguments",
-        "BuildPlatform",
-        "BuildRoot",
-        "BuildProgramDirectory",
-        "BuildFindExecutable",
-        "BuildReadFile",
-        "BuildFileExists",
-        "BuildMakeDirectory",
-        "BuildResolvePath",
-        "BuildWriteFile",
-        "BuildLastStdout",
-        "BuildLastStderr",
-        "BuildReport",
-        "BuildJoin",
-        "BuildStartsWith",
-        "BuildBefore",
-        "BuildAfter",
-        "BuildLines",
-        "BuildTrim",
-        "BuildConcat",
-        "BuildLength",
-        "RunBuildProbe",
-        "BuildEnvironmentNames",
-        "BuildFileKind",
-        "BuildFileStamp",
-        "BuildListDirectory",
-        "BuildCopyFile",
-        "BuildRename",
-        "BuildRemove",
-        "BuildHashFile",
-        "BuildHashText",
+        "build.run",
+        "build.environment",
+        "build.arguments",
+        "build.platform",
+        "build.root",
+        "build.program_directory",
+        "build.find_executable",
+        "build.read_file",
+        "build.file_exists",
+        "build.make_directory",
+        "build.resolve_path",
+        "build.write_file",
+        "build.last_stdout",
+        "build.last_stderr",
+        "build.report",
+        "build.join",
+        "build.starts_with",
+        "build.before",
+        "build.after",
+        "build.lines",
+        "build.trim",
+        "build.concat",
+        "build.length",
+        "build.probe",
+        "build.environment_names",
+        "build.file_kind",
+        "build.file_stamp",
+        "build.list_directory",
+        "build.copy_file",
+        "build.rename",
+        "build.remove",
+        "build.hash_file",
+        "build.hash_text",
+        "build.start",
+        "build.wait",
+        "build.embed_file",
     };
     bool absent = true;
     for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
@@ -438,15 +442,15 @@ TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements)
     const char *probe[] = { host_path, "--protocol-version", NULL };
     REQUIRE(!tool_run(probe, root, log));
     char *text = tool_read(log);
-    bool current = text && !strcmp(text, "3\n");
+    bool current = text && !strcmp(text, "7\n");
     free(text);
     REQUIRE(current);
     /* A nonzero probe result, as produced by the M1 CLI, must be distinguishable
-     * from an invocation error after a successful version-3 selection. */
+     * from an invocation error after a successful version-7 selection. */
     const char *invalid[] = { host_path, "--protocol-version", "extra", NULL };
     REQUIRE(tool_run(invalid, root, log) != 0);
     text = tool_read(log);
-    bool rejected = text && strstr(text, "usage:") && strcmp(text, "3\n");
+    bool rejected = text && strstr(text, "usage:") && strcmp(text, "7\n");
     free(text);
     REQUIRE(rejected);
     return true;
@@ -476,6 +480,40 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
     bool diagnostic = text && strstr(text, "entry");
     free(text);
     REQUIRE(diagnostic);
+    /* --core names the collection a program's core: imports read. */
+    char directory[256], core_source[256];
+    snprintf(directory, sizeof directory, "%s/core-program", root);
+    assert(!mkdir(directory, 0700));
+    snprintf(core_source, sizeof core_source, "%s/CoreProgram.chibi", directory);
+    tool_write(
+        core_source,
+        "package core_program\nimport strings \"core:strings\"\n"
+        "Build :: () -> int { return strings.ByteLength(\"seven..\"); }\n"
+    );
+    const char *core[] = {
+        host_path,
+        "--root",
+        root,
+        "--source",
+        core_source,
+        "--core",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        "--entry",
+        "Build",
+        "--timeout-ms",
+        "1000",
+        NULL,
+    };
+    REQUIRE(tool_run(core, root, log) == 7);
+    const char *absent[] = {
+        host_path, "--root",  root,    "--source",     core_source, "--core",
+        "no-core", "--entry", "Build", "--timeout-ms", "1000",      NULL,
+    };
+    REQUIRE(tool_run(absent, root, log) != 0);
+    text = tool_read(log);
+    bool unfound = text && strstr(text, "build core collection could not be found");
+    free(text);
+    REQUIRE(unfound);
     return true;
 }
 
@@ -499,30 +537,68 @@ static bool primitive_backend(const chibi_build_result *result, behavior_backend
            result->counts.sljit_entries == (backend == BEHAVIOR_SLJIT ? 1u : 0u);
 }
 
+/* A step takes up to 1,023 arguments, as many as the process layer passes and
+ * twice a link of every object and library the tooling tests use, and refuses
+ * more. */
+TEST_CASE(steps_take_up_to_1023_arguments)
+{
+    static const char *const sources[] = {
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1023) { command.append(\"-\"); } "
+        "return build.run(command); }",
+        "package primitives\nBuild :: () -> int { "
+        "command:=[build.environment(\"CHIBI_BUILD_WORKER\"),\"exit\",\"7\"]; "
+        "while (build.length(command) < 1024) { command.append(\"-\"); } "
+        "return build.run(command); }",
+    };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(sources[0], backend);
+        chibi_build_result result;
+        bool success = chibi_build_invoke(&options, &result);
+        if (!success) {
+            fprintf(stderr, "step arguments: %s\n", result.diagnostic);
+        }
+        REQUIRE(
+            success && result.value == 7 && result.steps == 1 &&
+            primitive_backend(&result, backend)
+        );
+        options = primitive_options(sources[1], backend);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(
+            !strcmp(result.diagnostic, "invalid build process arguments") &&
+            result.steps == 0
+        );
+    }
+    return true;
+}
+
 TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 {
     static const char *source =
-        "Primitives :: library { Build :: () -> int { "
-        "args:=BuildArguments(); retained:=args[1]; "
-        "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
-        "status:=RunBuildStep([worker,\"build-argv\",args[0],retained]); "
-        "first:=BuildLastStdout(); firstError:=BuildLastStderr(); "
+        "package primitives\nBuild :: () -> int { "
+        "args:=build.arguments(); retained:=args[1]; "
+        "worker:=build.environment(\"CHIBI_BUILD_WORKER\"); "
+        "status:=build.run([worker,\"build-argv\",args[0],retained]); "
+        "first:=build.last_stdout(); firstError:=build.last_stderr(); "
         "if(status!=23) { return 1; } "
-        "if(RunBuildStep([worker,\"exit\",\"0\"])!=0) { return 2; } "
-        "later:=BuildLastStdout(); joined:=BuildJoin(BuildArguments(),\"|\"); "
-        "if(later!=\"\" || BuildLastStderr()!=\"\") { return 3; } "
+        "if(build.run([worker,\"exit\",\"0\"])!=0) { return 2; } "
+        "later:=build.last_stdout(); "
+        "joined:=build.join(build.arguments(),\"|\"); "
+        "if(later!=\"\" || build.last_stderr()!=\"\") { return 3; } "
         "if(firstError!=\"worker-stderr\\n\") { return 4; } "
-        "expected:=BuildJoin([\"arg=23:\",retained,\"\\n\"],\"\"); "
-        "if(BuildAfter(first,\"arg=0:\\n\")!=expected) { return 5; } "
-        "if(joined!=BuildJoin([\"\",retained],\"|\") || args[1]!=retained) { "
+        "expected:=build.join([\"arg=23:\",retained,\"\\n\"],\"\"); "
+        "if(build.after(first,\"arg=0:\\n\")!=expected) { return 5; } "
+        "if(joined!=build.join([\"\",retained],\"|\") || args[1]!=retained) { "
         "return 6; } "
-        "if(BuildRoot()!=BuildResolvePath(\".\") || "
-        "BuildProgramDirectory()!=BuildRoot()) { return 7; } "
-        "if(BuildFindExecutable(worker)==\"\" || "
-        "BuildFindExecutable(\"/chibi/missing/tool\")!=\"\") { return 8; } "
-        "platform:=BuildPlatform(); if(platform!=\"Linux\" && "
+        "if(build.root()!=build.resolve_path(\".\") || "
+        "build.program_directory()!=build.root()) { return 7; } "
+        "if(build.find_executable(worker)==\"\" || "
+        "build.find_executable(\"/chibi/missing/tool\")!=\"\") { return 8; } "
+        "platform:=build.platform(); if(platform!=\"Linux\" && "
         "platform!=\"Darwin\") { return 9; } "
-        "return 0; } }";
+        "return 0; }";
     const char *arguments[] = { "", "space \"quote\";$literal*" };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -543,25 +619,30 @@ TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
 {
     static const char
-        *source = "Text :: library { Build :: () -> int { "
-                  "lines:=BuildLines(\" a\\r\\n\\nb\\n\"); "
-                  "if(BuildLength(lines)!=3 || BuildTrim(lines[0])!=\"a\" || "
+        *source = "package text\nBuild :: () -> int { "
+                  "lines:=build.lines(\" a\\r\\n\\nb\\n\"); "
+                  "if(build.length(lines)!=3 || build.trim(lines[0])!=\"a\" || "
                   "lines[1]!=\"\" || lines[2]!=\"b\") { return 1; } "
-                  "if(BuildBefore(\"key=a=b\",\"=\")!=\"key\" || "
-                  "BuildAfter(\"key=a=b\",\"=\")!=\"a=b\") { return 2; } "
-                  "if(BuildBefore(\"text\",\":\")!=\"text\" || "
-                  "BuildAfter(\"text\",\":\")!=\"\") { return 3; } "
+                  "if(build.before(\"key=a=b\",\"=\")!=\"key\" || "
+                  "build.after(\"key=a=b\",\"=\")!=\"a=b\") { return 2; } "
+                  "if(build.before(\"text\",\":\")!=\"text\" || "
+                  "build.after(\"text\",\":\")!=\"\") { return 3; } "
                   "empty:string[]=[]; "
-                  "merged:=BuildConcat(empty,BuildConcat([\"\",\"one\"],["
+                  "merged:=build.concat(empty,build.concat([\"\",\"one\"],["
                   "\"two\"])); "
-                  "if(BuildLength(merged)!=3 || "
-                  "BuildJoin(merged,\"|\")!=\"|one|two\") { return 4; } "
-                  "if(BuildLength(BuildLines(\"\"))!=0 || "
-                  "BuildJoin(empty,\";\")!=\"\") { return 5; } "
-                  "if(!BuildStartsWith(\"abc\",\"ab\") || "
-                  "BuildStartsWith(\"a\",\"ab\")) { return 6; } "
-                  "if(BuildReport(\"authored diagnostic\")!=0) { return 7; } "
-                  "return 0; } }";
+                  "if(build.length(merged)!=3 || "
+                  "build.join(merged,\"|\")!=\"|one|two\") { return 4; } "
+                  "if(build.length(build.lines(\"\"))!=0 || "
+                  "build.join(empty,\";\")!=\"\") { return 5; } "
+                  "if(!build.starts_with(\"abc\",\"ab\") || "
+                  "build.starts_with(\"a\",\"ab\")) { return 6; } "
+                  "if(build.report(\"authored diagnostic\")!=0) { return 7; } "
+                  "if(build.replace(\"cp_a "
+                  "cp_cp_\",\"cp_\",\"x_cp_\")!=\"x_cp_a x_cp_x_cp_\" || "
+                  "build.replace(\"aaa\",\"aa\",\"\")!=\"a\" || "
+                  "build.replace(\"none\",\"cp_\",\"x\")!=\"none\") { return "
+                  "8; } "
+                  "return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
@@ -573,21 +654,355 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
     return true;
 }
 
+TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
+{
+    static const char *sources[] = {
+        "package names\nBuild :: () -> int { "
+        "if(build.join([\"a\",\"b\"],\"\")!=\"ab\") { return 1; } "
+        "return 0; }",
+        "package names\nBuild :: () -> int { "
+        "BuildJoin([\"a\"],\"\"); return 0; }",
+        "package names\nBuild :: () -> int { "
+        "join([\"a\"],\"\"); return 0; }",
+    };
+    static const char *diagnostics[] = {
+        NULL,
+        "Unknown callable 'BuildJoin'",
+        "Unknown callable 'join'",
+    };
+    for (int i = 0; i < 3; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        bool ran = chibi_build_invoke(&options, &result);
+        REQUIRE(ran == !diagnostics[i]);
+        REQUIRE(diagnostics[i] ? !strcmp(result.diagnostic, diagnostics[i]) : result.value == 0);
+    }
+    return true;
+}
+
+TEST_CASE(private_programs_import_core_packages_and_format_text)
+{
+    static const char
+        *source = "package core_text\n"
+                  "import strings \"core:strings\"\n"
+                  "Build :: () -> int { "
+                  "parts := strings.Split(\"a,b,c\", \",\"); "
+                  "build.report(format_text(\"{0} parts, last {1}\", "
+                  "length(parts), parts[2])); "
+                  "return strings.Index(\"build\", \"il\"); }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        options.core = CHIBI_SOURCE_ROOT "/packages/core";
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        /* Each call into core:strings enters the backend again. */
+        uint64_t entries = b ? result.counts.sljit_entries
+                             : result.counts.bytecode_entries;
+        uint64_t other = b ? result.counts.bytecode_entries : result.counts.sljit_entries;
+        REQUIRE(result.value == 2 && entries > 1 && !other && !result.counts.wasm_entries);
+        REQUIRE(!strcmp(result.stderr_text, "3 parts, last c\n"));
+    }
+    /* Without a core collection, the import fails before the program runs. */
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    chibi_build_result result;
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(
+        !strcmp(result.diagnostic, "Unknown import collection") &&
+        !result.counts.bytecode_entries
+    );
+    return true;
+}
+
+/* A program imports a named collection's packages as NAME:path. */
+TEST_CASE(private_programs_import_named_collections)
+{
+    char collection[256], directory[300], file[320];
+    snprintf(collection, sizeof collection, "%s/collection", root);
+    snprintf(directory, sizeof directory, "%s/greet", collection);
+    assert(!mkdir(collection, 0700) && !mkdir(directory, 0700));
+    snprintf(file, sizeof file, "%s/Greet.chibi", directory);
+    tool_write(file, "package greet\npub Answer :: () -> int { return 42; }\n");
+    static const char *source = "package uses\nimport greet \"lib:greet\"\n"
+                                "Build :: () -> int { return greet.Answer(); }";
+    const chibi_build_collection named[] = { { "lib", collection } };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        options.collections = named;
+        options.collection_count = 1;
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 42);
+    }
+    char program[320], log[256];
+    snprintf(program, sizeof program, "%s/UsesCollection.chibi", root);
+    snprintf(log, sizeof log, "%s/collection.log", root);
+    tool_write(program, source);
+    char option[300];
+    snprintf(option, sizeof option, "lib=%s", collection);
+    const char *argv[] = { host_path, "--root",       root,   "--source",
+                           program,   "--collection", option, "--entry",
+                           "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(argv, root, log) == 42);
+    const char *malformed[] = { host_path, "--root",       root,   "--source",
+                                program,   "--collection", "lib",  "--entry",
+                                "Build",   "--timeout-ms", "1000", NULL };
+    REQUIRE(tool_run(malformed, root, log) == 1);
+    char *text = tool_read(log);
+    bool usage = text && strstr(text, "usage:");
+    free(text);
+    REQUIRE(usage);
+    return true;
+}
+
+/* build.embed_file writes the C that cmake/embed_binary.cmake writes, and
+ * leaves an unchanged output alone. */
+TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
+{
+    char input[256], empty[256];
+    snprintf(input, sizeof input, "%s/bytes.bin", root);
+    snprintf(empty, sizeof empty, "%s/empty.bin", root);
+    unsigned char bytes[18];
+    for (int i = 0; i < 18; i++) {
+        bytes[i] = (unsigned char)(i * 15);
+    }
+    FILE *file = fopen(input, "wb");
+    REQUIRE(file && fwrite(bytes, 1, sizeof bytes, file) == sizeof bytes && !fclose(file));
+    tool_write(empty, "");
+    static const char
+        *source = "package embed\nBuild :: () -> int { "
+                  "if (!build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 1; } "
+                  "stamp := build.file_stamp(\"out/bytes.c\"); "
+                  "if (build.embed_file(\"bytes.bin\", \"out/bytes.c\", "
+                  "\"bytes_blob\")) { return 2; } "
+                  "if (build.file_stamp(\"out/bytes.c\") != stamp) { return 3; "
+                  "} "
+                  "if (!build.embed_file(\"empty.bin\", \"out/empty.c\", "
+                  "\"_empty\")) { return 4; } "
+                  "return 0; }";
+    char directory[256];
+    snprintf(directory, sizeof directory, "%s/out", root);
+    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0);
+    char path[320];
+    snprintf(path, sizeof path, "%s/out/bytes.c", root);
+    char *text = tool_read(path);
+    REQUIRE(
+        text &&
+        !strcmp(
+            text,
+            "#include <stddef.h>\n\nconst unsigned char bytes_blob[] = {\n"
+            "    0x00, 0x0f, 0x1e, 0x2d, 0x3c, 0x4b, 0x5a, 0x69, 0x78, 0x87, "
+            "0x96, 0xa5, "
+            "0xb4, 0xc3, 0xd2, 0xe1,\n    0xf0, 0xff,\n};\n"
+            "const size_t bytes_blob_size = sizeof bytes_blob;\n"
+        )
+    );
+    free(text);
+    snprintf(path, sizeof path, "%s/out/empty.c", root);
+    text = tool_read(path);
+    REQUIRE(
+        text && !strcmp(
+                    text,
+                    "#include <stddef.h>\n\nconst unsigned char _empty[] = {\n "
+                    "   \n};\n"
+                    "const size_t _empty_size = sizeof _empty;\n"
+                )
+    );
+    free(text);
+    static const char *refused[] = {
+        "package embed\nBuild :: () -> int { build.embed_file(\"bytes.bin\", "
+        "\"out/x.c\", \"1st\"); return 0; }",
+        "package embed\nBuild :: () -> int { build.embed_file(\"out\", "
+        "\"out/x.c\", \"x\"); return 0; }",
+    };
+    static const char *diagnostics[] = {
+        "build embed symbol must be a C identifier",
+        "build embed input must be a regular file of at most 64 MiB",
+    };
+    for (int i = 0; i < 2; i++) {
+        options = primitive_options(refused[i], BEHAVIOR_BYTECODE);
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+    }
+    return true;
+}
+
+/* Nothing resumes a build program, so waiting or starting a task fails it. */
+TEST_CASE(private_programs_cannot_wait_or_start_tasks)
+{
+    static const char *sources[] = {
+        "package waits\nBuild :: () -> int { yield; return 0; }",
+        "package waits\nWait :: () { yield; }\nBuild :: () -> int { Wait(); "
+        "return 0; }",
+    };
+    static const char *diagnostics[] = {
+        "a build program cannot wait",
+        "a build program cannot start a task",
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+            chibi_build_options options = primitive_options(sources[i], backend);
+            chibi_build_result result;
+            REQUIRE(!chibi_build_invoke(&options, &result));
+            REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+        }
+    }
+    return true;
+}
+
+/* A program that fails without a message of its own says why it stopped. */
+TEST_CASE(private_runtime_failures_name_their_cause)
+{
+    static const char *sources[] = {
+        "package fails\nBuild :: () -> int { n := 0; while (true) { n += 1; } "
+        "return n; }",
+        "package fails\nBuild :: () -> int { xs: int[] = []; return xs[1]; }",
+        /* A called function's failure reaches the program's diagnostic. */
+        "package fails\nInner :: () -> int { xs: int[] = []; return xs[1]; }\n"
+        "Build :: () -> int { return Inner(); }",
+        "package fails\nInner :: () -> int { return build.wait(99); }\n"
+        "Build :: () -> int { return Inner(); }",
+    };
+    static const char *diagnostics[] = {
+        "instruction budget exhausted",
+        "array index out of range",
+        "array index out of range",
+        "unknown build job",
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 4; i++) {
+            behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+            chibi_build_options options = primitive_options(sources[i], backend);
+            /* The default budget takes seconds to run out. */
+            options.instruction_budget = 100000;
+            chibi_build_result result;
+            REQUIRE(!chibi_build_invoke(&options, &result));
+            if (strcmp(result.diagnostic, diagnostics[i])) {
+            }
+            REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+        }
+    }
+    return true;
+}
+
+/* Started steps run at the same time; each wait gives its own step's status. */
+TEST_CASE(private_started_steps_run_together)
+{
+    static const char
+        *source = "package jobs\n"
+                  "Build :: () -> int { worker := "
+                  "build.environment(\"CHIBI_BUILD_WORKER\"); "
+                  "handles: int[] = []; "
+                  "for (i in 0..<4) { handles = append(handles, "
+                  "build.start([worker, \"sleep\", \"0.4\"])); } "
+                  "failed := 0; "
+                  "for (handle in handles) { if (build.wait(handle) != 0) { "
+                  "failed += 1; } } "
+                  "return failed; }";
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    double elapsed = now() - started;
+    /* One after another the four would take 1.6 s. */
+    REQUIRE(result.value == 0 && result.steps == 4 && elapsed < 1.2);
+    return true;
+}
+
+/* Waiting for one step drains the others, so a step that writes more than a
+ * pipe holds still finishes; output becomes the last output in wait order. */
+TEST_CASE(private_waits_take_output_in_wait_order)
+{
+    static const char *source =
+        "package jobs\n"
+        "Build :: () -> int { worker := "
+        "build.environment(\"CHIBI_BUILD_WORKER\"); "
+        "large := build.start([worker, \"build-output\", \"300000\"]); "
+        "argv := build.start([worker, \"build-argv\", \"first\"]); "
+        "code := build.start([worker, \"exit\", \"7\"]); "
+        "if (build.wait(code) != 7) { return 1; } "
+        "if (build.wait(large) != 0 || text_byte_length(build.last_stdout()) "
+        "!= 300000) { return 2; } "
+        "if (build.wait(argv) != 23 || build.after(build.last_stdout(), "
+        "\"arg=5:\") != \"first\\n\") { return 3; } "
+        "if (build.last_stderr() != \"worker-stderr\\n\") { return 4; } "
+        "return 0; }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 0 && result.steps == 3);
+        REQUIRE(strstr(result.stdout_text, "oooo") && result.stdout_truncated);
+    }
+    return true;
+}
+
+TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
+{
+    static const char *sources[] = {
+        "package jobs\nBuild :: () -> int { return build.wait(1); }",
+        "package jobs\nBuild :: () -> int { "
+        "step := build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+        "\"exit\", \"0\"]); "
+        "build.wait(step); return build.wait(step); }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, "unknown build job"));
+    }
+    return true;
+}
+
+/* A step the program never waits for stops when the program returns, and a
+ * wait past the deadline fails the program. */
+TEST_CASE(private_unwaited_and_late_steps_stop)
+{
+    static const char
+        *unwaited = "package jobs\nBuild :: () -> int { "
+                    "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                    "\"sleep\", \"30\"]); return 0; }";
+    chibi_build_options options = primitive_options(unwaited, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0 && now() - started < 2);
+    static const char
+        *late = "package jobs\nBuild :: () -> int { return build.wait("
+                "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                "\"sleep\", \"30\"])); }";
+    options = primitive_options(late, BEHAVIOR_BYTECODE);
+    options.deadline = now() + 0.5;
+    started = now();
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - started < 2);
+    return true;
+}
+
 TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols)
 {
     static const char *sources[] = {
-        "Output :: library { Build :: () -> int { "
-        "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "output\",\"1048577\"]); BuildLastStdout(); return 0; } }",
-        "Output :: library { Build :: () -> int { "
-        "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "output\",\"1048577\"]); BuildLastStderr(); return 0; } }",
-        "Output :: library { Build :: () -> int { "
-        "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "binary\",\"stdout\"]); BuildLastStdout(); return 0; } }",
-        "Output :: library { Build :: () -> int { "
-        "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "binary\",\"stderr\"]); BuildLastStderr(); return 0; } }",
+        "package output\nBuild :: () -> int { "
+        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"),\"build-"
+        "output\",\"1048577\"]); build.last_stdout(); return 0; }",
+        "package output\nBuild :: () -> int { "
+        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"),\"build-"
+        "output\",\"1048577\"]); build.last_stderr(); return 0; }",
+        "package output\nBuild :: () -> int { "
+        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"),\"build-"
+        "binary\",\"stdout\"]); build.last_stdout(); return 0; }",
+        "package output\nBuild :: () -> int { "
+        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"),\"build-"
+        "binary\",\"stderr\"]); build.last_stderr(); return 0; }",
     };
     static const char *diagnostics[] = {
         "build stdout truncated",
@@ -628,34 +1043,34 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
     REQUIRE(!mkfifo(path, 0600));
     snprintf(path, sizeof path, "%s/primitive-large", root);
     FILE *file = fopen(path, "wb");
-    assert(file && !ftruncate(fileno(file), 1024 * 1024 + 1));
+    assert(file && !ftruncate(fileno(file), BUILD_TEXT_LIMIT + 1));
     assert(!fclose(file));
     static const char *sources[] = {
-        "Read :: library { Build :: () -> int { "
-        "if(BuildReadFile(\"primitive-text\")!=\"read me\\n\" || "
-        "!BuildFileExists(\"primitive-text\")) { return 1; } return 0; } }",
-        "Read :: library { Build :: () -> int { "
-        "if(BuildReadFile(\"primitive-missing\")!=\"\" || "
-        "BuildFileExists(\"primitive-missing\") || "
-        "BuildResolvePath(\"primitive-missing\")!=\"\") { return 1; } return "
-        "0; } }",
-        "Read :: library { Build :: () -> int { "
-        "BuildReadFile(\"primitive-fifo\"); return 0; } }",
-        "Read :: library { Build :: () -> int { "
-        "BuildReadFile(\"primitive-nul\"); return 0; } }",
-        "Read :: library { Build :: () -> int { "
-        "BuildReadFile(\"primitive-large\"); return 0; } }",
-        "Read :: library { Build :: () -> int { BuildReadFile(\".\"); return "
+        "package read\nBuild :: () -> int { "
+        "if(build.read_file(\"primitive-text\")!=\"read me\\n\" || "
+        "!build.file_exists(\"primitive-text\")) { return 1; } return 0; }",
+        "package read\nBuild :: () -> int { "
+        "if(build.read_file(\"primitive-missing\")!=\"\" || "
+        "build.file_exists(\"primitive-missing\") || "
+        "build.resolve_path(\"primitive-missing\")!=\"\") { return 1; } return "
+        "0; }",
+        "package read\nBuild :: () -> int { "
+        "build.read_file(\"primitive-fifo\"); return 0; }",
+        "package read\nBuild :: () -> int { "
+        "build.read_file(\"primitive-nul\"); return 0; }",
+        "package read\nBuild :: () -> int { "
+        "build.read_file(\"primitive-large\"); return 0; }",
+        "package read\nBuild :: () -> int { build.read_file(\".\"); return "
         "0; "
-        "} }",
+        "}",
     };
     static const char *diagnostics[] = {
         NULL,
         NULL,
-        "build file must be regular text of at most 1 MiB",
+        "build file must be regular text of at most 16 MiB",
         "build file contains NUL bytes",
-        "build file must be regular text of at most 1 MiB",
-        "build file must be regular text of at most 1 MiB",
+        "build file must be regular text of at most 16 MiB",
+        "build file must be regular text of at most 16 MiB",
     };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -677,7 +1092,7 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
 
 TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
 {
-    size_t limit = 1024 * 1024;
+    size_t limit = BUILD_TEXT_LIMIT;
     char *text = malloc(limit);
     assert(text);
     memset(text, 'r', limit);
@@ -690,18 +1105,27 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     }
     primitive_file("primitive-many-lines", many_lines, sizeof many_lines);
     static const char *sources[] = {
-        "Limit :: library { Build :: () -> int { "
-        "if(!BuildWriteFile(\"primitive-limit-copy\",BuildReadFile(\"primitive-"
-        "limit\"))) { return 1; } return 0; } }",
-        "Limit :: library { Build :: () -> int { "
-        "BuildJoin([BuildReadFile(\"primitive-limit\"),\"x\"],\"\"); return 0; "
-        "} }",
-        ("Limit :: library { Build :: () -> int { "
-         "BuildLines(BuildReadFile(\"primitive-many-lines\")); return 0; } }"),
+        "package limit\nBuild :: () -> int { "
+        "if(!build.write_file(\"primitive-limit-copy\",build.read_file("
+        "\"primitive-"
+        "limit\"))) { return 1; } return 0; }",
+        "package limit\nBuild :: () -> int { "
+        "build.join([build.read_file(\"primitive-limit\"),\"x\"],\"\"); return "
+        "0; "
+        "}",
+        ("package limit\nBuild :: () -> int { "
+         "build.lines(build.read_file(\"primitive-many-lines\")); return 0; }"),
+        ("package limit\nBuild :: () -> int { "
+         "build.replace(build.read_file(\"primitive-limit\"),\"r\",\"rr\"); "
+         "return 0; }"),
     };
+    static const char *const refusals[] = { "",
+                                            "invalid build string arguments",
+                                            "build array limit exceeded",
+                                            "build text limit exceeded" };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             chibi_build_options options = primitive_options(sources[i], backend);
             chibi_build_result result;
             REQUIRE(chibi_build_invoke(&options, &result) == (i == 0));
@@ -718,11 +1142,67 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
                 assert(!fclose(file));
                 REQUIRE(last == 'r');
             } else {
-                REQUIRE(
-                    !strcmp(result.diagnostic, i == 1 ? "invalid build string arguments" : "build array limit exceeded")
-                );
+                REQUIRE(!strcmp(result.diagnostic, refusals[i]));
             }
         }
+    }
+    return true;
+}
+
+/* A file's bytes as the C initializer CMake writes from file(READ ... HEX),
+ * NUL and high bytes included; a missing file fails the program. */
+TEST_CASE(private_byte_lists_write_cmake_initializers)
+{
+    primitive_file(
+        "primitive-bytes",
+        "\0\xff"
+        "a",
+        3
+    );
+    static const char *sources[] = {
+        "package bytes\nBuild :: () -> int { "
+        "if (build.byte_list(\"primitive-bytes\") != \"0x00,0xff,0x61,\") { "
+        "return 1; } return 0; }",
+        "package bytes\nBuild :: () -> int { "
+        "build.byte_list(\"primitive-absent\"); return 0; }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result) == !i);
+        REQUIRE(
+            i ? !strcmp(result.diagnostic, "build byte list input must be a regular file of at most 3.2 MiB")
+              : !result.value
+        );
+    }
+    return true;
+}
+
+/* Build values are never freed, so a program's values only grow: a build
+ * graph that reads a record per source holds tens of megabytes, and a
+ * program past the storage limit fails with its cause. */
+TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
+{
+    size_t size = 1024 * 1024;
+    char *text = malloc(size);
+    assert(text);
+    memset(text, 's', size);
+    primitive_file("primitive-storage", text, size);
+    free(text);
+    static const char *sources[] = {
+        "package storage\nBuild :: () -> int { for (i in 0..<64) { "
+        "build.read_file(\"primitive-storage\"); } return 0; }",
+        "package storage\nBuild :: () -> int { for (i in 0..<300) { "
+        "build.read_file(\"primitive-storage\"); } return 0; }",
+    };
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result) == !i);
+        REQUIRE(
+            i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
+              : !result.value
+        );
     }
     return true;
 }
@@ -751,20 +1231,20 @@ TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure)
     snprintf(marker, sizeof marker, "%s/primitive-directory/marker", root);
     tool_write(marker, "unchanged");
     snprintf(target, sizeof target, "%s/primitive-atomic", root);
-    static const char
-        *source = "Write :: library { Build :: () -> int { "
-                  "if(!BuildMakeDirectory(\"primitive/nested\") || "
-                  "!BuildMakeDirectory(\"primitive/nested\")) { return 1; } "
-                  "if(BuildMakeDirectory(\"primitive-atomic/child\")) { return "
-                  "2; } "
-                  "if(!BuildWriteFile(\"primitive-atomic\",\"replacement\")) { "
-                  "return 3; } "
-                  "if(BuildWriteFile(\"primitive-directory\",\"cannot replace "
-                  "directory\")) { return 4; } "
-                  "if(BuildWriteFile(\"primitive-no-parent/file\",\"missing "
-                  "parent\")) { return 5; } "
-                  "if(BuildReadFile(\"primitive-atomic\")!=\"replacement\") { "
-                  "return 6; } return 0; } }";
+    static const char *source =
+        "package write\nBuild :: () -> int { "
+        "if(!build.make_directory(\"primitive/nested\") || "
+        "!build.make_directory(\"primitive/nested\")) { return 1; } "
+        "if(build.make_directory(\"primitive-atomic/child\")) { return "
+        "2; } "
+        "if(!build.write_file(\"primitive-atomic\",\"replacement\")) { "
+        "return 3; } "
+        "if(build.write_file(\"primitive-directory\",\"cannot replace "
+        "directory\")) { return 4; } "
+        "if(build.write_file(\"primitive-no-parent/file\",\"missing "
+        "parent\")) { return 5; } "
+        "if(build.read_file(\"primitive-atomic\")!=\"replacement\") { "
+        "return 6; } return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         struct stat before, after;
@@ -786,8 +1266,8 @@ TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure)
 
 TEST_CASE(private_argument_bounds_reject_before_authored_execution)
 {
-    static const char *source = "Args :: library { Build :: () -> int { return "
-                                "BuildLength(BuildArguments()); } }";
+    static const char *source = "package args\nBuild :: () -> int { return "
+                                "build.length(build.arguments()); }";
     const char *arguments[257];
     for (int i = 0; i < 257; i++) {
         arguments[i] = "";
@@ -863,19 +1343,19 @@ static off_t file_size(const char *name)
 
 TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported)
 {
-    static const char *
-        source = "Output :: library { Build :: () -> int { "
-                 "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
-                 "if(RunBuildProbe([worker,\"build-argv\",\"probe\"])!=23) { "
-                 "return 1; } "
-                 "if(BuildAfter(BuildLastStdout(),\"arg=5:\")!=\"probe\\n\" || "
-                 "BuildLastStderr()!=\"worker-stderr\\n\") { return 2; } "
-                 "if(RunBuildStep([worker,\"build-output\",\"1048576\"])!=0) { "
-                 "return 3; } "
-                 "if(!BuildWriteFile(\"step-stdout\",BuildLastStdout()) || "
-                 "!BuildWriteFile(\"step-stderr\",BuildLastStderr())) { return "
-                 "4; } "
-                 "return 0; } }";
+    static const char *source =
+        "package output\nBuild :: () -> int { "
+        "worker:=build.environment(\"CHIBI_BUILD_WORKER\"); "
+        "if(build.probe([worker,\"build-argv\",\"probe\"])!=23) { "
+        "return 1; } "
+        "if(build.after(build.last_stdout(),\"arg=5:\")!=\"probe\\n\" || "
+        "build.last_stderr()!=\"worker-stderr\\n\") { return 2; } "
+        "if(build.run([worker,\"build-output\",\"1048576\"])!=0) { "
+        "return 3; } "
+        "if(!build.write_file(\"step-stdout\",build.last_stdout()) || "
+        "!build.write_file(\"step-stderr\",build.last_stderr())) { return "
+        "4; } "
+        "return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
@@ -925,41 +1405,43 @@ TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries)
     char path[256];
     snprintf(path, sizeof path, "%s/meta/fifo", root);
     REQUIRE(!mkfifo(path, 0600));
-    static const char *
-        source = "Meta :: library { Build :: () -> int { "
-                 "kinds:=[BuildFileKind(\"meta\"),BuildFileKind(\"meta/"
-                 "a\"),BuildFileKind(\"meta/link\"),"
-                 "BuildFileKind(\"meta/dangling\"),BuildFileKind(\"meta/"
-                 "fifo\"),BuildFileKind(\"meta/none\"),"
-                 "BuildFileKind(\"meta/a/below\")]; "
-                 "if(BuildJoin(kinds,\"|\")!=\"directory|file|link|link|other||"
-                 "\") { return 1; } "
-                 "if(BuildJoin(BuildListDirectory(\"meta\"),\"|\")!=\".hidden|"
-                 "a|b|c|dangling|fifo|link|loop\") { "
-                 "return 2; } "
-                 "if(BuildLength(BuildListDirectory(\"meta/c\"))!=0 || "
-                 "BuildLength(BuildListDirectory(\"meta/none\"))!=0) { return "
-                 "3; } "
-                 "stamp:=BuildFileStamp(\"meta/a\"); "
-                 "if(stamp==\"\" || "
-                 "BuildFileStamp(\"meta/link\")!=BuildFileStamp(\"meta/b\") || "
-                 "BuildFileStamp(\"meta/b\")==stamp) { return 4; } "
-                 "if(BuildFileStamp(\"meta/dangling\")!=\"\" || "
-                 "BuildFileStamp(\"meta/none\")!=\"\") { return 5; } "
-                 "if(!BuildWriteFile(\"meta/a\",\"a\") || "
-                 "BuildFileStamp(\"meta/a\")==stamp) { return 6; } "
-                 "return 0; } }";
+    static const char *source =
+        "package meta\nBuild :: () -> int { "
+        "kinds:=[build.file_kind(\"meta\"),build.file_kind(\"meta/"
+        "a\"),build.file_kind(\"meta/link\"),"
+        "build.file_kind(\"meta/dangling\"),build.file_kind(\"meta/"
+        "fifo\"),build.file_kind(\"meta/none\"),"
+        "build.file_kind(\"meta/a/below\")]; "
+        "if(build.join(kinds,\"|\")!=\"directory|file|link|link|other||"
+        "\") { return 1; } "
+        "if(build.join(build.list_directory(\"meta\"),\"|\")!=\".hidden|"
+        "a|b|c|dangling|fifo|link|loop\") { "
+        "return 2; } "
+        "if(build.length(build.list_directory(\"meta/c\"))!=0 || "
+        "build.length(build.list_directory(\"meta/none\"))!=0) { return "
+        "3; } "
+        "stamp:=build.file_stamp(\"meta/a\"); "
+        "if(stamp==\"\" || "
+        "build.file_stamp(\"meta/link\")!=build.file_stamp(\"meta/b\") || "
+        "build.file_stamp(\"meta/b\")==stamp) { return 4; } "
+        "if(build.file_stamp(\"meta/dangling\")!=\"\" || "
+        "build.file_stamp(\"meta/none\")!=\"\") { return 5; } "
+        "if(!build.write_file(\"meta/a\",\"a\") || "
+        "build.file_stamp(\"meta/a\")==stamp) { return 6; } "
+        "return 0; }";
     static const char *failures[] = {
-        "Meta :: library { Build :: () -> int { "
-        "BuildListDirectory(\"meta/a\"); "
-        "return 0; } }",
-        "Meta :: library { Build :: () -> int { BuildFileStamp(\"meta/loop\"); "
-        "return 0; } }",
-        "Meta :: library { Build :: () -> int { "
-        "BuildFileKind(\"meta/loop/x\"); "
-        "return 0; } }",
-        "Meta :: library { Build :: () -> int { BuildListDirectory(\"many\"); "
-        "return 0; } }",
+        "package meta\nBuild :: () -> int { "
+        "build.list_directory(\"meta/a\"); "
+        "return 0; }",
+        "package meta\nBuild :: () -> int { "
+        "build.file_stamp(\"meta/loop\"); "
+        "return 0; }",
+        "package meta\nBuild :: () -> int { "
+        "build.file_kind(\"meta/loop/x\"); "
+        "return 0; }",
+        "package meta\nBuild :: () -> int { "
+        "build.list_directory(\"many\"); "
+        "return 0; }",
     };
     static const char *diagnostics[] = {
         "build directory list failed",
@@ -994,24 +1476,24 @@ TEST_CASE(private_copies_renames_and_removals_leave_whole_files)
     primitive_directory("copy-empty");
     primitive_link("copy-source", "copy-link");
     static const char *source =
-        "Copy :: library { Build :: () -> int { "
-        "if(!BuildCopyFile(\"copy-source\",\"copy-existing\") || "
-        "!BuildCopyFile(\"copy-link\",\"copy-new\")) { return 1; } "
-        "if(BuildCopyFile(\"copy-missing\",\"copy-other\") || "
-        "BuildCopyFile(\"copy-directory\",\"copy-other\") || "
-        "BuildCopyFile(\"copy-source\",\"copy-none/file\") || "
-        "BuildCopyFile(\"copy-source\",\"copy-directory\")) { return 2; } "
-        "if(!BuildRename(\"copy-new\",\"copy-renamed\") || "
-        "BuildFileKind(\"copy-new\")!=\"\" || "
-        "BuildRename(\"copy-missing\",\"copy-other\") || "
-        "BuildRename(\"copy-renamed\",\"copy-none/file\")) { return 3; } "
-        "if(!BuildRemove(\"copy-renamed\") || !BuildRemove(\"copy-renamed\") "
+        "package copy\nBuild :: () -> int { "
+        "if(!build.copy_file(\"copy-source\",\"copy-existing\") || "
+        "!build.copy_file(\"copy-link\",\"copy-new\")) { return 1; } "
+        "if(build.copy_file(\"copy-missing\",\"copy-other\") || "
+        "build.copy_file(\"copy-directory\",\"copy-other\") || "
+        "build.copy_file(\"copy-source\",\"copy-none/file\") || "
+        "build.copy_file(\"copy-source\",\"copy-directory\")) { return 2; } "
+        "if(!build.rename(\"copy-new\",\"copy-renamed\") || "
+        "build.file_kind(\"copy-new\")!=\"\" || "
+        "build.rename(\"copy-missing\",\"copy-other\") || "
+        "build.rename(\"copy-renamed\",\"copy-none/file\")) { return 3; } "
+        "if(!build.remove(\"copy-renamed\") || !build.remove(\"copy-renamed\") "
         "|| "
-        "!BuildRemove(\"copy-empty\") || BuildRemove(\"copy-directory\")) { "
+        "!build.remove(\"copy-empty\") || build.remove(\"copy-directory\")) { "
         "return 4; } "
-        "if(!BuildRemove(\"copy-link\") || "
-        "BuildFileKind(\"copy-source\")!=\"file\") { return 5; } "
-        "return 0; } }";
+        "if(!build.remove(\"copy-link\") || "
+        "build.file_kind(\"copy-source\")!=\"file\") { return 5; } "
+        "return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         struct stat before, after;
@@ -1045,26 +1527,27 @@ TEST_CASE(private_hashes_match_sha256_vectors)
     primitive_file("hash-million", million, size);
     free(million);
     static const char *source =
-        "Hash :: library { Build :: () -> int { "
+        "package hash\nBuild :: () -> int { "
         "abc:="
         "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"; "
-        "if(BuildHashFile(\"hash-abc\")!=abc || BuildHashText(\"abc\")!=abc) { "
+        "if(build.hash_file(\"hash-abc\")!=abc || "
+        "build.hash_text(\"abc\")!=abc) { "
         "return 1; } "
-        "if(BuildHashText(\"\")!="
+        "if(build.hash_text(\"\")!="
         "\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\") "
         "{ "
         "return 2; } "
-        "if(BuildHashText("
+        "if(build.hash_text("
         "\"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\")!="
         "\"248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\") "
         "{ return 3; } "
-        "if(BuildHashFile(\"hash-million\")!="
+        "if(build.hash_file(\"hash-million\")!="
         "\"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0\") "
         "{ return 4; } "
-        "if(BuildHashFile(\"hash-missing\")!=\"\") { return 5; } "
-        "return 0; } }";
-    static const char *directory = "Hash :: library { Build :: () -> int { "
-                                   "BuildHashFile(\".\"); return 0; } }";
+        "if(build.hash_file(\"hash-missing\")!=\"\") { return 5; } "
+        "return 0; }";
+    static const char *directory = "package hash\nBuild :: () -> int { "
+                                   "build.hash_file(\".\"); return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         REQUIRE(run_primitives(source, backend, 0));
@@ -1079,17 +1562,18 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     REQUIRE(!setenv("CHIBI_BUILD_SECRET", "parent-only", 1));
     char *saved = getenv("CCACHE_TEMPDIR") ? strdup(getenv("CCACHE_TEMPDIR")) : NULL;
     REQUIRE(!setenv("CCACHE_TEMPDIR", "", 1));
-    static const char
-        *source = "Names :: library { Build :: () -> int { "
-                  "names:=BuildJoin([\"\",BuildJoin(BuildEnvironmentNames(),\"|"
-                  "\"),\"\"],\"|\"); "
-                  "if(BuildBefore(names,\"|CHIBI_BUILD_WORKER|\")==names || "
-                  "BuildBefore(names,\"|CCACHE_TEMPDIR|\")==names) { return 1; "
-                  "} "
-                  "if(BuildBefore(names,\"SECRET\")!=names || "
-                  "BuildEnvironment(\"CCACHE_TEMPDIR\")!=\"\") { "
-                  "return 2; } "
-                  "return 0; } }";
+    static const char *
+        source = "package names\nBuild :: () -> int { "
+                 "names:=build.join([\"\",build.join(build.environment_names(),"
+                 "\"|"
+                 "\"),\"\"],\"|\"); "
+                 "if(build.before(names,\"|CHIBI_BUILD_WORKER|\")==names || "
+                 "build.before(names,\"|CCACHE_TEMPDIR|\")==names) { return 1; "
+                 "} "
+                 "if(build.before(names,\"SECRET\")!=names || "
+                 "build.environment(\"CCACHE_TEMPDIR\")!=\"\") { "
+                 "return 2; } "
+                 "return 0; }";
     bool passed = true;
     for (int b = 0; b < 2; b++) {
         passed &= run_primitives(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, 0);
@@ -1136,12 +1620,25 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
+    RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
+    RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
+    RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+    RUN_TEST_CASE(private_programs_import_named_collections);
+    RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
+    RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
+    RUN_TEST_CASE(private_runtime_failures_name_their_cause);
+    RUN_TEST_CASE(private_started_steps_run_together);
+    RUN_TEST_CASE(private_waits_take_output_in_wait_order);
+    RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
+    RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
     RUN_TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols);
     RUN_TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text);
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
+    RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+    RUN_TEST_CASE(private_byte_lists_write_cmake_initializers);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);

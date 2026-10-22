@@ -24,7 +24,6 @@ typedef enum
     EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP = 10,
     EXECUTION_INTRINSIC_BREAK_REQUEST = 11,
     EXECUTION_INTRINSIC_BREAK_TAKE = 12,
-    EXECUTION_INTRINSIC_EVENT_READ = 13,
     EXECUTION_INTRINSIC_STATE_DEMAND = 15,
     EXECUTION_INTRINSIC_STATE_TRANSITION = 16,
     EXECUTION_INTRINSIC_RETRIGGER_ACTION = 17,
@@ -45,11 +44,29 @@ typedef enum
     EXECUTION_INTRINSIC_MAP_REMOVE = 33,
     EXECUTION_INTRINSIC_MAP_ITEM = 34,
     EXECUTION_INTRINSIC_REFERENCE_KEY = 35,
+    EXECUTION_INTRINSIC_MAP_STORE = 36,
+    EXECUTION_INTRINSIC_MAP_DELETE = 37,
     EXECUTION_INTRINSIC_STRING_BYTES = 40,
     EXECUTION_INTRINSIC_STRING_ITEM = 41,
     EXECUTION_INTRINSIC_STRING_NEXT = 42,
     EXECUTION_INTRINSIC_STRING_CURSOR = 43,
+    EXECUTION_INTRINSIC_UNION_KEEP = 45,
 } execution_intrinsic;
+/* A host capability id with this bit runs its intrinsic in the caller's
+ * storage, where a function builds the locals it returns: construct, array
+ * push, store and extend, and union_keep. */
+#define EXECUTION_INTRINSIC_IN_RESULT UINT64_C(0x100)
+static inline execution_intrinsic execution_intrinsic_kind(uint64_t id)
+{
+    return (execution_intrinsic)(id & 255);
+}
+/* Native capability ids are hashes, so only an intrinsic id carries the bit. */
+static inline bool execution_intrinsic_in_result(uint64_t id)
+{
+    return (id & ~(EXECUTION_INTRINSIC_IN_RESULT | UINT64_C(255))) ==
+               UINT64_C(0x4348494900000000) &&
+           (id & EXECUTION_INTRINSIC_IN_RESULT) != 0;
+}
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
@@ -65,6 +82,11 @@ extern const node_host_call EXECUTION_array_push_call,
     EXECUTION_array_store_call, EXECUTION_array_extend_call;
 extern const node_host_call EXECUTION_union_make_call,
     EXECUTION_union_test_call, EXECUTION_union_get_call;
+/* union_make for a returned union, which a function builds in its caller's
+ * storage: (tag, keep mask, payload). It keeps each payload value the mask
+ * names, the locals built there, and copies the others, so nothing else it
+ * holds is the caller's or the function's own. */
+extern const node_host_call EXECUTION_union_keep_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_key_call;
@@ -74,7 +96,6 @@ extern const node_host_call EXECUTION_reference_reduce_call;
 extern const node_host_call EXECUTION_action_read_call;
 extern const node_host_call EXECUTION_action_complete_call;
 extern const node_host_call EXECUTION_break_request_call, EXECUTION_break_take_call;
-extern const node_host_call EXECUTION_event_read_call;
 extern const node_host_call EXECUTION_local_release_call;
 extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;

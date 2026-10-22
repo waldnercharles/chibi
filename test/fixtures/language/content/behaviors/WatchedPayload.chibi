@@ -1,5 +1,5 @@
 WatchedPayload :: behavior {
-    on Tick {
+    on Tick :: () {
         self.Velocity = vec2(0, 0)
     }
 }

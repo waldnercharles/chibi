@@ -25,9 +25,10 @@ static const char
     library_source[] = "CatalogRows :: library { Flags :: struct { " FIELDS
                        " } Choice :: union { Off | On }; Make :: () -> Flags { "
                        "return {}; } }";
-static const char consumer_source[] = "CatalogConsumer :: behavior { "
-                                      "on Pulse { flags := CatalogRows.Make(); "
-                                      "flags.count = 8; } }";
+static const char
+    consumer_source[] = "CatalogConsumer :: behavior { "
+                        "on Pulse :: () { flags := CatalogRows.Make(); "
+                        "flags.count = 8; } }";
 static const script_catalog_capability pulse = { .id = 10,
                                                  .name = "Pulse",
                                                  .kind = SCRIPT_CAPABILITY_EVENT,

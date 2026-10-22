@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path('share/chibi/package.json')
 CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
-COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
+COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'compiler_syntax', 'compiler_json', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
@@ -712,11 +712,6 @@ def assemble(build, output, kind):
         docs = stage / 'share/chibi/docs'
         docs.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'sdk/README.md', docs / 'sdk.md')
-        for name in ('LICENSE', 'LICENSE.md', 'LICENSE.txt'):
-            if (ROOT / name).is_file():
-                licenses = stage / 'share/chibi/licenses/chibi'
-                licenses.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(ROOT / name, licenses / name)
         engine = engine_manifest(stage, compiled)
         files = package_files(stage)
         vendor = stage / 'lib/cmake/Chibi/ChibiDesktopDependencies.cmake'

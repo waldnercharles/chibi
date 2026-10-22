@@ -306,7 +306,6 @@ static invocation_frame *frame_new(
         .start_task = parent->start_task,
         .release_local = parent->release_local,
         .action_result = parent->action_result,
-        .event_argument = parent->event_argument,
         .complete_action = parent->complete_action,
         .state_inputs = parent->state_inputs,
         .state_transition = parent->state_transition,
@@ -367,6 +366,7 @@ static invocation_frame *frame_new(
         &frame->context,
         payload->collectable ? payload : &frame->storage
     );
+    frame->context.result_storage = payload;
     behavior_function_prepare_results(
         call.function,
         frame->context.results,
@@ -439,11 +439,25 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
             !same_header(&context->results[p], &frame->function->result_defaults[p])) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result differs from its declared type");
         }
-        if (pin_value_snapshot_to_arena(
-                parent->value_storage,
-                &parent->data->values[call.result_first + p],
-                &context->results[p]
-            )) {
+        /* A function that builds its result in the caller's storage returns it
+         * there without a copy. The intrinsics that build there copy into it
+         * everything they store, and builds_results says nothing else changes
+         * what they build and no result returns the caller's own data, so a
+         * value there was built for this call and holds nothing of the
+         * callee's own storage. A callee that runs in the caller's storage, as
+         * with a collectable payload, makes everything there, so it copies. */
+        pin_value *out = &parent->data->values[call.result_first + p];
+        const pin_value *result = &context->results[p];
+        bool pointer = result->container != PIN_CONTAINER_SINGLE ||
+                       result->type == PIN_STRUCT ||
+                       result->type == PIN_UNION || result->type == PIN_STR;
+        if (frame->function->builds_results && pointer && result->ptr &&
+            context->value_storage != parent->value_storage &&
+            arena_contains(parent->value_storage, result->ptr)) {
+            out->ptr = result->ptr;
+            continue;
+        }
+        if (pin_value_snapshot_to_arena(parent->value_storage, out, &context->results[p])) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
         }
     }

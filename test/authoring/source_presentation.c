@@ -2,7 +2,6 @@
 
 #include "authoring/application_catalog.h"
 #include "authoring/graph_catalog.h"
-#include "authoring/source_metadata.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/authoring/layout.h"
 #include "runtime/component_catalog.h"
@@ -13,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 /* A presentation-only embedding: no native descriptors or execution services.
  * Fixed small source snapshots, no filesystem or runtime work. */
@@ -39,6 +39,40 @@ static authoring_source_presentation *view, *copy;
 static char *metadata, *edited;
 static native_capabilities *native;
 static authoring_graph_catalog *palette;
+
+static char *write_snapshot(yyjson_mut_doc *doc)
+{
+    char *out = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return out;
+}
+static yyjson_mut_doc *read_snapshot(const char *json)
+{
+    yyjson_doc *read = yyjson_read(json, strlen(json), 0);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_doc_free(read);
+    return doc;
+}
+/* The snapshot bound to some other text. */
+static char *stale_snapshot(const char *json)
+{
+    yyjson_mut_doc *doc = read_snapshot(json);
+    yyjson_mut_obj_put(
+        yyjson_mut_doc_get_root(doc),
+        yyjson_mut_str(doc, "source_hash"),
+        yyjson_mut_str(doc, "0000000000000000")
+    );
+    return write_snapshot(doc);
+}
+/* The snapshot with its first node record naming no origin. */
+static char *unanchored_snapshot(const char *json)
+{
+    yyjson_mut_doc *doc = read_snapshot(json);
+    yyjson_mut_val *layout = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "source_layout");
+    yyjson_mut_val *record = yyjson_mut_arr_get(layout, 0);
+    yyjson_mut_obj_put(record, yyjson_mut_str(doc, "identity"), yyjson_mut_uint(doc, 0));
+    return write_snapshot(doc);
+}
 
 static void cleanup()
 {
@@ -83,7 +117,7 @@ static node *origin_node(authoring_source_presentation *p, const source_presenta
 TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
 {
     REQUIRE(
-        project("View :: behavior { text: string = \"hello\"; Pair :: (n: double) -> (total: double, message: string) { return (n, text); } on Tick { current := Pair(2); text = current.message; } }")
+        project("View :: behavior { text: string = \"hello\"; Pair :: (n: double) -> (total: double, message: string) { return (n, text); } on Tick :: () { current := Pair(2); text = current.message; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = literal(view);
@@ -141,14 +175,11 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     REQUIRE(authoring_source_presentation_restore(copy, metadata));
     REQUIRE(copied->x == 12 && copied->y == 34 && copied->placed);
     REQUIRE(!strcmp(copied->comment, "retained comment") && copied->comment_hidden);
-    char *stale = authoring_source_metadata_bind(metadata, edited);
+    char *stale = stale_snapshot(metadata);
     REQUIRE(stale != NULL);
     REQUIRE(!authoring_source_presentation_restore(copy, stale));
     free(stale);
-    char *invalid = authoring_source_metadata_bind(
-        "{\"version\":2,\"source_layout\":[{\"identity\":0}]}",
-        authoring_source_presentation_text(copy)
-    );
+    char *invalid = unanchored_snapshot(metadata);
     REQUIRE(invalid != NULL);
     REQUIRE(!authoring_source_presentation_restore(copy, invalid));
     free(invalid);
@@ -163,9 +194,10 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
 TEST_CASE(source_views_keep_named_invalid_drafts)
 {
     const char *drafts[] = {
-        "Draft :: behavior { on Tick { missing.x; } }",
-        "Draft :: behavior { on Tick { x := Unknown(1); x.message; } }",
-        "Draft :: behavior { text: string = \"draft\"; on Tick { text = ; } }",
+        "Draft :: behavior { on Tick :: () { missing.x; } }",
+        "Draft :: behavior { on Tick :: () { x := Unknown(1); x.message; } }",
+        ("Draft :: behavior { text: string = \"draft\"; on Tick :: () { text = "
+         "; } }"),
     };
     for (int i = 0; i < 3; i++) {
         cleanup();
@@ -186,7 +218,7 @@ TEST_CASE(source_views_keep_named_invalid_drafts)
 TEST_CASE(source_view_locals_stay_in_their_callable)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { width := n * 8; if (n > 0) { nested := width - 1; return nested; } return width; } on Tick { width := Target(count); count = width; } }")
+        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { width := n * 8; if (n > 0) { nested := width - 1; return nested; } return width; } on Tick :: () { width := Target(count); count = width; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     behavior_asset *asset = authoring_source_presentation_view(view);
@@ -220,7 +252,7 @@ TEST_CASE(source_view_locals_stay_in_their_callable)
 TEST_CASE(source_view_entries_have_layout_priority)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { unused := 7; return n + 1; } on Tick { unused := 8; count = Target(count); } }")
+        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { unused := 7; return n + 1; } on Tick :: () { unused := 8; count = Target(count); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     behavior_asset *asset = authoring_source_presentation_view(view);
@@ -249,7 +281,7 @@ TEST_CASE(source_view_entries_have_layout_priority)
 TEST_CASE(source_view_formulas_preserve_readable_source)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { return (n * 8 + 2) / 2; } on Tick { count += (Target(count) - count) * (1 - 0.01); } }")
+        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { return (n * 8 + 2) / 2; } on Tick :: () { count += (Target(count) - count) * (1 - 0.01); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const char *formulas[] = { "(n * 8 + 2) / 2",
@@ -289,7 +321,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
     REQUIRE(found == 2 && calls == 1); /* Target remains available for source edits. */
     cleanup();
     REQUIRE(
-        project("View :: behavior { count: double = 0; Next :: () -> (result: double) { count += 1; return count; } on Tick { count = Next() + 2; } }")
+        project("View :: behavior { count: double = 0; Next :: () -> (result: double) { count += 1; return count; } on Tick :: () { count = Next() + 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     bool effectful_call = false;
@@ -369,7 +401,7 @@ static bool no_outgoing_flow(const graph *g, const node *n)
 TEST_CASE(source_view_linear_flow_follows_authored_order)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick { count = 1; count += 2; count *= 3; } }")
+        project("Counter :: behavior { count: double = 0; on Tick :: () { count = 1; count += 2; count *= 3; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -391,7 +423,7 @@ TEST_CASE(source_view_linear_flow_follows_authored_order)
 TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double = 0; Inspect :: (limit: double) -> (total: double) { if items > limit { return 1; } else { items = 2; } items = 3; return items; } on Tick {} }")
+        project("Inventory :: behavior { items: double = 0; Inspect :: (limit: double) -> (total: double) { if items > limit { return 1; } else { items = 2; } items = 3; return items; } on Tick :: () {} }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Inspect");
@@ -414,7 +446,7 @@ TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 TEST_CASE(source_view_loop_break_and_continue_have_distinct_paths)
 {
     REQUIRE(
-        project("Inventory :: behavior { count: double = 0; on Tick { while count < 10 { count += 1; if count == 2 { continue; } if count == 5 { break; } count += 3; } count = 20; } }")
+        project("Inventory :: behavior { count: double = 0; on Tick :: () { while count < 10 { count += 1; if count == 2 { continue; } if count == 5 { break; } count += 3; } count = 20; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -438,7 +470,7 @@ TEST_CASE(source_view_loop_break_and_continue_have_distinct_paths)
 TEST_CASE(source_view_await_completion_precedes_following_statement)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick { count = 1; await Delay(0.1); count = 2; } }")
+        project("Counter :: behavior { count: double = 0; on Tick :: () { count = 1; await Delay(0.1); count = 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -459,7 +491,7 @@ TEST_CASE(source_view_await_completion_precedes_following_statement)
 TEST_CASE(source_view_handler_exits_are_explicit_and_completion_is_natural)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick { if count == 0 { return; } count = 2; } }")
+        project("Counter :: behavior { count: double = 0; on Tick :: () { if count == 0 { return; } count = 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -477,6 +509,27 @@ TEST_CASE(source_view_handler_exits_are_explicit_and_completion_is_natural)
     }
     return true;
 }
+/* A loop's node says when it counts down and when its range stops early. */
+TEST_CASE(source_view_names_reverse_and_half_open_loops)
+{
+    REQUIRE(
+        project("Counter :: behavior { count: int = 0; on Tick :: () { for < i in 0..<3 { count += i; } for i in 0..3 { count += i; } } }")
+    );
+    REQUIRE(analysis->diagnostic_count == 0);
+    node *reverse = statement_at("for < i");
+    node *forward = statement_at("for i");
+    REQUIRE(reverse && forward);
+    REQUIRE(!strcmp(reverse->desc->name, "For Reverse") && !strcmp(forward->desc->name, "For"));
+    bool before = false, last = false;
+    for (int i = 0; i < reverse->input_count; i++) {
+        before |= !strcmp(reverse->input_pins[i].name, "Before");
+    }
+    for (int i = 0; i < forward->input_count; i++) {
+        last |= !strcmp(forward->input_pins[i].name, "Last");
+    }
+    REQUIRE(before && last);
+    return true;
+}
 static int named_pin(const pin_spec *pins, int count, pin_kind kind, const char *name)
 {
     for (int i = 0; i < count; i++) {
@@ -489,7 +542,7 @@ static int named_pin(const pin_spec *pins, int count, pin_kind kind, const char 
 TEST_CASE(source_view_set_nodes_keep_statement_and_value_origins)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double = 0; on Tick { available := items + 1; items = 7; items += 3; saved := items; } }")
+        project("Inventory :: behavior { items: double = 0; on Tick :: () { available := items + 1; items = 7; items += 3; saved := items; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *declared = statement_at("available :=");
@@ -579,7 +632,7 @@ TEST_CASE(source_view_set_nodes_keep_statement_and_value_origins)
 TEST_CASE(source_view_variable_reads_capture_one_named_value)
 {
     REQUIRE(
-        project("Inventory :: behavior { items_left: double = 0; on Tick { itemsValue := state.items_left; state.items_left = 9; } }")
+        project("Inventory :: behavior { items_left: double = 0; on Tick :: () { itemsValue := state.items_left; state.items_left = 9; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *read = statement_at("itemsValue :=");
@@ -608,7 +661,7 @@ TEST_CASE(source_view_variable_reads_capture_one_named_value)
 TEST_CASE(source_view_indexed_setters_keep_address_parts_editable)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double[] = [1, 2]; slot: int = 0; on Tick { items[slot] = 7; } }")
+        project("Inventory :: behavior { items: double[] = [1, 2]; slot: int = 0; on Tick :: () { items[slot] = 7; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *set = statement_at("items[slot] = 7");
@@ -670,7 +723,7 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
                                                  .capabilities = capabilities,
                                                  .capability_count = 2 };
     const char *sources[] = {
-        "Motion :: behavior { on Tick { self.Position.x = 7; } }",
+        "Motion :: behavior { on Tick :: () { self.Position.x = 7; } }",
         "Motion :: system(position: Position) { reduce self.Position.x += 7; }",
         "Motion :: system(position: Position) { reduce min(self.Position.x, "
         "7); }",
@@ -751,12 +804,28 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
             REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
         }
     }
+    /* A comparison in `where` is a value query, which has its own node. */
+    cleanup();
+    syntax = script_parse("Motion :: system(position: Position) where position.x > 0 { position.x = 7; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    analysis = script_analyze(syntax, &declarations);
+    REQUIRE(analysis->diagnostic_count == 0 && analysis->query >= 0);
+    view = authoring_source_presentation_new(analysis, &declarations, NULL);
+    REQUIRE(view);
+    bool where = false;
+    behavior_asset *asset = authoring_source_presentation_view(view);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        for (int j = 0; j < acount(asset->graphs[i]->nodes); j++) {
+            where |= !strncmp(asset->graphs[i]->nodes[j]->desc->name, "Where", 5);
+        }
+    }
+    REQUIRE(where);
     return true;
 }
 TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 {
     REQUIRE(
-        project("Inventory :: behavior { count: double = 0; Pair :: (amount: double, text: string) -> (total: double, message: string) { return (amount + 1, text); } Other :: () -> (value: double) { return 3; } on Tick { current := Pair(text: \"apple\", amount: 2); count = current.total; await Delay(0.1); } }")
+        project("Inventory :: behavior { count: double = 0; Pair :: (amount: double, text: string) -> (total: double, message: string) { return (amount + 1, text); } Other :: () -> (value: double) { return 3; } on Tick :: () { current := Pair(text: \"apple\", amount: 2); count = current.total; await Delay(0.1); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Pair(text:");
@@ -824,7 +893,7 @@ TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; Next :: (amount: double) -> (total: double) { count += amount; return count; } on Tick { count = Next(2) + 1; } }")
+        project("Counter :: behavior { count: double = 0; Next :: (amount: double) -> (total: double) { count += amount; return count; } on Tick :: () { count = Next(2) + 1; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Next(2)");
@@ -848,7 +917,7 @@ TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 TEST_CASE(source_view_small_value_calls_fold_with_editable_origins)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; Double :: (amount: double) -> (total: double) { return amount * 2; } on Tick { count = Double(2); } }")
+        project("Counter :: behavior { count: double = 0; Double :: (amount: double) -> (total: double) { return amount * 2; } on Tick :: () { count = Double(2); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Double(2)");
@@ -929,7 +998,7 @@ TEST_CASE(source_view_namespace_fields_are_named_values)
                                           .capabilities = declarations,
                                           .capability_count = 2,
                                           .entity_type = 31 };
-    syntax = script_parse("View :: behavior { player:entity; players:entity[]; known:entity=self; on Tick { level := globals.Level; } }");
+    syntax = script_parse("View :: behavior { player:entity; players:entity[]; known:entity=self; on Tick :: () { level := globals.Level; } }");
     analysis = script_analyze(syntax, &scene);
     REQUIRE(analysis->diagnostic_count == 0);
     view = authoring_source_presentation_new(analysis, &scene, NULL);
@@ -983,7 +1052,7 @@ TEST_CASE(source_view_namespace_fields_are_named_values)
 TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; ready: bool = false; Check :: (amount: double) -> (ok: bool) { count += amount; return true; } on Tick { ready = ready && Check(1); } }")
+        project("Counter :: behavior { count: double = 0; ready: bool = false; Check :: (amount: double) -> (ok: bool) { count += amount; return true; } on Tick :: () { ready = ready && Check(1); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "ready && Check(1)");
@@ -1124,5 +1193,6 @@ void test_source_presentation()
     RUN_TEST_CASE(source_view_namespace_fields_are_named_values);
     RUN_TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow);
     RUN_TEST_CASE(native_palette_composition_keeps_declared_capabilities);
+    RUN_TEST_CASE(source_view_names_reverse_and_half_open_loops);
     pu_clear_setup();
 }

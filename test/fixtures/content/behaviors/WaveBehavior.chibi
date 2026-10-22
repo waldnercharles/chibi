@@ -1,36 +1,39 @@
+// Spawns a bounded wave beside the Player at regular intervals, alternating
+// left and right.
 WaveBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    // Wave
     CountLimit: int = 8
     Interval: float = 1.5
     SpawnDistance: float = 260.0
+    // State
     Elapsed: float = 0.0
     Spawned: int = 0
     Side: float = -1.0
-    on Tick {
+    on Tick :: (dt: float s) {
+        Step = dt
         if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
-            Elapsed = Elapsed + delta_time()
+            Elapsed = Elapsed + Step
             await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
         }
     }
     Spawn_Within_Wave_Limit :: (Player_Position: struct<CF_V2> = null) {
-        after entry {
-            while Elapsed >= max(Interval, B: float = 0.01) {
-                if Spawned >= CountLimit {
-                    return
-                } else {
-                    Elapsed = Elapsed - max(Interval, B: float = 0.01)
-                    await Spawn_Enemy(Player_Position)
-                    Spawned = add(Spawned, B: int = 1)
-                    Side = Side * -1.0
-                }
+        while Elapsed >= max(Interval, B: float = 0.01) {
+            if Spawned >= CountLimit {
+                return
+            } else {
+                Elapsed = Elapsed - max(Interval, B: float = 0.01)
+                await Spawn_Enemy(Player_Position)
+                Spawned = add(Spawned, B: int = 1)
+                Side = Side * -1.0
             }
-            return
         }
+        return
     }
     Spawn_Enemy :: (Player_Position: struct<CF_V2> = null) {
         action spawn_prototype_action = spawn_prototype(Enemy)
-        after entry {
-            spawn_prototype_action()
-        }
+        spawn_prototype_action()
         after spawn_prototype_action {
             spawn_prototype_action.Entity.Transform = make_transform(Player_Position.x + Side * SpawnDistance, Player_Position.y)
             return

@@ -213,18 +213,34 @@ static const pin_record *copy_record(arena *storage, const pin_record *record)
     }
     return copy;
 }
+/* Whether two descriptors of one identity also hold the same names, type names
+ * and units, which follow their fields in that order. */
+static bool same_text(const pin_record *a, const pin_record *b)
+{
+    size_t start = sizeof(pin_record) + (size_t)a->type.field_count * sizeof(type_field);
+    return a->bytes == b->bytes && a->type.field_count == b->type.field_count &&
+           !memcmp((const char *)a + start, (const char *)b + start, a->bytes - start);
+}
 const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
 {
     if (!record) {
         return NULL;
     }
-    if (!storage || !pin_record_valid(record)) {
+    if (!storage) {
         return NULL;
+    }
+    /* Copies of one record into one arena repeat, so the arena remembers its
+     * last copy. */
+    const pin_record *copy = arena_copy_find(storage, record);
+    if (copy && pin_record_same(copy, record) && same_text(copy, record)) {
+        return copy;
     }
     if (arena_contains(storage, record)) {
         return record;
     }
-    return copy_record(storage, record);
+    copy = copy_record(storage, record);
+    arena_copy_remember(storage, record, copy);
+    return copy;
 }
 bool pin_record_valid(const pin_record *record)
 {
@@ -287,6 +303,16 @@ bool pin_record_valid(const pin_record *record)
            size == record->type.size &&
            record->layout == type_layout_hash(&record->type);
 }
+bool pin_record_current(const pin_record *record)
+{
+    for (int i = 0; i < record->type.field_count; i++) {
+        const type_field *field = &record->type.fields[i];
+        if (field->type == PIN_STRUCT && field_size(field) != field->size) {
+            return false;
+        }
+    }
+    return true;
+}
 bool pin_record_same(const pin_record *a, const pin_record *b)
 {
     if (a == b) {
@@ -304,7 +330,9 @@ const type_desc *pin_value_type(const pin_value *value)
         return NULL;
     }
     if (value->record) {
-        return value->type_name && !strcmp(value->type_name, value->record->type.name)
+        const char *name = value->record->type.name;
+        return value->type_name &&
+                       (value->type_name == name || !strcmp(value->type_name, name))
                  ? &value->record->type
                  : NULL;
     }

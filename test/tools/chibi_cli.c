@@ -507,12 +507,12 @@ static const char
               "\n"
               "@test\n"
               "Passes :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "\n"
               "@test\n"
               "Fails :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
               "}\n";
 
 /* The real compiler's --test runs each test of the packages below the root
@@ -538,7 +538,7 @@ TEST_CASE(compiler_test_reports_each_test)
         expected,
         sizeof expected,
         "PASS facts.Passes\nFAIL facts.Fails\n  %s/facts/Facts.chibi:11:5: "
-        "Expectation failed: four bytes\n2 tests, 1 failed\n",
+        "Assertion failed: four bytes\n2 tests, 1 failed\n",
         tests
     );
     REQUIRE(file_is("tests.log", expected));
@@ -579,6 +579,45 @@ TEST_CASE(compiler_test_reports_each_test)
 }
 
 /* A compiler whose SDK lacks the core collection says so and fails. */
+/* The compiler's own packages read raw syntax and JSON strings through the
+ * compiler's bridges, so --test links both. */
+static const char COMPILER_FACTS
+    [] = "package words\n"
+         "\n"
+         "@test\n"
+         "Decodes :: () {\n"
+         "    decoded := compiler_json_string(\"\\\"hi\\\"\");\n"
+         "    assert(decoded.valid && decoded.value == \"hi\", \"decodes\");\n"
+         "}\n"
+         "\n"
+         "@test\n"
+         "Parses :: () {\n"
+         "    tree := compiler_syntax_parse(\"package words\\n\");\n"
+         "    assert(tree.root >= 0, \"parses\");\n"
+         "}\n";
+TEST_CASE(compiler_test_links_the_compiler_bridges)
+{
+    const char *directories[] = { "bridged", "bridged/words" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, directories[i]);
+        REQUIRE(!mkdir(directory, 0700));
+    }
+    write_file("bridged/words/Words.chibi", COMPILER_FACTS);
+    char tests[256], output[256];
+    path(tests, "bridged");
+    path(output, "bridged.log");
+    const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
+    int status = tool_run(run, root, output);
+    if (status) {
+        char *log = contents("bridged.log");
+        fprintf(stderr, "compiler bridges: %s\n", log);
+        free(log);
+    }
+    REQUIRE(status == 0);
+    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
+    return true;
+}
 TEST_CASE(compiler_test_needs_the_core_collection)
 {
     const char *directories[] = { "sdk", "sdk/bin" };
@@ -660,11 +699,33 @@ TEST_CASE(fmt_formats_each_project)
     return true;
 }
 
+/* The repository's own package trees, the core collection, the docs generator
+ * and the compiler, are as the formatter writes them. */
+TEST_CASE(repository_packages_are_canonical)
+{
+    const char *const trees[] = { "packages", "tools/docs", "tools/compiler", "tools/graph" };
+    for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
+        char tree[512], output[256];
+        snprintf(tree, sizeof tree, "%s/%s", CHIBI_SOURCE_ROOT, trees[i]);
+        path(output, "canonical.log");
+        const char *check[] = { compiler,   "--project-root", tree,
+                                "--format", "--check",        NULL };
+        int status = tool_run(check, root, output);
+        if (status) {
+            char *log = contents("canonical.log");
+            fprintf(stderr, "%s is not canonical: %s\n", trees[i], log);
+            free(log);
+        }
+        REQUIRE(status == 0);
+    }
+    return true;
+}
+
 static const char
     MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
-static const char
-    MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
-                     "  on Tick(dt) {   angle = angle + dt; }\n}\n";
+static const char MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
+                                   "  on Tick :: (dt: float s) {   angle = "
+                                   "angle + dt; }\n}\n";
 
 /* The real compiler's --format --check names the assets that are not
  * canonical and changes nothing; --format rewrites them as their savers
@@ -694,7 +755,8 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick(dt) {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick :: (dt: float "
+        "s) {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);
@@ -1046,7 +1108,7 @@ static void site_fixture(const char *relative)
     snprintf(file, sizeof file, "%s/README.md", relative);
     write_file(file, "# Home\n\nRead [the guide](docs/guide.md) and [plans](PLAN.md).\n");
     snprintf(file, sizeof file, "%s/docs/guide.md", relative);
-    write_file(file, "# Guide\n\nBack [home](../README.md).\n");
+    write_file(file, "# Guide\n\nBack [home](../README.md).\n\n```chibi\npackage sample\nValue :: 1\n```\n");
     snprintf(file, sizeof file, "%s/docs/private.md", relative);
     write_file(file, "# Private\n");
     snprintf(file, sizeof file, "%s/docs/site.kdl", relative);
@@ -1075,6 +1137,26 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         file_has("site/build/docs/guide.html", "<a href=\"guide.html\" aria-current=\"page\">Guide</a>")
     );
     REQUIRE(exists("site/build/docs/style.css") && !exists("site/build/docs/private.html"));
+    char *style = contents("site/build/docs/style.css");
+    const char *dark = strstr(style, "@media (prefers-color-scheme: dark)");
+    const char *categories[] = { "keyword", "string", "number", "comment" };
+    bool palettes = dark != NULL;
+    for (int i = 0; i < 4; i++) {
+        char variable[64], selector[128];
+        snprintf(variable, sizeof variable, "--syntax-%s:", categories[i]);
+        snprintf(
+            selector,
+            sizeof selector,
+            "pre .chibi-%s { color: var(--syntax-%s); }",
+            categories[i],
+            categories[i]
+        );
+        const char *light = strstr(style, variable);
+        palettes = palettes && light && light < dark &&
+                   strstr(dark, variable) && strstr(style, selector);
+    }
+    free(style);
+    REQUIRE(palettes);
     char published[256];
     path(published, "site/build/docs");
     struct stat info;
@@ -1110,14 +1192,115 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     site_manifest("site/docs/site.kdl", "docs/guide.md", "guide.html");
     write_file(
         "site/docs/guide.md",
-        "# Guide\n\n```chibi\npackage sample\nDouble :: (n: int) -> int "
-        "{\n"
-        "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
+        "# Guide\n"
+        "\n"
+        "```chibi\n"
+        "package sample\n"
+        "/* first <&>\n"
+        "\tsecond café */\n"
+        "Title :: \"café <&> 🧭\"\n"
+        "Ratio :: 1.5\n"
+        " \t\n"
+        "Double :: (n: int) -> int {\n"
+        "\treturn n * 2  // kept <&>\n"
+        "}\n"
+        "```\n"
+        "\n"
+        "```code\n"
+        "package plain\n"
+        "return 2 < 3\n"
+        "```\n"
     );
     REQUIRE(tool_run(docs, root, output) == 0);
+    /* Exact slices preserve UTF-8, blank lines, tabs, comments and implicit
+     * semicolons while escaping every token and gap as HTML text. */
+    REQUIRE(file_has(
+        "site/build/docs/guide.html",
+        "<pre><code class=\"language-chibi\">"
+        "<span class=\"chibi-keyword\">package</span>"
+        " "
+        "<span class=\"chibi-namespace\">sample</span>"
+        "\n"
+        "<span class=\"chibi-comment\">/* first &lt;&amp;&gt;\n\tsecond café "
+        "*/</span>"
+        "\n"
+        "<span class=\"chibi-constant\">Title</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-string\">&quot;café &lt;&amp;&gt; 🧭&quot;</span>"
+        "\n"
+        "<span class=\"chibi-constant\">Ratio</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-number\">1.5</span>"
+        "\n"
+        " \t\n"
+        "<span class=\"chibi-function\">Double</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " (n: "
+        "<span class=\"chibi-builtin\">int</span>"
+        ") "
+        "<span class=\"chibi-operator\">-&gt;</span>"
+        " "
+        "<span class=\"chibi-builtin\">int</span>"
+        " {\n"
+        "\t"
+        "<span class=\"chibi-keyword\">return</span>"
+        " n "
+        "<span class=\"chibi-operator\">*</span>"
+        " "
+        "<span class=\"chibi-number\">2</span>"
+        "  "
+        "<span class=\"chibi-comment\">// kept &lt;&amp;&gt;</span>"
+        "\n"
+        "}\n</code></pre>\n"
+    ));
+    REQUIRE(
+        file_has("site/build/docs/guide.html", "<pre><code class=\"language-code\">package plain\nreturn 2 &lt; 3\n</code></pre>\n")
+    );
+    /* Package fences share this page's virtual workspace and real core imports. */
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\n// score/Bonus.chibi\npackage score\n"
+        "Twice :: (n: int) -> int { return n * 2 }\n"
+        "pub Reward :: () -> int { return Twice(5) }\n```\n"
+        "```chibi\npackage score\npub More :: () -> int { return Twice(6) "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "import strings \"core:strings\"\n"
+        "pub Ready :: () -> bool { return strings.HasPrefix(\"reward\", "
+        "\"re\") && score.Reward() > 0 }\n```\n"
+        "```chibi\npackage relative\nimport score \"../score\"\n"
+        "pub Points :: () -> int { return score.More() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(file_has("site/build/docs/guide.html", "core:strings"));
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\npackage score\nSecret :: () -> int { return 10 "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "pub Points :: () -> int { return score.Secret() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:10:"));
+    REQUIRE(file_has("docs.log", "'score.Secret' is private"));
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage rewards\nimport missing \"project:missing\"\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:5:"));
+    REQUIRE(file_has("docs.log", "Imported package is missing"));
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: () {\n    Missing();\n}\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1);
     REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));
+    /* The private parser is available only to the generator, never examples. */
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nProbe :: () {\n    compiler_syntax_parse(\"package hidden\");\n}\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(
+        file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'compiler_syntax_parse'")
+    );
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\nsystem {\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", "docs/guide.md:4:"));
     char bare[256];
@@ -1169,7 +1352,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         directory(folders[i]);
     }
     write_file("generated/README.md", "# Home\n\nSee [the grammar](grammar.js).\n");
-    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\nSides: int : 4;\n");
+    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\npub Sides: int : 4;\n");
     write_file("generated/grammar.js", "  rules: {\n    // One [item](item.md).\n    item: ($) => \"x\",\n  },\n");
     generated_site("lib", "lib");
     char site[256], output[256];
@@ -1178,9 +1361,17 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     const char *docs[] = { compiler, "--project-root", site, "--docs", NULL };
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
-    REQUIRE(
-        file_has("generated/build/docs/packages.html", "Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
-    );
+    REQUIRE(file_has(
+        "generated/build/docs/packages.html",
+        "<span class=\"chibi-keyword\">pub</span>"
+        " "
+        "<span class=\"chibi-constant\">Sides</span>"
+        ": "
+        "<span class=\"chibi-builtin\">int</span>"
+        " : "
+        "<span class=\"chibi-number\">4</span>"
+        ";\n</code></pre>\n<p>Four sides.</p>"
+    ));
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")
     );
@@ -1202,6 +1393,11 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         tool_run(docs, root, output) == 1 &&
         file_has("generated.log", "absent is not a readable folder")
     );
+    /* The escaped target exists and contains a real package; rejection must
+     * be containment, not a dangling link or a missing directory. */
+    directory("tests");
+    directory("tests/facts");
+    write_file("tests/facts/Facts.chibi", "package facts\nValue :: 1\n");
     generated_site("../tests", "lib");
     REQUIRE(
         tool_run(docs, root, output) == 1 &&
@@ -1315,6 +1511,25 @@ TEST_CASE(commands_fail_without_the_compiler)
     return true;
 }
 
+/* Compiler-only documentation coverage also runs in a headless SDK build. */
+void test_tool_chibi_docs(const char *binary)
+{
+    strcpy(root, "/tmp/chibi-docs-XXXXXX");
+    assert(mkdtemp(root));
+    char *resolved = realpath(root, NULL);
+    assert(resolved && strlen(resolved) < sizeof root);
+    strcpy(root, resolved);
+    free(resolved);
+    char *program = realpath(binary, NULL);
+    assert(program && strlen(program) < sizeof compiler);
+    strcpy(compiler, program);
+    free(program);
+    path(log_path, "output.log");
+    RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
+    RUN_TEST_CASE(compiler_docs_generates_reference_pages);
+    tool_remove_tree(root);
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -1336,14 +1551,14 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(doctor_of_the_built_launcher);
     RUN_TEST_CASE(test_runs_the_compiler_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
+    RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
     RUN_TEST_CASE(compiler_format_rewrites_package_sources);
+    RUN_TEST_CASE(repository_packages_are_canonical);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
-    RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
-    RUN_TEST_CASE(compiler_docs_generates_reference_pages);
     RUN_TEST_CASE(doc_runs_the_compiler_docs);
     RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);
@@ -1408,7 +1623,7 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *run[] = { launcher, "test", tree, NULL };
     REQUIRE(tool_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
-    REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+    REQUIRE(file_has("installed.log", "Assertion failed: four bytes\n2 tests, 1 failed\n"));
 
     directory("packages/lib");
     write_file("packages/lib/Lib.chibi", MESSY_PACKAGE);
@@ -1424,6 +1639,15 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *docs[] = { launcher, "doc", site, NULL };
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("site/build/docs/index.html", "<a href=\"guide.html\">the guide</a>"));
+    REQUIRE(file_has(
+        "site/build/docs/guide.html",
+        "<span class=\"chibi-constant\">Value</span>"
+        " "
+        "<span class=\"chibi-operator\">::</span>"
+        " "
+        "<span class=\"chibi-number\">1</span>"
+        "\n"
+    ));
     return true;
 }
 

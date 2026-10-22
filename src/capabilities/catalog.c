@@ -187,6 +187,26 @@ script_reference_kind script_reference_kind_for_type(script_type type)
     }
     return SCRIPT_REFERENCE_NONE;
 }
+script_type script_char_type()
+{
+    return (script_type){ .storage = PIN_I32,
+                          .nominal = script_catalog_id("type", "char") };
+}
+bool script_type_char(script_type type)
+{
+    return type.storage == PIN_I32 && type.container == PIN_CONTAINER_SINGLE &&
+           type.nominal == script_char_type().nominal;
+}
+const char *script_numeric_name(script_type type)
+{
+    return script_type_char(type) ? "char" : script_scalar_name(type.storage);
+}
+/* Every Unicode scalar, 0 through 0x10FFFF, fits the integer `to`. */
+static bool char_widens(pin_type to)
+{
+    return to >= PIN_I8 && to <= PIN_U64 && behavior_scalar_integer_low(to) <= 0 &&
+           behavior_scalar_integer_high(to) >= 0x10FFFF;
+}
 script_type script_builtin_type(const char *name)
 {
     for (int kind = SCRIPT_REFERENCE_PROTOTYPE; kind <= SCRIPT_REFERENCE_RELATIONSHIP;
@@ -205,6 +225,9 @@ script_type script_builtin_type(const char *name)
     }
     if (!strcmp(name, "number")) {
         return (script_type){ .storage = PIN_F64 };
+    }
+    if (!strcmp(name, "char")) {
+        return script_char_type();
     }
     if (!strcmp(name, "exec") || !strcmp(name, "flow")) {
         return (script_type){ .storage = PIN_FLOW };
@@ -255,15 +278,20 @@ script_type script_catalog_key_type(const script_catalog *catalog, script_type t
 bool script_type_numeric(script_type type)
 {
     return type.container == PIN_CONTAINER_SINGLE &&
-           (!type.nominal || (type.flags & SCRIPT_TYPE_GENERIC)) &&
+           (!type.nominal || (type.flags & SCRIPT_TYPE_GENERIC) ||
+            script_type_char(type)) &&
            type.storage >= PIN_I8 && type.storage <= PIN_F64 &&
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
+/* Integers widen to integers and to floating types; a floating value
+ * becomes an integer only through an explicit conversion. */
 bool script_numeric_implicit(pin_type from, pin_type to)
 {
-    bool integers = from <= PIN_U64 && to <= PIN_U64;
-    return !integers || behavior_scalar_integer_widens(from, to);
+    if (to > PIN_U64) {
+        return true;
+    }
+    return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
 }
 bool script_type_assignable(script_type expected, script_type actual)
 {
@@ -306,6 +334,10 @@ bool script_type_assignable(script_type expected, script_type actual)
         actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     }
     if (script_type_numeric(expected) && script_type_numeric(actual)) {
+        if (script_type_char(expected) || script_type_char(actual)) {
+            return script_type_char(actual) &&
+                   (script_type_char(expected) || char_widens(expected.storage));
+        }
         return script_numeric_implicit(actual.storage, expected.storage);
     }
     if ((expected.storage == PIN_NAME || expected.storage == PIN_STR) &&

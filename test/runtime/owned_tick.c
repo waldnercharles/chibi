@@ -82,7 +82,8 @@ static bool prepare(int kind, behavior_backend backend, bool fails, bool replace
         sizeof text,
         "Owned :: behavior { source:%s[]=[]; saved:%s[]=[]; final:%s[]=[]; "
         "runs:int=0; "
-        "on Tick { captured:=source; saved=captured; final=saved; runs+=1; %s "
+        "on Tick :: () { captured:=source; saved=captured; final=saved; "
+        "runs+=1; %s "
         "} }",
         names[kind],
         names[kind],

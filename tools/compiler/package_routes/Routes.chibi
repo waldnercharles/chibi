@@ -4,13 +4,13 @@ import paths "project:package_paths"
 import strings "core:strings"
 import syntax "project:syntax_diagnostics"
 
-Collection :: struct {
+pub Collection :: struct {
     name: string;
     path: string;
     has_name: bool;
     has_path: bool;
 }
-Root :: struct {
+pub Root :: struct {
     name: string;
     path: string;
 }
@@ -21,7 +21,7 @@ File :: struct {
     identity: string;
     root: int;
 }
-ImportInput :: struct {
+pub ImportInput :: struct {
     directory: string;
     literal: string;
     root: int;
@@ -31,13 +31,13 @@ ImportInput :: struct {
     column: int;
     document: int;
 }
-RootResult :: union {
+pub RootResult :: union {
     Accepted(roots: Root[]) | Rejected(diagnostic: syntax.Diagnostic)
 }
-FileResult :: union {
+pub FileResult :: union {
     Accepted(file: File) | Rejected(diagnostic: syntax.Diagnostic)
 }
-ImportResult :: union {
+pub ImportResult :: union {
     Accepted(directory: string) | Rejected(diagnostic: syntax.Diagnostic)
 }
 
@@ -72,11 +72,11 @@ AddRoot :: (roots: Root[], item: Collection) -> RootResult {
                 }
             }
             root: Root = {name: item.name, path: path};
-            return RootResult.Accepted(array_add(roots, root));
+            return RootResult.Accepted(append(roots, root));
     }
 }
 
-RootSet :: (project: string, has_project: bool, collections: Collection[]) -> RootResult {
+pub RootSet :: (project: string, has_project: bool, collections: Collection[]) -> RootResult {
     // Snapshot option validation already bounds explicit collections to 255.
     roots: Root[] = [];
     first := AddRoot(roots, {name: "project", path: project, has_name: true, has_path: has_project});
@@ -126,7 +126,7 @@ Key :: (root: Root, path: string) -> string {
     return format_text("{}:{}", root.name, Relative(root.path, path));
 }
 
-FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> FileResult {
+pub FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> FileResult {
     if (!has_path || !paths.Bounded(path) || strings.ByteLength(path) == 0) {
         return FileResult.Rejected(FileError("Invalid package file path", document));
     }
@@ -140,14 +140,7 @@ FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> Fil
             if (canonical == "/") {
                 return FileResult.Rejected(FileError("Invalid package file path or root escape", document));
             }
-            slash: int = 0;
-            index: int = 0;
-            while (index < strings.ByteLength(canonical)) {
-                if (strings.ByteAt(canonical, index) == 47) {
-                    slash = index;
-                }
-                index += 1;
-            }
+            slash := strings.LastIndexByte(canonical, 47);
             directory := "/";
             if (slash > 0) {
                 directory = strings.Slice(canonical, 0, slash);
@@ -157,15 +150,7 @@ FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> Fil
                 return FileResult.Rejected(FileError("Package file is outside the configured roots", document));
             }
             tail := Relative(roots[root].path, directory);
-            depth: int = 0;
-            index = 0;
-            while (index < strings.ByteLength(tail)) {
-                if (strings.ByteAt(tail, index) == 47) {
-                    depth += 1;
-                }
-                index += 1;
-            }
-            if (depth >= 16) {
+            if (strings.Count(tail, "/") >= 16) {
                 return FileResult.Rejected(FileError("Package path nesting exceeds the supported depth", document));
             }
             return FileResult.Accepted({path: canonical, directory: directory,
@@ -176,7 +161,7 @@ FileRoute :: (roots: Root[], path: string, has_path: bool, document: int) -> Fil
 
 // The foreign primitive supplies JSON decoding facts only. Collection lookup,
 // path validity, root ownership and diagnostics remain authored policy.
-ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
+pub ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
     decoded := compiler_json_string(request.literal);
     if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
         return ImportError("Invalid import string or embedded NUL", request);
@@ -184,19 +169,11 @@ ImportRoute :: (roots: Root[], request: ImportInput) -> ImportResult {
     path := decoded.value;
     base := request.directory;
     root := request.root;
-    colon: int = -1;
-    index: int = 0;
-    while (index < strings.ByteLength(path)) {
-        if (strings.ByteAt(path, index) == 58) {
-            colon = index;
-            break;
-        }
-        index += 1;
-    }
+    colon := strings.IndexByte(path, 58);
     if (colon >= 0) {
         root = -1;
         name := strings.Slice(path, 0, colon);
-        index = 0;
+        index: int = 0;
         while (index < length(roots)) {
             if (roots[index].name == name) {
                 root = index;

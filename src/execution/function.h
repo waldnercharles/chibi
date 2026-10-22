@@ -20,6 +20,8 @@ typedef struct
     uint64_t bytecode_entries, sljit_entries, wasm_entries;
     uint64_t inspected_sljit_entries, inspected_wasm_entries;
     uint64_t inspection_bytecode_fallbacks;
+    /* Entries of definitions past the Wasm JIT's size budget. */
+    uint64_t size_bytecode_fallbacks;
     bool overflow; /* Sticky saturation makes the sample inexact. */
 } behavior_run_counts;
 typedef struct behavior_run_scope
@@ -81,7 +83,11 @@ typedef struct
     const behavior_function *function;
     behavior_data_binding *calls;
     pin_value *values;
+    /* What a reset restores: the initial values, each struct buffer's bound. */
+    pin_value *initial;
     void **buffers;
+    /* The cells that own a struct buffer. */
+    int *buffered;
     /* The struct buffers' total size, fixed when the storage is made. */
     size_t buffer_bytes;
 } behavior_data_storage;
@@ -143,6 +149,8 @@ typedef enum
     BEHAVIOR_FUNCTION_ARGUMENT,
     BEHAVIOR_FUNCTION_COMMAND,
 } behavior_function_failure;
+/* What a failure without its own message reports. */
+const char *behavior_function_failure_text(behavior_function_failure);
 typedef enum
 {
     BEHAVIOR_POINT_NODE,
@@ -231,7 +239,6 @@ typedef struct behavior_function_context
     uint64_t returned_outcome;
     int pending_commands;
     const pin_value *(*action_result)(struct behavior_function_context *, uint64_t action, int ordinal);
-    const pin_value *(*event_argument)(struct behavior_function_context *, uint64_t function, int ordinal);
     int (*complete_action)(struct behavior_function_context *, uint64_t action, const pin_value *, int count);
     int (*state_inputs)(struct behavior_function_context *, uint64_t action, int entry, int *demand);
     int (*state_transition)(
@@ -318,6 +325,9 @@ typedef struct behavior_function_context
     /* Invocation-owned copies outlive locals, suspension and returned values.
      * The caller resets this storage only after those values are released. */
     void *value_storage;
+    /* Where a function builds the locals it returns: its caller's value
+     * storage for a call, otherwise its own. */
+    void *result_storage;
     const char *(*copy_string)(void *storage, const char *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);
@@ -503,6 +513,9 @@ void behavior_function_write_sequence_c(
 void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
+ * budget. */
+bool behavior_function_interpreted(const behavior_function *function);
 /* Caller-owned output storage outlives the invocation. Only aggregate results
  * allocate; scalar result slots are already initialized by the runtime. */
 void behavior_function_prepare_results(

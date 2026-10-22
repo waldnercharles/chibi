@@ -275,8 +275,6 @@ static char *input_label(
         );
     } else if (binding && binding->kind == PIN_BINDING_COMPONENT) {
         component_label(label, sizeof label, binding->component_key);
-    } else if (binding && binding->kind == PIN_BINDING_DELTA_TIME) {
-        snprintf(label, sizeof label, "dt");
     } else if (binding && binding->kind == PIN_BINDING_EVENT_OUTPUT) {
         snprintf(label, sizeof label, "event_value");
     } else if (binding && binding->kind == PIN_BINDING_VARIABLE) {
@@ -651,8 +649,8 @@ static const char *build_expression(expression_build *build)
         if (n->desc->flow_kind != NODE_FLOW_NONE || n->desc->latent ||
             n->desc->pure_kind == NODE_PURE_READ ||
             n->desc->pure_kind == NODE_PURE_FUNCTION ||
-            n->desc->pure_kind == NODE_PURE_GET || n->desc->pure_kind == NODE_PURE_SELF ||
-            n->desc->pure_kind == NODE_PURE_DELTA) {
+            n->desc->pure_kind == NODE_PURE_GET ||
+            n->desc->pure_kind == NODE_PURE_SELF) {
             return fail(build, "Select pure numeric math nodes; state and time reads stay outside.");
         }
     }
@@ -880,10 +878,9 @@ static bool spellable(const node *n)
 {
     const node_desc *desc = n->desc;
     if (n->disabled || n->output_count != 1 || !numeric_value(&n->output_pins[0]) ||
-        !node_desc_is_pure(desc) || desc->flow_kind != NODE_FLOW_NONE ||
-        desc->latent || desc->pure_kind == NODE_PURE_READ ||
-        desc->pure_kind == NODE_PURE_FUNCTION || desc->pure_kind == NODE_PURE_GET ||
-        desc->pure_kind == NODE_PURE_SELF || desc->pure_kind == NODE_PURE_DELTA) {
+        !node_desc_is_pure(desc) || desc->flow_kind != NODE_FLOW_NONE || desc->latent ||
+        desc->pure_kind == NODE_PURE_READ || desc->pure_kind == NODE_PURE_FUNCTION ||
+        desc->pure_kind == NODE_PURE_GET || desc->pure_kind == NODE_PURE_SELF) {
         return false;
     }
     if (constant_value(n)) {

@@ -238,7 +238,7 @@ static const char *can_extract_selection(
              (n->desc->flow_kind != NODE_FLOW_NONE || n->desc->latent ||
               n->desc->pure_kind == NODE_PURE_GET || n->desc->pure_kind == NODE_PURE_SELF ||
               n->desc->pure_kind == NODE_PURE_READ || n->desc->pure_kind == NODE_PURE_FUNCTION ||
-              n->desc->pure_kind == NODE_PURE_DELTA || n->desc->pure_kind == NODE_PURE_VOID_CALL ||
+              n->desc->pure_kind == NODE_PURE_VOID_CALL ||
               (n->desc->access && (n->desc->access->flags & ~NODE_EFFECT_PURE))))) {
             return "Select pure calculations. Keep events, state reads and "
                    "function calls outside the selection.";

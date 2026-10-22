@@ -15,6 +15,16 @@ Member :: (forest: snapshot.SnapshotNode[], link: int) -> int {
     }
     return at;
 }
+// The members of `parent`, in order.
+Members :: (forest: snapshot.SnapshotNode[], parent: int) -> int[] {
+    found: int[] = [];
+    member := FirstMember(forest, parent);
+    while (member >= 0) {
+        found.append(member);
+        member = NextMember(forest, member);
+    }
+    return found;
+}
 FirstMember :: (forest: snapshot.SnapshotNode[], parent: int) -> int {
     if (parent < 0) {
         return -1;

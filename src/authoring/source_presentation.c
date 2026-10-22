@@ -292,6 +292,7 @@ authoring_source_presentation *authoring_source_presentation_new(
         .out = out,
         .previous = previous,
         .analysis = analysis,
+        .occurrences = script_occurrences_new(analysis),
         .catalog = catalog,
         .function = -1,
         .expressions = xcalloc((size_t)analysis->expression_count + 1, sizeof(node *)),
@@ -350,6 +351,7 @@ authoring_source_presentation *authoring_source_presentation_new(
     graph_reindex(p.graph);
     free(p.expressions);
     free(p.statements);
+    script_occurrences_free(p.occurrences);
     if (previous && !source_presentation_details_carry(previous, out, NULL, 0)) {
         authoring_source_presentation_free(out);
         return NULL;

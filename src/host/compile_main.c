@@ -2,10 +2,12 @@
 #include "authoring/project_compile.h"
 #include "authoring/project_format.h"
 #include "authoring/project_prepare.h"
+#include "authoring/source_catalog.h"
 #include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_target.h"
 #include "types/catalog.h"
 
@@ -61,9 +63,9 @@ static int usage(const char *program)
 {
     fprintf(
         stderr,
-        "Usage: %s --project-root PATH (--output FILE | --check | --test | "
-        "--format [--check] | --docs | --stage-one-target FILE) [--scene "
-        "PATH]\n",
+        "Usage: %s --project-root PATH (--output FILE [--modules FILE] | "
+        "--check | --test | --format [--check] | --docs | --stage-one-input "
+        "FILE) [--scene PATH]\n",
         program
     );
     return 2;
@@ -179,31 +181,85 @@ static bool write_text(const char *path, const char *text)
     bool written = file && fputs(text, file) >= 0;
     return file && !fclose(file) && written;
 }
-/* Writes what the project's modules link against, for the stage-one
- * compiler: compiler_game_target_json of the catalog preparation uses. */
-static int stage_one_target(const char *project, const char *output)
+/* Writes stage one's CompileBehaviors input for the project: its executable
+ * sources, and what their modules link against in the catalog they compile
+ * against. */
+static int stage_one_input(const char *project, const char *output)
 {
     char error[512] = { 0 };
     authoring_application application;
     if (!authoring_application_begin(&application, error, sizeof error)) {
-        fprintf(stderr, "stage-one target: %s\n", error);
+        fprintf(stderr, "stage-one input: %s\n", error);
         return 1;
     }
     authoring_project_options options = { .project = project,
                                           .native = application.native };
     authoring_project_catalog *catalog = authoring_project_catalog_open(&options, error, sizeof error);
     size_t length = 0;
-    char *json = catalog
-                   ? compiler_game_target_json(authoring_project_catalog_view(catalog), &length)
-                   : NULL;
+    char *json = NULL;
+    if (catalog) {
+        const source_catalog *sources = authoring_project_catalog_sources(catalog);
+        int count = source_catalog_source_count(sources);
+        const char **identities = xcalloc((size_t)count + 1, sizeof *identities);
+        const char **texts = xcalloc((size_t)count + 1, sizeof *texts);
+        for (int i = 0; i < count; i++) {
+            identities[i] = source_catalog_source_at(sources, i)->identity;
+            texts[i] = source_catalog_source_at(sources, i)->text;
+        }
+        json = compiler_behavior_input_json(source_catalog_view(sources), identities, texts, count, &length);
+        free(identities);
+        free(texts);
+    }
     authoring_project_catalog_free(catalog);
     authoring_application_end(&application);
     bool written = json && write_text(output, json);
     free(json);
     if (!written) {
-        fprintf(stderr, "stage-one target: %s\n", error[0] ? error : "could not write the target");
+        fprintf(stderr, "stage-one input: %s\n", error[0] ? error : "could not write the input");
     }
     return written ? 0 : 1;
+}
+/* The bytes of a file, or NULL. */
+static unsigned char *read_bytes(const char *path, size_t *length)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return NULL;
+    }
+    unsigned char *bytes = NULL;
+    long size = fseek(file, 0, SEEK_END) ? -1 : ftell(file);
+    if (size > 0 && (size_t)size <= PACKAGE_MAX_BYTES && !fseek(file, 0, SEEK_SET)) {
+        bytes = xmalloc((size_t)size);
+        if (fread(bytes, 1, (size_t)size, file) != (size_t)size) {
+            free(bytes);
+            bytes = NULL;
+        }
+    }
+    fclose(file);
+    *length = bytes ? (size_t)size : 0;
+    return bytes;
+}
+/* --output with --modules writes the artifact assembled from a closure of the
+ * project's prepared modules, as the stage-one compiler writes it. */
+static int assemble(const char *project, const char *closure, const char *output)
+{
+    char error[512] = { 0 };
+    size_t length = 0;
+    unsigned char *bytes = read_bytes(closure, &length);
+    int count = 0;
+    uint64_t root = 0;
+    package_module *modules = bytes
+                                ? compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error)
+                                : NULL;
+    int status = modules
+                   ? authoring_project_compile_modules(project, modules, count, output)
+                   : 1;
+    if (!modules) {
+        fprintf(stderr, "modules: %s\n", bytes ? error : "the closure cannot be read");
+    }
+    compiler_artifact_rows_free(modules, count);
+    free(bytes);
+    return status;
 }
 /* --check prepares the project without migrating it or writing anything;
  * --test runs its package tests; --format rewrites its assets canonically, or
@@ -211,7 +267,8 @@ static int stage_one_target(const char *project, const char *output)
  * site. */
 int main(int argc, char **argv)
 {
-    const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL;
+    const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
+               *modules = NULL;
     bool check = false, tests = false, formats = false, site = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
@@ -249,8 +306,12 @@ int main(int argc, char **argv)
             output = argv[++i];
             continue;
         }
-        if (!strcmp(argv[i], "--stage-one-target") && !target) {
+        if (!strcmp(argv[i], "--stage-one-input") && !target) {
             target = argv[++i];
+            continue;
+        }
+        if (!strcmp(argv[i], "--modules") && !modules) {
+            modules = argv[++i];
             continue;
         }
         return usage(argv[0]);
@@ -258,11 +319,15 @@ int main(int argc, char **argv)
     int modes = (check && !formats) + tests + formats + site +
                 (output != NULL) + (target != NULL);
     if (!project || !*project || modes != 1 || (output && !*output) ||
-        (target && !*target) || ((tests || formats || site || target) && scene)) {
+        (target && !*target) || ((tests || formats || site || target) && scene) ||
+        (modules && (!output || !*modules || scene))) {
         return usage(argv[0]);
     }
+    if (modules) {
+        return assemble(project, modules, output);
+    }
     if (target) {
-        return stage_one_target(project, target);
+        return stage_one_input(project, target);
     }
     if (site) {
         return docs(project);

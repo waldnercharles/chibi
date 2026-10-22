@@ -108,33 +108,31 @@ bool compiler_artifact_write(
     *length = bytes;
     return true;
 }
-package_collection *compiler_artifact_read(
+package_module *compiler_artifact_rows(
     const void *input,
     size_t length,
-    const execution_prepared_linker *linker,
-    behavior_backend backend,
-    size_t *remaining,
+    int *count,
     uint64_t *root,
     char *error,
     size_t error_size
 )
 {
-    if (root) {
-        *root = 0;
-    }
+    *count = 0;
+    *root = 0;
     const unsigned char *data = input;
-    if (!data || !root || !remaining || length < ARTIFACT_HEADER ||
-        length > PACKAGE_MAX_BYTES || memcmp(data, magic, 8) || get(data + 8) != 1 ||
-        !get(data + 16) || !get(data + 24) || get(data + 24) > PACKAGE_MAX_MODULES ||
+    if (!data || length < ARTIFACT_HEADER || length > PACKAGE_MAX_BYTES ||
+        memcmp(data, magic, 8) || get(data + 8) != 1 || !get(data + 16) ||
+        !get(data + 24) || get(data + 24) > PACKAGE_MAX_MODULES ||
         get(data + 24) > (length - ARTIFACT_HEADER) / (ARTIFACT_ROW + 2)) {
         fail(error, error_size, "invalid compiler artifact header");
         return NULL;
     }
-    int count = (int)get(data + 24);
-    package_module *rows = xcalloc((size_t)count, sizeof *rows);
+    int rows_count = (int)get(data + 24);
+    package_module *rows = xcalloc((size_t)rows_count, sizeof *rows);
     size_t offset = ARTIFACT_HEADER;
     bool found = false, valid = true;
-    for (int i = 0; i < count && valid; i++) {
+    int at = 0;
+    for (; at < rows_count && valid; at++) {
         if (length - offset < ARTIFACT_ROW) {
             valid = false;
             break;
@@ -152,33 +150,66 @@ package_collection *compiler_artifact_read(
         memcpy(text, data + offset, (size_t)name);
         text[name] = 0;
         offset += (size_t)name;
-        rows[i] = (package_module){ text, id, data + offset, (size_t)blob };
+        rows[at] = (package_module){ text, id, data + offset, (size_t)blob };
         offset += (size_t)blob;
-        if (i && strcmp(rows[i - 1].name, text) >= 0) {
+        if (at && strcmp(rows[at - 1].name, text) >= 0) {
             valid = false;
         }
-        for (int j = 0; j < i; j++) {
+        for (int j = 0; j < at; j++) {
             if (rows[j].id == id) {
                 valid = false;
             }
         }
         found |= id == get(data + 16);
     }
-    package_collection *collection = NULL;
-    if (valid && found && offset == length) {
-        execution_prepared_linker closed = linker ? *linker
-                                                  : (execution_prepared_linker){ 0 };
-        closed.import = NULL;
-        collection = package_read_budget(rows, count, &closed, NULL, backend, remaining, error, error_size);
-        if (collection) {
-            *root = get(data + 16);
-        }
-    } else {
+    if (!valid || !found || offset != length) {
         fail(error, error_size, "invalid compiler artifact module records");
+        compiler_artifact_rows_free(rows, at);
+        return NULL;
     }
+    *count = rows_count;
+    *root = get(data + 16);
+    return rows;
+}
+void compiler_artifact_rows_free(package_module *rows, int count)
+{
     for (int i = 0; i < count; i++) {
         free((void *)rows[i].name);
     }
     free(rows);
+}
+package_collection *compiler_artifact_read(
+    const void *input,
+    size_t length,
+    const execution_prepared_linker *linker,
+    behavior_backend backend,
+    size_t *remaining,
+    uint64_t *root,
+    char *error,
+    size_t error_size
+)
+{
+    if (root) {
+        *root = 0;
+    }
+    if (!root || !remaining) {
+        fail(error, error_size, "invalid compiler artifact header");
+        return NULL;
+    }
+    int count = 0;
+    uint64_t closure_root = 0;
+    package_module *rows = compiler_artifact_rows(input, length, &count, &closure_root, error, error_size);
+    if (!rows) {
+        return NULL;
+    }
+    execution_prepared_linker closed = linker ? *linker
+                                              : (execution_prepared_linker){ 0 };
+    closed.import = NULL;
+    package_collection *
+        collection = package_read_budget(rows, count, &closed, NULL, backend, remaining, error, error_size);
+    if (collection) {
+        *root = closure_root;
+    }
+    compiler_artifact_rows_free(rows, count);
     return collection;
 }

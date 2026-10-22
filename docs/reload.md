@@ -8,7 +8,7 @@ after rebuilding the owning SDK or Studio product and restarting the application
 ## Development loop
 
 Close Studio, edit the native source, and run `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` again. The build reuses
-unchanged objects and dependency packages. Build failures report diagnostics and
+unchanged objects. Build failures report diagnostics and
 leave the saved workspace available for the next successful launch.
 
 The native application has no code replacement, source watcher, application DLL,
@@ -67,7 +67,6 @@ CUT65 removed the old `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`,
 `check-reload`, `check-dev`, staging descriptors and native watcher smoke checks.
 
 Existing `build-dev` directories are reconfigured by `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` to use the linked
-application. Dependency packages use the new build identity; existing caches stay
-on disk. Old generation directories and manifests are no longer read. Existing
+application. Old generation directories and manifests are no longer read. Existing
 workspace checkpoints remain available for restart recovery. Remove the retired
 reload option from custom configure commands.

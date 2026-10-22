@@ -210,10 +210,10 @@ Current integration constraints:
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
-| M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
-| M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
+| M5 | **Complete on macOS arm64 and Wasm** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. Open gate: the Linux x86_64 and Windows x64 runs. |
+| M6 | **In progress** | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -570,10 +570,196 @@ compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
-supported host configuration. Keep an explicit stage-zero recovery invocation
+supported host configuration. The Linux x86_64 and Windows x64 runs wait for
+CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
 ### M6. Replace the internal build graph
+
+Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
+the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
+open gate that can run later from the checked-in bootstrap artifact or any
+commit's. Until each of those platforms passes its run, M6 must not remove
+stage zero, recovery, or a build path that platform uses, and Windows keeps
+its CMake and stage-zero path because the build host has no Windows process
+support yet.
+
+Approach (owner, 2026-10-21): the graph is Chibi code the build host runs
+itself, with no Ninja. `build.start` and `build.wait` run compiles in
+parallel (#612); `-MD` dependency files and recorded stamps decide rebuilds;
+targets are functions over typed records, as Jai's `BuildCpp` and `build.zig`
+are; each target's compile commands must equal CMake's
+`compile_commands.json` apart from output paths, and its result must link.
+Later slices that compile Chibi should call the compiler in process, as Jai's
+workspaces do, rather than start `chibi-compile`.
+
+Slice 1, 2026-10-21: the `graph:` collection (`tools/graph`, with
+`--collection` on the build host) builds `chibi_support` on macOS and Linux
+through `tools/toolchain/Graph.chibi`, beside CMake. `build-graph` checks its
+five compile commands against CMake's, links its archive, and checks rebuilds.
+Slice 2, 2026-10-21: the graph also owns the libraries that use only
+`chibi_support` (`chibi_types`, `chibi_asset_values`, `chibi_text_search`,
+`chibi_ui_document_values`), with private headers and stale-header removal.
+It compiles across libraries in one job window, writes
+`compile_commands.json` on every run, and builds a subset with `--target`.
+Slice 3, 2026-10-21: `chibi_value_document`, `chibi_capabilities`,
+`chibi_ecs` and `chibi_events`, which use `chibi_types`; 32 sources in nine
+libraries, all of which compiled and archived from the graph.
+Slice 4, 2026-10-21: the graph owns every library whose compiles include only
+staged headers of libraries it owns: 31 libraries, 82 sources, including
+`chibi_shader_runtime` (which, despite slice 3's note, needs no generated
+header: its artifact-format record goes into `engine.json`), the native
+capability tables, and three header-only libraries. Its target table,
+`tools/graph/engine/Targets.chibi`, was first read from what CMake staged and
+compiled; it is now the source of truth. The host's instruction budget rose
+to 100 million and its step limit to 4,096 for graphs of this size.
+Slice 5, 2026-10-21: the in-tree vendored C (`chibi_fmt`, `chibi_json`,
+`chibi_asset_kdl`) and the libraries over it (`chibi_asset_json`,
+`chibi_asset_text`, `chibi_text_capabilities`), plus `chibi_array_capabilities`,
+`chibi_field_capabilities` and `chibi_input_map`: 40 libraries, 100 sources.
+Each target now names its include directories, defines and options
+explicitly, as CMake orders them.
+Slice 6, 2026-10-21: generated sources. `build.embed_file` writes the byte
+arrays `cmake/embed_binary.cmake` wrote, and the graph embeds
+`chibi_builtin_fonts`' sixteen fonts before compiling: 41 libraries, 117
+sources. A `--target` build stages the headers of the libraries its includes
+name.
+Slice 7, 2026-10-21: `chibi_component_presentation`, whose engine component
+KDL is embedded, and `chibi_save_runtime`: 43 libraries, 122 sources, all of
+which compiled and archived from the graph. Every other library now waits on
+one of three inputs: `chibi_execution` (51 libraries include it; it compiles
+SLJIT), Cute math (`public/math`, 46) and `chibi_native_types` (39), which the
+reflection host tool generates. The first two come from fetched sources.
+Slice 8, 2026-10-21: executables. The graph links `reflect` with CMake's
+command, and the program it links writes the same reflected sources
+(`build-graph-reflect`). A failure inside a called function now reaches the
+build host's diagnostic, through the failure observer package tests use;
+before, it read as "instruction budget exhausted".
+Slice 9, 2026-10-21: profiles. The graph finds the Makefile's sanitizer,
+debug or release profile on the machine: compiler, its kind, architecture,
+SDK, ccache, libclang, `ar` and `ranlib`. From only the profile's name and
+CMake's compiler as `CC`, its 129 commands equal CMake's.
+Slice 10, 2026-10-21: the third-party archive (#569). The graph finds the
+unpacked archive `cmake/third_party.cmake` loads for its profile and builds
+`third-party/` sources and include directories from it: SLJIT,
+`chibi_execution`, the header-only `chibi_math` (Cute's math headers, staged
+and included as system headers), and the fourteen libraries that need only
+those: 60 libraries and 218 compile commands, all of which compiled and
+archived (or, for `reflect`, linked) from the graph.
+`build-graph-archive` builds SLJIT and a math-header library, and
+`build-graph-reflect` now reads the math headers the graph staged. Writing the
+commands quotes arguments through the host's split, 7 s down to 2.4 s.
+Slice 11, 2026-10-21: generated sources and per-source options. A target
+whose sources `reflect` writes makes the graph build reflect, stage the math
+headers and run it as `generate_runtime_registry` does, recorded like a link
+(`c.Step`); `--reflect` runs another, as cross builds do. Generated sources
+are `build/` paths, and a source can add options, as CMake's source property
+does. The graph owns `chibi_native_types`, `chibi_native_bindings` and ten
+libraries over them: 72 libraries and 250 compile commands, equal to CMake's,
+whose reflected sources equal CMake's byte for byte.
+Slice 12, 2026-10-21: tree-sitter and Box2D/Box3D from the archive. A target
+names its C standard and position-independent code, and a source its own
+include directories, which come before its target's. The graph owns
+tree-sitter's runtime, the CSS and HTML grammars, Box2D, Box3D, the language
+and project syntax documents and UI authoring: 79 libraries and 362 compile
+commands, equal to CMake's. An up-to-date build of all of them read 6 MB of
+records and ran out of the host's 32 MB of never-freed values; records now
+keep each path and stamp on separate lines, and it takes 7 s. That leaves
+about twice the headroom; the next slices about double the sources, so a
+host-side stamp check or freeable build values must come with them.
+Slice 13, 2026-10-21: C++ and shared private headers. The graph compiles
+`.cpp` sources with the profile's C++ compiler (`CXX`, or the driver beside
+the C compiler) and the target's C++ standard, and stages `private/NAME`
+directories several libraries share. It owns enkiTS's task scheduler and the
+twelve libraries it unblocks (task pool, material, physics, physics3d,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and the default native catalog): 92 libraries and 484 compile
+commands, equal to CMake's. The host's value storage rose to 256 MB for
+up-to-date builds of graphs this size.
+Slice 14, 2026-10-21: rewritten codecs and the language. The graph writes
+Cute's codec headers with private symbols through a new `build.replace`
+native (`core:strings.ReplaceAll` took 11 s), stages the language's private
+headers below `sdk/language/private`, and owns image preparation, the
+language, compiler, authoring, asset and model authoring, shader
+preparation, source catalog and presentation, graph catalog and player
+libraries: 103 libraries and 579 compile commands, equal to CMake's. A text
+value now holds 16 MB, since `compile_commands.json` passed 1 MB; a step's
+own output stays at 1 MB.
+Slice 15, 2026-10-21: the desktop libraries. The graph compiles each
+source as its language: C, C++ with the target's C++ standard (C++17 for the
+UI host over RmlUi), or Objective-C (`-x objective-c`, CMake's `gnu2x`, and
+no debug directory, which root CMakeLists.txt adds before Objective-C is
+enabled). Export names that differ from a target's name are tables, and the
+Vorbis decoder is rewritten like Cute's codecs. It owns the platform, model
+import, UI host, renderer and project compilation, format and preparation
+libraries: 110 libraries and 692 compile commands, equal to CMake's when
+split as the shell splits them. `build-graph` now compares commands alone,
+and `build-graph-support` holds the rebuild cases.
+Slice 16, 2026-10-21: executables. The graph links the build host, the
+compiler host and the `chibi` launcher beside `reflect`, with object
+libraries, per-executable link options and link libraries in CMake's order,
+and writes `link_commands.json`, whose four commands `build-graph` compares
+with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
+Slice 17, 2026-10-21: C++-linked executables. On macOS the graph links the
+player, `chibi-compile` and `chibi_ctl` with the C++ compiler, over the
+compiler syntax and JSON libraries and the automation library, naming the
+desktop archive's libraries and frameworks in CMake's order: 122 targets, 731
+compile commands and seven link commands, equal to CMake's. Their Linux
+links wait for a Linux archive.
+Slice 18, 2026-10-21: the small test drivers. The graph builds and links
+`test_host`, `concurrent_runner`, `policy_worker` and `benchmark_trials`,
+which link no library, staging the host tests' headers below
+`BUILD/testing/host/include`: 745 compile commands and eleven link commands
+on macOS, equal to CMake's.
+Slice 19, 2026-10-21: `test_language`. The graph configures files as CMake's
+`configure_file` does, from templates whose placeholders take a file's bytes
+(a new `build.byte_list` native) or its text as a C string, and gives a
+source its own defines, with the source root, build type and a file's
+SHA-256 filled in. On macOS it builds and links `test_language` over its
+object library: 850 compile commands and twelve link commands, equal to
+CMake's, and 28 generated headers equal to CMake's.
+Slice 20, 2026-10-21: the SDK contract consumers. On macOS the graph
+compiles the 21 object libraries `test/tools` declares over staged SDK
+headers and the fixtures it copies beside pico_unit, and expands a target's
+own defines: 949 compile commands, equal to CMake's.
+Slice 21, 2026-10-21: `test_tools`. On macOS the graph links it over those
+consumers and writes every executable where CMake does, so the paths it
+compiles in for `chibi_ctl` and `policy_worker` (`{program:NAME}`) and the
+compiler it exports C with (`export_compiler.h`) equal CMake's: 1061
+compile commands and thirteen link commands. A build step now takes up to
+1,023 arguments, which its 497-argument link needs; the graph-built
+`test_tools` passes `make test-tools`' cases and `build-process`.
+Slice 22, 2026-10-21: the build tree's install layout. Before compiling, the
+graph writes the build identity (`engine.json`) as
+`sdk/artifact_formats.cmake` does and installs the launcher's `share/chibi`
+(identity, core and documentation sources, shaders) and `chibi_ctl`'s
+resources: 213 files, equal to CMake's.
+Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
+`corpus.txt`, every fixture source by absolute path, equal to CMake's.
+Slice 24, 2026-10-22: on macOS `make build`, `make build-debug` and `make
+build-release` build with the graph, by profile name, as the owner chose on
+2026-10-22; Linux, the SDK, web and Studio builds keep CMake. `Build.chibi
+third-party` prepares the archives, a missing or older host is rebuilt with
+CMake in `BUILD_DIR-cmake`, and `make graph-reference` configures that tree
+for the build-graph checks. The host protocol rose to 7 for the natives the
+graph uses. Initial local validation reported a 25-minute cold sanitizer build
+and an 18-second no-op. The macOS CI graph build later reached the job's
+45-minute limit before it finished.
+
+The 2026-10-22 repair keeps dependency parsing in Chibi and scans the original
+bytes, folding continuations without retaining whole-file native intermediates.
+Large record and command-database joins use existing `build.join`; temporary
+small path joins remain collectable. Invalid target names now fail before
+profile discovery or writes. No new native capability or protocol change is
+needed. A sanitizer test-driver rebuild passed in 247 s on a partially
+built tree. The native, materials, projects, language and tooling groups passed
+under their separate production 60-second deadlines, as did compile/link
+command parity and the expanded target/parser regression. Current clean-build
+and focused validation evidence is tracked in PR #655. Full native/render/Studio
+and other quarantined coverage remain disabled, not passed.
+
+Next: packaging the SDK from the graph's build, the browser builds and Linux
+(which needs a Linux archive the owner approves).
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
@@ -592,8 +778,9 @@ Status: in progress. Every command is implemented and covered; only moving
 `export` behind Chibi modules remains, and that is M6's build-graph work.
 `check` runs the build's compiler with `--check`, which prepares the project
 read-only: it neither migrates an older project nor writes an artifact. The `chibi-cli` fixture covers it in the build tree, through the
-launcher with a fake compiler and through the real `chibi-compile`; its
-installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
+launcher with a fake compiler and through the real `chibi-compile`;
+`chibi-cli-installed` covers the installed SDK and
+`commands_fail_without_the_compiler` a missing compiler. `version` prints the SDK,
 build, compiler and artifact-format identity from one generated document,
 `share/chibi/engine.json`: configuring writes it, build trees keep it beside
 their shaders, and SDK packaging installs it with the build ID. The document
@@ -615,8 +802,9 @@ stopped and a count. A test that waits or starts a task fails. ROOT holds only
 package files, so a game project's behaviors are not tests yet.
 `src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
 the launcher, the real compiler and a compiler without the core collection.
-The compiler's own packages cannot run under it yet, because their raw-syntax
-bridge is not among those natives. `chibi fmt [--check] [PATH...]` hands
+Since 2026-10-20 it also links the compiler's raw-syntax and JSON bridges, so
+the compiler's own packages can hold tests (`chibi-cli`'s
+`compiler_test_links_the_compiler_bridges`). `chibi fmt [--check] [PATH...]` hands
 each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. A PATH that is a folder
@@ -625,8 +813,9 @@ without a `project.kdl` is a package tree instead: the compiler formats each
 source formatter package syntax. Every file must declare a package, checked
 before anything is written, so a project's behaviors are never formatted
 without the metadata only project formatting keeps. `packages/` and
-`tools/docs` are canonical; `tools/compiler` is not yet, and is left to the
-M5 work that owns it. `chibi web [PROJECT] --player PLAYER [--port PORT]`
+`tools/docs` are canonical, and so is `tools/compiler` since the M5 work
+formats it with every change; the `chibi-cli` case
+`repository_packages_are_canonical` checks all three with the real compiler. `chibi web [PROJECT] --player PLAYER [--port PORT]`
 exports the browser site into a `mkdtemp` folder under
 `TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
 launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or
@@ -636,8 +825,9 @@ against DNS rebinding, and gives each connection ten seconds. Like a static
 host it sends no cross-origin isolation headers: with them the non-threaded
 browser player aborts in WebGPU. Windows does not serve yet.
 
-Coverage: `chibi-cli` runs each command against the build tree, a fake compiler
-and player, and a fake browser player, including help, exit status, failure
+Coverage: `chibi-cli`, in `make test-projects` against the Release build, runs
+each command against the build tree, a fake compiler and player, and a fake
+browser player, including help, exit status, failure
 paths and missing capabilities (no compiler, no core collection, no browser
 player, a busy port). `chibi-cli-installed` runs the packaged SDK's own
 launcher on `version`, `doctor`, `check`, `fmt`, `build`, a native `export` and
@@ -670,8 +860,9 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: implemented and reviewed; the first deployment waits for this branch
-to land on `main`, as the end of this status explains. `chibi doc [ROOT] [--serve] [--port
+Status: implemented, reviewed and published. The site has been live at
+https://waldnercharles.github.io/chibi/ since 2026-10-20, as the end of this
+status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
@@ -715,8 +906,16 @@ on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
 on `gh-pages` keeps serving until the first deployment replaces it. GitHub
 runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
-so the owner's instruction is to run the workflow once this branch reaches
-`main`. No published page uses an
+so the owner's instruction was to run the workflow once this branch reached
+`main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
+job because hosted execution was unavailable. At the owner's direction the site was instead built locally from
+`main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
+the Pages source switched back to that branch. The commit, `0b17fddde`,
+replaces the old browser build, whose editor now lives on chibi-studio's own
+Pages site. To publish again, build the site from `main`, commit `build/docs`
+with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
+`gh-pages`, and push. Returning to the workflow means switching the Pages
+source back to GitHub Actions once hosted execution is available. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -778,17 +977,39 @@ unchanged against both implementations. Compiler SDK discovery followed it
 from `configure_inputs.py compiler-sdk`; the new `build-toolchain` macOS case
 passed against both implementations. A step's own output now holds 1 MiB
 rather than 4 KiB, probes keep tool reports out of the build's output, and the
-build host gained the file primitives in `docs/self-hosting-build.md`. Owner
-decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
-`dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
-than ported, and the configuration signature shrinks before it moves. Waiting
-on a decision: `.github/scripts/` (the M5 owner
-confirms its hosted runs are finished), the CUT61 analysis scripts (owner
-review of the stale record), and game runtime installation (whether the
-`update-game-runtime` workflow outlived the retired game repositories).
+build host gained the file primitives in `docs/self-hosting-build.md`.
+Dependency acquisition is replaced (2026-10-20): the owner chose prebuilt
+libraries, as Odin's `vendor/` keeps them, published as GitHub release assets
+instead of committed. `third_party/archives.tsv` pins one archive per target
+and variant (release, ASan+UBSan, ThreadSanitizer) by SHA-256; `Build.chibi`
+unpacks it into the clone's `.git/chibi/third_party`, which its worktrees
+share, and the SDK compiles the small libraries it owns from
+the archive's patched sources. The FetchContent declarations, configure-time
+patching, `dependency_package.py`, `fetchcontent_cache.py`, the package
+decision `Build.chibi` took over from `configure_inputs.py package-enabled`,
+their tests and CI cache keys are deleted, as are the engine's unused Zep copy
+and its never-linked Tracy option. `third_party/CMakeLists.txt` builds the
+archives in CI and `cmake/third_party.cmake` can download one on the CMake-only
+recovery path; both are temporary and leave with CMake. Windows CI is paused
+until the build host runs there. The configuration signature can move next.
+On 2026-10-20 the owner approved three deletions with no replacement, now
+done: the hosted M5 validation helpers in `.github/scripts/` with their
+`native-unit-dependencies.tsv`, which no workflow ran; the CUT61 `analyze.py`;
+and game runtime installation (`make update-game-runtime`,
+`tools/install_game_runtime.py`
+and `tools/kdl_asset.py`), which served the retired game repositories. Git
+history keeps them. The CUT61 `run.py.txt` runner and the Studio UX review's
+`browser-sample.js` sampler followed the same day, also approved.
+On 2026-10-20 build programs became packages: one file with a `package`
+header that may import `core:`, with `format_text` and the array natives
+(host protocol 5). Their `build.` string natives go once the programs use
+`core:strings`.
+On 2026-10-21 the owner retired the mesh-to-SDF converter (`tools/mesh_sdf/`
+and its `box.obj` fixture) with no replacement, rather than port its Blender
+launcher; its worker required Blender 4.3.2 on Linux, and its tests and the
+example that used it were already gone.
 Everything else is blocked. Packaging still needs sizes, modification-time
-order, link reads and staging directories from the host, and the Blender
-launcher needs child resource limits.
+order, link reads and staging directories from the host.
 The build graph waits on M6, the executables and runtime on a native backend,
 and engine modules on M9.
 
@@ -829,9 +1050,54 @@ packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
 The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
-#512 rebuilt the checked-in bootstrap artifact from it. Next action: M5 step
-4, following `docs/design-notes.md`: gate each stage-one feature on a
-purpose-made example before rebuilding a whole game.
+#512 rebuilt the checked-in bootstrap artifact from it. M5 step 4 followed
+`docs/design-notes.md`, gating each stage-one feature on a purpose-made
+story; stage one rebuilds all five as stage zero does since 2026-10-20.
+Since 2026-10-20 stage one's functions also have all of stage zero's
+debugger points (function, statement, completion, expression and symbol) and
+watches (`docs/package-compiler.md#output`). The bootstrap compiles the
+compiler without them, since with watches stage two outgrew the compiler
+host's bounds. Also on 2026-10-20:
+- #586: stage one binds handler parameters to payload fields by name, in any
+  order or subset, as format 30 does.
+- #588 and #592: stage one compiles maps.
+- #591: stage one compiles `ref` parameters of locals.
+
+All three were checked on the Wasm host too.
+
+Still open:
+- Stage one doesn't check a handler parameter's written type or unit against
+  its field. Its game input carries no field units.
+- Stage one compiles `assert` wherever the target links the core pack, as a
+  game does; `Target` carries its failure kind. The compiler host links no
+  core pack, so neither stage compiles `assert` in the compiler's own
+  packages.
+
+Next action: the bootstrap sequence on every supported host configuration.
+
+Host status on 2026-10-20:
+- macOS arm64 runs the whole sequence locally.
+- On the 32-bit Wasm host, stage one compiles every sample and behavior, and
+  the closures run there and match stage zero's points and watches
+  (`wasm-package-compiler-chibi*`, `docs/package-compiler.md#hosts`).
+- The bootstrap itself stays native: stage one compiling itself outgrows
+  Wasm's 2 GiB linear memory.
+- Linux x86_64 and Windows x64 are deferred (owner decision, 2026-10-20).
+  On 2026-10-21 the owner counted M5 complete for macOS arm64 and Wasm and
+  readied M6, with these runs as M5's open gate (see M6).
+  - They run when CI is back (disabled since 2026-09-25) or when
+    a bigger host is available.
+  - Until then, stage one stays off as the normal compiler, and stage zero
+    remains the normal compiler.
+- Local attempt on 2026-10-20, an Ubuntu 24.04 container under Rancher
+  Desktop:
+  - Linux x86_64 under Rosetta built the Release `test_language` and
+    `chibi-compiler-host` from main in 13.5 min.
+  - The bootstrap check and the Debug build were killed for memory. The 6 GB
+    VM is shared with other containers, and the check peaks at about 5 GB.
+  - Linux aarch64 doesn't build, because Cute's build passes `-msse4.1`.
+  - CMake 4 also needs `clang-scan-deps` (`clang-tools-18`), which CI's
+    package list lacks.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1005,7 +1271,8 @@ milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
 Lab's behaviors need behaviors, events, state, doubles, vectors, named
 arguments and results, and effectful natives).
 
-Step 4's gate exists since 2026-10-19; stage one does not yet pass it. At
+Step 4's gate exists since 2026-10-19, and stage one passes it since
+2026-10-20. At
 the owner's direction (2026-10-20) it gates on purpose-made stories in
 `test/stories`, one feature each, rather than on a playable game; playable
 examples such as Terrain Lab are to live outside the engine repository. The
@@ -1024,19 +1291,34 @@ modules into a game artifact. Project preparation is now split for it:
 `authoring_project_assemble` writes the artifact from the project's
 declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
-its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
-behavior links against: Compile's six target arguments, then the catalog's
-events, the type requirements stage zero lists, and the entity type. Next,
-in order:
-1. Stage one compiles a behavior asset, Counter first: retained state, an
-   event handler, `self` and a component field write through the reference
-   intrinsics, with the writer's state, event and component tables.
-2. The route: a Chibi program that runs stage one on a story with that
-   target, then this assembly through a narrow binding, as game-equivalence's
-   candidate.
-3. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
-Debugger points and watches are deferred until before stage one becomes the
-normal compiler.
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-input FILE` exports stage one's input for a
+project: its executable sources, Compile's six target arguments, then the
+catalog's events, the type requirements stage zero lists, the entity type,
+and the natives that combine records for binary operators. Stage
+one's `CompileBehavior` compiles Counter's behavior asset: retained state, an
+event handler, `self` and a component field write through the reference
+intrinsics, with the writer's state, event and component tables. It compiles
+Motion's drift, `self.Transform += self.Velocity * dt`: component reads
+through references, records combined by the game's `*` and `+` natives, and
+the sum written back through the reference it read. It compiles Controls'
+pilot: a field's compound assignment through its reference, `float`
+arithmetic, a record field inside a game record, and `input.Jump.pressed`,
+an input action's name read by the game's native. It compiles Results' fold:
+member procedures, named results and conversions between integers and
+floats. It compiles Follow's lead and trail: a floating state, natives chosen
+among overloads by argument type, `vec2` as the record it makes, a record
+written over a whole component, `globals.Leader` read by key, and the
+leader's component. Its modules have stage
+zero's identities and play as stage zero's do
+(`docs/package-compiler.md#behaviors`). Stage one's route,
+`tools/toolchain/StageOne.chibi`, rebuilds every story as stage zero does: it
+recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
+the exported input, and assembles the artifact with `chibi-compile
+--modules` (`make test-stage-one`). Stage one passes step 4's gate since
+2026-10-20, and its functions have all of stage zero's debugger points and
+watches. Next: the sequence on Linux x86_64 and Windows x64, deferred until
+CI is back or a bigger host is available (2026-10-20), before
+stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the
@@ -1047,8 +1329,71 @@ address, so 62 of the compiler's 63 functions share their tables. Compiling is
 still slow, about 0.9 s for a 50-line sample on SLJIT in a Debug + ASan build.
 Call retirement no longer re-measures every spare frame, a running stack reuses
 frames larger than the 64 KiB idle budget, and descriptor copies no longer
-re-derive layouts. The bytecode interpreter's dispatch and record validation
-remain the measured costs to remove before stage one compiles the compiler.
+re-derive layouts.
+
+Compiler speed, measured on 2026-10-20 in Release on macOS arm64 with SLJIT
+(`--package-compiler-chibi-bootstrap`): stage zero prepares the compiler in
+2.7 s. Stage one compiled the compiler in 23.7 s and stage two in 16.9 s, about
+70% of it re-validating immutable record descriptors on every value copy.
+Records are now validated where they enter (creation, prepared loading, value
+documents), so stage one takes about 7.6 s and stage two 6.5 s; a row copy in
+`--script-benchmark` fell from 1,050 to 110 ns. Stage one then copied record
+descriptors 31 million times (33 GB), 92% of them into an arena that already
+held a copy; each arena now remembers its last copy, which removes half of
+them and about 3% of the bootstrap selector's CPU time. The remaining copy cost is
+emitted code: snapshots that retain locals and fields, and union constructors
+that copy every payload array (about a third of stage one's samples). Cutting
+it needs the emitter to move values at their last use rather than copy them,
+in `tools/compiler`. Resetting each call's data values costs about 10%: 16
+million calls reset 648 million values, of which 29% had changed, and zero
+4.7 GB of buffers. A static write set (addresses taken, host and call results)
+still covers 83% of those values, because programs fill argument banks through
+their addresses, and saved no time. Marking writes at run time (a byte per
+value, set by every address taken) restored half as many values but ran
+slightly slower than main, so the resets stay as they are. LLVM AOT would not help this workload: code SLJIT generates
+is 6.2% of stage one's samples, and the rest is the C runtime it calls, which
+an LLVM backend would call too.
+
+Two later changes cut more (2026-10-21). The emitter moves a fresh literal or
+authored call result into a local or return instead of copying it (#613), and
+the compiler hashes and validates source text by reading `Bytes` once instead
+of a `ByteAt` per byte, which measured the whole text each time: 55 GB of
+`strlen` per self-compile (#617). Stage one now takes about 6.5 s and stage
+two about 4.6 s, against stage zero's 2.7 s. What remains, in the self-hosted
+compiler's own run:
+
+- Deep copies of rows: `Step.Emitted`'s 13 payload arrays per step (0.57 GB),
+  read-only element copies such as `node := forest[i]` and `for (item in
+  code)` (0.9 GB), and scalar arrays. Last-use moves and read-only aliasing
+  need `EmitBody`, which is 41 KB under the definition verifier's 64 MiB
+  budget (36,292 instructions × 14,750 slots), so it must be split first.
+- `Text(forest, text, node)` still measures the source up to each node it
+  slices, because strings do not carry their length.
+
+Later on 2026-10-21, `EmitBody` was split (#622), loops read unchanging arrays
+in place (#627), and arrays change through methods (#628, #630). Recovering the
+compiler from the bootstrap artifact, the self-hosted compiler's own run, took
+about 4.4 s of CPU. Two runtime and emitter changes followed:
+- Owned scalar arrays stay packed while they change in place (#635), so the
+  prepared writer's byte arrays cost a byte per byte rather than a
+  `pin_value`. This brought recovery to 3.6 s.
+- A returned variant is now a fresh value (#637). This brought recovery to
+  about 3.3 s, or 57 billion instructions.
+- A function now builds what it returns in its caller's storage: returned
+  literals and variants, and the array locals it returns (result locations).
+  This brought recovery to about 55.0 billion instructions. 98% of results
+  already lay wholly in the callee's storage, but callees allocate about 13
+  times their result's size, so handing the callee's storage to the caller
+  instead was ruled out. A result moves only when the argument-sharing
+  analysis shows nothing but the updates that run in the caller's storage
+  changes what the function builds there.
+
+What remains, in that run's samples:
+- The call-result copy into the caller is about 12%.
+- Record and array constructors are about 16%. Their per-field layout checks
+  are about a third of that.
+- Resetting each call's data is about 10%.
+- The JIT's own snapshots are about 5%.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

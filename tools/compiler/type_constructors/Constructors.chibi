@@ -5,32 +5,32 @@ import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 
 // Original catalog order and spans, with no precomputed lookup/selection facts.
-Definition :: struct {
+pub Definition :: struct {
     id_slot: int;
     variant_start: int;
     variant_count: int;
 }
-RawVariant :: struct {
+pub RawVariant :: struct {
     tag_slot: int;
     type: int;
 }
-Capability :: struct {
+pub Capability :: struct {
     id_slot: int;
     result_count: int;
 }
-Function :: struct {
+pub Function :: struct {
     symbol: int;
     result_start: int;
     result_count: int;
 }
-Symbol :: struct {
+pub Symbol :: struct {
     id_slot: int;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(types: named.Type[], ids: uint64[], definitions: Definition[], variants: RawVariant[],
            capabilities: Capability[], functions: Function[], symbols: Symbol[], result_symbols: int[])
 }
-Request :: struct {
+pub Request :: struct {
     pointer_size: int;
     start: int;
     end: int;
@@ -59,7 +59,7 @@ Field :: struct {
 Selections :: union {
     Selected(variants: Variant[], ids: uint64[])
 }
-Plan :: union {
+pub Plan :: union {
     Constructed(value: named.Value, publish: bool, id: uint64, name: string,
                 definition: named.Value, size: int, internal: bool,
                 variants: Variant[], fields: Field[], ids: uint64[], diagnostics: syntax.Diagnostic[])
@@ -112,13 +112,13 @@ Select :: (selection: Selections, value: named.Value, catalog_type: int, variant
             switch value {
                 case .Typed(storage, container, flags, nominal, parameter):
                     slot := length(ids);
-                    ids = array_add(ids, nominal);
-                    ids = array_add(ids, parameter);
-                    ids = array_add(ids, tag);
+                    ids.append(nominal);
+                    ids.append(parameter);
+                    ids.append(tag);
                     row: Variant = {catalog_type: catalog_type, variant: variant, member: member,
                                     storage: storage, container: container, flags: flags,
                                     nominal_slot: slot, parameter_slot: slot + 1, tag_slot: slot + 2};
-                    rows = array_add(rows, row);
+                    rows.append(row);
                     return Selections.Selected(rows, ids);
             }
     }
@@ -199,7 +199,7 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
                                     pointer_size, true, rows, fields, ids, diagnostics);
     }
 }
-Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
+pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
     rows: Variant[] = [];
     ids: uint64[] = [];
     selection := Selections.Selected(rows, ids);
@@ -214,7 +214,7 @@ Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
     diagnostics: syntax.Diagnostic[] = [];
     return FinishUnion(environment, selection, pointer_size, diagnostics);
 }
-Task :: (environment: Environment, result: int, function: uint64) -> Plan {
+pub Task :: (environment: Environment, result: int, function: uint64) -> Plan {
     fields: Field[] = [];
     variants: Variant[] = [];
     outputIDs: uint64[] = [];
@@ -242,7 +242,7 @@ Task :: (environment: Environment, result: int, function: uint64) -> Plan {
                     index = 0;
                     while (index < capabilities[capability].result_count) {
                         field: Field = {capability: capability, parameter: index, symbol: -1};
-                        fields = array_add(fields, field);
+                        fields.append(field);
                         index += 1;
                     }
                 } else {
@@ -259,7 +259,7 @@ Task :: (environment: Environment, result: int, function: uint64) -> Plan {
                         index = 0;
                         while (index < functions[function_index].result_count) {
                             field: Field = {capability: -1, parameter: -1, symbol: results[functions[function_index].result_start + index]};
-                            fields = array_add(fields, field);
+                            fields.append(field);
                             index += 1;
                         }
                     }
@@ -269,7 +269,7 @@ Task :: (environment: Environment, result: int, function: uint64) -> Plan {
                                     0, true, variants, fields, outputIDs, diagnostics);
     }
 }
-Await :: (environment: Environment, success: int, request: Request) -> Plan {
+pub Await :: (environment: Environment, success: int, request: Request) -> Plan {
     diagnostics: syntax.Diagnostic[] = [];
     rows: Variant[] = [];
     outputIDs: uint64[] = [];
@@ -296,7 +296,7 @@ Await :: (environment: Environment, success: int, request: Request) -> Plan {
                 diagnostic: syntax.Diagnostic = {start: request.start, end: request.end, line: request.line,
                                                  column: request.column, document: request.document,
                                                  message: "Cancelled is reserved for task cancellation, not a successful task result"};
-                diagnostics = array_add(diagnostics, diagnostic);
+                diagnostics.append(diagnostic);
             }
             selection = SelectMember(environment, selection, value, 0);
             selection = SelectMember(environment, selection, named.Value.Typed(18, 0, 512,

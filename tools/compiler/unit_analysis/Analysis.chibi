@@ -7,20 +7,20 @@ import strings "core:strings"
 
 // Raw analyzer/catalog facts, preserving original order and full-width IDs.
 // Negative ID slots mean zero. All other indices/spans obey analyzer invariants.
-Type :: struct {
+pub Type :: struct {
     storage: int;
     container: int;
     flags: int;
     nominal_slot: int;
 }
-Range :: struct {
+pub Range :: struct {
     start: int;
     end: int;
     line: int;
     column: int;
     document: int;
 }
-Expression :: struct {
+pub Expression :: struct {
     kind: int;
     op: int;
     type: int;
@@ -36,7 +36,7 @@ Expression :: struct {
     offset_slot: int;
     task: bool;
 }
-Symbol :: struct {
+pub Symbol :: struct {
     id_slot: int;
     kind: int;
     range: int;
@@ -44,18 +44,18 @@ Symbol :: struct {
     has_unit: bool;
     unit: string;
 }
-Function :: struct {
+pub Function :: struct {
     param_start: int;
     param_count: int;
     result_start: int;
     result_count: int;
 }
-Argument :: struct {
+pub Argument :: struct {
     value: int;
     parameter: int;
     range: int;
 }
-Capability :: struct {
+pub Capability :: struct {
     id_slot: int;
     kind: int;
     param_start: int;
@@ -65,22 +65,22 @@ Capability :: struct {
     event_sender: bool;
     variadic: bool;
 }
-Field :: struct {
+pub Field :: struct {
     id_slot: int;
     has_unit: bool;
     unit: string;
 }
-CatalogType :: struct {
+pub CatalogType :: struct {
     id_slot: int;
     field_start: int;
     field_count: int;
 }
-Global :: struct {
+pub Global :: struct {
     id_slot: int;
     has_unit: bool;
     unit: string;
 }
-Statement :: struct {
+pub Statement :: struct {
     kind: int;
     range: int;
     op: int;
@@ -88,7 +88,7 @@ Statement :: struct {
     symbol: int;
     second: int;
 }
-Binding :: struct {
+pub Binding :: struct {
     target: int;
     value: int;
     range: int;
@@ -98,12 +98,12 @@ Cache :: struct {
     term_start: int;
     term_count: int;
 }
-Port :: struct {
+pub Port :: struct {
     name: string;
     has_unit: bool;
     unit: string;
 }
-Environment :: union {
+pub Environment :: union {
     Tables(types: Type[], ids: uint64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[])
 }
 State :: union {
@@ -112,7 +112,7 @@ State :: union {
 Evaluation :: union {
     Evaluated(value: units.Unit, current: State)
 }
-Analysis :: union {
+pub Analysis :: union {
     Completed(cache: Cache[], terms: units.Term[], diagnostics: syntax.Diagnostic[])
 }
 
@@ -314,7 +314,7 @@ Report :: (current: State, range: Range, message: string) -> State {
                 column: range.column, document: range.document,
                 message: units.WholeCharacters(strings.Slice(message, 0, 191))
             };
-            return State.Cached(cache, terms, visits, array_add(diagnostics, row));
+            return State.Cached(cache, terms, visits, append(diagnostics, row));
     }
 }
 Annotated :: (current: State, range: Range, present: bool, text: string) -> Evaluation {
@@ -592,8 +592,8 @@ WorkValue :: (expression: int) -> Work {
 Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
     frames: Work[] = [];
     saved: units.Unit[] = [];
-    frames = array_add(frames, WorkValue(index));
-    saved = array_add(saved, units.Empty(units.Unknown));
+    frames.append(WorkValue(index));
+    saved.append(units.Empty(units.Unknown));
     value := units.Empty(units.Unknown);
     while (length(frames) > 0) {
         top := length(frames) - 1;
@@ -628,7 +628,7 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
                     switch current {
                         case .Cached(cache, terms, visits, diagnostics):
                             row: Cache = {kind: kind, term_start: length(terms), term_count: length(added)};
-                            current = State.Cached(set_array_elem(cache, work.expression, row), append(terms, added), set_array_elem(visits, work.expression, int(2)), diagnostics);
+                            current = State.Cached(set_array_elem(cache, work.expression, row), extend(terms, added), set_array_elem(visits, work.expression, int(2)), diagnostics);
                     }
             }
             frames = slice(frames, 0, top);
@@ -793,8 +793,8 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
         }
         frames[top] = work;
         if (descend) {
-            frames = array_add(frames, WorkValue(child));
-            saved = array_add(saved, units.Empty(units.Unknown));
+            frames.append(WorkValue(child));
+            saved.append(units.Empty(units.Unknown));
         }
     }
     return Evaluation.Evaluated(value, current);
@@ -848,15 +848,15 @@ Assignment :: (environment: Environment, current: State, statement: Statement) -
     }
     return current;
 }
-Analyze :: (environment: Environment) -> Analysis {
+pub Analyze :: (environment: Environment) -> Analysis {
     cache: Cache[] = [];
     visits: int[] = [];
     terms: units.Term[] = [];
     diagnostics: syntax.Diagnostic[] = [];
     for (expression in Expressions(environment)) {
         row: Cache = {kind: units.Unknown, term_start: 0, term_count: 0};
-        cache = array_add(cache, row);
-        visits = array_add(visits, int(0));
+        cache.append(row);
+        visits.append(int(0));
     }
     current := State.Cached(cache, terms, visits, diagnostics);
     for (symbol in Symbols(environment)) {

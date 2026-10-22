@@ -415,7 +415,7 @@ static void map_collection(value_codec *c, pin_value *v, unsigned depth)
         if (!map) {
             return;
         }
-        *map = (pin_map){ 0 };
+        *map = (pin_map){ .capacity = count };
         map->entries = execution_wire_allocate(w, (size_t)count * sizeof *map->entries);
         if (count && !map->entries) {
             return;
@@ -450,6 +450,14 @@ static void map_collection(value_codec *c, pin_value *v, unsigned depth)
             }
             map->entries[map->count++] = entry;
         }
+    }
+    if (w->reading && !w->error) {
+        size_t bytes = pin_map_index_bytes(map->count);
+        pin_map_slot *slots = bytes ? execution_wire_allocate(w, bytes) : NULL;
+        if (bytes && !slots) {
+            return;
+        }
+        pin_map_index(map, slots);
     }
 }
 static void collection(value_codec *c, pin_value *v, unsigned depth)

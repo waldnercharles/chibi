@@ -8,7 +8,7 @@ import syntax "project:syntax_diagnostics"
 import raw "project:compiler_syntax"
 import strings "core:strings"
 
-Options :: struct {
+pub Options :: struct {
     project: string;
     has_project: bool;
     has_options: bool;
@@ -17,7 +17,7 @@ Options :: struct {
     file_count: int;
     collection_count: int;
 }
-Input :: struct {
+pub Input :: struct {
     path: string;
     text: string;
     has_path: bool;
@@ -30,7 +30,7 @@ Range :: struct {
     column: int;
     document: int;
 }
-SnapshotNode :: struct {
+pub SnapshotNode :: struct {
     kind: string;
     start: int;
     end: int;
@@ -46,7 +46,7 @@ SnapshotNode :: struct {
     is_named: bool;
     is_extra: bool;
 }
-Document :: struct {
+pub Document :: struct {
     original_path: string;
     path: string;
     directory: string;
@@ -68,7 +68,7 @@ Document :: struct {
     has_syntax: bool;
     has_header: bool;
 }
-ResolvedImport :: struct {
+pub ResolvedImport :: struct {
     file: int;
     alias: string;
     explicit_alias: bool;
@@ -89,7 +89,7 @@ ResolvedImport :: struct {
     alias_document: int;
     directory: string;
 }
-Result :: union {
+pub Result :: union {
     Accepted(roots: routes.Root[], documents: Document[], nodes: SnapshotNode[],
              imports: ResolvedImport[], graph: graph.Graph)
     | Rejected(diagnostic: syntax.Diagnostic, related: Range, graph_error: graph.Error,
@@ -104,7 +104,7 @@ HeaderRange :: (document: Document) -> Range {
             line: document.header_line, column: document.header_column,
             document: document.header_document};
 }
-ImportRange :: (imported: ResolvedImport) -> Range {
+pub ImportRange :: (imported: ResolvedImport) -> Range {
     return {start: imported.range_start, end: imported.range_end,
             line: imported.range_line, column: imported.range_column,
             document: imported.range_document};
@@ -113,11 +113,11 @@ PathRange :: (imported: ResolvedImport) -> Range {
     return {start: imported.path_start, end: imported.path_end,
             line: imported.path_line, column: imported.path_column, document: imported.file};
 }
-Diagnostic :: (range: Range, message: string) -> syntax.Diagnostic {
+pub Diagnostic :: (range: Range, message: string) -> syntax.Diagnostic {
     return {start: range.start, end: range.end, line: range.line,
             column: range.column, document: range.document, message: message};
 }
-Stamp :: (diagnostic: syntax.Diagnostic, file: int) -> syntax.Diagnostic {
+pub Stamp :: (diagnostic: syntax.Diagnostic, file: int) -> syntax.Diagnostic {
     diagnostic.document = file;
     return diagnostic;
 }
@@ -140,10 +140,12 @@ TotalSize :: (size: uint64) -> bool {
            size == 8388608;
 }
 ValidUTF8 :: (text: string) -> bool {
-    size := strings.ByteLength(text);
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    bytes := strings.Bytes(text);
+    size := length(bytes);
     index: int = 0;
     while (index < size) {
-        byte := strings.ByteAt(text, index);
+        byte := bytes[index];
         index += 1;
         if (byte < 128) {
             continue;
@@ -171,7 +173,7 @@ ValidUTF8 :: (text: string) -> bool {
         }
         part: int = 0;
         while (part < count) {
-            next := strings.ByteAt(text, index);
+            next := bytes[index];
             index += 1;
             if ((next & 192) != 128) {
                 return false;
@@ -198,7 +200,7 @@ Rebase :: (link: int, offset: int) -> int {
     }
     return link + offset;
 }
-Node :: (node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
+pub Node :: (node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
     return {kind: node.kind, start: node.start, end: node.end, row: node.row, column: node.column,
             parent: Rebase(node.parent, offset), first_child: Rebase(node.first_child, offset),
             next_sibling: Rebase(node.next_sibling, offset), error: node.error,
@@ -261,7 +263,7 @@ GraphFailure :: (error: graph.Error, cycle: int[], documents: Document[],
 
 // The parser supplies syntax facts only. All validation, phase ordering,
 // retention, routing and graph diagnostics below are ordinary authored policy.
-Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: uint64[]) -> Result {
+pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: uint64[]) -> Result {
     documents: Document[] = [];
     nodes: SnapshotNode[] = [];
     imports: ResolvedImport[] = [];
@@ -300,7 +302,7 @@ Build :: (options: Options, collections: routes.Collection[], inputs: Input[], s
             return Reject(Diagnostic(FileRange(file), "Package source byte limit exceeded"), documents, nodes, imports);
         }
         document := Retained(input);
-        documents = array_add(documents, document);
+        documents.append(document);
         routed := routes.FileRoute(roots, input.path, input.has_path, file);
         switch routed {
             case .Rejected(diagnostic):
@@ -329,7 +331,7 @@ Build :: (options: Options, collections: routes.Collection[], inputs: Input[], s
                 document.has_syntax = true;
                 index: int = 0;
                 while (index < length(localNodes)) {
-                    nodes = array_add(nodes, Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
+                    nodes.append(Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
                     index += 1;
                 }
                 documents[file] = document;
@@ -345,11 +347,11 @@ Build :: (options: Options, collections: routes.Collection[], inputs: Input[], s
                         document.header_document = file;
                         document.has_header = true;
                         graphFile: graph.File = {path: descriptor.path, directory: descriptor.directory, name: descriptor.name};
-                        files = array_add(files, graphFile);
-                        pendingStarts = array_add(pendingStarts, length(pending));
-                        pendingCounts = array_add(pendingCounts, length(items));
+                        files.append(graphFile);
+                        pendingStarts.append(length(pending));
+                        pendingCounts.append(length(items));
                         for (item in items) {
-                            pending = array_add(pending, item);
+                            pending.append(item);
                         }
                 }
         }
@@ -380,10 +382,10 @@ Build :: (options: Options, collections: routes.Collection[], inputs: Input[], s
                 case .Rejected(diagnostic):
                     return Reject(diagnostic, documents, nodes, imports);
                 case .Accepted(directory):
-                    imports = array_add(imports, Resolved(imported, directory));
+                    imports.append(Resolved(imported, directory));
                     graphImport: graph.Import = {file: imported.file, directory: directory,
                                                  alias: imported.alias, explicit_alias: imported.explicit_alias};
-                    graphImports = array_add(graphImports, graphImport);
+                    graphImports.append(graphImport);
             }
             document.import_count += 1;
             documents[file] = document;

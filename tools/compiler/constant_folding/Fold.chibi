@@ -17,7 +17,7 @@ Frames :: (count: int) -> Frame[] {
     frames: Frame[] = [];
     index: int = 0;
     while (index < count) {
-        frames = array_add(frames, FrameValue(0, 0));
+        frames.append(FrameValue(0, 0));
         index += 1;
     }
     return frames;
@@ -26,7 +26,7 @@ Values :: (count: int) -> scalar.Value[] {
     values: scalar.Value[] = [];
     index: int = 0;
     while (index < count) {
-        values = array_add(values, scalar.Value.Bool(false));
+        values.append(scalar.Value.Bool(false));
         index += 1;
     }
     return values;
@@ -202,9 +202,9 @@ Evaluate :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[
 // F32/F64, and integer operations produce integer storage (possibly wider or
 // narrower than operands). Arbitrary cross-family C union byte interpretations
 // are not an input format for this compiler component.
-Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-         arguments: ir.Argument[], literals: scalar.Value[],
-         expression: int, expected_storage: int) -> scalar.Result {
+pub Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+             arguments: ir.Argument[], literals: scalar.Value[],
+             expression: int, expected_storage: int) -> scalar.Result {
     checked := proof.Check(expressions, types, symbols, arguments,
                            {expression: expression, steps: 65536, scalar: true, has_steps: true});
     switch checked {

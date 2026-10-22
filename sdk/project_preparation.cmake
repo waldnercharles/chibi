@@ -1,3 +1,20 @@
+# Private syntax facts for authored tools; no parser capability in game catalogs.
+add_library(chibi_compiler_syntax STATIC "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c")
+add_library(Chibi::compiler_syntax ALIAS chibi_compiler_syntax)
+set_target_properties(chibi_compiler_syntax PROPERTIES EXPORT_NAME compiler_syntax)
+configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-syntax/toolchain/compiler_syntax.h" COPYONLY)
+target_include_directories(chibi_compiler_syntax PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-syntax")
+target_link_libraries(chibi_compiler_syntax PRIVATE chibi_language_syntax chibi_native_capabilities)
+# The compiler's JSON string reader, for package tests of the compiler's packages.
+add_library(chibi_compiler_json STATIC "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c")
+add_library(Chibi::compiler_json ALIAS chibi_compiler_json)
+set_target_properties(chibi_compiler_json PROPERTIES EXPORT_NAME compiler_json)
+configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-json/toolchain/compiler_json.h" COPYONLY)
+target_include_directories(chibi_compiler_json PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-json")
+target_link_libraries(chibi_compiler_json PRIVATE chibi_json chibi_native_capabilities)
+
 # Offline asset preparation has no display host dependencies.
 add_library(chibi_shader_preparation STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/shader_prepare.c"
@@ -15,11 +32,11 @@ target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi
 
 # Players' pinned Vorbis decoder, compiled with private symbols, so preparation
 # refuses an Ogg sound that players cannot decode.
-file(READ "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c" code)
+file(READ "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c" code)
 string(REPLACE "stb_vorbis_" "chibi_sound_vorbis_" code "${code}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation/vendor/sound_vorbis.h" "${code}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c")
+    "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c")
 add_library(chibi_project_compilation STATIC)
 foreach(unit component_declarations project_open project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare source_graph_library material_prepare scene_prepare sound_prepare ui_prepare
@@ -35,19 +52,26 @@ foreach(header project_prepare_internal graph_sources native_graph_prepare ui_pr
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/authoring/${header}.h" COPYONLY)
 endforeach()
+configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/toolchain/compiler_syntax.h" COPYONLY)
+configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/toolchain/compiler_json.h" COPYONLY)
 target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation")
 target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
 target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document chibi_project_document
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
     PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_graph_authoring chibi_asset_authoring
-    chibi_asset_text chibi_source_presentation chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json)
-list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation)
+    chibi_asset_text chibi_source_presentation chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
+    chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities)
+list(APPEND CHIBI_SDK_TARGETS chibi_compiler_syntax chibi_compiler_json chibi_shader_preparation chibi_project_compilation)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-compile "${CHIBI_SDK_ROOT}/src/host/compile_main.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c")
-    configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target/toolchain/compiler_target.h" COPYONLY)
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c" "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c")
+    foreach(header compiler_target compiler_artifact)
+        configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target/toolchain/${header}.h" COPYONLY)
+    endforeach()
     target_include_directories(chibi-compile PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target")
     target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation Chibi::project_document
         chibi_behavior_runtime chibi_asset_json)

@@ -4,7 +4,7 @@ import strings "core:strings"
 
 // Raw Tree-sitter facts form one complete rooted tree, including unnamed
 // children. Links use -1 for absence; offsets and positions count source bytes.
-Node :: struct {
+pub Node :: struct {
     kind: string;
     start: int;
     end: int;
@@ -18,7 +18,7 @@ Node :: struct {
     has_error: bool;
 }
 
-Diagnostic :: struct {
+pub Diagnostic :: struct {
     start: int;
     end: int;
     line: int;
@@ -27,7 +27,7 @@ Diagnostic :: struct {
     message: string;
 }
 
-Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
+pub Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
     diagnostics: Diagnostic[] = [];
     current := root;
     while (true) {
@@ -57,7 +57,7 @@ Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
                 document: 0,
                 message: strings.Slice(message, 0, 191)
             };
-            diagnostics = array_add(diagnostics, diagnostic);
+            diagnostics.append(diagnostic);
         }
 
         // An ERROR already describes its descendants. Otherwise walk children

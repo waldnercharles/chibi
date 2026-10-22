@@ -2,7 +2,7 @@
 Counter :: behavior {
     steps: int = 0
 
-    on Tick {
+    on Tick :: () {
         steps += 1
         self.Transform.x = steps
     }

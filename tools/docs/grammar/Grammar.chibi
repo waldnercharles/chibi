@@ -10,11 +10,11 @@ import strings "core:strings"
 
 // The rule a line starts, or "".
 RuleName :: (line: string) -> string {
-    if (!markdown.StartsWith(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
-        markdown.StartsWith(line, "    //")) {
+    if (!strings.HasPrefix(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
+        strings.HasPrefix(line, "    //")) {
         return "";
     }
-    colon := markdown.FindText(line, ": ", 4);
+    colon := strings.Index(line, ": ");
     if (colon < 0) {
         return "";
     }
@@ -37,11 +37,11 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
     index += 1;
     // The lines of the comment above the current line.
     comment: int[] = [];
-    while (index < count && !markdown.StartsWith(lines[index], "  }")) {
+    while (index < count && !strings.HasPrefix(lines[index], "  }")) {
         line := lines[index];
         name := RuleName(line);
-        if (markdown.StartsWith(line, "    //")) {
-            comment = array_add(comment, index);
+        if (strings.HasPrefix(line, "    //")) {
+            comment.append(index);
             index += 1;
             continue;
         }
@@ -50,27 +50,27 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
             index += 1;
             continue;
         }
-        md = array_add(md, format_text("### {}", name));
-        md = array_add(md, "");
+        md.append(format_text("### {}", name));
+        md.append("");
         origins = markdown.Pad(origins, length(md), index);
         for (at in comment) {
-            md = array_add(md, markdown.Trim(markdown.From(lines[at], 6)));
-            origins = array_add(origins, at);
+            md.append(markdown.Trim(markdown.From(lines[at], 6)));
+            origins.append(at);
         }
-        md = array_add(md, "");
-        md = array_add(md, "```js");
+        md.append("");
+        md.append("```js");
         origins = markdown.Pad(origins, length(md), index);
-        md = array_add(md, markdown.From(line, 4));
-        origins = array_add(origins, index);
+        md.append(markdown.From(line, 4));
+        origins.append(index);
         index += 1;
-        while (index < count && !markdown.StartsWith(lines[index], "  }") &&
-               RuleName(lines[index]) == "" && !markdown.StartsWith(lines[index], "    //")) {
-            md = array_add(md, markdown.From(lines[index], 4));
-            origins = array_add(origins, index);
+        while (index < count && !strings.HasPrefix(lines[index], "  }") &&
+               RuleName(lines[index]) == "" && !strings.HasPrefix(lines[index], "    //")) {
+            md.append(markdown.From(lines[index], 4));
+            origins.append(index);
             index += 1;
         }
-        md = array_add(md, "```");
-        md = array_add(md, "");
+        md.append("```");
+        md.append("");
         origins = markdown.Pad(origins, length(md), index - 1);
         comment = [];
     }
@@ -79,21 +79,21 @@ Markdown :: (lines: string[]) -> (md: string[], origins: int[]) {
 
 // The grammar page's body: lines are the grammar file's, and the last three
 // arguments map links as markdown.Render does.
-Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     return markdown.Render(grammar.md, page, sources, outputs);
 }
 
 // A report, as markdown.Dropped writes it, of each link Render writes as text,
 // at the line of the grammar file that holds it.
-Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+pub Unpublished :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     grammar := Markdown(lines);
     rendered := markdown.Page(grammar.md, page, sources, outputs);
     reports: string[] = [];
     index: int = 0;
     while (index < length(rendered.at)) {
         line := grammar.origins[rendered.at[index]];
-        reports = array_add(reports, markdown.Dropped(page, line + 1, rendered.targets[index]));
+        reports.append(markdown.Dropped(page, line + 1, rendered.targets[index]));
         index += 1;
     }
     return reports;

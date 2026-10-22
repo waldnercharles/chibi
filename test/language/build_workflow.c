@@ -1,4 +1,4 @@
-#include "authoring/source_prepare.h"
+#include "authoring/source_package_prepare.h"
 #include "backend.h"
 #include "build_workflow_source.h"
 #include "execution/module.h"
@@ -8,7 +8,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
-#include <stdio.h>
 #include <string.h>
 
 /* Recording-only host. No processes, filesystem effects, clocks or game services. */
@@ -25,7 +24,7 @@ typedef struct
 
 static build_recording recording;
 static int callback_entries;
-static authoring_source *source;
+static authoring_packages *packages;
 static execution_module *module;
 static const behavior_function *entry;
 static behavior_function_context context;
@@ -45,7 +44,7 @@ static const script_catalog_parameter status_result = {
 };
 static const script_catalog_capability run_step = {
     .id = 901,
-    .name = "RunBuildStep",
+    .name = "build.run",
     .kind = SCRIPT_CAPABILITY_FUNCTION,
     .parameters = &arguments_parameter,
     .parameter_count = 1,
@@ -120,31 +119,48 @@ static void cleanup()
 {
     release_invocation();
     execution_module_free(module);
-    authoring_source_free(source);
+    authoring_packages_free(packages);
     module = NULL;
-    source = NULL;
+    packages = NULL;
     entry = NULL;
     recording = (build_recording){ 0 };
     callback_entries = 0;
 }
+/* text as the one file of a build program's package, as the build host
+ * prepares it. */
+static authoring_packages *prepare_text(
+    const char *text,
+    const script_lower_bindings *bindings,
+    behavior_backend backend
+)
+{
+    const source_package_input file = { "/workflow/BuildWorkflow.chibi",
+                                        text,
+                                        strlen(text) };
+    const source_package_snapshot_options options = {
+        .project_root = "/workflow",
+        .files = &file,
+        .file_count = 1
+    };
+    return authoring_packages_prepare(source_package_snapshot_new(&options), &catalog, bindings, backend, NULL);
+}
+/* Invalid packages, which compiled nothing and called no host. */
+static bool rejected(const authoring_packages *prepared)
+{
+    return !authoring_packages_valid(prepared) && callback_entries == 0 &&
+           recording.calls == 0;
+}
 static bool prepare(behavior_backend backend)
 {
     const script_lower_bindings bindings = { .host = resolve_host };
-    source = authoring_source_prepare("BuildWorkflow.chibi", build_workflow_source, &catalog, &bindings, backend);
-    if (!source || !source->valid) {
-        for (int i = 0; source && i < source->diagnostic_count; i++) {
-            fprintf(
-                stderr,
-                "build workflow prepare: %s\n",
-                source->diagnostics[i].message
-            );
-        }
+    packages = prepare_text(build_workflow_source, &bindings, backend);
+    if (!authoring_packages_valid(packages)) {
         return false;
     }
-    module = source->module;
+    module = authoring_packages_at(packages, 0)->module;
     execution_module_retain(module);
-    authoring_source_free(source);
-    source = NULL;
+    authoring_packages_free(packages);
+    packages = NULL;
     int authored = 0;
     for (int i = 0; i < execution_module_function_count(module); i++) {
         execution_module_function_info function = execution_module_function_at(module, i);
@@ -287,15 +303,8 @@ TEST_CASE(build_workflow_missing_binding_fails_before_effects)
     for (int b = 0; b < 2; b++) {
         cleanup();
         const script_lower_bindings bindings = { 0 };
-        source = authoring_source_prepare(
-            "BuildWorkflow.chibi",
-            build_workflow_source,
-            &catalog,
-            &bindings,
-            backends[b]
-        );
-        REQUIRE(source && !source->valid && source->diagnostic_count > 0);
-        REQUIRE(!source->module && callback_entries == 0 && recording.calls == 0);
+        packages = prepare_text(build_workflow_source, &bindings, backends[b]);
+        REQUIRE(rejected(packages));
     }
     return true;
 }
@@ -319,13 +328,12 @@ TEST_CASE(build_workflow_missing_service_fails_without_recording)
 TEST_CASE(build_workflow_invalid_source_fails_before_effects)
 {
     const char
-        *invalid = "Invalid :: library { Build :: () -> int { return 1 + ; } }";
+        *invalid = "package invalid\nBuild :: () -> int { return 1 + ; }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         const script_lower_bindings bindings = { .host = resolve_host };
-        source = authoring_source_prepare("Invalid.chibi", invalid, &catalog, &bindings, backends[b]);
-        REQUIRE(source && !source->valid && source->diagnostic_count > 0);
-        REQUIRE(!source->module && callback_entries == 0 && recording.calls == 0);
+        packages = prepare_text(invalid, &bindings, backends[b]);
+        REQUIRE(rejected(packages));
     }
     return true;
 }

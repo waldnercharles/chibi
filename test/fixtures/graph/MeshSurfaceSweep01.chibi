@@ -1,7 +1,9 @@
+// Deterministic stationary specimen: 12-second heading rotation, independent
+// +/-30-degree pitch and roll sweeps; no gameplay input.
 MeshSurfaceSweep01 :: behavior {
     elapsed: retain float = 0.0
-    on Tick {
-        elapsed += double(delta)
+    on Tick :: (dt: float s) {
+        elapsed += double(dt)
         self.Orientation.Radians = double(elapsed) * 0.5235987756
         self.VisualTransform.Pitch = 0.5235987756 * sin(double(elapsed) * 0.7853981634)
         self.VisualTransform.Roll = 0.5235987756 * sin(double(elapsed) * 1.0471975512)

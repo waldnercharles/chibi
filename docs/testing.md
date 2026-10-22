@@ -98,11 +98,18 @@ window, which needs a display and a GPU driver the CI job does not set up, so
 they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, the four groups and `make test-tools` on Linux and macOS. On
-Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
-one-minute step timeout (the test supervisor needs POSIX signals) and builds
-Studio against the installed SDK, without running tests. The Windows jobs are
-advisory until they first pass.
+CI runs the build, the four groups and `make test-tools` on Linux and macOS.
+The general Windows engine and Studio jobs are paused pending desktop archives.
+The independent `Compiler recovery` workflow runs nonadvisory macOS, Linux and
+Windows proofs on every PR into `main` and push to `main`. Each directly runs
+the native runtime with the checked-in Chibi compiler artifact and current
+compiler/core sources in an isolated input directory with no native toolchain
+in the child environment. Native runtime provisioning is a separate build;
+recovery has a hard 60-second step ceiling and a 59-second process deadline.
+The three recovered artifacts must have identical bytes. See the
+[compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
+for the exact command, isolation and uploaded evidence. This workflow does not
+call `make test-bootstrap`, which prepares stage one through stage zero.
 
 ## Feature coverage
 

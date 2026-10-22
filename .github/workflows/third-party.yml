@@ -3,6 +3,8 @@ name: Third-party archives
 # Builds every third-party archive (third_party/CMakeLists.txt), publishes them
 # as a new release and opens a pull request that pins them in
 # third_party/archives.tsv. Run it after changing a library's commit or patches.
+# Retry a failed publish job with its ORIGINAL build artifacts. Rebuilt archives
+# with different bytes require a fresh release tag; existing assets are never replaced.
 on:
   workflow_dispatch:
     inputs:
@@ -18,7 +20,19 @@ env:
   EMSDK_VERSION: 6.0.10
 
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 tools/publish_third_party.py --validate-only
+
   native:
+    needs: validate
     name: ${{ matrix.target }} ${{ matrix.variant }}
     strategy:
       fail-fast: false
@@ -74,6 +88,7 @@ jobs:
           path: third-party-${{ matrix.target }}-${{ matrix.variant }}.tar.gz
 
   web:
+    needs: validate
     name: ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -111,6 +126,10 @@ jobs:
           path: third-party-${{ matrix.target }}-release.tar.gz
 
   publish:
+    # Serialize publication of a tag; never cancel a publisher after partial writes.
+    concurrency:
+      group: third-party-publish-${{ inputs.release }}
+      cancel-in-progress: false
     needs: [native, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -127,27 +146,4 @@ jobs:
           path: archives
           merge-multiple: true
       - name: Publish the release and pin it
-        run: |
-          # Like engine releases, never "latest": consumers fetch exact tags.
-          gh release create "$RELEASE" archives/*.tar.gz --target "$GITHUB_SHA" --title "$RELEASE" --prerelease --latest=false \
-            --notes "Third-party archives built by ${{ github.workflow }} from ${{ github.sha }}."
-          {
-            echo "# repository ${{ github.repository }}"
-            printf '# target\tvariant\trelease\tsha256\n'
-            for archive in archives/*.tar.gz; do
-              name=$(basename "$archive" .tar.gz)
-              name=${name#third-party-}
-              case "$name" in
-                *-address-undefined) variant=address-undefined ;;
-                *) variant=${name##*-} ;;
-              esac
-              target=${name%-"$variant"}
-              printf '%s\t%s\t%s\t%s\n' "$target" "$variant" "$RELEASE" "$(sha256sum "$archive" | cut -d ' ' -f 1)"
-            done
-          } > third_party/archives.tsv
-          git switch -c "pin-$RELEASE"
-          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
-            commit -m "Pin the $RELEASE third-party archives" third_party/archives.tsv
-          git push origin "pin-$RELEASE"
-          gh pr create --head "pin-$RELEASE" --title "Pin the $RELEASE third-party archives" \
-            --body "Archives built by ${{ github.workflow }} run ${{ github.run_id }} and published as release $RELEASE."
+        run: python3 tools/publish_third_party.py

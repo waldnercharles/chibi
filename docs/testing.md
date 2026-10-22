@@ -3042,3 +3042,35 @@ to fit the source/row limits or deadline is a blocker; do not increase a cap or
 split the selector to evade it. Header environments, semantic sidecars, body
 analysis, exports, lowering, artifact assembly and `Checked` remain
 unimplemented here.
+
+
+## Third-party publication recovery
+
+Five candidate C/pico_unit cases use the existing tools dispatcher selector
+`--third-party-publish`. This draft does not admit the new selector into the
+production test policy: the real driver remains blocked by missing Linux pins.
+Nine disposable local Git repositories and a shell `gh` transport fixture exercise the production publication helper:
+invalid inputs, new publication, original-artifact retry, partial uploads,
+existing-branch/PR ownership, closed PRs, wrong/concurrently moved source tags
+and denied API reads.
+The fixture never contacts GitHub; all pushes target disposable local bare repos.
+The candidate uses the existing ten-second child limit and is intended to use
+the shared sixty-second supervisor once admitted.
+Source review and scratch checks are not an admitted dispatcher pass. The
+selector must be measured/reviewed and admitted before landing.
+
+A failed Third-party **publish job** may be retried with the original workflow
+artifacts. Matching existing assets are verified and retained; only missing
+assets are uploaded. Existing pin branches must contain exactly one pin-only
+commit on the original source, and an existing PR must still be open against
+`main`. Closed or changed work requires an explicit owner decision, not a
+force-push or automatic reopening. A full workflow rebuild can change tarball
+bytes even at the same source commit; use a fresh release tag rather than
+replacing mismatched assets. API failures, absent asset digests and mismatches
+remain failures. This does not enable Actions PR creation, waive repository
+checks or prove a successful SDK build.
+
+Before any publication, the helper validates all nine gzip tar inventories and
+one nonempty regular root `third-party.cmake` per archive (100,000 members /
+8 GiB logical contents per archive), then checks pin-branch/PR ownership. It
+rechecks source tag binding after uploads and ownership before pin writes.

@@ -114,6 +114,136 @@ TEST_CASE(tooling_languages_follow_native_packages)
     return true;
 }
 
+static const char *release_pins[] = {
+    "linux-x64\trelease\tthird-party-fixture\t"
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+    "web\trelease\tthird-party-fixture\t"
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+    "web-player\trelease\tthird-party-fixture\t"
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+};
+
+static int publish_pins(int changed, const char *replacement)
+{
+    char script[1024], manifest[1024], text[1024] = "";
+    path(script, tool_root(), "tools/check_publish_pins.sh");
+    path(manifest, directory, "archives.tsv");
+    for (int i = 0; i < 3; i++) {
+        const char *row = i == changed ? replacement : release_pins[i];
+        assert(strlen(text) + strlen(row) < sizeof text);
+        strcat(text, row);
+    }
+    tool_write(manifest, text);
+    const char *args[] = { "sh", script, manifest, NULL };
+    return tool_run(args, directory, log_path);
+}
+
+TEST_CASE(publish_requires_valid_unique_release_pins)
+{
+    REQUIRE(publish_pins(-1, "") == 0);
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(publish_pins(i, "") == 1);
+        char *text = tool_read(log_path);
+        REQUIRE(text);
+        bool actionable = strstr(text, "Run the Third-party workflow") &&
+                          strstr(text, "merge its archive-pin PR");
+        free(text);
+        REQUIRE(actionable);
+    }
+    REQUIRE(publish_pins(0, "linux-x64\trelease\tthird-party-fixture\tbad-sha\n") == 1);
+    REQUIRE(
+        publish_pins(
+            0,
+            "linux-x64\tthread\tthird-party-fixture\t"
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+        ) == 1
+    );
+    REQUIRE(
+        publish_pins(
+            0,
+            "linux-x64\trelease\t\t"
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+        ) == 1
+    );
+    REQUIRE(
+        publish_pins(
+            0,
+            "linux-x64\trelease\tbad tag\t"
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+        ) == 1
+    );
+    REQUIRE(
+        publish_pins(
+            0,
+            "linux-x64\trelease\tthird-party-fixture\t"
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\t"
+            "extra\n"
+        ) == 1
+    );
+    REQUIRE(
+        publish_pins(
+            0,
+            "linux-x64\trelease\tthird-party-fixture\t"
+            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\n"
+        ) == 1
+    );
+    char duplicate[512];
+    int n = snprintf(duplicate, sizeof duplicate, "%s%s", release_pins[0], release_pins[0]);
+    assert(n > 0 && (size_t)n < sizeof duplicate);
+    REQUIRE(publish_pins(0, duplicate) == 1);
+    char manifest[1024], script[1024];
+    path(manifest, directory, "archives.tsv");
+    REQUIRE(unlink(manifest) == 0);
+    path(script, tool_root(), "tools/check_publish_pins.sh");
+    const char *args[] = { "sh", script, manifest, NULL };
+    REQUIRE(tool_run(args, directory, log_path) == 1);
+    return true;
+}
+
+TEST_CASE(publish_checks_pins_before_installing_toolchains)
+{
+    char filename[1024];
+    path(filename, tool_root(), ".github/workflows/publish.yml");
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *release = strstr(text, "      - name: Check immutable release\n");
+    const char *preflight = strstr(
+        text,
+        "      - name: Validate SDK release pins\n"
+        "        if: steps.release.outputs.complete != 'true'\n"
+        "        run: sh tools/check_publish_pins.sh\n"
+    );
+    const char *install = strstr(text, "      - name: Install build dependencies\n");
+    bool ordered = release && preflight && install && release < preflight &&
+                   preflight < install;
+    free(text);
+    REQUIRE(ordered);
+    return true;
+}
+
+TEST_CASE(publish_tracks_packaged_sources_and_licenses)
+{
+    char filename[1024];
+    path(filename, tool_root(), ".github/workflows/publish.yml");
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *inputs[] = {
+        "      - 'packages/core/**'\n",
+        "      - 'COPYING'\n",
+        "      - 'COPYING.LESSER'\n",
+        "      - 'COPYING.EXAMPLES'\n",
+        "      - 'LICENSE.md'\n",
+        "      - 'docs/distribution-licensing.md'\n",
+    };
+    bool covered = true;
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
+        covered = covered && strstr(text, inputs[i]);
+    }
+    free(text);
+    REQUIRE(covered);
+    return true;
+}
+
 void test_tool_desktop_dependencies()
 {
     strcpy(directory, "/tmp/chibi-desktop-dependencies-XXXXXX");
@@ -122,6 +252,9 @@ void test_tool_desktop_dependencies()
     path(log_path, directory, "command.log");
     int n = snprintf(root, sizeof root, "-DCHIBI_ROOT=%s", tool_root());
     assert(n > 0 && (size_t)n < sizeof root);
+    RUN_TEST_CASE(publish_tracks_packaged_sources_and_licenses);
+    RUN_TEST_CASE(publish_checks_pins_before_installing_toolchains);
+    RUN_TEST_CASE(publish_requires_valid_unique_release_pins);
     RUN_TEST_CASE(discovered_crypto_has_relocatable_owners);
     RUN_TEST_CASE(supplied_crypto_keeps_its_provider_contract);
     RUN_TEST_CASE(mismatched_crypto_metadata_is_rejected);

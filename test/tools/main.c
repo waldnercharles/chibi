@@ -63,6 +63,7 @@ void test_build_graph_programs(const char *host);
 void test_build_graph_resources(const char *host);
 #endif
 void test_tool_desktop_dependencies();
+void test_tool_third_party_publish();
 void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
@@ -945,6 +946,7 @@ int main(int argc, char **argv)
     bool package_ownership = argc == 2 && !strcmp(argv[1], "--package-ownership");
     bool desktop_dependencies = argc == 2 &&
                                 !strcmp(argv[1], "--desktop-dependencies");
+    bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
@@ -1126,11 +1128,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !package_ownership && !unit &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
+        !third_party_publish && !package_ownership && !unit && !web_storage &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
         !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
@@ -1519,6 +1522,8 @@ int main(int argc, char **argv)
         test_tool_wasm_browser();
     } else if (package_ownership) {
         test_tool_package_ownership();
+    } else if (third_party_publish) {
+        test_tool_third_party_publish();
     } else if (desktop_dependencies) {
         test_tool_desktop_dependencies();
     } else if (package) {

@@ -635,36 +635,43 @@ static bool same_link(const char *ninja, const char *path, char *const *ours, in
     return same;
 }
 
-/* Naming test_tools builds the programs it runs, whose paths it compiles in,
- * as CMake's add_dependencies does, and no other program. */
+/* Naming test_tools and the launcher builds the programs they run, as CMake's
+ * add_dependencies does (test_tools compiles their paths in, and the launcher
+ * runs the compiler and player beside it), and no other program. */
 TEST_CASE(named_programs_build_what_they_run)
 {
 #ifdef __APPLE__
     char build_dir[GRAPH_PATH], path[GRAPH_PATH];
     join(build_dir, suite, "runs");
-    const char *const tools_only[] = { "--commands-only", "on", "--target", "test_tools", NULL };
+    const char *const tools_only[] = {
+        "--commands-only", "on",    "--target", "test_tools",
+        "--target",        "chibi", NULL
+    };
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, tools_only) == 0);
     join(path, build_dir, "link_commands.json");
     yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
     REQUIRE(doc);
-    static const char *const programs[] = {
-        "test/tools/test_tools", "test/tools/policy_worker",
-        "bin/chibi_ctl",         "sdk/chibi-compile",
-        "sdk/chibi-build-host",  "sdk/chibi-compiler-host"
-    };
+    static const char *const programs[] = { "test/tools/test_tools",
+                                            "test/tools/policy_worker",
+                                            "bin/chibi_ctl",
+                                            "sdk/chibi-compile",
+                                            "sdk/chibi-build-host",
+                                            "sdk/chibi-compiler-host",
+                                            "sdk/chibi",
+                                            "sdk/chibi-player" };
     int found = 0;
     yyjson_val *entry;
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
         REQUIRE(strcmp(base(output), "test_host"));
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 8; i++) {
             snprintf(path, sizeof path, "%s/%s", build_dir, programs[i]);
             found += !strcmp(output, path);
         }
     }
     yyjson_doc_free(doc);
-    REQUIRE(found == 6);
+    REQUIRE(found == 8);
 #endif
     return true;
 }
@@ -1053,13 +1060,17 @@ static void make_clone()
     }
 }
 
-static void set_up(const char *host)
+/* The host runs the graph; the reference is the configured CMake build the
+ * graph is compared with. */
+static void set_up(const char *host, const char *cmake_build)
 {
-    /* The host sits in the configured build's sdk directory. */
     char *resolved = realpath(host, NULL);
     assert(resolved);
     snprintf(host_path, sizeof host_path, "%s", resolved);
-    snprintf(reference, sizeof reference, "%s", dirname(dirname(resolved)));
+    free(resolved);
+    resolved = realpath(cmake_build, NULL);
+    assert(resolved);
+    snprintf(reference, sizeof reference, "%s", resolved);
     free(resolved);
     strcpy(suite, "/tmp/chibi-graph-XXXXXX");
     assert(mkdtemp(suite));
@@ -1071,13 +1082,142 @@ static void set_up(const char *host)
     read_profile();
 }
 
-void test_build_graph(const char *host)
+void test_build_graph(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(commands_match_cmake);
     RUN_TEST_CASE(links_match_cmake);
     RUN_TEST_CASE(executables_stage_no_headers);
     tool_remove_tree(suite);
+}
+
+/* The entries of a compile database. */
+static size_t commands_in(const char *build_dir)
+{
+    char path[GRAPH_PATH];
+    join(path, build_dir, "compile_commands.json");
+    yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
+    assert(doc);
+    size_t count = yyjson_arr_size(yyjson_doc_get_root(doc));
+    yyjson_doc_free(doc);
+    return count;
+}
+
+/* A run that names a target lists only the compiles it builds, unless
+ * --all-commands asks for every target's, as many as CMake's database. */
+TEST_CASE(all_commands_list_every_target)
+{
+    char build_dir[GRAPH_PATH];
+    join(build_dir, suite, "all commands");
+    const char *const named[] = { "--commands-only", "on", "--target", "chibi_support", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, named) == 0);
+    size_t selected = commands_in(build_dir);
+    const char *const every[] = {
+        "--commands-only", "on", "--target", "chibi_support",
+        "--all-commands",  "on", NULL
+    };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, every) == 0);
+    REQUIRE(selected > 0 && selected < commands_in(build_dir));
+#ifdef __APPLE__
+    /* Elsewhere CMake builds executables the graph does not yet. */
+    REQUIRE(commands_in(build_dir) == commands_in(reference));
+#endif
+    return true;
+}
+
+/* Four fixed rejected invocations: an unknown target alone and beside a
+ * known target, and a target missing its name at the end or before an option.
+ * They write no build outputs and never reach toolchain discovery. */
+TEST_CASE(invalid_targets_fail_before_writing_commands)
+{
+    char build_dir[GRAPH_PATH];
+    join(build_dir, suite, "invalid targets");
+    static const struct
+    {
+        const char *arguments[8];
+        const char *diagnostic;
+    } cases[] = {
+        { { "--commands-only", "on", "--target", "chibi-clt", NULL },
+          "graph: unknown target 'chibi-clt'" },
+        { { "--commands-only", "on", "--target", "chibi_support", "--target", "chibi-clt", NULL },
+          "graph: unknown target 'chibi-clt'" },
+        { { "--commands-only", "on", "--target", NULL },
+          "graph: --target requires a target name" },
+        { { "--target", "--commands-only", "on", NULL }, "graph: --target requires a target name" }
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, cases[i].arguments) == -1);
+        char *log = tool_read(log_path);
+        REQUIRE(log && strstr(log, cases[i].diagnostic));
+        free(log);
+        REQUIRE(access(build_dir, F_OK));
+    }
+    return true;
+}
+
+/* Parse fixed dependency files through the bytecode CLI, under this route's
+ * existing host subprocess and aggregate deadlines. */
+TEST_CASE(authored_dependency_files_list_prerequisites)
+{
+    char short_path[GRAPH_PATH], large_path[GRAPH_PATH], source_path[GRAPH_PATH];
+    join(short_path, suite, "primitive.d");
+    join(large_path, suite, "primitive-large.d");
+    join(source_path, suite, "Dependencies.chibi");
+    tool_write(short_path, "out/a.o: a.c b\\ c.h \\\n  d\\#.h \\\r\n e$$f.h\tg\\#h.h\n");
+    char large[16384];
+    size_t size = (size_t)sprintf(large, "out/a.o: main.c");
+    for (int i = 0; i < 128; i++) {
+        size += (size_t)sprintf(large + size, " \\\n include/long-enough-to-represent-a-real-header-path/header-%03d.h", i);
+    }
+    assert(size < sizeof large);
+    tool_write(large_path, large);
+    tool_write(
+        source_path,
+        "package dependencies\nimport c \"graph:c\"\nBuild :: () -> int { "
+        "arguments := build.arguments(); "
+        "if (build.join(c.Dependencies(build.read_file(arguments[0])), \"|\") "
+        "!= \"a.c|b c.h|d#.h|e$f.h|g#h.h\") { return 1; } "
+        "if (length(c.Dependencies(\"no target\")) != 0 || "
+        "length(c.Dependencies(\"out.o: \")) != 0) { return 2; } "
+        "if (build.join(c.Dependencies(\"out.o:\\\\\\na.c\"), \"|\") != "
+        "\"a.c\" || "
+        "build.join(c.Dependencies(\"out.o:\\\\\\r\\nb.c\"), \"|\") != "
+        "\"b.c\") { return 4; } "
+        "if (build.join(c.Dependencies(\"out.o: a\\\\\\\\\\nb.c\"), \"|\") != "
+        "\"a b.c\" || "
+        "build.join(c.Dependencies(\"out.o: a\\\\\\\\\\r\\nb.c\"), \"|\") != "
+        "\"a b.c\") { return 5; } "
+        "paths := c.Dependencies(build.read_file(arguments[1])); "
+        "if (length(paths) != 129 || paths[0] != \"main.c\" || "
+        "paths[128] != "
+        "\"include/long-enough-to-represent-a-real-header-path/header-127.h\") "
+        "{ return 3; } return 0; }"
+    );
+    const char *const argv[] = { host_path,
+                                 "--root",
+                                 CHIBI_SOURCE_ROOT,
+                                 "--source",
+                                 source_path,
+                                 "--core",
+                                 "packages/core",
+                                 "--collection",
+                                 "graph=tools/graph",
+                                 "--entry",
+                                 "Build",
+                                 "--timeout-ms",
+                                 "50000",
+                                 "--",
+                                 short_path,
+                                 large_path,
+                                 NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "dependency parser: %s\n", log ? log : "");
+        free(log);
+    }
+    REQUIRE(!status);
+    return true;
 }
 
 /* The number of files below ours, each equal to the file of the same path
@@ -1209,26 +1349,29 @@ TEST_CASE(language_corpus_lists_as_cmake)
 
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
-void test_build_graph_programs(const char *host)
+void test_build_graph_programs(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(named_programs_build_what_they_run);
+    RUN_TEST_CASE(all_commands_list_every_target);
+    RUN_TEST_CASE(invalid_targets_fail_before_writing_commands);
+    RUN_TEST_CASE(authored_dependency_files_list_prerequisites);
     tool_remove_tree(suite);
 }
 
 /* A separate route: staging chibi_ctl's headers takes seconds. */
-void test_build_graph_resources(const char *host)
+void test_build_graph_resources(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(resources_install_as_cmake);
     RUN_TEST_CASE(language_corpus_lists_as_cmake);
     tool_remove_tree(suite);
 }
 
 /* A separate route: about ten graph runs over a copied root. */
-void test_build_graph_support(const char *host)
+void test_build_graph_support(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     make_clone();
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
@@ -1237,26 +1380,26 @@ void test_build_graph_support(const char *host)
 }
 
 /* A separate route: reflect's compiles take most of a minute's ceiling. */
-void test_build_graph_reflect(const char *host)
+void test_build_graph_reflect(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
     tool_remove_tree(suite);
 }
 
 /* A separate route: SLJIT's and enkiTS's compiles with sanitizers take
  * seconds. */
-void test_build_graph_archive(const char *host)
+void test_build_graph_archive(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(archive_sources_compile_and_stage);
     tool_remove_tree(suite);
 }
 
 /* A separate route: reflect's run and the codec compile take seconds. */
-void test_build_graph_generated(const char *host)
+void test_build_graph_generated(const char *host, const char *cmake_build)
 {
-    set_up(host);
+    set_up(host, cmake_build);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

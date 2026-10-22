@@ -9,6 +9,7 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -89,7 +90,9 @@ static const char *read_snapshot(
               .type_name = "ecs.entity",
               .u64 = ecs_entity_to_u64(raw[i].entity) },
             { .type = PIN_I32, .i = raw[i].parent },
-            { .type = PIN_STR, .str = raw[i].name },
+            { .type = PIN_STR,
+              .text = &(const pin_string){ .bytes = raw[i].name,
+                                           .length = (uint32_t)strlen(raw[i].name) } },
         };
         for (int j = 0; j < 3; j++) {
             if (pin_value_snapshot_to_arena(context->value_storage, &arrays[j]->items[i], &values[j])) {
@@ -114,7 +117,7 @@ static const char *read_snapshot(
         }
     }
     for (int i = 0; i < count; i++) {
-        const char *copy = arrays[2]->items[i].str;
+        const char *copy = pin_text(arrays[2]->items[i]).bytes;
         owned &= copy && copy != raw[i].name &&
                  arena_contains(context->value_storage, copy);
     }
@@ -354,7 +357,7 @@ static bool result(int count, const char *child)
         REQUIRE(items[0].type_name && !strcmp(items[0].type_name, "ecs.entity"));
         REQUIRE(items[1].type == PIN_I32 && items[1].i == (i == 1 ? 0 : -1));
         const char *name = i == 0 ? "Root" : i == 1 ? child : "Other";
-        REQUIRE(items[2].type == PIN_STR && !strcmp(items[2].str, name));
+        REQUIRE(items[2].type == PIN_STR && !strcmp(pin_text(items[2]).bytes, name));
     }
     return true;
 }
@@ -428,8 +431,8 @@ TEST_CASE(scene_read_copies_identity_order_and_names_into_authored_state)
             !state("parent")->record && state("parent")->i == 0
         );
         REQUIRE(
-            state("text") && state("text")->type == PIN_STR &&
-            !state("text")->record && !strcmp(state("text")->str, "Child")
+            state("text") && state("text")->type == PIN_STR && !state("text")->record &&
+            !strcmp(pin_text(*(state("text"))).bytes, "Child")
         );
         REQUIRE(result(3, "Child") && fixture.calls == 1);
     }

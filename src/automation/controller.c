@@ -75,6 +75,7 @@
 #include "runtime/terrain_storage.h"
 #include "runtime/transform_propagation.h"
 #include "runtime/ui.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
@@ -82,6 +83,7 @@
 #include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 #include "types/type.h"
 
 #include <assert.h>
@@ -7202,10 +7204,10 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             break;
         case PIN_NAME:
         case PIN_STR: {
-            const char *text = value->str ? value->str : "";
-            uint64_t text_size = strlen(text);
+            pin_string text = pin_text(*value);
+            uint64_t text_size = text.length;
             *hash = scenario_hash_bytes(*hash, &text_size, sizeof text_size);
-            *hash = scenario_hash_bytes(*hash, text, (size_t)text_size);
+            *hash = scenario_hash_bytes(*hash, text.bytes, (size_t)text_size);
             break;
         }
         case PIN_STRUCT: {
@@ -7218,9 +7220,14 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
                 uint64_t field_size = strlen(field->name ? field->name : "");
                 *hash = scenario_hash_bytes(*hash, &field_size, sizeof field_size);
                 *hash = scenario_hash_bytes(*hash, field->name, (size_t)field_size);
+                arena storage = { 0 };
                 pin_value field_value;
-                pin_read_field(value->ptr, field, &field_value);
-                scenario_hash_value(hash, field->type, field->type_name, &field_value);
+                const char *error = pin_read_field(&storage, value->ptr, field, &field_value);
+                assert(!error);
+                if (!error) {
+                    scenario_hash_value(hash, field->type, field->type_name, &field_value);
+                }
+                arena_free(&storage);
             }
             break;
         }
@@ -7259,9 +7266,14 @@ static uint64_t scenario_world_hash(const ecs_world *world)
                 uint64_t field_size = strlen(field->name ? field->name : "");
                 hash = scenario_hash_bytes(hash, &field_size, sizeof field_size);
                 hash = scenario_hash_bytes(hash, field->name, (size_t)field_size);
+                arena storage = { 0 };
                 pin_value value;
-                pin_read_field(data, field, &value);
-                scenario_hash_value(&hash, field->type, field->type_name, &value);
+                const char *error = pin_read_field(&storage, data, field, &value);
+                assert(!error);
+                if (!error) {
+                    scenario_hash_value(&hash, field->type, field->type_name, &value);
+                }
+                arena_free(&storage);
             }
         }
     }
@@ -9044,14 +9056,20 @@ static ecs_entity scenario_entity(const scenario_context *context, const char *n
                      : prototype_preview_entity_at(context->preview, index);
 }
 
-static bool scenario_event_value(const scenario_context *context, yyjson_val *item, pin_value *out)
+static bool scenario_event_value(
+    arena *storage,
+    const scenario_context *context,
+    yyjson_val *item,
+    pin_value *out
+)
 {
     if (!yyjson_is_obj(item)) {
         return false;
     }
     const char *type = request_string(item, "type");
+    yyjson_val *type_value = yyjson_obj_get(item, "type");
     yyjson_val *value = yyjson_obj_get(item, "value");
-    if (!type || !value) {
+    if (!type || !value || memchr(type, 0, yyjson_get_len(type_value))) {
         return false;
     }
     if (!strcmp(type, "bool") && yyjson_is_bool(value)) {
@@ -9060,11 +9078,19 @@ static bool scenario_event_value(const scenario_context *context, yyjson_val *it
     }
     if ((!strcmp(type, "name") || !strcmp(type, "string")) &&
         yyjson_is_str(value) && yyjson_get_len(value) <= 4096) {
-        *out = (pin_value){ .type = !strcmp(type, "name") ? PIN_NAME : PIN_STR,
-                            .str = yyjson_get_str(value) };
+        const char *bytes = yyjson_get_str(value);
+        size_t length = yyjson_get_len(value);
+        if (!strcmp(type, "string")) {
+            return !pin_value_text(storage, out, bytes, length);
+        }
+        if (memchr(bytes, 0, length)) {
+            return false;
+        }
+        *out = (pin_value){ .type = PIN_NAME, .str = bytes };
         return true;
     }
-    if (!strcmp(type, "entity") && yyjson_is_str(value) && yyjson_get_len(value)) {
+    if (!strcmp(type, "entity") && yyjson_is_str(value) && yyjson_get_len(value) &&
+        !memchr(yyjson_get_str(value), 0, yyjson_get_len(value))) {
         ecs_entity entity = context
                               ? scenario_entity(context, yyjson_get_str(value))
                               : (ecs_entity){ 0 };
@@ -9241,20 +9267,26 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
             yyjson_val *values = event && yyjson_is_obj(event)
                                    ? yyjson_obj_get(event, "values")
                                    : NULL;
-            if (!name || !name[0] || strlen(name) > 128 ||
+            yyjson_val *name_value = event ? yyjson_obj_get(event, "name") : NULL;
+            if (!name || !name[0] || yyjson_get_len(name_value) > 128 ||
+                memchr(name, 0, yyjson_get_len(name_value)) ||
                 (values && (!yyjson_is_arr(values) || yyjson_arr_size(values) > 16))) {
                 snprintf(error, error_size, "events require a bounded name and at most 16 typed payload values");
                 return false;
             }
             yyjson_val *target = yyjson_obj_get(event, "target");
             if (target && (!yyjson_is_str(target) || !yyjson_get_len(target) ||
-                           yyjson_get_len(target) > 512)) {
+                           yyjson_get_len(target) > 512 ||
+                           memchr(yyjson_get_str(target), 0, yyjson_get_len(target)))) {
                 snprintf(error, error_size, "event target must be a scene entity name");
                 return false;
             }
             for (size_t j = 0; j < yyjson_arr_size(values); j++) {
+                arena storage = { 0 };
                 pin_value parsed;
-                if (!scenario_event_value(NULL, yyjson_arr_get(values, j), &parsed)) {
+                bool valid = scenario_event_value(&storage, NULL, yyjson_arr_get(values, j), &parsed);
+                arena_free(&storage);
+                if (!valid) {
                     snprintf(error, error_size, "event payload requires a supported type and matching value");
                     return false;
                 }
@@ -9490,10 +9522,17 @@ static int apply_scenario_input(
                 return CHIBI_AUTOMATION_INVALID_REQUEST;
             }
             yyjson_val *values = yyjson_obj_get(event, "values");
+            arena storage = { 0 };
             pin_value payload[16];
             int value_count = (int)yyjson_arr_size(values);
             for (int j = 0; j < value_count; j++) {
-                if (!scenario_event_value(context, yyjson_arr_get(values, (size_t)j), &payload[j])) {
+                if (!scenario_event_value(
+                        &storage,
+                        context,
+                        yyjson_arr_get(values, (size_t)j),
+                        &payload[j]
+                    )) {
+                    arena_free(&storage);
                     snprintf(error, error_size, "event payload contains an unresolved entity");
                     return CHIBI_AUTOMATION_INVALID_REQUEST;
                 }
@@ -9507,9 +9546,11 @@ static int apply_scenario_input(
                     behaviors->now,
                     behaviors->delta
                 ) < 0) {
+                arena_free(&storage);
                 snprintf(error, error_size, "%s", source_error(behaviors->sources));
                 return CHIBI_AUTOMATION_EXECUTION_ERROR;
             }
+            arena_free(&storage);
         }
     }
 
@@ -10126,7 +10167,12 @@ static void add_snapshot_component(
                                     : NULL;
         if (field->type == PIN_HANDLE) {
             pin_value handle;
-            pin_read_field(ecs_component_data_const(world, entity, component->id), field, &handle);
+            pin_read_field(
+                NULL,
+                ecs_component_data_const(world, entity, component->id),
+                field,
+                &handle
+            );
             yyjson_mut_obj_add_uint(doc, entry, "value", handle.u64);
         } else if (field_value) {
             yyjson_mut_obj_add_val(doc, entry, "value", yyjson_val_mut_copy(doc, field_value));
@@ -10432,7 +10478,7 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
         yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
-        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info->text);
+        yyjson_mut_obj_add_strncpy(result->doc, log, "message", info->text, info->text_length);
         emitted_logs++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
@@ -10598,7 +10644,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
         yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
-        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info->text);
+        yyjson_mut_obj_add_strncpy(result->doc, log, "message", info->text, info->text_length);
         if (info->node) {
             yyjson_mut_val *origin = yyjson_mut_obj_add_obj(result->doc, log, "origin");
             yyjson_mut_obj_add_uint(result->doc, origin, "id", info->node);

@@ -913,11 +913,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.type = (script_type){ .storage = expected.storage == PIN_NAME
                                                   ? PIN_NAME
                                                   : PIN_STR };
-        result.constant = (pin_value){ .type = result.type.storage,
-                                       .str = script_analyzer_name_copy(a, node) };
+        result.constant = result.type.storage == PIN_NAME
+                            ? (pin_value){ .type = PIN_NAME,
+                                           .str = script_analyzer_name_copy(a, node) }
+                            : script_analyzer_string_value(a, node);
+        result.constant_snapshot = result.type.storage == PIN_STR;
         result.type.flags |= SCRIPT_TYPE_LITERAL;
-        result.type
-            .parameter = script_catalog_id("union-literal", result.constant.str);
+        pin_string text = pin_text(result.constant);
+        result.type.parameter = script_catalog_id_bytes("union-literal", text.bytes, text.length);
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "nil")) {
@@ -1222,6 +1225,18 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         } else if ((!script_type_numeric(x) || !script_type_numeric(y)) && script_analyzer_resolve_operator(a, node, op, &result)) {
             /* Catalog operands and result are already resolved. */
         } else if (equality && !script_type_numeric(x)) {
+            if (behavior_scalar_string(x.storage) &&
+                behavior_scalar_string(y.storage) && x.container == PIN_CONTAINER_SINGLE &&
+                y.container == PIN_CONTAINER_SINGLE) {
+                if (x.flags & SCRIPT_TYPE_LITERAL) {
+                    x.flags &= ~SCRIPT_TYPE_LITERAL;
+                    x.parameter = 0;
+                }
+                if (y.flags & SCRIPT_TYPE_LITERAL) {
+                    y.flags &= ~SCRIPT_TYPE_LITERAL;
+                    y.parameter = 0;
+                }
+            }
             script_analyzer_require(a, right, x, y);
             result.type = script_analyzer_boolean_type();
         } else if (script_type_numeric(x) && script_type_numeric(y)) {
@@ -1363,6 +1378,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                     script_analyzer_range(a, child) })
             );
             if (index >= 0) {
+                if (type->fields[index].c_string) {
+                    script_analyzer_c_string_argument(
+                        a,
+                        script_analyzer_field(child, "value"),
+                        value,
+                        type->fields[index].name
+                    );
+                }
                 script_analyzer_require(
                     a,
                     child,

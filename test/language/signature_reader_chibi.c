@@ -20,6 +20,7 @@
 #include "toolchain/compiler_syntax.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
 #include "unit_algebra_chibi_source.h"
@@ -96,7 +97,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int expected)
@@ -115,8 +116,8 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
 {
     pin_value v;
     REQUIRE(
-        read(row, name, &v) && v.type == PIN_STR && v.str &&
-        !strcmp(v.str, expected ? expected : "")
+        read(row, name, &v) && v.type == PIN_STR && pin_text(v).bytes &&
+        !strcmp(pin_text(v).bytes, expected ? expected : "")
     );
     return true;
 }
@@ -259,8 +260,8 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
     REQUIRE(
         value_type(b, &v[0], expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
-        v[2].u64 == expected->id && v[3].type == PIN_STR && v[3].str &&
-        !strcmp(v[3].str, expected->name ? expected->name : "")
+        v[2].u64 == expected->id && v[3].type == PIN_STR && pin_text(v[3]).bytes &&
+        !strcmp(pin_text(v[3]).bytes, expected->name ? expected->name : "")
     );
     REQUIRE(
         value_type(b, &v[4], expected->definition_type) &&
@@ -491,13 +492,13 @@ static bool owned(arena *owner, const pin_value *value, int depth)
                 type->fields[i].name && arena_contains(owner, type->fields[i].name)
             );
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(owner, value->ptr, &type->fields[i], &field));
             REQUIRE(owned(owner, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(owner, value->str));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
@@ -544,8 +545,8 @@ static bool reading_value(
     );
     REQUIRE(
         v[1].type == PIN_BOOL && v[1].b == (expected->unit != NULL) &&
-        v[2].type == PIN_STR && v[2].str &&
-        !strcmp(v[2].str, expected->unit ? expected->unit : "")
+        v[2].type == PIN_STR && pin_text(v[2]).bytes &&
+        !strcmp(pin_text(v[2]).bytes, expected->unit ? expected->unit : "")
     );
     REQUIRE(
         expected->diagnostic_count <= 4 && expected->use_count <= 4 &&
@@ -1105,16 +1106,19 @@ static void snapshot_cleanup()
 }
 static pin_value snapshot_text(const char *s)
 {
-    size_t size = strlen(s) + 1;
-    char *copy = arena_alloc(&input, size);
-    memcpy(copy, s, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    s = s ? s : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, s, strlen(s));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool snapshot_put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool snapshot_row(int b, const char *name, pin_value *out)

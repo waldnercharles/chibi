@@ -8,6 +8,7 @@ typedef struct
     uint64_t owner, node_id;
     double now;
     const char *program_name, *text;
+    size_t text_length;
 } execution_log_message;
 /* Messages and context metadata are borrowed for the synchronous callback.
  * A host that retains text must copy it. Logging never suspends execution. */

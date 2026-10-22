@@ -13,14 +13,16 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Six fixed prepared cases. Bounds are recorded beside the dispatcher before
+/* Seven fixed prepared cases. Bounds are recorded beside the dispatcher before
  * independent admission. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -49,6 +51,14 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "behaviors: int = 0; active: bool = true; marked: bool = false; "          \
     "hidden: bool = false; locked: bool = false; renaming: bool = false;"
 #define ROW "Row :: struct { " ROW_FIELDS " } "
+static pin_value text_value(const char *bytes)
+{
+    pin_value value = { 0 };
+    const char *error = pin_value_text(&producer, &value, bytes, strlen(bytes));
+    assert(!error);
+    (void)error;
+    return value;
+}
 static void finish_call()
 {
     if (runs.active) {
@@ -206,7 +216,9 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
 static pin_value member(const pin_value *row, int index)
 {
     pin_value field;
-    pin_read_field(row->ptr, &row->record->type.fields[index], &field);
+    const char *error = pin_read_field(&producer, row->ptr, &row->record->type.fields[index], &field);
+    assert(!error);
+    (void)error;
     return field;
 }
 static bool encode()
@@ -244,18 +256,19 @@ TEST_CASE(record_prepared_scalar_owners)
     for (int b = 0; b < 2; b++) {
         REQUIRE(decode(backends[b]));
         char text[] = "prepared-owner";
-        pin_value arg = { .type = PIN_STR, .str = text };
+        pin_string descriptor = { .bytes = text, .length = sizeof text - 1 };
+        pin_value arg = { .type = PIN_STR, .text = &descriptor };
         REQUIRE(run(backends[b], &arg, 1));
         REQUIRE(result.record && arena_contains(&storage, result.record));
         memset(text, 'x', sizeof text - 1);
-        REQUIRE(!strcmp(member(&result, 0).str, "prepared-owner"));
-        REQUIRE(!strcmp(member(&result, 2).str, "node"));
+        REQUIRE(!strcmp(pin_text(member(&result, 0)).bytes, "prepared-owner"));
+        REQUIRE(!strcmp(pin_text(member(&result, 2)).bytes, "node"));
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
         finish_call();
         execution_module_free(module);
         module = NULL;
         REQUIRE(pin_record_valid(saved.record));
-        REQUIRE(!strcmp(member(&saved, 1).str, "prepared-owner"));
+        REQUIRE(!strcmp(pin_text(member(&saved, 1)).bytes, "prepared-owner"));
         arena_free(&escaped);
         saved = (pin_value){ 0 };
     }
@@ -293,7 +306,7 @@ TEST_CASE(record_prepared_array_owners)
             for (int j = 0; j < a->count; j++) {
                 REQUIRE(pin_array_get(a, j).record == a->record);
                 pin_value item = pin_array_get(a, j);
-                REQUIRE(!strcmp(member(&item, 1).str, "A"));
+                REQUIRE(!strcmp(pin_text(member(&item, 1)).bytes, "A"));
             }
         }
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
@@ -377,7 +390,7 @@ TEST_CASE(record_prepared_recursive_codec)
     for (int i = 0; i < 5; i++) {
         char *text = arena_alloc(&producer, 7);
         memcpy(text, "owned!", 7);
-        pin_write_field(row.ptr, &r->type.fields[i], (pin_value){ .type = PIN_STR, .str = text });
+        REQUIRE(!pin_write_field(&producer, row.ptr, &r->type.fields[i], text_value(text)));
     }
     pin_value items[3] = { row, row, row };
     pin_array arrays[2] = {
@@ -431,7 +444,7 @@ TEST_CASE(record_prepared_recursive_codec)
     collect(&read_plan->storage, raw.ptr);
     REQUIRE(pin_record_valid(raw.record));
     for (int i = 0; i < 5; i++) {
-        REQUIRE(!strcmp(member(&raw, i).str, "owned!"));
+        REQUIRE(!strcmp(pin_text(member(&raw, i)).bytes, "owned!"));
     }
     collect(&read_plan->storage, NULL);
     size_t bytes, capacity;
@@ -482,7 +495,7 @@ TEST_CASE(record_prepared_packed_rows_survive_collection)
     for (int i = 0; i < 2; i++) {
         pin_value row = pin_array_get(rows, i), field_value;
         REQUIRE(row.record == rows->record);
-        pin_read_field(row.ptr, &row.record->type.fields[0], &field_value);
+        REQUIRE(!pin_read_field(&producer, row.ptr, &row.record->type.fields[0], &field_value));
         REQUIRE(field_value.type == PIN_I32 && field_value.i == values[i]);
     }
     collect(&read_plan->storage, NULL);
@@ -532,6 +545,11 @@ static bool table_image(int mode)
             const char *unit = r->type.fields[i].unit;
             execution_wire_string(w, &type_name);
             execution_wire_string(w, &unit);
+            bool descriptor = kind == PIN_STR;
+            if ((mode == 12 && i == 0) || (mode == 13 && i == 5)) {
+                descriptor = !descriptor;
+            }
+            execution_wire_bool(w, &descriptor);
         }
     }
     return true;
@@ -539,7 +557,7 @@ static bool table_image(int mode)
 TEST_CASE(record_prepared_table_rejections)
 {
     REQUIRE(table());
-    for (int mode = 0; mode < 12; mode++) {
+    for (int mode = 0; mode < 14; mode++) {
         REQUIRE(table_image(mode));
         REQUIRE(!writer.wire.error);
         read_plan = execution_module_plan_new();
@@ -698,12 +716,12 @@ static bool rejected_result_reader(behavior_function *f, bool bad_name)
 TEST_CASE(record_prepared_legacy_and_failure_atomicity)
 {
     const unsigned char integer[] = { 12, 0, 0, 17 };
-    const unsigned char string[] = { 26, 0, 0, 2, 'a' };
+    const unsigned char string[] = { 26, 0, 0, 1, 'a' };
     const unsigned char array_bytes[] = { 12, 2, 0,  1, 4, 12, 0,
                                           0,  1, 12, 0, 0, 2 };
     const unsigned char union_bytes[] = { 36, 0, 0, 1, 7, 2, 2, 0, 0, 1 };
     REQUIRE(legacy_bytes((pin_value){ .type = PIN_I32, .i = 17 }, integer, sizeof integer));
-    REQUIRE(legacy_bytes((pin_value){ .type = PIN_STR, .str = "a" }, string, sizeof string));
+    REQUIRE(legacy_bytes(text_value("a"), string, sizeof string));
     pin_value items[] = { { .type = PIN_I32, .i = 1 }, { .type = PIN_I32, .i = 2 } };
     pin_array array = { .element_type = PIN_I32, .items = items, .count = 2, .capacity = 2 };
     REQUIRE(legacy_bytes(
@@ -835,9 +853,111 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     REQUIRE(module);
     return true;
 }
+TEST_CASE(string_wire_bytes)
+{
+    static const char bytes[] = { 'A', 0, 'B', (char)0xff };
+    pin_value value;
+    REQUIRE(!pin_value_text(&producer, &value, bytes, sizeof bytes));
+    execution_wire encoded = { 0 };
+    execution_wire_value(&encoded, &value);
+    REQUIRE(!encoded.error);
+    execution_wire decoded = { .reading = true,
+                               .data = encoded.data,
+                               .size = encoded.size,
+                               .storage = &escaped };
+    pin_value output = { 0 };
+    execution_wire_value(&decoded, &output);
+    REQUIRE(!decoded.error && decoded.offset == decoded.size);
+    arena_free(&producer);
+    REQUIRE(pin_text(output).length == sizeof bytes);
+    REQUIRE(!memcmp(pin_text(output).bytes, bytes, sizeof bytes));
+    size_t text_bytes = sizeof(pin_string) + sizeof bytes + 1;
+    REQUIRE(!output.type_name && decoded.owned_bytes == text_bytes);
+    pin_value previous = output;
+    execution_wire constrained = { .reading = true,
+                                   .data = encoded.data,
+                                   .size = encoded.size,
+                                   .storage = &escaped,
+                                   .owned_limit = text_bytes - 1 };
+    execution_wire_value(&constrained, &output);
+    REQUIRE(constrained.error && !constrained.owned_bytes);
+    REQUIRE(
+        output.type == previous.type && output.text == previous.text &&
+        output.container == previous.container &&
+        output.type_name == previous.type_name && output.record == previous.record
+    );
+    pin_value alias = previous;
+    alias.type_name = "TextAlias";
+    execution_wire named = { 0 };
+    execution_wire_value(&named, &alias);
+    REQUIRE(!named.error);
+    execution_wire named_read = { .reading = true,
+                                  .data = named.data,
+                                  .size = named.size,
+                                  .storage = &escaped };
+    execution_wire_value(&named_read, &output);
+    REQUIRE(!named_read.error && named_read.offset == named_read.size);
+    REQUIRE(
+        output.type_name != alias.type_name && !strcmp(output.type_name, alias.type_name)
+    );
+    REQUIRE(pin_text_equal(pin_text(output), pin_text(previous)));
+    REQUIRE(named_read.owned_bytes == sizeof "TextAlias" + text_bytes);
+    afree(named.data);
+    unsigned char metadata[] = { 24, 0, 0, 4, 'A', 0, 'B' };
+    execution_wire invalid = { .reading = true,
+                               .data = metadata,
+                               .size = sizeof metadata,
+                               .storage = &escaped };
+    execution_wire_value(&invalid, &output);
+    REQUIRE(invalid.error && strstr(invalid.error, "embedded NUL"));
+    /* Pretend earlier fields consumed the byte budget. A hash sink avoids
+     * allocating a large buffer while a short native string hits the bound. */
+    char native_bytes[81];
+    memset(native_bytes, 'x', sizeof native_bytes - 1);
+    native_bytes[sizeof native_bytes - 1] = 0;
+    const char *native_text = native_bytes;
+    const type_field native_field = { .name = "text",
+                                      .type = PIN_STR,
+                                      .type_name = "NativeAlias",
+                                      .size = sizeof(char *) };
+    const type_desc native_type = { .name = "WireNativeText",
+                                    .size = sizeof(char *),
+                                    .fields = &native_field,
+                                    .field_count = 1 };
+    const type_desc *native_types[] = { &native_type };
+    const type_catalog_pack catalog = { .types = native_types, .type_count = 1 };
+    type_catalog_set_project(&catalog);
+    project_set = true;
+    pin_value native_value = { .type = PIN_STRUCT,
+                               .type_name = native_type.name,
+                               .ptr = &native_text };
+    uint64_t hash = UINT64_C(1469598103934665603);
+    execution_wire full = { .size = EXECUTION_WIRE_MAX_BYTES - 64, .hash = &hash };
+    execution_wire_value(&full, &native_value);
+    REQUIRE(full.error && !strcmp(full.error, "Prepared text exceeds remaining byte limit"));
+    REQUIRE(full.size <= EXECUTION_WIRE_MAX_BYTES && !full.data && !full.owned_bytes);
+    native_text = "ok";
+    execution_wire native_encoded = { 0 };
+    execution_wire_value(&native_encoded, &native_value);
+    REQUIRE(!native_encoded.error);
+    execution_wire native_read = { .reading = true,
+                                   .data = native_encoded.data,
+                                   .size = native_encoded.size,
+                                   .storage = &escaped };
+    execution_wire_value(&native_read, &output);
+    REQUIRE(!native_read.error && native_read.offset == native_read.size);
+    REQUIRE(output.type_name && !strcmp(output.type_name, native_type.name));
+    REQUIRE(!strcmp(*(const char *const *)output.ptr, "ok"));
+    afree(native_encoded.data);
+    type_catalog_set_project(NULL);
+    project_set = false;
+    afree(encoded.data);
+    return true;
+}
 void test_language_record_prepared_runtime()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(string_wire_bytes);
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_recursive_codec);

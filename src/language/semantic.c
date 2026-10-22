@@ -525,7 +525,11 @@ void script_analysis_free(script_analysis *out)
             expression->constant.container == PIN_CONTAINER_SINGLE &&
             (expression->constant.type == PIN_STR ||
              expression->constant.type == PIN_NAME)) {
-            free((void *)expression->constant.str);
+            free(
+                expression->constant.type == PIN_STR
+                    ? (void *)expression->constant.text
+                    : (void *)expression->constant.str
+            );
         }
         afree(expression->arguments);
         afree(expression->results);

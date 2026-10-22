@@ -45,6 +45,12 @@ static int arithmetic(optimizer *o, behavior_function_instruction i)
         /* A failing division cannot skip stores delayed until fast-path exit. */
         return -1;
     }
+    if (integer && (i.op == BF_SHL || i.op == BF_SHR) &&
+        (!o->constant[i.right] ||
+         !behavior_scalar_shift_count_valid(i.type, behavior_scalar_bits(o->values[i.right])))) {
+        /* Only a proven count makes a shift safe to prune or delay stores past. */
+        return -1;
+    }
     if (((i.op >= BF_ADD && i.op <= BF_DIV) || (integer && i.op == BF_MOD)) &&
         o->constant[i.left] && o->constant[i.right]) {
         pin_value a = o->values[i.left], b = o->values[i.right],

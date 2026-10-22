@@ -129,7 +129,16 @@ import:
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
-  literals and `alias.U.V` variants. A local hides an alias of the same name.
+  literals and `alias.U.V` variants. Imported declarations must be `pub`.
+  Private helpers remain usable throughout their own package, including across
+  files, and a public function may return a value of a private type without
+  exposing that type's name. A local hides an alias of the same name.
+
+Privacy applies to source imports. Prepared modules retain private callable
+entries just as stage zero does; package privacy is not a host-invocation
+security boundary. Private union constructor accesses receive a specific
+private-name diagnostic here, where stage zero currently reports an unknown
+callable or value. Both reject the source.
 
 Anything else is rejected with its source position. Implicit widening of call arguments,
 element stores, literal

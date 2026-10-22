@@ -7,9 +7,11 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 const TSLanguage *tree_sitter_chibi();
@@ -41,10 +43,13 @@ static pin_value integer(int value)
 }
 static pin_value text(const char *value)
 {
-    size_t size = strlen(value) + 1;
-    char *copy = arena_alloc(&input, size);
-    memcpy(copy, value, size);
-    return (pin_value){ .type = PIN_STR, .str = copy };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static bool prepare()
 {
@@ -70,7 +75,7 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->container == PIN_CONTAINER_SINGLE && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool same_int(const pin_value *row, const char *name, int expected)
@@ -84,8 +89,11 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
 {
     pin_value value;
     REQUIRE(read(row, name, &value));
-    REQUIRE(value.type == PIN_STR && value.str && !strcmp(value.str, expected));
-    REQUIRE(arena_contains(&detached, value.str));
+    REQUIRE(
+        value.type == PIN_STR && pin_text(value).bytes &&
+        !strcmp(pin_text(value).bytes, expected)
+    );
+    REQUIRE(arena_contains(&detached, pin_text(value).bytes));
     return true;
 }
 static bool same_range(const pin_value *row, const char *prefix, script_range range)

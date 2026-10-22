@@ -10,6 +10,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/value_document.h"
 #include "types/value_wire.h"
 
@@ -384,7 +385,17 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
         behavior_run_scope_end(&runs);
         REQUIRE(result.record && result.ptr && result.record->type.field_count == 1);
         pin_value amount;
-        pin_read_field(result.ptr, &result.record->type.fields[0], &amount);
+        {
+            const char *error = pin_read_field(
+                &storage,
+                result.ptr,
+                &result.record->type.fields[0],
+                &amount
+            );
+            if (error) {
+                abort();
+            }
+        };
         REQUIRE(amount.type == PIN_F64 && amount.d == 12);
     }
     return true;
@@ -544,7 +555,8 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
             deep = value.type == PIN_I32 && value.i == 120;
         }
         if (!strcmp(symbol->name, "Text")) {
-            text |= value.type == PIN_STR && !strcmp(value.str, "owned text");
+            text |= value.type == PIN_STR &&
+                    !strcmp(pin_text(value).bytes, "owned text");
         }
     }
     REQUIRE(fraction && whole && difference && text && local && assigned && deep);
@@ -763,7 +775,10 @@ TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
         execution_instance *instance = invoke();
         REQUIRE(instance);
         const pin_value *value = execution_instance_state(instance, retained);
-        REQUIRE(value && value->type == PIN_STR && !strcmp(value->str, "owned after analysis"));
+        REQUIRE(
+            value && value->type == PIN_STR &&
+            !strcmp(pin_text(*value).bytes, "owned after analysis")
+        );
     }
     return true;
 }

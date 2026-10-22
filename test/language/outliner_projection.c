@@ -13,6 +13,7 @@
 #include "types/array.h"
 #include "types/copy.h"
 #include "types/record.h"
+#include "types/text.h"
 
 #include <ctype.h>
 #include <inttypes.h>
@@ -217,10 +218,7 @@ static const char *entity_decimal(arena *storage, const pin_value *args, int cou
     decimal_calls++;
     char text[24];
     snprintf(text, sizeof text, "%" PRIu64, args[0].u64);
-    *out = (pin_value){ .type = PIN_STR,
-                        .type_name = "const char *",
-                        .str = copy_text(storage, text) };
-    return NULL;
+    return pin_value_text(storage, out, text, strlen(text));
 }
 /* Same byte comparison as studio_matches; not Unicode case folding. */
 static const char *contains_folded(arena *storage, const pin_value *args, int count, pin_value *out)
@@ -228,11 +226,12 @@ static const char *contains_folded(arena *storage, const pin_value *args, int co
     (void)storage;
     if (count != 2 || args[0].type != PIN_STR || args[1].type != PIN_STR ||
         args[0].container != PIN_CONTAINER_SINGLE ||
-        args[1].container != PIN_CONTAINER_SINGLE || !args[0].str || !args[1].str) {
+        args[1].container != PIN_CONTAINER_SINGLE || !pin_text(args[0]).bytes ||
+        !pin_text(args[1]).bytes) {
         return "Folded substring fixture argument";
     }
     match_calls++;
-    const char *query = args[0].str, *text = args[1].str;
+    const char *query = pin_text(args[0]).bytes, *text = pin_text(args[1]).bytes;
     bool found = !query[0];
     for (const char *h = text; !found && *h; h++) {
         size_t i = 0;
@@ -489,11 +488,20 @@ static bool make_inputs(const request *r, bool changed)
         REQUIRE(array->count == r->raw_count);
         REQUIRE(!array->count || arena_contains(&inputs, array->items));
         for (int n = 0; n < r->raw_count; n++) {
+            pin_string descriptor;
             pin_value v = { .type = types[a], .type_name = name };
             switch (a) {
                 case 0: v.u64 = IDS[n]; break;
-                case 1: v.str = producer_names[0][n]; break;
-                case 2: v.str = producer_names[1][n]; break;
+                case 1:
+                    descriptor = (pin_string){ producer_names[0][n],
+                                               (uint32_t)strlen(producer_names[0][n]) };
+                    v.text = &descriptor;
+                    break;
+                case 2:
+                    descriptor = (pin_string){ producer_names[1][n],
+                                               (uint32_t)strlen(producer_names[1][n]) };
+                    v.text = &descriptor;
+                    break;
                 case 3: v.i = PARENTS[n]; break;
                 case 4: v.i = BEHAVIORS[n]; break;
                 case 5: v.i = ICONS[n]; break;
@@ -504,8 +512,8 @@ static bool make_inputs(const request *r, bool changed)
             REQUIRE(!pin_value_snapshot_to_arena(&inputs, &array->items[n], &v));
             if (a == 1 || a == 2) {
                 REQUIRE(
-                    array->items[n].str != v.str &&
-                    arena_contains(&inputs, array->items[n].str)
+                    pin_text(array->items[n]).bytes != pin_text(v).bytes &&
+                    arena_contains(&inputs, pin_text(array->items[n]).bytes)
                 );
             }
         }
@@ -520,7 +528,7 @@ static bool make_inputs(const request *r, bool changed)
                                  .u64 = IDS[1] };
     arguments[11] = (pin_value){ .type = PIN_BOOL, .b = !r->readonly };
     arguments[12] = (pin_value){ .type = PIN_BOOL, .b = !r->readonly };
-    arguments[13] = (pin_value){ .type = PIN_STR, .str = copy_text(&inputs, r->filter) };
+    REQUIRE(!pin_value_text(&inputs, &arguments[13], r->filter, strlen(r->filter)));
     arguments[14] = (pin_value){ .type = PIN_I32, .i = r->first };
     arguments[15] = (pin_value){ .type = PIN_I32, .i = r->count };
     return true;
@@ -553,9 +561,12 @@ static bool check_inputs(const request *r, bool changed)
                     break;
                 case 1:
                 case 2:
-                    REQUIRE(item->str && arena_contains(&inputs, item->str));
+                    REQUIRE(
+                        pin_text(*item).bytes &&
+                        arena_contains(&inputs, pin_text(*item).bytes)
+                    );
                     REQUIRE(!strcmp(
-                        item->str,
+                        pin_text(*item).bytes,
                         a == 2 ? PROTOTYPES[n] : (changed ? CHANGED_NAMES[n] : NAMES[n])
                     ));
                     break;
@@ -575,9 +586,9 @@ static bool check_inputs(const request *r, bool changed)
     REQUIRE(arguments[11].type == PIN_BOOL && arguments[11].b == !r->readonly);
     REQUIRE(arguments[12].type == PIN_BOOL && arguments[12].b == !r->readonly);
     REQUIRE(
-        arguments[13].type == PIN_STR && arguments[13].str &&
-        arena_contains(&inputs, arguments[13].str) &&
-        !strcmp(arguments[13].str, r->filter)
+        arguments[13].type == PIN_STR && pin_text(arguments[13]).bytes &&
+        arena_contains(&inputs, pin_text(arguments[13]).bytes) &&
+        !strcmp(pin_text(arguments[13]).bytes, r->filter)
     );
     REQUIRE(arguments[14].type == PIN_I32 && arguments[14].i == r->first);
     REQUIRE(arguments[15].type == PIN_I32 && arguments[15].i == r->count);
@@ -713,11 +724,11 @@ static bool check(call *c, const request *r, bool changed)
             const type_field *f = &record->type.fields[field];
             REQUIRE(!strcmp(f->name, FIELDS[field]));
             pin_value member;
-            pin_read_field(row->ptr, f, &member);
+            REQUIRE(!pin_read_field(&inputs, row->ptr, f, &member));
             if (field < 5) {
-                REQUIRE(member.type == PIN_STR && member.str);
-                REQUIRE(arena_contains(&c->storage, member.str));
-                REQUIRE(!strcmp(member.str, text[field]));
+                REQUIRE(member.type == PIN_STR && pin_text(member).bytes);
+                REQUIRE(arena_contains(&c->storage, pin_text(member).bytes));
+                REQUIRE(!strcmp(pin_text(member).bytes, text[field]));
             } else if (field < 7) {
                 REQUIRE(member.type == PIN_I32 && member.i == integers[field - 5]);
             } else {
@@ -733,12 +744,16 @@ static void retire_inputs()
     for (int a = 1; a <= 2; a++) {
         pin_array *array = arguments[a].ptr;
         for (int n = 0; array && n < array->count; n++) {
-            char *text = (char *)array->items[n].str;
+            char *text = (char *)pin_text(array->items[n]).bytes;
             memset(text, 'z', strlen(text));
         }
     }
-    if (arguments[13].str) {
-        memset((char *)arguments[13].str, 'z', strlen(arguments[13].str));
+    if (pin_text(arguments[13]).bytes) {
+        memset(
+            (char *)pin_text(arguments[13]).bytes,
+            'z',
+            strlen(pin_text(arguments[13]).bytes)
+        );
     }
     for (int a = 0; a < 2; a++) {
         for (int n = 0; n < ACTORS; n++) {
@@ -759,8 +774,8 @@ TEST_CASE(outliner_projection_matches_all_fields_and_selected_windows)
         REQUIRE(prepare(BACKENDS[b]));
         pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" }, text;
         REQUIRE(!entity_decimal(&inputs, &zero, 1, &text));
-        REQUIRE(text.type == PIN_STR && !strcmp(text.str, "0"));
-        REQUIRE(arena_contains(&inputs, text.str));
+        REQUIRE(text.type == PIN_STR && !strcmp(pin_text(text).bytes, "0"));
+        REQUIRE(arena_contains(&inputs, pin_text(text).bytes));
         for (int i = 0; i < 12; i++) {
             REQUIRE(make_inputs(&REQUESTS[i], false));
             REQUIRE(execute(&calls[0], BACKENDS[b], &REQUESTS[i]));

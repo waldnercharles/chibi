@@ -9,9 +9,11 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_json.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Forty fixed requests: 13 roots, 11 files, 16 imports. Each file/import gets
@@ -121,7 +123,13 @@ static const char *copy(arena *storage, const char *value)
 }
 static pin_value text(const char *value)
 {
-    return (pin_value){ .type = PIN_STR, .str = copy(&input, value) };
+    value = value ? value : "";
+    pin_value result;
+    const char *error = pin_value_text(&input, &result, value, strlen(value));
+    if (error) {
+        abort();
+    }
+    return result;
 }
 static pin_value integer(int value)
 {
@@ -146,7 +154,7 @@ static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool read(const pin_value *row, const char *name, pin_value *value)
@@ -154,15 +162,15 @@ static bool read(const pin_value *row, const char *name, pin_value *value)
     REQUIRE(row && row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, value);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, value));
     return true;
 }
 static bool same_string(const pin_value *row, const char *name, const char *expected)
 {
     pin_value value;
     REQUIRE(
-        read(row, name, &value) && value.type == PIN_STR && value.str &&
-        !strcmp(value.str, expected)
+        read(row, name, &value) && value.type == PIN_STR &&
+        pin_text(value).bytes && !strcmp(pin_text(value).bytes, expected)
     );
     return true;
 }
@@ -260,13 +268,15 @@ static bool owned(arena *storage, const pin_value *value, int depth)
         REQUIRE(type && type->field_count <= 8);
         for (int i = 0; i < type->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
+            REQUIRE(!pin_read_field(storage, value->ptr, &type->fields[i], &field));
             REQUIRE(owned(storage, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);
@@ -546,7 +556,10 @@ TEST_CASE(package_routes_imports)
             REQUIRE(owned(&output, &result, 0));
             REQUIRE(unpack(b, "ImportResult", &result, error, range, &value));
             if (!error) {
-                REQUIRE(value->type == PIN_STR && value->str && !strcmp(value->str, directory));
+                REQUIRE(
+                    value->type == PIN_STR && pin_text(*value).bytes &&
+                    !strcmp(pin_text(*value).bytes, directory)
+                );
             }
             if (i == 7) {
                 REQUIRE(save(b, 2, &result));
@@ -577,7 +590,10 @@ TEST_CASE(package_routes_detached_results)
                 REQUIRE(compare_file(value, &saved_file));
             }
             if (kind == 2) {
-                REQUIRE(value->type == PIN_STR && value->str && !strcmp(value->str, saved_import));
+                REQUIRE(
+                    value->type == PIN_STR && pin_text(*value).bytes &&
+                    !strcmp(pin_text(*value).bytes, saved_import)
+                );
             }
         }
     }

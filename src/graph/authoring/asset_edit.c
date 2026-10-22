@@ -135,8 +135,7 @@ int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pi
         v->default_value = (pin_value){ .type = v->type,
                                         .type_name = v->type_name,
                                         .container = container };
-        if (container == PIN_CONTAINER_SINGLE &&
-            (v->type == PIN_STR || v->type == PIN_NAME)) {
+        if (container == PIN_CONTAINER_SINGLE && v->type == PIN_NAME) {
             v->default_value.str = "";
         }
     }
@@ -500,15 +499,13 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
             caller,
             (const pin_array *)pin.default_value.ptr
         );
-    } else if (
-        (pin.type == PIN_STR || pin.type == PIN_NAME) && pin.default_value.str
-    ) {
-        pin.default_value.str = graph_own_str(
-            caller,
-            pin.default_value.str,
-            strlen(pin.default_value.str)
-        );
+    } else if (pin.type == PIN_STR || pin.type == PIN_NAME) {
+        pin_value input = pin.default_value;
+        if (pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
+            return -1;
+        }
     }
+    pin.default_value.type_name = pin.type_name;
     return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;
 }
 static node *behavior_asset_add_call_node(behavior_asset *asset, graph *caller, graph *target, graph_kind kind)

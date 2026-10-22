@@ -97,6 +97,7 @@ static void parameter(
         input ? "true" : "false",
         owner ? "true" : "false"
     );
+    fprintf(out, ", .c_string = %s", input && !strcmp(pin, "PIN_STR") ? "true" : "false");
     if (input) {
         fprintf(out, ", .default_value = { .type = %s, .type_name = ", pin);
         emit_string(out, nominal(pin, spelling) ? spelling : NULL);
@@ -446,11 +447,13 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             type(out, field->pin, field_type_name(field), 0);
             fprintf(
                 out,
-                ", .offset = offsetof(%s, %s), .writable = %s, .range_contract "
+                ", .offset = offsetof(%s, %s), .writable = %s, .c_string = %s, "
+                ".range_contract "
                 "= %s, .min = %.17g, .max = %.17g },\n",
                 s->name,
                 field->name,
                 s->derived_from ? "false" : "true",
+                !strcmp(field->pin, "PIN_STR") ? "true" : "false",
                 field->range_contract ? "true" : "false",
                 field->min,
                 field->max

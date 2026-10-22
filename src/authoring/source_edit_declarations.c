@@ -145,7 +145,7 @@ static bool retype_variable(
     pin_value zero = { .type = type.storage,
                        .container = type.container,
                        .type_name = named ? named->name : NULL };
-    if (type.storage == PIN_STR || type.storage == PIN_NAME) {
+    if (type.storage == PIN_NAME) {
         zero.str = "";
     }
     char *literal = keep ? NULL

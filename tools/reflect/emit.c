@@ -92,7 +92,7 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
                 field_type_name(f)
             );
             emit_string(out, f->description);
-            fprintf(out, ", %s, ", f->color ? "true" : "false");
+            fprintf(out, ", %s, false, ", f->color ? "true" : "false");
             emit_string(out, f->unit);
             fprintf(
                 out,
@@ -326,7 +326,7 @@ static void emit_native_header(FILE *out, const collect_ctx *ctx, bool capabilit
             fprintf(out, "#include \"%s\"\n", !*g_prefix && !strcmp(file, "components.h") ? "runtime/components.h" : file);
         }
     }
-    fputs("#include \"types/type.h\"\n#include \"types/catalog.h\"\n#include \"execution/service.h\"\n", out);
+    fputs("#include \"types/type.h\"\n#include \"types/text.h\"\n#include \"types/catalog.h\"\n#include \"execution/service.h\"\n", out);
     if (capabilities) {
         fputs("#include \"support/arena.h\"\n#include \"support/array.h\"\n", out);
         fputs("#include \"types/array.h\"\n#include \"execution/function.h\"\n", out);

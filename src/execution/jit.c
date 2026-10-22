@@ -134,8 +134,8 @@ void behavior_jit_failure(
 )
 {
     struct sljit_compiler *c = m->compiler;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
-        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
+        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,

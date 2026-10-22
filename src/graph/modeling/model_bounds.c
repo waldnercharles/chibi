@@ -1,3 +1,4 @@
+#include "graph/model/value_copy.h"
 #include "graph/modeling/model_internal.h"
 #include "runtime/shaders/volume.h"
 #include "support/xalloc.h"
@@ -144,7 +145,7 @@ bool model_validate_node(const graph *g, const node *n, shader_error *error)
                              .volume_range = model_number(n, 3),
                              .volume_lipschitz = model_number(n, 4) };
         model_vector(n, 1, spec.value);
-        const char *key = n->input_pins[0].default_value.str;
+        const char *key = graph_text_cstring(g, n->input_pins[0].default_value);
         const char *base = key ? strrchr(key, '/') : NULL;
         bool identity = base && strlen(base + 1) == 24 &&
                         !strcmp(base + 17, ".sdf.png");

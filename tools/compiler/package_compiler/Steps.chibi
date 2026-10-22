@@ -228,6 +228,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
             if (declared >= 0) {
+                hidden := PrivateType(forest, text, types, names, package, declared);
+                if (hidden >= 0) {
+                    return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+                }
                 resolved := ReadType(forest, text, types, names, package, declared);
                 if (resolved.storage == 0) {
                     return Fail(forest, declared, document, "local type is not supported yet");
@@ -310,6 +314,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (field < 0) {
                     return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
                 }
+                if (members[field].c_string) {
+                    message := CStringMessage(forest, text, value, members[field].name);
+                    if (message != "") {
+                        return Fail(forest, value, document, message);
+                    }
+                }
                 if (!members[field].writable) {
                     return Fail(forest, destination, document, "Assignment requires a writable value");
                 }
@@ -335,6 +345,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 field := FindField(types, members, names[found].record, member);
                 if (field < 0) {
                     return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
+                }
+                if (members[field].c_string) {
+                    message := CStringMessage(forest, text, value, members[field].name);
+                    if (message != "") {
+                        return Fail(forest, value, document, message);
+                    }
                 }
                 code.extend(TargetPoints(forest, text, names, ops, destination));
                 next.append(Expect(value, members[field].storage, 0, -1));
@@ -790,6 +806,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (item.phase == 0 && kind == "member_expression") {
+        hidden := PrivateAccess(forest, text, callables, types, constants, names, package, item.node);
+        if (hidden >= 0) {
+            return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+        }
+    }
     if (kind == "number" && Floating(item.storage)) {
         // A literal where a floating value is expected is one.
         return FloatConstantStep(forest, text, document, Typed(-1, NumberStorage, 0, item.node), item.storage, ops, at,
@@ -821,9 +843,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         } else {
             // String literals are JSON strings.
             storage = TextStorage;
-            decoded := compiler_json_string(Text(forest, text, item.node));
-            if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
-                return Fail(forest, item.node, document, "Invalid string or embedded NUL");
+            decoded := compiler_json_value_string(Text(forest, text, item.node));
+            if (!decoded.valid) {
+                return Fail(forest, item.node, document, "Invalid string literal");
             }
             literal = decoded.value;
         }
@@ -1041,6 +1063,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             // A native reads the field, such as an input action's `pressed`.
             return NativeReadStep(object, field, ops, target, at, node);
         }
+        if (field.c_string) {
+            return NativeTextReadStep(object, field, ops, target, at, node);
+        }
         if (field.storage == StructStorage && field.record < 0) {
             return Fail(forest, item.node, document,
                         format_text("field '{}' has a type this compiler cannot read", member));
@@ -1175,6 +1200,12 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
                     earlier = NextMember(forest, earlier);
                 }
                 field := members[FindField(types, members, record, name)];
+                if (field.c_string) {
+                    message := CStringMessage(forest, text, Field(forest, member, "value"), field.name);
+                    if (message != "") {
+                        return Fail(forest, Field(forest, member, "value"), document, message);
+                    }
+                }
                 next.append(Expect(Field(forest, member, "value"), field.storage, 0, -1));
             }
             count += 1;
@@ -1258,11 +1289,33 @@ Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     }
     return at;
 }
+// A provable literal at an explicit foreign C-string boundary.
+CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, boundary: string) -> string {
+    at := Unparenthesized(forest, node);
+    if (Is(forest, at, "named_argument")) {
+        at = Unparenthesized(forest, Field(forest, at, "value"));
+    }
+    if (!Is(forest, at, "string")) {
+        return "";
+    }
+    decoded := compiler_json_value_string(Text(forest, text, at));
+    if (!decoded.valid) {
+        return "";
+    }
+    index: int = 0;
+    while (index < strings.ByteLength(decoded.value)) {
+        if (strings.ByteAt(decoded.value, index) == 0) {
+            return format_text("C-string boundary '{}' cannot accept NUL at byte {}", boundary, index);
+        }
+        index += 1;
+    }
+    return "";
+}
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-             params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
              built: int[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
@@ -1278,6 +1331,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     marks: int[] = [];
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
+        hidden := PrivateAccess(forest, text, callables, types, constants, names, package, callee);
+        if (hidden >= 0) {
+            return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
+        }
         sum_type: int = -1;
         if (Is(forest, callee, "member_expression")) {
             sum_type = UnionOf(forest, text, types, names, package, callee);
@@ -1543,12 +1600,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // when it gives none.
         said := Text(forest, text, Unparenthesized(forest, item.b));
         if (item.a >= 0) {
-            decoded := compiler_json_string(Text(forest, text, Unparenthesized(forest, item.a)));
-            if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
-                return Fail(forest, item.a, document, "Invalid string or embedded NUL");
+            decoded := compiler_json_value_string(Text(forest, text, Unparenthesized(forest, item.a)));
+            if (!decoded.valid) {
+                return Fail(forest, item.a, document, "Invalid string literal");
             }
             if (decoded.value != "") {
-                said = decoded.value;
+                said = strings.ReplaceAll(decoded.value, "\u0000", "\\0");
             }
         }
         check := Instruction(ops.guard, 0, 0, values[top - 1].slot, 0, target.assert_failure, node);
@@ -1744,6 +1801,18 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         expected := NoValue();
         if (linked) {
             port := ports[NativePort(natives[chosen], index)];
+            if (port.c_string) {
+                argument_node := FirstMember(forest, Field(forest, item.node, "arguments"));
+                ordinal: int = 0;
+                while (ordinal < index && argument_node >= 0) {
+                    argument_node = NextMember(forest, argument_node);
+                    ordinal += 1;
+                }
+                message := CStringMessage(forest, text, argument_node, port.name);
+                if (message != "") {
+                    return Fail(forest, argument_node, document, message);
+                }
+            }
             expected = Typed(-1, port.storage, port.container, -1);
             if (port.storage == AnyPort && argument.storage > 0) {
                 expected = argument;
@@ -3031,6 +3100,31 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     roots.append(root);
     return Step.Emitted(code, slots, locals, CallCells(operands, combined), [host], roots, calls, bound, next, 2,
                         Typed(made, StructStorage, 0, result.record), NoValue(), marks);
+}
+// A native char pointer is read through its reflected field adapter.
+NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
+                       node: snapshot.SnapshotNode) -> Step {
+    first := at.cell;
+    facts: uint64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
+    cells := ReferenceCells(target, object.record, facts, field);
+    cells.extend([ReferenceCell(target), TypedCell(TextStorage, 0, -1),
+                  TypedCell(StructStorage, 0, object.record)]);
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    slots: Slot[] = [address, address, address, address];
+    code := CellWrite(target.pointer_storage, object.slot, first + 20, ops, target, at.slot, node);
+    code.append(Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 1, node));
+    code.extend(CellWrite(target.pointer_storage, at.slot, first, ops, target, at.slot + 1, node));
+    code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + 2, first + 20, 0, 0, node));
+    code.extend(CellWrite(target.pointer_storage, at.slot + 2, first + 4, ops, target, at.slot + 3, node));
+    hosts := FieldReferenceHosts(first);
+    code.extend(ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
+    slots.extend(FieldReferenceSlots(target));
+    hosts.append(ReadThroughHost(first + 18));
+    code.extend(ReadThroughCode(ops, target, TextStorage, 0, at.slot + 8, first + 18, at.host + 2,
+                                at.slot + 9, node));
+    slots.extend(ReadThroughSlots(TextStorage, 0, target));
+    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 1,
+                        Typed(at.slot + 11, TextStorage, 0, -1), NoValue(), []);
 }
 // `v.f`, where natives[f.read] reads the field: a call of it on `v`.
 NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,

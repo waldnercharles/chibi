@@ -7,6 +7,7 @@
 #include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -123,17 +124,17 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     const source_presentation_origin *o = literal(view);
     REQUIRE(o != NULL);
     node *n = origin_node(view, o);
-    REQUIRE(!strcmp(n->output_pins[0].default_value.str, "hello"));
-    const char *original_default = n->output_pins[0].default_value.str;
+    REQUIRE(!strcmp(pin_text(n->output_pins[0].default_value).bytes, "hello"));
+    const char *original_default = pin_text(n->output_pins[0].default_value).bytes;
     copy = authoring_source_presentation_clone(view);
     const source_presentation_origin *owned = literal(copy);
     REQUIRE(owned != NULL);
     node *copied = origin_node(copy, owned);
     REQUIRE(copied->desc != n->desc);
-    REQUIRE(copied->output_pins[0].default_value.str != original_default);
+    REQUIRE(pin_text(copied->output_pins[0].default_value).bytes != original_default);
     REQUIRE(
-        copied->desc->outputs[0].default_value.str ==
-        copied->output_pins[0].default_value.str
+        pin_text(copied->desc->outputs[0].default_value).bytes ==
+        pin_text(copied->output_pins[0].default_value).bytes
     );
     authoring_source_presentation_free(view);
     view = NULL;
@@ -141,7 +142,7 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     analysis = NULL;
     script_syntax_free(syntax);
     syntax = NULL;
-    REQUIRE(!strcmp(copied->output_pins[0].default_value.str, "hello"));
+    REQUIRE(!strcmp(pin_text(copied->output_pins[0].default_value).bytes, "hello"));
     REQUIRE(!strcmp(copied->desc->name, "Literal"));
     REQUIRE(!copied->desc->fn && !copied->desc->execution_call);
     edited = authoring_source_presentation_replace(copy, owned, "\"goodbye\"");
@@ -186,7 +187,7 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     REQUIRE(copied->x == 12 && !strcmp(copied->comment, "retained comment"));
     behavior_asset *transferred = authoring_source_presentation_take_view(copy);
     copy = NULL;
-    REQUIRE(!strcmp(copied->output_pins[0].default_value.str, "hello"));
+    REQUIRE(!strcmp(pin_text(copied->output_pins[0].default_value).bytes, "hello"));
     REQUIRE(!strcmp(copied->desc->name, "Literal"));
     behavior_asset_free(transferred);
     return true;

@@ -20,6 +20,9 @@ static void struct_fields(const type_desc *type, const void *data, arena_marker 
             const char *value;
             memcpy(&value, member, sizeof value);
             mark(user, value);
+            if (field->type == PIN_STR && field->text_descriptor && value) {
+                mark(user, ((const pin_string *)value)->bytes);
+            }
         }
     }
 }
@@ -27,6 +30,10 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
 {
     mark(user, value->type_name);
     mark(user, value->record);
+    if (value->container == PIN_CONTAINER_SINGLE && value->type == PIN_STR &&
+        value->text) {
+        mark(user, value->text->bytes);
+    }
     if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
         value->type == PIN_STR || value->type == PIN_NAME || value->type == PIN_UNION) {
         mark(user, value->ptr);

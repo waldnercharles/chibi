@@ -72,7 +72,9 @@ static bool matches(const entity_condition *condition, ecs_world *world, ecs_ent
         return false;
     }
     pin_value value;
-    pin_read_field(row, condition->field, &value);
+    if (pin_read_field(NULL, row, condition->field, &value)) {
+        return false;
+    }
     double number;
     switch (value.type) {
         case PIN_BOOL: number = value.b; break;

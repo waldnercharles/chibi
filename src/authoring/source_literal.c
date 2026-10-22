@@ -1,9 +1,12 @@
 #include "authoring/source_literal.h"
 
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
+#include "types/catalog.h"
 #include "types/map.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -56,6 +59,7 @@ typedef struct
     char *text, *error;
     size_t error_size;
     int values;
+    arena storage;
 } literal;
 
 static bool fail(literal *l, const char *message)
@@ -79,16 +83,14 @@ static bool token(literal *l, const char *text)
 {
     return append(l, text, strlen(text));
 }
-static bool string(literal *l, const char *text)
+static bool string(literal *l, pin_string text)
 {
-    if (!text) {
-        return token(l, "null");
-    }
     if (!token(l, "\"")) {
         return false;
     }
-    const unsigned char *p = (const unsigned char *)text;
-    while (*p) {
+    const unsigned char *p = (const unsigned char *)text.bytes;
+    const unsigned char *end = p + text.length;
+    while (p < end) {
         if (*p == '"' || *p == '\\') {
             char escape[] = { '\\', (char)*p++, 0 };
             if (!token(l, escape)) {
@@ -109,7 +111,7 @@ static bool string(literal *l, const char *text)
                   : *p >= 0xe0 && *p <= 0xef ? 3
                   : *p >= 0xf0 && *p <= 0xf4 ? 4
                                              : 0;
-        if (!bytes) {
+        if (!bytes || (size_t)(end - p) < (size_t)bytes) {
             return fail(l, "Source literal string is not valid UTF-8");
         }
         for (int i = 1; i < bytes; ++i) {
@@ -185,6 +187,17 @@ static bool aggregate(literal *l, script_type expected, const pin_value *v, int 
         const char *data = (const char *)v->ptr + field->offset;
         if (item.type == PIN_STRUCT && item.container == PIN_CONTAINER_SINGLE) {
             item.ptr = (void *)data;
+        } else if (
+            item.type == PIN_STR && item.container == PIN_CONTAINER_SINGLE &&
+            field->c_string
+        ) {
+            const char *text;
+            memcpy(&text, data, sizeof text);
+            const char *error = pin_value_text(&l->storage, &item, text, text ? strlen(text) : 0);
+            if (error) {
+                return fail(l, error);
+            }
+            item.type_name = nominal ? nominal->name : NULL;
         } else {
             memcpy(&item.d, data, size);
         }
@@ -286,15 +299,25 @@ static bool number(literal *l, const pin_value *v)
 }
 static bool reference(literal *l, script_reference_kind kind, const pin_value *v)
 {
+    const char *reference_text = NULL;
+    if (kind == SCRIPT_REFERENCE_PROTOTYPE || kind == SCRIPT_REFERENCE_COMPONENT) {
+        const char *error = pin_text_cstring(&l->storage, *v, &reference_text, NULL);
+        if (error) {
+            return fail(l, error);
+        }
+    }
     const char *name = NULL;
     if (kind == SCRIPT_REFERENCE_PROTOTYPE) {
-        int index = v->str ? script_catalog_find_capability(l->catalog, v->str, SCRIPT_CAPABILITY_PROTOTYPE)
-                           : -1;
+        int index = reference_text
+                      ? script_catalog_find_capability(l->catalog, reference_text, SCRIPT_CAPABILITY_PROTOTYPE)
+                      : -1;
         if (index >= 0) {
             name = l->catalog->capabilities[index].name;
         }
     } else if (kind == SCRIPT_REFERENCE_COMPONENT) {
-        int index = v->str ? script_catalog_find_type(l->catalog, v->str) : -1;
+        int index = reference_text
+                      ? script_catalog_find_type(l->catalog, reference_text)
+                      : -1;
         if (index >= 0 && l->catalog->types[index].component) {
             const script_catalog_type *type = &l->catalog->types[index];
             name = type->source_name ? type->source_name : type->name;
@@ -368,7 +391,7 @@ static bool value(literal *l, script_type expected, const pin_value *v, int dept
     switch (v->type) {
         case PIN_BOOL: return token(l, v->b ? "true" : "false");
         case PIN_NAME:
-        case PIN_STR: return string(l, v->str);
+        case PIN_STR: return string(l, pin_text(*v));
         case PIN_STRUCT: return aggregate(l, expected, v, depth);
         case PIN_FLOW:
         case PIN_HANDLE:
@@ -391,6 +414,7 @@ char *authoring_source_literal(
     literal l = { .catalog = catalog, .error = error, .error_size = size };
     if (!value(&l, expected, v, 0)) {
         afree(l.text);
+        arena_free(&l.storage);
         return NULL;
     }
     int length = acount(l.text);
@@ -398,5 +422,6 @@ char *authoring_source_literal(
     memcpy(result, l.text, (size_t)length);
     result[length] = 0;
     afree(l.text);
+    arena_free(&l.storage);
     return result;
 }

@@ -12,6 +12,7 @@
 #include "toolchain/compiler_json.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
+#include "types/text.h"
 #include "types/union.h"
 #include "union_members_chibi_source.h"
 #include "unit_algebra_chibi_source.h"
@@ -90,14 +91,14 @@ static bool read(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(row->type == PIN_STRUCT && row->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field);
-    pin_read_field(row->ptr, field, out);
+    REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
 static bool put(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    pin_write_field(row->ptr, field, value);
+    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
 static bool int_field(const pin_value *row, const char *name, int expected)
@@ -112,14 +113,19 @@ static bool bool_field(const pin_value *row, const char *name, bool expected)
     REQUIRE(read(row, name, &value) && value.type == PIN_BOOL && value.b == expected);
     return true;
 }
-static bool string_field(const pin_value *row, const char *name, const char *expected)
+static bool text_field(const pin_value *row, const char *name, pin_string expected)
 {
     pin_value value;
-    REQUIRE(
-        read(row, name, &value) && value.type == PIN_STR && value.str &&
-        !strcmp(value.str, expected ? expected : "")
-    );
+    REQUIRE(read(row, name, &value) && value.type == PIN_STR);
+    pin_string actual = pin_text(value);
+    REQUIRE(actual.length == expected.length);
+    REQUIRE(!actual.length || !memcmp(actual.bytes, expected.bytes, actual.length));
     return true;
+}
+static bool string_field(const pin_value *row, const char *name, const char *expected)
+{
+    expected = expected ? expected : "";
+    return text_field(row, name, (pin_string){ expected, (uint32_t)strlen(expected) });
 }
 static bool range_fields(const pin_value *row, script_range r)
 {
@@ -271,13 +277,15 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         REQUIRE(t && t->field_count <= 22);
         for (int i = 0; i < t->field_count; i++) {
             pin_value field;
-            pin_read_field(value->ptr, &t->fields[i], &field);
+            REQUIRE(!pin_read_field(&input, value->ptr, &t->fields[i], &field));
             REQUIRE(owned(storage, &field, depth + 1));
         }
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(value->str && arena_contains(storage, value->str));
+        REQUIRE(
+            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+        );
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -565,7 +573,7 @@ static bool compare_replaced(const pin_union *u, const script_catalog_type *d)
             typed_field(r, "type", &u->values[3], &u->values[4], v->type) &&
             bool_field(r, "tagged", v->tagged) &&
             bool_field(r, "is_literal", v->is_literal) &&
-            string_field(r, "literal", v->is_literal ? v->literal.str : "") &&
+            text_field(r, "literal", v->is_literal ? pin_text(v->literal) : (pin_string){ "", 0 }) &&
             int_field(r, "field_count", v->field_count) &&
             field_number(r, "field_start", &fs) &&
             compare_fields(&u->values[2], fs, v->fields, v->field_count, &u->values[3], &u->values[4], true)
@@ -583,9 +591,10 @@ static bool compare_added(const pin_union *update, const script_catalog_type *d,
     REQUIRE(
         p->values[1].type == PIN_BOOL && p->values[1].b && p->values[2].type == PIN_U64 &&
         p->values[2].u64 == d->id && p->values[3].type == PIN_STR &&
-        !strcmp(p->values[3].str, d->name) && typed_value(&p->values[4], d->type) &&
-        p->values[5].type == PIN_I32 && p->values[5].i == (int)d->size &&
-        p->values[6].type == PIN_BOOL && p->values[6].b == d->internal &&
+        !strcmp(pin_text(p->values[3]).bytes, d->name) &&
+        typed_value(&p->values[4], d->type) && p->values[5].type == PIN_I32 &&
+        p->values[5].i == (int)d->size && p->values[6].type == PIN_BOOL &&
+        p->values[6].b == d->internal &&
         list(&p->values[7], PIN_STRUCT, d->variant_count, &a)
     );
     if (d->variant_count) {
@@ -736,7 +745,7 @@ static bool witness(int index, const script_union_member_result *r)
     static const int counts[SOURCE_CASES] = { 1, 1, 1, 1, 1, 1, 1, 1,
                                               2, 2, 1, 2, 0, 0, 1, 3 };
     static const int diagnostics_count[SOURCE_CASES] = { 0, 0, 0, 3, 1, 1, 1, 0,
-                                                         0, 1, 1, 0, 0, 0, 1, 0 };
+                                                         0, 1, 1, 0, 0, 0, 0, 0 };
     REQUIRE(r->update_count == counts[index] && r->diagnostic_count == diagnostics_count[index]);
     if (index == 0) {
         REQUIRE(
@@ -749,7 +758,7 @@ static bool witness(int index, const script_union_member_result *r)
     if (index == 3) {
         REQUIRE(
             r->updates[0].definition.variant_count == 3 &&
-            !strcmp(r->updates[0].definition.variants[2].literal.str, "same")
+            !strcmp(pin_text(r->updates[0].definition.variants[2].literal).bytes, "same")
         );
     }
     if (index == 2 || index == 7) {
@@ -772,11 +781,14 @@ static bool witness(int index, const script_union_member_result *r)
         REQUIRE(strstr(r->diagnostics[0].message, "Recursive owned"));
     }
     if (index == 14) {
-        REQUIRE(
-            strstr(r->diagnostics[0].message, "embedded NUL") &&
-            r->updates[0].definition.variants[0].is_literal &&
-            !r->updates[0].definition.variants[0].literal.str[0]
-        );
+        REQUIRE(r->diagnostic_count == 0 && r->updates[0].definition.variant_count == 1);
+        const script_catalog_variant *literal = &r->updates[0].definition.variants[0];
+        REQUIRE(literal->is_literal && literal->literal.type == PIN_STR);
+        pin_string text = pin_text(literal->literal);
+        REQUIRE(text.length == 1 && text.bytes[0] == 0);
+        REQUIRE(literal->tag != script_catalog_id("union-literal", ""));
+        const char label[] = { '"', '\\', 'u', '0', '0', '0', '0', '"', 0 };
+        REQUIRE(!strcmp(literal->name, label));
     }
     if (index == 15) {
         REQUIRE(

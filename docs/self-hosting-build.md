@@ -298,7 +298,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   record differs. A failed compile leaves no record, so the next run retries
   it. Records are read with `build.lines`, because `core:strings` copies the
   rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 362
+  stamps are separate lines because build values are never freed: with 363
   sources an up-to-date run reads about 6 MB of records, and splitting each
   line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
   arena blocks, about 128 MB of values.
@@ -736,6 +736,8 @@ proofs cannot satisfy the comparison job.
 Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;
 - when the host's target changes;
+- when the prepared payload or semantic version changes, even if layout and
+  instruction names remain unchanged;
 - when a compiler package gains or loses a source file, because recovery
   compiles the files the manifest records;
 - when the compiler emits other code for its own sources, because the first

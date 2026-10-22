@@ -3,7 +3,7 @@
 #include "runtime/terrain_storage.h"
 
 static const native_parameter_definition REQUEST_IN[] = {
-    TERRAIN_STORAGE_REQUEST_INPUTS(NATIVE_PORT)
+    TERRAIN_STORAGE_REQUEST_INPUTS(NATIVE_CSTRING_PORT)
 };
 static const native_parameter_definition REQUEST_OUT[] = {
     TERRAIN_STORAGE_REQUEST_OUTPUTS(NATIVE_PORT)

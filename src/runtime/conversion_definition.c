@@ -1,7 +1,14 @@
 #include "runtime/conversions.h"
 #define SCALAR(KEY, NAME, SOURCE, INPUT, INPUT_NAME, RESULT, OUTPUT, OUTPUT_NAME) \
     static const native_parameter_definition KEY##_inputs[] = {                   \
-        NATIVE_CONVERSION_PORT(NATIVE_PORT, "Value", INPUT, INPUT_NAME)           \
+        { .name = "Value",                                                        \
+          .kind = NATIVE_PARAMETER_DATA,                                          \
+          .storage = INPUT,                                                       \
+          .type_name = INPUT_NAME,                                                \
+          .container = PIN_CONTAINER_SINGLE,                                      \
+          .has_default = true,                                                    \
+          .default_value = { .type = INPUT },                                     \
+          .c_string = OUTPUT == PIN_NAME },                                       \
     };                                                                            \
     static const native_parameter_definition KEY##_outputs[] = {                  \
         NATIVE_CONVERSION_PORT(NATIVE_PORT, RESULT, OUTPUT, OUTPUT_NAME)          \

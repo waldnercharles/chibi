@@ -203,6 +203,7 @@ int prototype_spawn(
 );
 
 int prototype_read_field(
+    arena *storage,
     const prototype *prototype,
     const char *component_name,
     const char *field_name,

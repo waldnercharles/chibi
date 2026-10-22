@@ -4,6 +4,7 @@
 #include "execution/prepared.h"
 #include "types/array.h"
 #include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -25,7 +26,7 @@ static const behavior_function_op operations[] = {
 };
 _Static_assert(sizeof operations / sizeof *operations == SCALAR_LOWERING_OPCODES, "scalar lowering wire opcodes changed");
 _Static_assert(PIN_BOOL == 1 && PIN_I32 == 6 && PIN_U32 == 7 && PIN_U64 == 9, "scalar lowering storage schema changed");
-_Static_assert(EXECUTION_PREPARED_VERSION == 18, "review scalar lowering target schema");
+_Static_assert(EXECUTION_PREPARED_VERSION == 20, "review scalar lowering target schema");
 behavior_function_op scalar_lowering_opcode(int wire)
 {
     assert(wire >= 0 && wire < SCALAR_LOWERING_OPCODES);
@@ -50,7 +51,7 @@ static bool field(const pin_value *row, const char *key, pin_type type, pin_valu
     if (!f || f->type != type) {
         return false;
     }
-    pin_read_field(row->ptr, f, out);
+    pin_read_field(NULL, row->ptr, f, out);
     return out->type == type && out->container == PIN_CONTAINER_SINGLE;
 }
 static bool integer(const pin_value *row, const char *key, int *out)
@@ -89,17 +90,10 @@ static const pin_value *item(const pin_array *a, int index, pin_value *out)
     *out = pin_array_get(a, index);
     return out;
 }
-static bool path_valid(const char *text)
+static bool path_valid(pin_value value)
 {
-    if (!text) {
-        return false;
-    }
-    for (int i = 0; i <= 240; i++) {
-        if (!text[i]) {
-            return true;
-        }
-    }
-    return false;
+    pin_string text = pin_text(value);
+    return text.length <= 240 && !memchr(text.bytes, 0, text.length);
 }
 static bool literal(const pin_value *row, pin_value *out)
 {
@@ -162,7 +156,7 @@ static bool instruction(const pin_value *row, behavior_function_instruction *out
     if (!field(row, "indirect", PIN_BOOL, &indirect) || indirect.b ||
         !field(row, "node_id", PIN_I32, &node) || node.i ||
         !field(row, "layout", PIN_I32, &layout) || layout.i ||
-        !field(row, "message", PIN_STR, &message) || !message.str || message.str[0] ||
+        !field(row, "message", PIN_STR, &message) || pin_text(message).length ||
         out->frame || out->stack != -1 || out->pin || out->component) {
         return false;
     }
@@ -429,6 +423,7 @@ bool scalar_lowering_decode(
             return fail(error, size, "invalid scalar plan local");
         }
     }
+    uint32_t origin_lengths[LIMIT];
     for (int n = 0; n < code_count; n++) {
         int doc;
         behavior_function_source *s = &origins[n];
@@ -438,12 +433,14 @@ bool scalar_lowering_decode(
             !integer(item(a[5], n, &row), "end", &s->end) ||
             !integer(item(a[5], n, &row), "line", &s->line) ||
             !integer(item(a[5], n, &row), "column", &s->column) ||
-            !integer(item(a[5], n, &row), "document", &doc) || !in(doc, count(a[6])) ||
-            s->start < 0 || s->end < s->start || s->line < 0 || s->column < 0 ||
-            !path_valid(pin_array_get(a[6], doc).str)) {
+            !integer(item(a[5], n, &row), "document", &doc) ||
+            !in(doc, count(a[6])) || s->start < 0 || s->end < s->start ||
+            s->line < 0 || s->column < 0 || !path_valid(pin_array_get(a[6], doc))) {
             return fail(error, size, "invalid scalar plan instruction or origin");
         }
-        s->asset_name = pin_array_get(a[6], doc).str;
+        pin_string name = pin_text(pin_array_get(a[6], doc));
+        s->asset_name = name.bytes;
+        origin_lengths[n] = name.length;
     }
     if (!references(code, code_count, slots, kinds, slot_count, local_count, defaults, variables, headers, results)) {
         return fail(error, size, "invalid scalar plan references or provenance");
@@ -465,9 +462,10 @@ bool scalar_lowering_decode(
         behavior_function_builder_local(holder.builder, initials[n]);
     }
     for (int n = 0; n < code_count; n++) {
-        size_t length = strlen(origins[n].asset_name) + 1;
-        char *name = arena_alloc(&holder.storage, length);
+        size_t length = (size_t)origin_lengths[n];
+        char *name = arena_alloc(&holder.storage, length + 1);
         memcpy(name, origins[n].asset_name, length);
+        name[length] = 0;
         origins[n].asset_name = name;
         behavior_function_builder_origin(holder.builder, origins[n]);
         behavior_function_builder_emit(holder.builder, code[n]);

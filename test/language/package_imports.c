@@ -4,6 +4,7 @@
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -605,15 +606,24 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
 {
     char *label = strdup("owned label"), *first = strdup("first"),
          *second = strdup("second");
-    pin_value items[] = { { .type = PIN_STR, .str = first },
-                          { .type = PIN_STR, .str = second } };
+    pin_value items[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = first,
+                                       .length = (uint32_t)strlen(first) } },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = second,
+                                       .length = (uint32_t)strlen(second) } }
+    };
     pin_array array = { .element_type = PIN_STR, .count = 2, .capacity = 2, .items = items };
     script_catalog_field fields[] = {
         { .id = 10,
           .name = "label",
           .type = { .storage = PIN_STR },
           .has_default = true,
-          .default_value = { .type = PIN_STR, .str = label } },
+          .default_value = { .type = PIN_STR,
+                             .text = &(
+                                 const pin_string
+                             ){ .bytes = label, .length = (uint32_t)strlen(label) } } },
         { .id = 11,
           .name = "words",
           .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY },
@@ -653,8 +663,11 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         owned->fields[1].has_default
     );
     REQUIRE(owned->fields[0].default_value.type == PIN_STR);
-    REQUIRE(arena_contains(&metadata_storage, owned->fields[0].default_value.str));
-    REQUIRE(!strcmp(owned->fields[0].default_value.str, "owned label"));
+    REQUIRE(arena_contains(
+        &metadata_storage,
+        pin_text(owned->fields[0].default_value).bytes
+    ));
+    REQUIRE(!strcmp(pin_text(owned->fields[0].default_value).bytes, "owned label"));
     const pin_array *words = owned->fields[1].default_value.ptr;
     REQUIRE(words && arena_contains(&metadata_storage, words) && words->count == 2);
     REQUIRE(
@@ -662,10 +675,13 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         words->items[1].type == PIN_STR
     );
     REQUIRE(
-        arena_contains(&metadata_storage, words->items[0].str) &&
-        arena_contains(&metadata_storage, words->items[1].str)
+        arena_contains(&metadata_storage, pin_text(words->items[0]).bytes) &&
+        arena_contains(&metadata_storage, pin_text(words->items[1]).bytes)
     );
-    REQUIRE(!strcmp(words->items[0].str, "first") && !strcmp(words->items[1].str, "second"));
+    REQUIRE(
+        !strcmp(pin_text(words->items[0]).bytes, "first") &&
+        !strcmp(pin_text(words->items[1]).bytes, "second")
+    );
     const source_package_input files[] = {
         { "app/a.chibi", "package app\nMain :: (value: int) -> int { return value; }\n", 0 },
     };
@@ -679,7 +695,9 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
     script_catalog_variant changed_variant = *owned;
     script_catalog_field changed_fields[2];
     memcpy(changed_fields, owned->fields, sizeof changed_fields);
-    changed_fields[0].default_value.str = "changed label";
+    changed_fields[0].default_value.text = &(
+        const pin_string
+    ){ .bytes = "changed label", .length = (uint32_t)strlen("changed label") };
     changed_variant.fields = changed_fields;
     changed_type.variants = &changed_variant;
     changed.types = &changed_type;

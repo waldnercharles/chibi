@@ -3,6 +3,7 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/model/value_copy.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_catalog_records.h"
 #include "render/shader_values.h"
@@ -891,10 +892,10 @@ static void model_source_material_rename(behavior_asset *source, const char *fro
                 pin_spec *pin = &n->input_pins[k];
                 if (pin->type == PIN_STR && pin->type_name &&
                     !strcmp(pin->type_name, "MaterialAsset") &&
-                    pin->default_value.str && !strcmp(pin->default_value.str, from)) {
-                    pin_value value = { .type = PIN_STR,
-                                        .str = to,
-                                        .type_name = "MaterialAsset" };
+                    graph_text_cstring(g, pin->default_value) &&
+                    !strcmp(graph_text_cstring(g, pin->default_value), from)) {
+                    pin_value value = graph_text_value(g, to, strlen(to));
+                    value.type_name = "MaterialAsset";
                     int updated = graph_set_pin_default(g, n, false, k, &value);
                     assert(updated == 0);
                     (void)updated;

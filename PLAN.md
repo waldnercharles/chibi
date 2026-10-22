@@ -592,6 +592,16 @@ supported host configuration. The Linux x86_64 and Windows x64 runs wait for
 CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
+The 2026-10-22 compiler self-build CI removes native runtime construction from
+the normal proof. It starts from a checksummed runtime binary recorded in
+`tools/compiler/runtime.json` and the checked-in compiler artifact, compiles
+the current compiler sources, and executes the resulting compiler to compile
+them again. No C compiler or CMake is installed or invoked by that workflow;
+native runtime-seed construction is a separate manual recovery operation.
+This proves compiler-artifact self-reproduction on the supported native hosts.
+The final installed build/link and checked-game acceptance above remains a
+separate gate; the native runtime itself is still an explicit prebuilt input.
+
 ### M6. Replace the internal build graph
 
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and

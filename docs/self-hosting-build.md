@@ -159,6 +159,13 @@ builds still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
 the graph's commands equal CMake's again.
 
+The graph parses compiler dependency files in Chibi, reading their bytes once
+and treating line continuations as spaces. It unescapes only paths that need
+it. Large record and command-database joins use the existing `build.join`
+primitive rather than repeatedly copying an accumulated prefix. Small path
+joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
+Unknown or missing `--target` names fail before toolchain discovery or writes.
+
 Elsewhere `make build` uses this program when its private host reports protocol version 7
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the

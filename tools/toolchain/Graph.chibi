@@ -43,6 +43,28 @@ Count :: (text: string) -> int {
     return value;
 }
 
+// Every named target must exist, before any discovery or build writes.
+TargetsValid :: (arguments: string[], targets: string[]) -> bool {
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] != "--target") {
+            continue;
+        }
+        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
+            build.report("graph: --target requires a target name");
+            return false;
+        }
+        found := false;
+        for (target in targets) {
+            found = found || arguments[i + 1] == target;
+        }
+        if (!found) {
+            build.report(format_text("graph: unknown target '{0}'", arguments[i + 1]));
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whether a target was named with --target, or none were, or a named
 // executable needs it (engine.Needed).
 Selected :: (arguments: string[], target: string) -> bool {
@@ -63,6 +85,10 @@ Selected :: (arguments: string[], target: string) -> bool {
 
 Libraries :: () -> int {
     arguments := build.arguments();
+    targets := engine.Targets();
+    if (!TargetsValid(arguments, targets)) {
+        return 2;
+    }
     build_dir := Option(arguments, "--build", "");
     jobs := Count(Option(arguments, "--jobs", "8"));
     // The named profile as this machine provides it; each option overrides
@@ -107,7 +133,7 @@ Libraries :: () -> int {
         return 2;
     }
     selected: string[] = [];
-    for (target in engine.Targets()) {
+    for (target in targets) {
         if (Selected(arguments, target)) {
             selected.append(target);
         }
@@ -131,7 +157,7 @@ Libraries :: () -> int {
     // CMake's does, so editors see the flags of sources a build did not name.
     listed := selected;
     if (Option(arguments, "--all-commands", "") == "on") {
-        listed = engine.Targets();
+        listed = targets;
     }
     if (!build.write_file(commands, engine.CompileCommands(tools, profile, build.root(), build_dir, listed))) {
         build.report("graph: writing compile_commands.json failed");

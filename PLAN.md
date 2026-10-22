@@ -742,8 +742,22 @@ build-release` build with the graph, by profile name, as the owner chose on
 third-party` prepares the archives, a missing or older host is rebuilt with
 CMake in `BUILD_DIR-cmake`, and `make graph-reference` configures that tree
 for the build-graph checks. The host protocol rose to 7 for the natives the
-graph uses. A cold sanitizer build took 25 minutes, a no-op about 18 s; every
-admitted check passed against the graph-built tree.
+graph uses. Initial local validation reported a 25-minute cold sanitizer build
+and an 18-second no-op. The macOS CI graph build later reached the job's
+45-minute limit before it finished.
+
+The 2026-10-22 repair keeps dependency parsing in Chibi and scans the original
+bytes, folding continuations without retaining whole-file native intermediates.
+Large record and command-database joins use existing `build.join`; temporary
+small path joins remain collectable. Invalid target names now fail before
+profile discovery or writes. No new native capability or protocol change is
+needed. A sanitizer test-driver rebuild passed in 247 s on a partially
+built tree. The native, materials, projects, language and tooling groups passed
+under their separate production 60-second deadlines, as did compile/link
+command parity and the expanded target/parser regression. Current clean-build
+and focused validation evidence is tracked in PR #655. Full native/render/Studio
+and other quarantined coverage remain disabled, not passed.
+
 Next: packaging the SDK from the graph's build, the browser builds and Linux
 (which needs a Linux archive the owner approves).
 

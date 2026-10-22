@@ -334,7 +334,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
         "{\"sdk_version\": \"", build.before(build.after(sdk, "set(CHIBI_SDK_VERSION "), ")"), "\", \"system\": \"",
         build.platform(), "\", \"processors\": [\"", processor,
         "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
-        ", \"artifact_formats\": {\n", strings.Join(records, ",\n"), "\n}}\n"
+        ", \"artifact_formats\": {\n", build.join(records, ",\n"), "\n}}\n"
     ]);
 }
 
@@ -357,7 +357,7 @@ FormatRecord :: (source_root: string, fields: string[]) -> string {
                 implementation.append(Join(["{\"source\": \"src/", source, "\", \"sha256\": \"",
                                             build.hash_file(Join([source_root, "/src/", source])), "\"}"]));
             }
-            parts.extend([", \"implementation\": [", strings.Join(implementation, ", "), "]"]);
+            parts.extend([", \"implementation\": [", build.join(implementation, ", "), "]"]);
         }
     }
     parts.append("}");
@@ -473,7 +473,7 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
                 listed.append(source);
             }
         }
-        text := Join([strings.Join(Sorted(listed), "\n"), "\n"]);
+        text := Join([build.join(Sorted(listed), "\n"), "\n"]);
         output := Resolve(source_root, build_dir, "", build.before(source_list, "="));
         if (build.file_exists(output) && build.read_file(output) == text) {
             continue;
@@ -527,7 +527,7 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
             escaped := build.replace(build.replace(argument, "\\", "\\\\"), "\"", "\\\"");
             lines.append(Join(["    \"", escaped, "\",\n"]));
         }
-        return strings.Join(lines, "");
+        return build.join(lines, "");
     }
     path := Join([source_root, "/", build.after(value, ":")]);
     if (build.before(value, ":") == "bytes") {
@@ -659,7 +659,7 @@ pub LinkCommands :: (tools: c.Tools, profile: Profile, source_root: string, buil
                                        Executable(build_dir, target)));
         }
     }
-    return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);
+    return Join(["[\n", build.join(entries, ",\n"), "\n]\n"]);
 }
 
 // Where an include directory the tables name is: staged headers below the
@@ -987,5 +987,5 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
             entries.append(c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
         }
     }
-    return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);
+    return Join(["[\n", build.join(entries, ",\n"), "\n]\n"]);
 }

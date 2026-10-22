@@ -2195,7 +2195,15 @@ name them and the programs they run (`policy_worker`, `chibi_ctl`,
 `chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
 writes them, and no other test driver (macOS only). A second case names `chibi_support`:
 its compile database lists only that library's compiles, and with
-`--all-commands on` every target's, on macOS as many as CMake's. About 39 s.
+`--all-commands on` every target's, on macOS as many as CMake's. A third case
+rejects four fixed invalid target requests before discovery or output creation:
+an unknown target, a valid and unknown pair, a missing value, and another option
+instead of a value. A fourth case calls the authored `graph:c.Dependencies`
+parser through the bytecode CLI, with one short escaped-path fixture containing
+LF and CRLF continuations, two empty or targetless texts, and one fixed
+128-header file below 16 KiB. It checks exact paths and counts without compiler
+children, frames or GPU work. At most eight host subprocesses retain the existing
+50-second child limit and one shared 60-second supervisor deadline.
 
 `python3 tools/test_policy.py tool build-graph-resources` runs the graph for
 the launcher and `chibi_ctl` with a compiler that always fails: before any

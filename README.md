@@ -57,3 +57,13 @@ chibi-dev /path/to/game
 
 You can also open [Studio in your browser](https://waldnercharles.github.io/chibi-studio/).
 The browser version uses the latest engine release.
+
+## License
+
+The standalone compiler and tools are GPLv3; the embeddable runtime, player,
+and reusable libraries are LGPLv3. Both are version 3 only. Independent games
+and applications may use their own license, including proprietary terms,
+when the LGPL distribution conditions are met. Distributed changes to Chibi
+remain covered by its applicable copyleft license. Third-party components
+keep their existing licenses. See the [file scope](LICENSE.md) and
+[distribution guide](docs/distribution-licensing.md).

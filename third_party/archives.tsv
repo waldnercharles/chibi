@@ -1,8 +1,11 @@
 # repository waldnercharles/chibi
 # target	variant	release	sha256
-macos-arm64	release	third-party-2026-10-20	5df43777601df361f332c11c035195f4d4e61f785424be525a577bb9a2536c3b
-macos-arm64	address-undefined	third-party-2026-10-20	644f6fe498713f628143f1dc0cfe38fdb592237a47a83b34e93b8a9dc85d74a1
-macos-arm64	thread	third-party-2026-10-21	ae3c3a0c89dbb55cbae4fad273bbfc510ec780e7d00a150477aa2172af243bf6
-web	release	third-party-2026-10-21	0b8ae0dca70003e367e37e749e89dc101a5642e7c56e5b0986be713636db6963
-web-threads	release	third-party-2026-10-21	e461cceb059b72899f67474bc3a3286335194291e686e88e3611d535c3d86b5c
-web-player	release	third-party-2026-10-21	0cd5ba31183bbaa6a682602aa88ff851a15317c99b5e96055dbe9c776ad7d2cb
+linux-x64	address-undefined	third-party-2026-10-22	c400b83856e624ccb23f7476de0802b43dfceda0169fd35229299deffec8b53b
+linux-x64	release	third-party-2026-10-22	a5cfce9166db1bd6969f0fafb93d6515f978b2cc5e182c517700d0b0dc70a914
+linux-x64	thread	third-party-2026-10-22	cc45b3cc5be3582da81ba79fbcbfa2e1fd28b81108177f17644a1cfd6ac5f441
+macos-arm64	address-undefined	third-party-2026-10-22	86e03d451e9805cb430b1349e124cf66e17e190e657f21b27477009072312243
+macos-arm64	release	third-party-2026-10-22	c544a8c05f8b7e2b7b1ee05a289c4272dc6f39e679d39a57555315bdaf000efd
+macos-arm64	thread	third-party-2026-10-22	e89be42eccec0697acd95d89d303e4993af94573c7d9d68f60a2aa0eaa6560f4
+web-player	release	third-party-2026-10-22	141b8224e9b204a4979d14552bc85bc3872c1073631925d698fa88dde4188e1e
+web	release	third-party-2026-10-22	8f803c741d58ff004d119c44ebfb890da378cd17e93f3a16baefbd7237d661e6
+web-threads	release	third-party-2026-10-22	bf0655520d750af04d55dd2b4f83f0a5e4ae9e779f74fcb52656f43376c80f6b

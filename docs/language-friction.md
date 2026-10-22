@@ -487,24 +487,27 @@ Suggestion: export templates, instantiating each at the caller with the
 callee package's declarations in scope, as Odin does. Until then `pub` does
 not export a template either (#552).
 
-## Templates don't run at compile time
+## Constant calls don't infer template type bindings
 
-Language. A constant cannot call a template: in a package declaring the
-language guide's `Identity :: (value: $T) -> T { return value }`,
-`One :: Identity(1)` fails with "Unknown type 'T'", reported at `$T` rather
-than at the call. `Identity(int)`, a typed constant and an argument that is
-itself a constant fail the same way, while the guide's `Size :: Factorial(5)`
-folds and a function body calling `Identity(1)` specializes. The guide says an ordinary procedure runs at
-compile time when its inputs are available, and lists no exception for
-templates (#528).
+Language. Constant evaluation does not infer the `$T` binding in a template
+parameter such as `value: $T`. In a package declaring the language guide's
+`Identity :: (value: $T) -> T { return value }`, `One :: Identity(1)` fails
+with "Unknown type 'T'", reported at `$T` rather than at the call. A function
+body calling `Identity(1)` specializes (#528).
+
+Templates with concrete parameter types can run at compile time. For example,
+`Times :: (value: int, $N: int) -> int { return value * N }` lets
+`One :: Times(2, 3)` bind both integer arguments before evaluating the body.
+Type-returning templates also support compile-time evaluation.
 
 - Zig calls generic functions from `comptime` code and constant initializers;
   Jai's `#run`, D's compile-time function evaluation and C++ `constexpr`
   function templates run templates too. Odin has no compile-time calls.
 
-Suggestion: specialize a template called from a constant as a runtime call
-does, then evaluate the specialization. Until then, report the call:
-templates cannot run at compile time.
+Suggestion: infer type bindings for a template called from a constant as a
+runtime call does, then evaluate the specialization. Until then, diagnose
+the call that needs an inferred template type binding, rather than reporting
+an unknown type in its declaration.
 
 ## A pattern test fails as a call argument
 

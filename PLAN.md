@@ -729,9 +729,16 @@ compiler it exports C with (`export_compiler.h`) equal CMake's: 1061
 compile commands and thirteen link commands. A build step now takes up to
 1,023 arguments, which its 497-argument link needs; the graph-built
 `test_tools` passes `make test-tools`' cases and `build-process`.
-Next: an install layout, which
-`chibi version` reads; then moving profile selection from `Build.chibi`'s
-CMake arguments into the graph.
+Slice 22, 2026-10-21: the build tree's install layout. Before compiling, the
+graph writes the build identity (`engine.json`) as
+`sdk/artifact_formats.cmake` does and installs the launcher's `share/chibi`
+(identity, core and documentation sources, shaders) and `chibi_ctl`'s
+resources: 213 files, equal to CMake's.
+Slice 23, 2026-10-22: `test_language`'s runtime input. The graph writes its
+`corpus.txt`, every fixture source by absolute path, equal to CMake's.
+Next: moving profile selection from `Build.chibi`'s CMake arguments into the
+graph, which makes `make build` build with it (awaiting the owner's
+decision); then packaging the SDK from the graph's build.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact

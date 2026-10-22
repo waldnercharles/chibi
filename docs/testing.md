@@ -2193,6 +2193,15 @@ are compared, and a manual full build links and runs them. About 25 s.
 `chibi-compile`, the build and compiler hosts), where CMake writes them, and
 no other test driver. macOS only. About 15 s.
 
+`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+the launcher and `chibi_ctl` with a compiler that always fails: before any
+compile it writes `share/chibi` and `controller_resources`, all 213 files equal
+to CMake's (the build identity `engine.json` and the core and documentation
+sources) or, for the shaders, which CMake copies to `controller_resources`
+only when it configures, to `src/render/shaders`; an unchanged run leaves
+the identity's stamps. A second case runs it for `test_language`, whose
+`corpus.txt` must equal CMake's. macOS only. About 32 s.
+
 `python3 tools/test_policy.py tool build-graph-support` runs three cases in a
 copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or

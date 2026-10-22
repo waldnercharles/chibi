@@ -366,9 +366,11 @@ everything else, and `build-graph` checks that their compile commands agree;
 graph owns, `test_tools` included, is a manual check, about 32 minutes with
 sanitizers and no compiler cache at a load average of 5;
 `build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers, `build-graph-generated` generates the native type sources and
-rewrites the codec headers, and `build-graph-programs` checks that naming
-`test_tools` also builds the programs it runs.
+the archive's headers, `build-graph-generated` generates the native type
+sources and rewrites the codec headers, `build-graph-programs` checks that
+naming `test_tools` also builds the programs it runs, and
+`build-graph-resources` that the launcher's and `chibi_ctl`'s resources equal
+CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -407,6 +409,20 @@ test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
 writes the profile's C compiler and C flags, then ARGUMENT, as C string
 initializer lines; `test_tools` exports C with them. An include of `.` is
 the source root.
+A target's `Resources` (`DESTINATION=SOURCE`; a directory copies every file
+below it) are written before any compile, as root `CMakeLists.txt`
+configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
+`chibi test`, `chibi doc` and the players read as installed ones do, and
+`chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
+identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
+`sdk/artifact_formats.cmake` does: the SDK version from
+`sdk/CMakeLists.txt`, the project version from `src/assets/project.h`, the
+platform, processors and backends, and each of `ArtifactFormats`' versions
+with the SHA-256 of the sources and headers that own it. A target's
+`SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
+ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+`test/language/CMakeLists.txt` writes the language corpus `test_language`
+reads.
 Every run
 writes `BUILD/link_commands.json` beside the compile commands. Naming a
 program with `--target` also builds the libraries it links and the programs

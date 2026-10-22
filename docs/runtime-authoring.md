@@ -585,7 +585,7 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"M
 ```
 
 Inspect `behavior_failures` and the deterministic state evidence in the response.
-Test invocations remain subject to the [60-second policy](testing.md#temporary-60-second-policy).
+Choose affected-contract checks using the [testing instructions](testing.md).
 A short sample run does not establish full runtime or rendering coverage.
 
 ## Switch scenes

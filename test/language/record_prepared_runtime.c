@@ -22,8 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Seven fixed prepared cases. Bounds are recorded beside the dispatcher before
- * independent admission. No files, frames, worker pools or benchmark loops. */
+/* Seven fixed prepared cases. Workload bounds are recorded beside the
+ * dispatcher. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;

@@ -89,15 +89,15 @@ behavior array punctuation/comments, adjacent/tail/all-local duplicates and inhe
 link clearing; invalid source, nonfinite value, nominal mismatch, runtime handle,
 missing reference/catalog, overlapping batch and operation-limit rejection.
 
-After independent workload admission, run only the standalone production route:
+Run the standalone production route for source-prototype edit coverage:
 
 ```
 CHIBI_LANGUAGE_BUILD_DIR=<exact-installed-sdk-consumer-build> \
   python3 tools/test_policy.py tool source-prototype-edits
 ```
 
-The existing whole-invocation 60-second supervisor is unchanged. This selector
-is not added to an aggregate. Freeze engine head, installed SDK identity, fixture
+This selector runs through the production supervisor and is not added to an
+aggregate. Freeze engine head, installed SDK identity, fixture
 blob and executable hash. Configuration/build timing is separate from execution.
 A first run is a supervised measurement, not prior proof of runtime.
 
@@ -118,9 +118,9 @@ materialization mutant using `prototype_clone` as comparison baseline would
 exercise unsorted graph order; do not change that legacy helper's semantics.
 Neither control changes the loader or legacy `prototype_remove_graph` helper.
 
-One additional root ASan/UBSan invocation of only these eight cases is admitted
-for the source/model/text ownership and rejection paths, under the same unchanged
-60-second supervisor. It does not authorize another selector or a broad suite.
+The selected root ASan/UBSan invocation exercises these eight cases for the
+source/model/text ownership and rejection paths. It does not establish coverage
+for another selector or a broad suite.
 
 Local authoring checks are syntax-only. Linked tests, installed-SDK consumption
 and hosted runtime results must be recorded for the exact candidate

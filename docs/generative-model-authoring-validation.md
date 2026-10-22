@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 This implementation extends the declarative model workflow used for the Polaroid image reconstruction. The original reconstruction and Blender comparison remain available. New capabilities have separate authored examples so their effect can be inspected independently.
 

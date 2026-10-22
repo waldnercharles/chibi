@@ -23,8 +23,7 @@
 /* Frozen proposal: 8 selection + 13 member + 3 refreshed-fact boundary +
  * 2 publication-continuation requests = 26, once on each backend = 52 calls,
  * each supplies budget 500,000, inherited/reset per activation; no total
- * instruction ceiling is implied. One shared production 60s execution
- * deadline covers all work. Eight compiler inputs/backend =16 parses;
+ * instruction ceiling is implied. Eight compiler inputs/backend =16 parses;
  * 16 fixed fact-source parses give32 total. Sources <=256 bytes/128 nodes,
  * depth32; one scope/symbol, <=3 definitions, two variants, three prior names,
  * <=4 diagnostics/1 use/1 publication per member. Four runtime JSON calls

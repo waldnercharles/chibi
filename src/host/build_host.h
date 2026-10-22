@@ -28,7 +28,7 @@ typedef struct
     int argument_count;
     behavior_backend backend;
     uintptr_t instruction_budget; /* Zero for the host's default. */
-    double deadline; /* Absolute chibi_build_now() seconds; also bounded by inherited supervision. */
+    double deadline;              /* Absolute chibi_build_now() seconds. */
     const volatile sig_atomic_t *cancelled;
 } chibi_build_options;
 

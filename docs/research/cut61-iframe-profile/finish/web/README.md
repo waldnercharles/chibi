@@ -3,15 +3,14 @@ Final normal paired web compilation and packaging passed with exit 0 at source
 `web-build-641424f5.log` and `provenance-final-641424f5.json` contain the final
 compile-only result, source/tree identity, JS/WASM hashes and CMake settings.
 No browser, server, native runtime or web backend test was launched. Runtime
-acceptance remains quarantined. All owned build processes finished.
+acceptance was not run. All owned build processes finished.
 
 An earlier normal paired web compilation and packaging passed with exit 0 at source
 `4a61defdfd7d8a304a28b031d07da56a8ab4a667`.
 
 Command: `make web JOBS=4`. The integrated Makefile builds target `chibi` only;
 it does not run `check-behavior-backend`. No browser, server or web backend
-acceptance workload was started. Web runtime acceptance remains quarantined
-pending the required review. Earlier browser runs retain their earlier identities.
+acceptance workload was started. Web runtime acceptance remains unverified. Earlier browser runs retain their earlier identities.
 
 `web-build.log` retains configure, serial build, worker build and packaging output.
 `provenance-4a61defd.json` records source/tree, artifact hashes and CMake settings.

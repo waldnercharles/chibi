@@ -136,8 +136,12 @@
   "all_867_paths_have_tracking_owner": true,
   "original_inventory_sha256": "76d710e88e0a2d2ecb35a9bf895b3b8223a1fbf96b9029e51f185f2106089d87",
   "inventory_normalization": "CRLF to LF only; CSV row/field content retained",
+  "original_source_plan_sha256": "ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31",
+  "original_source_plan_url": "https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md",
+  "source_plan_sha256": "d67e47987502f12f23ff50deeea05e74909b7ce15c6382e40b36299443a16009",
+  "source_plan_edit": "Curated copy: obsolete test-gate prose omitted; original scope, contracts and results retained.",
   "input_sha256": {
-    "source/plan.md": "ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31",
+    "source/plan.md": "d67e47987502f12f23ff50deeea05e74909b7ce15c6382e40b36299443a16009",
     "source/studio-file-inventory.csv": "22c5397e095b5f823988606e55ea6f098e723913b3d8bbfa7df24d92c76b82ad"
   },
   "external_mutations": "none; no PR publication or merges"

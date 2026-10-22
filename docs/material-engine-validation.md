@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 Validated in the shared checkout based on `1be98e1eb0ceaad6cc6dec6caa22a9994d341dc5`.
 Existing renderer, editor, expression and Arena naming changes were preserved.

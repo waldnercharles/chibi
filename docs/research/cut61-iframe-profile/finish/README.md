@@ -12,8 +12,8 @@ fall from **1000 to zero**, while ordinary Context work remains one update per
 frame. Fitted content also grows and shrinks within the same frame, including
 when a later document dirties an earlier holder.
 
-The implementation is complete for this scope. **Final runtime acceptance and
-landing remain blocked by main’s temporary test quarantine.** The PR stays draft.
+The implementation is complete for this scope. Final runtime acceptance was not
+completed, and the PR remained draft at this checkpoint.
 No overall Studio speedup or full verification is claimed.
 
 ## Historical frozen source and configuration
@@ -70,9 +70,9 @@ profiling runner (`../run.py.txt`) were removed on 2026-10-20; Git keeps them.
 
 ## Historical focused validation
 
-All test executions used the production `tools/test_policy.py` supervisor with a
-60-second deadline including cleanup. Configuration/build time is reported
-separately. The only new native admissions are the independently reviewed exact
+All test executions used the production `tools/test_policy.py` supervisor,
+including cleanup. Configuration/build time is reported
+separately. The only new native routes are the independently reviewed exact
 `--iframe-updates` and `--kit-documents` tuples.
 
 | Check at the frozen source | Result | Complete command time |
@@ -133,12 +133,11 @@ reverse source delta and both binary hashes are retained in `micro/`. Source was
 restored and rebuilt before the comparison.
 
 Three before/after pairs ran serially in alternating order through the production
-supervisor under **one shared absolute 60-second deadline**. All six complete
-processes consumed 10.936 seconds. Every sample includes all 1000 replacements
+supervisor. All six complete processes consumed 10.936 seconds. Every sample includes all 1000 replacements
 and Context updates; no warmup frame or outlier was removed. Before completes
 10 passing checks and two expected semantic failures for the now-fixed
 unrelated-model behavior; after passes all 12. The before diagnostic variant is
-not a successful admission result.
+not a successful test result.
 
 | Counter across 1000 frames | Before | After |
 | --- | ---: | ---: |
@@ -186,8 +185,7 @@ and [Apple clock implementation](https://raw.githubusercontent.com/apple-oss-dis
 The mixed clock domains can invalidate nesting comparisons; no specific clock
 adjustment event is inferred. The patch now uses the same `CLOCK_MONOTONIC`
 conversion as the enclosing timers. Fresh short captures reconcile without
-loosening tolerance. The long case was not rerun after this clock fix because
-PR186 quarantined it.
+loosening tolerance. The long case was not rerun after this clock fix.
 
 Lifecycle timing does not demonstrate an overall improvement. The final
 pre-clock candidate’s fitted correctness work increased measured host updates
@@ -199,19 +197,17 @@ No historical result certifies the final clock fix or the current integration.
 
 ## Remaining gates and publication status
 
-Main’s [temporary policy](../../../test-quarantine.md) explicitly quarantines
 CUT61’s historical 2016-frame capture, broad native/render/Studio suites,
-backend/reload/no-SLJIT/compiler-parity execution, and web backend execution.
-They are **disabled, not passed**. No fresh browser runtime was launched after
-that policy became known. An old Make web run was interrupted before the worker
-backend check; `interrupted-web/` preserves its exit130 and partial logs. Normal
+backend/reload/no-SLJIT/compiler-parity execution, and web backend execution
+were not run for the final candidate. No fresh browser runtime was launched.
+An old Make web run was interrupted before the worker backend check; `interrupted-web/` preserves its exit130 and partial logs. Normal
 web builds after integration used only `chibi` and package targets.
 
 Independent agent source review of `641424f5` against the integrated base found
 no blocker. This is not a GitHub APPROVED review. Required CI, approval, CUT62 integration ownership and
-any PR/ticket holds remain in force. A future combined candidate must preserve
-this policy, re-pin fresh main and source identities, and obtain unavailable
-required verification before landing. Focused admission supplies no merge
+any PR/ticket holds remain in force. A future combined candidate must re-pin
+fresh main and source identities, and obtain unavailable required verification
+before landing. Focused test evidence supplies no merge
 authority. The branch is updated, retained and draft; main is not changed.
 Owned build/test/browser/server processes were stopped or reaped. No authored
 assets, assertion body, reference image, sanitizer setting or system permission

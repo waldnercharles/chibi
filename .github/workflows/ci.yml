@@ -63,15 +63,15 @@ jobs:
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT=/usr/lib/llvm-18
       # After make build, whose build/reflect the reflection identity cases run.
-      - name: Tooling and process integrations (one 60-second deadline)
+      - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER=clang-18
-      - name: Native selectors (one 60-second deadline)
+      - name: Native selectors
         run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Material selectors (one 60-second deadline)
+      - name: Material selectors
         run: make test-materials LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Project selectors (one 60-second deadline)
+      - name: Project selectors
         run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Language selectors (one 60-second deadline)
+      - name: Language selectors
         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
   native-macos:
@@ -103,15 +103,15 @@ jobs:
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
       # After make build, whose build/reflect the reflection identity cases run.
-      - name: Tooling and process integrations (one 60-second deadline)
+      - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER="$CC"
-      - name: Native selectors (one 60-second deadline)
+      - name: Native selectors
         run: make test-native LIBCLANG_ROOT="$LLVM"
-      - name: Material selectors (one 60-second deadline)
+      - name: Material selectors
         run: make test-materials LIBCLANG_ROOT="$LLVM"
-      - name: Project selectors (one 60-second deadline)
+      - name: Project selectors
         run: make test-projects LIBCLANG_ROOT="$LLVM"
-      - name: Language selectors (one 60-second deadline)
+      - name: Language selectors
         run: make test-language-all LIBCLANG_ROOT="$LLVM"
 
   windows:
@@ -144,9 +144,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
       - name: Build the SDK tools
         run: cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
-      # The 60-second test ceiling; the test supervisor is POSIX-only.
       - name: Compile a project
-        timeout-minutes: 1
         run: build/sdk/chibi-compile.exe --project-root "$PWD/test/fixtures/studio" --output "$env:RUNNER_TEMP/game.chibip"
 
   studio-windows:
@@ -243,7 +241,7 @@ jobs:
       - name: Two hidden Studio frames
         shell: bash
         run: |
-          timeout --kill-after=10 60 xvfb-run -a build-studio/bin/chibi-dev \
+          xvfb-run -a build-studio/bin/chibi-dev \
             --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
           ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
 

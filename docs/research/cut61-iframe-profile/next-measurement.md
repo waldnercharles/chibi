@@ -127,8 +127,8 @@ those calls would create a different workload.
    after timed regions with a fixed-size per-frame aggregate (no per-element log);
    retain a bounded raw log, e.g. 10 MiB, treating overflow as a failed capture.
    Do not add synthetic warmups or discard existing lifecycle frames. Report one
-   sample as one sample; repeated comparative runs require a separately admitted
-   hardware slot and equal coverage.
+   sample as one sample; repeated comparative runs use the same hardware
+   configuration and equal coverage.
 
 This measurement would establish whether the real case's CPU cost lies in
 settling, Context style/layout/model work, host emit/sync, or rendering/presentation.

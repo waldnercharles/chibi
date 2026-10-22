@@ -4,7 +4,7 @@ Base: `02f8453211dd4cc57965ba52c645f08a92e53c5e`.
 Worktree: `capture-retention`. No production behavior changes.
 
 Proposed first measurement: existing `language-program` and `wasm-program`
-selectors under `tools/test_policy.py`'s shared production 60-second deadline.
+selectors through the production supervisor in `tools/test_policy.py`.
 Configuration/build time is separate. Native ASan/UBSan, leak detection disabled
 because this host is traced; actual Node-hosted Wasm, not a bytecode substitute.
 All original program assertions remain unchanged.
@@ -49,8 +49,7 @@ Only the last `box_release` frees this arena. `program_collect_payloads` collect
 activation payloads, not box storage. Public payload usage omits box storage;
 therefore private read-only inspection is intentional in these tests.
 
-Independent workload admission and baseline patch review are required before
-running the new cases. No reclamation fix is proposed for execution yet.
+Review the workload and baseline patch before running the new cases. No reclamation fix is proposed for execution yet.
 
 ## Admission and fixture corrections
 

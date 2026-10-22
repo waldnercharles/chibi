@@ -106,8 +106,8 @@ Studio's [bounded acceptance inventory](https://github.com/waldnercharles/chibi-
 covers selected history, keyboard, dirty-prompt and rendered graph/asset pointer
 interactions. Debugger-source-history covers invalid drafts and undo/redo against
 a retained paused generation. Valid live-generation replacement and broader
-graph gestures remain outside those cases; the
-[test policy](test-quarantine.md) still governs admission.
+graph gestures remain outside those cases. The
+[test inventory](test-inventory.md) describes how to report selected and unrun coverage.
 
 ## Controller integration status
 

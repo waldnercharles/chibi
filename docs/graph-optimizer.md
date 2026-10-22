@@ -74,8 +74,8 @@ optimizing; computed inputs receive placeholder letters for the author to rename
 ## Historical validation
 
 The results and commands below describe the earlier implementation revision.
-The MCP transport and its mutation checks are retired; current checks must be
-admitted under the [60-second policy](testing.md#temporary-60-second-policy).
+The MCP transport and its mutation checks are retired; choose current checks
+using the [testing instructions](testing.md).
 
 
 Focused model and runtime regressions cover multi-consumer component fields and

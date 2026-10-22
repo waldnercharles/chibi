@@ -43,7 +43,6 @@ static const char *const environment_names[] = {
     "TEMP",
     "SDKROOT",
     "DEVELOPER_DIR",
-    "CHIBI_TEST_DEADLINE",
     "CHIBI_BUILD_WORKER",
     "CC",
     "CXX",
@@ -640,23 +639,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         host.environment[count] = xmalloc(size);
         snprintf(host.environment[count++], size, "%s=%s", environment_names[i], value);
     }
-    const char *inherited = NULL;
-    for (int i = 0; host.environment[i]; i++) {
-        if (!strncmp(host.environment[i], "CHIBI_TEST_DEADLINE=", 20)) {
-            inherited = host.environment[i] + 20;
-            break;
-        }
-    }
     const char *failure = environment_valid ? NULL : "build environment limit exceeded";
-    if (inherited && !failure) {
-        char *end;
-        double deadline = strtod(inherited, &end);
-        if (end == inherited || *end || !isfinite(deadline) || deadline <= 0) {
-            failure = "invalid inherited build deadline";
-        } else if (deadline < host.deadline) {
-            host.deadline = deadline;
-        }
-    }
     native_capabilities *native = NULL;
     authoring_packages *packages = NULL;
     char error[256];

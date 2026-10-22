@@ -5,7 +5,7 @@
 This M5 increment runs, and everything after the raw parser is authored: the
 compiler writes its prepared module and closure itself. On macOS arm64 (Debug,
 ASan/UBSan, 2026-10-19), `tool language-bounded-compiler-chibi` passes its one
-case with 36,657 assertions in 12.3 s under the production 60-second
+case with 36,657 assertions in 12.3 s under the production
 supervisor. Stage zero prepares the 19-file compiler closure with 186 bytecode
 bootstrap entries. The authored compiler then handles 43 sources on each
 compiler backend (86 calls, 76 raw parses), accepts 14 per backend, and runs the
@@ -135,6 +135,6 @@ verify byte limits, precise signed literals, wrapped arithmetic, meaningful
 changed-source output and incompatible target facts. Counters report attempted work even on failure.
 
 Finite source counts, request/callback/parser bounds, output storage and target
-invocation counts belong to the exact candidate admission report. Build timing
-is separate from the single unchanged 60-second test deadline. Source-only
-review, formatting or admission does not establish an executed test result.
+invocation counts belong to the candidate validation report. Report build timing
+separately from test execution. Source-only review and formatting do not establish
+an executed test result.

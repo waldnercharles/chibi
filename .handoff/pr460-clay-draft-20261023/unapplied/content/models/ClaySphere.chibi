@@ -1,0 +1,44 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("ClaySphere")),
+            data.Field.Named("domain", data.Value.Text("model")),
+            data.Field.Named("id_counter", data.Value.UInt(1000)),
+            data.Field.Named("description", data.Value.Text("Radius-18 calibration sphere in authored units.")),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(100)),
+                            data.Field.Named("type", data.Value.Text("Model Sphere")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Radius", data.Value.Real(18.0))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(200)),
+                            data.Field.Named("type", data.Value.Text("Model Output")),
+                            data.Field.Named("x", data.Value.Real(300.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Geometry")),
+                            data.Field.Named("to", data.Value.Text("200.Geometry"))
+                        ])
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

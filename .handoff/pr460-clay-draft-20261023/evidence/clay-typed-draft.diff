@@ -1,0 +1,1856 @@
+diff --git a/test/fixtures/clay-lab/README.md b/test/fixtures/clay-lab/README.md
+index 74d7a49..1f32ff9 100644
+--- a/test/fixtures/clay-lab/README.md
++++ b/test/fixtures/clay-lab/README.md
+@@ -1,30 +1,39 @@
+ # Clay material laboratory
+ 
+-An authored P0/P3 checkpoint with bounded CPU validation against engine main
+-`07eb2abaa5a097352c472746b2aadf2f97cd5e4e`. It uses the existing planar SDF
+-renderer. It does **not** add SDF support to the separate `scene3d` renderer.
++Unapplied, unvalidated source draft. This fixture converts the published
++`aa7b4fcabe62fb91ee90d8e80800724a9c30e6e4` content to the typed asset contract
++at `31098151bd5c0f3042f74996d678c0b784f3f25f`. It has not been compiled, loaded,
++formatted by the engine, simulated or rendered. The final current-main,
++compiler and typed-assets integration checkpoint is still required.
+ 
+-## What is authored
++## Authored content
+ 
+ `MaterialLab` places a sphere, capsule, rounded block and worked block in each
+ of two rows: neutral above, terracotta below. `ClaySculpt` combines a rounded
+ box with a translated, smoothly joined sphere and a spherical thumb cut.
+ `Form=0` recovers the unworked block; `Form=1` shows the lobe and cut. The three
+-calibration models do not declare a form parameter. Model bounds, not the
+-prototype's `Geometry3D` dimensions, define their geometry.
++calibration models do not declare a form parameter. Model bounds, rather than
++the prototype's `Geometry3D` dimensions, define their geometry.
+ 
+ Both presets reuse `ClaySurface`. Neutral linear RGB is `(0.46, 0.43, 0.38)`;
+ terracotta is `(0.52, 0.16, 0.08)`. Pigment stays uniform. Curved fingerprint
+ ridges perturb the shading normal through the existing Bump node, while
+ lower-frequency roughness variation is separate. Fingerprints are an analytic
+-height pattern, not a scanned fingerprint or imported texture. No time or
+-random value enters either graph.
+-
+-Eight `.chibi` assets own the component, input behavior, change-only system and
+-five prototypes. Eight KDL files own the manifest, input bindings, scene, four
+-models and material. No executable behavior is authored as a KDL graph.
+-The existing GPU expressions remain inside the declarative model/material
+-contracts; this is not a new `.chibi` shader language.
++height pattern. No time or random value enters either graph.
++
++Thirteen `.chibi` files are ordinary `package asset` sources with
++`import data "game:assets"` and `pub Build :: () -> byte[]`. They describe the
++project, input map, scene, four models, material and five prototypes through
++`data.Encode`, `data.Object`, `data.Field.Named` and explicit typed values.
++`ClaySettings`, `ClayControls` and `ApplyClay` remain executable declaration
++sources. The existing GPU expressions remain inside the model and material
++graph contracts.
++
++The project manifest uses `Int(33)`, scene version uses `UInt(1)` and graph
++versions use `UInt(3)`. IDs and counters use UInt; reflected float values and
++graph coordinates use Real. Terracotta's Shader.parameters string contains a
++complete compiled asset Build source for `material.BaseColor`. The fixture
++contains no KDL source, compatibility loader or alternate setter names.
+ 
+ ## Controls and saved tuning
+ 
+@@ -33,110 +42,79 @@ The same keys affect all eight specimens while playing:
+ - F: form off/on, visible only on the two sculpt instances
+ - G: fingerprint normal strength off/on
+ - V: roughness variation off/on
+-- O: roughness 0.68/0.50, an artistic oiliness comparison using one existing lobe
++- O: roughness 0.68/0.50, an artistic oiliness comparison
+ - R: restore form 1, fingerprints 1, roughness 0.68, variation 0.06 and spacing 2.4
+ 
+-Controls use existing named action handlers (`on Form`, `on Fingerprints`,
+-`on Variation`, `on Oiliness`, `on Reset`), dispatched on pressed edges. Holding
+-a key does not repeatedly toggle it. The built-in movement `on Input` event is
+-not a button-action callback.
++Controls retain named input-action handlers, now with explicit signatures such
++as `on Form :: ()`. These actions dispatch on pressed edges. Holding a key is
++intended to leave the selected value unchanged. The built-in movement `Input`
++event is separate from these button actions.
++
+ Reset retains each model, pigment and calibration/sculpt identity. Presets are
+ saved as `ClayNeutral.chibi` and `ClayTerracotta.chibi`; runtime toggles do not
+-write source or persist between launches. Edit `ClaySettings` defaults in the
++write source or persist between launches. Edit `ClaySettings` values in the
+ neutral prototype to inspect intermediate values. The reset target is explicit
+-in `ClayControls`, so change it too when adopting a different default preset.
++in `ClayControls`, so change it too when adopting another default preset.
+ 
+-`ApplyClay` publishes material parameters only when `dirty` is true, then
+-clears it. It writes shape `Form` only for `has_form` instances. A script or
+-inspector changing a setting must also mark that instance dirty. The material
+-is the entity's fallback binding, with no model material slots, so the existing
+-material setter addresses the intended surface directly.
++`ApplyClay` runs on Tick and publishes only when `dirty` is true, then clears
++it. It calls `set_shape_parameter` for Form only on has_form instances, and
++`set_material_parameter` for Fingerprints, Roughness, Variation and Spacing.
++The same names appear in the published source. Float constructors adapt the
++settings values to the existing native setters. A script or inspector changing
++a setting must also mark that instance dirty.
+ 
+ Spacing is 2.4 authored units at scale 1; ridge height is 0.06 units and the
+ Bump derivative distance is 0.12 world units. The material guards spacing at
+-0.5 and clamps final roughness to `[0.2, 0.9]`. These are trial artistic values,
+-not calibrated clay measurements. No physical unit conversion is established.
++0.5 and clamps final roughness to `[0.2, 0.9]`. These are artistic trial values;
++no physical unit conversion is established.
+ 
+ ## Preview and comparison
+ 
+-Open the project with the normal installed player/compiler workflow, or inspect
+-the saved models in the existing orbitable Model Preview. The checked-in
+-`preview.json` requests 640×360, one CPU step, one GPU warmup and one output
+-frame. The separately admitted checkpoint capture reduces only the dimensions
+-to 320×180 and targets offscreen Vulkan on SwiftShader. It failed during initial rendering
+-on a UBSan null-argument violation in a zero-size `memcmp` in the pinned Cute
+-drawing dependency; no image was produced. This was not a device-availability
+-diagnosis. The checked-in larger request is outside that one-image admission.
+-
+-Routine agent captures require a built exact candidate and applicable execution
+-admission. Use the bounded hidden/offscreen controller; do not launch Studio or
+-turn repeated images into a quarantined suite. Report the actual backend/device
+-and inspected image, not just process success. One still cannot establish motion
+-stability or frame time.
+-
+-The broad white emissive card and fixed HRC settings provide a repeatable
+-initial planar-lighting setup. Feedback, adaptation, bloom and exposure changes
+-are absent. Compare each toggle on the **same instance** with the same camera
+-and lighting. The two rows sit at different distances from the card; comparing
+-their pixels is not a matched BRDF or pigment test. Raking/grazing inspection,
+-close-up quality and moving-camera acceptance remain to be verified.
+-
+-## Exact capability boundaries
+-
+-- This is the existing `SdfSurface3D` + `Shader.shape` planar/2.5D path. The scene
+-  intentionally has no `presentation "3d"`. No free-camera scene3d SDF depth,
+-  mixed opaque composition or field-shaped directional shadow is established.
+-- Planar HRC maps roughness to its gloss response. The material outputs use the
+-  existing metallic/roughness contract with Metallic=0, but this preview does
+-  not establish scene3d GGX appearance. Oiliness changes roughness only; there
+-  is no independent specular/IOR, clearcoat, second lobe or scattering control.
+-- ObjectPosition anchors the height field to the whole model, avoiding a
+-  winning-part coordinate jump at the smooth join. Rigid-motion attachment
+-  follows that existing contract but is not yet visually verified here. Marks
+-  on a changing Form stay in model space; they do not follow a deforming rest
+-  surface or preserve sculpted material coordinates.
+-- Bump changes shading only. Form changes a bounded primitive construction;
+-  there is no arbitrary distance noise, sampled volume, VDB bridge, persistent
+-  dent history, collision component, SDF collider or physical deformation.
+-- The fixture does not implement pose cadence, surface-update events, shadow
+-  or antialiasing toggles, replay recording, metrics or camera choreography.
+-  Those are later checkpoints, not hidden controls. No second backend or
+-  representative performance target has been established.
+-
+-## Verification status and next gate
+-
+-On 19 October 2026, candidate tree
+-`be110662e6b3928636e0d23821e9aeedc018f0ac` passed the admitted
+-`clay-format-check` and `clay-lab` routes through `tools/test_policy.py`.
+-Canonicality took 0.113 seconds; the authored case passed one case and 9,037
+-assertions in 0.640 seconds across 26 simulation steps and eight specimens.
+-Native Debug controller/tools/language targets, the Release controller and
+-compiler-free tools built successfully. Debug tests retained assertions, ASan
+-and UBSan; the owner disabled leak detection because of ptrace, so leak coverage
+-is not passed. Configuration/build time is separate from each check's unchanged
+-60-second production deadline.
+-
+-The authored case prepares these files, exercises independent and combined
+-toggles, held/released input, inspector-edited spacing and reset, and checks real
+-model/material parameter snapshots and behavior failures. Both pigments survive
+-reset. It verifies unchanged model compilation counts/revision and exactly 24
+-model setter validations, with none on no-op steps. Material snapshot equality
+-and the shared dirty guard are not a material-host-call counter. An earlier
+-candidate failed the first toggle because it listened for the movement event;
+-the named-action fix passed without changing the test's input path or assertions.
+-
+-Supporting `model-graphs`, `model-catalog` and `shader-graphs` checks also passed.
+-`clay-fields` passed five cases and 197 assertions; compiler-free `make test-tools`
+-passed 134 cases and 27,390 assertions in 24.547 seconds. Those supporting checks
+-do not themselves load this fixture; the fixed `fixture-format` project list
+-still excludes it. These are focused results, not passes of unrun aggregates.
+-See the [baseline](../../../docs/clay-sdf-baseline.md) for the other checks and
+-publication requirements. The fixed source preflight includes this README in
+-its 24-file, 32-entry, depth-three and 128-KiB total limits.
+-
+-Pixels remain unverified after the failed preview. Visible geometry, framing
+-and broad shading/lighting need image inspection; close-up detail,
+-moving-camera behavior, scene3d depth/picking and material parity remain separate
+-gates. Final exact-head validation is still pending. Do not label P0/G0, G1 or
+-P3/G3 complete from these CPU results. Full native/render/Studio suites remain
+-quarantined, disabled and not passed.
++The unchanged `preview.json` requests 640 x 360, one CPU step, one GPU warmup
++and one output frame through the normal hidden preview controller. It is an
++authored request, not an execution receipt. Rendering this draft awaits the
++final combined source, matching dependency archives and a scheduled GPU slot.
++Record the actual backend/device and inspect the resulting image. A still
++does not establish motion stability or frame time.
++
++The broad white emissive card and fixed HRC settings provide the initial
++planar-lighting setup. Feedback and adaptation are disabled. Compare a toggle
++on the same instance with the same camera and lighting. The two rows sit at
++different distances from the card, so comparing their pixels is not a matched
++BRDF or pigment test. Raking/grazing inspection, close-up quality and
++moving-camera acceptance remain unverified.
++
++## Capability boundaries
++
++- This uses `SdfSurface3D` and `Shader.shape` in the existing planar/2.5D path.
++  The scene has no 3d presentation setting. Free-camera scene3d SDF depth,
++  mixed opaque composition and field-shaped directional shadows are unverified.
++- Planar HRC maps roughness to its gloss response. The material uses the
++  existing metallic/roughness contract with Metallic=0. This draft does not
++  establish scene3d GGX appearance. Oiliness changes roughness only; it has no
++  independent specular/IOR, clearcoat, second lobe or scattering control.
++- ObjectPosition anchors the height field to the whole model. Its attachment
++  during rigid motion has not been visually verified here. Marks on a changing
++  Form stay in model space; they do not follow a deforming rest surface.
++- Bump changes shading. Form changes a bounded primitive construction. The
++  fixture has no arbitrary distance noise, sampled volume, VDB bridge,
++  persistent dent history, collision component, SDF collider or deformation.
++- Pose cadence, surface-update events, shadow/antialiasing toggles, replay,
++  metrics and camera choreography remain later work. No second backend or
++  representative performance target is established.
++
++## Validation still required
++
++The planned C/pico field and authored-player checks are not part of this draft
++directory. Their current CMake/Graph/dispatcher wiring will be adapted on the
++final integration checkpoint. Preserve the five field cases and the authored
++case's eight specimens, 26 steps, held/released input, independent and combined
++toggles, inspector-edited spacing, Reset, both pigments, unchanged model
++compilation counts and exactly 24 model setter validations. Preserve real CPU
++shader/model publication and resource limits after recounting converted source.
++
++No historical result for the KDL fixture is a pass of these converted sources.
++Engine canonicality, actual compiler/SDK integration, current-source ordinary
++drawing, real Linux/glibc sanitizer evidence, matching dependency archives and
++clay image inspection remain pending. This source draft supplies no merge or
++publication eligibility.
+diff --git a/test/fixtures/clay-lab/content/behaviors/ClayControls.chibi b/test/fixtures/clay-lab/content/behaviors/ClayControls.chibi
+index 9868f9c..0e22d6c 100644
+--- a/test/fixtures/clay-lab/content/behaviors/ClayControls.chibi
++++ b/test/fixtures/clay-lab/content/behaviors/ClayControls.chibi
+@@ -1,30 +1,30 @@
+ // Every specimen receives the same A/B controls, preserving its own pigment.
+ ClayControls :: behavior {
+-    on Form {
+-        if self.ClaySettings.form > 0 {
+-            self.ClaySettings.form = 0
++    on Form :: () {
++        if self.ClaySettings.form > 0.0 {
++            self.ClaySettings.form = 0.0
+         } else {
+-            self.ClaySettings.form = 1
++            self.ClaySettings.form = 1.0
+         }
+         self.ClaySettings.dirty = true
+     }
+-    on Fingerprints {
+-        if self.ClaySettings.fingerprints > 0 {
+-            self.ClaySettings.fingerprints = 0
++    on Fingerprints :: () {
++        if self.ClaySettings.fingerprints > 0.0 {
++            self.ClaySettings.fingerprints = 0.0
+         } else {
+-            self.ClaySettings.fingerprints = 1
++            self.ClaySettings.fingerprints = 1.0
+         }
+         self.ClaySettings.dirty = true
+     }
+-    on Variation {
+-        if self.ClaySettings.variation > 0 {
+-            self.ClaySettings.variation = 0
++    on Variation :: () {
++        if self.ClaySettings.variation > 0.0 {
++            self.ClaySettings.variation = 0.0
+         } else {
+             self.ClaySettings.variation = 0.06
+         }
+         self.ClaySettings.dirty = true
+     }
+-    on Oiliness {
++    on Oiliness :: () {
+         if self.ClaySettings.roughness >= 0.6 {
+             self.ClaySettings.roughness = 0.5
+         } else {
+@@ -32,9 +32,9 @@ ClayControls :: behavior {
+         }
+         self.ClaySettings.dirty = true
+     }
+-    on Reset {
+-        self.ClaySettings.form = 1
+-        self.ClaySettings.fingerprints = 1
++    on Reset :: () {
++        self.ClaySettings.form = 1.0
++        self.ClaySettings.fingerprints = 1.0
+         self.ClaySettings.roughness = 0.68
+         self.ClaySettings.variation = 0.06
+         self.ClaySettings.spacing = 2.4
+diff --git a/test/fixtures/clay-lab/content/input.chibi b/test/fixtures/clay-lab/content/input.chibi
+new file mode 100644
+index 0000000..67979a0
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/input.chibi
+@@ -0,0 +1,35 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("Form", data.Object([
++                data.Field.Named("sources", data.List([
++                    data.Value.Text("F")
++                ]))
++            ])),
++            data.Field.Named("Fingerprints", data.Object([
++                data.Field.Named("sources", data.List([
++                    data.Value.Text("G")
++                ]))
++            ])),
++            data.Field.Named("Variation", data.Object([
++                data.Field.Named("sources", data.List([
++                    data.Value.Text("V")
++                ]))
++            ])),
++            data.Field.Named("Oiliness", data.Object([
++                data.Field.Named("sources", data.List([
++                    data.Value.Text("O")
++                ]))
++            ])),
++            data.Field.Named("Reset", data.Object([
++                data.Field.Named("sources", data.List([
++                    data.Value.Text("R")
++                ]))
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/input.kdl b/test/fixtures/clay-lab/content/input.kdl
+deleted file mode 100644
+index bfb766e..0000000
+--- a/test/fixtures/clay-lab/content/input.kdl
++++ /dev/null
+@@ -1,15 +0,0 @@
+-Form {
+-    (array)sources "F"
+-}
+-Fingerprints {
+-    (array)sources "G"
+-}
+-Variation {
+-    (array)sources "V"
+-}
+-Oiliness {
+-    (array)sources "O"
+-}
+-Reset {
+-    (array)sources "R"
+-}
+diff --git a/test/fixtures/clay-lab/content/materials/ClaySurface.chibi b/test/fixtures/clay-lab/content/materials/ClaySurface.chibi
+new file mode 100644
+index 0000000..bf65557
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/materials/ClaySurface.chibi
+@@ -0,0 +1,217 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(3)),
++            data.Field.Named("name", data.Value.Text("ClaySurface")),
++            data.Field.Named("domain", data.Value.Text("material")),
++            data.Field.Named("id_counter", data.Value.UInt(2000)),
++            data.Field.Named("description", data.Value.Text("Metallic-zero clay study. Object-attached curved fingerprint height and lower-frequency roughness vary independently; neither changes geometry or pigment.")),
++            data.Field.Named("graphs", data.List([
++                data.Object([
++                    data.Field.Named("kind", data.Value.Text("event")),
++                    data.Field.Named("name", data.Value.Text("")),
++                    data.Field.Named("nodes", data.List([
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(100)),
++                            data.Field.Named("type", data.Value.Text("Shader ObjectPosition")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(200)),
++                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(240.0)),
++                            data.Field.Named("reference_name", data.Value.Text("BaseColor")),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Value", data.Object([
++                                    data.Field.Named("type", data.Value.Text("struct")),
++                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3")),
++                                    data.Field.Named("default", data.Object([
++                                        data.Field.Named("x", data.Value.Real(0.46)),
++                                        data.Field.Named("y", data.Value.Real(0.43)),
++                                        data.Field.Named("z", data.Value.Real(0.38))
++                                    ]))
++                                ]))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(300)),
++                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(420.0)),
++                            data.Field.Named("reference_id", data.Value.UInt(1)),
++                            data.Field.Named("reference_name", data.Value.Text("Roughness")),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Value", data.Value.Real(0.68))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(400)),
++                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(600.0)),
++                            data.Field.Named("reference_id", data.Value.UInt(2)),
++                            data.Field.Named("reference_name", data.Value.Text("Variation")),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Value", data.Value.Real(0.06))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(500)),
++                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(780.0)),
++                            data.Field.Named("reference_id", data.Value.UInt(3)),
++                            data.Field.Named("reference_name", data.Value.Text("Fingerprints")),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Value", data.Value.Real(1.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(600)),
++                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(960.0)),
++                            data.Field.Named("reference_id", data.Value.UInt(4)),
++                            data.Field.Named("reference_name", data.Value.Text("Spacing")),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Value", data.Value.Real(2.4))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(700)),
++                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
++                            data.Field.Named("x", data.Value.Real(340.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("reference_name", data.Value.Text("0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))")),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("position", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(701)),
++                                    data.Field.Named("type", data.Value.Text("struct")),
++                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
++                                ])),
++                                data.Field.Named("spacing", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(702)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ])),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Result", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(703)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(800)),
++                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
++                            data.Field.Named("x", data.Value.Real(340.0)),
++                            data.Field.Named("y", data.Value.Real(420.0)),
++                            data.Field.Named("reference_name", data.Value.Text("clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)")),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("position", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(801)),
++                                    data.Field.Named("type", data.Value.Text("struct")),
++                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
++                                ])),
++                                data.Field.Named("roughness", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(802)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ])),
++                                data.Field.Named("variation", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(803)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ])),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Result", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(804)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(900)),
++                            data.Field.Named("type", data.Value.Text("Shader Bump")),
++                            data.Field.Named("x", data.Value.Real(700.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Distance", data.Value.Real(0.12))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(1000)),
++                            data.Field.Named("type", data.Value.Text("Shader Surface Output")),
++                            data.Field.Named("x", data.Value.Real(1040.0)),
++                            data.Field.Named("y", data.Value.Real(240.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Alpha Mode", data.Value.UInt(1))
++                            ]))
++                        ])
++                    ])),
++                    data.Field.Named("edges", data.List([
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Value")),
++                            data.Field.Named("to", data.Value.Text("700.position"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Value")),
++                            data.Field.Named("to", data.Value.Text("800.position"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("200.Value")),
++                            data.Field.Named("to", data.Value.Text("1000.Base Color"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("300.Value")),
++                            data.Field.Named("to", data.Value.Text("800.roughness"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("400.Value")),
++                            data.Field.Named("to", data.Value.Text("800.variation"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("500.Value")),
++                            data.Field.Named("to", data.Value.Text("900.Strength"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("600.Value")),
++                            data.Field.Named("to", data.Value.Text("700.spacing"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("700.Result")),
++                            data.Field.Named("to", data.Value.Text("900.Height"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("800.Result")),
++                            data.Field.Named("to", data.Value.Text("1000.Roughness"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("900.Value")),
++                            data.Field.Named("to", data.Value.Text("1000.Normal"))
++                        ])
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("id", data.Value.UInt(1100)),
++                    data.Field.Named("kind", data.Value.Text("function")),
++                    data.Field.Named("math_expression", data.Value.Text("0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))")),
++                    data.Field.Named("expression_mode", data.Value.UInt(1)),
++                    data.Field.Named("entry_id", data.Value.UInt(1101))
++                ]),
++                data.Object([
++                    data.Field.Named("id", data.Value.UInt(1200)),
++                    data.Field.Named("kind", data.Value.Text("function")),
++                    data.Field.Named("math_expression", data.Value.Text("clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)")),
++                    data.Field.Named("expression_mode", data.Value.UInt(1)),
++                    data.Field.Named("entry_id", data.Value.UInt(1201))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/materials/ClaySurface.kdl b/test/fixtures/clay-lab/content/materials/ClaySurface.kdl
+deleted file mode 100644
+index 603fe48..0000000
+--- a/test/fixtures/clay-lab/content/materials/ClaySurface.kdl
++++ /dev/null
+@@ -1,121 +0,0 @@
+-version 3
+-name "ClaySurface"
+-domain "material"
+-id_counter 2000
+-description "Metallic-zero clay study. Object-attached curved fingerprint height and lower-frequency roughness vary independently; neither changes geometry or pigment."
+-(array)graphs {
+-    - {
+-        kind "event"
+-        name ""
+-        (array)nodes {
+-            - id=100 type="Shader ObjectPosition" x=0.0 y=0.0
+-            - {
+-                id 200
+-                type "Shader Parameter"
+-                x 0.0
+-                y 240.0
+-                reference_name "BaseColor"
+-                outputs {
+-                    Value {
+-                        type "struct"
+-                        type_name "ShaderVec3"
+-                        default x=0.46 y=0.43 z=0.38
+-                    }
+-                }
+-            }
+-            - {
+-                id 300
+-                type "Shader Parameter"
+-                x 0.0
+-                y 420.0
+-                reference_id 1
+-                reference_name "Roughness"
+-                outputs Value=0.68
+-            }
+-            - {
+-                id 400
+-                type "Shader Parameter"
+-                x 0.0
+-                y 600.0
+-                reference_id 2
+-                reference_name "Variation"
+-                outputs Value=0.06
+-            }
+-            - {
+-                id 500
+-                type "Shader Parameter"
+-                x 0.0
+-                y 780.0
+-                reference_id 3
+-                reference_name "Fingerprints"
+-                outputs Value=1.0
+-            }
+-            - {
+-                id 600
+-                type "Shader Parameter"
+-                x 0.0
+-                y 960.0
+-                reference_id 4
+-                reference_name "Spacing"
+-                outputs Value=2.4
+-            }
+-            - {
+-                id 700
+-                type "Behavior Expression"
+-                x 340.0
+-                y 0.0
+-                reference_name "0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))"
+-                inputs {
+-                    position id=701 type="struct" type_name="ShaderVec3"
+-                    spacing id=702 type="float"
+-                }
+-                outputs {
+-                    Result id=703 type="float"
+-                }
+-            }
+-            - {
+-                id 800
+-                type "Behavior Expression"
+-                x 340.0
+-                y 420.0
+-                reference_name "clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)"
+-                inputs {
+-                    position id=801 type="struct" type_name="ShaderVec3"
+-                    roughness id=802 type="float"
+-                    variation id=803 type="float"
+-                }
+-                outputs {
+-                    Result id=804 type="float"
+-                }
+-            }
+-            - {
+-                id 900
+-                type "Shader Bump"
+-                x 700.0
+-                y 0.0
+-                inputs Distance=0.12
+-            }
+-            - {
+-                id 1000
+-                type "Shader Surface Output"
+-                x 1040.0
+-                y 240.0
+-                inputs "Alpha Mode"=1
+-            }
+-        }
+-        (array)edges {
+-            - from="100.Value" to="700.position"
+-            - from="100.Value" to="800.position"
+-            - from="200.Value" to="1000.Base Color"
+-            - from="300.Value" to="800.roughness"
+-            - from="400.Value" to="800.variation"
+-            - from="500.Value" to="900.Strength"
+-            - from="600.Value" to="700.spacing"
+-            - from="700.Result" to="900.Height"
+-            - from="800.Result" to="1000.Roughness"
+-            - from="900.Value" to="1000.Normal"
+-        }
+-    }
+-    - id=1100 kind="function" math_expression="0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))" expression_mode=1 entry_id=1101
+-    - id=1200 kind="function" math_expression="clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)" expression_mode=1 entry_id=1201
+-}
+diff --git a/test/fixtures/clay-lab/content/models/ClayBlock.chibi b/test/fixtures/clay-lab/content/models/ClayBlock.chibi
+new file mode 100644
+index 0000000..78ba3e7
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/models/ClayBlock.chibi
+@@ -0,0 +1,51 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(3)),
++            data.Field.Named("name", data.Value.Text("ClayBlock")),
++            data.Field.Named("domain", data.Value.Text("model")),
++            data.Field.Named("id_counter", data.Value.UInt(1000)),
++            data.Field.Named("description", data.Value.Text("Rounded calibration block; half size (18,16,16), outer radius 4.")),
++            data.Field.Named("graphs", data.List([
++                data.Object([
++                    data.Field.Named("kind", data.Value.Text("event")),
++                    data.Field.Named("name", data.Value.Text("")),
++                    data.Field.Named("nodes", data.List([
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(100)),
++                            data.Field.Named("type", data.Value.Text("Model Rounded Box")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Half Size", data.Object([
++                                    data.Field.Named("default", data.Object([
++                                        data.Field.Named("x", data.Value.Real(18.0)),
++                                        data.Field.Named("y", data.Value.Real(16.0)),
++                                        data.Field.Named("z", data.Value.Real(16.0))
++                                    ]))
++                                ])),
++                                data.Field.Named("Radius", data.Value.Real(4.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(200)),
++                            data.Field.Named("type", data.Value.Text("Model Output")),
++                            data.Field.Named("x", data.Value.Real(300.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ])
++                    ])),
++                    data.Field.Named("edges", data.List([
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Geometry")),
++                            data.Field.Named("to", data.Value.Text("200.Geometry"))
++                        ])
++                    ]))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/models/ClayBlock.kdl b/test/fixtures/clay-lab/content/models/ClayBlock.kdl
+deleted file mode 100644
+index 8b2c2f4..0000000
+--- a/test/fixtures/clay-lab/content/models/ClayBlock.kdl
++++ /dev/null
+@@ -1,29 +0,0 @@
+-version 3
+-name "ClayBlock"
+-domain "model"
+-id_counter 1000
+-description "Rounded calibration block; half size (18,16,16), outer radius 4."
+-(array)graphs {
+-    - {
+-        kind "event"
+-        name ""
+-        (array)nodes {
+-            - {
+-                id 100
+-                type "Model Rounded Box"
+-                x 0.0
+-                y 0.0
+-                inputs {
+-                    "Half Size" {
+-                        default x=18.0 y=16.0 z=16.0
+-                    }
+-                    Radius 4.0
+-                }
+-            }
+-            - id=200 type="Model Output" x=300.0 y=0.0
+-        }
+-        (array)edges {
+-            - from="100.Geometry" to="200.Geometry"
+-        }
+-    }
+-}
+diff --git a/test/fixtures/clay-lab/content/models/ClayCapsule.chibi b/test/fixtures/clay-lab/content/models/ClayCapsule.chibi
+new file mode 100644
+index 0000000..b2d8fa6
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/models/ClayCapsule.chibi
+@@ -0,0 +1,45 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(3)),
++            data.Field.Named("name", data.Value.Text("ClayCapsule")),
++            data.Field.Named("domain", data.Value.Text("model")),
++            data.Field.Named("id_counter", data.Value.UInt(1000)),
++            data.Field.Named("description", data.Value.Text("Y-axis capsule; radius 12 and half segment 12 authored units.")),
++            data.Field.Named("graphs", data.List([
++                data.Object([
++                    data.Field.Named("kind", data.Value.Text("event")),
++                    data.Field.Named("name", data.Value.Text("")),
++                    data.Field.Named("nodes", data.List([
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(100)),
++                            data.Field.Named("type", data.Value.Text("Model Capsule")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Radius", data.Value.Real(12.0)),
++                                data.Field.Named("Half Segment", data.Value.Real(12.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(200)),
++                            data.Field.Named("type", data.Value.Text("Model Output")),
++                            data.Field.Named("x", data.Value.Real(300.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ])
++                    ])),
++                    data.Field.Named("edges", data.List([
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Geometry")),
++                            data.Field.Named("to", data.Value.Text("200.Geometry"))
++                        ])
++                    ]))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/models/ClayCapsule.kdl b/test/fixtures/clay-lab/content/models/ClayCapsule.kdl
+deleted file mode 100644
+index 5e090ef..0000000
+--- a/test/fixtures/clay-lab/content/models/ClayCapsule.kdl
++++ /dev/null
+@@ -1,24 +0,0 @@
+-version 3
+-name "ClayCapsule"
+-domain "model"
+-id_counter 1000
+-description "Y-axis capsule; radius 12 and half segment 12 authored units."
+-(array)graphs {
+-    - {
+-        kind "event"
+-        name ""
+-        (array)nodes {
+-            - {
+-                id 100
+-                type "Model Capsule"
+-                x 0.0
+-                y 0.0
+-                inputs Radius=12.0 "Half Segment"=12.0
+-            }
+-            - id=200 type="Model Output" x=300.0 y=0.0
+-        }
+-        (array)edges {
+-            - from="100.Geometry" to="200.Geometry"
+-        }
+-    }
+-}
+diff --git a/test/fixtures/clay-lab/content/models/ClaySculpt.chibi b/test/fixtures/clay-lab/content/models/ClaySculpt.chibi
+new file mode 100644
+index 0000000..12c6d58
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/models/ClaySculpt.chibi
+@@ -0,0 +1,201 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(3)),
++            data.Field.Named("name", data.Value.Text("ClaySculpt")),
++            data.Field.Named("domain", data.Value.Text("model")),
++            data.Field.Named("id_counter", data.Value.UInt(2000)),
++            data.Field.Named("description", data.Value.Text("Bounded primitive sculpt: a softened lobe and thumb cut. Form 0 recovers ClayBlock; Form 1 shows the worked silhouette.")),
++            data.Field.Named("graphs", data.List([
++                data.Object([
++                    data.Field.Named("kind", data.Value.Text("event")),
++                    data.Field.Named("name", data.Value.Text("")),
++                    data.Field.Named("nodes", data.List([
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(100)),
++                            data.Field.Named("type", data.Value.Text("Model Rounded Box")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Half Size", data.Object([
++                                    data.Field.Named("default", data.Object([
++                                        data.Field.Named("x", data.Value.Real(18.0)),
++                                        data.Field.Named("y", data.Value.Real(16.0)),
++                                        data.Field.Named("z", data.Value.Real(16.0))
++                                    ]))
++                                ])),
++                                data.Field.Named("Radius", data.Value.Real(4.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(200)),
++                            data.Field.Named("type", data.Value.Text("Model Parameter")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(260.0)),
++                            data.Field.Named("reference_name", data.Value.Text("Form")),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Minimum", data.Value.Real(0.0)),
++                                data.Field.Named("Maximum", data.Value.Real(1.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(300)),
++                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
++                            data.Field.Named("x", data.Value.Real(280.0)),
++                            data.Field.Named("y", data.Value.Real(230.0)),
++                            data.Field.Named("reference_name", data.Value.Text("vec3(14 * form, 3 * form, 2 * form)")),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("form", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(301)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ])),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Result", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(302)),
++                                    data.Field.Named("type", data.Value.Text("struct")),
++                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
++                                ]))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(400)),
++                            data.Field.Named("type", data.Value.Text("Model Sphere")),
++                            data.Field.Named("x", data.Value.Real(280.0)),
++                            data.Field.Named("y", data.Value.Real(430.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Radius", data.Value.Real(12.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(500)),
++                            data.Field.Named("type", data.Value.Text("Model Translate")),
++                            data.Field.Named("x", data.Value.Real(580.0)),
++                            data.Field.Named("y", data.Value.Real(230.0))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(600)),
++                            data.Field.Named("type", data.Value.Text("Model Smooth Union")),
++                            data.Field.Named("x", data.Value.Real(880.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Smoothness", data.Value.Real(3.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(700)),
++                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
++                            data.Field.Named("x", data.Value.Real(280.0)),
++                            data.Field.Named("y", data.Value.Real(650.0)),
++                            data.Field.Named("reference_name", data.Value.Text("vec3(-7, 38 - 15 * form, 6)")),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("form", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(701)),
++                                    data.Field.Named("type", data.Value.Text("float"))
++                                ]))
++                            ])),
++                            data.Field.Named("outputs", data.Object([
++                                data.Field.Named("Result", data.Object([
++                                    data.Field.Named("id", data.Value.UInt(702)),
++                                    data.Field.Named("type", data.Value.Text("struct")),
++                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
++                                ]))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(800)),
++                            data.Field.Named("type", data.Value.Text("Model Sphere")),
++                            data.Field.Named("x", data.Value.Real(280.0)),
++                            data.Field.Named("y", data.Value.Real(850.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Radius", data.Value.Real(10.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(900)),
++                            data.Field.Named("type", data.Value.Text("Model Translate")),
++                            data.Field.Named("x", data.Value.Real(580.0)),
++                            data.Field.Named("y", data.Value.Real(650.0))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(1000)),
++                            data.Field.Named("type", data.Value.Text("Model Difference")),
++                            data.Field.Named("x", data.Value.Real(1180.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(1100)),
++                            data.Field.Named("type", data.Value.Text("Model Output")),
++                            data.Field.Named("x", data.Value.Real(1480.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ])
++                    ])),
++                    data.Field.Named("edges", data.List([
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Geometry")),
++                            data.Field.Named("to", data.Value.Text("600.A"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("200.Value")),
++                            data.Field.Named("to", data.Value.Text("300.form"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("200.Value")),
++                            data.Field.Named("to", data.Value.Text("700.form"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("300.Result")),
++                            data.Field.Named("to", data.Value.Text("500.Offset"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("400.Geometry")),
++                            data.Field.Named("to", data.Value.Text("500.Geometry"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("500.Geometry")),
++                            data.Field.Named("to", data.Value.Text("600.B"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("600.Geometry")),
++                            data.Field.Named("to", data.Value.Text("1000.A"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("700.Result")),
++                            data.Field.Named("to", data.Value.Text("900.Offset"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("800.Geometry")),
++                            data.Field.Named("to", data.Value.Text("900.Geometry"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("900.Geometry")),
++                            data.Field.Named("to", data.Value.Text("1000.B"))
++                        ]),
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("1000.Geometry")),
++                            data.Field.Named("to", data.Value.Text("1100.Geometry"))
++                        ])
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("id", data.Value.UInt(1200)),
++                    data.Field.Named("kind", data.Value.Text("function")),
++                    data.Field.Named("math_expression", data.Value.Text("vec3(14 * form, 3 * form, 2 * form)")),
++                    data.Field.Named("expression_mode", data.Value.UInt(1)),
++                    data.Field.Named("entry_id", data.Value.UInt(1201))
++                ]),
++                data.Object([
++                    data.Field.Named("id", data.Value.UInt(1300)),
++                    data.Field.Named("kind", data.Value.Text("function")),
++                    data.Field.Named("math_expression", data.Value.Text("vec3(-7, 38 - 15 * form, 6)")),
++                    data.Field.Named("expression_mode", data.Value.UInt(1)),
++                    data.Field.Named("entry_id", data.Value.UInt(1301))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/models/ClaySculpt.kdl b/test/fixtures/clay-lab/content/models/ClaySculpt.kdl
+deleted file mode 100644
+index 1d27d86..0000000
+--- a/test/fixtures/clay-lab/content/models/ClaySculpt.kdl
++++ /dev/null
+@@ -1,99 +0,0 @@
+-version 3
+-name "ClaySculpt"
+-domain "model"
+-id_counter 2000
+-description "Bounded primitive sculpt: a softened lobe and thumb cut. Form 0 recovers ClayBlock; Form 1 shows the worked silhouette."
+-(array)graphs {
+-    - {
+-        kind "event"
+-        name ""
+-        (array)nodes {
+-            - {
+-                id 100
+-                type "Model Rounded Box"
+-                x 0.0
+-                y 0.0
+-                inputs {
+-                    "Half Size" {
+-                        default x=18.0 y=16.0 z=16.0
+-                    }
+-                    Radius 4.0
+-                }
+-            }
+-            - {
+-                id 200
+-                type "Model Parameter"
+-                x 0.0
+-                y 260.0
+-                reference_name "Form"
+-                inputs Minimum=0.0 Maximum=1.0
+-            }
+-            - {
+-                id 300
+-                type "Behavior Expression"
+-                x 280.0
+-                y 230.0
+-                reference_name "vec3(14 * form, 3 * form, 2 * form)"
+-                inputs {
+-                    form id=301 type="float"
+-                }
+-                outputs {
+-                    Result id=302 type="struct" type_name="ShaderVec3"
+-                }
+-            }
+-            - {
+-                id 400
+-                type "Model Sphere"
+-                x 280.0
+-                y 430.0
+-                inputs Radius=12.0
+-            }
+-            - id=500 type="Model Translate" x=580.0 y=230.0
+-            - {
+-                id 600
+-                type "Model Smooth Union"
+-                x 880.0
+-                y 0.0
+-                inputs Smoothness=3.0
+-            }
+-            - {
+-                id 700
+-                type "Behavior Expression"
+-                x 280.0
+-                y 650.0
+-                reference_name "vec3(-7, 38 - 15 * form, 6)"
+-                inputs {
+-                    form id=701 type="float"
+-                }
+-                outputs {
+-                    Result id=702 type="struct" type_name="ShaderVec3"
+-                }
+-            }
+-            - {
+-                id 800
+-                type "Model Sphere"
+-                x 280.0
+-                y 850.0
+-                inputs Radius=10.0
+-            }
+-            - id=900 type="Model Translate" x=580.0 y=650.0
+-            - id=1000 type="Model Difference" x=1180.0 y=0.0
+-            - id=1100 type="Model Output" x=1480.0 y=0.0
+-        }
+-        (array)edges {
+-            - from="100.Geometry" to="600.A"
+-            - from="200.Value" to="300.form"
+-            - from="200.Value" to="700.form"
+-            - from="300.Result" to="500.Offset"
+-            - from="400.Geometry" to="500.Geometry"
+-            - from="500.Geometry" to="600.B"
+-            - from="600.Geometry" to="1000.A"
+-            - from="700.Result" to="900.Offset"
+-            - from="800.Geometry" to="900.Geometry"
+-            - from="900.Geometry" to="1000.B"
+-            - from="1000.Geometry" to="1100.Geometry"
+-        }
+-    }
+-    - id=1200 kind="function" math_expression="vec3(14 * form, 3 * form, 2 * form)" expression_mode=1 entry_id=1201
+-    - id=1300 kind="function" math_expression="vec3(-7, 38 - 15 * form, 6)" expression_mode=1 entry_id=1301
+-}
+diff --git a/test/fixtures/clay-lab/content/models/ClaySphere.chibi b/test/fixtures/clay-lab/content/models/ClaySphere.chibi
+new file mode 100644
+index 0000000..5f1a724
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/models/ClaySphere.chibi
+@@ -0,0 +1,44 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(3)),
++            data.Field.Named("name", data.Value.Text("ClaySphere")),
++            data.Field.Named("domain", data.Value.Text("model")),
++            data.Field.Named("id_counter", data.Value.UInt(1000)),
++            data.Field.Named("description", data.Value.Text("Radius-18 calibration sphere in authored units.")),
++            data.Field.Named("graphs", data.List([
++                data.Object([
++                    data.Field.Named("kind", data.Value.Text("event")),
++                    data.Field.Named("name", data.Value.Text("")),
++                    data.Field.Named("nodes", data.List([
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(100)),
++                            data.Field.Named("type", data.Value.Text("Model Sphere")),
++                            data.Field.Named("x", data.Value.Real(0.0)),
++                            data.Field.Named("y", data.Value.Real(0.0)),
++                            data.Field.Named("inputs", data.Object([
++                                data.Field.Named("Radius", data.Value.Real(18.0))
++                            ]))
++                        ]),
++                        data.Object([
++                            data.Field.Named("id", data.Value.UInt(200)),
++                            data.Field.Named("type", data.Value.Text("Model Output")),
++                            data.Field.Named("x", data.Value.Real(300.0)),
++                            data.Field.Named("y", data.Value.Real(0.0))
++                        ])
++                    ])),
++                    data.Field.Named("edges", data.List([
++                        data.Object([
++                            data.Field.Named("from", data.Value.Text("100.Geometry")),
++                            data.Field.Named("to", data.Value.Text("200.Geometry"))
++                        ])
++                    ]))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/models/ClaySphere.kdl b/test/fixtures/clay-lab/content/models/ClaySphere.kdl
+deleted file mode 100644
+index 7a69cd0..0000000
+--- a/test/fixtures/clay-lab/content/models/ClaySphere.kdl
++++ /dev/null
+@@ -1,24 +0,0 @@
+-version 3
+-name "ClaySphere"
+-domain "model"
+-id_counter 1000
+-description "Radius-18 calibration sphere in authored units."
+-(array)graphs {
+-    - {
+-        kind "event"
+-        name ""
+-        (array)nodes {
+-            - {
+-                id 100
+-                type "Model Sphere"
+-                x 0.0
+-                y 0.0
+-                inputs Radius=18.0
+-            }
+-            - id=200 type="Model Output" x=300.0 y=0.0
+-        }
+-        (array)edges {
+-            - from="100.Geometry" to="200.Geometry"
+-        }
+-    }
+-}
+diff --git a/test/fixtures/clay-lab/content/prototypes/ClayLamp.chibi b/test/fixtures/clay-lab/content/prototypes/ClayLamp.chibi
+index d2d8fef..468e24b 100644
+--- a/test/fixtures/clay-lab/content/prototypes/ClayLamp.chibi
++++ b/test/fixtures/clay-lab/content/prototypes/ClayLamp.chibi
+@@ -1,20 +1,30 @@
+-// A broad white emissive card for the existing HRC surface path.
+-ClayLamp :: prototype {
+-    Transform {
+-        x: 0,
+-        y: -76
+-    }
+-    Appearance {
+-        width: 220,
+-        height: 6,
+-        color: 4294967295,
+-        relief: 72
+-    }
+-    Material {
+-        scene: 4294967295,
+-        albedo: 4294967295,
+-        emission_color: 4294967295,
+-        emission_intensity: 1,
+-        emission_multiplier: 1
+-    }
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("name", data.Value.Text("ClayLamp")),
++            data.Field.Named("components", data.Object([
++                data.Field.Named("Transform", data.Object([
++                    data.Field.Named("x", data.Value.Real(0.0)),
++                    data.Field.Named("y", data.Value.Real(-76.0))
++                ])),
++                data.Field.Named("Appearance", data.Object([
++                    data.Field.Named("width", data.Value.Real(220.0)),
++                    data.Field.Named("height", data.Value.Real(6.0)),
++                    data.Field.Named("color", data.Value.UInt(4294967295)),
++                    data.Field.Named("relief", data.Value.Real(72.0))
++                ])),
++                data.Field.Named("Material", data.Object([
++                    data.Field.Named("scene", data.Value.UInt(4294967295)),
++                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
++                    data.Field.Named("emission_color", data.Value.UInt(4294967295)),
++                    data.Field.Named("emission_intensity", data.Value.Real(1.0)),
++                    data.Field.Named("emission_multiplier", data.Value.Real(1.0))
++                ]))
++            ]))
++        ])
++    );
+ }
+diff --git a/test/fixtures/clay-lab/content/prototypes/ClayNeutral.chibi b/test/fixtures/clay-lab/content/prototypes/ClayNeutral.chibi
+index bf3a2ba..98e4fe1 100644
+--- a/test/fixtures/clay-lab/content/prototypes/ClayNeutral.chibi
++++ b/test/fixtures/clay-lab/content/prototypes/ClayNeutral.chibi
+@@ -1,40 +1,56 @@
+-ClayNeutral :: prototype {
+-    Transform {
+-        x: 0,
+-        y: 0
+-    }
+-    Input {
+-        move: { x: 0, y: 0 }
+-    }
+-    Geometry3D {
+-        width: 36,
+-        height: 36,
+-        depth: 36,
+-        elevation: 24
+-    }
+-    VisualTransform {
+-        scale: 1
+-    }
+-    SdfSurface3D {
+-        enabled: true
+-    }
+-    Material {
+-        scene: 4294967295,
+-        albedo: 4294967295,
+-        edge_light: 1
+-    }
+-    Shader {
+-        material: "ClaySurface",
+-        shape: "ClaySculpt"
+-    }
+-    ClaySettings {
+-        form: 1,
+-        fingerprints: 1,
+-        roughness: 0.68,
+-        variation: 0.06,
+-        spacing: 2.4,
+-        has_form: true,
+-        dirty: true
+-    }
+-    behaviors: [ClayControls]
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("name", data.Value.Text("ClayNeutral")),
++            data.Field.Named("components", data.Object([
++                data.Field.Named("Transform", data.Object([
++                    data.Field.Named("x", data.Value.Real(0.0)),
++                    data.Field.Named("y", data.Value.Real(0.0))
++                ])),
++                data.Field.Named("Input", data.Object([
++                    data.Field.Named("move", data.Object([
++                        data.Field.Named("x", data.Value.Real(0.0)),
++                        data.Field.Named("y", data.Value.Real(0.0))
++                    ]))
++                ])),
++                data.Field.Named("Geometry3D", data.Object([
++                    data.Field.Named("width", data.Value.Real(36.0)),
++                    data.Field.Named("height", data.Value.Real(36.0)),
++                    data.Field.Named("depth", data.Value.Real(36.0)),
++                    data.Field.Named("elevation", data.Value.Real(24.0))
++                ])),
++                data.Field.Named("VisualTransform", data.Object([
++                    data.Field.Named("scale", data.Value.Real(1.0))
++                ])),
++                data.Field.Named("SdfSurface3D", data.Object([
++                    data.Field.Named("enabled", data.Value.Bool(true))
++                ])),
++                data.Field.Named("Material", data.Object([
++                    data.Field.Named("scene", data.Value.UInt(4294967295)),
++                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
++                    data.Field.Named("edge_light", data.Value.Real(1.0))
++                ])),
++                data.Field.Named("Shader", data.Object([
++                    data.Field.Named("material", data.Value.Text("ClaySurface")),
++                    data.Field.Named("shape", data.Value.Text("ClaySculpt"))
++                ])),
++                data.Field.Named("ClaySettings", data.Object([
++                    data.Field.Named("form", data.Value.Real(1.0)),
++                    data.Field.Named("fingerprints", data.Value.Real(1.0)),
++                    data.Field.Named("roughness", data.Value.Real(0.68)),
++                    data.Field.Named("variation", data.Value.Real(0.06)),
++                    data.Field.Named("spacing", data.Value.Real(2.4)),
++                    data.Field.Named("has_form", data.Value.Bool(true)),
++                    data.Field.Named("dirty", data.Value.Bool(true))
++                ]))
++            ])),
++            data.Field.Named("behaviors", data.List([
++                data.Value.Text("ClayControls")
++            ]))
++        ])
++    );
+ }
+diff --git a/test/fixtures/clay-lab/content/prototypes/ClayStage.chibi b/test/fixtures/clay-lab/content/prototypes/ClayStage.chibi
+index fd18ebf..5aeb91a 100644
+--- a/test/fixtures/clay-lab/content/prototypes/ClayStage.chibi
++++ b/test/fixtures/clay-lab/content/prototypes/ClayStage.chibi
+@@ -1,28 +1,38 @@
+-// Fixed planar HRC lighting, deliberately without feedback, bloom or adaptation.
+-ClayStage :: prototype {
+-    EngineSystem {
+-        asset: "ApplyClay"
+-    }
+-    HRC2D {
+-        resolution: 0.5,
+-        adaptive: false,
+-        target_fps: 60,
+-        ambient: 0.3,
+-        intensity: 1,
+-        falloff: 1,
+-        shadow_floor: 0.03,
+-        radiance_hysteresis: 1,
+-        bounce_hysteresis: 1,
+-        feedback: false,
+-        surface_radius: 24,
+-        surface_mode: "Depth thickness",
+-        surface_depth_radius: 320,
+-        surface_depth_gain: 1,
+-        surface_depth_quality: "Balanced",
+-        surface_depth_visibility: "Bounded segments",
+-        surface_thickness: 24,
+-        surface_relief: 1.5,
+-        surface_bevel: 1,
+-        specular: 1
+-    }
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("name", data.Value.Text("ClayStage")),
++            data.Field.Named("components", data.Object([
++                data.Field.Named("EngineSystem", data.Object([
++                    data.Field.Named("asset", data.Value.Text("ApplyClay"))
++                ])),
++                data.Field.Named("HRC2D", data.Object([
++                    data.Field.Named("resolution", data.Value.Real(0.5)),
++                    data.Field.Named("adaptive", data.Value.Bool(false)),
++                    data.Field.Named("target_fps", data.Value.Real(60.0)),
++                    data.Field.Named("ambient", data.Value.Real(0.3)),
++                    data.Field.Named("intensity", data.Value.Real(1.0)),
++                    data.Field.Named("falloff", data.Value.Real(1.0)),
++                    data.Field.Named("shadow_floor", data.Value.Real(0.03)),
++                    data.Field.Named("radiance_hysteresis", data.Value.Real(1.0)),
++                    data.Field.Named("bounce_hysteresis", data.Value.Real(1.0)),
++                    data.Field.Named("feedback", data.Value.Bool(false)),
++                    data.Field.Named("surface_radius", data.Value.Real(24.0)),
++                    data.Field.Named("surface_mode", data.Value.Text("Depth thickness")),
++                    data.Field.Named("surface_depth_radius", data.Value.Real(320.0)),
++                    data.Field.Named("surface_depth_gain", data.Value.Real(1.0)),
++                    data.Field.Named("surface_depth_quality", data.Value.Text("Balanced")),
++                    data.Field.Named("surface_depth_visibility", data.Value.Text("Bounded segments")),
++                    data.Field.Named("surface_thickness", data.Value.Real(24.0)),
++                    data.Field.Named("surface_relief", data.Value.Real(1.5)),
++                    data.Field.Named("surface_bevel", data.Value.Real(1.0)),
++                    data.Field.Named("specular", data.Value.Real(1.0))
++                ]))
++            ]))
++        ])
++    );
+ }
+diff --git a/test/fixtures/clay-lab/content/prototypes/ClayTerracotta.chibi b/test/fixtures/clay-lab/content/prototypes/ClayTerracotta.chibi
+index ad0c96a..13f404f 100644
+--- a/test/fixtures/clay-lab/content/prototypes/ClayTerracotta.chibi
++++ b/test/fixtures/clay-lab/content/prototypes/ClayTerracotta.chibi
+@@ -1,6 +1,19 @@
+-// Same surface and tuning as neutral; only the linear pigment changes.
+-ClayTerracotta :: prototype(ClayNeutral) {
+-    Shader {
+-        parameters: "(array)material.BaseColor 0.52 0.16 0.08\n"
+-    }
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("name", data.Value.Text("ClayTerracotta")),
++            data.Field.Named("includes", data.List([
++                data.Value.Text("ClayNeutral")
++            ])),
++            data.Field.Named("components", data.Object([
++                data.Field.Named("Shader", data.Object([
++                    data.Field.Named("parameters", data.Value.Text("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        data.Object([\n            data.Field.Named(\"material.BaseColor\", data.List([\n                data.Value.Real(0.52),\n                data.Value.Real(0.16),\n                data.Value.Real(0.08)\n            ]))\n        ])\n    );\n}\n"))
++                ]))
++            ]))
++        ])
++    );
+ }
+diff --git a/test/fixtures/clay-lab/content/prototypes/ClayView.chibi b/test/fixtures/clay-lab/content/prototypes/ClayView.chibi
+index edb5713..c39d881 100644
+--- a/test/fixtures/clay-lab/content/prototypes/ClayView.chibi
++++ b/test/fixtures/clay-lab/content/prototypes/ClayView.chibi
+@@ -1,17 +1,28 @@
+-ClayView :: prototype {
+-    Transform {
+-        x: 0,
+-        y: 0
+-    }
+-    Camera {
+-        width: 320,
+-        height: 180,
+-        pitch: 0.35,
+-        target_elevation: 12
+-    }
+-    SurfaceQuality {
+-        resolution: "Full",
+-        sdf_normal_mode: "Tetrahedral",
+-        sdf_pixel_error: 0.25
+-    }
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("name", data.Value.Text("ClayView")),
++            data.Field.Named("components", data.Object([
++                data.Field.Named("Transform", data.Object([
++                    data.Field.Named("x", data.Value.Real(0.0)),
++                    data.Field.Named("y", data.Value.Real(0.0))
++                ])),
++                data.Field.Named("Camera", data.Object([
++                    data.Field.Named("width", data.Value.Real(320.0)),
++                    data.Field.Named("height", data.Value.Real(180.0)),
++                    data.Field.Named("pitch", data.Value.Real(0.35)),
++                    data.Field.Named("target_elevation", data.Value.Real(12.0))
++                ])),
++                data.Field.Named("SurfaceQuality", data.Object([
++                    data.Field.Named("resolution", data.Value.Text("Full")),
++                    data.Field.Named("sdf_normal_mode", data.Value.Text("Tetrahedral")),
++                    data.Field.Named("sdf_pixel_error", data.Value.Real(0.25))
++                ]))
++            ]))
++        ])
++    );
+ }
+diff --git a/test/fixtures/clay-lab/content/scenes/MaterialLab.chibi b/test/fixtures/clay-lab/content/scenes/MaterialLab.chibi
+new file mode 100644
+index 0000000..6d92a69
+--- /dev/null
++++ b/test/fixtures/clay-lab/content/scenes/MaterialLab.chibi
+@@ -0,0 +1,142 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.UInt(1)),
++            data.Field.Named("name", data.Value.Text("MaterialLab")),
++            data.Field.Named("entities", data.List([
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("View")),
++                    data.Field.Named("prototype", data.Value.Text("ClayView"))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Stage")),
++                    data.Field.Named("prototype", data.Value.Text("ClayStage"))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Key")),
++                    data.Field.Named("prototype", data.Value.Text("ClayLamp"))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Neutral sphere")),
++                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(-108.0)),
++                            data.Field.Named("y", data.Value.Real(-30.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClaySphere"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Neutral capsule")),
++                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(-36.0)),
++                            data.Field.Named("y", data.Value.Real(-30.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClayCapsule"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Neutral block")),
++                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(36.0)),
++                            data.Field.Named("y", data.Value.Real(-30.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClayBlock"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Neutral sculpt")),
++                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(108.0)),
++                            data.Field.Named("y", data.Value.Real(-30.0))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Terracotta sphere")),
++                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(-108.0)),
++                            data.Field.Named("y", data.Value.Real(34.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClaySphere"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Terracotta capsule")),
++                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(-36.0)),
++                            data.Field.Named("y", data.Value.Real(34.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClayCapsule"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Terracotta block")),
++                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(36.0)),
++                            data.Field.Named("y", data.Value.Real(34.0))
++                        ])),
++                        data.Field.Named("Shader", data.Object([
++                            data.Field.Named("shape", data.Value.Text("ClayBlock"))
++                        ])),
++                        data.Field.Named("ClaySettings", data.Object([
++                            data.Field.Named("has_form", data.Value.Bool(false))
++                        ]))
++                    ]))
++                ]),
++                data.Object([
++                    data.Field.Named("name", data.Value.Text("Terracotta sculpt")),
++                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
++                    data.Field.Named("components", data.Object([
++                        data.Field.Named("Transform", data.Object([
++                            data.Field.Named("x", data.Value.Real(108.0)),
++                            data.Field.Named("y", data.Value.Real(34.0))
++                        ]))
++                    ]))
++                ])
++            ]))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/content/scenes/MaterialLab.kdl b/test/fixtures/clay-lab/content/scenes/MaterialLab.kdl
+deleted file mode 100644
+index 0afd841..0000000
+--- a/test/fixtures/clay-lab/content/scenes/MaterialLab.kdl
++++ /dev/null
+@@ -1,75 +0,0 @@
+-version 1
+-name "MaterialLab"
+-(array)entities {
+-    - name="View" prototype="ClayView"
+-    - name="Stage" prototype="ClayStage"
+-    - name="Key" prototype="ClayLamp"
+-    - {
+-        name "Neutral sphere"
+-        prototype "ClayNeutral"
+-        components {
+-            Transform x=-108.0 y=-30.0
+-            Shader shape="ClaySphere"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Neutral capsule"
+-        prototype "ClayNeutral"
+-        components {
+-            Transform x=-36.0 y=-30.0
+-            Shader shape="ClayCapsule"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Neutral block"
+-        prototype "ClayNeutral"
+-        components {
+-            Transform x=36.0 y=-30.0
+-            Shader shape="ClayBlock"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Neutral sculpt"
+-        prototype "ClayNeutral"
+-        components {
+-            Transform x=108.0 y=-30.0
+-        }
+-    }
+-    - {
+-        name "Terracotta sphere"
+-        prototype "ClayTerracotta"
+-        components {
+-            Transform x=-108.0 y=34.0
+-            Shader shape="ClaySphere"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Terracotta capsule"
+-        prototype "ClayTerracotta"
+-        components {
+-            Transform x=-36.0 y=34.0
+-            Shader shape="ClayCapsule"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Terracotta block"
+-        prototype "ClayTerracotta"
+-        components {
+-            Transform x=36.0 y=34.0
+-            Shader shape="ClayBlock"
+-            ClaySettings has_form=#false
+-        }
+-    }
+-    - {
+-        name "Terracotta sculpt"
+-        prototype "ClayTerracotta"
+-        components {
+-            Transform x=108.0 y=34.0
+-        }
+-    }
+-}
+diff --git a/test/fixtures/clay-lab/content/systems/ApplyClay.chibi b/test/fixtures/clay-lab/content/systems/ApplyClay.chibi
+index ea0eaf4..523e580 100644
+--- a/test/fixtures/clay-lab/content/systems/ApplyClay.chibi
++++ b/test/fixtures/clay-lab/content/systems/ApplyClay.chibi
+@@ -1,14 +1,14 @@
+ // Publish only changed snapshots, never reauthor the model or material graph.
+-ApplyClay :: system(settings: ClaySettings) {
++ApplyClay :: system(settings: ClaySettings) on Tick :: () {
+     if !settings.dirty {
+         return
+     }
+     if settings.has_form {
+-        set_shape_parameter(self, "Form", cast<float>(settings.form))
++        set_shape_parameter(self, "Form", float(settings.form))
+     }
+-    set_material_parameter(self, "Fingerprints", cast<float>(settings.fingerprints))
+-    set_material_parameter(self, "Roughness", cast<float>(settings.roughness))
+-    set_material_parameter(self, "Variation", cast<float>(settings.variation))
+-    set_material_parameter(self, "Spacing", cast<float>(settings.spacing))
++    set_material_parameter(self, "Fingerprints", float(settings.fingerprints))
++    set_material_parameter(self, "Roughness", float(settings.roughness))
++    set_material_parameter(self, "Variation", float(settings.variation))
++    set_material_parameter(self, "Spacing", float(settings.spacing))
+     settings.dirty = false
+ }
+diff --git a/test/fixtures/clay-lab/project.chibi b/test/fixtures/clay-lab/project.chibi
+new file mode 100644
+index 0000000..ac74f24
+--- /dev/null
++++ b/test/fixtures/clay-lab/project.chibi
+@@ -0,0 +1,14 @@
++package asset
++
++import data "game:assets"
++
++pub Build :: () -> byte[] {
++    return data.Encode(
++        data.Object([
++            data.Field.Named("version", data.Value.Int(33)),
++            data.Field.Named("name", data.Value.Text("Clay Material Lab")),
++            data.Field.Named("content", data.Value.Text("content")),
++            data.Field.Named("start_scene", data.Value.Text("scenes/MaterialLab.chibi"))
++        ])
++    );
++}
+diff --git a/test/fixtures/clay-lab/project.kdl b/test/fixtures/clay-lab/project.kdl
+deleted file mode 100644
+index 2edab9a..0000000
+--- a/test/fixtures/clay-lab/project.kdl
++++ /dev/null
+@@ -1,4 +0,0 @@
+-version 26
+-name "Clay Material Lab"
+-content "content"
+-start_scene "scenes/MaterialLab.kdl"

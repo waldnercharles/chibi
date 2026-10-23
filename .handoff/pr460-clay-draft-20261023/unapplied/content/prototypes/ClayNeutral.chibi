@@ -1,0 +1,56 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("ClayNeutral")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(0.0)),
+                    data.Field.Named("y", data.Value.Real(0.0))
+                ])),
+                data.Field.Named("Input", data.Object([
+                    data.Field.Named("move", data.Object([
+                        data.Field.Named("x", data.Value.Real(0.0)),
+                        data.Field.Named("y", data.Value.Real(0.0))
+                    ]))
+                ])),
+                data.Field.Named("Geometry3D", data.Object([
+                    data.Field.Named("width", data.Value.Real(36.0)),
+                    data.Field.Named("height", data.Value.Real(36.0)),
+                    data.Field.Named("depth", data.Value.Real(36.0)),
+                    data.Field.Named("elevation", data.Value.Real(24.0))
+                ])),
+                data.Field.Named("VisualTransform", data.Object([
+                    data.Field.Named("scale", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("SdfSurface3D", data.Object([
+                    data.Field.Named("enabled", data.Value.Bool(true))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(4294967295)),
+                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                    data.Field.Named("edge_light", data.Value.Real(1.0))
+                ])),
+                data.Field.Named("Shader", data.Object([
+                    data.Field.Named("material", data.Value.Text("ClaySurface")),
+                    data.Field.Named("shape", data.Value.Text("ClaySculpt"))
+                ])),
+                data.Field.Named("ClaySettings", data.Object([
+                    data.Field.Named("form", data.Value.Real(1.0)),
+                    data.Field.Named("fingerprints", data.Value.Real(1.0)),
+                    data.Field.Named("roughness", data.Value.Real(0.68)),
+                    data.Field.Named("variation", data.Value.Real(0.06)),
+                    data.Field.Named("spacing", data.Value.Real(2.4)),
+                    data.Field.Named("has_form", data.Value.Bool(true)),
+                    data.Field.Named("dirty", data.Value.Bool(true))
+                ]))
+            ])),
+            data.Field.Named("behaviors", data.List([
+                data.Value.Text("ClayControls")
+            ]))
+        ])
+    );
+}

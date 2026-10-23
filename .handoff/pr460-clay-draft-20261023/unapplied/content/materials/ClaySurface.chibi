@@ -1,0 +1,217 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(3)),
+            data.Field.Named("name", data.Value.Text("ClaySurface")),
+            data.Field.Named("domain", data.Value.Text("material")),
+            data.Field.Named("id_counter", data.Value.UInt(2000)),
+            data.Field.Named("description", data.Value.Text("Metallic-zero clay study. Object-attached curved fingerprint height and lower-frequency roughness vary independently; neither changes geometry or pigment.")),
+            data.Field.Named("graphs", data.List([
+                data.Object([
+                    data.Field.Named("kind", data.Value.Text("event")),
+                    data.Field.Named("name", data.Value.Text("")),
+                    data.Field.Named("nodes", data.List([
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(100)),
+                            data.Field.Named("type", data.Value.Text("Shader ObjectPosition")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(0.0))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(200)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(240.0)),
+                            data.Field.Named("reference_name", data.Value.Text("BaseColor")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Object([
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3")),
+                                    data.Field.Named("default", data.Object([
+                                        data.Field.Named("x", data.Value.Real(0.46)),
+                                        data.Field.Named("y", data.Value.Real(0.43)),
+                                        data.Field.Named("z", data.Value.Real(0.38))
+                                    ]))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(300)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(420.0)),
+                            data.Field.Named("reference_id", data.Value.UInt(1)),
+                            data.Field.Named("reference_name", data.Value.Text("Roughness")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Value.Real(0.68))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(400)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(600.0)),
+                            data.Field.Named("reference_id", data.Value.UInt(2)),
+                            data.Field.Named("reference_name", data.Value.Text("Variation")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Value.Real(0.06))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(500)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(780.0)),
+                            data.Field.Named("reference_id", data.Value.UInt(3)),
+                            data.Field.Named("reference_name", data.Value.Text("Fingerprints")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Value.Real(1.0))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(600)),
+                            data.Field.Named("type", data.Value.Text("Shader Parameter")),
+                            data.Field.Named("x", data.Value.Real(0.0)),
+                            data.Field.Named("y", data.Value.Real(960.0)),
+                            data.Field.Named("reference_id", data.Value.UInt(4)),
+                            data.Field.Named("reference_name", data.Value.Text("Spacing")),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Value", data.Value.Real(2.4))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(700)),
+                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
+                            data.Field.Named("x", data.Value.Real(340.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("reference_name", data.Value.Text("0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("position", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(701)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ])),
+                                data.Field.Named("spacing", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(702)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ]))
+                            ])),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Result", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(703)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(800)),
+                            data.Field.Named("type", data.Value.Text("Behavior Expression")),
+                            data.Field.Named("x", data.Value.Real(340.0)),
+                            data.Field.Named("y", data.Value.Real(420.0)),
+                            data.Field.Named("reference_name", data.Value.Text("clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)")),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("position", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(801)),
+                                    data.Field.Named("type", data.Value.Text("struct")),
+                                    data.Field.Named("type_name", data.Value.Text("ShaderVec3"))
+                                ])),
+                                data.Field.Named("roughness", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(802)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ])),
+                                data.Field.Named("variation", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(803)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ]))
+                            ])),
+                            data.Field.Named("outputs", data.Object([
+                                data.Field.Named("Result", data.Object([
+                                    data.Field.Named("id", data.Value.UInt(804)),
+                                    data.Field.Named("type", data.Value.Text("float"))
+                                ]))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(900)),
+                            data.Field.Named("type", data.Value.Text("Shader Bump")),
+                            data.Field.Named("x", data.Value.Real(700.0)),
+                            data.Field.Named("y", data.Value.Real(0.0)),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Distance", data.Value.Real(0.12))
+                            ]))
+                        ]),
+                        data.Object([
+                            data.Field.Named("id", data.Value.UInt(1000)),
+                            data.Field.Named("type", data.Value.Text("Shader Surface Output")),
+                            data.Field.Named("x", data.Value.Real(1040.0)),
+                            data.Field.Named("y", data.Value.Real(240.0)),
+                            data.Field.Named("inputs", data.Object([
+                                data.Field.Named("Alpha Mode", data.Value.UInt(1))
+                            ]))
+                        ])
+                    ])),
+                    data.Field.Named("edges", data.List([
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Value")),
+                            data.Field.Named("to", data.Value.Text("700.position"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("100.Value")),
+                            data.Field.Named("to", data.Value.Text("800.position"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("200.Value")),
+                            data.Field.Named("to", data.Value.Text("1000.Base Color"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("300.Value")),
+                            data.Field.Named("to", data.Value.Text("800.roughness"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("400.Value")),
+                            data.Field.Named("to", data.Value.Text("800.variation"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("500.Value")),
+                            data.Field.Named("to", data.Value.Text("900.Strength"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("600.Value")),
+                            data.Field.Named("to", data.Value.Text("700.spacing"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("700.Result")),
+                            data.Field.Named("to", data.Value.Text("900.Height"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("800.Result")),
+                            data.Field.Named("to", data.Value.Text("1000.Roughness"))
+                        ]),
+                        data.Object([
+                            data.Field.Named("from", data.Value.Text("900.Value")),
+                            data.Field.Named("to", data.Value.Text("1000.Normal"))
+                        ])
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("id", data.Value.UInt(1100)),
+                    data.Field.Named("kind", data.Value.Text("function")),
+                    data.Field.Named("math_expression", data.Value.Text("0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))")),
+                    data.Field.Named("expression_mode", data.Value.UInt(1)),
+                    data.Field.Named("entry_id", data.Value.UInt(1101))
+                ]),
+                data.Object([
+                    data.Field.Named("id", data.Value.UInt(1200)),
+                    data.Field.Named("kind", data.Value.Text("function")),
+                    data.Field.Named("math_expression", data.Value.Text("clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)")),
+                    data.Field.Named("expression_mode", data.Value.UInt(1)),
+                    data.Field.Named("entry_id", data.Value.UInt(1201))
+                ])
+            ]))
+        ])
+    );
+}

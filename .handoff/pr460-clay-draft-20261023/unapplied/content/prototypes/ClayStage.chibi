@@ -1,0 +1,38 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("ClayStage")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("EngineSystem", data.Object([
+                    data.Field.Named("asset", data.Value.Text("ApplyClay"))
+                ])),
+                data.Field.Named("HRC2D", data.Object([
+                    data.Field.Named("resolution", data.Value.Real(0.5)),
+                    data.Field.Named("adaptive", data.Value.Bool(false)),
+                    data.Field.Named("target_fps", data.Value.Real(60.0)),
+                    data.Field.Named("ambient", data.Value.Real(0.3)),
+                    data.Field.Named("intensity", data.Value.Real(1.0)),
+                    data.Field.Named("falloff", data.Value.Real(1.0)),
+                    data.Field.Named("shadow_floor", data.Value.Real(0.03)),
+                    data.Field.Named("radiance_hysteresis", data.Value.Real(1.0)),
+                    data.Field.Named("bounce_hysteresis", data.Value.Real(1.0)),
+                    data.Field.Named("feedback", data.Value.Bool(false)),
+                    data.Field.Named("surface_radius", data.Value.Real(24.0)),
+                    data.Field.Named("surface_mode", data.Value.Text("Depth thickness")),
+                    data.Field.Named("surface_depth_radius", data.Value.Real(320.0)),
+                    data.Field.Named("surface_depth_gain", data.Value.Real(1.0)),
+                    data.Field.Named("surface_depth_quality", data.Value.Text("Balanced")),
+                    data.Field.Named("surface_depth_visibility", data.Value.Text("Bounded segments")),
+                    data.Field.Named("surface_thickness", data.Value.Real(24.0)),
+                    data.Field.Named("surface_relief", data.Value.Real(1.5)),
+                    data.Field.Named("surface_bevel", data.Value.Real(1.0)),
+                    data.Field.Named("specular", data.Value.Real(1.0))
+                ]))
+            ]))
+        ])
+    );
+}

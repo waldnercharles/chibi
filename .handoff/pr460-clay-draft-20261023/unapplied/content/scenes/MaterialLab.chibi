@@ -1,0 +1,142 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("version", data.Value.UInt(1)),
+            data.Field.Named("name", data.Value.Text("MaterialLab")),
+            data.Field.Named("entities", data.List([
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("View")),
+                    data.Field.Named("prototype", data.Value.Text("ClayView"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Stage")),
+                    data.Field.Named("prototype", data.Value.Text("ClayStage"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Key")),
+                    data.Field.Named("prototype", data.Value.Text("ClayLamp"))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Neutral sphere")),
+                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-108.0)),
+                            data.Field.Named("y", data.Value.Real(-30.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClaySphere"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Neutral capsule")),
+                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-36.0)),
+                            data.Field.Named("y", data.Value.Real(-30.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClayCapsule"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Neutral block")),
+                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(36.0)),
+                            data.Field.Named("y", data.Value.Real(-30.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClayBlock"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Neutral sculpt")),
+                    data.Field.Named("prototype", data.Value.Text("ClayNeutral")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(108.0)),
+                            data.Field.Named("y", data.Value.Real(-30.0))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Terracotta sphere")),
+                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-108.0)),
+                            data.Field.Named("y", data.Value.Real(34.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClaySphere"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Terracotta capsule")),
+                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(-36.0)),
+                            data.Field.Named("y", data.Value.Real(34.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClayCapsule"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Terracotta block")),
+                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(36.0)),
+                            data.Field.Named("y", data.Value.Real(34.0))
+                        ])),
+                        data.Field.Named("Shader", data.Object([
+                            data.Field.Named("shape", data.Value.Text("ClayBlock"))
+                        ])),
+                        data.Field.Named("ClaySettings", data.Object([
+                            data.Field.Named("has_form", data.Value.Bool(false))
+                        ]))
+                    ]))
+                ]),
+                data.Object([
+                    data.Field.Named("name", data.Value.Text("Terracotta sculpt")),
+                    data.Field.Named("prototype", data.Value.Text("ClayTerracotta")),
+                    data.Field.Named("components", data.Object([
+                        data.Field.Named("Transform", data.Object([
+                            data.Field.Named("x", data.Value.Real(108.0)),
+                            data.Field.Named("y", data.Value.Real(34.0))
+                        ]))
+                    ]))
+                ])
+            ]))
+        ])
+    );
+}

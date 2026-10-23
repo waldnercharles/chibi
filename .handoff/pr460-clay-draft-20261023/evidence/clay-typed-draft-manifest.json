@@ -1,0 +1,169 @@
+{
+  "status": "UNAPPLIED; UNVALIDATED; source draft only",
+  "original_revision": "aa7b4fcabe62fb91ee90d8e80800724a9c30e6e4",
+  "typed_contract_revision": "31098151bd5c0f3042f74996d678c0b784f3f25f",
+  "draft_directory": "/tmp/chibi-integration-20261022/pr460/clay-typed-draft",
+  "draft_file_count": 18,
+  "draft_bytes": 59424,
+  "compiled_asset_sources": 13,
+  "executable_declarations": 3,
+  "kdl_files_remaining": 0,
+  "new_builds_tests_gpu_commands": [],
+  "candidate_head_unchanged": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "candidate_staged_tree_unchanged": "adabdc085fa2d78f7f7a9977e0adeec1a353853f",
+  "diff_sha256": "cd1616ae606b10b0eeff1083f6e0facfc66ee57d6d9a2759b03a1903269955e4",
+  "generator_sha256": "92a0a2e6f6f271a5744bcfe86dadf39fa9ca12a618f29b829b7a2d1d38106248",
+  "files": {
+    "README.md": {
+      "sha256": "f228f541c3f5f4d2f1850f0b7ef1bea41b89ccd4ebf0616d71c4f1dc0d0fa44d",
+      "bytes": 6849,
+      "kind": "documentation",
+      "original_path": "README.md",
+      "original_sha256": "9d818e0ec1cc0a7adda5cc9495c5896b31ad536a6ee02f92ab5f966c6772ff1c",
+      "unchanged": false
+    },
+    "content/behaviors/ClayControls.chibi": {
+      "sha256": "44afd5d5cb8f5ecfe376b14edaad122150daab06f764e12d8aad5dbcb1a81dcd",
+      "bytes": 1319,
+      "kind": "executable declaration",
+      "original_path": "content/behaviors/ClayControls.chibi",
+      "original_sha256": "9944a7e8d10695d071b5f2f05561da63eee6d41228f61abd4aa72730e00953ca",
+      "unchanged": false
+    },
+    "content/components/ClaySettings.chibi": {
+      "sha256": "545a1304560245030691400de151c621ed3cd15a9cefcea3c35460f26a3f17a0",
+      "bytes": 319,
+      "kind": "executable declaration",
+      "original_path": "content/components/ClaySettings.chibi",
+      "original_sha256": "545a1304560245030691400de151c621ed3cd15a9cefcea3c35460f26a3f17a0",
+      "unchanged": true
+    },
+    "content/input.chibi": {
+      "sha256": "fd934a6472bd42ff90a235a8763a832cd52449cb03a0ec0ebee0683f01276806",
+      "bytes": 1078,
+      "kind": "compiled asset source",
+      "original_path": "content/input.kdl",
+      "original_sha256": "9e0b9932f54958cd0ac9f0b306857c2ec894de9db0da3ece3625057aedba3a71",
+      "unchanged": false
+    },
+    "content/materials/ClaySurface.chibi": {
+      "sha256": "e6b624b018219fc56a5221d601b32d6f6c1c2ec7c95aadd188d330d3d6567205",
+      "bytes": 13882,
+      "kind": "compiled asset source",
+      "original_path": "content/materials/ClaySurface.kdl",
+      "original_sha256": "d2e7f16368ee9b3ca4613544efcf71a1fe2f297e9099acfd69a4f7f2509eeeeb",
+      "unchanged": false
+    },
+    "content/models/ClayBlock.chibi": {
+      "sha256": "74c494e216d4139f3cdfcd427b68b478fa3d23cb9881c736e2c8adb60416a182",
+      "bytes": 2605,
+      "kind": "compiled asset source",
+      "original_path": "content/models/ClayBlock.kdl",
+      "original_sha256": "56833bd862f68d896f3af4e3760fefed43e3979b556e91888f991a356ca9960c",
+      "unchanged": false
+    },
+    "content/models/ClayCapsule.chibi": {
+      "sha256": "470c7f4272a734e929f3d561b515a9b6cacdc67662d8f2497364badfe9bfdb5c",
+      "bytes": 2202,
+      "kind": "compiled asset source",
+      "original_path": "content/models/ClayCapsule.kdl",
+      "original_sha256": "1a7974cd4d82fe1a3abfea0bb0d4f6c4084f5c4a738b70ec24e587890f8e37bc",
+      "unchanged": false
+    },
+    "content/models/ClaySculpt.chibi": {
+      "sha256": "611852b188213b43ffb9e669ab1e3dfb9be64ff31726dd6f60a0b400595d318c",
+      "bytes": 12159,
+      "kind": "compiled asset source",
+      "original_path": "content/models/ClaySculpt.kdl",
+      "original_sha256": "9dd1cc85abe7a2263c6037563b7f7aef8344365aea8211bc231e694376f916e0",
+      "unchanged": false
+    },
+    "content/models/ClaySphere.chibi": {
+      "sha256": "4af1d6695b000fe60b0986852634705246c53feab33867896ef7dfa2ec2a3eed",
+      "bytes": 2097,
+      "kind": "compiled asset source",
+      "original_path": "content/models/ClaySphere.kdl",
+      "original_sha256": "6b84a172acf12a871a3287d7c55a53235c32be4f77b98c695499935a93e01299",
+      "unchanged": false
+    },
+    "content/prototypes/ClayLamp.chibi": {
+      "sha256": "61a433f10108c42a2d82391e8e7951b699eca2726df4f8618893bc786cfc7b1b",
+      "bytes": 1338,
+      "kind": "compiled asset source",
+      "original_path": "content/prototypes/ClayLamp.chibi",
+      "original_sha256": "b533fc5f9e7384a7c45a91b67919bdb07d6633bee71dd31acaf20a1b09a46be3",
+      "unchanged": false
+    },
+    "content/prototypes/ClayNeutral.chibi": {
+      "sha256": "ab6d6d6905c823967f31de92fd30327748e6b2463417be4e407f0e753a73bc6d",
+      "bytes": 2712,
+      "kind": "compiled asset source",
+      "original_path": "content/prototypes/ClayNeutral.chibi",
+      "original_sha256": "7e912734e2fe8d4fba1bd828252913bd8287109249c25ddb605bd27369683420",
+      "unchanged": false
+    },
+    "content/prototypes/ClayStage.chibi": {
+      "sha256": "8363a9dddfa0e11c69b3df580f8c96c55e5d5ecd3cb124465ffd7f12dc9f5613",
+      "bytes": 2106,
+      "kind": "compiled asset source",
+      "original_path": "content/prototypes/ClayStage.chibi",
+      "original_sha256": "92089cc84c5833bf5a0744b76da27c12d7544c8bb0dbf551ae4e32a352b08f65",
+      "unchanged": false
+    },
+    "content/prototypes/ClayTerracotta.chibi": {
+      "sha256": "28f07da934c210ff32748ba3fab641c5beac6cb6a80cc415d21ba59e87b7eeb2",
+      "bytes": 898,
+      "kind": "compiled asset source",
+      "original_path": "content/prototypes/ClayTerracotta.chibi",
+      "original_sha256": "36e48c7a0757d97f62959a6639d9ba976d1b6b4bee8670f43c472c79d7aa3a80",
+      "unchanged": false
+    },
+    "content/prototypes/ClayView.chibi": {
+      "sha256": "561550111aa5b8c47f8bb7f3bc205f75f90a47355dcb8dfe69bc3be713f4814b",
+      "bytes": 1187,
+      "kind": "compiled asset source",
+      "original_path": "content/prototypes/ClayView.chibi",
+      "original_sha256": "4213680808d5ccd80226b925d8f401408f3bac72583e286a1b9501f583722495",
+      "unchanged": false
+    },
+    "content/scenes/MaterialLab.chibi": {
+      "sha256": "5b458bc8aa93953a30a08dacb777fcf0d76dd64beff52e0e76c94c13a21bef8e",
+      "bytes": 7500,
+      "kind": "compiled asset source",
+      "original_path": "content/scenes/MaterialLab.kdl",
+      "original_sha256": "0f40f3764aa2f99b419002df4eb558a1d4557707abe952e7e488ac3ff5d03c43",
+      "unchanged": false
+    },
+    "content/systems/ApplyClay.chibi": {
+      "sha256": "d9fcf632aab994865c425639923e831c1c6e8447e2bebfc1ddb2b1350f1ae83e",
+      "bytes": 605,
+      "kind": "executable declaration",
+      "original_path": "content/systems/ApplyClay.chibi",
+      "original_sha256": "606c3ca26ba86dd8d11dbeff3d37ff7108a0480da6f95e95b003d3c6499e4bd1",
+      "unchanged": false
+    },
+    "preview.json": {
+      "sha256": "31da0a3b862a2c39464c6bfe5e0446cc32b766acb99c99206959fcd153569798",
+      "bytes": 137,
+      "kind": "preview request",
+      "original_path": "preview.json",
+      "original_sha256": "31da0a3b862a2c39464c6bfe5e0446cc32b766acb99c99206959fcd153569798",
+      "unchanged": true
+    },
+    "project.chibi": {
+      "sha256": "69f20c872486be123953fbc7cb18dd66d08319af56c1c4f703695431aef27b30",
+      "bytes": 431,
+      "kind": "compiled asset source",
+      "original_path": "project.kdl",
+      "original_sha256": "1a0cb98468864065567938df810980b437294ac08deb9bfb2f48ab87d3ce5a2e",
+      "unchanged": false
+    }
+  },
+  "independent_source_review": {
+    "agent": "/root/recover_460/review_clay_draft",
+    "result": "No confirmed source mismatches found",
+    "scope": "Graph/pin IDs, formulas, defaults, edge order, 11 scene entities/overlays, five prototypes/inheritance, numeric kinds, executable semantics, terracotta Build text and exact setter names",
+    "execution_validation": false
+  },
+  "review_notes_sha256": "2c5583b8d6337491c1d4b1c00674cff3e0ab953238dddf1cd134e1a2e15967e2"
+}

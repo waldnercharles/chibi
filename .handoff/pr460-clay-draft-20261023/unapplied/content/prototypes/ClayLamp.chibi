@@ -1,0 +1,30 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("name", data.Value.Text("ClayLamp")),
+            data.Field.Named("components", data.Object([
+                data.Field.Named("Transform", data.Object([
+                    data.Field.Named("x", data.Value.Real(0.0)),
+                    data.Field.Named("y", data.Value.Real(-76.0))
+                ])),
+                data.Field.Named("Appearance", data.Object([
+                    data.Field.Named("width", data.Value.Real(220.0)),
+                    data.Field.Named("height", data.Value.Real(6.0)),
+                    data.Field.Named("color", data.Value.UInt(4294967295)),
+                    data.Field.Named("relief", data.Value.Real(72.0))
+                ])),
+                data.Field.Named("Material", data.Object([
+                    data.Field.Named("scene", data.Value.UInt(4294967295)),
+                    data.Field.Named("albedo", data.Value.UInt(4294967295)),
+                    data.Field.Named("emission_color", data.Value.UInt(4294967295)),
+                    data.Field.Named("emission_intensity", data.Value.Real(1.0)),
+                    data.Field.Named("emission_multiplier", data.Value.Real(1.0))
+                ]))
+            ]))
+        ])
+    );
+}

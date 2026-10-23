@@ -1,0 +1,35 @@
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("Form", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("F")
+                ]))
+            ])),
+            data.Field.Named("Fingerprints", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("G")
+                ]))
+            ])),
+            data.Field.Named("Variation", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("V")
+                ]))
+            ])),
+            data.Field.Named("Oiliness", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("O")
+                ]))
+            ])),
+            data.Field.Named("Reset", data.Object([
+                data.Field.Named("sources", data.List([
+                    data.Value.Text("R")
+                ]))
+            ]))
+        ])
+    );
+}

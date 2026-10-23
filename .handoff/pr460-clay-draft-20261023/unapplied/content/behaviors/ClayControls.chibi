@@ -1,0 +1,43 @@
+// Every specimen receives the same A/B controls, preserving its own pigment.
+ClayControls :: behavior {
+    on Form :: () {
+        if self.ClaySettings.form > 0.0 {
+            self.ClaySettings.form = 0.0
+        } else {
+            self.ClaySettings.form = 1.0
+        }
+        self.ClaySettings.dirty = true
+    }
+    on Fingerprints :: () {
+        if self.ClaySettings.fingerprints > 0.0 {
+            self.ClaySettings.fingerprints = 0.0
+        } else {
+            self.ClaySettings.fingerprints = 1.0
+        }
+        self.ClaySettings.dirty = true
+    }
+    on Variation :: () {
+        if self.ClaySettings.variation > 0.0 {
+            self.ClaySettings.variation = 0.0
+        } else {
+            self.ClaySettings.variation = 0.06
+        }
+        self.ClaySettings.dirty = true
+    }
+    on Oiliness :: () {
+        if self.ClaySettings.roughness >= 0.6 {
+            self.ClaySettings.roughness = 0.5
+        } else {
+            self.ClaySettings.roughness = 0.68
+        }
+        self.ClaySettings.dirty = true
+    }
+    on Reset :: () {
+        self.ClaySettings.form = 1.0
+        self.ClaySettings.fingerprints = 1.0
+        self.ClaySettings.roughness = 0.68
+        self.ClaySettings.variation = 0.06
+        self.ClaySettings.spacing = 2.4
+        self.ClaySettings.dirty = true
+    }
+}

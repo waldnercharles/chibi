@@ -1,0 +1,134 @@
+{
+  "status": "WIP distinct private lifetime runtime draft; source-reviewed and syntax-checked only; execution/inference/bootstrap unrun",
+  "repository": "https://github.com/waldnercharles/chibi",
+  "branch": "codex/query-lifetime-handoff-20261023",
+  "source_commit": "07a271210bf107f0f736cf2facd31952b7e48444",
+  "source_parent": "4d9b2d2f86c671d169a42b7d660dce353a8433fc",
+  "base_query_tree": "4c3d1d844eec07fa02791d7b1b1f0b65d834a5a3",
+  "reviewed_source_tree": "b2c82d244774c095feb9d4c223740a1a85265099",
+  "current_candidate_tree_before_handoff": "52d00ef8c1801e670931b00f60f6dbcd428ae42c",
+  "active_docs_overlay": [
+    "PLAN.md"
+  ],
+  "original_state": {
+    "original_head": "cbed73d239f7b50d0a2a6c5644afa4cc8cdf4e91",
+    "reviewed_tree": "b2c82d244774c095feb9d4c223740a1a85265099",
+    "current_tree": "52d00ef8c1801e670931b00f60f6dbcd428ae42c",
+    "docs_overlay_paths": [
+      "PLAN.md"
+    ],
+    "original_index_sha256": "e0c945ca86973f7beeffa9aac77a750ea0dfb64adc370e60584a20bdf50b2dcc",
+    "original_status_sha256": "7e05146828d4e0a90c7a1b503d82ea1980bcda7e813b1778577b6f9cfbafea70"
+  },
+  "changed_source_paths": [
+    {
+      "status": "M",
+      "path": "PLAN.md",
+      "sha256": "9e0b3a806b403b71fcb74cc8bc02cac8f8f84dc9b0dfc3206dcefd88994db003",
+      "bytes": 116699
+    },
+    {
+      "status": "M",
+      "path": "src/ecs/ecs.c",
+      "sha256": "79cb2a874dd9fe026027b8c53927cfac7ff5aed5a2156a5d581df38eaf6e9d19",
+      "bytes": 87052
+    },
+    {
+      "status": "M",
+      "path": "src/ecs/ecs.h",
+      "sha256": "a6fd59849270894be455fa5cbd670c663c7bf12f763990fb0169a5d2ad2c0912",
+      "bytes": 21264
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_activation.c",
+      "sha256": "8fbf65bc8528e42e23cd5ea60c69a6ffd86ee0c35606b98f99da4f713289d8c7",
+      "bytes": 17034
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_commands.c",
+      "sha256": "28331ce2c12f46bfad7077d89e3a56d17e8ff780075c346f232caa2abc0b4572",
+      "bytes": 22015
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_internal.h",
+      "sha256": "46f8e724244a886d5e2caf1ad449df8831153e03d267e27c713bf66714e424d2",
+      "bytes": 11284
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_tasks.c",
+      "sha256": "5b0efc523a7b03fa7a087f38272b398ffad411c63a767896bfe84c866e962403",
+      "bytes": 29747
+    },
+    {
+      "status": "M",
+      "path": "test/language/execution.c",
+      "sha256": "9afeb26e6ed8b1b795b96a4290d04ce5a4fbdb655873bad2a1d41b05f21e715a",
+      "bytes": 248400
+    },
+    {
+      "status": "M",
+      "path": "test/language/program.c",
+      "sha256": "ff49db36da653c4bf599db0bd097b49c397d7494a0f884b2d7cd01d52abc692f",
+      "bytes": 521934
+    }
+  ],
+  "product_delta_paths": [
+    "src/ecs/ecs.c",
+    "src/ecs/ecs.h",
+    "src/execution/program_activation.c",
+    "src/execution/program_commands.c",
+    "src/execution/program_internal.h",
+    "src/execution/program_tasks.c",
+    "test/language/execution.c",
+    "test/language/program.c"
+  ],
+  "query_checkpoint": {
+    "branch": "codex/query-handoff-20261023",
+    "commit": "019cc599233bce30c646f2d7f5ed96ab506f0e79",
+    "status": "Pushed and remote verified separately; historical focused query evidence does not cover this lifetime delta."
+  },
+  "checks": {
+    "source_review": "Independent runtime/ECS ownership reviews clear after correcting attached-wait error cleanup; review is not execution.",
+    "syntax_only": {
+      "files": 6,
+      "seconds": 0.74,
+      "scope": "Current src headers first; reused original query build generated/dependency includes. No link or behavior proof; exact compiler binary hash was not recorded."
+    },
+    "format": "Changed C/header formatting with clang-format22 passed; diff check passed.",
+    "tests_passed": [],
+    "tests_failed": [],
+    "tests_unrun": [
+      "ten new --program lifetime cases on both selected backends",
+      "modified retained-cell execution case",
+      "five required groups on this candidate",
+      "current-main/pointer/task/query integration",
+      "matching bootstrap/recovery",
+      "actual authored automatic dependency inference and after-last-access cancellation acceptance",
+      "installed SDK/platform/Studio acceptance"
+    ]
+  },
+  "composition": "Source is the query candidate plus a private original-cell target-set increment. No common main/compiler/task/CoW composition was implemented.",
+  "abi": {
+    "query": 22,
+    "pointer_foundation": 21,
+    "collection22_is_incompatible": true,
+    "new_public_binding_syntax": false,
+    "automatic_inference": false
+  },
+  "remaining_holds": [
+    "Cloud must verify exact remote source before takeover implementation.",
+    "No merge, release, default/ABI flip or published-resource replacement.",
+    "Common representation and native record-cache/rich compiler/effects reconciliation still required.",
+    "Targets selected later and descendant propagation semantics remain unresolved; no dynamic binding API."
+  ],
+  "local_only_dependencies": [
+    "Historical syntax invocation used generated headers/dependency includes from the original query checkout; regenerate matching headers for cloud validation.",
+    "Build products, executables, libraries, SDK caches and Git indexes remain excluded/local.",
+    "Separate corrected task6353, compiler0b149 and collection checkpoints require their own remote verification and eligibility."
+  ],
+  "no_overlap": "This owner stops overlapping local implementation after handoff and holds original candidates pending cloud confirmation."
+}

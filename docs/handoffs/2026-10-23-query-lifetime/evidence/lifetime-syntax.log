@@ -1,0 +1,7 @@
+src/ecs/ecs.c: syntax exit 0
+src/execution/program_tasks.c: syntax exit 0
+src/execution/program_activation.c: syntax exit 0
+src/execution/program_commands.c: syntax exit 0
+test/language/execution.c: syntax exit 0
+test/language/program.c: syntax exit 0
+Syntax-only elapsed: 0.740s. Current src include first; frozen generated/dependency include roots reused. No build or execution claim.

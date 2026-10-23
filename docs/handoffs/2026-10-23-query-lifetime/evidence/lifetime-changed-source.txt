@@ -1,0 +1,8 @@
+src/ecs/ecs.c
+src/ecs/ecs.h
+src/execution/program_activation.c
+src/execution/program_commands.c
+src/execution/program_internal.h
+src/execution/program_tasks.c
+test/language/execution.c
+test/language/program.c

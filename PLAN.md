@@ -135,10 +135,19 @@ as a prerequisite. The owner rejected an authored call-site marker and asked
 for inference; the distinction between possible component use and passive
 pointer storage remains under discussion there. This C hook accepts the
 producer's target set and does not select an inference rule or public spelling.
-The owner subsequently chose to explore dependencies that change as execution
-progresses. The fixed-set start hook is therefore private plumbing under
-review, not the final authored lifetime semantics. No dynamic target-update
-API is implemented here while that rule is being discussed.
+The owner explored dependencies that change as execution progresses, then
+rejected allowing unrelated post-await effects before discovering a removed
+target. The final lifetime decision keeps an inferred dependency until its
+task completes, even after the last component access. For example, removing
+health while Poison waits cancels its pending sound despite no later health
+access. Compiler liveness must not end the dependency early. Earlier completed
+effects are not rolled back. Independent copied-value work must actually be
+independent of the cancelled task; ordinary child cancellation still applies.
+The fixed-set start hook fits this rule but does not establish the inference
+producer or binding semantics for targets selected later. No dynamic target
+API is implemented here. The pointer owner's review
+of product tree `b2c82d244774c095feb9d4c223740a1a85265099` found no additional
+runtime gate or ownership defect; execution validation remains unrun.
 
 The workspace coordinator selected one later validation candidate containing
 the reviewed query and lifetime work, the agreed shared representation and an

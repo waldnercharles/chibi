@@ -1,0 +1,1262 @@
+diff --git a/PLAN.md b/PLAN.md
+index b86c255cf..ba3ddd58d 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -87,6 +87,129 @@ undecided with the pointer owner. The owner has ruled out try/catch permanently.
+ This query candidate adds no recovery API and does not establish authored recovery.
+ No merge, push or installed SDK update has occurred here.
+ 
++Coordinated lifetime follow-up, approved in the pointer chat on 2026-10-22:
++operations bound to an original component/entity will cancel by default when
++that target is removed, with removal at safe execution boundaries, short
++protected access, cleanup and typed cancellation outcomes. Merely storing a
++pointer must not cancel unrelated work. Sequencing uses task followups or
++`after`; `destroy_after`, force-unsafe removal and try/catch are excluded.
++The pointer owner owns task semantics and common runtime coordination. Query
++owns target-hook integration after the shared interface is agreed. This does
++not change the frozen candidate or establish the new behavior as implemented.
++
++The existing canonical `ecs_component_cell` is the target identity seam. True
++invalidation passes through `invalidate_cells` or the missing-column branch of
++`ecs_component_cell_value`. Generic `cell_unlink` also disposes unused identities
++while their component is alive, so it must not itself imply cancellation.
++Retained cell liveness can be checked at resume boundaries; event callbacks, if
++chosen, must queue bound operation identities and avoid execution/ECS mutation
++inside removal or world destruction. Query structural tuple loss already
++cancels that tuple, while a false value filter preserves suspended work.
++
++### Task lifetime runtime increment
++
++Source work continues in the separate `query-lifetime` checkout, seeded from
++the frozen query product tree below. Its private C entry point installs a
++deduplicated set of retained original component cells before eager task
++execution. Children retain the union of their parent's bound targets and
++their own, including when a successful parent later releases its ownership.
++Target loss cancels through the existing task path, so child cancellation,
++pending-request detachment and typed `Cancelled` delivery share one lifecycle.
++An empty target list preserves ordinary eager task calls. Pointer values alone
++do not create a lifetime dependency, and successful completed tasks retain
++their recorded outcome after later target removal.
++
++The implementation and ten C regression cases are source-ready; independent
++review is clear after fixing continuation-error cleanup. No build or execution
++claim applies to this increment yet. Cases include invalid-at-start targets,
++world admission, duplicate ownership, never-completing and immediately-ready
++host requests, independent awaiters, child inheritance, success gating and
++teardown. Six changed C translation units pass syntax checks (0.740 seconds),
++using this checkout's source headers and the frozen checkout's generated and
++dependency includes. Changed C/header formatting and `git diff --check` pass.
++The product manifest is `.chibi/query-validation/lifetime-source.sha256`:
++eight product files differ from the original 2,411-file frozen manifest, whose
++hashes remain unchanged. This is a source freeze, not an execution proof. The
++pointer owner is implementing the authored compiler's existing task operations
++as a prerequisite. The owner rejected an authored call-site marker and asked
++for inference; the distinction between possible component use and passive
++pointer storage remains under discussion there. This C hook accepts the
++producer's target set and does not select an inference rule or public spelling.
++The owner subsequently chose to explore dependencies that change as execution
++progresses. The fixed-set start hook is therefore private plumbing under
++review, not the final authored lifetime semantics. No dynamic target-update
++API is implemented here while that rule is being discussed.
++
++The workspace coordinator selected one later validation candidate containing
++the reviewed query and lifetime work, the agreed shared representation and an
++eligible current main revision. Preserve the original focused evidence as
++historical; do not repeat its final bootstrap as if that superseded freeze were
++the final candidate. Shared-machine build and test work remains queued. Held
++collection source and its test restriction stay outside this increment.
++
++### Common/main integration preparation
++
++This is a source integration plan, not a compatibility or execution claim.
++The focused query candidate remains frozen at review tree
++`4c3d1d844eec07fa02791d7b1b1f0b65d834a5a3`, with product hashes in
++`.chibi/query-validation/candidate-source.sha256`.
++
++| Source | Contract and evidence boundary |
++| --- | --- |
++| Query HEAD `cbed73d23` plus frozen feature tree | Pointer foundation plus query/schema/component-lifetime extensions; local prepared ABI 22. Focused query evidence above. |
++| Common `22dc0d935b1478b519801597f16d547974d30c67` | Pointer ABI 21, main #660 compiler/build support and pointer compiler fixes; separate pointer artifact. Its pointer runtime/type/arena foundation matches query HEAD before the query delta. |
++| Main `5c28191b3ea53afa232c34e37b14fd9b01024aef` | ABI 20; #660 build compilation, #664 named results/resource-only builds, #665 per-attempt record validation. No managed pointer/query ABI. |
++| Collection draft | Source-only checkpoint with an explicit test restriction; its ABI 22 differs from this query ABI 22. No combined execution evidence. |
++
++Read-only collection comparison identified these reconciliation requirements:
++
++| Boundary | Required common contract |
++| --- | --- |
++| Snapshot/purity | Collection snapshots share storage. They cannot retain query's current proof that a snapshot owns fresh payload. Prove an independent value shell and its mutation barrier; a private header alone does not permit writes through captured aliases. |
++| Native layout | Select one immutable carrier for exact native layouts. Query's schema sidecar and the collection draft's frozen native record carrier cannot remain competing equality/resolution/codec paths. Preserve native/authored distinction and retired-catalog behavior. |
++| Arenas/tracing | Reconcile finalizers with resource cleanup, module retention, cursor cleanup and component-cell accounting. Release external owners once; preserve scheduled row-header roots and heap-family checks. |
++| Calls | Reconcile owned arguments/results with full-header return copying, error-text ownership and scalar storage-free contexts. Validate ownership provenance and include every new callback flag in canonical identity/ABI checks. |
++| Component views | Resolve original component incarnations on access, keep identity-based equality and permanent removal/world-destruction invalidation. A raw logical-cell reader cannot bypass component-location checks. |
++| Wire/registry | Combine query tables, ownership cells, layouts, enum bounds and both writers under a fresh coordinated ABI if collections join. Fix the stale 51-60 query-header comment to match the reserved 51-61 range. Do not reuse either standalone ABI22 artifact. |
++
++After the coordinator selects an integration candidate:
++
++1. Start a separate checkout from the selected main revision, merge the common
++   pointer source, and reconcile #664/#665 there. Do not replace pointer/query
++   runtime files with main's older value ABI or import a standalone bootstrap.
++2. Apply only the query delta from `cbed73d23` to the frozen feature tree.
++   Preserve the original candidate and its evidence. Resolve authored compiler
++   contracts before regenerating parser/build outputs.
++3. Reconcile #660's compiler-generation loader, cancellation, source-package I/O,
++   protocol 8 and SDK graph with query source/header exports. Its
++   `compiler_target_effects_json`, `CompileWithEffects` and
++   `CompileClosureWithEffects` interfaces must agree with query's native-effect
++   metadata; keep one authoritative effect source and transitive summaries.
++4. Merge #664's `Body.Emitted` effects, `Start.Begun` cells/hosts and target-aware
++   `Prologue`, named-result cells and return lowering. Preserve query evaluator
++   dispatch, captures, readonly snapshots, physical Tick payload arguments,
++   root-only context `dt` and exact current-row nominal headers. Named pointer
++   results do not become supported as a side effect of this merge.
++5. Merge #665's bounded successful-record validation cache while retaining
++   query intrinsic validation, provenance and carried-schema encoding. Verify
++   that a cached record proof cannot substitute for validation under a different
++   carried native schema. Failed proofs stay uncached; scratch is charged and
++   caches remain confined to one preparation/catalog scope.
++6. Keep immutable schemas, incarnation cells, permanent invalidation, finalizers,
++   tracing, external-byte accounting, evaluator ownership and ordered purity.
++   Pointer IDs 46-50 and query IDs 80-88 stay assigned; collection IDs 51-61,
++   including reserved 54, remain separate. Authored recovery is still undecided;
++   this integration adds no recovery API or try/catch.
++7. Reconcile any later authorized collection integration separately before
++   freezing a common header/wire contract. Its existing test restriction remains
++   in force. Matching ABI numbers alone are never compatibility evidence.
++8. Generate target metadata and one matching compiler artifact from the final
++   contract. Run affected pointer/query/schema/effects, named-result,
++   resource-only, cache/budget, build-cancellation and migration checks, then
++   self-reproduction, isolated recovery and the required groups on that exact
++   candidate. SDK consumers and platform checks need their own matching build;
++   focused evidence from either standalone branch does not transfer.
++
+ ## Coordinated behavior-state support, 2026-10-22
+ 
+ The local setup chat owns authored behavior state for bool, entity and string,
+diff --git a/src/ecs/ecs.c b/src/ecs/ecs.c
+index 988f41d4f..e333bf53e 100644
+--- a/src/ecs/ecs.c
++++ b/src/ecs/ecs.c
+@@ -2263,6 +2263,11 @@ static void cell_unlink(ecs_component_cell *cell)
+     asetlen(world->cells, last);
+     cell->world = NULL;
+ }
++void ecs_component_cell_retain(ecs_component_cell *cell)
++{
++    assert(cell && cell->references > 0);
++    cell->references++;
++}
+ ecs_component_cell *ecs_component_cell_acquire(ecs_world *world, ecs_entity entity, ecs_component_id id)
+ {
+     ecs_component *component = world ? find_component(world, id) : NULL;
+@@ -2273,7 +2278,7 @@ ecs_component_cell *ecs_component_cell_acquire(ecs_world *world, ecs_entity enti
+     if (entity.slot < (uint32_t)acount(component->cells) &&
+         component->cells[entity.slot]) {
+         ecs_component_cell *cell = component->cells[entity.slot];
+-        cell->references++;
++        ecs_component_cell_retain(cell);
+         return cell;
+     }
+     ecs_component_cell *cell = xcalloc(1, sizeof *cell);
+@@ -2361,6 +2366,10 @@ pin_value ecs_component_cell_value(ecs_component_cell *cell)
+                         .schema = cell->schema,
+                         .ptr = data };
+ }
++bool ecs_component_cell_alive(ecs_component_cell *cell)
++{
++    return cell && ecs_component_cell_value(cell).ptr;
++}
+ static void invalidate_cells(ecs_world *world, ecs_entity entity, ecs_component_id component)
+ {
+     ecs_component *owner = find_component(world, component);
+diff --git a/src/ecs/ecs.h b/src/ecs/ecs.h
+index 00aeda03a..c25a12911 100644
+--- a/src/ecs/ecs.h
++++ b/src/ecs/ecs.h
+@@ -295,9 +295,14 @@ void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id c
+ /* Retained component identity. Attached cells resolve current native storage;
+  * component removal, entity destruction or world destruction permanently
+  * invalidates the target. A later add is a different cell. Callers release
+- * each successful acquisition. */
++ * each successful acquisition or retain. Retaining an invalidated identity
++ * does not revive it. */
+ ecs_component_cell *ecs_component_cell_acquire(ecs_world *, ecs_entity, ecs_component_id);
++void ecs_component_cell_retain(ecs_component_cell *);
+ void ecs_component_cell_release(ecs_component_cell *);
++/* Checks the original incarnation, including its current layout and storage.
++ * A missing target stays invalid even if the component is added again. */
++bool ecs_component_cell_alive(ecs_component_cell *);
+ /* Associate the acquired reference with a collectable owner for resource
+  * accounting. Each retain_storage pairs with release_storage, which also
+  * releases that acquisition. Shared cells are counted once per owner. */
+diff --git a/src/execution/program_activation.c b/src/execution/program_activation.c
+index 9fc614977..c0460b4cd 100644
+--- a/src/execution/program_activation.c
++++ b/src/execution/program_activation.c
+@@ -299,13 +299,21 @@ void program_continuation_finish(execution_activation *a)
+         ctx->exit_requested = a->context.exit_requested;
+     }
+ }
++bool program_wait_attached(const execution_activation *a, const command_wait *wait)
++{
++    for (int i = 0; i < acount(a->requests); i++) {
++        if (a->requests[i] == wait) {
++            return true;
++        }
++    }
++    return false;
++}
+ int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
+ {
+     a->cacheable &= !a->has_run && !a->instance->program->owner_program->inspector;
+-    if (program_task_due(a, now)) {
+-        program_tasks_tick(a->instance, now);
+-    }
++    program_task_check(a, now);
+     if (a->finished) {
++        program_task_finished(a, a->stopping);
+         return a->status;
+     }
+     program_inspection_bind(a);
+@@ -313,6 +321,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
+         return FLOW_PAUSED_RESULT;
+     }
+     for (int i = 0; i < acount(a->requests);) {
++        if (!program_task_check(a, now)) {
++            return a->status;
++        }
+         command_wait *wait = a->requests[i];
+         if (program_wait_due(wait, now)) {
+             bool completed = flow_host_complete(wait->request, -1, (pin_value){ 0 });
+@@ -324,7 +335,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
+         flow_host_state status = flow_host_status(wait->request);
+         if (status == FLOW_HOST_CANCELLED) {
+             a->finished = true;
+-            return a->status = FLOW_ERR_STATE;
++            a->status = FLOW_ERR_STATE;
++            program_task_finished(a, true);
++            return a->status;
+         }
+         if (status != FLOW_HOST_READY || wait->delivered) {
+             i++;
+@@ -338,6 +351,13 @@ int program_activation_run(execution_activation *a, double now, double delta, un
+                                   : NULL,
+             command->result_count
+         );
++        /* An inline continuation can invalidate the task and detach wait. */
++        if (a->stopping || !program_wait_attached(a, wait)) {
++            if (a->finished) {
++                program_task_finished(a, a->stopping);
++            }
++            return a->status;
++        }
+         wait->delivered = true;
+         flow_host_request *request = wait->request;
+         if (a->wait == wait) {
+@@ -346,7 +366,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
+         execution_request_finish(request, FLOW_HOST_FINISHED);
+         if (completed < 0) {
+             a->finished = true;
+-            return a->status = completed;
++            a->status = completed;
++            program_task_finished(a, true);
++            return a->status;
+         }
+         if (i < acount(a->requests) && a->requests[i] == wait) {
+             i++;
+@@ -418,6 +440,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
+         }
+     }
+     program_commit_instance(&a->context);
++    program_task_check(a, now);
+     if (a->stopping) {
+         program_activation_cancel(a);
+     }
+diff --git a/src/execution/program_commands.c b/src/execution/program_commands.c
+index bcbeb1188..17a95efbd 100644
+--- a/src/execution/program_commands.c
++++ b/src/execution/program_commands.c
+@@ -339,6 +339,11 @@ static int begin_command(behavior_function_context *ctx, int command)
+         execution_request_detach(request);
+         return result;
+     }
++    /* A native begin may remove the target and complete synchronously. Stop
++     * before consuming that result or invoking an authored continuation. */
++    if (!program_task_check(activation, ctx->now)) {
++        return 1;
++    }
+     wait->begun = true;
+     if (flow_host_status(request) == FLOW_HOST_READY) {
+         activation->wait = NULL;
+@@ -349,6 +354,9 @@ static int begin_command(behavior_function_context *ctx, int command)
+             c->result_count ? ctx->command_results + c->result_first : NULL,
+             c->result_count
+         );
++        if (activation->stopping || !program_wait_attached(activation, wait)) {
++            return 1;
++        }
+         wait->delivered = true;
+         execution_request_finish(request, FLOW_HOST_FINISHED);
+         if (completed < 0) {
+@@ -384,6 +392,9 @@ bool program_request_deliver(flow_host_request *request, const pin_value *values
+ int program_complete_action(behavior_function_context *ctx, uint64_t action, const pin_value *values, int count)
+ {
+     execution_activation *owner = ctx->inspection_user;
++    if (!program_task_check(owner, ctx->now)) {
++        return FLOW_OK;
++    }
+     execution_program *p = owner->instance->program;
+     action_values *bank = action_bank(ctx, action);
+     const execution_module *scope = ((execution_instance *)ctx->value_owner)
+@@ -463,6 +474,9 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
+         if (status < 0) {
+             return status;
+         }
++        if (owner->finished || owner->stopping) {
++            return FLOW_OK;
++        }
+     }
+     return FLOW_OK;
+ }
+diff --git a/src/execution/program_internal.h b/src/execution/program_internal.h
+index 8ae3d91d9..8b129e60d 100644
+--- a/src/execution/program_internal.h
++++ b/src/execution/program_internal.h
+@@ -48,6 +48,8 @@ struct execution_activation
+     behavior_function_context *continuation_context;
+     uint64_t origin_action;
+     uint64_t task; /* Handle when this activation runs a task, else 0. */
++    ecs_component_cell **task_targets; /* Explicit original identities, independently retained. */
++    int task_target_count;
+     execution_box **boxes; /* Boxes over this activation's locals. */
+     execution_box **held;  /* Boxes this task's references keep. */
+     uint64_t debug_run;
+@@ -239,6 +241,18 @@ size_t program_activation_cache_bytes(const execution_program *);
+ size_t program_row_worker_bytes(const execution_program *);
+ void program_activation_cancel(execution_activation *a);
+ void program_bind_tasks(behavior_function_context *);
++/* Retains the supplied targets and the owning task's targets before running
++ * any authored instruction. NULL entries, unavailable cells and foreign-world
++ * targets produce Cancelled tasks. An empty list adds no targets. The program's
++ * world governs admission even when context.world is unset. */
++int program_task_start_bound(
++    behavior_function_context *,
++    int call_index,
++    ecs_component_cell *const *targets,
++    int target_count
++);
++/* Cancels an overdue or invalidly bound owning task at an execution boundary. */
++bool program_task_check(execution_activation *, double now);
+ int program_task_command(
+     behavior_function_context *,
+     const behavior_function_command *,
+@@ -254,6 +268,7 @@ void program_tasks_free(execution_instance *);
+ void program_tasks_collect(execution_program *);
+ void program_tasks_tick(execution_instance *, double now);
+ bool program_task_due(const execution_activation *, double now);
++bool program_wait_attached(const execution_activation *, const command_wait *);
+ bool program_request_deliver(flow_host_request *, const pin_value *, int);
+ int program_activation_run(execution_activation *, double, double, unsigned);
+ execution_activation *program_activation_new(
+diff --git a/src/execution/program_tasks.c b/src/execution/program_tasks.c
+index c9056abbb..b9a7a432b 100644
+--- a/src/execution/program_tasks.c
++++ b/src/execution/program_tasks.c
+@@ -17,6 +17,7 @@
+ #include "types/union.h"
+ 
+ #include <assert.h>
++#include <limits.h>
+ #include <stdatomic.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -242,10 +243,53 @@ uint64_t program_owning_task(const execution_activation *a)
+     }
+     return a->task;
+ }
+-static int start_task(behavior_function_context *ctx, int index)
++static void add_target(execution_activation *a, ecs_component_cell *cell)
++{
++    for (int i = 0; i < a->task_target_count; i++) {
++        if (a->task_targets[i] == cell) {
++            return;
++        }
++    }
++    if (cell) {
++        ecs_component_cell_retain(cell);
++        ecs_component_cell_retain_storage(cell, &a->payload);
++    }
++    a->task_targets[a->task_target_count++] = cell;
++}
++static void release_targets(execution_activation *a)
++{
++    for (int i = 0; i < a->task_target_count; i++) {
++        if (a->task_targets[i]) {
++            ecs_component_cell_release_storage(a->task_targets[i], &a->payload);
++        }
++    }
++    a->task_targets = NULL;
++    a->task_target_count = 0;
++}
++int program_task_start_bound(
++    behavior_function_context *ctx,
++    int index,
++    ecs_component_cell *const *targets,
++    int target_count
++)
+ {
++    if (target_count < 0 || (target_count && !targets)) {
++        ctx->error_message = "task lifetime targets are invalid";
++        return FLOW_ERR_ARGUMENT;
++    }
+     execution_activation *caller = ctx->inspection_user;
++    if (!program_task_check(caller, ctx->now)) {
++        return FLOW_SUSPENDED_RESULT;
++    }
+     execution_instance *instance = caller->instance;
++    execution_task *own = find(instance, program_owning_task(caller));
++    execution_activation *owner = own ? own->activation : NULL;
++    int inherited = owner ? owner->task_target_count : 0;
++    if (target_count > INT_MAX - inherited ||
++        (size_t)(target_count + inherited) > SIZE_MAX / sizeof *targets) {
++        ctx->error_message = "too many task lifetime targets";
++        return FLOW_ERR_ARGUMENT;
++    }
+     const behavior_function *function = caller->function;
+     behavior_function_active_context(&caller->context, &function);
+     const behavior_function_invocation *call = &function->calls[index];
+@@ -263,6 +307,16 @@ static int start_task(behavior_function_context *ctx, int index)
+         return FLOW_ERR_ARGUMENT;
+     }
+     capture_references(a, call);
++    int capacity = inherited + target_count;
++    if (capacity) {
++        a->task_targets = arena_alloc(&a->storage, (size_t)capacity * sizeof *a->task_targets);
++        for (int i = 0; i < inherited; i++) {
++            add_target(a, owner->task_targets[i]);
++        }
++        for (int i = 0; i < target_count; i++) {
++            add_target(a, targets[i]);
++        }
++    }
+     /* An outcome continuation runs on behalf of the task that owns it. */
+     execution_task *t = task_new(instance),
+                    *parent = find(instance, program_owning_task(caller));
+@@ -286,6 +340,10 @@ static int start_task(behavior_function_context *ctx, int index)
+     }
+     return status < 0 ? status : FLOW_OK;
+ }
++static int start_task(behavior_function_context *ctx, int index)
++{
++    return program_task_start_bound(ctx, index, NULL, 0);
++}
+ void program_bind_tasks(behavior_function_context *ctx)
+ {
+     ctx->start_task = start_task;
+@@ -325,6 +383,7 @@ static void deliver(const execution_task *t, task_waiter waiter)
+ }
+ void program_task_finished(execution_activation *a, bool cancelled)
+ {
++    release_targets(a);
+     execution_instance *instance = a->instance;
+     execution_task *t = find(instance, a->task);
+     if (!t || t->activation != a) {
+@@ -377,13 +436,53 @@ static void cancel(execution_instance *instance, uint64_t handle)
+ bool program_task_due(const execution_activation *a, double now)
+ {
+     execution_task *t = find(a->instance, program_owning_task(a));
+-    return t && t->activation && t->timed && t->deadline <= now;
++    if (!t || !t->activation) {
++        return false;
++    }
++    for (int i = 0; i < t->activation->task_target_count; i++) {
++        ecs_component_cell *cell = t->activation->task_targets[i];
++        if (!ecs_component_cell_alive(cell)) {
++            return true;
++        }
++        uint64_t entity, layout;
++        ecs_component_id component;
++        /* Check cell liveness first: its world can already have been freed. */
++        if (!ecs_component_cell_target(
++                cell,
++                ecs_world_execution(a->instance->program->world),
++                &entity,
++                &component,
++                &layout
++            )) {
++            return true;
++        }
++    }
++    return t->timed && t->deadline <= now;
++}
++bool program_task_check(execution_activation *a, double now)
++{
++    uint64_t owner = program_owning_task(a);
++    if (!owner || a->finished) {
++        return true;
++    }
++    if (program_task_due(a, now)) {
++        cancel(a->instance, owner);
++    }
++    execution_task *t = find(a->instance, owner);
++    if (t && t->activation && !t->activation->stopping) {
++        return true;
++    }
++    a->stopping = true;
++    if (!a->running && !a->finished) {
++        program_activation_cancel(a);
++    }
++    return false;
+ }
+ void program_tasks_tick(execution_instance *instance, double now)
+ {
+     for (int i = 0; i < acount(instance->tasks); i++) {
+         execution_task *t = &instance->tasks[i];
+-        if (t->activation && t->timed && t->deadline <= now) {
++        if (t->activation && program_task_due(t->activation, now)) {
+             cancel(instance, handle_of(instance, t));
+         }
+     }
+diff --git a/test/language/execution.c b/test/language/execution.c
+index f2761017d..3d767d16e 100644
+--- a/test/language/execution.c
++++ b/test/language/execution.c
+@@ -3176,6 +3176,9 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     pin_value alias = pointer_root;
+     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &alias));
+     REQUIRE(pin_pointer_equal(pointer_root.ptr, alias.ptr));
++    ecs_component_cell *retained = ((pin_pointer *)pointer_root.ptr)->component;
++    ecs_component_cell_retain(retained);
++    REQUIRE(ecs_component_cell_alive(retained));
+     pin_value project[] = { pointer_root,
+                             { .type = PIN_I32 },
+                             { .type = PIN_U64, .u64 = offsetof(fixture_box, value) },
+@@ -3189,6 +3192,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     }
+     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
+     ((fixture_box *)ecs_component_data(pointer_world, entity, id))->value = 12;
++    REQUIRE(ecs_component_cell_alive(retained));
+     pin_value read[] = { field, { .type = PIN_I32 } };
+     REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
+     REQUIRE(result.i == 12);
+@@ -3199,6 +3203,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     REQUIRE(ecs_component_version(pointer_world, entity, id) > before);
+     REQUIRE(ecs_world_record_remove(pointer_world, entity, id, 0) == ECS_OK);
+     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
++    REQUIRE(!ecs_component_cell_alive(retained));
+     const char *error = EXECUTION_pointer_read_call.value(&managed, read, 2, &result);
+     REQUIRE(error && !strcmp(error, "Component reference target is no longer available"));
+     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
+@@ -3208,6 +3213,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     pin_value replacement = pointer_root;
+     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &replacement));
+     REQUIRE(!pin_pointer_equal(pointer_root.ptr, replacement.ptr));
++    REQUIRE(!ecs_component_cell_alive(retained));
+     write[1].i = 20;
+     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
+     REQUIRE(((fixture_box *)ecs_component_data(pointer_world, entity, id))->value == 100);
+@@ -3221,6 +3227,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+     ecs_world_free(pointer_world);
+     pointer_world = NULL;
++    REQUIRE(!ecs_component_cell_alive(retained));
+     REQUIRE(EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
+     pin_value whole_read[] = { replacement, type }, whole = type;
+     error = EXECUTION_pointer_read_call.value(&managed, whole_read, 2, &whole);
+@@ -3235,6 +3242,8 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
+     size_t bytes, capacity;
+     arena_usage(&pointer_heap.storage, &bytes, &capacity);
+     REQUIRE(bytes == 0);
++    REQUIRE(!ecs_component_cell_alive(retained));
++    ecs_component_cell_release(retained);
+     return true;
+ }
+ 
+diff --git a/test/language/program.c b/test/language/program.c
+index f272bd5b0..d16c9a5e0 100644
+--- a/test/language/program.c
++++ b/test/language/program.c
+@@ -292,6 +292,44 @@ static execution_inspector *debugger;
+ static behavior_function_context parser_context;
+ static behavior_function_activation parser_activation;
+ static arena parser_storage;
++static const node_command lifetime_command;
++static flow_host_request *lifetime_requests[8];
++static int lifetime_request_count;
++static ecs_component_cell *lifetime_cells[2];
++static ecs_component_cell *lifetime_targets[2];
++static ecs_component_cell *lifetime_child_targets[3];
++static int lifetime_target_count;
++static int lifetime_child_target_count;
++static ecs_world *lifetime_foreign_world;
++static ecs_entity lifetime_target;
++static const behavior_function *lifetime_bound;
++static const behavior_function *lifetime_extra_bound;
++static bool lifetime_remove_in_begin, lifetime_complete_in_begin,
++    lifetime_begin_completed;
++
++static void lifetime_cleanup()
++{
++    for (int i = 0; i < lifetime_request_count; i++) {
++        if (lifetime_requests[i]) {
++            flow_host_release(lifetime_requests[i]);
++        }
++        lifetime_requests[i] = NULL;
++    }
++    lifetime_request_count = 0;
++    ecs_world_free(lifetime_foreign_world);
++    lifetime_foreign_world = NULL;
++    for (int i = 0; i < 2; i++) {
++        if (lifetime_cells[i]) {
++            ecs_component_cell_release(lifetime_cells[i]);
++        }
++        lifetime_cells[i] = lifetime_targets[i] = NULL;
++    }
++    lifetime_target_count = 0;
++    lifetime_child_target_count = 0;
++    memset(lifetime_child_targets, 0, sizeof lifetime_child_targets);
++    lifetime_bound = lifetime_extra_bound = NULL;
++    lifetime_remove_in_begin = lifetime_complete_in_begin = lifetime_begin_completed = false;
++}
+ 
+ static void cleanup()
+ {
+@@ -311,6 +349,7 @@ static void cleanup()
+     script_analysis_free(analysis);
+     script_syntax_free(syntax);
+     ecs_world_free(world);
++    lifetime_cleanup();
+     native_capabilities_free(state_native);
+     state_native = NULL;
+     program = NULL;
+@@ -436,8 +475,25 @@ static const char *scene_binding(arena *, const pin_value *in, int count, pin_va
+     return NULL;
+ }
+ static const node_host_call scene_binding_call = { .value = scene_binding };
++static const char *lifetime_invalidate(arena *, const pin_value *, int count, pin_value *out)
++{
++    assert(count == 0);
++    assert(ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK);
++    assert(ecs_world_apply_commands(world) == ECS_OK);
++    *out = (pin_value){ .type = PIN_F64, .d = 7 };
++    return NULL;
++}
++static const node_host_call lifetime_invalidate_call = { .value = lifetime_invalidate };
+ static bool host(void *, uint64_t id, script_lower_host *out)
+ {
++    if (id == 77) {
++        *out = (script_lower_host){ .command = &lifetime_command };
++        return true;
++    }
++    if (id == 78) {
++        *out = (script_lower_host){ .call = &lifetime_invalidate_call };
++        return true;
++    }
+     if (id == 61) {
+         *out = (script_lower_host){ .call = &clock_call };
+         return true;
+@@ -677,6 +733,146 @@ static ecs_entity positioned(double x, bool moving)
+     return entity;
+ }
+ 
++/* Inject the private target set without choosing authored inference semantics.
++ * All task bodies and awaiters still run authored code. */
++static int lifetime_begin(
++    void *,
++    const char *,
++    const pin_value *,
++    int count,
++    flow_host_request *request,
++    const char **
++)
++{
++    assert(count == 0 && lifetime_request_count < 8);
++    lifetime_requests[lifetime_request_count++] = request;
++    if (lifetime_remove_in_begin) {
++        assert(ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK);
++        assert(ecs_world_apply_commands(world) == ECS_OK);
++    }
++    if (lifetime_remove_in_begin || lifetime_complete_in_begin) {
++        lifetime_begin_completed = flow_host_complete(request, -1, (pin_value){ 0 });
++    }
++    return 1;
++}
++static const node_command lifetime_command = { .begin = lifetime_begin };
++static bool lifetime_compile(const char *source, behavior_backend backend)
++{
++    static script_catalog_capability
++        active_capabilities[sizeof capabilities / sizeof *capabilities + 2];
++    memcpy(active_capabilities, capabilities, sizeof capabilities);
++    active_capabilities[sizeof capabilities / sizeof *capabilities] = (script_catalog_capability){
++        .id = 77,
++        .name = "Pending",
++        .kind = SCRIPT_CAPABILITY_ACTION,
++        .outcomes = completed,
++        .outcome_count = 1,
++        .completion_outcome = 0,
++        .effects = SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST
++    };
++    active_capabilities[sizeof capabilities / sizeof *capabilities + 1] = (script_catalog_capability){
++        .id = 78,
++        .name = "Invalidate",
++        .kind = SCRIPT_CAPABILITY_FUNCTION,
++        .results = &failed_result,
++        .result_count = 1,
++        .effects = SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_WRITE
++    };
++    static script_catalog active;
++    active = catalog;
++    active.capabilities = active_capabilities;
++    active.capability_count += 2;
++    if (!compile_catalog(source, backend, &active)) {
++        return false;
++    }
++    for (int i = 0; i < analysis->symbol_count; i++) {
++        bool extra = !strcmp(analysis->symbols[i].name, "ExtraBound");
++        if (strcmp(analysis->symbols[i].name, "Bound") && !extra) {
++            continue;
++        }
++        for (int j = 0; j < module->plan.function_count; j++) {
++            if (module->plan.functions[j].id == analysis->symbols[i].id) {
++                if (extra) {
++                    lifetime_extra_bound = module->plan.functions[j].body;
++                } else {
++                    lifetime_bound = module->plan.functions[j].body;
++                }
++            }
++        }
++    }
++    program = execution_program_new(module, world, NULL);
++    return program && lifetime_bound;
++}
++static int lifetime_start(behavior_function_context *ctx, int index)
++{
++    execution_activation *caller = ctx->inspection_user;
++    const behavior_function *function = caller->function;
++    behavior_function_active_context(&caller->context, &function);
++    bool bound = function->calls[index].function == lifetime_bound;
++    bool extra = lifetime_extra_bound &&
++                 function->calls[index].function == lifetime_extra_bound;
++    if (extra) {
++        return program_task_start_bound(ctx, index, lifetime_child_targets, lifetime_child_target_count);
++    }
++    return program_task_start_bound(ctx, index, bound ? lifetime_targets : NULL, bound ? lifetime_target_count : 0);
++}
++static void lifetime_install_start(behavior_function_context *ctx)
++{
++    ctx->start_task = lifetime_start;
++}
++static int lifetime_dispatch(execution_instance *instance, double now)
++{
++    for (int i = 0; i < module->plan.function_count; i++) {
++        const execution_module_function *function = &module->plan.functions[i];
++        if (function->event != 11) {
++            continue;
++        }
++        execution_activation
++            *a = program_activation_new(instance, function->body, NULL, 0, now, 0, 1000);
++        assert(a);
++        a->context.start_task = lifetime_start;
++        int status = program_activation_run(a, now, 0, 1000);
++        if (!a->finished || acount(a->requests)) {
++            apush(instance->activations, a);
++        } else {
++            program_activation_free(a);
++        }
++        for (int j = 0; j < acount(instance->activations); j++) {
++            behavior_function_visit_contexts(&instance->activations[j]->context, lifetime_install_start);
++        }
++        return status < 0 ? status : FLOW_OK;
++    }
++    return FLOW_ERR_ARGUMENT;
++}
++static void lifetime_bind(ecs_world *target_world, ecs_entity target)
++{
++    lifetime_target = target;
++    lifetime_cells[0] = ecs_component_cell_acquire(target_world, target, 501);
++    assert(lifetime_cells[0]);
++    lifetime_targets[0] = lifetime_targets[1] = lifetime_cells[0];
++    lifetime_target_count = 2; /* Duplicate original identities are one dependency. */
++}
++static bool lifetime_remove()
++{
++    return ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK &&
++           ecs_world_apply_commands(world) == ECS_OK;
++}
++static bool lifetime_requests_cancelled(int expected)
++{
++    if (lifetime_request_count != expected) {
++        return false;
++    }
++    for (int i = 0; i < lifetime_request_count; i++) {
++        flow_host_request *request = lifetime_requests[i];
++        if (flow_host_status(request) != FLOW_HOST_CANCELLED ||
++            execution_request_owner(request) ||
++            flow_host_complete(request, -1, (pin_value){ 0 })) {
++            return false;
++        }
++    }
++    return true;
++}
++
+ TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
+ {
+     const char
+@@ -3904,6 +4100,441 @@ TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
+     }
+     return true;
+ }
++TEST_CASE(program_bound_task_checks_admission_before_its_body)
++{
++    const char *source = "L :: behavior { began: double = 0; done: double = 0; "
++                         "cancelled: double = 0; "
++                         "worker: task; Bound :: () -> () { began += 1; await "
++                         "Pending(); done += 1; } "
++                         "Watch :: () -> () { result := await worker; "
++                         "if result is Cancelled { cancelled += 1; } } "
++                         "on Impulse :: () { worker = Bound(); Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        for (int mode = 0; mode < 4; mode++) {
++            prepare();
++            REQUIRE(lifetime_compile(source, backends[b]));
++            if (mode == 1) {
++                lifetime_target_count = 1; /* An absent explicit target. */
++            } else if (mode == 2) {
++                lifetime_bind(world, positioned(2, false));
++                REQUIRE(lifetime_remove());
++                program_position replacement = { .x = 10 };
++                REQUIRE(
++                    ecs_world_record_add(world, lifetime_target, 501, &replacement, 0) == ECS_OK
++                );
++                REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
++                REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
++            } else if (mode == 3) {
++                lifetime_foreign_world = ecs_world_new();
++                REQUIRE(
++                    ecs_world_register_component(lifetime_foreign_world, &position_component, NULL) == ECS_OK
++                );
++                ecs_entity foreign = ecs_world_create_entity(lifetime_foreign_world);
++                program_position position = { .x = 2 };
++                REQUIRE(
++                    ecs_world_record_add(lifetime_foreign_world, foreign, 501, &position, 0) == ECS_OK
++                );
++                REQUIRE(ecs_world_apply_commands(lifetime_foreign_world) == ECS_OK);
++                lifetime_bind(lifetime_foreign_world, foreign);
++            }
++            execution_instance *instance = execution_program_attach(
++                program,
++                ecs_entity_to_u64(ecs_world_create_entity(world))
++            );
++            REQUIRE(instance);
++            REQUIRE(lifetime_dispatch(instance, 0) == FLOW_OK);
++            REQUIRE(number_state(instance, "began", mode == 0 ? 1 : 0));
++            REQUIRE(number_state(instance, "done", 0));
++            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++            REQUIRE(number_state(instance, "cancelled", mode == 0 ? 0 : 1));
++            REQUIRE(lifetime_request_count == (mode == 0 ? 1 : 0));
++            if (mode == 3) {
++                REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
++            }
++        }
++    }
++    return true;
++}
++TEST_CASE(program_effect_free_bound_task_uses_the_owning_program_world)
++{
++    const char *source = "L :: behavior { worker: task<double>; running: "
++                         "double = 0; cancelled: double = 0; "
++                         "Bound :: () -> double { yield; return 7; } "
++                         "Watch :: () -> () { result := await worker; "
++                         "if result is Cancelled { cancelled += 1; } } "
++                         "on Impulse :: () { worker = Bound(); if worker { "
++                         "running += 1; } Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        for (int foreign = 0; foreign < 2; foreign++) {
++            prepare();
++            REQUIRE(lifetime_compile(source, backends[b]));
++            ecs_world *target_world = world;
++            if (foreign) {
++                lifetime_foreign_world = ecs_world_new();
++                target_world = lifetime_foreign_world;
++                REQUIRE(
++                    ecs_world_register_component(target_world, &position_component, NULL) == ECS_OK
++                );
++            }
++            ecs_entity target = ecs_world_create_entity(target_world);
++            program_position position = { .x = 2 };
++            REQUIRE(ecs_world_record_add(target_world, target, 501, &position, 0) == ECS_OK);
++            REQUIRE(ecs_world_apply_commands(target_world) == ECS_OK);
++            lifetime_bind(target_world, target);
++            execution_instance *instance = execution_program_attach(
++                program,
++                ecs_entity_to_u64(ecs_world_create_entity(world))
++            );
++            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++            REQUIRE(number_state(instance, "running", foreign ? 0 : 1));
++            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++            REQUIRE(number_state(instance, "cancelled", foreign ? 1 : 0));
++            REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
++        }
++    }
++    return true;
++}
++TEST_CASE(program_bound_task_cancels_pending_children_and_preserves_unbound_pointer_users)
++{
++    const char *source =
++        "L :: behavior { worker: task; began: double = 0; done: double = 0; "
++        "woke: double = 0; cancelled: double = 0; survived: double = 0; "
++        "Leaf :: () -> () { await Pending(); done += 1; } "
++        "Bound :: (held: ^Position) -> () { began += 1; Leaf(); Leaf(); "
++        "await Pending(); done += 10; } "
++        "Unbound :: (held: ^Position) -> () { await Delay(2); "
++        "if held == held { survived += 1; } } "
++        "Watch :: () -> () { result := await worker; "
++        "if result is Cancelled { cancelled += 1; } woke += 1; } "
++        "on Impulse :: () { for row in query(p: ^Position) { "
++        "worker = Bound(row.p); Unbound(row.p); cancel worker after 100; "
++        "Watch(); } } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        REQUIRE(lifetime_compile(source, backends[b]));
++        lifetime_bind(world, positioned(2, false));
++        execution_instance *instance = execution_program_attach(
++            program,
++            ecs_entity_to_u64(ecs_world_create_entity(world))
++        );
++        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++        REQUIRE(number_state(instance, "began", 1) && lifetime_request_count == 3);
++        REQUIRE(number_state(instance, "woke", 0));
++        REQUIRE(lifetime_remove());
++        program_position replacement = { .x = 10 };
++        REQUIRE(ecs_world_record_add(world, lifetime_target, 501, &replacement, 0) == ECS_OK);
++        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
++        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++        REQUIRE(number_state(instance, "cancelled", 1) && number_state(instance, "woke", 1));
++        REQUIRE(number_state(instance, "done", 0));
++        REQUIRE(lifetime_requests_cancelled(3));
++        REQUIRE(execution_program_update(program, 2.1, 0, 1000) == FLOW_OK);
++        REQUIRE(number_state(instance, "survived", 1));
++        REQUIRE(number_state(instance, "done", 0) && number_state(instance, "woke", 1));
++        REQUIRE(execution_instance_pending(instance) == 0);
++    }
++    return true;
++}
++TEST_CASE(program_bound_task_does_not_consume_ready_external_results_after_removal)
++{
++    const char
++        *source = "L :: behavior { worker: task; consumed: double = 0; "
++                  "cancelled: double = 0; "
++                  "Bound :: () -> () { await Pending(); consumed += 1; } "
++                  "Watch :: () -> () { result := await worker; "
++                  "if result is Cancelled { cancelled += 1; } } "
++                  "on Impulse :: () { worker = Bound(); Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        for (int synchronous = 0; synchronous < 2; synchronous++) {
++            prepare();
++            REQUIRE(lifetime_compile(source, backends[b]));
++            lifetime_bind(world, positioned(2, false));
++            lifetime_remove_in_begin = synchronous;
++            execution_instance *instance = execution_program_attach(
++                program,
++                ecs_entity_to_u64(ecs_world_create_entity(world))
++            );
++            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++            REQUIRE(lifetime_request_count == 1);
++            if (synchronous) {
++                REQUIRE(lifetime_begin_completed);
++            } else {
++                REQUIRE(lifetime_remove());
++                /* Completion races with removal; consumption must still stop. */
++                flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 });
++            }
++            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++            REQUIRE(number_state(instance, "consumed", 0));
++            REQUIRE(number_state(instance, "cancelled", 1));
++            REQUIRE(lifetime_requests_cancelled(1));
++            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
++            REQUIRE(
++                number_state(instance, "consumed", 0) &&
++                number_state(instance, "cancelled", 1)
++            );
++        }
++    }
++    return true;
++}
++TEST_CASE(program_bound_task_stops_when_an_inline_outcome_invalidates_its_target)
++{
++    const char *source = "L :: behavior { worker: task; consumed: double = 0; "
++                         "cancelled: double = 0; "
++                         "action gate = Pending(); "
++                         "Bound :: () -> () { gate(); await Delay(100); "
++                         "consumed += 10; } "
++                         "after gate { await Pending(); consumed += 1; } "
++                         "Watch :: () -> () { result := await worker; "
++                         "if result is Cancelled { cancelled += 1; } } "
++                         "on Impulse :: () { worker = Bound(); Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        REQUIRE(lifetime_compile(source, backends[b]));
++        lifetime_bind(world, positioned(2, false));
++        execution_instance *instance = execution_program_attach(
++            program,
++            ecs_entity_to_u64(ecs_world_create_entity(world))
++        );
++        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++        REQUIRE(lifetime_request_count == 1);
++        lifetime_remove_in_begin = true;
++        REQUIRE(flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
++        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++        REQUIRE(lifetime_begin_completed && lifetime_requests_cancelled(2));
++        REQUIRE(number_state(instance, "consumed", 0) && number_state(instance, "cancelled", 1));
++        REQUIRE(execution_instance_pending(instance) == 0);
++    }
++    return true;
++}
++TEST_CASE(program_failing_inline_outcome_detaches_its_completed_request)
++{
++    const char
++        *source = "L :: behavior { worker: task; consumed: double = 0; "
++                  "cancelled: double = 0; action "
++                  "gate = Pending(); "
++                  "Bound :: () -> () { yield; await gate(); "
++                  "consumed += 10; } "
++                  "after gate { value := fail_native(); consumed += 1; } "
++                  "Watch :: () -> () { result := await worker; "
++                  "if result is Cancelled { cancelled += 1; } } "
++                  "on Impulse :: () { worker = Bound(); Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        for (int synchronous = 0; synchronous < 2; synchronous++) {
++            prepare();
++            REQUIRE(lifetime_compile(source, backends[b]));
++            lifetime_bind(world, positioned(2, false));
++            lifetime_complete_in_begin = synchronous;
++            strcpy(failure_message, "inline outcome failed");
++            execution_instance *instance = execution_program_attach(
++                program,
++                ecs_entity_to_u64(ecs_world_create_entity(world))
++            );
++            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++            int status = execution_program_update(program, 0.1, 0, 1000);
++            REQUIRE(lifetime_request_count == 1);
++            if (!synchronous) {
++                REQUIRE(status == FLOW_OK);
++                REQUIRE(flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
++                status = execution_program_update(program, 0.2, 0, 1000);
++            }
++            REQUIRE(number_state(instance, "consumed", 0));
++            REQUIRE(number_state(instance, "cancelled", 1));
++            REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_FINISHED);
++            REQUIRE(!flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
++            REQUIRE(flow_host_resume(lifetime_requests[0]) < 0);
++            REQUIRE(flow_host_resume(lifetime_requests[0]) < 0);
++            REQUIRE(
++                number_state(instance, "consumed", 0) &&
++                number_state(instance, "cancelled", 1)
++            );
++            /* Releasing the service's reference detaches the finished request;
++             * a retained inspection handle must not be mistaken for a leak. */
++            flow_host_release(lifetime_requests[0]);
++            lifetime_requests[0] = NULL;
++            lifetime_request_count = 0;
++            status = execution_program_update(program, 0.3, 0, 1000);
++            REQUIRE(status < 0);
++            REQUIRE(execution_program_error(program));
++            REQUIRE(strstr(execution_program_error(program)->message, "inline outcome failed"));
++            execution_program_clear_error(program);
++            REQUIRE(execution_program_update(program, 0.4, 0, 1000) == FLOW_OK);
++            REQUIRE(execution_instance_pending(instance) == 0);
++            REQUIRE(execution_program_memory_usage(program).activation_bytes == 0);
++        }
++    }
++    return true;
++}
++TEST_CASE(program_bound_task_cannot_succeed_after_its_last_expression_removes_the_target)
++{
++    const char
++        *source = "L :: behavior { worker: task<double>; got: double = 0; "
++                  "cancelled: double = 0; "
++                  "Bound :: () -> double { yield; return Invalidate(); } "
++                  "Watch :: () -> () { result := await worker; "
++                  "if result is double value { got = value; } "
++                  "if result is Cancelled { cancelled += 1; } } "
++                  "on Impulse :: () { worker = Bound(); Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        REQUIRE(lifetime_compile(source, backends[b]));
++        lifetime_bind(world, positioned(2, false));
++        execution_instance *instance = execution_program_attach(
++            program,
++            ecs_entity_to_u64(ecs_world_create_entity(world))
++        );
++        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++        REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
++        REQUIRE(number_state(instance, "got", 0) && number_state(instance, "cancelled", 1));
++        REQUIRE(execution_instance_pending(instance) == 0);
++    }
++    return true;
++}
++TEST_CASE(program_bound_child_unites_inherited_and_distinct_explicit_targets)
++{
++    const char *
++        source = "L :: behavior { parent: task; child: task; started: double = "
++                 "0; "
++                 "parent_done: double = 0; child_done: double = 0; "
++                 "parent_cancelled: double = 0; child_cancelled: double = 0; "
++                 "ExtraBound :: () -> () { await Pending(); child_done += 1; } "
++                 "Bound :: () -> () { yield; child = ExtraBound(); await "
++                 "Pending(); parent_done += 1; } "
++                 "ParentWatch :: () -> () { result := await parent; "
++                 "if result is Cancelled { parent_cancelled += 1; } } "
++                 "ChildWatch :: () -> () { result := await child; "
++                 "if result is Cancelled { child_cancelled += 1; } } "
++                 "on Impulse :: () { if started == 0 { parent = Bound(); "
++                 "started = 1; ParentWatch(); } "
++                 "else { ChildWatch(); } } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        REQUIRE(lifetime_compile(source, backends[b]));
++        lifetime_bind(world, positioned(2, false));
++        ecs_entity second = positioned(3, false);
++        lifetime_cells[1] = ecs_component_cell_acquire(world, second, 501);
++        REQUIRE(lifetime_cells[1]);
++        lifetime_child_targets[0] = lifetime_child_targets[2] = lifetime_cells[0];
++        lifetime_child_targets[1] = lifetime_cells[1];
++        lifetime_child_target_count = 3;
++        execution_instance *instance = execution_program_attach(
++            program,
++            ecs_entity_to_u64(ecs_world_create_entity(world))
++        );
++        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++        REQUIRE(lifetime_request_count == 2);
++        REQUIRE(lifetime_dispatch(instance, 0.1) == FLOW_OK);
++        REQUIRE(ecs_world_record_remove(world, second, 501, 0) == ECS_OK);
++        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
++        REQUIRE(execution_program_update(program, 0.2, 0, 1000) == FLOW_OK);
++        REQUIRE(number_state(instance, "child_cancelled", 1));
++        REQUIRE(number_state(instance, "parent_cancelled", 0));
++        REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_CANCELLED);
++        REQUIRE(execution_request_owner(lifetime_requests[0]) == NULL);
++        REQUIRE(flow_host_status(lifetime_requests[1]) == FLOW_HOST_PENDING);
++        REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
++        REQUIRE(lifetime_remove());
++        REQUIRE(execution_program_update(program, 0.3, 0, 1000) == FLOW_OK);
++        REQUIRE(number_state(instance, "parent_cancelled", 1));
++        REQUIRE(number_state(instance, "child_cancelled", 1));
++        REQUIRE(
++            number_state(instance, "parent_done", 0) &&
++            number_state(instance, "child_done", 0)
++        );
++        REQUIRE(lifetime_requests_cancelled(2));
++        REQUIRE(execution_instance_pending(instance) == 0);
++        REQUIRE(execution_program_memory_usage(program).activation_bytes == 0);
++    }
++    return true;
++}
++TEST_CASE(program_completed_bound_parent_keeps_its_result_and_child_dependencies)
++{
++    const char
++        *source = "L :: behavior { worker: task<double>; started: double = 0; "
++                  "got: double = 0; "
++                  "cancelled: double = 0; child_done: double = 0; "
++                  "Child :: () -> () { await Pending(); child_done += 1; } "
++                  "Bound :: () -> double { Child(); yield; return 7; } "
++                  "Watch :: () -> () { result := await worker; "
++                  "if result is double value { got += value; } "
++                  "if result is Cancelled { cancelled += 1; } } "
++                  "on Impulse :: () { if started == 0 { worker = Bound(); "
++                  "started = 1; } Watch(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        REQUIRE(lifetime_compile(source, backends[b]));
++        lifetime_bind(world, positioned(2, false));
++        execution_instance *instance = execution_program_attach(
++            program,
++            ecs_entity_to_u64(ecs_world_create_entity(world))
++        );
++        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++        REQUIRE(lifetime_request_count == 1);
++        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++        REQUIRE(number_state(instance, "got", 7) && number_state(instance, "child_done", 0));
++        REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_PENDING);
++        REQUIRE(lifetime_remove());
++        REQUIRE(execution_program_update(program, 0.2, 0, 1000) == FLOW_OK);
++        REQUIRE(lifetime_requests_cancelled(1));
++        REQUIRE(number_state(instance, "child_done", 0));
++        REQUIRE(lifetime_dispatch(instance, 0.3) == FLOW_OK);
++        REQUIRE(number_state(instance, "got", 14) && number_state(instance, "cancelled", 0));
++        REQUIRE(execution_instance_pending(instance) == 0);
++    }
++    return true;
++}
++TEST_CASE(program_bound_task_resources_detach_in_each_destruction_order)
++{
++    const char
++        *source = "L :: behavior { worker: task; done: double = 0; "
++                  "Child :: () -> () { await Pending(); done += 1; } "
++                  "Bound :: () -> () { Child(); await Pending(); done += 10; } "
++                  "on Impulse :: () { worker = Bound(); } }";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        for (int order = 0; order < 4; order++) {
++            prepare();
++            REQUIRE(lifetime_compile(source, backends[b]));
++            lifetime_bind(world, positioned(2, false));
++            ecs_entity owner = ecs_world_create_entity(world);
++            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
++            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
++            REQUIRE(lifetime_request_count == 2);
++            if (order == 0) {
++                execution_program_detach(program, ecs_entity_to_u64(owner));
++            } else if (order == 1) {
++                execution_program_free(program);
++                program = NULL;
++            } else if (order == 2) {
++                ecs_world_free(world);
++                world = NULL;
++                REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
++                execution_program_free(program);
++                program = NULL;
++            } else {
++                REQUIRE(ecs_world_destroy_entity(world, lifetime_target) == ECS_OK);
++                REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
++                REQUIRE(number_state(instance, "done", 0));
++            }
++            REQUIRE(lifetime_requests_cancelled(2));
++            /* A second teardown must not touch the detached host-owned handles. */
++            execution_program_free(program);
++            program = NULL;
++            REQUIRE(lifetime_requests_cancelled(2));
++        }
++    }
++    return true;
++}
+ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
+ {
+     const char *
+@@ -10188,6 +10819,16 @@ void test_language_program()
+     RUN_TEST_CASE(program_retrigger_evaluates_each_duration_once);
+     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
+     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
++    RUN_TEST_CASE(program_bound_task_checks_admission_before_its_body);
++    RUN_TEST_CASE(program_effect_free_bound_task_uses_the_owning_program_world);
++    RUN_TEST_CASE(program_bound_task_cancels_pending_children_and_preserves_unbound_pointer_users);
++    RUN_TEST_CASE(program_bound_task_does_not_consume_ready_external_results_after_removal);
++    RUN_TEST_CASE(program_bound_task_stops_when_an_inline_outcome_invalidates_its_target);
++    RUN_TEST_CASE(program_failing_inline_outcome_detaches_its_completed_request);
++    RUN_TEST_CASE(program_bound_task_cannot_succeed_after_its_last_expression_removes_the_target);
++    RUN_TEST_CASE(program_bound_child_unites_inherited_and_distinct_explicit_targets);
++    RUN_TEST_CASE(program_completed_bound_parent_keeps_its_result_and_child_dependencies);
++    RUN_TEST_CASE(program_bound_task_resources_detach_in_each_destruction_order);
+     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
+     RUN_TEST_CASE(program_task_cancelling_itself_stops_at_once);
+     RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);

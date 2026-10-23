@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-23",
+  "status": "coordinator final formatted source review CLEAR; unexecuted and not imported",
+  "coordinator_receipt": "/Users/cwaldner/Personal/chibi/.coordination/sdk-pair-source-review-20261023.json",
+  "coordinator_receipt_sha256": "8465c473ac21bf935ec547f7c22dd2b8c89d73e2bd2bbffba495de2378379fb3",
+  "patch_sha256": "51c42e4a10788ebc8ba18621d6c823806120517cac0f3c83f6eb675cb0c3d9ec",
+  "manifest_sha256": "fbfb7add5e36802062030aea1374453112d68ab918204f622899cc28cb4c2c15",
+  "pending": [
+    "Native941 implementation source, ABI/admission and deterministic error/rollback proof",
+    "Corrected Project pair publisher and strict HOST/2 reader source hash",
+    "Eligible integrated source and required repository validation",
+    "Actual prepared witness generation, native/selfhost mutation controls, installed/relocated full SDK and consumer proof"
+  ],
+  "execution": "No build, export, runtime test, witness generation, live import, provisioning, publication or default change"
+}

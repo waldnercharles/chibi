@@ -1,0 +1,212 @@
+{
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/REVIEW.md": {
+    "sha256": "ff400e0bd065b3a4290c8fca93bb2192921690a84534ab342bb6cba9c83b5508",
+    "bytes": 1107,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/REVIEW.md",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/after/test/tools/build_sdk.c": {
+    "sha256": "8b7fc47e5a04f601a9bb83b4b359d70009f34f66e97f7e29161e4c65a003e757",
+    "bytes": 70884,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/after/test/tools/build_sdk.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/after/tools/toolchain/SDK.chibi": {
+    "sha256": "dd68b7dca55788f1491f4383f59e113dc890959a7af8d3e5aa400729f84f13ee",
+    "bytes": 40945,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/after/tools/toolchain/SDK.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/before/test/tools/build_sdk.c": {
+    "sha256": "6820476e16e84083558dffa430a1e3881f622d7c25d61e5e345bd40810684dfd",
+    "bytes": 66355,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/before/test/tools/build_sdk.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/before/tools/toolchain/SDK.chibi": {
+    "sha256": "d66e0de1e0d84579d250bad9a83bb482c3472bc00cd1cd448028262b4fb4a3b7",
+    "bytes": 37278,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/before/tools/toolchain/SDK.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/correction.patch": {
+    "sha256": "c3e916a57194a0cc18b823033290b9905c1e8ddba831b1dbae736d5c041f1975",
+    "bytes": 668,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/correction.patch",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/final-source-approval.json": {
+    "sha256": "b1a1806ae525c195dfa80210b4cfbf919a6885cbdad64f80ecae27435ec909c4",
+    "bytes": 1015,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/final-source-approval.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/formatting.patch": {
+    "sha256": "746aed032b18d61ec26584d53b7c4922c509e442b62f2388fb5f7ae369f49a96",
+    "bytes": 615,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/formatting.patch",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/manifest.json": {
+    "sha256": "fbfb7add5e36802062030aea1374453112d68ab918204f622899cc28cb4c2c15",
+    "bytes": 3001,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/manifest.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/source-review.json": {
+    "sha256": "83289cc6b23e61d718d1ef850a97748cac02a20df787cf2c4482b3aa28847333",
+    "bytes": 1313,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/source-review.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition-pair-header-formatted/source.patch": {
+    "sha256": "51c42e4a10788ebc8ba18621d6c823806120517cac0f3c83f6eb675cb0c3d9ec",
+    "bytes": 11489,
+    "original_relative_path": ".chibi/full-sdk-composition-pair-header-formatted/source.patch",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/composition-source-review.json": {
+    "sha256": "82f3f67cf83e52df79e8b440fbee6a40b00c917e5e7e6194cee463eff61c2681",
+    "bytes": 1616,
+    "original_relative_path": ".chibi/sdk-native-composition-review/composition-source-review.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/dependency-review.json": {
+    "sha256": "e2f6f75ca97680488f75f10b6e319b67a8bece245908c1b82534876b723dfd5d",
+    "bytes": 4393,
+    "original_relative_path": ".chibi/sdk-native-composition-review/dependency-review.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/sdk/CMakeLists.txt": {
+    "sha256": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1",
+    "bytes": 49188,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/sdk/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/sdk/project_preparation.cmake": {
+    "sha256": "a863e6eb9cb7dd1f61f1cf64fed6cb78a62d0e2931ca4bec98ce0c2ac700748e",
+    "bytes": 6813,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/sdk/project_preparation.cmake",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/src/authoring/project_compile.c": {
+    "sha256": "31627bcb857fe64499db9a282629a8294da4fd1eda1570ee46eb92bff69c39ad",
+    "bytes": 48778,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/src/authoring/project_compile.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/src/host/build_catalog.c": {
+    "sha256": "f736f3c377f16d01791ca3953a9e668fdeb84d4e2aa4e365397cb96613c1a4e1",
+    "bytes": 22289,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/src/host/build_catalog.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/src/host/build_host_internal.h": {
+    "sha256": "adaba55bfacf14827d437406d6576d0be248804f78270a7bf02e11a01a68c178",
+    "bytes": 2007,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/src/host/build_host_internal.h",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/test/fixtures/feature-coverage/coverage-gaps.txt": {
+    "sha256": "5bc32f81faa4c9c20cd7786d57cdf4e5b4191affbe1f39eadb3c80059afa23c0",
+    "bytes": 3174,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/test/fixtures/feature-coverage/coverage-gaps.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/test/tools/CMakeLists.txt": {
+    "sha256": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738",
+    "bytes": 38238,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/test/tools/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/test/tools/build_graph.c": {
+    "sha256": "c8cdcbe5816d28ec021bba38cd54d43ec79c3cfbe2e3f0d5d94e96a5aa4d3402",
+    "bytes": 57575,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/test/tools/build_graph.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/test/tools/build_process.c": {
+    "sha256": "c1f18ee4d830bad379d3c8a099e88b304cf77bfc0deaa76c6cb41cc28f3a9ae6",
+    "bytes": 112144,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/test/tools/build_process.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/import-basemap/tools/graph/engine/Targets.chibi": {
+    "sha256": "39b21289d058c27c31ee8fc7d26aa468ffd40ce02d219e3d2df04560a2aebaf6",
+    "bytes": 226486,
+    "original_relative_path": ".chibi/sdk-native-composition-review/import-basemap/tools/graph/engine/Targets.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/sdk/CMakeLists.txt": {
+    "sha256": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1",
+    "bytes": 49188,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/sdk/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/sdk/project_preparation.cmake": {
+    "sha256": "a863e6eb9cb7dd1f61f1cf64fed6cb78a62d0e2931ca4bec98ce0c2ac700748e",
+    "bytes": 6813,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/sdk/project_preparation.cmake",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/src/authoring/project_compile.c": {
+    "sha256": "31627bcb857fe64499db9a282629a8294da4fd1eda1570ee46eb92bff69c39ad",
+    "bytes": 48778,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/src/authoring/project_compile.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/src/host/build_catalog.c": {
+    "sha256": "f736f3c377f16d01791ca3953a9e668fdeb84d4e2aa4e365397cb96613c1a4e1",
+    "bytes": 22289,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/src/host/build_catalog.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/src/host/build_host_internal.h": {
+    "sha256": "adaba55bfacf14827d437406d6576d0be248804f78270a7bf02e11a01a68c178",
+    "bytes": 2007,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/src/host/build_host_internal.h",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/test/fixtures/feature-coverage/coverage-gaps.txt": {
+    "sha256": "5bc32f81faa4c9c20cd7786d57cdf4e5b4191affbe1f39eadb3c80059afa23c0",
+    "bytes": 3174,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/test/fixtures/feature-coverage/coverage-gaps.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/test/tools/CMakeLists.txt": {
+    "sha256": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738",
+    "bytes": 38238,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/test/tools/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/test/tools/build_graph.c": {
+    "sha256": "c8cdcbe5816d28ec021bba38cd54d43ec79c3cfbe2e3f0d5d94e96a5aa4d3402",
+    "bytes": 57575,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/test/tools/build_graph.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/test/tools/build_process.c": {
+    "sha256": "c1f18ee4d830bad379d3c8a099e88b304cf77bfc0deaa76c6cb41cc28f3a9ae6",
+    "bytes": 112144,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/test/tools/build_process.c",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/tools/graph/engine/Targets.chibi": {
+    "sha256": "39b21289d058c27c31ee8fc7d26aa468ffd40ce02d219e3d2df04560a2aebaf6",
+    "bytes": 226486,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/tools/graph/engine/Targets.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/sdk-native-composition-review/source-basemap/tools/toolchain/Project.chibi": {
+    "sha256": "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb",
+    "bytes": 36710,
+    "original_relative_path": ".chibi/sdk-native-composition-review/source-basemap/tools/toolchain/Project.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/project-pair-witness/PROPOSAL.md": {
+    "sha256": "c0cc4f8fb6d162e0e98c2d96a50629ef1e7a55b511cb9a038d7b713b5e91acdb",
+    "bytes": 4193,
+    "original_relative_path": ".chibi/project-pair-witness/PROPOSAL.md",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  }
+}

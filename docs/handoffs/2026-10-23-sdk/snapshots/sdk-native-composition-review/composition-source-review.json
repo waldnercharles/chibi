@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-23",
+  "status": "SDK/native CMake-Graph-witness composition source-clear; unexecuted and not integrated",
+  "prior_identity_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/sdk-native-composition-review/dependency-review.json",
+  "prior_identity_receipt_sha256": "e2f6f75ca97680488f75f10b6e319b67a8bece245908c1b82534876b723dfd5d",
+  "independent_review": {
+    "agent": "sdk_inventory",
+    "result": "no actionable registration/private-header findings",
+    "scope": [
+      "manifest and all candidate after hashes",
+      "CMake/Targets support, build-host and test source registration",
+      "private file-pair/build-host/project_compilation header staging without public installation",
+      "warm Engine private/file-pair pseudo-component staging through ExportTarget and StageHeaders",
+      "existing support link closure and existing gated test dispatcher"
+    ]
+  },
+  "conclusion": "The sealed native CMake3e6c can compose with warm Engine7d36/NativeBuildFiles4c66 and final SDK51c4. This is source compatibility only, not an eligible combined source tree or runtime proof.",
+  "pending": [
+    "root-owned eligible combined source32/typed6ef/warm/native candidate",
+    "native ABI, admission and deterministic faults/cancellation execution",
+    "actual prepared941/HOST2 witness and strict native+selfhost mutation controls",
+    "actual native Terrain artifact+sidecar parity and installed/relocated SDK+consumer validation"
+  ],
+  "execution": "none; no import, build, export, runtime tests, policy execution, runtime witness or adoption"
+}

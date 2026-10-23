@@ -4,22 +4,30 @@ import strings "core:strings"
 
 // Bounded Linux-x64 LLVM CLI consumer. The build host is a transitional
 // capability provider, not part of the emitted executable or a C exemption.
-Join :: (parts: string[]) -> string { return strings.Join(parts, ""); }
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
 
 Path :: (value: string) -> bool {
     if (!strings.HasPrefix(value, "/") || strings.ByteLength(value) > 4096) {
         return false;
     }
     for (byte in strings.Bytes(value)) {
-        if (byte < 32 || byte == 127) { return false; }
+        if (byte < 32 || byte == 127) {
+            return false;
+        }
     }
     return true;
 }
 
 Tool :: (path: string) -> string {
-    if (!Path(path) || build.find_executable(path) == "") { return ""; }
+    if (!Path(path) || build.find_executable(path) == "") {
+        return "";
+    }
     resolved := build.resolve_path(path);
-    if (!Path(resolved)) { return ""; }
+    if (!Path(resolved)) {
+        return "";
+    }
     return resolved;
 }
 
@@ -30,7 +38,9 @@ Target :: (text: string) -> bool {
     layouts := 0;
     for (line in build.lines(text)) {
         if (strings.HasPrefix(line, "target triple = ")) {
-            if (line != "target triple = \"x86_64-unknown-linux-gnu\"") { return false; }
+            if (line != "target triple = \"x86_64-unknown-linux-gnu\"") {
+                return false;
+            }
             triples += 1;
         }
         if (strings.HasPrefix(line, "target datalayout = ")) {
@@ -55,7 +65,9 @@ Cleanup :: (partial: string) -> bool {
 
 Failed :: (partial: string, stage: string, status: int) -> int {
     build.report(Join(["native-aot: ", stage, " failed; no output published"]));
-    if (!Cleanup(partial)) { build.report("native-aot: unpublished partial needs cleanup"); }
+    if (!Cleanup(partial)) {
+        build.report("native-aot: unpublished partial needs cleanup");
+    }
     return status;
 }
 
@@ -65,10 +77,23 @@ Command :: (stage: string, arguments: string[]) -> string {
     return Join(["stage ", stage, "\n", strings.Join(arguments, "\n"), "\nend-stage\n"]);
 }
 
-Build :: () -> int {
+Run :: (executable: bool) -> int {
     arguments := build.arguments();
-    if (length(arguments) != 6 || (arguments[5] != "0" && arguments[5] != "2")) {
-        build.report("usage: INPUT.ll OUTPUT_DIRECTORY OPT LLC LINKER 0|2 (absolute paths)");
+    count := 5;
+    if (executable) {
+        count = 6;
+    }
+    if (length(arguments) != count) {
+        if (executable) {
+            build.report("usage: INPUT.ll OUTPUT_DIRECTORY OPT LLC LINKER 0|2 (absolute paths)");
+        } else {
+            build.report("usage: INPUT.ll OUTPUT_DIRECTORY OPT LLC 0|2 (absolute paths)");
+        }
+        return 2;
+    }
+    mode := arguments[count - 1];
+    if (mode != "0" && mode != "2") {
+        build.report("native-aot: mode must be 0 or 2");
         return 2;
     }
     if (build.platform() != "Linux" || !Path(arguments[0]) || !Path(arguments[1])) {
@@ -78,12 +103,15 @@ Build :: () -> int {
     input := build.resolve_path(arguments[0]);
     opt := Tool(arguments[2]);
     llc := Tool(arguments[3]);
-    linker := Tool(arguments[4]);
+    linker := "";
+    if (executable) {
+        linker = Tool(arguments[4]);
+    }
     name := strings.BaseName(arguments[1]);
     slash := strings.LastIndexByte(arguments[1], 47);
     parent := build.resolve_path(strings.Slice(arguments[1], 0, slash + 1));
     if (!Path(input) || build.file_kind(input) != "file" || opt == "" || llc == "" ||
-        linker == "" || !Path(parent) || name == "" || name == "." || name == "..") {
+        (executable && linker == "") || !Path(parent) || name == "" || name == "." || name == "..") {
         build.report("native-aot: regular IR, executable tools and an existing output parent are required");
         return 2;
     }
@@ -100,8 +128,11 @@ Build :: () -> int {
     }
     opt_hash := build.hash_file(opt);
     llc_hash := build.hash_file(llc);
-    linker_hash := build.hash_file(linker);
-    if (opt_hash == "" || llc_hash == "" || linker_hash == "") {
+    linker_hash := "";
+    if (executable) {
+        linker_hash = build.hash_file(linker);
+    }
+    if (opt_hash == "" || llc_hash == "" || (executable && linker_hash == "")) {
         build.report("native-aot: cannot identify tool executables");
         return 2;
     }
@@ -113,50 +144,83 @@ Build :: () -> int {
     module := Join([partial, "/module.ll"]);
     object := Join([partial, "/object.o"]);
     program := Join([partial, "/program"]);
-    if (!build.write_file(source, text)) { return Failed(partial, "IR snapshot", 1); }
+    if (!build.write_file(source, text)) {
+        return Failed(partial, "IR snapshot", 1);
+    }
     passes := "verify";
-    if (arguments[5] == "2") { passes = "verify,default<O2>,verify"; }
+    if (mode == "2") {
+        passes = "verify,default<O2>,verify";
+    }
     optimize := [opt, "-S", Join(["-passes=", passes]), source, "-o", module];
-    compile := [llc, "-filetype=obj", Join(["-O=", arguments[5]]), module, "-o", object];
+    compile := [llc, "-filetype=obj", Join(["-O=", mode]), module, "-o", object];
     link := [linker, object, "-Wl,--gc-sections", "-o", program];
     status := build.run(optimize);
-    if (status != 0) { return Failed(partial, "LLVM verification/optimization", status); }
+    if (status != 0) {
+        return Failed(partial, "LLVM verification/optimization", status);
+    }
     if (build.file_kind(module) != "file" || !Target(build.read_file(module))) {
         return Failed(partial, "canonical target/layout admission", 2);
     }
     status = build.run(compile);
-    if (status != 0) { return Failed(partial, "LLVM object emission", status); }
+    if (status != 0) {
+        return Failed(partial, "LLVM object emission", status);
+    }
     if (build.file_kind(object) != "file") {
         return Failed(partial, "LLVM object emission", 1);
     }
-    status = build.run(link);
-    if (status != 0) { return Failed(partial, "native link", status); }
-    if (build.file_kind(program) != "file" || build.find_executable(program) == "") {
-        return Failed(partial, "native link", 1);
+    if (executable) {
+        status = build.run(link);
+        if (status != 0) {
+            return Failed(partial, "native link", status);
+        }
+        if (build.file_kind(program) != "file" || build.find_executable(program) == "") {
+            return Failed(partial, "native link", 1);
+        }
     }
     if (build.hash_file(opt) != opt_hash || build.hash_file(llc) != llc_hash ||
-        build.hash_file(linker) != linker_hash) {
+        (executable && build.hash_file(linker) != linker_hash)) {
         return Failed(partial, "tool identity changed during build", 1);
     }
     source_hash := build.hash_file(source);
     module_hash := build.hash_file(module);
     object_hash := build.hash_file(object);
-    program_hash := build.hash_file(program);
-    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" || program_hash == "") {
+    program_hash := "";
+    if (executable) {
+        program_hash = build.hash_file(program);
+    }
+    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
+        (executable && program_hash == "")) {
         return Failed(partial, "output identity", 1);
     }
+    kind := "object";
+    if (executable) {
+        kind = "executable";
+    }
     receipt := Join([
-        "native-aot-driver 1\ninput ", input, "\ninput-sha256 ", source_hash,
+        "native-aot-driver 1\noutput-kind ", kind,
+        "\ninput ", input, "\ninput-sha256 ", source_hash,
         "\nopt ", opt, "\nopt-sha256 ", opt_hash, "\nllc ", llc, "\nllc-sha256 ", llc_hash,
-        "\nlinker ", linker, "\nlinker-sha256 ", linker_hash, "\nmode ", arguments[5],
-        "\nmodule-sha256 ", module_hash, "\nobject-sha256 ", object_hash,
-        "\nprogram-sha256 ", program_hash, "\n",
-        Command("opt", optimize), Command("llc", compile), Command("link", link)
+        "\nmode ", mode, "\nmodule-sha256 ", module_hash, "\nobject-sha256 ", object_hash, "\n",
+        Command("opt", optimize), Command("llc", compile)
     ]);
+    if (executable) {
+        receipt = Join([receipt, "linker ", linker, "\nlinker-sha256 ", linker_hash,
+                        "\nprogram-sha256 ", program_hash, "\n", Command("link", link)]);
+    }
     if (!build.write_file(Join([partial, "/receipt.txt"]), receipt)) {
         return Failed(partial, "receipt", 1);
     }
-    if (!build.publish_directory(partial, output)) { return Failed(partial, "exclusive publication", 1); }
+    if (!build.publish_directory(partial, output)) {
+        return Failed(partial, "exclusive publication", 1);
+    }
     build.report(Join(["native-aot: published ", output]));
     return 0;
+}
+
+// Existing executable entry and explicit object entry share publication rules.
+Build :: () -> int {
+    return Run(true);
+}
+Object :: () -> int {
+    return Run(false);
 }

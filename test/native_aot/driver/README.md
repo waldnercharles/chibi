@@ -8,11 +8,21 @@ replace the shared frontend or introduce a public IR, ABI or general build graph
 
 ## Contract and invocation
 
-The `Build` entry takes exactly six positional arguments:
+The `Build` entry preserves its six positional arguments:
 
 ```
 INPUT.ll OUTPUT_DIRECTORY OPT_EXECUTABLE LLC_EXECUTABLE LINKER_EXECUTABLE 0|2
 ```
+
+The explicit `Object` entry takes exactly five, with no dummy linker:
+
+```
+INPUT.ll OUTPUT_DIRECTORY OPT_EXECUTABLE LLC_EXECUTABLE 0|2
+```
+
+Both entries share the same private implementation and admission/publication
+rules. `Build` emits and links an executable; `Object` publishes the verified
+object without linking, synthesizing an entry wrapper or changing scalar ABI.
 
 All paths are absolute. The input is a regular LLVM text file. Tool paths are
 explicit trusted capabilities, resolved and hashed; there is no PATH discovery
@@ -49,7 +59,7 @@ executes fixed argument vectors:
 2. Admit the verified canonical output's exact
    `x86_64-unknown-linux-gnu` triple and observed LLVM19 x86-64 data layout.
 3. `llc -filetype=obj -O=0|2` without a target override.
-4. `cc object.o -Wl,--gc-sections -o program`.
+4. For `Build` only: `cc object.o -Wl,--gc-sections -o program`.
 
 The accepted canonical data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
@@ -61,11 +71,15 @@ triple declarations to the final one: a supported canonical result is admitted,
 a foreign one rejects. This checks declared-target metadata, not source
 provenance or arbitrary LLVM semantics, and does not parse LLVM independently.
 
-Only successful object and executable-file creation, unchanged direct tool
-hashes, and a completed receipt permit no-replace directory publication.
-`source.ll`, `module.ll`, `object.o`, `program` and `receipt.txt` are published
-together. The receipt records resolved tool paths/SHA256, actual argv, mode and
-input/module/object/program hashes. It identifies direct executables, not every
+Only successful object creation (plus an executable file for `Build`), unchanged
+direct tool hashes, and a completed receipt permit no-replace publication.
+`source.ll`, `module.ll`, `object.o` and `receipt.txt` are published together;
+`Build` additionally publishes `program`. Every receipt explicitly records
+`output-kind object` or `output-kind executable`, resolved tool paths/SHA256,
+actual argv, mode and input/module/object hashes. An object receipt contains no
+linker identity, link command or program hash, and `Object` does not resolve,
+hash or execute a linker. An executable receipt additionally records those
+linker/program facts. Receipts identify direct executables, not every
 shared library, linker subprocess or startup file: this is not a hermetic build
 or protection against malicious tools/concurrent mutation.
 
@@ -73,22 +87,35 @@ Ordinary stage failure removes only the known filenames inside this invocation's
 reserved partial directory. A failed reservation is never cleaned. An existing
 complete output or partial directory is left untouched. Host capability errors,
 whole-operation timeout or cancellation can abort authored cleanup and leave an
-unpublished partial; inspect/remove that owned scratch before retrying. No final
-output is published in those paths. The host already supervises process groups
+unpublished partial. Failures before publication leave no final output, but an
+interruption may occur after atomic publication and before the host returns.
+After an uncertain interruption, inspect both the final receipt and the partial
+before retrying; do not infer publication state solely from the host status.
+The host already supervises process groups
 and has bounded IO, output, instruction and time budgets; this is not a sandbox
 for untrusted LLVM or executables. The driver uses native `build.lines`, not
 quadratic remainder-slicing, for canonical metadata. Existing 16MiB text and
 8192-line array bounds remain unchanged.
 
-## Genuine emitter fixture and provenance
+## Genuine emitter fixtures and provenance
 
-`fixtures/scalar/Main.chibi` is the existing reviewed literal42 source, not a
-new LLVM-only example. `Main.ll` is its byte-identical authored emitter output:
+The checked-in source fixtures use canonical SDK formatting. Both were rerun
+through the unchanged reviewed Front/Back artifacts on bytecode and SLJIT; each
+source pipeline forwards the exact Front stdout envelope unchanged to Back.
+Formatting changed source hashes, but both emitted IR files were measured
+byte-identical to their original reviewed outputs (not assumed or hand-edited).
+The scalar fixture exports `main` returning 42 with CHECK budget 1. The small
+parameter fixture exports `chibi_scalar(i32, i1) -> i32`, returning its integer
+argument when its boolean argument is true, otherwise zero, with CHECK budget 64.
+It is a genuine existing parameterized-emitter consumer, not a renamed `main`.
 
-| Input | SHA256 |
-|---|---|
-| Main.chibi | `08cd7eefd36c9b36cd7856e82a7039832dbd27e1ff931d0e08bb198037dad78b` |
-| Main.ll | `648eac9e8c640789e865c9a5366ffbbe664740e926124a2567be61405d2afd5a` |
+| Fixture | Source SHA256 | LLVM IR SHA256 |
+|---|---|---|
+| scalar/Main | `4e9a488c5a7f57e8dc27fdf19c538caa364cff1689538d9cb5823efe9e228b1b` | `648eac9e8c640789e865c9a5366ffbbe664740e926124a2567be61405d2afd5a` |
+| parameters/Main | `4b40f1406c3335aa68f512e25e1dd74f1c75dc22219f2468513885f80c198bea` | `33f3be70f7d0d6d75c2e973a9f25f839af3d96411e60bafc2c305f7b71a463ed` |
+
+Fixture regeneration measured Front/Back calls of 1,847/123 for scalar and
+2,783/453 for parameters on each selected VM backend, with zero fallback.
 
 The retained [scalar proof checkpoint3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
 binds the source→shared-frontend→checked-plan→emitter evidence. Its NUL-free Front
@@ -120,15 +147,40 @@ object/link-stage failures, canonical target/layout negatives, final-output
 preservation and stale-partial preservation. Fixture-generated binaries and tool
 copies are removed after success; receipts and IR remain bounded evidence.
 
-The largest IR in the existing16-source authored corpus (3857 bytes, SHA256
+The largest IR in the existing 16-source authored corpus (3857 bytes, SHA256
 `55092e2670626dfc4f0c7f33ee967065f0823118763fbd7e12255ad649c5eec8`)
 also passed O0/O2 to native exit42, with no undefined object symbols. The existing
 all-table-max emitter case (73187 bytes, SHA256
 `37fac099ac8d389d0e4341d8777ecc346a5ace19f67b5cfd800345f722f5f44e`)
-passed verification, canonical metadata admission and object emission in both
-modes under unchanged budgets, then correctly failed linking: it exports the
-eight-argument `chibi_scalar`, not `main`. Its partial was removed. No executable
-wrapper or new ABI was invented to turn that object proof into an executable.
+previously passed verification and object emission but rejected executable
+linking because it exports eight-argument `chibi_scalar`, not `main`. With the
+new explicit `Object` entry it now publishes a real ELF x86-64 relocatable object
+at O0 and O2 under the same unchanged budgets. Both objects have `chibi_scalar`
+and no undefined symbols. The large module stays scratch evidence rather than
+a duplicated checked-in fixture; no executable wrapper or new ABI was invented.
+
+The `Objects` authored test entry takes eight arguments (the same settings as
+`Tests`, but parameter IR and no linker). For example:
+
+```sh
+"$HOST" --root "$ROOT" --source test/native_aot/driver/Tests.chibi \
+  --core "$CORE" --compiler "$COMPILER" --compiler-core "$CORE" \
+  --entry Objects --timeout-ms 120000 -- \
+  "$HOST" "$ROOT/tools/native_aot/Driver.chibi" "$COMPILER" "$CORE" \
+  "$ROOT/test/native_aot/driver/fixtures/parameters/Main.ll" "$ROOT/out/object-tests" \
+  "$OPT" "$LLC"
+```
+
+Both authored suites pass on the exact formatted candidate. Object tests cover
+real O0/O2 emission, paths with spaces, explicit kind and input/tool/object hashes,
+absence of linker/program claims, verifier and emission failures (including a
+zero-exit tool that produces no object), invalid mode, and preservation of prior
+complete output and stale partials. Separate validation-only `readelf`/`nm`
+checks identify the small and maximum outputs as x86-64 relocatable objects with
+no undefined symbols. A test harness linked the small objects as shared libraries
+(no C source or wrappers) and checked three existing boundary calls per mode:
+INT_MIN/true, INT_MAX/true and INT_MIN/false. This harness is validation only;
+the authored `Object` production path ends at object publication.
 
 Tested tool identities:
 - Official d0de SDK build host:
@@ -144,10 +196,21 @@ Tested tool identities:
 The SDK CLI selects bytecode for the authored driver. No unmeasured SLJIT-driver
 claim is made. The current first-party C build host is transient bootstrapping
 debt, not a permanent exemption; first-party C is absent from the emitted scalar
-object/executable. Standard repository formatter/test dispatcher and platform CI
-have not run for this WIP checkpoint. Independent exact-source/process review passed this bounded candidate: the
-authored suite was reproduced from a separately verified five-file copy,15
-additional argument/path/process/stale-output checks passed, and an actual
-publication race preserved the competing final directory while removing the
-driver-owned partial. This is not broader platform or integration acceptance. Foreign allocation, typed memory, output/free,
-production frontend integration and wider toolchain/platform support remain open.
+object/executable. The official SDK formatter (`chibi-compile`, SHA256
+`9b9e7d1108e68cec34b75cd490f49131eda2fadd86fc7c05517e24564fc67817`)
+formatted all candidate Chibi files, then `--format --check` passed. The earlier
+352aa34c WIP had unrun formatting, subsequently found noncanonical; this candidate
+corrects it and regenerates fixture provenance. Standard repository test
+dispatcher and platform CI remain unrun. The first driver checkpoint had an
+independent source/process review, reproduced suite, 15 extra controls and a real
+publication-race check. Independent exact review of this object addition passed:
+formatter and both authored suites were independently reproduced; 15 prior
+`Build` controls and 14 additional `Object` controls passed. Both real object
+fixtures passed O0/O2 with empty PATH, matching hashes, exactly four published
+files, and ELF/symbol checks. The larger source-corpus executable still returned
+42 in both modes, and actual publication races for both entries preserved the
+competing final directory and cleaned the owned partial. Fixture regeneration
+provenance/counters were independently bound to the frozen source/artifact
+identities, not independently rerun. This is not broader platform or integration
+acceptance. Foreign allocation, typed memory, output/free, production
+frontend integration and wider toolchain/platform support remain open.

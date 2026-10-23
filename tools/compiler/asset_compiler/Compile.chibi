@@ -19,6 +19,11 @@ pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     return source.Write(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
 }
 
+pub ValidatePrototype :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+                          signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> string {
+    return source.ValidatePrototype(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
+}
+
 pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[],
                    signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
     return source.Expression(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
@@ -26,6 +31,10 @@ pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[]
 
 pub Inspect :: (text: string, function_name: string) -> source.Inspection {
     return source.Inspect(text, function_name);
+}
+
+pub DeclarationNameRange :: (text: string) -> int[] {
+    return source.DeclarationNameRange(text);
 }
 
 pub Classify :: (text: string) -> bool {
@@ -54,6 +63,15 @@ pub Reconcile :: (text: string, old_kinds: int[], old_parents: int[], old_keys: 
                   new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
                   new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
     return source.Reconcile(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
+                            old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
+                            new_signed, new_unsigned, new_reals, new_booleans);
+}
+
+pub ReconcileNative :: (text: string, old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
+                  old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                  new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                  new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+    return source.ReconcileNative(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
                             old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
                             new_signed, new_unsigned, new_reals, new_booleans);
 }

@@ -92,6 +92,14 @@ Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
     if (kind == 4) {
         assert(real == real && real <= 1.7976931348623157e308 &&
                    real >= -1.7976931348623157e308, "Asset reals must be finite");
+        // Decimal subnormal literals are intentionally rejected by the number
+        // parser. Scale by exact powers of two so both source operands are
+        // normal and their product reconstructs every subnormal bit exactly.
+        if ((real > 0.0 && real < 2.2250738585072014e-308) ||
+            (real < 0.0 && real > -2.2250738585072014e-308)) {
+            scaled := format_text("{:.17g}", real * 4503599627370496.0);
+            return format_text("data.Value.Real({} * 2.2204460492503131e-16)", scaled);
+        }
         literal := format_text("{:.17g}", real);
         if (!strings.ContainsAny(literal, ".eE")) { literal = strings.Join([literal, ".0"], ""); }
         return format_text("data.Value.Real({})", literal);
@@ -100,8 +108,9 @@ Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
     return format_text("data.Value.Text({})", Quoted(text));
 }
 
-EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-         signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string) -> string {
+EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string,
+              first: int, last: int, helpers: bool[], ends: int[]) -> string {
     count := length(kinds);
     assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
     assert(length(parents) == count && length(keys) == count && length(texts) == count &&
@@ -109,9 +118,11 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
                length(booleans) == count, "Asset source columns must have equal lengths");
     assert(parents[0] == -1, "Asset source needs exactly one root");
     children: int[] = [];
-    for (kind in kinds) {
-        assert(kind >= 0 && kind <= 7, "Invalid asset value kind");
+    index := first;
+    while (index < last) {
+        assert(kinds[index] >= 0 && kinds[index] <= 7, "Invalid asset value kind");
         children.append(0);
+        index += 1;
     }
     stack: int[] = [];
     seen: [string: bool] = [:];
@@ -119,27 +130,28 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     if (document) {
         parts.append("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        ");
     }
-    at: int = 0;
-    while (at < count) {
+    at := first;
+    while (at < last) {
         parent := parents[at];
-        if (at > 0) { assert(parent >= 0 && parent < at, "Asset parents must precede their children"); }
+        if (at == first) { parent = -1; }
+        if (at > first) { assert(parent >= 0 && parent < at, "Asset parents must precede their children"); }
         while (length(stack) > 0 && stack[length(stack) - 1] != parent) {
             closed := stack[length(stack) - 1];
             stack.remove_index(length(stack) - 1);
-            if (children[closed] > 0) {
+            if (children[closed - first] > 0) {
                 parts.append("\n");
                 parts.append(Indent(length(stack)));
             }
             parts.append("])");
-            if (parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+            if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
         }
-        if (at > 0) {
+        if (at > first) {
             assert(length(stack) > 0 && stack[length(stack) - 1] == parent,
                    "Asset children must form a preorder tree");
-            if (children[parent] > 0) { parts.append(","); }
+            if (children[parent - first] > 0) { parts.append(","); }
             parts.append("\n");
             parts.append(Indent(length(stack)));
-            children[parent] += 1;
+            children[parent - first] += 1;
             if (kinds[parent] == 6) {
                 identity := format_text("{}:{}", parent, keys[at]);
                 assert(!seen[identity], "Duplicate asset object field");
@@ -148,6 +160,12 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
                 parts.append(Quoted(keys[at]));
                 parts.append(", ");
             }
+        }
+        if (at != first && length(helpers) > 0 && helpers[at]) {
+            parts.append(format_text("AssetValue{}()", at));
+            if (parent >= 0 && kinds[parent] == 6) { parts.append(")"); }
+            at = ends[at];
+            continue;
         }
         kind := kinds[at];
         assert(length(stack) <= MaxDepth, "Asset source exceeds depth quota");
@@ -165,12 +183,12 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     while (length(stack) > 0) {
         closed := stack[length(stack) - 1];
         stack.remove_index(length(stack) - 1);
-        if (children[closed] > 0) {
+        if (children[closed - first] > 0) {
             parts.append("\n");
             parts.append(Indent(length(stack)));
         }
         parts.append("])");
-        if (parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+        if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
     }
     if (document) { parts.append("\n    )\n}\n"); }
     used: int = 0;
@@ -180,6 +198,237 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
         used += bytes;
     }
     return strings.Join(parts, "");
+}
+
+// Full modules with deeply nested values use private helpers. Each inline
+// subtree has at most 16 value edges and 128 value nodes; a wide
+// container uses groups of 32 fields/values and groups of at most 32 calls.
+// This bounds expression depth, indentation and verifier work per definition.
+// Shallow documents and source-edit fragments keep their existing spelling.
+// Deep generated helpers are not literal-only editable Build expressions;
+// source-edit services must preserve them or diagnose an unsupported edit.
+InlineDepth: int : 16;
+InlineNodes: int : 128;
+GroupWidth: int : 32;
+
+NeedsHelpers :: (parents: int[]) -> bool {
+    depths: int[] = [];
+    needed: bool = false;
+    at: int = 0;
+    while (at < length(parents)) {
+        depth: int = 0;
+        if (at > 0) {
+            parent := parents[at];
+            assert(parent >= 0 && parent < at, "Asset parents must precede their children");
+            depth = depths[parent] + 1;
+        }
+        assert(depth <= MaxDepth, "Asset source exceeds depth quota");
+        if (depth > InlineDepth) { needed = true; }
+        depths.append(depth);
+        at += 1;
+    }
+    return needed;
+}
+
+CheckedJoin :: (parts: string[]) -> string {
+    used: int = 0;
+    for (part in parts) {
+        bytes := strings.ByteLength(part);
+        assert(bytes <= MaxBytes - used, "Asset source exceeds byte quota");
+        used += bytes;
+    }
+    return strings.Join(parts, "");
+}
+
+MemberSource :: (at: int, kinds: int[], texts: string[], signed: int64[], unsigned: uint64[],
+                 reals: double[], booleans: bool[]) -> string {
+    if (kinds[at] >= 6) { return format_text("AssetValue{}()", at); }
+    return Scalar(kinds[at], texts[at], signed[at], unsigned[at], reals[at], booleans[at]);
+}
+
+GroupName :: (at: int, object: bool, level: int, group: int) -> string {
+    if (object) { return format_text("AssetFields{}_{}_{}", at, level, group); }
+    return format_text("AssetValues{}_{}_{}", at, level, group);
+}
+
+WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: int64[],
+               unsigned: uint64[], reals: double[], booleans: bool[], ends: int[]) -> string {
+    object := kinds[at] == 6;
+    element := "data.Value";
+    constructor := "data.List";
+    if (object) { element = "data.Field"; constructor = "data.Object"; }
+    members: int[] = [];
+    child := at + 1;
+    while (child < ends[at]) {
+        members.append(child);
+        child = ends[child];
+    }
+    groups := (length(members) + GroupWidth - 1) / GroupWidth;
+    parts: string[] = [];
+    group: int = 0;
+    while (group < groups) {
+        parts.append(format_text("{} :: () -> {}[] ", GroupName(at, object, 0, group), element));
+        parts.append("{\n    return [\n");
+        first := group * GroupWidth;
+        last := first + GroupWidth;
+        if (last > length(members)) { last = length(members); }
+        index := first;
+        while (index < last) {
+            member := members[index];
+            if (index > first) { parts.append(",\n"); }
+            parts.append("        ");
+            if (object) {
+                parts.append(format_text("data.Field.Named({}, ", Quoted(keys[member])));
+            }
+            parts.append(MemberSource(member, kinds, texts, signed, unsigned, reals, booleans));
+            if (object) { parts.append(")"); }
+            index += 1;
+        }
+        parts.append("\n    ];\n}\n\n");
+        group += 1;
+    }
+    level: int = 0;
+    while (groups > 1) {
+        next := (groups + GroupWidth - 1) / GroupWidth;
+        group = 0;
+        while (group < next) {
+            parts.append(format_text("{} :: () -> {}[] ", GroupName(at, object, level + 1, group), element));
+            parts.append("{\n");
+            parts.append(format_text("    out: {}[] = [];\n", element));
+            first := group * GroupWidth;
+            last := first + GroupWidth;
+            if (last > groups) { last = groups; }
+            index := first;
+            while (index < last) {
+                parts.append(format_text("    out.extend({}());\n", GroupName(at, object, level, index)));
+                index += 1;
+            }
+            parts.append("    return out;\n}\n\n");
+            group += 1;
+        }
+        groups = next;
+        level += 1;
+    }
+    parts.append(format_text("AssetValue{} :: () -> data.Value ", at));
+    parts.append("{\n");
+    parts.append(format_text("    return {}({}());\n", constructor, GroupName(at, object, level, 0)));
+    parts.append("}\n\n");
+    return CheckedJoin(parts);
+}
+
+DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: int64[],
+               unsigned: uint64[], reals: double[], booleans: bool[], alias: string) -> string {
+    // Full module writers use the one fixed import alias. Fragment insertion
+    // may use another alias and deliberately stays on the literal path.
+    assert(alias == "data", "Deep asset modules require their data import");
+    count := length(kinds);
+    ends: int[] = [];
+    widths: int[] = [];
+    helpers: bool[] = [];
+    costs: int[] = [];
+    heights: int[] = [];
+    stack: int[] = [];
+    seen: [string: bool] = [:];
+    at: int = 0;
+    while (at < count) {
+        kind := kinds[at];
+        assert(kind >= 0 && kind <= 7, "Invalid asset value kind");
+        ends.append(at + 1);
+        widths.append(0);
+        helpers.append(false);
+        costs.append(1);
+        heights.append(0);
+        parent := parents[at];
+        while (length(stack) > 0 && stack[length(stack) - 1] != parent) {
+            closed := stack[length(stack) - 1];
+            stack.remove_index(length(stack) - 1);
+            ends[closed] = at;
+        }
+        if (at > 0) {
+            assert(length(stack) > 0 && stack[length(stack) - 1] == parent,
+                   "Asset children must form a preorder tree");
+            widths[parent] += 1;
+            if (kinds[parent] == 6) {
+                identity := format_text("{}:{}", parent, keys[at]);
+                assert(!seen[identity], "Duplicate asset object field");
+                seen[identity] = true;
+            }
+        }
+        if (kind >= 6) { stack.append(at); }
+        at += 1;
+    }
+    while (length(stack) > 0) {
+        closed := stack[length(stack) - 1];
+        stack.remove_index(length(stack) - 1);
+        ends[closed] = count;
+    }
+    at = count - 1;
+    while (at >= 0) {
+        child := at + 1;
+        if (widths[at] > GroupWidth) {
+            helpers[at] = true;
+            while (child < ends[at]) {
+                if (kinds[child] >= 6) { helpers[child] = true; }
+                child = ends[child];
+            }
+        } else {
+            cost: int = 1;
+            height: int = 0;
+            remaining := widths[at];
+            while (child < ends[at]) {
+                remaining -= 1;
+                child_cost := costs[child];
+                child_height := heights[child];
+                if (helpers[child]) { child_cost = 1; child_height = 0; }
+                if (child_cost > InlineNodes - cost - remaining || child_height + 1 > InlineDepth) {
+                    helpers[child] = true;
+                    child_cost = 1;
+                    child_height = 0;
+                }
+                cost += child_cost;
+                if (child_height + 1 > height) { height = child_height + 1; }
+                child = ends[child];
+            }
+            costs[at] = cost;
+            heights[at] = height;
+        }
+        at -= 1;
+    }
+    helpers[0] = true;
+    parts: string[] = ["package asset\n\nimport data \"game:assets\"\n\n"];
+    at = 0;
+    while (at < count) {
+        if (helpers[at]) {
+            if (widths[at] > GroupWidth) {
+                parts.append(WideSource(at, kinds, keys, texts, signed, unsigned, reals, booleans, ends));
+            } else {
+                expression := EmitRange(kinds, parents, keys, texts, signed, unsigned, reals, booleans,
+                                        false, alias, at, ends[at], helpers, ends);
+                parts.append(format_text("AssetValue{} :: () -> data.Value ", at));
+                parts.append("{\n");
+                parts.append(format_text("    return {};\n", expression));
+                parts.append("}\n\n");
+            }
+        }
+        at += 1;
+    }
+    parts.append("pub Build :: () -> byte[] {\n    return data.Encode(AssetValue0());\n}\n");
+    return CheckedJoin(parts);
+}
+
+EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
+              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string) -> string {
+    count := length(kinds);
+    assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
+    assert(length(parents) == count && length(keys) == count && length(texts) == count &&
+               length(signed) == count && length(unsigned) == count && length(reals) == count &&
+               length(booleans) == count, "Asset source columns must have equal lengths");
+    assert(parents[0] == -1, "Asset source needs exactly one root");
+    if (document && NeedsHelpers(parents)) {
+        return DeepSource(kinds, parents, keys, texts, signed, unsigned, reals, booleans, alias);
+    }
+    return EmitRange(kinds, parents, keys, texts, signed, unsigned, reals, booleans,
+                     document, alias, 0, count, [], []);
 }
 
 Emit :: (kinds: int[], parents: int[], keys: string[], texts: string[],

@@ -5,6 +5,8 @@ import strings "core:strings"
 // Parameters are syntax-only: this service never invokes the asset's helpers.
 ParameterLiteral :: (source: string, binding: Binding) -> string {
     assert(!binding.computed && binding.literal_start >= 0, "Parameters require scalar literal constructors");
+    // Inspect normalizes the writer's scaled-Real form to numeric JSON text;
+    // never slice its source expression into the parameter JSON document.
     text := binding.literal_text;
     if (binding.kind == 5 || binding.kind == 1) { return text; }
     assert(binding.kind >= 2 && binding.kind <= 4, "Parameters require scalar literal constructors");

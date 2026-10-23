@@ -4,6 +4,7 @@
 #include "authoring/source_catalog.h"
 #include "authoring/source_format.h"
 #include "authoring/source_prototype_edit.h"
+#include "authoring/source_rename.h"
 #include "backend.h"
 #include "language/lower.h"
 #include "runtime/scenes/prepared.h"
@@ -771,10 +772,54 @@ TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
                   "    )\n"
                   "}\n" },
     };
+    const source_catalog_edit computed = {
+        .path = "/__chibi_source_asset_test__/relationships/"
+                "ComputedTargets.chibi",
+        .text = "package asset\nimport data \"game:assets\"\n"
+                "Name :: () -> string { return \"ComputedTargets\" }\n"
+                "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+                "data.Field.Named(\"name\", data.Value.Text(Name()))])) }\n"
+    };
+    const source_catalog_edit all_edits[] = { edits[0], edits[1], edits[2], computed };
     const script_catalog empty = { 0 };
-    project = source_catalog_edited(root, &empty, edits, 3);
+    project = source_catalog_edited(root, &empty, all_edits, 4);
     REQUIRE(!source_catalog_diagnostic_count(project));
-    REQUIRE(source_catalog_view(project)->relationship_count == 1);
+    REQUIRE(source_catalog_view(project)->relationship_count == 2);
+    const source_catalog_definition *literal = NULL, *formula = NULL;
+    const source_catalog_definition *definitions = source_catalog_definitions(project);
+    int definition_count = source_catalog_definition_count(project);
+    for (int i = 0; i < definition_count; i++) {
+        if (!strcmp(definitions[i].name, "Targets")) {
+            literal = &definitions[i];
+        }
+        if (!strcmp(definitions[i].name, "ComputedTargets")) {
+            formula = &definitions[i];
+        }
+    }
+    REQUIRE(literal && literal->relationship && formula && formula->relationship);
+    REQUIRE(literal->range.start >= 0 && literal->range.end - literal->range.start == 9);
+    REQUIRE(!memcmp(literal->text + literal->range.start, "\"Targets\"", 9));
+    REQUIRE(formula->range.start == -1 && formula->range.end == -1);
+    authoring_navigation *names = authoring_navigation_new_declarations(
+        NULL,
+        0,
+        source_catalog_view(project),
+        definitions,
+        definition_count
+    );
+    authoring_target named = { .kind = AUTHORING_TYPE,
+                               .document = -1,
+                               .id = literal->id };
+    REQUIRE(authoring_navigation_definition(names, named));
+    named.id = formula->id;
+    REQUIRE(!authoring_navigation_definition(names, named));
+    authoring_rename_plan
+        *rename = authoring_source_rename(names, named, "ChangedTargets", error, sizeof error);
+    bool refused = !rename && strstr(error, "no editable source declaration");
+    authoring_rename_plan_free(rename);
+    authoring_navigation_free(names);
+    REQUIRE(refused);
+    REQUIRE(!strcmp(formula->text, computed.text));
     REQUIRE(source_catalog_reference_count(project) == 1);
     const source_catalog_reference *reference = source_catalog_references(project);
     REQUIRE(reference->kind == SOURCE_REFERENCE_PROTOTYPE);
@@ -1652,6 +1697,40 @@ TEST_CASE(source_edit_nested_axis_obeys_existing_whole_record_semantics)
         "    )\n"
         "}\n"
     ));
+    const char *zero_constructors[] = { "data.Value.Int(0)", "data.Value.Real(0.0)" };
+    const char *initial = strstr(explicit_source, "data.Value.Int(1)");
+    REQUIRE(initial);
+    op.value.f = -0.0f;
+    for (size_t i = 0; i < sizeof zero_constructors / sizeof *zero_constructors; i++) {
+        size_t capacity = strlen(explicit_source) + strlen(zero_constructors[i]) + 1;
+        char *zero_source = xmalloc(capacity);
+        snprintf(
+            zero_source,
+            capacity,
+            "%.*s%s%s",
+            (int)(initial - explicit_source),
+            explicit_source,
+            zero_constructors[i],
+            initial + strlen("data.Value.Int(1)")
+        );
+        bool edited = bridge_edit(zero_source, &registry, &op, 1);
+        free(zero_source);
+        REQUIRE(edited);
+        REQUIRE(!prototype_read_field(&text_reads, bridge_result.value, "Sample", "position", &v));
+        const bridge_vector *position = v.ptr;
+        REQUIRE(position->x == 0.0f && signbit(position->x) && position->y == 2.0f);
+        char error[256];
+        av_doc *decoded = asset_document_read(bridge_result.source, error, sizeof error);
+        REQUIRE(decoded);
+        const av_value *written = av_obj_get(
+            av_obj_get(av_obj_get(av_obj_get(av_doc_root(decoded), "components"), "Sample"), "position"),
+            "x"
+        );
+        bool exact = av_get_type(written) == AV_REAL &&
+                     av_get_num(written) == 0.0 && signbit(av_get_num(written));
+        av_doc_free(decoded);
+        REQUIRE(exact);
+    }
     return true;
 }
 TEST_CASE(source_edit_add_uses_explicit_creation_payload_and_local_remove)
@@ -2718,6 +2797,57 @@ TEST_CASE(typed_prototype_metadata_never_executes_helpers)
     REQUIRE(!info.computed && !info.overridden);
     REQUIRE(authoring_prototype_source_field(source, "Sample", "prefab", &info));
     REQUIRE(!info.computed && !info.overridden);
+    /* Syntax-only provenance must not guess through unknown or shadowed code. */
+    static const struct
+    {
+        const char *helper, *build;
+    } opaque[] = {
+        { "", "Unknown()" },
+        { "A :: () -> data.Value { return B(); }\n"
+          "B :: () -> data.Value { return A(); }\n",
+          "A()" },
+        { "Overlay :: () -> data.Value { return data.Object([]); }\n",
+          "data.ApplyPrototype(Base(), Overlay())" },
+        { "",
+          "data.ApplyPrototype(Base(), data.Object(["
+          "data.Field.Named(\"components\", data.Object(["
+          "data.Field.Named(\"Sample\", data.Object(["
+          "data.Field.Named(\"position\", data.Object(["
+          "data.Field.Named(\"x\", data.Value.Real(9.0))]))]))]))]))" },
+        { "Factory :: (data: int) -> data.Value { return data.Object([]); }\n",
+          "Factory(0)" },
+        { "Factory :: (Base: int) -> data.Value { return Base(); }\n", "Factory(0)" },
+        { "Factory :: () -> data.Value { if true { return Base(); } return "
+          "Base(); }\n",
+          "Factory()" },
+    };
+    for (size_t i = 0; i < sizeof opaque / sizeof *opaque; i++) {
+        char candidate[2048];
+        int length = snprintf(
+            candidate,
+            sizeof candidate,
+            "package asset\nimport data \"game:assets\"\n"
+            "Base :: () -> data.Value { return data.Object(["
+            "data.Field.Named(\"components\", data.Object(["
+            "data.Field.Named(\"Sample\", data.Object(["
+            "data.Field.Named(\"position\", data.Object(["
+            "data.Field.Named(\"x\", data.Value.Real(1.0))]))]))]))]); }\n"
+            "%s"
+            "pub Build :: () -> byte[] { return data.Encode(%s); }\n",
+            opaque[i].helper,
+            opaque[i].build
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof candidate);
+        const char *entry = strstr(candidate, "pub Build");
+        const char *expected = entry ? strstr(entry, opaque[i].build) : NULL;
+        REQUIRE(expected);
+        REQUIRE(authoring_prototype_source_field(candidate, "Sample", "position.x", &info));
+        REQUIRE(info.computed && !info.overridden);
+        REQUIRE(
+            info.expression.start == (size_t)(expected - candidate) &&
+            info.expression.end == info.expression.start + strlen(opaque[i].build)
+        );
+    }
     return true;
 }
 TEST_CASE(typed_prototype_native_record_override_preserves_resolved_siblings)

@@ -2,6 +2,7 @@
 
 #include "assets/input_map.h"
 #include "assets/ui_document.h"
+#include "authoring/asset_compiler_host.h"
 #include "authoring/reference_index.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_catalog_snapshot.h"
@@ -270,6 +271,39 @@ static script_range text_range(const char *text, int start, int end)
     return range;
 }
 
+static script_range declaration_name_range(source_catalog *c, const char *path, const char *text)
+{
+    script_range range = { .start = -1, .end = -1 };
+    av_doc *args = av_doc_new();
+    av_value *values = av_arr(args);
+    av_doc_set_root(args, values);
+    av_arr_add_strcpy(args, values, text);
+    asset_compiler_diagnostic diagnostic = { 0 };
+    av_doc *result = asset_source_invoke(
+        "project:asset_compiler:1:DeclarationNameRange:callable",
+        values,
+        NULL,
+        &diagnostic
+    );
+    const av_value *offsets = av_arr_get(av_doc_root(result), 0);
+    if (!result) {
+        error(c, path, range, diagnostic.message);
+    } else if (av_arr_size(offsets) != 2 || !av_is_int(av_arr_get(offsets, 0)) || !av_is_int(av_arr_get(offsets, 1))) {
+        error(c, path, range, "Invalid declaration name metadata");
+    } else {
+        int64_t start = av_get_int(av_arr_get(offsets, 0));
+        int64_t end = av_get_int(av_arr_get(offsets, 1));
+        if (start >= 0 && end > start && (uint64_t)end <= strlen(text)) {
+            range = text_range(text, (int)start, (int)end);
+        } else if (start != -1 || end != -1) {
+            error(c, path, range, "Invalid declaration name metadata range");
+        }
+    }
+    av_doc_free(result);
+    av_doc_free(args);
+    return range;
+}
+
 static bool project_value(source_catalog *, const char *path);
 static void ui_references(source_catalog *c, const char *path, const char *text)
 {
@@ -485,7 +519,7 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
                                       .name = value.name,
                                       .path = owned_path,
                                       .text = owned_text,
-                                      .range = value_range(text, name_value),
+                                      .range = declaration_name_range(c, path, text),
                                       .text_kind = SOURCE_TEXT_CHIBI })
     );
     if (!event) {
@@ -555,27 +589,17 @@ static void load_file(source_catalog *c, const char *path, declaration_kind kind
                         .exclusive = !!(desc->traits & ECS_REL_EXCLUSIVE),
                         .traversable = !!(desc->traits & ECS_REL_TRAVERSABLE) })
                 );
-                script_syntax *syntax = script_parse(text);
-                TSNode root = ts_tree_root_node(syntax->tree), declaration = { 0 };
-                for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
-                    TSNode node = ts_node_named_child(root, i);
-                    if (!strcmp(ts_node_type(node), "relationship_declaration")) {
-                        declaration = node;
-                        break;
-                    }
-                }
-                TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
                 apush(
                     c->definitions,
-                    ((source_catalog_definition){ .id = desc->id,
-                                                  .name = own(c, desc->name),
-                                                  .path = own(c, path),
-                                                  .text = own(c, text),
-                                                  .range = script_node_range(name),
-                                                  .text_kind = SOURCE_TEXT_CHIBI,
-                                                  .relationship = true })
+                    ((source_catalog_definition){
+                        .id = desc->id,
+                        .name = own(c, desc->name),
+                        .path = own(c, path),
+                        .text = own(c, text),
+                        .range = declaration_name_range(c, path, text),
+                        .text_kind = SOURCE_TEXT_CHIBI,
+                        .relationship = true })
                 );
-                script_syntax_free(syntax);
                 update_view(c);
             }
             authoring_relationship_source_free(desc);

@@ -1340,14 +1340,17 @@ static int undeclared(import *in, new_asset_kind kind)
 
 /* Whether every name the import declares is still free, and the native
  * graphs fit their catalog with its materials. Prototypes share one
- * namespace, and the native graphs, every other declarative kind but
- * scenes, share another with materials. */
+ * namespace; events, materials, shapes, fields, shader libraries and models
+ * share the native graph namespace. */
 static bool names_free(import *in)
 {
     int graphs = 0;
     for (int kind = 0; kind < NEW_ASSET_KIND_COUNT; kind++) {
-        bool declarative = !strcmp(new_asset_extension(kind), DECLARATIVE_ASSET_EXTENSION);
-        if ((!declarative && kind != NEW_ASSET_PROTOTYPE) || kind == NEW_ASSET_SCENE) {
+        bool native_graph = kind == NEW_ASSET_EVENT || kind == NEW_ASSET_MATERIAL ||
+                            kind == NEW_ASSET_SHAPE || kind == NEW_ASSET_FIELD ||
+                            kind == NEW_ASSET_SHADER_LIBRARY ||
+                            kind == NEW_ASSET_MODEL;
+        if (!native_graph && kind != NEW_ASSET_PROTOTYPE) {
             continue;
         }
         int count = undeclared(in, kind);

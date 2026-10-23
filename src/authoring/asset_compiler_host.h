@@ -80,6 +80,15 @@ char *asset_source_reconcile_compiled(
     const asset_compiler_options *,
     asset_compiler_diagnostic *
 );
+/* Native prototype projection only: keep existing integral constructors when
+ * reflected real payloads are exactly representable by their original kind. */
+char *asset_source_reconcile_native_compiled(
+    const char *source,
+    const av_value *old_value,
+    const av_value *new_value,
+    const asset_compiler_options *,
+    asset_compiler_diagnostic *
+);
 char *asset_source_write(const av_value *, const asset_compiler_options *, asset_compiler_diagnostic *);
 /* Ordinary package source with public Build() -> byte[]. The authored asset
  * compiler resolves its entry, then the pure runtime evaluates its JSON byte

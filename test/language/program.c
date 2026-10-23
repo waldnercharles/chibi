@@ -4953,7 +4953,7 @@ TEST_CASE(program_input_map_validates_actions)
             strstr(error, invalid[i].message)
         );
     }
-    /* The native writer stores controller slots as signed integers. */
+    /* The native writer stores controller slots as unsigned integers. */
     const char *cooperative =
         "package asset\n"
         "\n"
@@ -4967,14 +4967,14 @@ TEST_CASE(program_input_map_validates_actions)
         "                    data.Value.Text(\"Z\")\n"
         "                ])),\n"
         "                data.Field.Named(\"controller\", "
-        "data.Value.Int(0)),\n"
+        "data.Value.UInt(0)),\n"
         "                data.Field.Named(\"buttons\", data.List([\n"
         "                    data.Value.Text(\"Dpad Left\")\n"
         "                ]))\n"
         "            ])),\n"
         "            data.Field.Named(\"P2Confirm\", data.Object([\n"
         "                data.Field.Named(\"controller\", "
-        "data.Value.Int(1)),\n"
+        "data.Value.UInt(1)),\n"
         "                data.Field.Named(\"buttons\", data.List([\n"
         "                    data.Value.Text(\"A\")\n"
         "                ]))\n"

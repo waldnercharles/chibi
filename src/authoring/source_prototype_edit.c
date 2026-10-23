@@ -233,16 +233,70 @@ static bool validate_operations(context *c, const authoring_prototype_edit *ops,
     return true;
 }
 
-static char *reconcile(const char *source, const av_value *value, char *error, size_t size)
+/* Reflection normalization preserves object order. Match its old keys back to
+ * the evaluated source tree before handing source spelling to authored policy. */
+static av_value *source_spelling(av_doc *doc, const av_value *raw, const av_value *before, const av_value *after)
+{
+    if (!av_is_obj(raw) || !av_is_obj(before) || !av_is_obj(after)) {
+        /* av_equals deliberately compares different numeric kinds as equal.
+         * Leave all numeric constructor decisions to authored reconciliation. */
+        bool same = av_get_type(before) == av_get_type(after) &&
+                    av_equals(before, after);
+        if (av_get_type(before) == AV_REAL && av_get_type(after) == AV_REAL &&
+            signbit(av_get_num(before)) != signbit(av_get_num(after))) {
+            same = false;
+        }
+        return av_clone(doc, same && !av_is_arr(before) ? raw : after);
+    }
+    av_value *out = av_obj(doc);
+    for (size_t i = 0; i < av_obj_size(after); i++) {
+        const char *name = av_get_str(av_obj_key_at(after, i));
+        const av_value *value = av_obj_value_at(after, i);
+        size_t old = 0;
+        while (old < av_obj_size(before) &&
+               strcmp(av_get_str(av_obj_key_at(before, old)), name)) {
+            old++;
+        }
+        if (old < av_obj_size(before) && old < av_obj_size(raw)) {
+            av_obj_set(
+                doc,
+                out,
+                av_get_str(av_obj_key_at(raw, old)),
+                source_spelling(doc, av_obj_value_at(raw, old), av_obj_value_at(before, old), value)
+            );
+        } else {
+            av_obj_set(doc, out, name, av_clone(doc, value));
+        }
+    }
+    return out;
+}
+
+static char *reconcile(
+    const char *source,
+    const av_value *before,
+    const av_value *value,
+    char *error,
+    size_t size
+)
 {
     av_doc *old = asset_document_read(source, error, size);
+    av_doc *spelled = av_doc_new();
+    if (old) {
+        av_doc_set_root(spelled, source_spelling(spelled, av_doc_root(old), before, value));
+    }
     asset_compiler_diagnostic diagnostic = { 0 };
-    char *result = old
-                     ? asset_source_reconcile_compiled(source, av_doc_root(old), value, NULL, &diagnostic)
-                     : NULL;
+    char *result = old ? asset_source_reconcile_native_compiled(
+                             source,
+                             av_doc_root(old),
+                             av_doc_root(spelled),
+                             NULL,
+                             &diagnostic
+                         )
+                       : NULL;
     if (!result && old && size) {
         snprintf(error, size, "%s", diagnostic.message);
     }
+    av_doc_free(spelled);
     av_doc_free(old);
     return result;
 }
@@ -444,7 +498,26 @@ static bool materialize(
     if (!value) {
         return fail(c, "Cannot project the resolved prototype for this edit");
     }
+    /* The general serializer uses persistent component keys and sorts graphs.
+     * This explicit editor materialization keeps reflection names and resolved
+     * behavior order, which the following operation consumes. */
+    av_value *components = av_obj_get(value, "components");
+    for (int i = 0; i < acount(model->components); i++) {
+        const ecs_component_desc *desc = model->components[i].desc;
+        for (size_t j = 0; j < av_obj_size(components); j++) {
+            av_value *key = av_obj_key_at(components, j);
+            if (!strcmp(av_get_str(key), desc->key ? desc->key : desc->name)) {
+                av_set_str(key, desc->name);
+                break;
+            }
+        }
+    }
     av_doc_set_root(doc, av_clone(doc, value));
+    av_value *behaviors = av_arr(doc);
+    for (int i = 0; i < acount(model->graphs); i++) {
+        av_arr_add_str(doc, behaviors, model->graphs[i]);
+    }
+    av_obj_set(doc, av_doc_root(doc), "behaviors", behaviors);
     av_value_free(value);
     *changed = true;
     return true;
@@ -618,8 +691,18 @@ static bool apply(context *c, av_doc *doc, const prototype *model, const authori
         return removed || fail(c, "Prototype does not contain this local component");
     }
     if (op->kind == AUTHORING_PROTOTYPE_RESET_FIELD_OVERRIDE) {
-        if (strchr(op->field, '.')) {
-            return fail(c, "Reset the complete native record override");
+        const char *dot = strchr(op->field, '.');
+        if (dot) {
+            if (c->size) {
+                snprintf(
+                    c->error,
+                    c->size,
+                    "Reset the entire native record %.*s override",
+                    (int)(dot - op->field),
+                    op->field
+                );
+            }
+            return false;
         }
         av_value *overrides = av_obj_get(root, "overrides");
         av_value *component = av_obj_get(overrides, desc->name);
@@ -703,6 +786,7 @@ bool authoring_prototype_source_edit(
         av_doc *doc = authoring_prototype_source_read(current, registry, error, size);
         prototype *model = doc ? prototype_load_value(av_doc_root(doc), registry, error, size)
                                : NULL;
+        av_value *before = doc ? av_value_copy(av_doc_root(doc)) : NULL;
         const authoring_prototype_edit *op = &operations[i];
         bool flattened = false;
         bool valid = model != NULL;
@@ -714,10 +798,12 @@ bool authoring_prototype_source_edit(
         if (valid && op->kind == AUTHORING_PROTOTYPE_SET_PARAMETER) {
             next = parameter_source(&c, current, op);
         } else if (valid && apply(&c, doc, model, op)) {
-            next = flattened ? materialized_source(&c, current, av_doc_root(doc))
-                             : reconcile(current, av_doc_root(doc), error, size);
+            next = flattened
+                     ? materialized_source(&c, current, av_doc_root(doc))
+                     : reconcile(current, before, av_doc_root(doc), error, size);
         }
         materialized |= flattened;
+        av_value_free(before);
         prototype_free(model);
         av_doc_free(doc);
         if (!next) {

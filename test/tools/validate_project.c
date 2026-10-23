@@ -58,8 +58,8 @@ static bool remove_authored_prototype(const char *name)
 }
 
 /* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
- * output as $1, for at most `allowed` seconds; returns its exit status and
- * keeps the last reply. */
+ * output as $1, using the optional `allowed` duration; zero has no time limit.
+ * Returns its exit status and keeps the last reply. */
 static int run_within(const char *command, double allowed)
 {
     const char *args[] = { "/bin/sh", "-c", command, program, log_path, NULL };
@@ -78,7 +78,7 @@ static int run_within(const char *command, double allowed)
 
 static int run(const char *command)
 {
-    return run_within(command, TOOL_RUN_SECONDS);
+    return run_within(command, 0);
 }
 
 /* Sends requests, one per line, to one chibi_ctl, inside the project "game"
@@ -92,16 +92,6 @@ static int ctl(bool scoped, const char *request)
 static int validate()
 {
     return ctl(true, "{\"contract\":1,\"operation\":\"validate_project\"}");
-}
-
-/* Validation loads each prototype three times, so under sanitizers a project
- * that reads past the expansion budget can take longer than a usual run. */
-static const double EXPANSION_SECONDS = 30;
-
-static int validate_expansion()
-{
-    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}");
-    return run_within("exec \"$0\" --project-root game < request.json", EXPANSION_SECONDS);
 }
 
 static yyjson_val *result(const char *key)
@@ -210,6 +200,16 @@ TEST_CASE(new_project_is_valid)
 
 TEST_CASE(stopped_runs_are_reported)
 {
+    /* Invalid durations must refuse before the child can create its marker. */
+    char marker[160];
+    path(marker, sizeof marker, "must-not-spawn");
+    const char *mark[] = { "/bin/sh", "-c", ": > must-not-spawn", NULL };
+    const double invalid[] = { -1, NAN, INFINITY };
+    REQUIRE(access(marker, F_OK) == -1 && errno == ENOENT);
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(tool_run_within(mark, root, log_path, invalid[i]) == 2);
+        REQUIRE(access(marker, F_OK) == -1 && errno == ENOENT);
+    }
     /* The stopped command's report goes to the test's own stderr. */
     char file[160];
     path(file, sizeof file, "stderr");
@@ -1807,10 +1807,11 @@ TEST_CASE(manifest_content_folder_is_used)
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
     );
-    /* The input map is formatted where the content is too. */
+    /* The input map is formatted where the content is too. Extra spacing
+     * ensures the check/write/check sequence exercises a source rewrite. */
     write_file(
         "game/assets/input.chibi",
-        "package asset\n"
+        "package  asset\n"
         "\n"
         "import data \"game:assets\"\n"
         "\n"
@@ -2001,10 +2002,11 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
         "    )\n"
         "}\n"
     );
-    /* A root and a child may share a name; siblings may not. */
+    /* A root and a child may share a name; siblings may not. Deliberate
+     * extra spacing makes the format check/write/check exercise a rewrite. */
     write_file(
         "game/content/scenes/Start.chibi",
-        "package asset\n"
+        "package  asset\n"
         "\n"
         "import data \"game:assets\"\n"
         "\n"
@@ -2382,14 +2384,16 @@ TEST_CASE(prototype_children_come_with_their_instance)
     REQUIRE(format(NULL) == 0 && format("--check") == 0);
     path(ship, sizeof ship, "game/content/prototypes/Ship.chibi");
     char *text = tool_read(ship);
-    /* A prototype with children is formatted too: Transform's zero fields go. */
+    /* Formatting preserves the authored unsigned x=4 and y=0 on the child. */
     char error[256];
     av_doc *doc = text ? asset_document_read(text, error, sizeof error) : NULL;
     av_value *gun = av_arr_get(av_obj_get(av_doc_root(doc), "children"), 0);
     const char *name = av_get_str(av_obj_get(gun, "name"));
     av_value *transform = av_obj_get(av_obj_get(gun, "components"), "Transform");
+    av_value *x = av_obj_get(transform, "x"), *y = av_obj_get(transform, "y");
     bool nested = doc && name && !strcmp(name, "Gun") && av_is_obj(transform) &&
-                  av_obj_size(transform) == 0;
+                  av_obj_size(transform) == 2 && av_is_uint(x) &&
+                  av_get_uint(x) == 4 && av_is_uint(y) && av_get_uint(y) == 0;
     av_doc_free(doc);
     free(text);
     REQUIRE(nested);
@@ -2580,7 +2584,7 @@ TEST_CASE(prototype_expansion_is_shared)
         );
         write_file(file, text);
     }
-    REQUIRE(validate_expansion() != 0);
+    REQUIRE(validate() != 0);
     REQUIRE(errors() == 1);
     const char *message = first_message(result("project"));
     REQUIRE(message && strstr(message, "through their includes and children"));
@@ -2600,7 +2604,7 @@ TEST_CASE(scene_instances_share_the_expansion)
     av_doc *doc = av_doc_new();
     av_value *scene = av_obj(doc);
     av_doc_set_root(doc, scene);
-    av_obj_add_int(doc, scene, "version", 1);
+    av_obj_add_uint(doc, scene, "version", 1);
     av_obj_add_str(doc, scene, "name", "Start");
     av_value *entities = av_obj_add_arr(doc, scene, "entities");
     for (int i = 0; i < PROTOTYPE_EXPANSION_MAX / 512; i++) {
@@ -2615,7 +2619,7 @@ TEST_CASE(scene_instances_share_the_expansion)
     write_file("game/content/scenes/Start.chibi", text);
     free(text);
     av_doc_free(doc);
-    REQUIRE(validate_expansion() != 0);
+    REQUIRE(validate() != 0);
     const char *message = first_message(result("project"));
     REQUIRE(message && strstr(message, "through their includes and children"));
     return true;

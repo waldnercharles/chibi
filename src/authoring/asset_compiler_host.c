@@ -307,6 +307,124 @@ static av_doc *read_document_transport(const char *json, size_t length, asset_co
     return document;
 }
 
+typedef struct
+{
+    av_value *value, *parent;
+    size_t index;
+} numeric_transport_item;
+
+static bool restore_numeric_kinds(av_doc *document, const char *kinds, size_t length, asset_compiler_diagnostic *diagnostic)
+{
+    numeric_transport_item *pending = NULL;
+    apush(pending, ((numeric_transport_item){ .value = av_doc_root(document) }));
+    size_t number = 0;
+    bool valid = true;
+    while (acount(pending)) {
+        numeric_transport_item item = pending[acount(pending) - 1];
+        asetlen(pending, acount(pending) - 1);
+        av_value *value = item.value, *replacement = NULL;
+        if (av_is_num(value)) {
+            if (number == length) {
+                valid = false;
+                break;
+            }
+            char kind = kinds[number++];
+            if (kind == 'i') {
+                if (av_is_uint(value) && av_get_uint(value) <= INT64_MAX) {
+                    replacement = av_sint(document, (int64_t)av_get_uint(value));
+                } else if (!av_is_sint(value)) {
+                    valid = false;
+                    break;
+                }
+            } else if (kind == 'u') {
+                if (av_is_sint(value) && av_get_sint(value) >= 0) {
+                    replacement = av_uint(document, (uint64_t)av_get_sint(value));
+                } else if (!av_is_uint(value)) {
+                    valid = false;
+                    break;
+                }
+            } else if (kind != 'r' || av_get_type(value) != AV_REAL) {
+                valid = false;
+                break;
+            }
+            if (replacement) {
+                if (!item.parent) {
+                    av_doc_set_root(document, replacement);
+                } else if (av_is_arr(item.parent)) {
+                    av_arr_replace(item.parent, item.index, replacement);
+                } else {
+                    av_obj_set(
+                        document,
+                        item.parent,
+                        av_get_str(av_obj_key_at(item.parent, item.index)),
+                        replacement
+                    );
+                }
+            }
+        } else {
+            bool object = av_is_obj(value);
+            size_t count = object           ? av_obj_size(value)
+                         : av_is_arr(value) ? av_arr_size(value)
+                                            : 0;
+            for (size_t i = count; i; i--) {
+                av_value *child = object ? av_obj_value_at(value, i - 1)
+                                         : av_arr_get(value, i - 1);
+                apush(pending, ((numeric_transport_item){ child, value, i - 1 }));
+            }
+        }
+    }
+    afree(pending);
+    if (!valid || number != length) {
+        failure(diagnostic, "Asset numeric transport kinds do not match the value");
+        return false;
+    }
+    return true;
+}
+
+static av_doc *read_asset_transport(const char *bytes, size_t length, asset_compiler_diagnostic *diagnostic)
+{
+    static const char prefix[] = "CHIBI-ASSET1\n";
+    size_t header = sizeof prefix - 1;
+    if (length < header || memcmp(bytes, prefix, header)) {
+        return read_document_transport(bytes, length, diagnostic);
+    }
+    if (length > COMPILER_HOST_MAX_OUTPUT_BYTES) {
+        failure(diagnostic, "Asset document transport exceeds 16 MiB");
+        return NULL;
+    }
+    yyjson_doc *decoded = yyjson_read(bytes + header, length - header, 0);
+    yyjson_val *root = decoded ? yyjson_doc_get_root(decoded) : NULL;
+    yyjson_val *value = yyjson_obj_get(root, "value");
+    yyjson_val *numbers = yyjson_obj_get(root, "numbers");
+    av_doc *document = NULL;
+    if (!yyjson_is_obj(root) || yyjson_obj_size(root) != 2 || !value ||
+        !yyjson_is_str(numbers) || yyjson_get_len(numbers) > COMPILER_HOST_MAX_VALUES) {
+        failure(diagnostic, "Asset numeric transport requires value and numbers fields");
+    } else {
+        const char *kinds = yyjson_get_str(numbers);
+        size_t count = yyjson_get_len(numbers);
+        bool valid = true;
+        for (size_t i = 0; i < count; i++) {
+            if (kinds[i] != 'i' && kinds[i] != 'u' && kinds[i] != 'r') {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            failure(diagnostic, "Asset numeric transport has an invalid kind");
+        } else if (document_json_quota(value, diagnostic)) {
+            document = av_doc_new();
+            av_doc_set_root(document, av_from_json(document, value));
+            if (!restore_numeric_kinds(document, kinds, count, diagnostic)) {
+                av_doc_free(document);
+                document = NULL;
+            }
+        }
+    }
+    yyjson_doc_free(decoded);
+    return document;
+}
+
 static void runtime_failure(
     asset_compiler_diagnostic *diagnostic,
     const char *message,
@@ -802,7 +920,7 @@ prepare:
         failure(diagnostic, "Asset Build returned a transport containing NUL bytes");
         goto done;
     }
-    doc = read_document_transport((const char *)result.bytes, result.length, diagnostic);
+    doc = read_asset_transport((const char *)result.bytes, result.length, diagnostic);
 done:
     free(directory);
     free(key);
@@ -1039,7 +1157,8 @@ av_doc *asset_source_invoke_document(
     return doc;
 }
 
-char *asset_source_reconcile_compiled(
+static char *reconcile_compiled(
+    const char *entry,
     const char *source,
     const av_value *old_value,
     const av_value *new_value,
@@ -1067,14 +1186,44 @@ char *asset_source_reconcile_compiled(
     for (size_t i = 0; i < 8; i++) {
         av_arr_append(args, av_clone(request, av_arr_get(av_doc_root(after), i)));
     }
-    char *text = asset_source_invoke_bytes(
-        "project:asset_compiler:1:Reconcile:callable",
-        args,
-        options,
-        diagnostic
-    );
+    char *text = asset_source_invoke_bytes(entry, args, options, diagnostic);
     av_doc_free(before);
     av_doc_free(after);
     av_doc_free(request);
     return text;
+}
+char *asset_source_reconcile_compiled(
+    const char *source,
+    const av_value *old_value,
+    const av_value *new_value,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    return reconcile_compiled(
+        "project:asset_compiler:1:Reconcile:callable",
+        source,
+        old_value,
+        new_value,
+        options,
+        diagnostic
+    );
+}
+
+char *asset_source_reconcile_native_compiled(
+    const char *source,
+    const av_value *old_value,
+    const av_value *new_value,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    return reconcile_compiled(
+        "project:asset_compiler:1:ReconcileNative:callable",
+        source,
+        old_value,
+        new_value,
+        options,
+        diagnostic
+    );
 }

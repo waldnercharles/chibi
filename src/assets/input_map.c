@@ -160,7 +160,7 @@ char *input_map_write(const input_action *map)
             }
         }
         if (map[i].buttons) {
-            av_obj_add_int(document, action, "controller", map[i].controller);
+            av_obj_add_uint(document, action, "controller", (uint64_t)map[i].controller);
             av_value *buttons = av_obj_add_arr(document, action, "buttons");
             for (int button = 1; button < 32; button++) {
                 if (map[i].buttons & (UINT32_C(1) << button)) {

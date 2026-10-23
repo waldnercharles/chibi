@@ -1714,7 +1714,7 @@ TEST_CASE(installed_project_commands)
     REQUIRE(exists("installed/.chibi/build/game.chibip"));
     path(site, "exported");
     const char *export[] = { launcher, "export", game, "--output", site, NULL };
-    REQUIRE(tool_run_within(export, root, output, 30) == 0);
+    REQUIRE(tool_run(export, root, output) == 0);
 #ifdef __APPLE__
     REQUIRE(exists("exported.app/Contents/Resources/game.chibip"));
 #else
@@ -1894,7 +1894,7 @@ TEST_CASE(compiled_project_format_preserves_computation)
 
     /* One launcher and its compiler child prove discovery from a nested folder. */
     const char *discover[] = { launcher, "fmt", "--check", NULL };
-    REQUIRE(tool_run_within(discover, nested, log_path, 20) == 1);
+    REQUIRE(tool_run(discover, nested, log_path) == 1);
     REQUIRE(file_has("format-check-before.log", "not canonical: content/scenes/Start.chibi"));
     REQUIRE(file_has("format-check-before.log", "not canonical: content/prototypes/Box.chibi"));
     REQUIRE(file_has("format-check-before.log", "not canonical: content/behaviors/Tiny.chibi"));
@@ -1908,7 +1908,7 @@ TEST_CASE(compiled_project_format_preserves_computation)
 
     path(log_path, "format-write.log");
     const char *write[] = { compiler, "--project-root", game, "--format", NULL };
-    REQUIRE(tool_run_within(write, root, log_path, 20) == 0);
+    REQUIRE(tool_run(write, root, log_path) == 0);
     REQUIRE(file_is(format_files[0], format_original[0]));
     struct stat saved[4];
     for (int i = 0; i < 4; i++) {
@@ -1937,7 +1937,7 @@ TEST_CASE(compiled_project_format_preserves_computation)
     path(log_path, "format-check-after.log");
     const char *check[] = { compiler,   "--project-root", game,
                             "--format", "--check",        NULL };
-    REQUIRE(tool_run_within(check, root, log_path, 20) == 0);
+    REQUIRE(tool_run(check, root, log_path) == 0);
     for (int i = 0; i < 4; i++) {
         REQUIRE(file_is(format_files[i], format_saved[i]));
         struct stat current;

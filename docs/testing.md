@@ -25,9 +25,10 @@ quarantine gates and configuration-hash admission rules have been removed.
 Choose checks for the affected contracts and report which configurations ran.
 Old parse-only measurements do not establish behavior of the compiled assets.
 
-Before merging main `329d8fb046`, native and Web SDK builds passed. The full
-cold Studio check passed 62 assertions in 43.770 seconds with a healthy UI.
-Focused engine results were:
+The integration through main `329d8fb046` passed native and Web SDK builds.
+The full cold Studio check passed 62 assertions in 40.165 seconds with a
+healthy UI. The following results precede the subsequent main `b934720185`
+integration and deep-source writer changes:
 
 | Check | Cases | Assertions |
 | --- | ---: | ---: |
@@ -41,12 +42,18 @@ Focused engine results were:
 | New asset | 2 | 65 |
 | Asset refactor | 4 | 41 |
 | Compiled project formatting lifecycle | 1 | 49 |
+| Typed value transport | 3 | 1039 |
+| Build process, including repeated resource staging | 38 | 2481 |
+| Material group | 110 | 270494 |
+| Bare tooling group | 130 | 27605 |
 
-These are checkpoint results, not passes on the candidate after this merge.
-The latest transport command was interrupted by the old binary's alarm and
-has no complete passing result for the current candidate. Rebuild before
-validating the merged code. Broad groups and unexecuted platform configurations
-also need their own results.
+These are checkpoint results, not passes on the final candidate. The complete
+transport command took 104.532 seconds; its depth-65 round trip exposed
+excessive generated indentation. Broader native, project and language runs
+also exposed incomplete fixture migrations, asset-role routing and prototype
+reference validation. Their incomplete or failed results remain recorded in
+the typed asset plan. Rebuild and validate the fixes before claiming those
+groups pass. Unexecuted platform configurations need their own results.
 
 Earlier stabilization measurements remain historical evidence:
 
@@ -697,13 +704,12 @@ and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds using the
 same C selectors and identical build flags, retaining their timing output.
 
-`--asset-values` runs nine cases on compiled Chibi asset text and the native value tree:
-typed scalars at the 64-bit limits, slashdash, annotated arrays and source
-ranges; reals and floats that read back bit for bit and write plainly;
-escaped separators; thirteen malformed documents reported with a line and
-column; owned snapshots and subtrees; ordered objects; exact numeric
-equality; and JSON that owns its strings. 172 assertions in 0.05 seconds with
-ASan/UBSan; in memory, CPU only.
+`--asset-values` checks compiled Chibi asset text and the native value tree:
+signed and unsigned 64-bit limits, canonical source, real and float bit
+preservation, subnormal values, escaped separators, owned snapshots and
+subtrees, ordered objects, numeric equality and JSON string ownership. The
+numeric transport preserves each constructor's signed, unsigned or real kind.
+Windows also checks the unavailable-cache fallback.
 
 `--ui-document` runs fifteen cases on UI documents and RCSS: composition,
 rejected markup, page bodies with imported stylesheets, widgets expanded with
@@ -796,19 +802,17 @@ overrides, and scene documents save reflected values readably, round-trip
 entities and physics, and refuse invalid physics names and versions. 192
 assertions in 0.08 seconds with ASan/UBSan; no files.
 
-`--reference-index` runs five cases on the authoring reference index: assets
+`--reference-index` runs six cases on the authoring reference index: assets
 keep their identity by path and key, graphs index every kind of symbol against
 the game's reflected packs, prototypes, objects and UI documents are indexed,
 calls climb through handlers and detect cycles, and a scene's UI pages bind to
-and rename with their scene. 72 assertions in 0.36 seconds with ASan/UBSan.
+and rename with their scene. The current focused run passed 77 assertions.
 
-`--asset-source` runs six cases on asset source text: completion of unset
-properties, components, fields and values (in prototype and scene drafts),
-navigation into event payloads, reconciliation that keeps authored text, and
-parsing incomplete drafts. Canonical component identities resolve completion and
-hover, while an unknown qualifier does not resolve the component. The original
-five cases passed 505 assertions in 0.32 seconds with ASan/UBSan; the added
-identity case requires validation on this candidate.
+`--asset-source` checks event payload navigation, reconciliation that preserves
+authored text, incomplete drafts, editable subnormal literals and parameters,
+and integer spelling for native real-field edits. Generic reconciliation keeps
+explicit numeric-kind changes; native projection may retain an existing integer
+constructor only for an exact integral result. Both paths preserve signed zero.
 
 `--behavior-loader` runs two cases: the application loader prepares a content
 root's sources into the authoring world and a prototype preview's live world,

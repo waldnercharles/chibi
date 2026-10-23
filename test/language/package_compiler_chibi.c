@@ -1855,6 +1855,7 @@ static compiler_host_result result;
 
 static void cleanup()
 {
+    type_catalog_set_project(NULL);
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
     for (int game = 0; game < 2; game++) {
@@ -3532,8 +3533,102 @@ static const char COUNTER[] = "// Behavior state that survives between steps, "
                               "        self.Spot.x = steps\n"
                               "    }\n"
                               "}\n";
+static const char
+    TEXT_STATE[] = "TextState :: behavior {\n"
+                   "    label: string = \"seed\"\n"
+                   "    Copy :: (value: string) -> string { return value; }\n"
+                   "    on Tick :: () {\n"
+                   "        if label == \"seed\" {\n"
+                   "            label = Copy(\"a\\u0000b\")\n"
+                   "            self.Spot.x = 1\n"
+                   "        } else {\n"
+                   "            label = Copy(\"seed\")\n"
+                   "            self.Spot.x = 2\n"
+                   "        }\n"
+                   "    }\n}\n";
 static const behavior_sample behavior_samples[] = {
     { "Counter", COUNTER },
+    { "BoolState",
+      "BoolState :: behavior {\n"
+      "    active: bool = true\n"
+      "    on Tick :: () {\n"
+      "        if active { self.Spot.x = 1; } else { self.Spot.x = 2; }\n"
+      "        active = !active\n"
+      "    }\n}\n" },
+    { "InferredState",
+      "InferredState :: behavior {\n"
+      "    active := false\n"
+      "    count := 1\n"
+      "    angle := 0.5\n"
+      "    hex := 0x1e\n"
+      "    wide := 4294967297\n"
+      "    on Tick :: () {\n"
+      "        active = !active\n"
+      "        count += 1\n"
+      "        angle += 0.5\n"
+      "        if active { self.Spot.x = count; } else { self.Spot.x = angle; "
+      "}\n"
+      "    }\n}\n" },
+    { "EntityState",
+      "EntityState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "    }\n}\n" },
+    { "EntityNullState",
+      "EntityNullState :: behavior {\n"
+      "    target: entity = null\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntityZeroState",
+      "EntityZeroState :: behavior {\n"
+      "    target: entity = 0\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntitySignedZeroState",
+      "EntitySignedZeroState :: behavior {\n"
+      "    negative: entity = -0\n"
+      "    positive: entity = +0.0\n"
+      "    on Tick :: () {\n"
+      "        negative = self\n"
+      "        positive = self\n"
+      "        negative = -0.0\n"
+      "        positive = +0\n"
+      "    }\n}\n" },
+    { "EntityResetState",
+      "EntityResetState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = self; }\n"
+      "        if ticks == 1 { target = null; }\n"
+      "        if ticks == 2 { target = self; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
+    { "EntityEqualState",
+      "EntityEqualState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "    }\n}\n" },
+    { "TextState", TEXT_STATE },
+    { "InferredTextState",
+      "InferredTextState :: behavior {\n"
+      "    label := \"a\\u0000b\"\n"
+      "    on Tick :: () {\n"
+      "        if label == \"a\\u0000b\" { self.Spot.x += 1; }\n"
+      "    }\n}\n" },
+    { "ScalarNullState",
+      "ScalarNullState :: behavior {\n"
+      "    active: bool = null\n"
+      "    count: int = null\n"
+      "    label: string = null\n"
+      "    on Tick :: () {\n"
+      "        if !active && label == \"\" { self.Spot.x = count; }\n"
+      "    }\n}\n" },
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
     { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
@@ -3591,9 +3686,11 @@ static const behavior_rejection behavior_rejections[] = {
       "}\n}\n",
       "Assignment requires a writable value",
       false },
-    { "Named :: behavior {\n    label: string = \"\"\n    on Tick :: () {\n    "
-      "}\n}\n",
-      "state needs a number type",
+    { "Missing :: behavior { flag: bool; }", "'flag' requires a default value", true },
+    { "Missing :: behavior { count: int; }", "'count' requires a default value", true },
+    { "Missing :: behavior { label: string; }", "'label' requires a default value", true },
+    { "Nonzero :: behavior { target: entity = 1; }",
+      "entity default requires null or zero",
       false },
     { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
       "{\n    }\n}\n",
@@ -3920,7 +4017,14 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
                                          .type = link_game_type,
                                          .event = link_game_event };
     char error[256] = { 0 };
-    *module = execution_prepared_read(bytes, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    *module = execution_prepared_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
     if (!*module) {
         fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
     }
@@ -3989,8 +4093,11 @@ static bool same_declarations(const execution_module *expected, const execution_
     REQUIRE(a->state_count == e->state_count);
     for (int i = 0; i < e->state_count; i++) {
         REQUIRE(a->states[i].id == e->states[i].id);
-        REQUIRE(a->states[i].initial.type == e->states[i].initial.type);
-        REQUIRE(a->states[i].initial.i == e->states[i].initial.i);
+        REQUIRE(pin_value_equal(&a->states[i].initial, &e->states[i].initial));
+        REQUIRE(!strcmp(
+            a->states[i].initial.type_name ? a->states[i].initial.type_name : "",
+            e->states[i].initial.type_name ? e->states[i].initial.type_name : ""
+        ));
     }
     REQUIRE(a->event_count == e->event_count);
     for (int i = 0; i < e->event_count; i++) {
@@ -4058,7 +4165,7 @@ static bool plays_alike(execution_module *expected, execution_module *actual)
                 a.instance,
                 expected->plan.states[i].id
             );
-            alike = kept && held && kept->type == held->type && kept->i == held->i;
+            alike = kept && held && pin_value_equal(kept, held);
         }
         if (!alike) {
             fprintf(
@@ -4227,9 +4334,74 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
          i++) {
         passed = rejects(1, &behavior_rejections[i]);
     }
+    const char *const invalid_entity_defaults[] = {
+        "Invalid :: behavior { target: entity = ~0; }",
+        "Invalid :: behavior { target: entity = !0; }",
+    };
+    for (size_t i = 0; passed && i < sizeof invalid_entity_defaults /
+                                         sizeof *invalid_entity_defaults;
+         i++) {
+        REQUIRE(stage_zero_diagnostic(invalid_entity_defaults[i]).message[0]);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
+            REQUIRE(((pin_union *)out.ptr)->tag == tag(b, "Rejected"));
+            arena_free(&detached);
+        }
+    }
     passed = passed && takes_project_identities(1);
     type_catalog_set_project(NULL);
     REQUIRE(passed);
+    return true;
+}
+/* A temporary string returned by a member call becomes instance-owned state.
+ * Updating one owner must leave another owner's state and bytes independent. */
+TEST_CASE(package_compiler_keeps_text_state_per_owner)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    execution_module *module = NULL;
+    REQUIRE(stage_one_behavior(1, "TextState", TEXT_STATE, &module));
+    player p = { 0 };
+    REQUIRE(play(module, &p));
+    ecs_entity other = ecs_world_create_entity(p.world);
+    spot initial = { .w = 9 };
+    REQUIRE(ecs_world_record_add(p.world, other, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(p.world) == ECS_OK);
+    execution_instance *second = execution_program_attach(p.program, ecs_entity_to_u64(other));
+    REQUIRE(second);
+    uint64_t state = script_catalog_id("symbol", "TextState:1:label");
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int first = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(first == FLOW_OK);
+    const pin_value *first_value = execution_instance_state(p.instance, state);
+    const pin_value *second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "seed", 4 }));
+    behavior_run_scope_begin(&runs);
+    int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(repeated == FLOW_OK && other_result == FLOW_OK);
+    first_value = execution_instance_state(p.instance, state);
+    second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "seed", 4 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(
+        TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
+                                               : runs.counts.sljit_entries > 0
+    );
+    REQUIRE(!runs.counts.overflow && !runs.counts.bytecode_entries);
+    stop(&p);
+    execution_module_free(module);
+    type_catalog_set_project(NULL);
     return true;
 }
 void test_language_package_compiler_chibi()
@@ -4302,6 +4474,7 @@ void test_language_package_compiler_chibi_behaviors_rest()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+    RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_sharing()

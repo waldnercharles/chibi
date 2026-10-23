@@ -106,12 +106,51 @@ static bool normalize_components(
     }
     return true;
 }
-static av_doc *normalize_prototype(av_doc *doc, const prototype_registry *registry, char *error, size_t size)
+static bool prototype_shape(const av_doc *doc, const asset_compiler_options *options, char *error, size_t size)
+{
+    asset_compiler_diagnostic diagnostic = { 0 };
+    av_doc *arguments = asset_source_value_columns(av_doc_root(doc), &diagnostic);
+    av_doc
+        *result = arguments
+                    ? asset_source_invoke(
+                          "project:asset_compiler:1:ValidatePrototype:callable",
+                          av_doc_root(arguments),
+                          options,
+                          &diagnostic
+                      )
+                    : NULL;
+    const av_value *message = av_arr_get(av_doc_root(result), 0);
+    bool valid = av_is_str(message) && !av_get_len(message);
+    if (!valid) {
+        native_error(
+            error,
+            size,
+            av_is_str(message) ? av_get_str(message)
+            : result           ? "Invalid prototype validator result"
+                               : diagnostic.message
+        );
+    }
+    av_doc_free(result);
+    av_doc_free(arguments);
+    return valid;
+}
+
+static av_doc *normalize_prototype(
+    av_doc *doc,
+    const prototype_registry *registry,
+    const asset_compiler_options *options,
+    char *error,
+    size_t size
+)
 {
     av_value *root = av_doc_root(doc);
     if (doc && (!av_is_obj(root) || !av_is_str(av_obj_get(root, "name")) ||
                 !av_get_len(av_obj_get(root, "name")))) {
         native_error(error, size, "Prototype source needs an object with a nonempty name");
+        av_doc_free(doc);
+        return NULL;
+    }
+    if (doc && !prototype_shape(doc, options, error, size)) {
         av_doc_free(doc);
         return NULL;
     }
@@ -133,7 +172,7 @@ av_doc *authoring_prototype_source_read_with_options(
 )
 {
     if (!options) {
-        return normalize_prototype(asset_document_read(source, error, size), registry, error, size);
+        return normalize_prototype(asset_document_read(source, error, size), registry, NULL, error, size);
     }
     const asset_compiler_options *packaged = asset_source_default_options();
     if (!packaged) {
@@ -162,7 +201,7 @@ av_doc *authoring_prototype_source_read_with_options(
             );
         }
     }
-    return normalize_prototype(doc, registry, error, size);
+    return normalize_prototype(doc, registry, &configured, error, size);
 }
 
 av_doc *authoring_prototype_source_read(

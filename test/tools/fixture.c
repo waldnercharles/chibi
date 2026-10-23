@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <limits.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,13 +57,20 @@ const char *tool_root()
 
 int tool_run(const char *const argv[], const char *cwd, const char *logpath)
 {
-    return tool_run_within(argv, cwd, logpath, TOOL_RUN_SECONDS);
+    return tool_run_within(argv, cwd, logpath, 0);
 }
 
 int tool_run_within(const char *const argv[], const char *cwd, const char *logpath, double allowed)
 {
-    double start = seconds(), limit = start + allowed;
-    if (seconds() >= limit) {
+    if (!isfinite(allowed) || allowed < 0) {
+        return 2;
+    }
+    bool timed = allowed > 0;
+    double start = seconds(), limit = timed ? start + allowed : 0;
+    if (timed && !isfinite(limit)) {
+        return 2;
+    }
+    if (timed && seconds() >= limit) {
         return 124;
     }
     chibi_process process;
@@ -74,13 +82,13 @@ int tool_run_within(const char *const argv[], const char *cwd, const char *logpa
     bool timeout = false;
     struct timespec pause = { .tv_nsec = 1000000 };
     while (!chibi_process_poll(&process)) {
-        if (seconds() >= limit) {
+        if (timed && seconds() >= limit) {
             timeout = true;
             chibi_process_stop(&process);
         }
         nanosleep(&pause, NULL);
     }
-    timeout |= seconds() >= limit;
+    timeout |= timed && seconds() >= limit;
     kill(-process.pid, SIGKILL);
     tool_release_process(process.pid);
     if (timeout || process.status) {

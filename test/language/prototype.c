@@ -400,7 +400,7 @@ static char *nested_scene(int depth)
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_doc_set_root(doc, root);
-    av_obj_add_int(doc, root, "version", 1);
+    av_obj_add_uint(doc, root, "version", 1);
     av_obj_add_str(doc, root, "name", "Deep");
     av_value *entries = av_obj_add_arr(doc, root, "entities");
     for (int i = 0; i < depth; i++) {
@@ -1213,29 +1213,29 @@ TEST_CASE(prototype_expansion_is_bounded)
     return true;
 }
 
-/* WideN has two children using WideN+1, down to a 1 MiB Wide6, so Wide0's
- * load would read 64 copies of it. */
+/* WideN has two children using WideN+1, down to a 512 KiB Wide7, so Wide0's
+ * load would read 128 copies of it. */
 static char *wide_leaf;
 static const char *find_wide(const char *name, void *)
 {
-    static char texts[6][2048];
+    static char texts[7][2048];
     char *leaf = wide_leaf;
     int level = atoi(name + 4);
-    assert(!strncmp(name, "Wide", 4) && level >= 0 && level <= 6);
-    if (level == 6 && !leaf) {
-        size_t size = 1024 * 1024;
+    assert(!strncmp(name, "Wide", 4) && level >= 0 && level <= 7);
+    if (level == 7 && !leaf) {
+        size_t size = 512 * 1024;
         leaf = wide_leaf = xmalloc(size + 1);
         int n = snprintf(
             leaf,
             size,
             "package asset\nimport data \"game:assets\"\n"
             "pub Build :: () -> byte[] { return data.Encode(data.Object(["
-            "data.Field.Named(\"name\", data.Value.Text(\"Wide6\"))])) }\n/* "
+            "data.Field.Named(\"name\", data.Value.Text(\"Wide7\"))])) }\n/* "
         );
         memset(leaf + n, 'x', size - (size_t)n - 3);
         memcpy(leaf + size - 3, "*/\n", 4);
     }
-    if (level == 6) {
+    if (level == 7) {
         return leaf;
     }
     snprintf(
@@ -1281,6 +1281,9 @@ TEST_CASE(prototype_expansion_bytes_are_bounded)
                                           .component_count = 2,
                                           .include = find_wide };
     document = prototype_load(find_wide("Wide1", NULL), &registry, error, sizeof error);
+    if (!document) {
+        fprintf(stderr, "Wide1 prototype load: %s\n", error);
+    }
     REQUIRE(document && document->read > 32 * 1024 * 1024);
     loaded = prototype_load(find_wide("Wide0", NULL), &registry, error, sizeof error);
     REQUIRE(!loaded && strstr(error, "reads more than 64 MiB of prototypes"));

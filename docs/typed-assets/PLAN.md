@@ -21,11 +21,14 @@ source history and save must continue through the shared source path.
 
 ### Current-main integration in progress — 2026-10-22
 
-The first engine-main integration (`444e5b20e`) was resolved and checkpointed
-locally at `d46e436a0`. Integration of the newer engine main `329d8fb04` is now
-in progress. Studio was checkpointed at `1c52249`; its subsequent main integration
-at `305053fc` is also in progress. These are local integration states, not a clean
-final candidate, a main landing or a publication.
+The first engine-main integration (`444e5b20e`) was checkpointed locally at
+`d46e436a0`; integration of `329d8fb04` and the remaining compiled fixtures
+was checkpointed at `a504d8e59`. The current tree integrates engine main
+`b934720185`, refreshed compiler resources and the validation recorded below.
+The next integration target is reviewed main `fa1b7b2bb`; it requires another
+compiler/resource refresh and checks of its new Build/Graph path. Studio includes
+main `305053fc` at local checkpoint `7f49051`. These are local integration
+states, not a clean final candidate, a main landing or a publication.
 
 The newer main retires the global runtime timing policy. Its removal supersedes
 this document's earlier timing-based admissions, pins and quarantines. Historical
@@ -66,11 +69,20 @@ uses typed constructors from `game:assets`; ordinary functions, branches, loops
 and imports go through the authored Compiler. Family constructors enforce stable
 schema fields. Reflected component data keeps the existing catalog validation.
 
-The shared value library and source writer are Chibi. Their JSON bytes are a
-private value transport into the existing native document codec, with exact
-integer widths, ordered objects, arrays, nulls and finite real values. Source is
+The shared value library and source writer are Chibi. `data.Encode` emits a
+private, version-prefixed JSON envelope with the value and its numeric kinds.
+The native adapter restores signed and unsigned integer identity without a
+floating-point conversion. Ordered objects, arrays, nulls and finite reals retain
+their values. Explicit raw JSON byte output remains a separate document boundary;
+ordinary object fields cannot be mistaken for the prefixed envelope. Source is
 never a JSON string passed to a renamed parser. Clipboard, checkpoints and
 machine protocols use the JSON codec directly.
+
+Subnormal doubles use an exact scaled expression whose two literals are normal,
+preserving the compiler's current literal policy. Source metadata recognizes
+only that canonical constant form; arbitrary arithmetic and helper calls remain
+computed. Parameter reads receive numeric text, and edits retain comments and
+the complete source expression range.
 
 The native boundary loads prepared code, provides an immutable library snapshot,
 invokes the authored compiler and pure asset entry, and owns the returned values.
@@ -311,15 +323,47 @@ validate an eventual clean head or every affected group.
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Full cold Studio startup and editor flow | 62 assertions, 43.770s; 69 compilations, 161 memory hits, zero disk hits | Healthy cold session, not inferred from the smaller model fixture |
-| Studio CPU editor model | 73 assertions, 5.346s; eight cold compilations, 39 memory hits, zero disk hits | Parameter/override/Reset/history/save contract |
+| Full cold Studio startup and editor flow | 62 assertions, 64.030s; 69 compilations, 161 memory hits, zero disk hits | Healthy cold session against native SDK cb8e0b94; separate from model coverage |
+| Studio CPU editor model | 87 assertions, 20.047s; nine cold compilations, 39 memory hits, zero disk hits | Parameter/override/Reset/history/save and embedded-NUL edit refusal |
 | Production graph build | Passed, 31.7s | Compiler link-closure fixes and preserved boolean return contracts in resource `Stage`/`Generate` |
-| Native and Wasm packaged asset compiler | Artifact bytes unchanged; all 36 input fingerprints refreshed and checked | Resource provenance; installed SDK metadata refresh still pending |
+| Native and Wasm packaged asset compiler | Both generated from the b934 compiler bootstrap; all 37 source fingerprints checked | Includes reviewed source-edit fixes; native SDK cb8e0b94 and Web SDK c0a0ae55 packaged and Studio rebuilt |
+| Typed value transport | 4 cases, 1057 assertions, 44.049s | Fresh flow-resource Release route; cache disabled |
+| Build process | 38 cases, 2481 assertions, 6.002s | Includes the real authored Stage operation repeated without changing resources |
+| Material group | 110 cases, 270494 assertions, 5.057s | Complete CPU group |
+| Bare tooling group | 130 cases, 27605 assertions, 28.749s | Complete group after fixture fixes |
+| Model import | 22 cases, 342 assertions; focused role checks 2 cases, 36 assertions | Includes the unchanged 1022-asset boundary and later explicit asset-role filtering |
+| Prototype documents | 23 cases, 327 assertions, 394.949s | Depth 256/257, expansion bounds, typed references and declaration ranges |
+| Project validation | 27 cases, 312 assertions, 390.844s | Strict unsigned scene fields, scenarios, formatting and process cleanup |
+| Native group coverage | All 73 selectors, 632 cases, 236737 assertions | First 62 selectors, corrected 11-selector tail and expanded asset-source route; separate invocations |
+| Language group coverage | All 34 selectors, 553 cases, 1022934 assertions | Prefix, prototype documents and seven-selector tail across separate invocations |
+| Feature project canonicality | Format and check passed | Two behavior files lost redundant integer annotations; inferred pin types independently reviewed |
+| Typed prototype source | 7 cases, 130 assertions | Formula provenance, conservative helper fallback, override/Reset, budgets and cancellation |
+| Prototype source edits | 8 cases, 90 assertions | Spelling, nested axes, inherited removal/order and signed-zero regression |
+| Asset source | 6 cases, 84 assertions | Includes generic/native numeric-kind separation and boundary cases |
+| Actual Node/Wasm typed prototypes | 7 cases, 130 assertions, 129.311s | Complete 32-bit runtime check against Web SDK c0a0ae55; cache disabled |
 
 Guarded JIT compiler execution preserves exact instruction accounting and
 cancellation. Asset Build evaluation remains in the pure asset VM; compiler
 acceleration does not grant asset code file, process, clock or random access.
 Windows retains an uncached fallback; Windows validation is still unexecuted.
+
+Broader routes exposed additional integration defects. Data and executable
+assets share `.chibi`, so controller inspection and model-import name scanning
+now select by explicit asset role. Migrated source formatting fixtures must
+retain authored fields and exercise actual whitespace changes. Prototype
+reference shape validation belongs to the authored source service, while
+native adapters retain reflected-field normalization.
+
+The scene-depth regression showed that literal indentation alone expanded a
+valid depth-256 scene beyond the compiler's per-package source limit. The
+authored writer now uses private typed helpers only for full modules deeper
+than 16 value levels. Shallow files and edit fragments retain their spelling.
+Helper expressions and wide member groups are bounded without changing
+compiler or document quotas. These generated helper modules remain outside
+the literal-only source editor: unsupported edits must preserve the source
+and return a diagnostic. Compiler resource generation and complete transport
+round-trip checks passed. The full prototype document route also passed its
+depth and expansion bounds.
 
 ### Historical failures and remaining coverage
 

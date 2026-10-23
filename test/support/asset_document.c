@@ -7,6 +7,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -24,11 +25,24 @@ static void cleanup()
 
 static bool writes_back(av_value *value, double *read)
 {
-    char error[256];
+    char error[256] = "";
     char *source = asset_document_write(value);
     av_doc *loaded = asset_document_read(source, error, sizeof error);
     bool same = loaded && av_equals(value, av_doc_root(loaded));
     *read = loaded ? av_get_num(av_doc_root(loaded)) : 0;
+    if (!same) {
+        fprintf(
+            stderr,
+            "Asset round trip: input kind=%d value=%a; output kind=%d "
+            "value=%a; error=%s\nsource:\n%s\n",
+            av_get_type(value),
+            av_get_num(value),
+            loaded ? av_get_type(av_doc_root(loaded)) : -1,
+            *read,
+            error,
+            source ? source : "(null)"
+        );
+    }
     av_doc_free(loaded);
     free(source);
     return same;
@@ -81,7 +95,17 @@ TEST_CASE(asset_document_reads_typed_values_and_writes_them_canonically)
     REQUIRE(text && strstr(text, "package asset") && strstr(text, "pub Build"));
     av_doc *loaded = asset_document_read(text, error, sizeof error);
     REQUIRE(loaded && av_equals(root, av_doc_root(loaded)));
+    const av_value *round_root = av_doc_root(loaded);
+    REQUIRE(av_is_uint(av_obj_get(round_root, "maximum")));
+    REQUIRE(av_is_sint(av_obj_get(round_root, "minimum")));
+    REQUIRE(av_get_type(av_obj_get(round_root, "precise")) == AV_REAL);
+    av_value *round_children = av_obj_get(av_obj_get(round_root, "object"), "children");
+    REQUIRE(av_is_sint(av_obj_get(av_arr_get(round_children, 0), "id")));
+    REQUIRE(av_is_sint(av_obj_get(av_arr_get(round_children, 1), "id")));
     char *again = asset_document_write(av_doc_root(loaded));
+    if (!again || strcmp(text, again)) {
+        fprintf(stderr, "Canonical source mismatch:\nfirst:\n%s\nsecond:\n%s\n", text, again ? again : "(null)");
+    }
     REQUIRE(again && !strcmp(text, again));
     free(again);
     av_doc_free(loaded);
@@ -101,12 +125,19 @@ TEST_CASE(asset_document_reals_round_trip_exactly)
                              nextafter(0.2, 1),
                              1.2345678901234567,
                              0x1p-1074,
+                             -0x1p-1074,
+                             0x1.8p-1023,
+                             -0x1.8p-1023,
                              DBL_MAX,
                              -0.0 };
     for (size_t i = 0; i < sizeof reals / sizeof *reals; i++) {
         doc = av_doc_new();
         double read;
-        REQUIRE(writes_back(av_real(doc, reals[i]), &read));
+        bool same = writes_back(av_real(doc, reals[i]), &read);
+        if (!same) {
+            fprintf(stderr, "Real round trip failed: index=%zu value=%a\n", i, reals[i]);
+        }
+        REQUIRE(same);
         REQUIRE(read == reals[i] && signbit(read) == signbit(reals[i]));
         cleanup();
     }
@@ -115,8 +146,9 @@ TEST_CASE(asset_document_reals_round_trip_exactly)
 
 TEST_CASE(asset_document_floats_keep_their_bits_through_copies)
 {
-    const float floats[] = { 0.2f,       0.66f,        nextafterf(0.2f, 1),
-                             1.2345678f, FLT_TRUE_MIN, FLT_MAX,
+    const float floats[] = { 0.2f,        0.66f,        nextafterf(0.2f, 1),
+                             1.2345678f,  FLT_TRUE_MIN, -FLT_TRUE_MIN,
+                             0x1.8p-127f, -0x1.8p-127f, FLT_MAX,
                              -0.0f };
     for (size_t i = 0; i < sizeof floats / sizeof *floats; i++) {
         doc = av_doc_new();

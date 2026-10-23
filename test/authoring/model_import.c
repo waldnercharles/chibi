@@ -649,13 +649,21 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
     REQUIRE(!strcmp(error, "Cannot read content/fields: Not a directory"));
     REQUIRE(entries("content") == 4 && entries("content/prototypes") == 1);
     REQUIRE(!unlink(fields));
+    /* Executable declarations share .chibi files, but not the native graph
+     * namespace. They must not be decoded as data modules or block this name. */
+    REQUIRE(put("content/behaviors/Crate.chibi", "Crate :: behavior { on Begin :: () {} }\n"));
+    REQUIRE(put("content/systems/Crate.chibi", "Crate :: system() {}\n"));
+    REQUIRE(
+        put("content/libraries/Crate.chibi",
+            "Crate :: library { Value :: () -> int { return 1 } }\n")
+    );
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     gltf_fixture_free(&f);
     return true;
 }
 
-/* An import refuses materials that would bring the native graphs, every
- * kind but prototypes and scenes, past what a project can prepare. */
+/* An import refuses materials that would bring the six native graph kinds
+ * past what a project can prepare. */
 TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
 {
     gltf_fixture f = { 0 };
@@ -1722,5 +1730,15 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_count_only_the_vertices_their_triangles_use);
     RUN_TEST_CASE(model_imports_refuse_vast_primitives_before_building_them);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);
+    pu_clear_setup();
+}
+
+/* Source roles, malformed modules and occupied output paths, without the
+ * independent 1,022-asset native graph capacity fixture. */
+void test_model_import_sources()
+{
+    pu_setup(setup, teardown);
+    RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
+    RUN_TEST_CASE(model_imports_refuse_names_the_project_declares);
     pu_clear_setup();
 }

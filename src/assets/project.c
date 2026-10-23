@@ -95,7 +95,7 @@ static char *start_scene_text()
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_doc_set_root(doc, root);
-    av_obj_add_int(doc, root, "version", 1);
+    av_obj_add_uint(doc, root, "version", 1);
     av_obj_add_str(doc, root, "name", "Start");
     av_obj_add_arr(doc, root, "entities");
     char *text = asset_document_write(av_doc_root(doc));

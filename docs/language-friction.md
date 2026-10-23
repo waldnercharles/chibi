@@ -958,9 +958,12 @@ prototype-specific grammar have been removed.
 Prepared-code caching avoids repeated compilation while each load evaluates
 `Build` with the current instruction and cancellation limits. Aggregate VM
 allocation quotas and automatic project-helper snapshots remain incomplete.
-Cold full Studio startup exceeded the 60-second limit at the previous local
-checkpoint; integration with current compiler/runtime main is in progress. See
-[the typed asset plan](typed-assets/PLAN.md) for evidence and remaining limits.
+Cold full Studio startup now passes the complete 62-assertion fixture with a
+healthy UI. Integration with current compiler/runtime main is still in
+progress. Deep generated data modules use private helpers to bound source
+indentation and expression size; their source editing remains outside the
+literal-only editor. See [the typed asset plan](typed-assets/PLAN.md) for
+checkpoint evidence and remaining limits.
 
 ### Saved text still uses a C-string JSON boundary
 

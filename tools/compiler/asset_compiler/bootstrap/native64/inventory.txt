@@ -13,6 +13,7 @@ tools/compiler/asset_source/Computed.chibi
 tools/compiler/asset_source/Metadata.chibi
 tools/compiler/asset_source/Parameters.chibi
 tools/compiler/asset_source/Reconcile.chibi
+tools/compiler/asset_source/Validate.chibi
 tools/compiler/asset_source/Write.chibi
 tools/compiler/asset_packaging/Packaging.chibi
 packages/core/strings/Strings.chibi

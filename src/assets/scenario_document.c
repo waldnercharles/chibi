@@ -258,7 +258,7 @@ static void write_vector(av_doc *doc, av_value *object, const char *name, CF_V2 
 static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
 {
     av_value *value = av_arr_add_obj(doc, keys);
-    av_obj_add_int(doc, value, "frame", key->step);
+    av_obj_add_uint(doc, value, "frame", (uint64_t)key->step);
     write_vector(doc, value, "movement", key->movement);
     write_vector(doc, value, "aim", key->aim);
     if (key->aim_point) {
@@ -315,7 +315,7 @@ char *scenario_document_save(const scenario_document *document)
     av_value *root = av_obj(doc);
     av_doc_set_root(doc, root);
     av_obj_add_str(doc, root, "scene", document->scene);
-    av_obj_add_int(doc, root, "frames", document->frames);
+    av_obj_add_uint(doc, root, "frames", (uint64_t)document->frames);
     if (document->seed) {
         av_obj_add_uint(doc, root, "seed", document->seed);
     }

@@ -1,6 +1,7 @@
 #include "assets/asset_source.h"
 
 #include "authoring/asset_compiler_host.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_intelligence.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
@@ -10,6 +11,8 @@
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,11 +129,227 @@ TEST_CASE(asset_source_parses_incomplete_drafts)
     return true;
 }
 
+TEST_CASE(asset_source_reconciles_generated_subnormal_literals)
+{
+    char error[256];
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_set(doc, root, "tiny", av_real(doc, 0x1p-1074));
+    char *source = asset_document_write(root);
+    REQUIRE(source && !strstr(source, "Overrides"));
+    const char *operator = strstr(source, "* 2.2204460492503131e-16");
+    REQUIRE(operator);
+    const char *comment = "/* keep scaled value */ ";
+    char *commented = xmalloc(strlen(source) + strlen(comment) + 1);
+    snprintf(
+        commented,
+        strlen(source) + strlen(comment) + 1,
+        "%.*s%s%s",
+        (int)(operator - source),
+        source,
+        comment,
+        operator
+    );
+    free(source);
+    av_obj_set(doc, root, "tiny", av_real(doc, -0x1.8p-1023));
+    char *edited = asset_source_reconcile(commented, root, error, sizeof error);
+    REQUIRE(edited && strstr(edited, "/* keep scaled value */") && !strstr(edited, "Overrides"));
+    av_doc *check = asset_document_read(edited, error, sizeof error);
+    REQUIRE(check && av_get_type(av_obj_get(av_doc_root(check), "tiny")) == AV_REAL);
+    REQUIRE(av_get_num(av_obj_get(av_doc_root(check), "tiny")) == -0x1.8p-1023);
+    av_doc_free(check);
+    free(edited);
+    free(commented);
+    av_doc_free(doc);
+    return true;
+}
+
+TEST_CASE(asset_source_reads_and_sets_scaled_real_parameters)
+{
+    const char *source =
+        "package asset\nimport data \"game:assets\"\n"
+        "pub Parameters :: () -> data.Value { return data.Object(["
+        "data.Field.Named(\"tiny\", data.Value.Real(2.2250738585072014e-308 "
+        "/* keep parameter */ * 2.2204460492503131e-16))]); }\n"
+        "pub Build :: () -> byte[] { return data.Encode(Parameters()); }\n";
+    char error[256];
+    av_doc *parameters = authoring_prototype_source_parameters(source, error, sizeof error);
+    REQUIRE(parameters && av_get_type(av_obj_get(av_doc_root(parameters), "tiny")) == AV_REAL);
+    REQUIRE(av_get_num(av_obj_get(av_doc_root(parameters), "tiny")) == 0x1p-1074);
+    av_doc_free(parameters);
+    av_doc *request = av_doc_new();
+    av_value *args = av_arr(request);
+    av_doc_set_root(request, args);
+    av_arr_add_str(request, args, source);
+    av_arr_add_str(request, args, "tiny");
+    av_arr_append(args, av_sint(request, 4));
+    av_arr_add_str(request, args, "");
+    av_arr_append(args, av_sint(request, 0));
+    av_arr_append(args, av_uint(request, 0));
+    av_arr_append(args, av_real(request, -0x1.8p-1023));
+    av_arr_append(args, av_bool(request, false));
+    asset_compiler_diagnostic diagnostic = { 0 };
+    char *edited = asset_source_invoke_bytes(
+        "project:asset_compiler:1:SetParameter:callable",
+        args,
+        NULL,
+        &diagnostic
+    );
+    av_doc_free(request);
+    REQUIRE(edited && strstr(edited, "/* keep parameter */"));
+    parameters = authoring_prototype_source_parameters(edited, error, sizeof error);
+    REQUIRE(parameters && av_get_type(av_obj_get(av_doc_root(parameters), "tiny")) == AV_REAL);
+    REQUIRE(av_get_num(av_obj_get(av_doc_root(parameters), "tiny")) == -0x1.8p-1023);
+    av_doc_free(parameters);
+    av_doc *built = asset_document_read(edited, error, sizeof error);
+    REQUIRE(built && av_get_type(av_obj_get(av_doc_root(built), "tiny")) == AV_REAL);
+    REQUIRE(av_get_num(av_obj_get(av_doc_root(built), "tiny")) == -0x1.8p-1023);
+    av_doc_free(built);
+    free(edited);
+    /* This spelling exception does not admit arbitrary arithmetic or helpers. */
+    const char *computed[] = {
+        "2.2250738585072014e-308 * 2.2204460492503131e-15",
+        "Other() * 2.2204460492503131e-16",
+    };
+    for (size_t i = 0; i < sizeof computed / sizeof *computed; i++) {
+        char rejected[512];
+        snprintf(
+            rejected,
+            sizeof rejected,
+            "package asset\nimport data \"game:assets\"\n"
+            "pub Parameters :: () -> data.Value { return data.Object(["
+            "data.Field.Named(\"tiny\", data.Value.Real(%s))]); }\n"
+            "pub Build :: () -> byte[] { return data.Encode(Parameters()); }\n",
+            computed[i]
+        );
+        parameters = authoring_prototype_source_parameters(rejected, error, sizeof error);
+        bool refused = parameters == NULL;
+        av_doc_free(parameters);
+        REQUIRE(refused);
+    }
+    return true;
+}
+
+/* Generic edits request numeric identity; reflected native edits may retain
+ * an existing integral constructor, including exact values above 2^53. */
+TEST_CASE(asset_source_native_reconcile_preserves_only_exact_integer_spelling)
+{
+    const struct
+    {
+        const char *name;
+        bool unsigned_before;
+        double real;
+        av_type native_kind;
+        int64_t signed_value;
+        uint64_t unsigned_value;
+    } values[] = {
+        { "signed_min", false, -0x1p63, AV_SINT, INT64_MIN, 0 },
+        { "signed_below_max", false, 0x1.fffffffffffffp62, AV_SINT, INT64_C(9223372036854774784), 0 },
+        { "signed_overflow", false, 0x1p63, AV_REAL, 0, 0 },
+        { "unsigned_below_max", true, 0x1.fffffffffffffp63, AV_UINT, 0, UINT64_C(18446744073709549568) },
+        { "unsigned_overflow", true, 0x1p64, AV_REAL, 0, 0 },
+        { "unsigned_negative", true, -1.0, AV_REAL, 0, 0 },
+        { "fraction", false, 1.5, AV_REAL, 0, 0 },
+        { "negative_zero", false, -0.0, AV_REAL, 0, 0 },
+        { "positive_zero", false, 0.0, AV_SINT, 0, 0 },
+        { "large_exact", false, 0x1p53, AV_SINT, INT64_C(9007199254740992), 0 },
+    };
+    av_doc *before = av_doc_new(), *after = av_doc_new();
+    av_value *old = av_obj(before), *next = av_obj(after);
+    av_doc_set_root(before, old);
+    av_doc_set_root(after, next);
+    for (size_t i = 0; i < sizeof values / sizeof *values; i++) {
+        av_obj_set(
+            before,
+            old,
+            values[i].name,
+            values[i].unsigned_before ? av_uint(before, UINT64_MAX) : av_sint(before, 1)
+        );
+        av_obj_set(after, next, values[i].name, av_real(after, values[i].real));
+    }
+    av_obj_set(before, old, "real_zero", av_real(before, 0.0));
+    av_obj_set(after, next, "real_zero", av_real(after, -0.0));
+    char *source = asset_document_write(old);
+    REQUIRE(source);
+    // Prefixing a comment exercises scalar patching rather than the canonical
+    // full-document replacement shortcut, including the sign-only zero edit.
+    const char *comment = "/* preserve numeric source */\n";
+    char *commented = xmalloc(strlen(comment) + strlen(source) + 1);
+    sprintf(commented, "%s%s", comment, source);
+    free(source);
+    asset_compiler_diagnostic diagnostic = { 0 };
+    char *generic = asset_source_reconcile_compiled(commented, old, next, NULL, &diagnostic);
+    REQUIRE(generic && strstr(generic, comment));
+    char error[256];
+    av_doc *check = asset_document_read(generic, error, sizeof error);
+    REQUIRE(check);
+    for (size_t i = 0; i < sizeof values / sizeof *values; i++) {
+        const av_value *value = av_obj_get(av_doc_root(check), values[i].name);
+        REQUIRE(av_get_type(value) == AV_REAL && av_get_num(value) == values[i].real);
+        REQUIRE(!!signbit(av_get_num(value)) == !!signbit(values[i].real));
+    }
+    const av_value *zero = av_obj_get(av_doc_root(check), "real_zero");
+    REQUIRE(av_get_type(zero) == AV_REAL && signbit(av_get_num(zero)));
+    av_doc_free(check);
+    free(generic);
+    char *native = asset_source_reconcile_native_compiled(commented, old, next, NULL, &diagnostic);
+    REQUIRE(native && strstr(native, comment));
+    check = asset_document_read(native, error, sizeof error);
+    REQUIRE(check);
+    for (size_t i = 0; i < sizeof values / sizeof *values; i++) {
+        const av_value *value = av_obj_get(av_doc_root(check), values[i].name);
+        REQUIRE(av_get_type(value) == values[i].native_kind);
+        if (values[i].native_kind == AV_SINT) {
+            REQUIRE(av_get_sint(value) == values[i].signed_value);
+        }
+        if (values[i].native_kind == AV_UINT) {
+            REQUIRE(av_get_uint(value) == values[i].unsigned_value);
+        }
+        if (values[i].native_kind == AV_REAL) {
+            REQUIRE(av_get_num(value) == values[i].real);
+            REQUIRE(!!signbit(av_get_num(value)) == !!signbit(values[i].real));
+        }
+    }
+    zero = av_obj_get(av_doc_root(check), "real_zero");
+    REQUIRE(av_get_type(zero) == AV_REAL && signbit(av_get_num(zero)));
+    av_doc *zeros = av_doc_new();
+    av_doc_set_root(zeros, av_clone(zeros, av_doc_root(check)));
+    av_obj_set(zeros, av_doc_root(zeros), "real_zero", av_real(zeros, 0.0));
+    char *positive = asset_source_reconcile_compiled(
+        native,
+        av_doc_root(check),
+        av_doc_root(zeros),
+        NULL,
+        &diagnostic
+    );
+    REQUIRE(positive && strstr(positive, comment));
+    av_doc *positive_doc = asset_document_read(positive, error, sizeof error);
+    REQUIRE(positive_doc);
+    zero = av_obj_get(av_doc_root(positive_doc), "real_zero");
+    REQUIRE(
+        av_get_type(zero) == AV_REAL && av_get_num(zero) == 0.0 &&
+        !signbit(av_get_num(zero))
+    );
+    av_doc_free(positive_doc);
+    av_doc_free(zeros);
+    free(positive);
+    av_doc_free(check);
+    free(native);
+    free(commented);
+    av_doc_free(before);
+    av_doc_free(after);
+    return true;
+}
+
 void test_asset_source()
 {
     RUN_TEST_CASE(asset_source_navigates_event_payloads);
     RUN_TEST_CASE(asset_source_reconcile_keeps_authored_text);
     RUN_TEST_CASE(asset_source_parses_incomplete_drafts);
+    RUN_TEST_CASE(asset_source_reconciles_generated_subnormal_literals);
+    RUN_TEST_CASE(asset_source_reads_and_sets_scaled_real_parameters);
+    RUN_TEST_CASE(asset_source_native_reconcile_preserves_only_exact_integer_spelling);
 }
 
 /* Exercise raw Build transport, bypassing game:assets.Encode's own checks. */
@@ -200,6 +419,64 @@ TEST_CASE(asset_transport_rejects_escaped_nul)
     return true;
 }
 
+static av_doc *transport_bytes(const char *bytes, char *error, size_t error_size)
+{
+    size_t length = strlen(bytes), capacity = 6 * length + 128;
+    char *source = xmalloc(capacity);
+    int used = snprintf(source, capacity, "package asset\npub Build :: () -> byte[] { return [");
+    for (size_t i = 0; i < length; i++) {
+        used += snprintf(
+            source + used,
+            capacity - (size_t)used,
+            "%s%u",
+            i ? "," : "",
+            (unsigned char)bytes[i]
+        );
+    }
+    snprintf(source + used, capacity - (size_t)used, "] }\n");
+    av_doc *doc = asset_document_read(source, error, error_size);
+    free(source);
+    return doc;
+}
+
+TEST_CASE(asset_transport_checks_numeric_metadata)
+{
+    const char *invalid[] = {
+        "CHIBI-ASSET1\n{\"value\":0}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"i\",\"extra\":0}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":0}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"\"}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"ii\"}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"x\"}",
+        "CHIBI-ASSET1\n{\"value\":18446744073709551615,\"numbers\":\"i\"}",
+        "CHIBI-ASSET1\n{\"value\":-1,\"numbers\":\"u\"}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"r\"}",
+        "CHIBI-ASSET1\n{\"value\":0.0,\"numbers\":\"i\"}",
+        "CHIBI-ASSET1\n{\"value\":0,\"numbers\":\"i\\u0000\"}",
+    };
+    char error[256];
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        transport_document = transport_bytes(invalid[i], error, sizeof error);
+        REQUIRE(!transport_document && strstr(error, "numeric transport"));
+    }
+    /* An ordinary raw JSON object cannot be mistaken for the typed envelope. */
+    transport_document = transport_bytes("{\"value\":0,\"numbers\":\"i\"}", error, sizeof error);
+    REQUIRE(transport_document && av_is_obj(av_doc_root(transport_document)));
+    REQUIRE(av_is_uint(av_obj_get(av_doc_root(transport_document), "value")));
+    transport_cleanup();
+    transport_document = transport_bytes("CHIBI-ASSET1\n{\"value\":[1,18446744073709551615,1.0,-1],\"numbers\":\"iuri\"}", error, sizeof error);
+    REQUIRE(transport_document);
+    const av_value *values = av_doc_root(transport_document);
+    REQUIRE(av_is_sint(av_arr_get(values, 0)) && av_get_sint(av_arr_get(values, 0)) == 1);
+    REQUIRE(av_is_uint(av_arr_get(values, 1)) && av_get_uint(av_arr_get(values, 1)) == UINT64_MAX);
+    REQUIRE(
+        av_get_type(av_arr_get(values, 2)) == AV_REAL &&
+        av_get_num(av_arr_get(values, 2)) == 1.0
+    );
+    REQUIRE(av_is_sint(av_arr_get(values, 3)) && av_get_sint(av_arr_get(values, 3)) == -1);
+    return true;
+}
+
 static av_doc *transport_nested(int depth)
 {
     av_doc *doc = av_doc_new();
@@ -257,6 +534,7 @@ void test_asset_transport()
     pu_setup(NULL, transport_cleanup);
     RUN_TEST_CASE(asset_transport_checks_raw_build_depth);
     RUN_TEST_CASE(asset_transport_rejects_escaped_nul);
+    RUN_TEST_CASE(asset_transport_checks_numeric_metadata);
     RUN_TEST_CASE(asset_transport_writer_matches_read_depth);
     pu_clear_setup();
 }
@@ -400,7 +678,7 @@ TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
     char log[512];
     snprintf(log, sizeof log, "%s/worker.log", cache_directory);
     const char *args[] = { cache_executable, "--asset-cache-worker", cache_directory, NULL };
-    REQUIRE(!tool_run_within(args, ".", log, 15));
+    REQUIRE(!tool_run(args, ".", log));
     REQUIRE(cache_value(cache_source, &options, 7));
     REQUIRE(asset_source_cache_stats().memory_hits == 1);
 

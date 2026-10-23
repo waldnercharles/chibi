@@ -11,6 +11,7 @@
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
 
+#include <float.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,7 +109,9 @@ static bool read_bytes(const char *name, size_t cap, unsigned char **result, siz
 static bool capture(const char *const *argv, int expected_status)
 {
     REQUIRE(argv[0] && argv[0][0] == '/');
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    /* Capture requires a finite absolute deadline and converts remaining seconds
+     * to milliseconds. Leave that multiplication finite without a fixture cap. */
+    double deadline = DBL_MAX / 1024;
     out = (chibi_process_output){ .data = output, .capacity = sizeof output };
     err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
     chibi_process_capture_result result = chibi_process_capture(

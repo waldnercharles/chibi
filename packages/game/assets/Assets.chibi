@@ -327,11 +327,12 @@ Raw :: (text: string) -> byte[] {
     return out;
 }
 
-// JSON is the private native value transport. All structure, quoting, scalar
-// conversion and quotas are authored here. No source text is parsed here.
+// A versioned private transport preserves numeric kinds around the JSON value.
+// Structure, quoting, scalar conversion and quotas are authored here.
 // The caller's runtime instruction budget/cancellation also covers this code.
 pub Encode :: (value: Value) -> byte[] {
     out: byte[] = [];
+    numbers: byte[] = [];
     pending: Work[] = [Work.Visit(value, 0)];
     visited: int = 0;
     while (length(pending) > 0) {
@@ -349,9 +350,14 @@ pub Encode :: (value: Value) -> byte[] {
                     case .Null: bytes = Raw("null");
                     case .Bool(flag):
                         if (flag) { bytes = Raw("true"); } else { bytes = Raw("false"); }
-                    case .Int(number): bytes = Raw(format_text("{}", number));
-                    case .UInt(number): bytes = Raw(format_text("{}", number));
+                    case .Int(number):
+                        numbers.append(105);
+                        bytes = Raw(format_text("{}", number));
+                    case .UInt(number):
+                        numbers.append(117);
+                        bytes = Raw(format_text("{}", number));
                     case .Real(number):
+                        numbers.append(114);
                         assert(number == number && number <= 1.7976931348623157e308 &&
                                    number >= -1.7976931348623157e308,
                                "Asset real values must be finite");
@@ -397,5 +403,14 @@ pub Encode :: (value: Value) -> byte[] {
         assert(length(bytes) <= MaxBytes - length(out), "Asset document exceeds byte quota");
         out.extend(bytes);
     }
-    return out;
+    transport := Raw("CHIBI-ASSET1\n{\"value\":");
+    middle := Raw(",\"numbers\":\"");
+    ending := Raw("\"}");
+    assert(length(out) <= MaxBytes - length(transport) - length(middle) -
+               length(numbers) - length(ending), "Asset document exceeds byte quota");
+    transport.extend(out);
+    transport.extend(middle);
+    transport.extend(numbers);
+    transport.extend(ending);
+    return transport;
 }

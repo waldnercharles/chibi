@@ -39,20 +39,25 @@ asset source is compiled Chibi.
 
 ## Current integration evidence — 2026-10-22
 
-The first engine-main merge was checkpointed at `d46e436a0`; the merge of newer
-main `329d8fb04` is in progress. Resource staging and generation preserve their
+Engine main `329d8fb04` was checkpointed at `a504d8e59`; integration of newer
+main `b934720185` is in progress. Resource staging and generation preserve their
 boolean return contracts, and the production graph build passed after compiler
 link-closure corrections (31.7 seconds). This is integration evidence, not a
 claim that the final candidate is clean or that all test groups passed.
 
-Both prepared artifacts remain byte-identical across this resource refresh:
+Both prepared artifacts now include the deep-source writer, prototype reference
+validator, conservative field provenance and explicit native reconciliation:
 
-- native64: `1dedea839e7d9d8e84c2ebe7f74f71e9b8a05b6d20ea7deaff02c55be2d0b02f`
-- wasm32: `fd14178f100dec8736192ba54425ad7c5561b8234862a6a00332caa2daabfbe9`
+- native64: `0be2c4ab0343d2ad0bf68f9de38e40065fd974e6505fad18af6b90c0eb659464`
+- wasm32: `bcd5ea6d9377febb07eb2ac75c141fe488c306d60321413547d48758290ab14a`
 
-All 36 recorded input fingerprints were refreshed and checked for each target.
-Installed SDK metadata still needs refreshing, so earlier SDK identities must
-not be presented as identities of this candidate. See
+All 37 recorded input fingerprints were refreshed and checked for each target.
+The compiler bootstrap matches its 19 current sources and passed exact
+self-compilation parity (`8ddbeeebfdaf6d87e1a125dfd99b50eacc18b1dcb414e962106e2f62fa0f1a9d`).
+The rebuilt native SDK is `cb8e0b94d607789e9f7e8871a08e3f6834ee59392212be9f88595029c00e1c38`;
+the Web SDK is `c0a0ae55f71c3d1b2b682c40f806bd1d46f1145aa5452017f8841a8ef2c85fc6`.
+These identify this dirty b934 integration checkpoint, not the final clean main
+integration. See
 [`docs/self-hosting-build.md`](../../../../docs/self-hosting-build.md#compiled-asset-resources)
 for the build record and coverage limits.
 

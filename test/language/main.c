@@ -252,6 +252,7 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
+    bool prototype_source = argc == 2 && !strcmp(argv[1], "--prototype-source");
     bool typed_prototype = argc == 2 && !strcmp(argv[1], "--typed-prototype");
     bool source_prototype_edits = argc == 2 &&
                                   !strcmp(argv[1], "--source-prototype-edits");
@@ -284,16 +285,17 @@ int main(int argc, char **argv)
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
-         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
-         !package_execution && !package_resolution && !package_imports &&
-         !package_files && !package_core && !package_tests && !docs_markdown &&
-         !component_write && !component_write_layout && !scalarize && !borrow &&
-         !reductions && !binding_schedule && !activation_cache && !headless &&
-         !build_workflow && !navigation && !publication && !field_runtime &&
-         !prototype && !source_prototype_edits && !typed_prototype && !ui_authoring &&
+         !type_constructors_chibi && !type_relations_chibi &&
+         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
+         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
+         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
+         !record_members_chibi && !package_execution && !package_resolution &&
+         !package_imports && !package_files && !package_core && !package_tests &&
+         !docs_markdown && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !prototype_source &&
+         !source_prototype_edits && !typed_prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -346,7 +348,8 @@ int main(int argc, char **argv)
             "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
-            "--field-runtime | --prototype-document | --source-prototype-edits "
+            "--field-runtime | --prototype-document | --prototype-source | "
+            "--source-prototype-edits "
             "| --typed-prototype "
             "| --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
@@ -444,6 +447,13 @@ int main(int argc, char **argv)
         test_language_source_prototype_edits();
 #else
         fprintf(stderr, "source-prototype-edits requires CHIBI_TEST_SOURCE_ASSETS\n");
+        return 1;
+#endif
+    } else if (prototype_source) {
+#ifdef CHIBI_TEST_SOURCE_ASSETS
+        test_language_source_assets();
+#else
+        fprintf(stderr, "prototype-source requires CHIBI_TEST_SOURCE_ASSETS\n");
         return 1;
 #endif
     } else if (prototype) {

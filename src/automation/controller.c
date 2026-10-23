@@ -168,8 +168,8 @@ static const asset_family ASSET_FAMILIES[] = {
 
 static bool source_program_family(const asset_family *family)
 {
-    return (family->loader == ASSET_GRAPH || family->loader == ASSET_SYSTEM) &&
-           !strcmp(family->extension, CODE_ASSET_EXTENSION);
+    return !strcmp(family->kind, "behavior") ||
+           !strcmp(family->kind, "library") || family->loader == ASSET_SYSTEM;
 }
 static bool code_filename(const char *path)
 {
@@ -1825,7 +1825,7 @@ static void load_catalog_links(const char *root, const asset_entry *entries, cat
     );
     for (int i = 0; i < acount(entries) && !links->error[0]; i++) {
         if (!links_family(entries[i].family) ||
-            !strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
+            source_program_family(entries[i].family)) {
             continue;
         }
         char *path = content_path(root, entries[i].relative);
@@ -5258,7 +5258,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
         return -1;
     }
-    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(ref.family)) {
         int inspected = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
         free(json);
         return inspected;

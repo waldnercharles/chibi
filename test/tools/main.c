@@ -289,6 +289,7 @@ void test_mesh_files();
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
 void test_model_import();
+void test_model_import_sources();
 #endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
@@ -1010,12 +1011,12 @@ int main(int argc, char **argv)
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false,
-         viewport_resize = false, sdf_visibility = false, radiance = false,
-         radiance_depth = false, material_sampling = false, scene2d = false,
-         terrain_seams = false, scene3d = false, material_ramps = false,
-         radiance_surface = false, material_pixels = false, box3d = false,
-         sky_files = false, mesh_files = false, model_import = false,
+         render_resources = false, interior_border = false, viewport_resize = false,
+         sdf_visibility = false, radiance = false, radiance_depth = false,
+         material_sampling = false, scene2d = false, terrain_seams = false,
+         scene3d = false, material_ramps = false, radiance_surface = false,
+         material_pixels = false, box3d = false, sky_files = false,
+         mesh_files = false, model_import = false, model_import_sources = false,
          model_graphs = false, model_catalog = false, render_geometry = false,
          shader_graphs = false, shader_parity = false, shader_programs = false,
          material_cameras = false, mesh_materials = false, sdf_quality = false,
@@ -1156,11 +1157,13 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
+    model_import_sources = argc == 2 && !strcmp(argv[1], "--model-import-sources");
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     texture_transform = argc == 2 && !strcmp(argv[1], "--texture-transform");
     material_graphs |= texture_transform;
 #endif
-    model_import_types = model_import || scene3d || texture_transform;
+    model_import_types = model_import || model_import_sources || scene3d ||
+                         texture_transform;
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
@@ -1170,19 +1173,19 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
-        !preview_components && !shader_parameters && !source_edit && !new_asset &&
-        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
-        !package_ownership && !unit && !test_runner && !validation_plan &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !scene_snapshot_read && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !scene3d && !material_ramps && !texture_transform && !arena &&
-        !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
+        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !tilemap && !package && !desktop_dependencies && !package_ownership &&
+        !unit && !test_runner && !validation_plan && !web_storage &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared && !read &&
+        !scene && !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+        !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+        !material_sampling && !scene2d && !terrain_seams && !scene3d &&
+        !material_ramps && !texture_transform && !arena && !render_geometry &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_import_sources &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
         !shader_programs && !material_cameras && !mesh_materials &&
         !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
@@ -1236,6 +1239,7 @@ int main(int argc, char **argv)
             "--texture-transform | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
+            "--model-import-sources | "
             "--material-destruction | --material-fluids | --material-mpm | "
             "--material-thermal | "
             "--material-simulation | --material-ecs | --material-benchmark | "
@@ -1511,8 +1515,12 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
-    if (model_import) {
-        test_model_import();
+    if (model_import || model_import_sources) {
+        if (model_import_sources) {
+            test_model_import_sources();
+        } else {
+            test_model_import();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

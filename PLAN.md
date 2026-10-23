@@ -1,5 +1,44 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Coordinated behavior-state support, 2026-10-22
+
+The local setup chat owns authored behavior state for bool, entity and string,
+including literal inference, valid defaults, nominal identity and retained string
+ownership. The compiler cutover chat owns CLI/default selection, build-program
+compilation and SDK wiring. The managed-pointer chat owns its unmerged ABI21
+changes; this increment remains on ABI20 and does not consume that branch.
+
+Implementation is limited to `package_compiler/Behavior.chibi`, its state default
+emission in `Compile.chibi`, and state assignment, entity literal/equality and
+floating literal coercion paths in `Steps.chibi`. `Body.chibi` includes null
+expressions in its debugger dispatch.
+`test/language/package_compiler_chibi.c` compares declarations, debugger metadata
+and runtime state against the native compiler on VM and SLJIT. Empty-project
+handling must agree with the cutover owner's resource-only assembly contract;
+the existing nonempty compiler-closure format must not change implicitly.
+
+Verification starts with failing behavior regressions, then the affected
+compiler behavior/package checks, self-compilation and current compiler recovery.
+Use byte-preserving string comparisons and verify state after handler return and
+later invocations. Bootstrap regeneration belongs to the coordinated compiler
+candidate. Main checkouts and the installed native default stay usable until
+the completed cutover is validated. No changes in this slice require a project
+version migration.
+
+The macOS checks passed all five required Make groups: native, materials,
+projects, language and tooling (1,561 cases, 1,568,825 assertions). Independent
+review is clear. The canonical compiler sources recover outside the checkout
+with an empty PATH and unavailable C/C++ compilers; the two compiler stages
+reproduce 11,740,548 bytes with SHA-256
+`14db7d8be677859cbd451cbbee7e225114cf65e6abaaf462a03e8bd88a21076a`.
+This slice does not establish Linux, Windows or combined SDK/Studio coverage.
+
+Terrain Lab now passes its state declarations and next rejects
+`DigPoint :: () -> (Point: CF_V2)` at `behaviors/Explorer.chibi:26:24` because
+named struct results are not supported. The cutover owner retains this follow-up
+and combined-candidate validation. The local default is not changed by this
+slice, and the checked-in bootstrap is untouched.
+
 ## How to execute this plan
 
 This is the active implementation plan for the `chibi` repository. A request to

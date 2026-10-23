@@ -1,5 +1,6 @@
 #include "assets/project.h"
 #include "authoring/source_asset.h"
+#include "support/asset_document.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -597,6 +598,53 @@ TEST_CASE(controller_inspection_and_execution_status)
         REQUIRE(yyjson_is_num(get(node, "x")) && yyjson_is_num(get(node, "y")));
         REQUIRE(!get(node, "in") && !get(node, "out"));
     }
+    /* Native graphs and executable declarations share the source suffix. */
+    char material_path[256];
+    path(material_path, sizeof material_path, "content/materials");
+    REQUIRE(!mkdir(material_path, 0700));
+    av_doc *material_document = av_doc_new();
+    av_value *material_value = av_obj(material_document);
+    av_doc_set_root(material_document, material_value);
+    av_obj_add_uint(material_document, material_value, "version", 3);
+    av_obj_add_str(material_document, material_value, "name", "Surface");
+    av_obj_add_str(material_document, material_value, "domain", "material");
+    av_obj_add_uint(material_document, material_value, "id_counter", 1000);
+    av_value *material_graph = av_arr_add_obj(
+        material_document,
+        av_obj_add_arr(material_document, material_value, "graphs")
+    );
+    av_obj_add_str(material_document, material_graph, "kind", "event");
+    av_obj_add_str(material_document, material_graph, "name", "");
+    av_value *material_node = av_arr_add_obj(
+        material_document,
+        av_obj_add_arr(material_document, material_graph, "nodes")
+    );
+    av_obj_add_uint(material_document, material_node, "id", 1);
+    av_obj_add_str(material_document, material_node, "type", "Shader Surface Output");
+    char *material = asset_document_write(material_value);
+    av_doc_free(material_document);
+    REQUIRE(material);
+    write_file("content/materials/Surface.chibi", material);
+    begin("inspect_graph", "content/materials/Surface.chibi");
+    send();
+    begin("validate_asset", "content/materials/Surface.chibi");
+    send();
+    REQUIRE(run() == 0 && reply_count == 2 && ok(0) && ok(1));
+    REQUIRE(string_is(get(result(0), "path"), "content/materials/Surface.chibi"));
+    REQUIRE(yyjson_get_bool(get(get(result(0), "validation"), "valid")));
+    REQUIRE(yyjson_get_bool(get(result(1), "valid")));
+    REQUIRE(yyjson_arr_size(get(result(0), "graphs")) == 1);
+    nodes = get(get(result(0), "graph"), "nodes");
+    REQUIRE(yyjson_arr_size(nodes) == 1);
+    node = yyjson_arr_get(nodes, 0);
+    REQUIRE(string_is(get(node, "type"), "Shader Surface Output"));
+    REQUIRE(yyjson_arr_size(get(node, "in")) > 0);
+    path(material_path, sizeof material_path, "content/materials/Surface.chibi");
+    char *saved_material = tool_read(material_path);
+    bool same_material = saved_material && !strcmp(saved_material, material);
+    free(saved_material);
+    free(material);
+    REQUIRE(same_material && unchanged());
     /* A prototype file matching the requested name must not hide a second
      * declaration. Keep relationships valid: duplicate relationship schemas
      * fail project admission before asset lookup. No scenario frames run. */

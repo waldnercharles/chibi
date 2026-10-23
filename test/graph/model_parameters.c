@@ -301,13 +301,13 @@ TEST_CASE(runtime_snapshots)
         COUNT = 48
     };
     ecs_entity entities[COUNT];
-    char text[COUNT][64];
+    char text[COUNT][512];
     float payload[32][4], min[3], max[3];
     bool empty;
     render_shader_model_stats_reset();
     for (int i = 0; i < COUNT; i++) {
         entities[i] = ecs_world_create_entity(world);
-        snprintf(
+        int length = snprintf(
             text[i],
             sizeof text[i],
             "package asset\n"
@@ -323,6 +323,7 @@ TEST_CASE(runtime_snapshots)
             "}\n",
             1 + i / 16.0
         );
+        REQUIRE(length > 0 && length < (int)sizeof text[i]);
         Shader binding = { .shape = asset->name, .parameters = text[i] };
         REQUIRE(
             ecs_world_record_add(world, entities[i], COMPONENT_Shader.id, &binding, 0) == ECS_OK

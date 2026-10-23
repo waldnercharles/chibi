@@ -199,20 +199,20 @@ static void write_many_images()
     av_doc *doc = av_doc_new();
     av_value *root_value = av_obj(doc);
     av_doc_set_root(doc, root_value);
-    av_obj_add_int(doc, root_value, "version", 3);
+    av_obj_add_uint(doc, root_value, "version", 3);
     av_obj_add_str(doc, root_value, "name", "TooMany");
     av_obj_add_str(doc, root_value, "domain", "material");
-    av_obj_add_int(doc, root_value, "id_counter", 10000);
+    av_obj_add_uint(doc, root_value, "id_counter", 10000);
     av_value *graph = av_arr_add_obj(doc, av_obj_add_arr(doc, root_value, "graphs"));
     av_obj_add_str(doc, graph, "kind", "event");
     av_obj_add_str(doc, graph, "name", "");
     av_value *nodes = av_obj_add_arr(doc, graph, "nodes");
     av_value *output = av_arr_add_obj(doc, nodes);
-    av_obj_add_int(doc, output, "id", 1);
+    av_obj_add_uint(doc, output, "id", 1);
     av_obj_add_str(doc, output, "type", "Shader Surface Output");
     for (int i = 0; i < 9; i++) {
         av_value *node = av_arr_add_obj(doc, nodes);
-        av_obj_add_int(doc, node, "id", 1000 + i * 100);
+        av_obj_add_uint(doc, node, "id", 1000 + i * 100);
         av_obj_add_str(doc, node, "type", "Shader Image Texture");
         char image[128];
         snprintf(image, sizeof image, "content/images/missing%d.png", i);
@@ -220,7 +220,7 @@ static void write_many_images()
     }
     for (int i = 0; i < 8; i++) {
         av_value *node = av_arr_add_obj(doc, nodes);
-        av_obj_add_int(doc, node, "id", 3000 + i * 100);
+        av_obj_add_uint(doc, node, "id", 3000 + i * 100);
         av_obj_add_str(doc, node, "type", "Shader Add");
         av_value *inputs = av_obj_add_obj(doc, node, "inputs"),
                  *outputs = av_obj_add_obj(doc, node, "outputs");

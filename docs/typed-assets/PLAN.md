@@ -21,14 +21,16 @@ source history and save must continue through the shared source path.
 
 ### Current-main integration in progress — 2026-10-22
 
-The first engine-main integration (`444e5b20e`) was checkpointed locally at
-`d46e436a0`; integration of `329d8fb04` and the remaining compiled fixtures
-was checkpointed at `a504d8e59`. The current tree integrates engine main
-`b934720185`, refreshed compiler resources and the validation recorded below.
-The next integration target is reviewed main `fa1b7b2bb`; it requires another
-compiler/resource refresh and checks of its new Build/Graph path. Studio includes
-main `305053fc` at local checkpoint `7f49051`. These are local integration
-states, not a clean final candidate, a main landing or a publication.
+The engine's local compiler/source checkpoint is `31098151b`; optional decoded
+host retention is separate at `30cd287d1`. The staged integration resolves main
+`fa1b7b2bb`, includes the runtime preparation fix `3dd03160d`, and reconciles the
+reviewed main baseline `d0de4a84e`. Compiler and asset resources are generated and
+verified for their recorded inputs. The engine integration remains uncommitted.
+
+Studio's ordinary main merge is local commit `466e2cc354`, with parents
+`521b666a6` and `df050886d`. Its tree exactly matches the tested Studio candidate.
+The native SDK, focused checks and remaining gates are recorded below. These
+local states do not establish a main landing, publication or final acceptance.
 
 The newer main retires the global runtime timing policy. Its removal supersedes
 this document's earlier timing-based admissions, pins and quarantines. Historical
@@ -364,6 +366,147 @@ the literal-only source editor: unsupported edits must preserve the source
 and return a diagnostic. Compiler resource generation and complete transport
 round-trip checks passed. The full prototype document route also passed its
 depth and expansion bounds.
+
+### Main source reconciliation — generation complete
+
+The b934 migration/source checkpoint is `31098151b`. Optional decoded-host
+retention is separate at `30cd287d1`; its native checks passed 17 cases and
+394 assertions. [Its contract and evidence](decoded-cache.md) distinguish this
+optimization from migration acceptance.
+
+All fa1b merge conflicts have source resolutions. Independent review covered
+the static SDK compiler-host closure, protocol 8 Build/Graph path, the cohesive
+named-results/effects compiler changes, resource-only project assembly, and
+compiled bootstrap contract validation with returned-host ownership. Matching
+compiler sources validate the compiled contract directly; changed sources use
+recovery and exact self-compilation parity.
+
+The combined generation is complete. The compiler contains 19 current source
+inputs and passed exact self-compilation parity. Its 12,099,901-byte artifact
+has SHA-256 `03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c`.
+The native64 and wasm32 asset resources each contain the same 37 current source
+inputs, with target facts obtained from their actual hosts. Both strict source
+snapshot verifiers passed. Independent review matched all 93 source records
+against the staged Git blobs and checked artifact, manifest and packaged-source
+hashes. The audited generation tree is `041c011c04da3393e77b742ab35e837cefdf86a0`;
+later documentation updates do not change those compiler inputs.
+
+The protocol 8 host builds with asset compiler recovery disabled. Full SDK
+configuration exposed duplicate ownership of `sha256.c`: the compiler host
+listed a source already owned by support. The fix removes that duplicate,
+links the existing support target and declares the existing JSON and support
+dependencies in the strict ownership contract. The contract remains strict;
+configuration and the host build now pass. These checks establish generation
+and host build coverage, not SDK or runtime acceptance.
+
+The source combination also includes the five-file runtime validation reuse
+fix `3dd03160d`, merged into main at `5c28191b3`. Its temporary proof tables stay
+within one preparation attempt and are released before canonical storage
+accounting. A scoped integration review found no decoded-host lifetime, cache
+charge, ABI or native capability change. This runtime fix needs rebuilt SDK
+archives and drivers; it does not change compiler-resource source inputs.
+
+The source audit caught a newly merged resource-only test still writing the
+retired format. It now writes an ordinary module calling `data.Prototype`, with
+the same Transform values and no behaviors. Byte, manifest and runtime-trace
+comparisons remain. A separate new C case calls the public Project, Scene,
+Graph, InputMap and Scenario constructors, asserts their required numeric kinds,
+then uses native validation, material inspection and two-frame scenario replay.
+Both fixture adaptations are reviewed but have not run on the combined tree.
+
+The paired Studio source now includes the reviewed history preflight repair
+from `7dbe3aac7`, adapted to this branch's value-document path. Restore uses the
+shared typed string decoder, including invalid UTF-8 byte envelopes, and checks
+both checkpoint values before replacing history. Replay checks the complete
+field batch before writing any field; native C strings reject embedded NUL
+while descriptor-backed strings retain it. Focused checkpoint, batch and real
+graph/protocol byte regressions passed in the expanded CPU model: one case,
+261 assertions, 6.174 seconds, nine compile attempts, 39 memory hits and no
+persistent hits. Native Release SDK
+`c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9`
+was packaged from this integration with recovery disabled. Studio and its
+acceptance executable rebuilt against that SDK. The local tested Studio
+checkpoint is `521b666a6`; all 476 extraction hashes match and changed-line
+formatting is clean.
+
+Five separate temporary controls caught the earlier codec-refusal, history
+byte-decoding and checkpoint/batch-validation behavior at the expected
+assertions. Removing the extra decoded type-name assignment passed the model:
+the shared decoder already preserves and owns those names. Independent source
+review confirmed the ownership contract, so the redundant assignment was
+removed. The final model pass includes that removal. Generated control
+executables, objects and copied archives were removed; source overlays, logs
+and exact source/SDK/binary receipts remain in the task's scratch directory.
+This establishes CPU model coverage with zero host frames or renders. Final
+cold-start and Web acceptance remain pending.
+
+The reviewed SDK/CI baseline landed at main `d0de4a84e`; its former review and
+hosted-check holds are cleared. That baseline proof is separate from this typed
+integration. The narrow native focus subsequently passed:
+
+| Check | Result | Recorded source |
+| --- | --- | --- |
+| Native compiler/desktop SDK | Packaged in Release with sanitizers and asset recovery disabled | Engine production tree `0b5c20a7` |
+| Studio SDK values | 12 cases / 163 assertions, 0.963s | Studio tree `33526285` |
+| Studio editor model | 1 case / 261 assertions, 5.189s; nine compile attempts, 39 memory hits, zero persistent hits | Same Studio tree; zero frames or renders |
+| Graph SDK packaging and relocation | 8 cases / 202 assertions, 43.639s | Engine tree `966dbacc` |
+
+The SDK build ID is
+`68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad`.
+Its source snapshot is
+`a8e7033a3475110498bd5de2193c0ff039efb3d57d0b6cea43656c296ec64f3e`;
+the package manifest has SHA-256
+`ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004`.
+The exact source, product, SDK and command receipts are retained under
+`.chibi/asset-main-integration/narrow-d0-focus`.
+
+The first SDK family run passed seven cases and failed its final hardcoded
+five-command assertion. The support target now includes the cache and SHA
+sources. The fixture now checks a nonempty command array, source-root/support
+paths, the required file operation source and the requested explicit compiler
+for every row. The subsequent complete family passed. `966dbacc` differs from
+`0b5c20a7` only in that C fixture; compiler inputs, generated resources, SDK
+products and private graph hosts/records remained unchanged. The original
+failed log remains retained.
+
+Static inspection of the SDK's five products and 114 archives found no retired
+parser symbols, semantic format references or linked dependencies. This does
+not validate the external compiler runtime pin. Its native recovery interface
+still expects the retired bootstrap contract and lacks the current target
+query. The reviewed CI compatibility adaptation keeps generic artifact-only
+consumer proof separate from native runtime production. A matching reviewed
+runtime release, exact pins and platform proof remain required; source review
+is not that proof.
+
+The normal Studio CI job also needs a published, compatible immutable Studio
+commit. The proposal identifies local `466e2cc354`, whose tested tree is
+`33526285`; it is not yet published or applied as a workflow pin. Studio's
+ordinary merge is checkpointed locally and its worktree is clean.
+
+The build lane is returned to the compiler work after this narrow focus.
+Remaining validation is:
+
+1. Reconcile any later reviewed, eligible compiler changes before the final
+   native/Web SDK and driver builds. Regenerate resources when their source
+   inputs change; the baseline adaptation alone did not require regeneration.
+2. Check bootstrap loading/recovery, Build process behavior, resource-only
+   assembly and the public constructor case with the new native drivers.
+3. Finish the existing project routes: prototype expansion, feature coverage,
+   render fixture, material bake, environment authoring, terrain checkpoint,
+   terrain storage commands, terrain playable, published docs, CLI and compiled
+   project formatting.
+4. Run standalone tooling, the affected native/language checks and actual
+   Node/Wasm typed-source coverage.
+5. Run the remaining paired native/Web SDK and Studio acceptance, establish
+   matching published runtime and Studio bindings, and refresh source,
+   dependency, extraction and artifact audits on the final combination before
+   assessing main readiness.
+
+The last shared-expansion run was interrupted when its source candidate was
+superseded; downstream project routes did not start. Its incomplete log remains
+retained. The source combination still awaits the remaining required engine and paired
+acceptance checks before it is a validated merge candidate. Rich compiler and prepared-host work
+remain separate and are not included in this generation checkpoint.
 
 ### Historical failures and remaining coverage
 

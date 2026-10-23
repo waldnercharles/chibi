@@ -198,6 +198,93 @@ TEST_CASE(new_project_is_valid)
     return true;
 }
 
+/* Public family constructors must produce kinds accepted by strict readers. */
+TEST_CASE(public_asset_constructors_reach_native_readers)
+{
+    char folder[256];
+    const char *folders[] = { "game/content/materials", "game/content/scenarios" };
+    for (size_t i = 0; i < sizeof folders / sizeof *folders; i++) {
+        path(folder, sizeof folder, folders[i]);
+        REQUIRE(mkdir(folder, 0700) == 0);
+    }
+    static const char
+        *header = "package asset\nimport data \"game:assets\"\n"
+                  "pub Build :: () -> byte[] { return data.Encode(";
+    char manifest[512];
+    int length = snprintf(manifest, sizeof manifest, "%sdata.Project(\"Game\", %d, \"content\", \"scenes/Start.chibi\", [])) }\n", header, CHIBI_PROJECT_VERSION);
+    REQUIRE(length > 0 && length < (int)sizeof manifest);
+    write_file("game/project.chibi", manifest);
+    const char *files[] = { "game/content/scenes/Start.chibi",
+                            "game/content/materials/ConstructorSurface.chibi",
+                            "game/content/input.chibi",
+                            "game/content/scenarios/Constructor.chibi" };
+    const char *values[] = {
+        "data.Scene(\"Start\", [], [])",
+        "data.Graph(\"ConstructorSurface\", \"material\", 3, 2, ["
+        "data.GraphDefinition.Named(\"event\", \"\", ["
+        "data.GraphNode.Named(1, \"Shader Surface Output\", [])], [], [])], "
+        "[])",
+        "data.InputMap([data.InputAction.Controller(\"Confirm\", 0, [\"A\"], "
+        "false)])",
+        "data.Scenario(\"Start\", 2, [data.Keyframe.At(0, ["
+        "data.Field.Named(\"controllers\", data.List([data.Object(["
+        "data.Field.Named(\"connected\", data.Value.Bool(true)),"
+        "data.Field.Named(\"buttons\", "
+        "data.List([data.Value.Text(\"A\")]))])]))])], [])"
+    };
+    for (size_t i = 0; i < sizeof files / sizeof *files; i++) {
+        char source[1024];
+        length = snprintf(source, sizeof source, "%s%s) }\n", header, values[i]);
+        REQUIRE(length > 0 && length < (int)sizeof source);
+        write_file(files[i], source);
+        path(folder, sizeof folder, files[i]);
+        av_doc *doc = read_asset(folder);
+        const av_value *value = av_doc_root(doc);
+        bool typed = false;
+        if (i == 0) {
+            const av_value *version = av_obj_get(value, "version");
+            typed = av_is_uint(version) && av_get_uint(version) == 1;
+        } else if (i == 1) {
+            const av_value *version = av_obj_get(value, "version");
+            const av_value *counter = av_obj_get(value, "id_counter");
+            const av_value *graph = av_arr_get(av_obj_get(value, "graphs"), 0);
+            const av_value *id = av_obj_get(av_arr_get(av_obj_get(graph, "nodes"), 0), "id");
+            typed = av_is_uint(version) && av_get_uint(version) == 3 &&
+                    av_is_uint(counter) && av_get_uint(counter) == 2 &&
+                    av_is_uint(id) && av_get_uint(id) == 1;
+        } else if (i == 2) {
+            const av_value *slot = av_obj_get(av_obj_get(value, "Confirm"), "controller");
+            typed = av_is_uint(slot) && av_get_uint(slot) == 0;
+        } else {
+            const av_value *frames = av_obj_get(value, "frames");
+            const av_value *frame = av_obj_get(av_arr_get(av_obj_get(value, "keys"), 0), "frame");
+            typed = av_is_uint(frames) && av_get_uint(frames) == 2 &&
+                    av_is_uint(frame) && av_get_uint(frame) == 0;
+        }
+        av_doc_free(doc);
+        REQUIRE(typed);
+    }
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"inspect_graph\",\"kind\":\"material\",\"name\":\"ConstructorSurface\"}") ==
+        0
+    );
+    REQUIRE(yyjson_get_bool(yyjson_obj_get(result("validation"), "valid")));
+    yyjson_val *nodes = yyjson_obj_get(result("graph"), "nodes");
+    REQUIRE(yyjson_arr_size(nodes) == 1);
+    const char *type = yyjson_get_str(yyjson_obj_get(yyjson_arr_get(nodes, 0), "type"));
+    REQUIRE(type && !strcmp(type, "Shader Surface Output"));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"scenario\":\"Constructor\"}") == 0
+    );
+    REQUIRE(yyjson_is_uint(result("frames")) && yyjson_get_uint(result("frames")) == 2);
+    REQUIRE(
+        yyjson_is_uint(result("authored_entities")) &&
+        !yyjson_get_uint(result("authored_entities"))
+    );
+    return true;
+}
+
 TEST_CASE(stopped_runs_are_reported)
 {
     /* Invalid durations must refuse before the child can create its marker. */
@@ -3132,6 +3219,7 @@ void test_tool_validate_project(const char *binary)
     (void)found;
     pu_setup(setup, teardown);
     RUN_TEST_CASE(new_project_is_valid);
+    RUN_TEST_CASE(public_asset_constructors_reach_native_readers);
     RUN_TEST_CASE(stopped_runs_are_reported);
     RUN_TEST_CASE(ui_style_problems_are_listed);
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);
@@ -3163,8 +3251,7 @@ void test_tool_validate_project(const char *binary)
     pu_clear_setup();
 }
 
-/* The cases that read a project-wide budget's worth of prototypes, kept apart
- * so each selector stays well inside the test deadline. */
+/* The cases that exercise project-wide prototype expansion budgets. */
 void test_tool_prototype_expansion(const char *binary)
 {
     bool found = realpath(binary, program);

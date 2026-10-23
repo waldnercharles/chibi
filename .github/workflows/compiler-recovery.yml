@@ -71,10 +71,10 @@ jobs:
             throw 'The native runtime seed differs from its checked-in size or SHA-256'
           }
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
-          ./.github/scripts/compiler-self-build.ps1 -Mode Prepare -Proof $proof -Runtime $file.FullName -Platform '${{ matrix.platform }}' -PinnedRuntime
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prepare -Repository $env:GITHUB_WORKSPACE -Proof $proof -Runtime $file.FullName -Platform '${{ matrix.platform }}' -PinnedRuntime -InvocationTimeoutMilliseconds 1800000
       - name: Build and execute both compiler stages
         run: |
-          ./.github/scripts/compiler-self-build.ps1 -Mode Prove -Proof (Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof') -Platform '${{ matrix.platform }}' -PinnedRuntime
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prove -Repository $env:GITHUB_WORKSPACE -Proof (Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof') -Platform '${{ matrix.platform }}' -PinnedRuntime -InvocationTimeoutMilliseconds 1800000
       - name: Upload both compiler stages and evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -94,6 +94,8 @@ jobs:
             ${{ runner.temp }}/compiler-recovery-proof/stage2.stderr.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage1-contract.*.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage2-contract.*.txt
+            ${{ runner.temp }}/compiler-recovery-proof/runtime-target.json
+            ${{ runner.temp }}/compiler-recovery-proof/target.*.txt
             ${{ runner.temp }}/compiler-recovery-proof/compile.json
 
   compare:

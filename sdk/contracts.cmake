@@ -216,7 +216,7 @@ endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_compiler_host "${CHIBI_SDK_ROOT}/src/toolchain"
         chibi_behavior_runtime chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
-        chibi_value_document chibi_asset_json chibi_language_syntax)
+        chibi_value_document chibi_asset_json chibi_language_syntax chibi_json chibi_support)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_compiler_syntax "${CHIBI_SDK_ROOT}/src/toolchain"

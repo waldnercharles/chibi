@@ -66,12 +66,10 @@ typedef struct
     const char *function, *arguments, *expected;
     const char *diagnostic;
 } sample_call;
-/* Separate selectors cover unions, constants, patterns and integer types
- * (TYPE_SAMPLES); the imports sample, which compiles all of core:strings,
- * the samples that link the core pack, whose oracle costs seconds more to
- * prepare, and moves, reads in place and array methods
- * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
- * references, arrays and ranges (COLLECTION_SAMPLES). */
+/* Focused selectors group unions, constants, patterns and integer types
+ * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
+ * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
+ * ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
@@ -101,7 +99,7 @@ typedef struct
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe;
+        same_rejection, c_string_probe, host_effects;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -118,6 +116,14 @@ static const char *cstring_probe(arena *storage, const pin_value *arguments, int
     result->i = (int)strlen(value);
     return NULL;
 }
+static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
+{
+    result->i = arguments[0].i;
+    return NULL;
+}
+static const native_parameter_definition INTEGER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_INPUT[] = {
     { .name = "value",
       .kind = NATIVE_PARAMETER_DATA,
@@ -128,28 +134,52 @@ static const native_parameter_definition CSTRING_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+#define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
+    { .canonical_name = CANONICAL,                                             \
+      .source_name = SOURCE,                                                   \
+      .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
+      .inputs = INPUT,                                                         \
+      .input_count = 1,                                                        \
+      .outputs = CSTRING_OUTPUT,                                               \
+      .output_count = 1,                                                       \
+      .completion_output = -1,                                                 \
+      .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
-    { .canonical_name = "CString Probe",
-      .source_name = "cstring_probe",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = CSTRING_INPUT,
-      .input_count = 1,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
+    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
+    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
 };
+#undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
+static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+#define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
+    {                                                                          \
+        .canonical_name = CANONICAL, .implementation = {                       \
+            .call = &CALL,                                                     \
+            .access = &ACCESS                                                  \
+        }                                                                      \
+    }
 static const native_definition_binding CSTRING_BINDINGS[] = {
-    { .canonical_name = "CString Probe",
-      .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
+    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
 };
+#undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
     .definitions = CSTRING_DEFINITIONS,
-    .definition_count = 1,
+    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
     .bindings = CSTRING_BINDINGS,
-    .binding_count = 1,
+    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
     { .name = "typed constant shifts discard bits",
@@ -302,6 +332,110 @@ static const sample samples[] = {
                 "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
                 "1000 + q.high;\n}",
       .calls = { { .function = "Use", .arguments = "[3]", .expected = "[2434]" } } },
+    { .name = "single named result",
+      .source = "package facts\n"
+                "One :: (n: int) -> (value: int) { return n + 1; }\n"
+                "Flag :: () -> (value: bool = false) { value = true; return; "
+                "}\n"
+                "Sequential :: () -> (a: int, b: int) { a = 1; b = 2; return "
+                "(b, a); }\n"
+                "Use :: (n: int) -> int {\n"
+                "    if Flag() { return One(n) * 10 + One(n).value; }\n"
+                "    return 0;\n}\n",
+      .calls = { { .function = "One", .arguments = "[3]", .expected = "[4]" },
+                 { .function = "Sequential", .arguments = "[]", .expected = "[2,2]" },
+                 { .function = "Use", .arguments = "[3]", .expected = "[44]" } } },
+    { .name = "widened named projection",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Tiny :: () -> (value: int8) { return 7; }\n"
+                "Narrow :: (n: int8) -> int { return int(n); }\n"
+                "Use :: () -> int { n: int = Tiny(); return Narrow(n.value); "
+                "}\n"
+                "Alias :: () -> int { n: int = Tiny(); q := n; "
+                "return Narrow(q.value); }\n"
+                "Assigned :: (value: int) -> int { n: int = Tiny(); "
+                "n = value; return Narrow(n.value); }\n"
+                "Converted :: (value: int) -> int { n: int = Tiny(); "
+                "n = value; return int(n.value); }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Alias", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Assigned", .arguments = "[127]", .expected = "[127]" },
+                 { .function = "Assigned", .arguments = "[-128]", .expected = "[-128]" },
+                 { .function = "Assigned", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Assigned", .arguments = "[-129]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Converted", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Converted",
+                   .arguments = "[-129]",
+                   .diagnostic = "Value does not fit in int8" } } },
+    { .name = "named struct results",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Collision :: struct { point: int; }\n"
+                "MakeCollision :: () -> (point: Collision) { return {point: "
+                "7}; }\n"
+                "ReadCollision :: () -> int { return "
+                "MakeCollision().point.point; }\n"
+                "Direct :: (n: int) -> (point: Point) { return {x: n, y: 2}; "
+                "}\n"
+                "Empty :: () -> (point: Point) { return; }\n"
+                "Mutate :: (n: int) -> (point: Point) { point.x = n; point.y = "
+                "2; return; }\n"
+                "Project :: () -> int { p := Direct(7); q := p; return "
+                "q.point.x; }\n"
+                "Other :: () -> (other: Point) { return {x: 9, y: 3}; }\n"
+                "Reassigned :: () -> int { p := Direct(7); p = Other(); "
+                "q := p; return q.point.x; }\n"
+                "LaterShadow :: () -> int { p := Direct(7); q := p; "
+                "if true { p: Point = {x: 99, y: 1}; return q.point.x + "
+                "p.x; } return 0; }\n"
+                "Bump :: (p: ref Point) { p.x += 1; }\n"
+                "ByRef :: () -> int { p := Direct(7); Bump(p); return "
+                "p.point.x; }\n"
+                "Counter :: () -> (value: int) { return 7; }\n"
+                "Increment :: (n: ref int) { n += 1; }\n"
+                "Boxed :: () -> int { n := Counter(); Increment(n); "
+                "return n.value; }\n"
+                "Use :: (n: int) -> int {\n"
+                "    p := Direct(n);\n"
+                "    q := p;\n"
+                "    q.x += 5;\n"
+                "    return p.x * 100 + q.x * 10 + q.y + Empty().x;\n}\n",
+      .calls = { { .function = "Direct", .arguments = "[7]", .expected = "[{\"x\":7,\"y\":2}]" },
+                 { .function = "Empty", .arguments = "[]", .expected = "[{\"x\":0,\"y\":0}]" },
+                 { .function = "Mutate", .arguments = "[7]", .expected = "[{\"x\":7,\"y\":2}]" },
+                 { .function = "Project", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Reassigned", .arguments = "[]", .expected = "[9]" },
+                 { .function = "LaterShadow", .arguments = "[]", .expected = "[106]" },
+                 { .function = "ByRef", .arguments = "[]", .expected = "[8]" },
+                 { .function = "Boxed", .arguments = "[]", .expected = "[8]" },
+                 { .function = "ReadCollision", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Use", .arguments = "[7]", .expected = "[822]" } } },
+    { .name = "named result ownership",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "Keep :: (value: string) -> (note: Note) {\n"
+                "    note.text = value; note.count = 2; return;\n}\n"
+                "Split :: (value: string) -> (note: Note, count: int) {\n"
+                "    note = Keep(value); return (note, note.count);\n}\n"
+                "Use :: () -> string {\n"
+                "    first := Keep(\"a\\u0000b\");\n"
+                "    second := Keep(\"changed\");\n"
+                "    second.text = \"other\";\n"
+                "    return first.text;\n}\n"
+                "Projected :: () -> string {\n"
+                "    pair := Split(\"a\\u0000b\");\n"
+                "    return pair.note.text;\n}\n",
+      .calls = { { .function = "Keep",
+                   .arguments = "[\"a\\u0000b\"]",
+                   .expected = "[{\"text\":\"a\\u0000b\",\"count\":2}]" },
+                 { .function = "Split",
+                   .arguments = "[\"kept\"]",
+                   .expected = "[{\"text\":\"kept\",\"count\":2},2]" },
+                 { .function = "Use", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
+                 { .function = "Projected", .arguments = "[]", .expected = "[\"a\\u0000b\"]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
@@ -1710,12 +1844,33 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of uint64",
       .line = 2,
       .column = 35 },
-    { .name = "untyped local",
-      .source = "package facts\nOne :: () -> int { x := 5; return 1; }",
-      .message = "an untyped number is a double; give the local an integer "
-                 "type",
+    { .name = "inferred numeric locals",
+      .source = "package facts\n"
+                "Bump :: (x: ref int) { x += 1; }\n"
+                "ByReference :: () -> int { x := 0; Bump(x); return x; }\n"
+                "One :: () -> int { x := 5; return x; }\n"
+                "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
+                "xs[x] = 9; return xs[x] + x; }\n"
+                "Negative :: () -> int { x := -1; x += 2; return x; }\n"
+                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "x; }\n"
+                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> double { x := 1e3; return x; }",
+      .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
+                 { .function = "One", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Index", .arguments = "[]", .expected = "[10]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2147483649]" },
+                 { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
+    { .name = "inferred integer refuses float assignment",
+      .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
+                "= fraction; return x; }",
+      .message = "assigned value differs from its local",
       .line = 2,
-      .column = 25 },
+      .column = 45 },
     { .name = "conversion arity",
       .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
                 "}",
@@ -1824,6 +1979,59 @@ static const sample samples[] = {
       .calls = { { .function = "Binary", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "ReadDefault", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "Equal", .arguments = "[]", .expected = "[false]" } } },
+    { .name = "qualified native calls",
+      .c_string_probe = true,
+      .host_effects = true,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Probe :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Caller :: () -> int { return Probe(); }\n"
+                "Recursive :: (n: int) -> int { if (n <= 0) { return Probe(); "
+                "} return Recursive(n - 1); }\n"
+                "ImportedHost :: () -> int { return lib.Through(); }\n"
+                "Length :: () -> int { return native.length(\"four\"); }\n"
+                "Text :: () -> int { return native . overload(\"three\"); }\n"
+                "Integer :: (value: int) -> int { return native . "
+                "overload(value); }",
+      .library = "package lib\npub Through :: () -> int { return "
+                 "native.probe(\"lib\"); }" },
+    { .name = "qualified native import and local precedence",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\n"
+                "Imported :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Local :: () -> int { native: int[] = [1, 2]; "
+                "native.append(3); return length(native); }",
+      .library = "package lib\npub probe :: (value: string) -> int { return "
+                 "99; }",
+      .calls = { { .function = "Imported", .arguments = "[]", .expected = "[99]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "qualified native missing",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return native.absent(); }",
+      .message = "Unknown function 'native.absent'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native ambiguous",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return "
+                "native.PROBE_ONE(\"x\"); }",
+      .message = "Ambiguous function 'native.PROBE_ONE'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native import missing",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\nCall :: () -> "
+                "int { return native.probe(\"x\"); }",
+      .library = "package lib\npub Other :: () -> int { return 0; }",
+      .message = "Unknown function 'probe'",
+      .line = 3,
+      .column = 35 },
+    { .name = "qualified native local shadow",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { native: int = 1; return "
+                "native.probe(\"x\"); }",
+      .message = "call needs a function name",
+      .line = 2,
+      .column = 45 },
     { .name = "C-string dynamic boundary compiles", .c_string_probe = true, .source = "package facts\nDynamic :: (value: string) -> int { return cstring_probe(value); }" },
     { .name = "C-string literal boundary",
       .c_string_probe = true,
@@ -1849,6 +2057,7 @@ static native_capabilities *linked[2][2];
 /* Compile's native tables for the host and for a game, per compiler backend,
  * built once from `linked`. */
 static pin_value linked_tables[2][2][2][3];
+static pin_value linked_effects[2][2][2];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
@@ -1865,6 +2074,7 @@ static void cleanup()
     }
     memset(linked, 0, sizeof linked);
     memset(linked_tables, 0, sizeof linked_tables);
+    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
     compiler_host_free(host);
@@ -1977,7 +2187,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         REQUIRE(linked[game][probe]);
     }
     const script_catalog *catalog = native_capabilities_catalog(linked[game][probe]);
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *effects = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
         if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
@@ -1996,6 +2206,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
             (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
         ));
         apush(functions, function);
+        apush(effects, ((pin_value){ .type = PIN_I32, .i = (int)c->effects }));
         for (int j = 0; j < c->parameter_count + c->result_count; j++) {
             const script_catalog_parameter *declared = j < c->parameter_count
                                                          ? &c->parameters[j]
@@ -2027,10 +2238,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    linked_effects[game][probe][b] = rows(effects, acount(effects), PIN_I32, NULL);
     memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
     afree(functions);
     afree(ports);
     afree(identities);
+    afree(effects);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -2167,17 +2380,27 @@ static bool compile(
     int b,
     bool game,
     bool probe,
+    bool effects,
     const source_package_input *inputs,
     int count,
     uintptr_t budget,
     pin_value *out
 )
 {
-    pin_value args[ARGUMENTS];
+    pin_value args[ARGUMENTS + 1];
     REQUIRE(arguments_for(b, game, probe, inputs, count, args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
-    );
+    args[ARGUMENTS] = linked_effects[game][probe][b];
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        effects ? "CompileWithEffects" : "Compile",
+        args,
+        ARGUMENTS + effects,
+        budget,
+        &detached,
+        out
+    ));
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -2989,9 +3212,45 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     }
     return packages;
 }
-/* Each module of stage one's closure has the function and statement points of
- * the stage-zero module with its ID that oracle_closure prepared. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length)
+/* Compare serialized function flags, independently of the runtime's derived
+ * effect summary. Direct, recursive and imported HOST callers must retain it. */
+static bool same_host_effects(const execution_module *expected, const execution_module *actual)
+{
+    bool same = true;
+    int observed = 0;
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const execution_module_function *x = &expected->plan.functions[i];
+        const execution_module_function *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == x->id) {
+                y = &actual->plan.functions[j];
+            }
+        }
+        bool host_call = x->id == function_id("Probe") ||
+                         x->id == function_id("Caller") ||
+                         x->id == function_id("Recursive") ||
+                         x->id == function_id("ImportedHost") ||
+                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
+        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
+        observed += host_call;
+        REQUIRE(y);
+        if (x->effects != y->effects) {
+            fprintf(
+                stderr,
+                "stored function effects %016llx: stage zero=%u stage one=%u\n",
+                (unsigned long long)x->id,
+                x->effects,
+                y->effects
+            );
+        }
+        same &= x->effects == y->effects;
+    }
+    REQUIRE(observed > 0);
+    return same;
+}
+/* Each module retains stage zero's source points, watches and, when supplied,
+ * effects for the target's natives. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
     package_collection *packages = read_packages(bytes, length, &native);
@@ -3008,15 +3267,15 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
                          : NULL;
         }
         alike = expected && same_points(expected, module) &&
-                same_watches(expected, module);
+                same_watches(expected, module) &&
+                (!host_effects || same_host_effects(expected, module));
     }
     package_collection_free(packages);
     native_capabilities_free(native);
     return alike;
 }
-/* The samples of `group` compiled by stage one on compiler backend `b`.
- * Stage one compiles slowest on the bytecode backend, so each backend has a
- * selector of its own; only it compares with stage zero's closure. */
+/* Each compiler backend has a focused selector. Bytecode compares source
+ * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
 {
     source_package_input inputs[SAMPLE_INPUTS];
@@ -3062,9 +3321,55 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
     REQUIRE(same);
     return true;
 }
+static bool rejects_malformed_effects()
+{
+    static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
+    pin_value args[ARGUMENTS + 1];
+    REQUIRE(arguments_for(0, false, false, &bad_source, 1, args));
+    const pin_array *declared = linked_effects[0][0][0].ptr;
+    REQUIRE(declared && declared->count > 0);
+    for (int i = 0; i < 3; i++) {
+        int count = i ? declared->count : 0;
+        pin_array *masks = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+        for (int j = 0; j < count; j++) {
+            masks->items[j] = (pin_value){ .type = PIN_I32,
+                                           .i = j      ? 0
+                                              : i == 1 ? -1
+                                                       : 128 };
+        }
+        args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
+                                       .container = PIN_CONTAINER_ARRAY,
+                                       .ptr = masks };
+        pin_value out, message, document;
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            0,
+            PACKAGE,
+            "CompileWithEffects",
+            args,
+            ARGUMENTS + 1,
+            COMPILE_BUDGET,
+            &detached,
+            &out
+        ));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(&value->values[0], "document", &document));
+        REQUIRE(
+            !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
+            document.i == -1
+        );
+        arena_free(&detached);
+    }
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
+    if (group == BASE_SAMPLES && b == 0) {
+        REQUIRE(rejects_malformed_effects());
+    }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
         if (s->group != group) {
@@ -3073,7 +3378,9 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out));
+        REQUIRE(
+            compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out)
+        );
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -3132,8 +3439,9 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   (b || (oracle_closure(s, &expected, &expected_length) &&
-                          points_like_oracle(bytes, length)));
+                   ((b && !s->host_effects) ||
+                    (oracle_closure(s, &expected, &expected_length) &&
+                     points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
@@ -3330,14 +3638,17 @@ static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS + 1], out;
     REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
+    args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
+    int argument_count = ARGUMENTS + s->host_effects;
+    const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
     REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
     );
     const pin_union *value = out.ptr;
     size_t length, expected_length;
-    char *json = document_json(args, ARGUMENTS, &length);
+    char *json = document_json(args, argument_count, &length);
     bool compiled = value->tag == tag(1, "Compiled");
     unsigned char *expected = compiled
                                 ? closure_bytes(value, &expected_length)
@@ -3348,7 +3659,7 @@ static bool stage_two_sample(const sample *s)
         compiler_host_bytes again = { 0 };
         same = compiler_host_invoke_bytes(
                    host,
-                   script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
+                   script_catalog_id("package-symbol", s->host_effects ? "project:package_compiler:1:CompileClosureWithEffects:callable" : "project:package_compiler:1:CompileClosure:callable"),
                    json,
                    length,
                    SELF_BUDGET,
@@ -3367,7 +3678,12 @@ static bool stage_two_sample(const sample *s)
         }
         free(again.bytes);
     } else {
-        uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+        uint64_t entry = script_catalog_id(
+            "package-symbol",
+            s->host_effects
+                ? "project:package_compiler:1:CompileWithEffects:callable"
+                : "project:package_compiler:1:Compile:callable"
+        );
         bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
         same = called && result.flow_status == FLOW_OK &&
                result.length == expected_length &&
@@ -3448,6 +3764,9 @@ TEST_CASE(package_compiler_compiles_itself)
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
+    if (!host) {
+        fprintf(stderr, "self-hosted compiler load: %s\n", error);
+    }
     REQUIRE(host);
     size_t target_length;
     char *target_json = compiler_host_target_json(host, &target_length);
@@ -3614,6 +3933,15 @@ static const behavior_sample behavior_samples[] = {
       "        if target == self { self.Spot.x += 1; }\n"
       "        if target != self { self.Spot.y += 1; }\n"
       "    }\n}\n" },
+    { "NamedSpot",
+      "NamedSpot :: behavior {\n"
+      "    Ready :: () -> (Result: bool = false) { return self.Spot.w > 0; }\n"
+      "    Read :: () -> (Point: Spot) { Point.x = 3; Point.y = 4; return; }\n"
+      "    Bare :: () -> (Point: Spot) { return; }\n"
+      "    Field :: (value: Spot) -> float { return value.x; }\n"
+      "    Has :: (value: Spot) -> bool { return value.resolved == self; }\n"
+      "    on Tick :: () { if Ready() { self.Spot = Read().Point; } }\n"
+      "}\n" },
     { "TextState", TEXT_STATE },
     { "InferredTextState",
       "InferredTextState :: behavior {\n"
@@ -3669,6 +3997,32 @@ static const behavior_sample behavior_samples[] = {
       "Steer :: behavior {\n    on Move :: (y: float, x: float) {\n        "
       "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
     { "Lift", "Lift :: behavior {\n    on Move :: (y: float) {\n        self.Spot.y += y\n    }\n}\n" },
+    { "KeyedEntityState",
+      "KeyedEntityState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = globals.Terrain; }\n"
+      "        if ticks == 1 { target = null; }\n"
+      "        if ticks == 2 { target = globals.Terrain; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
+    { "FieldEntityState",
+      "FieldEntityState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = self.Spot.owner; }\n"
+      "        if ticks == 1 { target = self.Spot.resolved; }\n"
+      "        if ticks == 2 { target = null; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
 };
 /* Sources stage one rejects, with its message. Where stage zero rejects one
  * too, stage one gives its message at its position. */
@@ -3720,12 +4074,18 @@ enum
     MOVE = 12,
     OWNER = 30,
     ENTITY = 700,
+    OTHER_HANDLE = 701,
+    SCENE_GLOBALS = 702,
+    GET_TERRAIN = 800,
+    GET_OTHER = 801,
+    GET_RESOLVED = 802,
     BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
 typedef struct
 {
     float x, y, w;
+    uint64_t owner;
 } spot;
 static const type_field spot_fields[] = {
     { .name = "x",
@@ -3743,11 +4103,17 @@ static const type_field spot_fields[] = {
       .type_name = "float",
       .offset = offsetof(spot, w),
       .size = sizeof(float) },
+    { .name = "owner",
+      .type = PIN_HANDLE,
+      .type_name = "ecs.entity",
+      .offset = offsetof(spot, owner),
+      .size = sizeof(uint64_t) },
 };
 static const type_desc spot_type = { .name = "Spot",
                                      .size = sizeof(spot),
                                      .fields = spot_fields,
-                                     .field_count = 3 };
+                                     .field_count = sizeof spot_fields /
+                                                    sizeof *spot_fields };
 static const script_catalog_field spot_members[] = {
     { .id = 811,
       .name = "x",
@@ -3760,6 +4126,14 @@ static const script_catalog_field spot_members[] = {
       .offset = offsetof(spot, y),
       .writable = true },
     { .id = 813, .name = "w", .type = { .storage = PIN_F32 }, .offset = offsetof(spot, w) },
+    { .id = 814,
+      .name = "owner",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .offset = offsetof(spot, owner) },
+    { .id = 815,
+      .name = "resolved",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .read = GET_RESOLVED },
 };
 static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
                                                         .type = { .storage = PIN_F32 } };
@@ -3767,7 +4141,21 @@ static const script_catalog_parameter move_payload[] = {
     { .name = "x", .type = { .storage = PIN_F32 } },
     { .name = "y", .type = { .storage = PIN_F32 } },
 };
-static const script_catalog_capability game_events[] = {
+static const script_catalog_parameter global_key = { .name = "key",
+                                                     .type = { .storage = PIN_STR } };
+static const script_catalog_parameter spot_argument = {
+    .name = "spot",
+    .type = { .storage = PIN_STRUCT, .nominal = SPOT }
+};
+static const script_catalog_parameter terrain_result = {
+    .name = "Value",
+    .type = { .storage = PIN_HANDLE, .nominal = ENTITY }
+};
+static const script_catalog_parameter other_result = {
+    .name = "Value",
+    .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE }
+};
+static const script_catalog_capability game_capabilities[] = {
     { .id = TICK,
       .name = "Tick",
       .kind = SCRIPT_CAPABILITY_EVENT,
@@ -3780,37 +4168,173 @@ static const script_catalog_capability game_events[] = {
       .parameters = move_payload,
       .parameter_count = 2,
       .completion_outcome = -1 },
+    { .id = GET_TERRAIN,
+      .name = "Fixture Terrain",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &global_key,
+      .parameter_count = 1,
+      .results = &terrain_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+    { .id = GET_OTHER,
+      .name = "Fixture Other",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &global_key,
+      .parameter_count = 1,
+      .results = &other_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+    { .id = GET_RESOLVED,
+      .name = "Fixture Resolved",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &spot_argument,
+      .parameter_count = 1,
+      .results = &terrain_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+};
+static const script_catalog_field scene_globals[] = {
+    { .id = 820,
+      .name = "Terrain",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .read = GET_TERRAIN,
+      .read_key = "Terrain" },
+    { .id = 821,
+      .name = "Other",
+      .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE },
+      .read = GET_OTHER,
+      .read_key = "Other" },
 };
 static const script_catalog_global game_globals[] = {
     { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
     { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
+    { .id = OWNER + 2,
+      .name = "globals",
+      .type = { .storage = PIN_FLOW, .nominal = SCENE_GLOBALS, .flags = SCRIPT_TYPE_NAMESPACE } },
 };
-/* The game: the Spot component and the entity type, Tick, Move with two
- * fields, `self` and `pace`, a global stage one cannot read yet. */
+/* The game: Spot, two nominal handle types, and keyed scene globals, with
+ * Tick, Move, `self`, and the unsupported scalar global `pace`. */
 static script_catalog game_catalog()
 {
-    static script_catalog_type types[2];
-    types[0] = (script_catalog_type){ .id = SPOT,
-                                      .name = spot_type.name,
-                                      .type = { .storage = PIN_STRUCT, .nominal = SPOT },
-                                      .fields = spot_members,
-                                      .field_count = 3,
-                                      .size = spot_type.size,
-                                      .layout = type_layout_hash(&spot_type),
-                                      .component_id = SPOT_COMPONENT,
-                                      .component = true };
+    static script_catalog_type types[4];
+    types[0] = (script_catalog_type){
+        .id = SPOT,
+        .name = spot_type.name,
+        .type = { .storage = PIN_STRUCT, .nominal = SPOT },
+        .fields = spot_members,
+        .field_count = sizeof spot_members / sizeof *spot_members,
+        .size = spot_type.size,
+        .layout = type_layout_hash(&spot_type),
+        .component_id = SPOT_COMPONENT,
+        .component = true
+    };
     types[1] = (script_catalog_type){ .id = ENTITY,
                                       .name = "ecs.entity",
                                       .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
                                       .size = sizeof(uint64_t) };
+    types[2] = (script_catalog_type){ .id = OTHER_HANDLE,
+                                      .name = "test.other",
+                                      .type = { .storage = PIN_HANDLE,
+                                                .nominal = OTHER_HANDLE },
+                                      .size = sizeof(uint64_t) };
+    types[3] = (script_catalog_type){ .id = SCENE_GLOBALS,
+                                      .name = "SceneGlobals",
+                                      .type = { .storage = PIN_FLOW,
+                                                .nominal = SCENE_GLOBALS,
+                                                .flags = SCRIPT_TYPE_NAMESPACE },
+                                      .fields = scene_globals,
+                                      .field_count = 2 };
     return (script_catalog){ .types = types,
-                             .type_count = 2,
-                             .capabilities = game_events,
-                             .capability_count = 2,
+                             .type_count = 4,
+                             .capabilities = game_capabilities,
+                             .capability_count = sizeof game_capabilities /
+                                                 sizeof *game_capabilities,
                              .globals = game_globals,
-                             .global_count = 2,
+                             .global_count = sizeof game_globals / sizeof *game_globals,
                              .entity_type = ENTITY,
                              .tick_event = TICK };
+}
+/* The getters preserve the caller's typed result header. Equal payload bits
+ * for the two handle types must never make them assignment-compatible. */
+static const char *keyed_owner(
+    const behavior_function_context *context,
+    const pin_value *arguments,
+    pin_value *out,
+    const char *name,
+    const char *type_name
+)
+{
+    pin_string key = pin_text(arguments[0]);
+    if (key.length != strlen(name) || memcmp(key.bytes, name, key.length)) {
+        return "Unexpected keyed global name";
+    }
+    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
+        !out->type_name || strcmp(out->type_name, type_name)) {
+        return "Keyed global result lost its nominal type";
+    }
+    out->u64 = context->owner;
+    return NULL;
+}
+static const char *terrain_global(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    return keyed_owner(context, arguments, out, "Terrain", "ecs.entity");
+}
+static const char *other_global(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    return keyed_owner(context, arguments, out, "Other", "test.other");
+}
+static const char *resolved_owner(
+    const behavior_function_context *,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    const pin_value *receiver = &arguments[0];
+    if (receiver->type != PIN_STRUCT ||
+        receiver->container != PIN_CONTAINER_SINGLE || !receiver->ptr ||
+        !receiver->type_name || strcmp(receiver->type_name, "Spot")) {
+        return "Resolved getter requires a Spot";
+    }
+    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
+        !out->type_name || strcmp(out->type_name, "ecs.entity")) {
+        return "Resolved getter result lost its nominal type";
+    }
+    out->u64 = ((const spot *)receiver->ptr)->owner;
+    return NULL;
+}
+static const node_host_call terrain_call = { .context = terrain_global };
+static const node_host_call other_call = { .context = other_global };
+static const node_host_call resolved_call = { .context = resolved_owner };
+static const node_access global_access = { .flags = NODE_EFFECT_PURE };
+static const node_host_call *global_call(uint64_t id)
+{
+    return id == GET_TERRAIN  ? &terrain_call
+         : id == GET_OTHER    ? &other_call
+         : id == GET_RESOLVED ? &resolved_call
+                              : NULL;
+}
+static bool game_host(void *, uint64_t id, script_lower_host *out)
+{
+    const node_host_call *call = global_call(id);
+    if (!call) {
+        return false;
+    }
+    *out = (script_lower_host){ .call = call, .access = &global_access };
+    return true;
 }
 static bool game_global(void *, uint64_t id, behavior_function_instruction *out)
 {
@@ -3826,7 +4350,7 @@ static execution_module *stage_zero_behavior(const char *source)
     script_catalog catalog = game_catalog();
     script_syntax *syntax = script_parse(source);
     script_analysis *analysis = script_analyze(syntax, &catalog);
-    const script_lower_bindings bindings = { .global = game_global };
+    const script_lower_bindings bindings = { .global = game_global, .host = game_host };
     execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
     char error[256] = { 0 };
     execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
@@ -3858,15 +4382,82 @@ static int type_index(const script_catalog *catalog, uint64_t id)
     }
     return -1;
 }
+/* Behavior targets append these fixture getters after the production host
+ * natives. Package compilation and bootstrap keep their original tables. */
+static bool behavior_natives(int b, pin_value tables[3])
+{
+    script_catalog catalog = game_catalog();
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_array *before[] = { tables[0].ptr, tables[1].ptr, tables[2].ptr };
+    for (int i = 0; i < before[0]->count; i++) {
+        apush(functions, pin_array_get(before[0], i));
+    }
+    for (int i = 0; i < before[1]->count; i++) {
+        apush(ports, pin_array_get(before[1], i));
+    }
+    for (int i = 0; i < before[2]->count; i++) {
+        apush(identities, pin_array_get(before[2], i));
+    }
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        pin_value function = row(b, "Native");
+        REQUIRE(put_value(&function, "name", text(c->name)));
+        REQUIRE(put(&function, "first", acount(ports)));
+        REQUIRE(put(&function, "parameters", c->parameter_count));
+        REQUIRE(put(&function, "results", c->result_count));
+        REQUIRE(put_value(&function, "variadic", flag(false)));
+        apush(functions, function);
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            pin_value port = row(b, "Port");
+            REQUIRE(put_value(&port, "name", text(declared->name)));
+            REQUIRE(put(&port, "storage", port_storage(declared->type)));
+            REQUIRE(put(&port, "container", (int)declared->type.container));
+            REQUIRE(put_value(&port, "c_string", flag(false)));
+            apush(ports, port);
+        }
+        apush(identities, u64(c->id));
+        apush(identities, u64(script_catalog_capability_abi(&catalog, c)));
+    }
+    tables[0] = rows(functions, acount(functions), PIN_STRUCT, tables[0].record);
+    tables[1] = rows(ports, acount(ports), PIN_STRUCT, tables[1].record);
+    tables[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    afree(functions);
+    afree(ports);
+    afree(identities);
+    return true;
+}
+static int game_native_index(const script_catalog *catalog, uint64_t id, int first)
+{
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        if (c->id == id) {
+            return first;
+        }
+        first++;
+    }
+    return -1;
+}
 /* CompileBehavior's game arguments, as the game target exports them: each
  * event and its payload fields, each type and its fields, the entity type,
  * no operators that combine records, the globals, and no record makes. */
-static bool game_arguments(int b, pin_value *out)
+static bool game_arguments(int b, int first_native, pin_value *out)
 {
     script_catalog catalog = game_catalog();
     pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
     for (int i = 0; i < catalog.capability_count; i++) {
         const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_EVENT) {
+            continue;
+        }
         pin_value event = row(b, "GameEvent");
         REQUIRE(put_value(&event, "name", text(c->name)));
         REQUIRE(put_value(&event, "id", u64(c->id)));
@@ -3887,7 +4478,7 @@ static bool game_arguments(int b, pin_value *out)
     for (int i = 0; i < catalog.type_count; i++) {
         const script_catalog_type *t = &catalog.types[i];
         pin_value type = row(b, "GameType");
-        REQUIRE(put_value(&type, "required", flag(true)));
+        REQUIRE(put_value(&type, "required", flag(!(t->type.flags & SCRIPT_TYPE_NAMESPACE))));
         REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
         REQUIRE(put_value(&type, "name", text(t->name)));
         REQUIRE(put_value(&type, "id", u64(t->id)));
@@ -3907,8 +4498,14 @@ static bool game_arguments(int b, pin_value *out)
             REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
             REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
             REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
-            REQUIRE(put(&field, "read", -1));
-            REQUIRE(put_value(&field, "read_key", text("")));
+            REQUIRE(
+                put(&field, "read", game_native_index(&catalog, t->fields[j].read, first_native))
+            );
+            REQUIRE(put_value(
+                &field,
+                "read_key",
+                text(t->fields[j].read_key ? t->fields[j].read_key : "")
+            ));
             apush(fields, field);
         }
     }
@@ -3950,7 +4547,9 @@ static bool compile_behavior(int b, const char *identity, const char *source, pi
     args[0] = text(identity);
     args[1] = text(source);
     memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
-    REQUIRE(game_arguments(b, &args[8]));
+    int first_native = ((pin_array *)args[5].ptr)->count;
+    REQUIRE(behavior_natives(b, &args[5]));
+    REQUIRE(game_arguments(b, first_native, &args[8]));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
     );
@@ -3985,6 +4584,21 @@ static bool link_game_event(void *user, uint64_t id, uint64_t abi)
     }
     return false;
 }
+static bool link_game_host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const node_host_call *call = global_call(id);
+    const script_catalog *catalog = user;
+    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
+    if (!call || !capability) {
+        return false;
+    }
+    *out = (execution_prepared_host){
+        .call = call,
+        .access = &global_access,
+        .abi = script_catalog_capability_abi(catalog, capability)
+    };
+    return true;
+}
 /* The module stage one compiles `source` to on backend `b`, linked against
  * the game. */
 static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
@@ -4014,6 +4628,7 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
     arena_free(&detached);
     script_catalog catalog = game_catalog();
     execution_prepared_linker linker = { .user = &catalog,
+                                         .host = link_game_host,
                                          .type = link_game_type,
                                          .event = link_game_event };
     char error[256] = { 0 };
@@ -4051,7 +4666,10 @@ static bool play(execution_module *module, player *out)
     out->program = execution_program_new(module, out->world, NULL);
     REQUIRE(out->program);
     out->owner = ecs_world_create_entity(out->world);
-    spot initial = { .w = 9 };
+    spot initial;
+    memset(&initial, 0, sizeof initial);
+    initial.w = 9;
+    initial.owner = ecs_entity_to_u64(out->owner);
     REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
     out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
@@ -4119,11 +4737,34 @@ static bool same_declarations(const execution_module *expected, const execution_
     for (int i = 0; i < e->function_count; i++) {
         const execution_module_function *x = &e->functions[i], *y = &a->functions[i];
         REQUIRE(y->id == x->id && y->event == x->event && y->event_abi == x->event_abi);
+        if (y->kind != x->kind || y->effects != x->effects) {
+            fprintf(
+                stderr,
+                "function %d (%s): native kind/effects %d/%u, authored %d/%u\n",
+                i,
+                x->entry ? x->entry : "handler",
+                x->kind,
+                (unsigned)x->effects,
+                y->kind,
+                (unsigned)y->effects
+            );
+        }
         REQUIRE(y->kind == x->kind && y->effects == x->effects);
         REQUIRE(!y->event_name == !x->event_name && !y->entry == !x->entry);
         REQUIRE(!x->event_name || !strcmp(y->event_name, x->event_name));
         REQUIRE(y->body->argument_count == x->body->argument_count);
         REQUIRE(y->body->result_count == x->body->result_count);
+        for (int j = 0; j < x->body->result_count; j++) {
+            const pin_value *wanted = &x->body->result_defaults[j];
+            const pin_value *got = &y->body->result_defaults[j];
+            REQUIRE(got->type == wanted->type && got->container == wanted->container);
+            REQUIRE(!strcmp(
+                got->type_name ? got->type_name : "",
+                wanted->type_name ? wanted->type_name : ""
+            ));
+            REQUIRE(!got->record == !wanted->record);
+            REQUIRE(!got->record || pin_record_same(got->record, wanted->record));
+        }
         REQUIRE(y->body->variable_count == x->body->variable_count);
         REQUIRE(y->body->component_access == x->body->component_access);
         REQUIRE(acount(y->body->components) == acount(x->body->components));
@@ -4266,9 +4907,14 @@ static bool takes_project_identities(int b)
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",           "CompileClosure",
-                                 "CompileBehavior",   "CompileBehaviors",
-                                 "BehaviorRejection", "Declare",
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "Declare",
                                  "DeclarePackage" };
     const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
                                           ->module->plan;
@@ -4347,6 +4993,24 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
             REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
             REQUIRE(((pin_union *)out.ptr)->tag == tag(b, "Rejected"));
             arena_free(&detached);
+        }
+    }
+    const behavior_rejection invalid_keyed_handles[] = {
+        { "Invalid :: behavior { target: entity; on Tick :: () { "
+          "target = globals.Other; } }",
+          "assigned value differs from its local",
+          false },
+        { "Invalid :: behavior { on Tick :: () { "
+          "if self == globals.Other { self.Spot.x = 1; } } }",
+          "operator does not apply to these operands",
+          false },
+    };
+    for (size_t i = 0;
+         passed && i < sizeof invalid_keyed_handles / sizeof *invalid_keyed_handles;
+         i++) {
+        REQUIRE(stage_zero_diagnostic(invalid_keyed_handles[i].source).message[0]);
+        for (int b = 0; b < 2; b++) {
+            REQUIRE(rejects(b, &invalid_keyed_handles[i]));
         }
     }
     passed = passed && takes_project_identities(1);

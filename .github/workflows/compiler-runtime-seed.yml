@@ -19,10 +19,13 @@ jobs:
       matrix:
         include:
           - os: macos-15
+            platform: macos-arm64
             arch: ARM64
           - os: ubuntu-24.04
+            platform: linux-x64
             arch: X64
           - os: windows-2022
+            platform: windows-x64
             arch: X64
     defaults:
       run:
@@ -33,6 +36,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Record the clean native runtime source
+        id: source
+        run: |
+          $repository = $env:GITHUB_WORKSPACE
+          $revision = & git -C $repository rev-parse HEAD
+          if ($LASTEXITCODE) { throw 'Reading the runtime source revision failed' }
+          $tree = & git -C $repository rev-parse 'HEAD^{tree}'
+          if ($LASTEXITCODE) { throw 'Reading the runtime source tree failed' }
+          $changed = @(& git -C $repository status --porcelain --untracked-files=normal)
+          if ($LASTEXITCODE -or $revision -ne $env:GITHUB_SHA -or $changed.Count) {
+            throw 'The native runtime source is not the clean workflow revision'
+          }
+          "tree=$tree" >> $env:GITHUB_OUTPUT
       - name: Require the seed's architecture
         run: |
           if ($env:RUNNER_ARCH -ne '${{ matrix.arch }}' -or
@@ -69,14 +85,15 @@ jobs:
         id: configure
         run: |
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
+          $runtimeBuild = Join-Path $env:RUNNER_TEMP 'compiler-runtime-build'
+          cmake -S (Join-Path $env:GITHUB_WORKSPACE 'sdk') -B $runtimeBuild -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCHIBI_ASSET_COMPILER_RECOVERY=OFF -DCMAKE_C_COMPILER=clang
           if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Build the native runtime
         id: build
         run: |
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake --build runtime-build --target chibi-compiler-host --parallel 4
+          cmake --build (Join-Path $env:RUNNER_TEMP 'compiler-runtime-build') --target chibi-compiler-host --parallel 4
           if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Copy the recovery inputs into an isolated directory
@@ -84,19 +101,90 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          ./.github/scripts/compiler-self-build.ps1 -Mode Prepare -Proof $proof -Runtime (Join-Path $PWD "runtime-build/$hostName")
+          $runtimeBuild = Join-Path $env:RUNNER_TEMP 'compiler-runtime-build'
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prepare -Repository $env:GITHUB_WORKSPACE -Proof $proof -Runtime (Join-Path $runtimeBuild $hostName) -Platform '${{ matrix.platform }}' -InvocationTimeoutMilliseconds 1800000
       - name: Recover the compiler without a native toolchain
         env:
           CONFIGURE_SECONDS: ${{ steps.configure.outputs.seconds }}
           BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
         run: |
-          ./.github/scripts/compiler-self-build.ps1 -Mode Prove -Proof (Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof') -QueryTarget
+          ./.github/scripts/compiler-self-build.ps1 -Mode Prove -Repository $env:GITHUB_WORKSPACE -Proof (Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof') -Platform '${{ matrix.platform }}' -InvocationTimeoutMilliseconds 1800000 -QueryTarget -NativeRecovery
+      - name: Require unchanged native runtime source
+        id: source_after
+        if: always()
+        run: |
+          $repository = $env:GITHUB_WORKSPACE
+          $revision = & git -C $repository rev-parse HEAD
+          if ($LASTEXITCODE) { throw 'Reading the final runtime source revision failed' }
+          $tree = & git -C $repository rev-parse 'HEAD^{tree}'
+          if ($LASTEXITCODE) { throw 'Reading the final runtime source tree failed' }
+          $changed = @(& git -C $repository status --porcelain --untracked-files=normal)
+          if ($LASTEXITCODE -or $revision -ne $env:GITHUB_SHA -or
+              $tree -ne '${{ steps.source.outputs.tree }}' -or $changed.Count) {
+            throw 'The native runtime build or proof changed its source'
+          }
+          "tree=$tree" >> $env:GITHUB_OUTPUT
+      - name: Retain the native build identity
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repository = $env:GITHUB_WORKSPACE
+          $runtimeBuild = Join-Path $env:RUNNER_TEMP 'compiler-runtime-build'
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
+          $hostFile = Get-Item (Join-Path $runtimeBuild $hostName)
+          $isolatedHost = Get-Item (Join-Path $proof $hostName)
+          $digest = (Get-FileHash $hostFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $evidence = Get-Content (Join-Path $proof 'evidence.json') -Raw | ConvertFrom-Json
+          if ($hostFile.Length -ne $isolatedHost.Length -or
+              $digest -ne (Get-FileHash $isolatedHost.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -or
+              $digest -ne $evidence.runtime_sha256) {
+            throw 'The proved runtime differs from the native build output'
+          }
+          $cachePath = Join-Path $runtimeBuild 'CMakeCache.txt'
+          $cache = @{}
+          foreach ($line in Get-Content $cachePath) {
+            if ($line -match '^([^:#][^:=]*):[^=]+=(.*)$') { $cache[$matches[1]] = $matches[2] }
+          }
+          if ($cache['CMAKE_BUILD_TYPE'] -ne 'Release' -or $cache['CMAKE_GENERATOR'] -ne 'Ninja' -or
+              $cache['CHIBI_SDK_COMPILER_HOST_ONLY'] -ne 'ON' -or
+              $cache['CHIBI_ASSET_COMPILER_RECOVERY'] -ne 'OFF') {
+            throw 'The runtime build did not use the required host-only configuration'
+          }
+          function Version([string]$Program) {
+            $text = @(& $Program --version)
+            if ($LASTEXITCODE) { throw "Reading the native tool version failed: $Program" }
+            return $text
+          }
+          $inputs = [ordered]@{}
+          foreach ($path in @('.github/scripts/compiler-self-build.ps1', '.github/workflows/compiler-runtime-seed.yml',
+                              '.github/build-tools.txt', 'sdk/CMakeLists.txt', 'sdk/contracts.cmake',
+                              'third_party/CMakeLists.txt', 'third_party/sljit/arm64-immediate-negation.patch')) {
+            $inputs[$path] = (Get-FileHash (Join-Path $repository $path) -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $record = [ordered]@{
+            source = [ordered]@{ revision = $env:GITHUB_SHA; tree = '${{ steps.source.outputs.tree }}'; dirty = $false }
+            source_after = [ordered]@{ revision = $env:GITHUB_SHA; tree = '${{ steps.source_after.outputs.tree }}'; dirty = $false }
+            platform = '${{ matrix.platform }}'; invocation_timeout_milliseconds = 1800000
+            runtime = [ordered]@{ file = $hostName; bytes = $hostFile.Length; sha256 = $digest }
+            runtime_target_sha256 = (Get-FileHash (Join-Path $proof 'runtime-target.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+            configure_arguments = @('-S', (Join-Path $repository 'sdk'), '-B', $runtimeBuild, '-G', 'Ninja',
+              '-DCMAKE_BUILD_TYPE=Release', '-DCHIBI_SDK_COMPILER_HOST_ONLY=ON',
+              '-DCHIBI_ASSET_COMPILER_RECOVERY=OFF', '-DCMAKE_C_COMPILER=clang')
+            build_arguments = @('--build', $runtimeBuild, '--target', 'chibi-compiler-host', '--parallel', '4')
+            configured = [ordered]@{ generator = $cache['CMAKE_GENERATOR']; configuration = $cache['CMAKE_BUILD_TYPE']
+              compiler = $cache['CMAKE_C_COMPILER']; compiler_host_only = $cache['CHIBI_SDK_COMPILER_HOST_ONLY']
+              asset_compiler_recovery = $cache['CHIBI_ASSET_COMPILER_RECOVERY']
+              cache_sha256 = (Get-FileHash $cachePath -Algorithm SHA256).Hash.ToLowerInvariant() }
+            tools = [ordered]@{ cmake = @(Version 'cmake'); ninja = @(Version 'ninja'); compiler = @(Version $cache['CMAKE_C_COMPILER']) }
+            inputs_sha256 = $inputs
+          }
+          $record | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $proof 'native-build.json')
       - name: Retain the native runtime seed
         run: |
           $ErrorActionPreference = 'Stop'
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           $suffix = if ($IsWindows) { '.exe' } else { '' }
-          $platform = if ($IsWindows) { 'windows-x64' } elseif ($IsMacOS) { 'macos-arm64' } else { 'linux-x64' }
+          $platform = '${{ matrix.platform }}'
           $name = "chibi-compiler-host-$platform$suffix"
           Copy-Item (Join-Path $proof ('chibi-compiler-host' + $suffix)) (Join-Path $proof $name)
           $digest = (Get-FileHash (Join-Path $proof $name) -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -111,6 +199,9 @@ jobs:
             ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip
             ${{ runner.temp }}/compiler-recovery-proof/compiler.chibip.sha256
             ${{ runner.temp }}/compiler-recovery-proof/evidence.json
+            ${{ runner.temp }}/compiler-recovery-proof/native-build.json
+            ${{ runner.temp }}/compiler-recovery-proof/native-recovered.chibip
+            ${{ runner.temp }}/compiler-recovery-proof/native-bootstrap.*.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage1/compiler.chibip
             ${{ runner.temp }}/compiler-recovery-proof/stage1/bootstrap.json
             ${{ runner.temp }}/compiler-recovery-proof/stage2/compiler.chibip
@@ -118,6 +209,8 @@ jobs:
             ${{ runner.temp }}/compiler-recovery-proof/compiler.sha256
             ${{ runner.temp }}/compiler-recovery-proof/stage*.stdout.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage*.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage1-contract.*.txt
+            ${{ runner.temp }}/compiler-recovery-proof/stage2-contract.*.txt
             ${{ runner.temp }}/compiler-recovery-proof/runtime-target.json
             ${{ runner.temp }}/compiler-recovery-proof/target.*.txt
             ${{ runner.temp }}/compiler-recovery-proof/compile.json
@@ -146,13 +239,74 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $digests = @()
-          foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
-            $artifact = "recovered/compiler-recovery-$platform/compiler.chibip"
-            $digest = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
-            $recorded = (Get-Content "$artifact.sha256").Split(' ')[0]
-            if ($digest -ne $recorded) { throw "$platform artifact does not match its recorded SHA-256" }
-            $digests += $digest
-            "$platform`: $digest" >> $env:GITHUB_STEP_SUMMARY
+          $trees = @()
+          $platforms = @{ 'macos-15' = 'macos-arm64'; 'ubuntu-24.04' = 'linux-x64'; 'windows-2022' = 'windows-x64' }
+          foreach ($runner in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
+            $root = "recovered/compiler-recovery-$runner"
+            $evidence = Get-Content "$root/evidence.json" -Raw | ConvertFrom-Json
+            $build = Get-Content "$root/native-build.json" -Raw | ConvertFrom-Json
+            if ($evidence.error -or $evidence.stages.Count -ne 2 -or
+                $evidence.stages[1].input_compiler_sha256 -ne $evidence.stages[0].output_compiler_sha256) {
+              throw "$runner did not execute the compiler it built"
+            }
+            if ($build.source.revision -ne $env:GITHUB_SHA -or $build.source.dirty -ne $false -or
+                $build.source_after.revision -ne $build.source.revision -or $build.source_after.dirty -ne $false -or
+                $build.source_after.tree -ne $build.source.tree -or $build.platform -ne $platforms[$runner] -or
+                $evidence.revision -ne $build.source.revision -or $evidence.source_tree -ne $build.source.tree -or
+                $evidence.source_dirty -ne $false -or $evidence.runtime_source_revision -ne $build.source.revision -or
+                $evidence.runtime_source_tree -ne $build.source.tree -or $evidence.platform -ne $build.platform) {
+              throw "$runner runtime source or platform differs from its build receipt"
+            }
+            $trees += $build.source.tree
+            $targetPath = Join-Path $root 'runtime-target.json'
+            $target = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($targetPath))
+            $targetDigest = (Get-FileHash $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($target.Count -ne 6 -or $targetDigest -ne $build.runtime_target_sha256 -or
+                $targetDigest -ne $evidence.runtime_target_sha256) {
+              throw "$runner runtime target differs from its raw receipt"
+            }
+            $suffix = if ($runner -eq 'windows-2022') { '.exe' } else { '' }
+            $runtime = Get-Item "$root/chibi-compiler-host-$($platforms[$runner])$suffix"
+            $runtimeDigest = (Get-FileHash $runtime.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($runtime.Length -ne $build.runtime.bytes -or $runtimeDigest -ne $build.runtime.sha256 -or
+                $runtimeDigest -ne $evidence.runtime_sha256) {
+              throw "$runner retained runtime differs from the proved native build"
+            }
+            foreach ($stage in 1, 2) {
+              $manifest = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText((Join-Path $root "stage$stage/bootstrap.json")))
+              if (![System.Text.Json.Nodes.JsonNode]::DeepEquals($target, $manifest['target'])) {
+                throw "$runner stage$stage differs from the complete runtime target"
+              }
+              $artifact = Get-Item "$root/stage$stage/compiler.chibip"
+              $digest = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($digest -ne $evidence.compiler_sha256 -or
+                  $digest -ne $evidence.stages[$stage - 1].output_compiler_sha256 -or
+                  $artifact.Length -ne $evidence.stages[$stage - 1].output_bytes) {
+                throw "$runner stage$stage differs from its recorded output"
+              }
+              $digests += $digest
+              "$runner stage$stage`: $digest" >> $env:GITHUB_STEP_SUMMARY
+            }
+            foreach ($name in @('compiler.chibip', 'native-recovered.chibip')) {
+              $artifact = Get-Item "$root/$name"
+              $digest = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($artifact.Length -ne $evidence.compiler_bytes -or $digest -ne $evidence.compiler_sha256) {
+                throw "$runner $name differs from the proven compiler stages"
+              }
+              if ($name -eq 'compiler.chibip' -and $digest -ne (Get-Content "$root/$name.sha256").Split(' ')[0]) {
+                throw "$runner compiler artifact differs from its recorded SHA-256"
+              }
+            }
+            $native = $evidence.native_recovery
+            $invocations = @($evidence.invocations | Where-Object { $_.name -eq 'native-bootstrap' })
+            if ($native.output_bytes -ne $evidence.compiler_bytes -or
+                $native.output_compiler_sha256 -ne $evidence.compiler_sha256 -or
+                $invocations.Count -ne 1 -or $invocations[0].exit_code -ne 0) {
+              throw "$runner did not prove native bootstrap recovery"
+            }
+          }
+          if (@($trees | Select-Object -Unique).Count -ne 1) {
+            throw 'The runtime builds identify different source trees'
           }
           if (@($digests | Select-Object -Unique).Count -ne 1) {
             throw 'The recovered compiler bytes differ across platforms with the validated bootstrap ABI'

@@ -1,6 +1,7 @@
 #include "authoring/source_prepare.h"
 #include "host/build_host.h"
 #include "host/build_values.h"
+#include "support/sha256.h"
 #include "types/text.h"
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 #include "host/native_default.h"
@@ -12,6 +13,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +26,7 @@
 static char root[128];
 static const char *worker_path;
 static const char *host_path;
+static chibi_build_compiler *build_compiler;
 static char *saved_secret, *saved_allowed, *saved_worker;
 static char *fixture_source;
 static char output[1024], errors[1024];
@@ -200,6 +203,7 @@ TEST_CASE(authored_fixture_runs_real_children_on_each_backend)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         chibi_build_options options = {
+            .compiler = build_compiler,
             .root = root,
             .source_path = "BuildProcessFixture.chibi",
             .source_text = fixture_source,
@@ -255,6 +259,7 @@ TEST_CASE(authored_capability_errors_do_not_become_exit_codes)
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < 3; i++) {
             chibi_build_options options = {
+                .compiler = build_compiler,
                 .root = root,
                 .source_path = "Failure.chibi",
                 .source_text = sources[i],
@@ -272,6 +277,7 @@ TEST_CASE(authored_capability_errors_do_not_become_exit_codes)
         }
         volatile sig_atomic_t stop = 1;
         chibi_build_options options = {
+            .compiler = build_compiler,
             .root = root,
             .source_path = "BuildProcessFixture.chibi",
             .source_text = fixture_source,
@@ -310,6 +316,7 @@ TEST_CASE(original_workflow_preserves_order_and_failure_on_real_host)
                 tool_write(marker, "");
             }
             chibi_build_options options = {
+                .compiler = build_compiler,
                 .root = root,
                 .source_path = "BuildWorkflow.chibi",
                 .source_text = workflow,
@@ -372,6 +379,8 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
         "build.read_file",
         "build.file_exists",
         "build.make_directory",
+        "build.reserve_directory",
+        "build.publish_directory",
         "build.resolve_path",
         "build.write_file",
         "build.last_stdout",
@@ -433,15 +442,15 @@ TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements)
     const char *probe[] = { host_path, "--protocol-version", NULL };
     REQUIRE(!tool_run(probe, root, log));
     char *text = tool_read(log);
-    bool current = text && !strcmp(text, "7\n");
+    bool current = text && !strcmp(text, "9\n");
     free(text);
     REQUIRE(current);
     /* A nonzero probe result, as produced by the M1 CLI, must be distinguishable
-     * from an invocation error after a successful version-7 selection. */
+     * from an invocation error after a successful version-9 selection. */
     const char *invalid[] = { host_path, "--protocol-version", "extra", NULL };
     REQUIRE(tool_run(invalid, root, log) != 0);
     text = tool_read(log);
-    bool rejected = text && strstr(text, "usage:") && strcmp(text, "7\n");
+    bool rejected = text && strstr(text, "usage:") && strcmp(text, "9\n");
     free(text);
     REQUIRE(rejected);
     return true;
@@ -454,8 +463,20 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
     snprintf(log, sizeof log, "%s/cli.log", root);
     tool_write(source, fixture_source);
     const char *argv[] = {
-        host_path, "--root",       root,           "--source", source,
-        "--entry", "BuildFixture", "--timeout-ms", "1000",     NULL,
+        host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        "--root",
+        root,
+        "--source",
+        source,
+        "--entry",
+        "BuildFixture",
+        "--timeout-ms",
+        "10000",
+        NULL,
     };
     REQUIRE(tool_run(argv, root, log) == 23);
     char *text = tool_read(log);
@@ -463,8 +484,20 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
     free(text);
     REQUIRE(emitted);
     const char *missing[] = {
-        host_path, "--root", root,           "--source", source,
-        "--entry", "Absent", "--timeout-ms", "1000",     NULL,
+        host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        "--root",
+        root,
+        "--source",
+        source,
+        "--entry",
+        "Absent",
+        "--timeout-ms",
+        "10000",
+        NULL,
     };
     REQUIRE(tool_run(missing, root, log) != 0);
     text = tool_read(log);
@@ -483,6 +516,10 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
     );
     const char *core[] = {
         host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
         "--root",
         root,
         "--source",
@@ -492,13 +529,27 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
         "--entry",
         "Build",
         "--timeout-ms",
-        "1000",
+        "10000",
         NULL,
     };
     REQUIRE(tool_run(core, root, log) == 7);
     const char *absent[] = {
-        host_path, "--root",  root,    "--source",     core_source, "--core",
-        "no-core", "--entry", "Build", "--timeout-ms", "1000",      NULL,
+        host_path,
+        "--compiler",
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        "--compiler-core",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        "--root",
+        root,
+        "--source",
+        core_source,
+        "--core",
+        "no-core",
+        "--entry",
+        "Build",
+        "--timeout-ms",
+        "10000",
+        NULL,
     };
     REQUIRE(tool_run(absent, root, log) != 0);
     text = tool_read(log);
@@ -508,16 +559,444 @@ TEST_CASE(private_host_cli_executes_source_and_reports_errors)
     return true;
 }
 
+static void sdk_path(char out[PATH_MAX], const char *base, const char *name)
+{
+    int length = snprintf(out, PATH_MAX, "%s/%s", base, name);
+    assert(length > 0 && length < PATH_MAX);
+}
+
+/* Include names, permissions, timestamps and bytes, but not access times changed
+ * by reading. The SDK is read-only during each invocation, including its host. */
+static bool sdk_digest(const char *path, sha256 *hash)
+{
+    struct stat info;
+    REQUIRE(!lstat(path, &info));
+    REQUIRE(!(info.st_mode & 0222));
+    REQUIRE(S_ISDIR(info.st_mode) || S_ISREG(info.st_mode));
+    sha256_add(hash, &info.st_mode, sizeof info.st_mode);
+#ifdef __APPLE__
+    sha256_add(hash, &info.st_mtimespec, sizeof info.st_mtimespec);
+#else
+    sha256_add(hash, &info.st_mtim, sizeof info.st_mtim);
+#endif
+    if (S_ISREG(info.st_mode)) {
+        sha256_add(hash, &info.st_size, sizeof info.st_size);
+        FILE *file = fopen(path, "rb");
+        REQUIRE(file);
+        char bytes[8192];
+        size_t count;
+        while ((count = fread(bytes, 1, sizeof bytes, file))) {
+            sha256_add(hash, bytes, count);
+        }
+        bool read = !ferror(file);
+        bool closed = !fclose(file);
+        REQUIRE(read && closed);
+        return true;
+    }
+    struct dirent **entries = NULL;
+    int count = scandir(path, &entries, NULL, alphasort);
+    REQUIRE(count >= 0);
+    bool valid = true;
+    for (int i = 0; i < count; i++) {
+        const char *name = entries[i]->d_name;
+        if (strcmp(name, ".") && strcmp(name, "..")) {
+            char child[PATH_MAX];
+            sdk_path(child, path, name);
+            sha256_add(hash, name, strlen(name) + 1);
+            valid &= sdk_digest(child, hash);
+        }
+        free(entries[i]);
+    }
+    free(entries);
+    sha256_add(hash, "", 1);
+    return valid;
+}
+
+static bool sdk_hash(const char *path, char digest[65])
+{
+    sha256 hash;
+    sha256_begin(&hash);
+    bool valid = sdk_digest(path, &hash);
+    sha256_end(&hash, digest);
+    return valid;
+}
+
+static bool default_compiler(const char *host, bool corrupt)
+{
+    const char *argv[] = {
+        host,
+        "--root",
+        root,
+        "--source",
+        "DefaultCompiler.chibi",
+        "--entry",
+        "Build",
+        "--timeout-ms",
+        "10000",
+        NULL,
+    };
+    /* The child has no toolchain on PATH and no environment-supplied SDK. */
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    chibi_process_capture_result result = capture(argv, environment, 15);
+    REQUIRE(result.error == CHIBI_PROCESS_OK);
+    REQUIRE(result.status == (corrupt ? 1 : 47));
+    REQUIRE(!out.truncated && !err.truncated && !out.size);
+    if (corrupt) {
+        REQUIRE(strstr(errors, "compiler.chibip,"));
+        REQUIRE(strstr(errors, "is not the closure bootstrap.json records"));
+    } else {
+        REQUIRE(!err.size);
+    }
+    return true;
+}
+
+TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_seed)
+{
+    char original[PATH_MAX], relocated[PATH_MAX], path[PATH_MAX];
+    char compiler[PATH_MAX], core[PATH_MAX], shared[PATH_MAX], log[PATH_MAX];
+    char *host = realpath(host_path, NULL);
+    REQUIRE(host);
+    char *slash = strrchr(host, '/');
+    REQUIRE(slash);
+    *slash = 0;
+    sdk_path(compiler, host, "../share/chibi/compiler");
+    sdk_path(core, host, "../share/chibi/core");
+    free(host);
+    sdk_path(log, root, "sdk-copy.log");
+    sdk_path(original, root, "sdk-original");
+    sdk_path(relocated, root, "relocated sdk");
+    REQUIRE(!mkdir(original, 0700));
+    static const char *directories[] = { "bin", "libexec", "libexec/chibi", "share", "share/chibi" };
+    for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
+        sdk_path(path, original, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    sdk_path(shared, original, "share/chibi");
+    const char *copy_inputs[] = { "cp", "-R", compiler, core, shared, NULL };
+    REQUIRE(!tool_run(copy_inputs, root, log));
+    static const char *locations[] = { "bin/chibi-build-host",
+                                       "libexec/chibi/chibi-build-host" };
+    for (size_t i = 0; i < sizeof locations / sizeof *locations; i++) {
+        sdk_path(path, original, locations[i]);
+        const char *copy_host[] = { "cp", host_path, path, NULL };
+        REQUIRE(!tool_run(copy_host, root, log));
+    }
+    REQUIRE(!rename(original, relocated));
+    REQUIRE(access(original, F_OK) == -1 && errno == ENOENT);
+    sdk_path(path, root, "DefaultCompiler.chibi");
+    tool_write(path, "package sdk_compiler\nBuild :: () -> int { return 47; }\n");
+
+    const char *permissions[] = { "chmod", "-R", "a-w", relocated, NULL };
+    bool valid = !tool_run(permissions, root, log);
+    char before[65], after[65];
+    valid &= sdk_hash(relocated, before);
+    for (size_t i = 0; i < sizeof locations / sizeof *locations; i++) {
+        sdk_path(path, relocated, locations[i]);
+        valid &= default_compiler(path, false);
+    }
+    valid &= sdk_hash(relocated, after) && !strcmp(before, after);
+    permissions[2] = "u+w";
+    REQUIRE(!tool_run(permissions, root, log));
+    REQUIRE(valid);
+
+    /* Keep the manifest intact. A changed closure must be refused before any
+     * compiler execution or fallback, even though valid sources remain beside it. */
+    sdk_path(path, relocated, "share/chibi/compiler/bootstrap/compiler.chibip");
+    FILE *seed = fopen(path, "r+b");
+    REQUIRE(seed);
+    int byte = fgetc(seed);
+    REQUIRE(byte != EOF && !fseek(seed, 0, SEEK_SET));
+    REQUIRE(fputc(byte ^ 1, seed) != EOF);
+    REQUIRE(!fclose(seed));
+    permissions[2] = "a-w";
+    valid = !tool_run(permissions, root, log);
+    valid &= sdk_hash(relocated, before);
+    for (size_t i = 0; i < sizeof locations / sizeof *locations; i++) {
+        sdk_path(path, relocated, locations[i]);
+        valid &= default_compiler(path, true);
+    }
+    valid &= sdk_hash(relocated, after) && !strcmp(before, after);
+    permissions[2] = "u+w";
+    REQUIRE(!tool_run(permissions, root, log));
+    REQUIRE(valid);
+    return true;
+}
+
+typedef struct
+{
+    char inputs[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
+    char source[PATH_MAX], marker[PATH_MAX], digest[65];
+} startup_fixture;
+
+static bool startup_inputs(startup_fixture *fixture, const char *name)
+{
+    sdk_path(fixture->inputs, root, name);
+    REQUIRE(!mkdir(fixture->inputs, 0700));
+    char log[PATH_MAX], changed[PATH_MAX];
+    sdk_path(log, root, "startup-inputs.log");
+    const char *copy[] = {
+        "cp",
+#ifdef __APPLE__
+        "-cR",
+#else
+        "--reflink=auto",
+        "-R",
+#endif
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        fixture->inputs,
+        NULL,
+    };
+    REQUIRE(!tool_run(copy, root, log));
+    sdk_path(fixture->compiler, fixture->inputs, "compiler");
+    sdk_path(fixture->core, fixture->inputs, "core");
+    sdk_path(changed, fixture->compiler, "package_compiler/Compile.chibi");
+    FILE *file = fopen(changed, "ab");
+    REQUIRE(file);
+    bool written = fputs("\n// Exercise changed-source recovery before Build.\n", file) >=
+                   0;
+    written = !fclose(file) && written;
+    REQUIRE(written);
+    /* This changes a recorded source's bytes, keeping the manifest and seed
+     * intact so startup must recover rather than reject a damaged artifact. */
+    sdk_path(fixture->source, fixture->inputs, "Build.chibi");
+    sdk_path(fixture->marker, root, "startup-authored-ran");
+    tool_write(
+        fixture->source,
+        "package startup\nBuild :: () -> int { "
+        "build.write_file(\"startup-authored-ran\", \"unexpected\"); "
+        "return 0; }\n"
+    );
+    const char *permissions[] = { "chmod", "-R", "a-w", fixture->inputs, NULL };
+    bool frozen = !tool_run(permissions, root, log) &&
+                  sdk_hash(fixture->inputs, fixture->digest);
+    if (!frozen) {
+        permissions[2] = "u+w";
+        assert(!tool_run(permissions, root, log));
+    }
+    REQUIRE(frozen);
+    return true;
+}
+
+static bool startup_interrupted(startup_fixture *fixture, int signal, bool blocked)
+{
+    const char *argv[] = {
+        worker_path,
+        "build-blocked-signals",
+        host_path,
+        "--compiler",
+        fixture->compiler,
+        "--compiler-core",
+        fixture->core,
+        "--root",
+        root,
+        "--source",
+        fixture->source,
+        "--entry",
+        "Build",
+        "--timeout-ms",
+        signal ? "10000" : "50",
+        NULL,
+    };
+    const char *const *launch = blocked ? argv : argv + 2;
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    chibi_process_capture_result result;
+    bool sent = !signal;
+    if (!signal) {
+        result = capture(launch, environment, 2);
+    } else {
+        out = (chibi_process_output){ .data = output, .capacity = sizeof output };
+        err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
+        chibi_process_job job = { 0 };
+        double started = now(), deadline = started + 2;
+        result = chibi_process_begin(&job, launch[0], launch, root, environment, deadline, NULL, &out, &err);
+        if (result.error == CHIBI_PROCESS_OK) {
+            /* Real compiler recovery outlasts this startup window. Signal only
+             * the CLI, leaving its cancellation and cleanup responsibilities
+             * intact; the outer deadline contains a broken implementation. */
+            while (chibi_process_running(&job) && now() < started + .1) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            sent = chibi_process_running(&job) && !kill(job.pid, signal);
+            while (chibi_process_running(&job)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            result = chibi_process_end(&job);
+        }
+    }
+    char after[65], log[PATH_MAX];
+    bool unchanged = sdk_hash(fixture->inputs, after) &&
+                     !strcmp(fixture->digest, after);
+    sdk_path(log, root, "startup-inputs.log");
+    const char *permissions[] = { "chmod", "-R", "u+w", fixture->inputs, NULL };
+    REQUIRE(!tool_run(permissions, root, log));
+    REQUIRE(!unlink(fixture->source));
+    REQUIRE(sent);
+    REQUIRE(result.error == CHIBI_PROCESS_OK && result.status == 1);
+    REQUIRE(!out.size && !out.truncated && !err.truncated);
+    REQUIRE(strstr(errors, signal ? "build process cancelled" : "build process timeout"));
+    REQUIRE(access(fixture->marker, F_OK) == -1 && errno == ENOENT);
+    REQUIRE(unchanged);
+    return true;
+}
+
+TEST_CASE(private_host_cli_deadline_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-timeout"));
+    return startup_interrupted(&fixture, 0, false);
+}
+
+TEST_CASE(private_host_cli_sigint_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-sigint"));
+    return startup_interrupted(&fixture, SIGINT, false);
+}
+
+TEST_CASE(private_host_cli_sigterm_covers_changed_compiler_recovery)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-sigterm"));
+    return startup_interrupted(&fixture, SIGTERM, false);
+}
+
+TEST_CASE(private_host_cli_deadline_unblocks_inherited_signal_masks)
+{
+    startup_fixture fixture;
+    REQUIRE(startup_inputs(&fixture, "startup-blocked"));
+    return startup_interrupted(&fixture, 0, true);
+}
+
+TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
+{
+    char directory[PATH_MAX], source[PATH_MAX], marker[PATH_MAX];
+    char worker_environment[PATH_MAX + 32];
+    snprintf(worker_environment, sizeof worker_environment, "CHIBI_BUILD_WORKER=%s", worker_path);
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+        worker_environment,
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL,
+    };
+    const int signals[] = { SIGINT, SIGTERM };
+    for (int i = 0; i < 2; i++) {
+        sdk_path(directory, root, i ? "runtime-sigterm" : "runtime-sigint");
+        REQUIRE(!mkdir(directory, 0700));
+        sdk_path(source, directory, "Build.chibi");
+        sdk_path(marker, directory, "started");
+        tool_write(
+            source,
+            "package runtime\nBuild :: () -> int { "
+            "build.run([build.environment(\"CHIBI_BUILD_WORKER\"), "
+            "\"descendant\", build.root(), \"0\", \"0\"]); return 0; }\n"
+        );
+        const char *argv[] = {
+            host_path,
+            "--compiler",
+            CHIBI_SOURCE_ROOT "/tools/compiler",
+            "--compiler-core",
+            CHIBI_SOURCE_ROOT "/packages/core",
+            "--root",
+            directory,
+            "--source",
+            source,
+            "--entry",
+            "Build",
+            "--timeout-ms",
+            "10000",
+            NULL,
+        };
+        out = (chibi_process_output){ .data = output, .capacity = sizeof output };
+        err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
+        chibi_process_job job = { 0 };
+        double deadline = deadline_after(10);
+        chibi_process_capture_result result = chibi_process_begin(
+            &job,
+            argv[0],
+            argv,
+            root,
+            environment,
+            deadline,
+            NULL,
+            &out,
+            &err
+        );
+        bool sent = false;
+        if (result.error == CHIBI_PROCESS_OK) {
+            /* The worker's marker proves authored execution has started and
+             * owns a real descendant before the signal targets only the CLI. */
+            while (chibi_process_running(&job) && access(marker, F_OK)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            sent = chibi_process_running(&job) && !access(marker, F_OK) &&
+                   !kill(job.pid, signals[i]);
+            while (chibi_process_running(&job)) {
+                chibi_process_service(&job, 1, deadline, NULL);
+            }
+            result = chibi_process_end(&job);
+        }
+        bool diagnostic = !out.size && !out.truncated && !err.truncated &&
+                          strstr(errors, "build process cancelled");
+        const char *probe[] = { worker_path, "cleanup-probe", directory, NULL };
+        chibi_process_capture_result cleanup = capture(probe, environment, .5);
+        bool gone = cleanup.error == CHIBI_PROCESS_OK && !cleanup.status;
+        if (!gone) {
+            /* Contain a failed cleanup assertion before removing its fixture. */
+            FILE *file = fopen(marker, "r");
+            int pid = 0;
+            if (file) {
+                bool recorded = fscanf(file, "%d", &pid) == 1 && pid > 0;
+                fclose(file);
+                pid_t group = recorded ? getpgid(pid) : -1;
+                if (group > 0 && group != getpgrp()) {
+                    kill(-group, SIGKILL);
+                }
+            }
+        }
+        REQUIRE(sent);
+        REQUIRE(result.error == CHIBI_PROCESS_OK && result.status == 1);
+        REQUIRE(diagnostic);
+        REQUIRE(gone);
+    }
+    return true;
+}
+
 static chibi_build_options primitive_options(const char *text, behavior_backend backend)
 {
+    /* Functional invocations compile through the self-hosted compiler before
+     * execution. Allow for sanitizer preparation and execution; deadline and
+     * cancellation witnesses set their own limits. */
     return (chibi_build_options){
+        .compiler = build_compiler,
         .root = root,
         .source_path = "BuildPrimitives.chibi",
         .source_text = text,
         .entry = "Build",
         .backend = backend,
-        .deadline = deadline_after(2),
+        .deadline = deadline_after(120),
     };
+}
+
+/* Measure authored operations independently of compiler preparation. */
+static double primitive_started;
+static void primitive_prepared()
+{
+    primitive_started = now();
 }
 
 static bool primitive_backend(const chibi_build_result *result, behavior_backend backend)
@@ -638,7 +1117,11 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result));
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(stderr, "build string utilities: backend=%d %s\n", b, result.diagnostic);
+        }
+        REQUIRE(invoked);
         REQUIRE(result.value == 0 && !result.steps && primitive_backend(&result, backend));
         REQUIRE(!strcmp(result.stderr_text, "authored diagnostic\n"));
     }
@@ -658,15 +1141,36 @@ TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
     };
     static const char *diagnostics[] = {
         NULL,
-        "Unknown callable 'BuildJoin'",
-        "Unknown callable 'join'",
+        "Unknown function 'BuildJoin'",
+        "Unknown function 'join'",
     };
     for (int i = 0; i < 3; i++) {
         chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
         chibi_build_result result;
         bool ran = chibi_build_invoke(&options, &result);
+        if (ran != !diagnostics[i] ||
+            (diagnostics[i] && strcmp(result.diagnostic, diagnostics[i]))) {
+            fprintf(
+                stderr,
+                "namespace case %d: ran=%d steps=%d bytecode=%llu sljit=%llu "
+                "expected=[%s] actual=[%s]\n",
+                i,
+                ran,
+                result.steps,
+                (unsigned long long)result.counts.bytecode_entries,
+                (unsigned long long)result.counts.sljit_entries,
+                diagnostics[i] ? diagnostics[i] : "successful invocation",
+                result.diagnostic
+            );
+        }
         REQUIRE(ran == !diagnostics[i]);
         REQUIRE(diagnostics[i] ? !strcmp(result.diagnostic, diagnostics[i]) : result.value == 0);
+        if (diagnostics[i]) {
+            REQUIRE(
+                !result.steps && !result.counts.bytecode_entries &&
+                !result.counts.sljit_entries
+            );
+        }
     }
     return true;
 }
@@ -686,7 +1190,18 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
         chibi_build_options options = primitive_options(source, backend);
         options.core = CHIBI_SOURCE_ROOT "/packages/core";
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result));
+        double started = chibi_build_now();
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(
+                stderr,
+                "core package build: backend=%d elapsed=%.3f %s\n",
+                b,
+                chibi_build_now() - started,
+                result.diagnostic
+            );
+        }
+        REQUIRE(invoked);
         /* Each call into core:strings enters the backend again. */
         uint64_t entries = b ? result.counts.sljit_entries
                              : result.counts.bytecode_entries;
@@ -732,13 +1247,39 @@ TEST_CASE(private_programs_import_named_collections)
     tool_write(program, source);
     char option[300];
     snprintf(option, sizeof option, "lib=%s", collection);
-    const char *argv[] = { host_path, "--root",       root,   "--source",
-                           program,   "--collection", option, "--entry",
-                           "Build",   "--timeout-ms", "1000", NULL };
+    const char *argv[] = { host_path,
+                           "--compiler",
+                           CHIBI_SOURCE_ROOT "/tools/compiler",
+                           "--compiler-core",
+                           CHIBI_SOURCE_ROOT "/packages/core",
+                           "--root",
+                           root,
+                           "--source",
+                           program,
+                           "--collection",
+                           option,
+                           "--entry",
+                           "Build",
+                           "--timeout-ms",
+                           "10000",
+                           NULL };
     REQUIRE(tool_run(argv, root, log) == 42);
-    const char *malformed[] = { host_path, "--root",       root,   "--source",
-                                program,   "--collection", "lib",  "--entry",
-                                "Build",   "--timeout-ms", "1000", NULL };
+    const char *malformed[] = { host_path,
+                                "--compiler",
+                                CHIBI_SOURCE_ROOT "/tools/compiler",
+                                "--compiler-core",
+                                CHIBI_SOURCE_ROOT "/packages/core",
+                                "--root",
+                                root,
+                                "--source",
+                                program,
+                                "--collection",
+                                "lib",
+                                "--entry",
+                                "Build",
+                                "--timeout-ms",
+                                "1000",
+                                NULL };
     REQUIRE(tool_run(malformed, root, log) == 1);
     char *text = tool_read(log);
     bool usage = text && strstr(text, "usage:");
@@ -853,8 +1394,9 @@ TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
     return true;
 }
 
-/* Nothing resumes a build program, so waiting or starting a task fails it. */
-TEST_CASE(private_programs_cannot_wait_or_start_tasks)
+/* The current compiler rejects direct and indirect yield before execution.
+ * Host runtime guards remain a boundary; this does not invoke their callbacks. */
+TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
 {
     static const char *sources[] = {
         "package waits\nBuild :: () -> int { yield; return 0; }",
@@ -862,16 +1404,36 @@ TEST_CASE(private_programs_cannot_wait_or_start_tasks)
         "return 0; }",
     };
     static const char *diagnostics[] = {
-        "a build program cannot wait",
-        "a build program cannot start a task",
+        "unsupported syntax 'yield_statement'",
+        "unsupported syntax 'yield_statement'",
     };
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < 2; i++) {
             behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
             chibi_build_options options = primitive_options(sources[i], backend);
             chibi_build_result result;
-            REQUIRE(!chibi_build_invoke(&options, &result));
+            bool ran = chibi_build_invoke(&options, &result);
+            if (ran || strcmp(result.diagnostic, diagnostics[i])) {
+                fprintf(
+                    stderr,
+                    "yield case %d backend %d: ran=%d steps=%d bytecode=%llu "
+                    "sljit=%llu expected=[%s] actual=[%s]\n",
+                    i,
+                    b,
+                    ran,
+                    result.steps,
+                    (unsigned long long)result.counts.bytecode_entries,
+                    (unsigned long long)result.counts.sljit_entries,
+                    diagnostics[i],
+                    result.diagnostic
+                );
+            }
+            REQUIRE(!ran);
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+            REQUIRE(
+                !result.steps && !result.counts.bytecode_entries &&
+                !result.counts.sljit_entries
+            );
         }
     }
     return true;
@@ -927,10 +1489,21 @@ TEST_CASE(private_started_steps_run_together)
                   "failed += 1; } } "
                   "return failed; }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    primitive_started = 0;
+    options.prepared = primitive_prepared;
     double started = now();
     chibi_build_result result;
-    REQUIRE(chibi_build_invoke(&options, &result));
-    double elapsed = now() - started;
+    bool invoked = chibi_build_invoke(&options, &result);
+    if (!invoked) {
+        fprintf(
+            stderr,
+            "concurrent build steps: elapsed=%.3f %s\n",
+            now() - started,
+            result.diagnostic
+        );
+    }
+    REQUIRE(invoked);
+    double elapsed = now() - primitive_started;
     /* One after another the four would take 1.6 s. */
     REQUIRE(result.value == 0 && result.steps == 4 && elapsed < 1.2);
     return true;
@@ -992,17 +1565,18 @@ TEST_CASE(private_unwaited_and_late_steps_stop)
                     "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
                     "\"sleep\", \"30\"]); return 0; }";
     chibi_build_options options = primitive_options(unwaited, BEHAVIOR_BYTECODE);
-    double started = now();
+    primitive_started = 0;
+    options.prepared = primitive_prepared;
     chibi_build_result result;
     REQUIRE(chibi_build_invoke(&options, &result));
-    REQUIRE(result.value == 0 && now() - started < 2);
+    REQUIRE(result.value == 0 && now() - primitive_started < 2);
     static const char
         *late = "package jobs\nBuild :: () -> int { return build.wait("
                 "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
                 "\"sleep\", \"30\"])); }";
     options = primitive_options(late, BEHAVIOR_BYTECODE);
     options.deadline = now() + 0.5;
-    started = now();
+    double started = now();
     REQUIRE(!chibi_build_invoke(&options, &result));
     REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - started < 2);
     return true;
@@ -1165,6 +1739,15 @@ TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files)
             chibi_build_options options = primitive_options(sources[i], backend);
             chibi_build_result result;
             bool success = chibi_build_invoke(&options, &result);
+            if (!success && (i < 2 || i == 3)) {
+                fprintf(
+                    stderr,
+                    "build read: case=%d backend=%d %s\n",
+                    i,
+                    b,
+                    result.diagnostic
+                );
+            }
             REQUIRE(success == (i < 2 || i == 3));
             REQUIRE(!result.steps && primitive_backend(&result, backend));
             if (i < 2 || i == 3) {
@@ -1285,11 +1868,25 @@ TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
     for (int i = 0; i < 2; i++) {
         chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result) == !i);
-        REQUIRE(
-            i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
-              : !result.value
-        );
+        double started = chibi_build_now();
+        bool invoked = chibi_build_invoke(&options, &result);
+        bool expected = i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
+                          : !result.value;
+        if (invoked != !i || !expected) {
+            fprintf(
+                stderr,
+                "build storage case=%d invoked=%d value=%d flow=%d "
+                "elapsed=%.3f diagnostic=[%s]\n",
+                i,
+                invoked,
+                result.value,
+                result.flow_status,
+                chibi_build_now() - started,
+                result.diagnostic
+            );
+        }
+        REQUIRE(invoked == !i);
+        REQUIRE(expected);
     }
     return true;
 }
@@ -1355,6 +1952,14 @@ TEST_CASE(private_argument_bounds_reject_before_authored_execution)
 {
     static const char *source = "package args\nBuild :: () -> int { return "
                                 "build.length(build.arguments()); }";
+    chibi_build_options unowned = primitive_options(source, BEHAVIOR_BYTECODE);
+    unowned.compiler = NULL;
+    chibi_build_result rejected;
+    REQUIRE(!chibi_build_invoke(&unowned, &rejected));
+    REQUIRE(!strcmp(rejected.diagnostic, "build compiler is required"));
+    REQUIRE(
+        !rejected.steps && !rejected.counts.bytecode_entries && !rejected.counts.sljit_entries
+    );
     const char *arguments[257];
     for (int i = 0; i < 257; i++) {
         arguments[i] = "";
@@ -1602,6 +2207,91 @@ TEST_CASE(private_copies_renames_and_removals_leave_whole_files)
     return true;
 }
 
+TEST_CASE(private_directory_publication_refuses_existing_paths)
+{
+    static const char *source =
+        "package publish\nBuild :: () -> int { "
+        "if(!build.reserve_directory(\"publish/stage\") || "
+        "build.reserve_directory(\"publish/stage\") || "
+        "build.reserve_directory(\"publish/file\") || "
+        "build.reserve_directory(\"publish/link\") || "
+        "build.reserve_directory(\"publish/dangling\") || "
+        "build.reserve_directory(\"publish/missing/child\")) { return 1; } "
+        "if(build.file_kind(\"publish/missing\")!=\"\" || "
+        "!build.write_file(\"publish/stage/payload\",\"source bytes\")) { "
+        "return 2; } "
+        "stamp:=build.file_stamp(\"publish/stage/payload\"); "
+        "if(build.publish_directory(\"publish/stage\",\"publish/file\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/empty\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/link\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/dangling\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/stage\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/missing/child\")) "
+        "{ return 3; } "
+        "if(build.file_kind(\"publish/stage\")!=\"directory\" || "
+        "build.read_file(\"publish/stage/payload\")!=\"source bytes\" || "
+        "build.file_stamp(\"publish/stage/payload\")!=stamp) { return 4; } "
+        "if(build.publish_directory(\"publish/file\",\"publish/from-file\") || "
+        "build.publish_directory(\"publish/source-link\",\"publish/"
+        "from-link\") || "
+        "build.publish_directory(\"publish/absent\",\"publish/from-missing\")) "
+        "{ return 5; } "
+        "if(build.file_kind(\"publish/from-file\")!=\"\" || "
+        "build.file_kind(\"publish/from-link\")!=\"\" || "
+        "build.file_kind(\"publish/from-missing\")!=\"\" || "
+        "build.read_file(\"publish/file\")!=\"keep\" || "
+        "build.file_kind(\"publish/source-link\")!=\"link\") { return 6; } "
+        "if(!build.publish_directory(\"publish/stage\",\"publish/ready\") || "
+        "build.file_kind(\"publish/stage\")!=\"\" || "
+        "build.read_file(\"publish/ready/payload\")!=\"source bytes\" || "
+        "build.file_stamp(\"publish/ready/payload\")!=stamp) { return 7; } "
+        "return 0; }";
+    static const char *const existing[] = { "file", "empty", "link", "dangling", "source-link" };
+    for (int b = 0; b < 2; b++) {
+        primitive_directory("publish");
+        primitive_directory("publish/empty");
+        primitive_file("publish/file", "keep", 4);
+        primitive_link("file", "publish/link");
+        primitive_link("absent", "publish/dangling");
+        primitive_link("stage", "publish/source-link");
+        struct stat before[5], after;
+        char path[256];
+        for (int i = 0; i < 5; i++) {
+            snprintf(path, sizeof path, "%s/publish/%s", root, existing[i]);
+            REQUIRE(!lstat(path, &before[i]));
+        }
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(run_primitives(source, backend, 0));
+        for (int i = 0; i < 5; i++) {
+            snprintf(path, sizeof path, "%s/publish/%s", root, existing[i]);
+            REQUIRE(!lstat(path, &after));
+            REQUIRE(
+                after.st_ino == before[i].st_ino && after.st_mode == before[i].st_mode
+            );
+        }
+        snprintf(path, sizeof path, "%s/publish/ready/payload", root);
+        char *text = tool_read(path);
+        REQUIRE(text && !strcmp(text, "source bytes"));
+        free(text);
+        snprintf(path, sizeof path, "%s/publish/file", root);
+        text = tool_read(path);
+        REQUIRE(text && !strcmp(text, "keep"));
+        free(text);
+        snprintf(path, sizeof path, "%s/publish/empty", root);
+        DIR *empty = opendir(path);
+        REQUIRE(empty);
+        int entries = 0;
+        struct dirent *entry;
+        while ((entry = readdir(empty))) {
+            entries += strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..");
+        }
+        REQUIRE(!closedir(empty) && !entries);
+        snprintf(path, sizeof path, "%s/publish", root);
+        tool_remove_tree(path);
+    }
+    return true;
+}
+
 /* FIPS 180-4 example digests: "abc", the 448-bit two-block message and one
  * million 'a' bytes, which also spans many read chunks. */
 TEST_CASE(private_hashes_match_sha256_vectors)
@@ -1675,10 +2365,22 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     return true;
 }
 
-void test_tool_build_process(const char *worker, const char *host)
+static void build_process(const char *worker, const char *host, bool files_only)
 {
     worker_path = worker;
     host_path = host;
+    char error[256] = { 0 };
+    build_compiler = chibi_build_compiler_load(
+        CHIBI_SOURCE_ROOT "/tools/compiler",
+        CHIBI_SOURCE_ROOT "/packages/core",
+        error,
+        sizeof error
+    );
+    if (!build_compiler) {
+        fprintf(stderr, "build compiler: %s\n", error);
+    }
+    assert(build_compiler);
+
     strcpy(root, "/tmp/chibi-build-process-XXXXXX");
     assert(mkdtemp(root));
     char *resolved = realpath(root, NULL);
@@ -1696,6 +2398,12 @@ void test_tool_build_process(const char *worker, const char *host)
     saved_allowed = getenv("CHIBI_BUILD_ALLOWED")
                       ? strdup(getenv("CHIBI_BUILD_ALLOWED"))
                       : NULL;
+    if (files_only) {
+        RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+        RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+        RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
+        goto teardown;
+    }
     RUN_TEST_CASE(argv_cwd_and_explicit_environment);
     RUN_TEST_CASE(separate_output_bounds);
     RUN_TEST_CASE(exits_and_spawn_errors);
@@ -1707,6 +2415,12 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
+    RUN_TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_seed);
+    RUN_TEST_CASE(private_host_cli_deadline_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_sigint_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_sigterm_covers_changed_compiler_recovery);
+    RUN_TEST_CASE(private_host_cli_deadline_unblocks_inherited_signal_masks);
+    RUN_TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants);
     RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
@@ -1715,7 +2429,7 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_asset_compiler_stage_reuses_unchanged_blob);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
-    RUN_TEST_CASE(private_programs_cannot_wait_or_start_tasks);
+    RUN_TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);
@@ -1732,8 +2446,12 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);
     RUN_TEST_CASE(private_copies_renames_and_removals_leave_whole_files);
+    RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
     RUN_TEST_CASE(private_hashes_match_sha256_vectors);
     RUN_TEST_CASE(private_environment_names_list_the_allowed_snapshot);
+teardown:
+    chibi_build_compiler_free(build_compiler);
+    build_compiler = NULL;
     tool_remove_tree(root);
     if (saved_worker) {
         assert(!setenv("CHIBI_BUILD_WORKER", saved_worker, 1));
@@ -1754,4 +2472,13 @@ void test_tool_build_process(const char *worker, const char *host)
     }
     free(saved_secret);
     free(saved_allowed);
+}
+
+void test_tool_build_process(const char *worker, const char *host)
+{
+    build_process(worker, host, false);
+}
+void test_tool_build_process_files(const char *worker, const char *host)
+{
+    build_process(worker, host, true);
 }

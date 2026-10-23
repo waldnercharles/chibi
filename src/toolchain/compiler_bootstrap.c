@@ -651,6 +651,35 @@ static bool written(const char *output, const unsigned char *bytes, size_t lengt
     }
     return true;
 }
+/* Matching source hashes make the recorded contract the current one. Changed
+ * sources instead supply their contract through the recovered compiler. */
+static bool accepted_contract(compiler_host *host, const artifact *a, bool matching, char *error, size_t size)
+{
+    contract current = { 0 };
+    if (!compiled_contract(host, &current, error, size)) {
+        return false;
+    }
+    int64_t version = yyjson_get_sint(yyjson_obj_get(a->root, "version"));
+    if (version < current.minimum) {
+        snprintf(
+            error,
+            size,
+            "the artifact has bootstrap version %" PRId64
+            ", older than %d, the oldest these compiler sources support; "
+            "produce a newer one from stage zero",
+            version,
+            current.minimum
+        );
+        return false;
+    }
+    if (matching &&
+        (version != current.version ||
+         yyjson_get_sint(yyjson_obj_get(a->root, "minimum")) != current.minimum)) {
+        snprintf(error, size, "the artifact bootstrap contract does not match compiled BootstrapContract");
+        return false;
+    }
+    return true;
+}
 /* Compiles the sources with the artifact loaded in host, which this frees:
  * the artifact's own bytes when they are the sources it recorded, otherwise a
  * compiler that compiles them to itself. Writes that compiler to `output`
@@ -662,6 +691,7 @@ static bool recover(
     size_t length,
     int changed,
     const char *output,
+    compiler_host **current,
     char *report,
     size_t size
 )
@@ -673,22 +703,7 @@ static bool recover(
         return false;
     }
     compiler_host *next = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
-    contract current = { 0 };
-    bool compatible = next && compiled_contract(next, &current, report, size);
-    int64_t artifact_version = yyjson_get_sint(yyjson_obj_get(a->root, "version"));
-    if (compatible && artifact_version < current.minimum) {
-        snprintf(
-            report,
-            size,
-            "the artifact has bootstrap version %" PRId64
-            ", older than %d, the oldest these compiler sources support; "
-            "produce a newer one from stage zero",
-            artifact_version,
-            current.minimum
-        );
-        compatible = false;
-    }
-    if (!compatible) {
+    if (!next || !accepted_contract(next, a, !changed, report, size)) {
         compiler_host_free(next);
         free(first);
         return false;
@@ -737,35 +752,71 @@ static bool recover(
     }
     valid = valid && written(output, first, first_length, report, size);
     free(second);
+    if (valid && current) {
+        *current = next;
+        next = NULL;
+    }
     compiler_host_free(next);
     free(first);
     return valid;
 }
 
+static compiler_host *validated(
+    const compiler_bootstrap *b,
+    artifact *a,
+    char **json,
+    size_t *length,
+    int *changed,
+    char *report,
+    size_t size
+)
+{
+    bool valid = read_artifact(b, a, report, size);
+    *json = valid ? disk_arguments(b, a->root, length, changed, report, size) : NULL;
+    compiler_host *host = *json ? compiler_host_load(
+                                      a->closure,
+                                      a->closure_length,
+                                      behavior_default_backend(),
+                                      report,
+                                      size
+                                  )
+                                : NULL;
+    if (host &&
+        (!target_matches(host, yyjson_obj_get(a->root, "target"), 0, report, size) ||
+         (!*changed && !accepted_contract(host, a, true, report, size)))) {
+        compiler_host_free(host);
+        host = NULL;
+    }
+    return host;
+}
+
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
     artifact a = { 0 };
+    char *json = NULL;
     size_t length = 0;
     int changed = 0;
-    bool valid = read_artifact(b, &a, report, size);
-    char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
-                       : NULL;
-    compiler_host *host = json ? compiler_host_load(
-                                     a.closure,
-                                     a.closure_length,
-                                     behavior_default_backend(),
-                                     report,
-                                     size
-                                 )
-                               : NULL;
-    bool targeted = host &&
-                    target_matches(host, yyjson_obj_get(a.root, "target"), 0, report, size);
-    valid = targeted &&
-            recover(host, &a, json, length, changed, b->output, report, size);
-    if (!targeted) {
-        compiler_host_free(host);
-    }
+    compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
+    bool valid = host &&
+                 recover(host, &a, json, length, changed, b->output, NULL, report, size);
     free(json);
     free_artifact(&a);
     return valid;
+}
+
+compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error, size_t size)
+{
+    artifact a = { 0 };
+    char *json = NULL;
+    size_t length = 0;
+    int changed = 0;
+    compiler_host *host = validated(b, &a, &json, &length, &changed, error, size);
+    if (host && changed) {
+        compiler_host *current = NULL;
+        recover(host, &a, json, length, changed, NULL, &current, error, size);
+        host = current;
+    }
+    free(json);
+    free_artifact(&a);
+    return host;
 }

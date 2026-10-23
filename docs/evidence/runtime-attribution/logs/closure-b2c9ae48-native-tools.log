@@ -5,7 +5,6 @@ cd887a20830f7815438bf6686a7c84078e94fcc9
 a545eb6a177de70f4078b27501ffb6a49ef04dbafdeac652ba36fd8ad348c282  build-attribution-tools/policy_worker
 4a95073e957a36e4258f8b43d3ee43bc6e2739af2027808fba7b8cb778e8149b  tools/test_policy.py
 + env CHIBI_TOOLS_BUILD_DIR=build-attribution-tools ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 python3 tools/test_policy.py tool native-tools
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
 Running: preview_budgets (OK) (0.003994 secs)
 Running: malformed_numeric_fields (OK) (0.000083 secs)
 Running: capture_requires_explicit_profile_and_path (OK) (0.000244 secs)
@@ -237,7 +236,7 @@ Running: descendant_cleanup (OK) (0.022596 secs)
 Running: portable_nested_cleanup_preserves_sibling (OK) (0.034971 secs)
 Running: unavailable_discovery_refuses_before_launch (OK) (0.000738 secs)
 RunFAIL: test command exceeded its aggregate deadline
-Test command wall time: 2.041s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.041s; includes in-test fixture setup; external configuration/build excluded.
 FAIL: test command exceeded its aggregate deadline
 Test command wall time: 2.023s; ceiling 2s; includes in-test fixture setup; external configuration/build excluded.
 FAIL: test command exceeded its aggregate deadlineTest command wall time: 2.039s; ceiling 2s; includes in-test fixture setup; external configuration/build excluded.
@@ -251,34 +250,26 @@ usage: plan.py validation-plan [-h] --base BASE [--head HEAD]
                                [--tool {arena,asset-refactor,asset-source,asset-values,audio-analysis,audio-browser,behavior-loader,box3d,c-export-alias,compile-installed-space-cadet,contact-benchmark,controller,ecs-query,ecs-query-benchmark,engine-clock,examples-projects,feature-coverage,field-runtime,fields,fmt,graph-authoring,graph-document,graph-functions,graph-model,graph-presentation,installed-example-hrc_lab,installed-example-local_mesh_sampled,installed-example-modeling_lab,installed-example-sdf_lab,installed-example-suzanne_sampled,interior-border,language,language-activation-benchmark,language-activation-cache,language-binding-benchmark,language-binding-schedule,language-borrow,language-borrow-benchmark,language-component-write,language-component-write-layout,language-execution,language-format,language-headless,language-incremental,language-incremental-benchmark,language-modules,language-navigation,language-prepared,language-program,language-publication,language-query-program,language-ranges,language-reductions,language-runtime-attribution,language-scalarize,language-semantic,language-wasm,material-benchmark,material-cameras,material-destruction,material-ecs,material-fluids,material-mpm,material-pixels,material-ramps,material-render,material-sampling,material-simulation,material-thermal,mesh-files,mesh-materials,model-catalog,model-graphs,model-import,model-runtime,native-catalog,native-runtime,native-tools,native-values,new-asset,owned-tick,package,parallel-tick,particles,persistent-store,physics,physics3d,player-clock,player-installed-space-cadet-sljit,player-installed-space-cadet-vm,player-url,png-encoding,preview-components,preview-layout,project-document,prototype-document,prototype-documents,prototype-expansion,radiance,radiance-depth,radiance-horizons4,radiance-horizons8,radiance-surface,reference-index,reflect-ranges,render-fixture,render-geometry,render-resources,runtime-scene,scene-hierarchy,scene-prepared,scene2d,scene3d,scene3d-gi,scene3d-gi-gles,scene3d-gles,scene3d-post,scene3d-shapes,scheduler-benchmark,script-benchmark,sdf-quality,sdf-visibility,shader-graphs,shader-parameters-prepared,shader-parity,shader-programs,shader-webgpu,sky-files,source-edit,source-execution-benchmark,source-native-features,source-native-material,source-native-numeric-queries,source-presentation,source-query-rows,source-reduction-benchmark,source-reductions,source-systems,studio-asset-pointer,studio-debugger-source-history,studio-graph-pointer,studio-graph-visibility,studio-outliner-move,studio-panel-idle,studio-scene-camera,studio-scene-collider3d,studio-scene-gizmo3d,studio-scene-move,studio-source-edit,system-schedule,text-files,text-format,texture-transform,tilemap,tilemap-project,transforms,ui-authoring,ui-document,unit-fixtures,unit-validation,validate-project,vector-nodes,viewport-resize,wasm-activation-benchmark,wasm-activation-cache,wasm-binding-benchmark,wasm-binding-schedule,wasm-borrow,wasm-borrow-benchmark,wasm-browser,wasm-component-write,wasm-execution,wasm-format,wasm-headless,wasm-incremental-benchmark,wasm-modules,wasm-program,wasm-publication,wasm-query-program,wasm-ranges,wasm-reductions,wasm-runtime-attribution,wasm-scalarize,wasm-script-benchmark,wasm-wasm,web-storage,webgpu-staging,whole-alias,whole-conversion,whole-integer,whole-math,whole-select}]
                                [--verify VERIFY]
 plan.py validation-plan: error: argument --tool: invalid choice: 'quiet' (choose from arena, asset-refactor, asset-source, asset-values, audio-analysis, audio-browser, behavior-loader, box3d, c-export-alias, compile-installed-space-cadet, contact-benchmark, controller, ecs-query, ecs-query-benchmark, engine-clock, examples-projects, feature-coverage, field-runtime, fields, fmt, graph-authoring, graph-document, graph-functions, graph-model, graph-presentation, installed-example-hrc_lab, installed-example-local_mesh_sampled, installed-example-modeling_lab, installed-example-sdf_lab, installed-example-suzanne_sampled, interior-border, language, language-activation-benchmark, language-activation-cache, language-binding-benchmark, language-binding-schedule, language-borrow, language-borrow-benchmark, language-component-write, language-component-write-layout, language-execution, language-format, language-headless, language-incremental, language-incremental-benchmark, language-modules, language-navigation, language-prepared, language-program, language-publication, language-query-program, language-ranges, language-reductions, language-runtime-attribution, language-scalarize, language-semantic, language-wasm, material-benchmark, material-cameras, material-destruction, material-ecs, material-fluids, material-mpm, material-pixels, material-ramps, material-render, material-sampling, material-simulation, material-thermal, mesh-files, mesh-materials, model-catalog, model-graphs, model-import, model-runtime, native-catalog, native-runtime, native-tools, native-values, new-asset, owned-tick, package, parallel-tick, particles, persistent-store, physics, physics3d, player-clock, player-installed-space-cadet-sljit, player-installed-space-cadet-vm, player-url, png-encoding, preview-components, preview-layout, project-document, prototype-document, prototype-documents, prototype-expansion, radiance, radiance-depth, radiance-horizons4, radiance-horizons8, radiance-surface, reference-index, reflect-ranges, render-fixture, render-geometry, render-resources, runtime-scene, scene-hierarchy, scene-prepared, scene2d, scene3d, scene3d-gi, scene3d-gi-gles, scene3d-gles, scene3d-post, scene3d-shapes, scheduler-benchmark, script-benchmark, sdf-quality, sdf-visibility, shader-graphs, shader-parameters-prepared, shader-parity, shader-programs, shader-webgpu, sky-files, source-edit, source-execution-benchmark, source-native-features, source-native-material, source-native-numeric-queries, source-presentation, source-query-rows, source-reduction-benchmark, source-reductions, source-systems, studio-asset-pointer, studio-debugger-source-history, studio-graph-pointer, studio-graph-visibility, studio-outliner-move, studio-panel-idle, studio-scene-camera, studio-scene-collider3d, studio-scene-gizmo3d, studio-scene-move, studio-source-edit, system-schedule, text-files, text-format, texture-transform, tilemap, tilemap-project, transforms, ui-authoring, ui-document, unit-fixtures, unit-validation, validate-project, vector-nodes, viewport-resize, wasm-activation-benchmark, wasm-activation-cache, wasm-binding-benchmark, wasm-binding-schedule, wasm-borrow, wasm-borrow-benchmark, wasm-browser, wasm-component-write, wasm-execution, wasm-format, wasm-headless, wasm-incremental-benchmark, wasm-modules, wasm-program, wasm-publication, wasm-query-program, wasm-ranges, wasm-reductions, wasm-runtime-attribution, wasm-scalarize, wasm-script-benchmark, wasm-wasm, web-storage, webgpu-staging, whole-alias, whole-conversion, whole-integer, whole-math, whole-select)
-Validation plan blocked: reviewed scope requires a review note and admitted selectors or tooling
-Validation plan blocked: reviewed scope requires a review note and admitted selectors or tooling
-Validation plan blocked: selector is quarantined for agent-test: --player-installed-space-cadet-vm
-Validation plan blocked: selector is quarantined for agent-test: --studio-source-edit
+Validation plan did not run: reviewed scope lacked a review note or selected tooling
+Validation plan did not run: reviewed scope lacked a review note or selected tooling
+Validation plan did not run selector: --player-installed-space-cadet-vm
+Validation plan did not run selector: --studio-source-edit
 Validation plan blocked: unclassified selector: --not-a-test
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit; touch $TMP/chibi-validation-plan-pC2i99/injected
+Rejected test invocation: --source-edit; touch $TMP/chibi-validation-plan-pC2i99/injected
 make: *** [$SOURCE/Makefile:351: test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit && touch $TMP/chibi-validation-plan-pC2i99/injected
+Rejected test invocation: --source-edit && touch $TMP/chibi-validation-plan-pC2i99/injected
 make: *** [$SOURCE/Makefile:351: test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit `touch $TMP/chibi-validation-plan-pC2i99/injected`
+Rejected test invocation: --source-edit `touch $TMP/chibi-validation-plan-pC2i99/injected`
 make: *** [$SOURCE/Makefile:351: test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit $(touch $TMP/chibi-validation-plan-pC2i99/injected)
+Rejected test invocation: --source-edit $(touch $TMP/chibi-validation-plan-pC2i99/injected)
 make: *** [$SOURCE/Makefile:351: test-fast] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit; touch $TMP/chibi-validation-plan-pC2i99/injected
+Rejected test invocation: --source-edit; touch $TMP/chibi-validation-plan-pC2i99/injected
 make: *** [$SOURCE/Makefile:275: agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit && touch $TMP/chibi-validation-plan-pC2i99/injected
+Rejected test invocation: --source-edit && touch $TMP/chibi-validation-plan-pC2i99/injected
 make: *** [$SOURCE/Makefile:275: agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit `touch $TMP/chibi-validation-plan-pC2i99/injected`
+Rejected test invocation: --source-edit `touch $TMP/chibi-validation-plan-pC2i99/injected`
 make: *** [$SOURCE/Makefile:275: agent-test] Error 2
-TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
-DISABLED: unadmitted native invocation: --source-edit $(touch $TMP/chibi-validation-plan-pC2i99/injected)
+Rejected test invocation: --source-edit $(touch $TMP/chibi-validation-plan-pC2i99/injected)
 make: *** [$SOURCE/Makefile:275: agent-test] Error 2
 Traceback (most recent call last):
   File "$TMP/chibi-publish-test-IN6dqJ/bridge.py", line 92, in <module>
@@ -303,7 +294,7 @@ Running: concurrent_publication_fills_each_artifact_once (OK) (0.009870 secs)
 Running: generated_c_preserves_aliased_operands_and_debug_continuations (OK) (0.038056 secs)
 ===============================================================
 Summary: Passed: 116 Failed: 0 Total: 116 Suites: 0 Asserts: 33227
-Test command wall time: 23.856s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 23.856s; includes in-test fixture setup; external configuration/build excluded.
 + result=0
 + set +x
 ended=2026-10-15T20:13:20Z

@@ -10,7 +10,8 @@
  * revision and checksums of the sources it compiles, its own checksum and the
  * target it was compiled for. package_compiler/Bootstrap.chibi supplies these
  * versions through the compiled BootstrapContract function. Recovery checks the
- * artifact metadata before loading, then the current contract after compilation. */
+ * artifact metadata before loading, then the matching closure's contract or the
+ * recovered compiler's current contract. */
 typedef struct
 {
     const char *folder;   /* The artifact. */
@@ -36,5 +37,14 @@ bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t si
  * says what was recovered, and the recovered compiler is written to `output`
  * when there is one. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);
+
+struct compiler_host;
+
+/* Loads one owned, validated current compiler generation. Matching source
+ * hashes admit the recorded closure directly, after checksum, version, ABI and
+ * source-completeness and compiled BootstrapContract validation. Changed sources
+ * go through the existing recovery/fixpoint path. This writes no files and has no persistent cache.
+ * Release the result with compiler_host_free. */
+struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);
 
 #endif

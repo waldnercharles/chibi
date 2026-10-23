@@ -6,7 +6,9 @@ param(
     [string]$Runtime,
     [string]$Platform,
     [switch]$PinnedRuntime,
-    [switch]$QueryTarget
+    [switch]$QueryTarget,
+    [switch]$NativeRecovery,
+    [ValidateRange(1, 2147483647)][int]$InvocationTimeoutMilliseconds = 1800000
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,8 +84,18 @@ function Check-Closure($Manifest) {
         throw 'The seed compiler differs from the checked-in size or SHA-256'
     }
 }
+function Repository-Identity {
+    $revision = & git -C $Repository rev-parse HEAD
+    if ($LASTEXITCODE -or $revision -notmatch '^[a-f0-9]{40}$') { throw 'The proof source has no exact Git revision' }
+    $tree = & git -C $Repository rev-parse 'HEAD^{tree}'
+    if ($LASTEXITCODE -or $tree -notmatch '^[a-f0-9]{40}$') { throw 'The proof source has no exact Git tree' }
+    $status = & git -C $Repository status --porcelain --untracked-files=normal
+    if ($LASTEXITCODE -or $status) { throw 'The proof source must be clean' }
+    if ($env:GITHUB_SHA -and $revision -ne $env:GITHUB_SHA) { throw 'The proof source differs from the workflow revision' }
+    return [ordered]@{ revision = $revision; tree = $tree }
+}
 function Runtime-Provenance {
-    $record = [ordered]@{ runtime_sha256 = Digest $hostPath; platform = $Platform }
+    $record = [ordered]@{ runtime_sha256 = Digest $hostPath; runtime_bytes = (Get-Item $hostPath).Length; platform = $Platform }
     if ($PinnedRuntime) {
         $manifest = Get-Content -LiteralPath (Join-Path $Proof 'tools/compiler/runtime.json') -Raw | ConvertFrom-Json
         $pin = $manifest.platforms.$Platform
@@ -93,10 +105,13 @@ function Runtime-Provenance {
         $record['runtime_source_tree'] = $manifest.source_tree
         $record['runtime_release'] = "$($manifest.repository)/$($manifest.tag)"
     } else {
-        $record['runtime_source_revision'] = $env:GITHUB_SHA
+        $record['runtime_source_revision'] = $repositoryIdentity.revision
+        $record['runtime_source_tree'] = $repositoryIdentity.tree
     }
     return $record
 }
+
+$repositoryIdentity = Repository-Identity
 
 if ($Mode -eq 'Prepare') {
     if (!$Runtime -or (Test-Path -LiteralPath $Proof)) { throw 'Preparation requires a runtime and a new isolated directory' }
@@ -130,13 +145,16 @@ if ($Mode -eq 'Prepare') {
 
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $evidence = [ordered]@{
-    revision = $env:GITHUB_SHA; runner_os = $env:RUNNER_OS; runner_arch = $env:RUNNER_ARCH
+    revision = $repositoryIdentity.revision; source_tree = $repositoryIdentity.tree; source_dirty = $false
+    script_sha256 = Digest $PSCommandPath
+    runner_os = $env:RUNNER_OS; runner_arch = $env:RUNNER_ARCH
     stages = @(); invocations = @(); source_files = @()
     native_configure_seconds = $env:CONFIGURE_SECONDS; native_build_seconds = $env:BUILD_SECONDS
 }
 function Invoke-Runtime([string]$Name, [string[]]$Arguments) {
-    $record = [ordered]@{ name = $Name; arguments = $Arguments }
+    $record = [ordered]@{ name = $Name; arguments = $Arguments; timeout_milliseconds = $InvocationTimeoutMilliseconds }
     $evidence.invocations += $record
+    $invocationTimer = [Diagnostics.Stopwatch]::StartNew()
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $hostPath
     $start.WorkingDirectory = $Proof
@@ -154,11 +172,17 @@ function Invoke-Runtime([string]$Name, [string[]]$Arguments) {
     $start.Environment['TMPDIR'] = $Proof
     $record['child_environment'] = [ordered]@{}
     foreach ($key in $start.Environment.Keys | Sort-Object) { $record.child_environment[$key] = $start.Environment[$key] }
-    $process = [Diagnostics.Process]::Start($start)
+    $process = $null
     try {
+        $process = [Diagnostics.Process]::Start($start)
         $stdout = $process.StandardOutput.ReadToEndAsync()
         $stderr = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        $completed = $process.WaitForExit($InvocationTimeoutMilliseconds)
+        $record['timed_out'] = !$completed
+        if (!$completed) {
+            if (!$process.HasExited) { $process.Kill($true) }
+            $process.WaitForExit()
+        }
         $out = $stdout.GetAwaiter().GetResult()
         $err = $stderr.GetAwaiter().GetResult()
         [IO.File]::WriteAllText((Join-Path $Proof "$Name.stdout.txt"), $out, $utf8)
@@ -166,13 +190,18 @@ function Invoke-Runtime([string]$Name, [string[]]$Arguments) {
         Write-Host $out
         if ($err) { Write-Host $err }
         $record['exit_code'] = $process.ExitCode
-        $record['elapsed_total_seconds'] = $timer.Elapsed.TotalSeconds
+        if (!$completed) { throw "$Name exceeded its caller-owned invocation timeout of $InvocationTimeoutMilliseconds milliseconds" }
         if ($process.ExitCode) { throw "$Name failed with exit code $($process.ExitCode)" }
+        return $out
     } finally {
-        if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit() }
-        $process.Dispose()
+        if ($process) {
+            if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+            $process.Dispose()
+        }
+        $invocationTimer.Stop()
+        $record['elapsed_seconds'] = $invocationTimer.Elapsed.TotalSeconds
+        $record['elapsed_total_seconds'] = $timer.Elapsed.TotalSeconds
     }
-    return $out
 }
 try {
     $provenance = Runtime-Provenance
@@ -186,6 +215,7 @@ try {
         $targetPath = Join-Path $Proof 'runtime-target.json'
         $null = Invoke-Runtime 'target' @('--target-json', $targetPath)
         $target = Read-Node $targetPath
+        $evidence['runtime_target_sha256'] = Digest $targetPath
         if (![System.Text.Json.Nodes.JsonNode]::DeepEquals($target, $manifest['target'])) {
             throw 'The runtime target differs from the complete checked-in bootstrap target'
         }
@@ -207,7 +237,7 @@ try {
         $bytes = [IO.File]::ReadAllBytes($file)
         $paths.Add((Json-Text $name))
         $texts.Add((Json-Text ($utf8.GetString($bytes))))
-        $evidence.source_files += [ordered]@{ path = $name; bytes = $bytes.Length; sha256 = Digest $file; seed_sha256 = $source['sha256'].GetValue[string]() }
+        $evidence.source_files += [ordered]@{ path = $name; bytes = $bytes.Length; sha256 = Digest $file; seed_bytes = [long]$source['bytes'].ToJsonString(); seed_sha256 = $source['sha256'].GetValue[string]() }
     }
     $request.Add($paths)
     $request.Add($texts)
@@ -233,14 +263,16 @@ try {
         }
         $evidence.stages += $record
         $null = Invoke-Runtime $name @('--artifact', $inputCompiler, '--entry', $manifest['entry'].GetValue[string](),
-            '--input', $requestPath, '--backend', 'sljit', '--budget', '2000000000', '--output-artifact', $output)
+            '--input', $requestPath, '--backend', 'sljit', '--budget', '2000000000',
+            '--timeout-ms', "$InvocationTimeoutMilliseconds", '--output-artifact', $output)
         $record['output_bytes'] = (Get-Item $output).Length
         if (!$record.output_bytes) { throw "$name produced an empty compiler" }
         $record['output_compiler_sha256'] = Digest $output
         # package-symbol:project:package_compiler:1:BootstrapContract:callable.
         # Only compiled outputs need this entry; the older seed need not have it.
         $contractText = Invoke-Runtime "$name-contract" @('--artifact', $output, '--entry', '0x3e6062160494dc34',
-            '--input', $empty, '--backend', 'bytecode', '--budget', '10000')
+            '--input', $empty, '--backend', 'bytecode', '--budget', '10000',
+            '--timeout-ms', "$InvocationTimeoutMilliseconds")
         $contract = [System.Text.Json.Nodes.JsonNode]::Parse($contractText)
         if ($contract.Count -ne 1 -or $contract[0].Count -ne 2) { throw "$name returned an invalid bootstrap contract" }
         $version = [int]$contract[0][0].ToJsonString()
@@ -271,6 +303,21 @@ try {
         $second.output_bytes -ne $first.output_bytes -or $second.output_compiler_sha256 -ne $first.output_compiler_sha256) {
         throw 'The newly built compiler did not reproduce itself'
     }
+    if ($NativeRecovery) {
+        $output = Join-Path $Proof 'native-recovered.chibip'
+        $null = Invoke-Runtime 'native-bootstrap' @('--bootstrap', 'tools/compiler/bootstrap',
+            '--compiler', 'tools/compiler', '--core', 'packages/core', '--recover', $output)
+        $matchingSources = @($evidence.source_files | Where-Object { $_.sha256 -ne $_.seed_sha256 -or $_.bytes -ne $_.seed_bytes }).Count -eq 0
+        $native = [ordered]@{ output_bytes = (Get-Item $output).Length; output_compiler_sha256 = Digest $output; matching_sources = $matchingSources }
+        $evidence['native_recovery'] = $native
+        if (!$native.output_bytes -or $native.output_bytes -ne $second.output_bytes -or
+            $native.output_compiler_sha256 -ne $second.output_compiler_sha256 -or
+            ($matchingSources -and $native.output_compiler_sha256 -ne $first.input_compiler_sha256)) {
+            throw 'Native bootstrap recovery differs from the proven compiler output'
+        }
+    }
+    $after = Repository-Identity
+    if ($after.revision -ne $repositoryIdentity.revision -or $after.tree -ne $repositoryIdentity.tree) { throw 'The proof source changed during execution' }
     $evidence['compiler_bytes'] = $second.output_bytes
     $evidence['compiler_sha256'] = $second.output_compiler_sha256
     Copy-Item -LiteralPath (Join-Path $Proof 'stage2/compiler.chibip') -Destination (Join-Path $Proof 'compiler.chibip')

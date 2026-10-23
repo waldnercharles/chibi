@@ -1,0 +1,1135 @@
+diff --git a/docs/chibi-shaders/PLAN.md b/docs/chibi-shaders/PLAN.md
+index bd3a965a3..9289f5efb 100644
+--- a/docs/chibi-shaders/PLAN.md
++++ b/docs/chibi-shaders/PLAN.md
+@@ -3,6 +3,22 @@
+ Status: CPU source-inspection foundation implemented locally, 2026-10-22. No authoring cutover or
+ GPU parity claim is established by this plan.
+ 
++The current source-map/call-chain/staleness implementation is C, but that was a
++staging choice rather than a demonstrated language requirement. The Chibi-owned
++boundary below fits the already authorized primary-authoring-language goal;
++implementation needs no fresh human permission gate. PR 663 remains draft for
++incomplete boundary, integration and proof work. Native evaluator/resource
++access and the sampled-SDF diagnostic repair remain appropriate C boundaries.
++
++[Chibi-owned boundary proposal](chibi-boundary.md) makes the next design
++checkpoint concrete: authored lowering/provenance/stale policy, a narrow native
++IR/evaluation/resource bridge and a real imported-helper gradient fixture. It
++separates the initial flat-record facts proof from nested-record/render
++acceptance. Progress the authored implementation once the compiler facts and
++typed constructor dependencies are concrete and source-reviewed with their
++owners. Keep one authoritative policy implementation and preserve the native
++evaluator repair.
++
+ ## Ownership and checkpoints
+ 
+ Engine checkout: `/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi`.
+@@ -173,6 +189,43 @@ work. PRs carry exact tested commits and evidence, not historical test claims.
+ 
+ ## Current checkpoint and next dependency
+ 
++### Authored source preparation on current main
++
++The unfinished fa1 merge was preserved under
++`.chibi/shader-source/main-integration/preserved-fa1-merge/` and replaced with an
++ordinary clean, uncommitted merge of reviewed main `d0de4a84`. Existing shader
++policy/evaluator/test files remain byte-identical to the prior branch head.
++Earlier tooling failures remain in their original logs; checks on this new
++candidate have not run and earlier successes do not prove it.
++
++New authored source is frozen by Git blob/SHA256 in
++`.chibi/shader-source/d0-authored-source/manifest.json`:
++
++- `tools/compiler/compiler_facts/Facts.chibi` defines the flat owned schema,
++  with compiler-owner semantic source agreement. It has no Analyze producer/hooks. Compiler ownership
++  retains actual facts production and nested-record support.
++- `tools/compiler/shader_source/SourceMap.chibi` implements provenance
++  validation, origin/call-chain/result/node lookup, ordered source equality and
++  nonzero generation/count matching. Failures separate source IDs from IR
++  indices; aggregate field bindings and aliases are explicit. Cycle checking
++  precomputes parent indices and uses iterative visit colors.
++
++Independent source review clarified opaque source-tree anchors and final
++transitive/imported-helper facts invariants; the policy source has been reviewed
++against the existing native contract. Neither module has compilation/runtime
++proof yet. No inventory, bootstrap, pin or prepared resource was generated or
++edited for them. Required current-main checks and the authored behavior focus
++are queued after the coordinator's existing compiler/task/typed resource work.
++
++The policy port's production dependency is its own prepared closure plus SDK
++facade/install/runtime-only consumer proof, not the missing shader facts export.
++Only when that replacement is integrated does C cease to own policy; retain no
++C semantic fallback. The evaluator and independent sampled-SDF repair remain
++native. Real material lowering/rendering still requires facts, nested records
++and the agreed typed SourceMaterial contract.
++
++### Earlier native foundation evidence
++
+ Stage 2 is implemented in `src/runtime/shaders/source_debug.[ch]`. It owns source
+ documents, origin-only call chains, node values and principal results; validates
+ the complete current document closure before returning values; preserves the last
+diff --git a/docs/chibi-shaders/chibi-boundary.md b/docs/chibi-shaders/chibi-boundary.md
+new file mode 100644
+index 000000000..82b4de433
+--- /dev/null
++++ b/docs/chibi-shaders/chibi-boundary.md
+@@ -0,0 +1,249 @@
++# Chibi-owned shader authoring and inspection
++
++Design checkpoint, 2026-10-22. This placement fits the already authorized
++primary-authoring-language goal; implementation requires no fresh human
++permission gate. No runtime policy has been rewritten and PR 663 remains draft
++for incomplete boundary, integration and proof work. This document does not
++establish source compilation, rendering or Studio acceptance. The existing task plan is
++[PLAN.md](PLAN.md); the repository-root plan belongs to compiler/toolchain work.
++
++## Ownership
++
++Ordinary Chibi source and the ordinary compiler's resolved facts define source
++meaning. A Chibi shader-domain pass checks the supported subset and emits the
++existing `shader_graph` representation. That same program continues to feed the
++native CPU evaluator and GLSL emitter. There is one shader operation contract.
++
++| Responsibility | Proposed owner |
++| --- | --- |
++| Names, imports, types, literals, argument/default binding, ordinary effects | Existing authored compiler, exported through its proposed private typed-facts API |
++| Shader type/operation eligibility, reachable helper closure, recursion and effect rejection, field flattening, uniform slots and surface outputs | Chibi shader-domain pass |
++| Contextual operation IDs, document/range mapping, helper expansion chains and principal source-result bindings | Chibi lowering/source-map modules |
++| Captured source closure, current-document comparison, stale-result policy, source lookup and mapped diagnostics | Chibi inspection module |
++| IR transport bounds, opcode/index/width/resource validation and owned native program storage | Narrow native adapter using `shader_graph_validate` |
++| CPU operation execution, derivative workspace and resident image/scene callbacks | Existing `program.c` evaluator and runtime resources |
++| GLSL generation, render-catalog publication and GPU/resource lifetime | Existing native renderer |
++| Editor interaction and display | Studio consuming the shared authored inspection service through the SDK |
++
++C remains responsible for safe native buffer sizes and borrowed-pointer bounds.
++It need not understand documents, call chains, source revisions or editor
++selection. Native allocation/transport errors remain structured transport errors;
++the Chibi layer maps an evaluator's operation ID to authored source.
++
++The C sampled-SDF diagnostic repair remains an evaluator fix. C/pico_unit tests
++remain the test harness and invoke authored modules through the normal prepared
++runtime. Moving policy does not require moving assertions into another language.
++
++## Program and inspection lifecycle
++
++1. Snapshot the ordered source/import closure, resolve it with the ordinary
++   compiler, then lower its accepted typed facts in Chibi. Preserve exact typed
++   constant bits and resolved declaration/field identities. Do not parse literal
++   text again, use private compiler work records, or reconstruct bytecode.
++2. Produce one immutable authored bundle: owned documents, origins, result
++   bindings, uniform schema/defaults and the existing shader IR. Compilation
++   identity includes the entry, compiler/catalog contract and lowering version,
++   as well as every source document. Equal text alone cannot pair arbitrary IR
++   with a source map.
++3. A native bridge bounds and validates the transported IR, copies it into owned
++   native storage and returns a program-generation token. Bind that token to the
++   authored bundle. A token identifies a live immutable program, not an AST
++   occurrence or a hash of source text. Never reuse a retired token.
++4. Prepare the catalog/render products from that same program and publish the
++   generation transactionally. Failed compilation or publication leaves the
++   last valid render generation installed; its inspection becomes stale against
++   changed source. A successful edit replaces source-map, CPU and GPU products
++   together. Discard a late compile result after a newer request.
++5. For inspection, pass the program token, explicit sample and uniform values
++   to the native evaluator. It calls `shader_graph_eval_values_validated` on the
++   validated program and returns all node values or an operation-ID diagnostic.
++   The initial bridge is synchronous: native scratch and resolver views are
++   borrowed only for the call; copy results into authored-owned arrays before
++   releasing native storage. Pin program, uniform payload and resident-resource
++   revision throughout the call, including derivative resampling. It retains
++   no editor, graph or resolver pointers afterward.
++6. Chibi joins values with the bundle's origins and principal-result bindings.
++   It owns the snapshot's generation, sample/uniform request identity, values,
++   source closure and limitation labels. Preserve nonfinite values and mark
++   them; evaluator failure leaves the previous complete snapshot intact. A
++   failure carries the attempted program generation and maps through that
++   bundle's provenance, never the preserved snapshot's potentially reused IDs.
++   Retain attempted provenance until the diagnostic has been consumed.
++7. Every source-value query passes through Chibi's current-generation/source
++   guard. Check the complete ordered identity/text closure, including imported
++   helpers, and the active program identity before returning a current value.
++   Distinguish stale, unmapped and evaluation failure. Historical snapshots can
++   remain inspectable against their own documents, but cannot attach values to
++   a changed editor buffer. Retire native generations after consumers release
++   them; authored snapshots remain valid without the native program.
++
++Validate a complete immutable current-document snapshot once when attaching a
++value snapshot. Invalidate that attachment on any document/generation change;
++each watch query checks the attachment identity instead of rescanning every
++document. Keep provenance/call-depth budgets distinct from IR execution-node
++limits, since aliases and origin-only callers need not emit nodes.
++
++Keep the existing document/node/byte limits unless the implementation supplies
++an independently justified replacement. Use length-carrying authored strings;
++only actual native C-string boundaries need embedded-NUL checks. The initial
++material uses no external images. Later image samples pin the catalog/resource
++generation for evaluation and label the existing CPU base-level/gradient limits.
++The evaluator's resource behavior does not become a Chibi reimplementation.
++
++## Source provenance
++
++Allocate nonzero operation IDs within each compiled bundle with collision
++checking; the generation disambiguates different bundles. Preserve original
++compiler occurrence IDs separately. A helper expansion records its enclosing
++call-site ID, including calls that emit no node. Two calls to `TintGain` therefore
++have separate contextual origins even when they use the same helper document.
++
++Auxiliary IR nodes can share their originating expression. A principal source
++result points to its actual result node; an immutable alias may point to an
++earlier node. Do not infer either binding from IR order. A scalar or Float3
++result has one principal node. A structural result such as Surface binds its
++named fields individually; do not pretend that nine outputs fit one float4.
++Retain declared types/field identities for display even when IR storage is flat.
++Diagnostic source ranges and call chains come from these same authored tables.
++
++## Smallest real material
++
++Use the gradient source in [typed-facts.md](typed-facts.md), with `TintGain`
++moved into an imported ordinary helper module. Keep two helper calls and add an
++immutable alias for the first result. Proposed public domain records are Float2,
++Float3, Sample and Surface in `game:shaders`; these are not currently available
++shader source APIs. Parameters contains Float3 tint plus float gain/speed.
++
++The entry returns an opaque, unlit Surface. Its calculation is:
++
++```text
++factor = sample.uv.x * parameters.gain + sample.time * parameters.speed
++color = TintGain(parameters.tint, factor)
++alias = color
++emission = TintGain(alias, float(0.125))
++```
++
++Return color/emission with the existing surface defaults for all other fields.
++The authored helper uses scalar float-field multiplication and explicit Float3
++construction. This needs no vector arithmetic sugar, textures or new shader
++operation. Use existing UV, time, parameter, constant, component, multiply/add
++and vector-construction operations. Keep finite, explicitly float constants.
++
++At UV.x=0.25, time=2, gain=0.5, speed=0.125 and tint=(0.8,0.4,0.2), independent
++analytic expectations are factor=0.375, color=(0.3,0.15,0.075) and
++emission=(0.0375,0.01875,0.009375). CPU source inspection must expose these
++results, both helper contexts and the alias without inventing an extra node.
++
++The owners' [source-material contract](source-material-contract.md) specifies
++the proposed SourceMaterial/ShaderUniform constructors, exact typed defaults
++and one authored finalization pass. It is agreed for source review, not
++implemented or frozen. Use ordinary Build/Encode and the prepared-resource
++path; produce existing shader IR/catalog resources directly without lowering
++through an authored node-graph document a second time. The existing
++Shader.parameters Text-of-asset-source contract and material/shape setters stay
++unchanged for graph assets.
++
++Install the derived shader in a minimal real project on one existing renderable
++surface. The acceptance is that ordinary project preparation compiles the source
++and helper, publishes the program, renders it through the existing material
++catalog and inspects CPU samples from that same generation. A disconnected
++facts probe or hand-constructed test IR does not satisfy this milestone.
++
++## Dependencies and implementation sequence
++
++Owner confirmations on 2026-10-22: reviewed main `5c28191b3` uses execution
++ABI20; PR 665 reuses record-validation proofs but does not enable nested source
++records. The compiler's Analyze/facts export is still proposed. Scalar package
++constants and ordinary flat record results/projections are supported, while
++DeclarePackage scalar-field restrictions and nested LiteralStep nominal context
++still block the real fixture. The separate game-source library driver also
++rejects constants, unions and nonflat records. Its restrictions cannot be
++assumed away by using the package compiler. Shared resolution/provenance work
++precedes a stable facts-export checkpoint. Do not import held pointer/query ABI
++work or assume equal ABI numbers establish compatibility.
++
++The typed-assets owner confirms committed source checkpoint `31098151b`, with
++current-main integration and paired compiler/Studio proof still pending.
++`Schemas.chibi` currently provides Graph/GraphDefinition.Named/GraphNode.Named;
++there is no implemented source-material constructor. The dedicated typed
++constructor and authored preparation seam now have an agreed source-review
++proposal linked above, targeting existing shader IR/catalog resources directly.
++The optional decoded cache `30cd287d1` is separate; this proposal
++implies no asset schema/project-version change.
++
++1. Agree the compiler owner's proposed private `compiler_facts` result: owned
++   flat rows, result-local indices, exact typed bits, nominal/field/callable
++   identities, ranges, source evaluation order, argument destination mapping,
++   binding writes/ref escapes and final transitive effects. Record unsupported
++   reachable forms with ranges. The ordinary Compile API stays separate. Facts
++   schema and target ABI must match the reviewed owning checkpoint.
++2. Prove the export/domain pass first with flat Float3 records, imported helper
++   calls and aliases. Reject mutation, ref escape, nonzero effects, recursion
++   and unknown natives at their originating ranges. This is an analysis and
++   lowering milestone, not render acceptance.
++3. Confirm compiler support for the real fixture's nested Sample.uv,
++   Parameters.tint and Surface record fields/construction/projection. Scalar
++   record support alone is insufficient. Keep any compiler/bootstrap work with
++   its owner; do not substitute a native shader semantic pass for missing facts.
++4. Agree the typed source-material constructor/resource seam, then implement
++   authored lowering and inspection plus the narrow native transport/evaluation
++   service. Directly replace overlapping C source-policy functions once those
++   dependencies are concrete and source-reviewed. Keep one authoritative
++   source-map/stale-check implementation without compatibility aliases.
++5. Add the real fixture and a second material using the same shared path with
++   different content, then expose the service in Studio. Package/SDK registration
++   and compiler/typed changes require their respective reviewed checkpoints.
++
++Expected ownership: `packages/game/shaders/` for public domain types;
++`tools/compiler/shader_source/` for internal typed-facts validation, lowering,
++source-map and inspection modules; a small `src/authoring/shader_source_host.[ch]`
++for prepared invocation and native transport. These paths are proposals, not
++reservations on another owner's files. Reuse `src/runtime/shaders/program.[ch]`
++and renderer publication. Remove/replace only the redundant policy in
++`source_debug.[ch]` in that authored implementation; retain the independent
++evaluator repair.
++
++## Implementation verification
++
++### Independent authored source preparation
++
++The new `tools/compiler/compiler_facts/Facts.chibi` schema is under compiler-owner
++semantic review. Analyze production/export and nested records remain compiler
++work; the schema is not evidence that source shaders compile.
++
++Source-map policy can proceed independently of those compiler facts. Reviewed
++main `d0de4a84` already loads/invokes closed prepared packages through
++`compiler_host_load/invoke`, including authored records/arrays, strings and
++full-width IDs. The new `tools/compiler/shader_source/SourceMap.chibi` prepares
++that pure policy. Its production cutover needs a prepared closure, stable
++root/entries, matching target ABI/layout, source/inventory/hash witness and SDK
++facade. These resources are not yet supplied or generated by this lane. Do not
++import pending typed-asset implementations to obtain a service facade.
++
++The mechanical native facade will keep raw float lanes/resolvers/native memory
++outside the policy payload. Use bounded document-pair matching entries and one
++authored count/generation/all-match reducer for source attachment: serializing
++two complete 8 MiB closures together could exceed the existing host's 64 MiB
++JSON limit after escaping. Preserve the source byte limits and keep the final
++staleness decision in Chibi. Install the prepared service and replace the C
++policy calls together, with no C semantic fallback or runtime source compiler.
++An installed consumer must run it with compiler/source discovery unavailable.
++
++C/pico_unit cases run the actual authored pass through the prepared runtime.
++Check analytic CPU values and typed error ranges, two imported helper contexts,
++auxiliary nodes, aliases, exact constants and owned lifetime after input release.
++Change caller/helper text and identity, entry/catalog/generation, sample and
++uniforms independently; prove each stale/recapture outcome and failed-evaluation
++recovery. Exercise rejected late publication and complete bundle replacement.
++
++Prepare and render the real project with a supported backend. Compare controlled
++interior samples using the renderer's actual color/output conversion and stated
++tolerances; an unlit material still goes through that pipeline. Verify a source
++edit changes the derived program, rendering and inspected values together.
++CPU approximation and image/derivative limitations remain explicit. No CPU test
++alone proves pixel equality or full-frame parity.
++
++Run required repository groups and applicable build/format/canonicality checks
++on the exact combined candidate. Studio checks follow its owning repository's
++conventions. Keep platform/GPU gaps and actual elapsed times in the evidence.
++No code or runtime check was run for this design checkpoint.
+diff --git a/docs/chibi-shaders/schema9-fit.md b/docs/chibi-shaders/schema9-fit.md
+new file mode 100644
+index 000000000..baf9bea0e
+--- /dev/null
++++ b/docs/chibi-shaders/schema9-fit.md
+@@ -0,0 +1,87 @@
++# Shader dependency fit at the rich schema-9 checkpoint
++
++Read-only source assessment, 2026-10-22. Input is immutable Git tree
++`b029a6f59d1ff2f8185541538c90c1930a0e3cce`, based on
++`5c28191b3ea53afa232c34e37b14fd9b01024aef`, in the compiler repository.
++The supplied patch SHA256 is
++`8e24028fde54b093ca41f3dcea4b51a5424bcc633de734ec859fd2cf51a0ee9b`.
++All 28 source-file SHA256s in the supplied frozen manifest were checked against
++Git blobs. References below are line numbers in that tree, not mutable worktree
++files. Reproduce a source read with `git show <tree>:<path>`.
++
++The checkpoint supplies useful native-catalog inputs, but not the proposed
++owned shader typed-facts result. It still rejects the authored nested records
++needed by the real gradient material. No source was imported, compiler code
++edited, artifact generated or test/build run for this assessment. The reported
++named Append effect/debug mismatch and broad/resource/default eligibility gates
++remain with the compiler/coordinator owners.
++
++## Facts available and still needed
++
++| Shader requirement | Evidence at the pinned tree | Remaining dependency |
++| --- | --- | --- |
++| Native callable identity and classification | `src/toolchain/compiler_target.c:250–294` exports IDs/signature ABIs, names, qualified names, kind, actual linked intrinsic and direct-call admission. `Compile.chibi:149–159` defines CatalogNative. | Reuse these shared catalog decisions in the facts producer. Direct-call admission does not imply shader purity or a shader operation. No source-call expression/callee table is exported. |
++| Native port types and defaults | `Compile.chibi:213–224` carries storage/container, nominal ID, C-string flag and default status/bits/text. `compiler_target.c:175–247` copies exact float32 bits; aggregate/inferred defaults remain unsupported. `Behavior.chibi:919–970` resolves eligible nominal native records/handles. | These are native declaration defaults, not typed source literals, construction fields or the descriptor's Float3 uniform defaults. They do not establish authored nested-record support. |
++| Native and transitive effects | `compiler_target.c:352–356` exports matching native masks. `Compile.chibi:1975–1993` computes the call-graph fixed point; `Assembly:315–316` retains private summaries. | The facts API must expose final effects for each reached source callable and ranged writes/ref escapes. Do not infer purity from a catalog row or decode prepared entry effects. The named Append mismatch remains an independent eligibility hold. |
++| Immutable documents, imports and syntax ranges | `source_snapshot/Snapshot.chibi:33–96` already exposes nodes, documents with identities/text/paths and ranged imports. | Reuse this snapshot infrastructure. It supplies syntax/provenance inputs, not resolved expression types, operation/conversion choices or contextual helper-expansion IDs. |
++| Resolved source expressions, bindings and calls | Public `package_compiler.Result` is only Rejected or Compiled(module,bytes), `Compile.chibi:310–312`; Compile/CompileWithEffects return that result at `2042–2096`. No compiler_facts package/entry exists in the tree. | Export the agreed owned document/origin/type/field/function/binding/statement/expression/argument rows from actual semantic decisions. Exact float/bool constants, nominal types, conversions and unsupported reachable ranges remain missing as consumer facts. |
++| Source argument order/default binding | `Steps.chibi:1467–1478` explicitly separates source evaluation order from parameter destination; CallStep implements binding/default handling. | Export those resolved bindings as owned facts, including defaulted arguments. NativeArgument/Value/Work are private implementation records, not a consumer API. |
++| Source points and principal results | `Body.chibi:99–124` has occurrence/range/type debugger points/watches, later serialized at `Compile.chibi:1899–1918`. | Still need compiler occurrence facts and resolved result identities, then Chibi-owned helper expansion chains, aggregate field results and aliases. Prepared watch slots cannot serve as shader semantic facts. |
++
++`Compile.chibi` above means `tools/compiler/package_compiler/Compile.chibi`;
++Body/Steps/Behavior are in the same directory. Snapshot is beneath
++`tools/compiler/source_snapshot/`.
++
++The richer input route is specifically `CompileBehaviorsWithCatalog`, which
++returns bytes (`Behavior.chibi:987–1000`). The ordinary package route still uses
++legacy Native/Port inputs (`Compile.chibi:2051–2057`), so the earlier proposed
++Analyze signature must be reviewed against the shared rich-catalog decisions.
++Do not copy the legacy shape and silently drop nominal/default/intrinsic data,
++or add a second catalog resolver in the shader pass.
++
++Existing `unit_analysis.Analyze` is not a source-to-typed-facts producer:
++`tools/compiler/unit_analysis/Analysis.chibi:8–116,851` takes already resolved
++environment tables and returns unit-analysis results. Likewise
++`effect_analysis/Effects.chibi:92–96` takes resolved tables to produce effect
++arrays. These are reusable analyses after inputs exist, not a replacement for
++the missing ordinary-compiler facts export. Neither is newly added by this
++checkpoint's diff.
++
++## Nested-record dependency map
++
++| Operation needed by the material | Pinned source and status |
++| --- | --- |
++| Flat Float2/Float3 declarations | Scalar float fields fit `Compile.chibi:681–694,809–825`. Existing flat record support remains useful for the first analysis/lowering fixture. |
++| Sample.uv, Parameters.tint, Surface.base_color/emission fields | Still rejected: DeclarePackage calls ScalarStorage, rejects non-scalars and records each field with `record = -1`, `Compile.chibi:809–825`. |
++| Nested contextual construction, including supplying an existing Float3 | Still blocked independently: LiteralStep gives each field initializer absent nominal context and checks against `record = -1`, `Steps.chibi:1352–1359,1383–1387`; SameType requires exact record identity, `Body.chibi:885–886`. |
++| Nested layout and prepared type requirements | Lifting the declaration guard alone is insufficient. Layout hashing assumes scalar field sizes/absent type names, `Compile.chibi:1349–1365`; requirements emit absent field type names, `1607–1625`. Resolve and preserve ordinary nested nominal/layout information throughout this path. |
++| Nested field projection | Machinery preserves `field.record` and projects an address for a catalog-known nested field, `Steps.chibi:1197–1239`. Its inline-address case describes native records; that is not proof for authored nested record representation/copying. |
++| Flat return/call/import identity | Signatures preserve declared record indices (`Compile.chibi:1197–1218,1264–1271`); qualified type lookup preserves imported identity (`580–603`). Return and call code retains that identity (`Steps.chibi:294–295,626–634,2160–2166,2450–2462,2524–2526`). These parts can support the flat imported TintGain milestone. |
++| Separate executable-library route | PromoteRecords remains scalar-only and rejects field record identities, `Behavior.chibi:500–517`. The native source_graph_library adapter also admits scalar parameters/results and omits unlowerable functions (`src/authoring/source_graph_library.c:63–77,220–250`); it is not a complete authored shader frontend. |
++
++Source tests cover flat construction/calls/projection/returns
++(`test/language/package_compiler_chibi.c:1027–1047`), imported flat records
++(`1604–1654`), named flat results (`924–965`) and rejected literals
++(`2110–2133`). They do not establish the material's nested records. This
++assessment did not execute them or extend their coverage claims.
++
++## Smallest remaining sequence
++
++1. After the compiler owner's shared resolution/provenance checkpoint is
++   eligible, implement/source-review its owned facts export for flat Float3,
++   imported TintGain called twice, an immutable alias, scalar add/multiply and
++   exact constants. Include ranged rejects for mutation/ref/effects/recursion/
++   unknown natives. Produce facts from ordinary semantics, not private table
++   consumption or prepared-bytecode reconstruction.
++2. Extend ordinary nested declarations, nominal layouts/requirements,
++   contextual construction and authored projection/call/return/import handling
++   together, with differential coverage for the actual Sample/Parameters/Surface
++   shape. Native fixed-record port admission is not this step.
++3. Implement the agreed typed [SourceMaterial contract](source-material-contract.md)
++   after its migration checkpoint. Its authored finalization calls the Chibi
++   shader pass once and returns existing shader IR/catalog resources directly.
++4. Integrate generation-bound rendering and CPU source inspection and validate
++   the real material. The flat facts probe cannot close that acceptance gate.
++
++The checkpoint narrows catalog plumbing work; it does not remove either of the
++first two compiler dependencies or make the source-only tree eligible to import.
+diff --git a/docs/chibi-shaders/source-material-contract.md b/docs/chibi-shaders/source-material-contract.md
+new file mode 100644
+index 000000000..3f616533c
+--- /dev/null
++++ b/docs/chibi-shaders/source-material-contract.md
+@@ -0,0 +1,126 @@
++# Typed source-material contract
++
++Agreed for source review between shader and typed-assets owners, 2026-10-22.
++This is not an implemented or frozen API. Constructor work follows the queued
++typed migration checkpoint; shader preparation also needs the compiler's
++reviewed facts export and nested-record support. It is within the existing
++authoring goal, with no additional human permission step.
++
++## Constructor and descriptor
++
++The typed-assets owner proposes these `game:assets` declarations:
++
++```chibi
++pub ShaderUniform :: union {
++    Float(name: string, value: float)
++    | Float3(name: string, x: float, y: float, z: float)
++}
++
++pub SourceMaterial :: (
++    name: string, module: string, entry: string,
++    uniforms: ShaderUniform[], fields: Field[]
++) -> Value
++```
++
++The minimal material's ordinary asset Build returns:
++
++```chibi
++return data.Encode(data.SourceMaterial(
++    "Gradient", "project:shaders/Gradient", "Shade",
++    [
++        data.ShaderUniform.Float3("tint", float(0.8), float(0.4), float(0.2)),
++        data.ShaderUniform.Float("gain", float(0.5)),
++        data.ShaderUniform.Float("speed", float(0.125))
++    ], []
++));
++```
++
++`module` is a routed module reference resolved relative to the originating
++Build module and its roots. `entry` names an ordinary callable in that module.
++Executable shader text is not embedded in a generic graph field.
++
++The proposed immutable input descriptor has `kind = "source_material"`,
++`name`, `domain = "material"`, `source = {module, entry}`, and `uniforms`.
++Each uniform contains `name`, `type = "float" | "float3"`, and `value` as
++Real or a three-Real List. Additional fields are existing material metadata.
++The constructor rejects duplicate uniform names, empty required names,
++reserved-key collisions and nonfinite defaults. The discriminator is authored
++compiler input; it implies no graph version or project-schema bump.
++
++Shader-domain validation resolves uniform names to the entry Parameters
++record's field identities. Require exactly one default for every supported
++field, with no unknown fields; descriptor order does not determine slots.
++`Float` matches float32; `Float3` matches the agreed `game:shaders` Float3
++nominal type with float x/y/z fields. Same-layout unrelated records are not
++silently substituted. The native IR's existing 32 parameter slots apply;
++Float3 consumes one width-three slot. A fixed unlit bool in Surface is a source
++constant, not a third uniform kind.
++
++Constructor float values widen losslessly to the asset Real(double) carrier.
++Preparation preserves the supplied binary32 value; it does not infer precision
++from formatted spelling or silently narrow a generic double. Validate direct
++descriptors too: reject wrong numeric variants, nonfinite values and values
++that require rounding to float32. Use existing material metadata validation.
++Preserve signed zero through widening and roundtrip; narrowing followed by a
++numeric equality check alone cannot prove its sign. Do not add parameter types
++solely to support this example. The typed-assets owner agreed these domain
++constraints; no float32 lowering/transport proof is claimed by that agreement.
++
++The first slice explicitly selects the existing Opaque alpha mode and rejects
++Blend/Mask metadata. The authored shader pass applies the existing opacity
++lowering once: Opaque forces the opacity output to one. The graph adapter does
++this for graph inputs today; direct IR preparation must preserve that contract
++without running the adapter again. Broader alpha modes need their existing
++lowering rules and separate coverage before they are accepted here.
++
++## One preparation pass
++
++1. The existing asset compiler compiles ordinary Build; the values host runs
++   Build/Encode to an owned immutable descriptor. Nothing is published yet.
++2. Authored asset finalization dispatches `source_material` to the proposed
++   `shader_source.Prepare`, passing the descriptor, originating module, exact
++   ordered snapshot/roots, and compiler/catalog/lowering identities. Native
++   glue can marshal the invocation but owns no discriminator/schema/domain
++   policy. Ordinary Build's values catalog does not gain shader-analysis
++   capabilities.
++3. The Chibi shader pass resolves the source reference in that frozen snapshot,
++   obtains ordinary compiler facts and produces IR, source maps, typed defaults
++   and material metadata once as one owned immutable bundle. Required imports
++   must be in the same snapshot. Missing source causes a diagnostic or a new
++   complete snapshot/retry; do not extend a frozen closure with live file reads.
++4. The narrow bridge bounds, validates and owns a copy of the existing
++   shader_graph IR. Resource/catalog publication atomically binds the bundle's
++   token/provenance to the CPU and GPU program generation. Failed or late
++   results publish nothing. Diagnostics retain both descriptor origin and
++   attempted shader-source ranges/generation.
++
++SourceMaterial remains input and is never overwritten with derived IR. The
++output is the existing shader_graph IR/catalog resource shape. It is not an
++authored node-graph document passed through `shader_graph_from_graph` again;
++that would lower twice and detach provenance. Graph materials keep their
++existing explicit path. A narrow prepared-IR/catalog entry may be needed, with
++no new source parser or second semantic pass.
++
++The existing `Shader.parameters` Text-of-asset-source contract and
++`set_material_parameter`/`set_shape_parameter` APIs are unchanged by this
++constructor. The shader [boundary plan](chibi-boundary.md) owns generation,
++inspection, stale-source and resource-lifetime rules for the derived bundle.
++
++## Review and acceptance
++
++Typed assets owns the constructor, descriptor finalization dispatch and values
++host. Shader authoring owns Prepare, domain validation, lowering, provenance
++and inspection. The compiler owner supplies resolved facts and ordinary nested
++record semantics. Review the native IR/catalog seam together before editing
++publication code. No constructor, facts exporter or new shader consumer was
++implemented to establish this agreement.
++
++C/pico_unit coverage must run the actual constructor and authored preparation,
++check the numeric variants and resulting float values, and reject duplicate,
++missing, unknown, wrong-type, nonfinite and narrowing defaults. Cover both
++signed zeros in the exact float32 roundtrip. Cover origin
++roots, absent/imported modules, a changed import and failure/late publication.
++Check Opaque selection/opacity lowering and rejection of other alpha modes.
++The gradient must prepare as a real material, render through the existing
++catalog and provide CPU source inspection from the same generation. A flat
++facts probe is an earlier compiler milestone, not that acceptance.
+diff --git a/docs/chibi-shaders/typed-facts.md b/docs/chibi-shaders/typed-facts.md
+index 4f177ce4f..8adaacd1d 100644
+--- a/docs/chibi-shaders/typed-facts.md
++++ b/docs/chibi-shaders/typed-facts.md
+@@ -74,9 +74,36 @@ IR node separately from auxiliary-node provenance. An immutable alias can bind
+ an existing node. Neither graph layout nor prepared executable code defines
+ shader semantics.
+ 
+-The exact Chibi record/API names and transport envelope remain to be agreed.
+-Prefer a private compile-analysis result with owned arrays and source diagnostics
+-over widening stable public Compile arguments or changing ABI20. The compiler
+-owner exports facts; the shader owner implements the domain pass and existing IR
+-adapter. A native transport bridge may copy validated values and invoke the
+-authored pass; it must not resolve source semantics.
++## Source-only schema checkpoint
++
++`tools/compiler/compiler_facts/Facts.chibi` now defines the flat owned row/result
++schema in the shader worktree. Its producer and Analyze entry are not
++implemented. The compiler owner assigned this new file and independent consumer
++source preparation to the shader lane; package compiler hooks, nested records,
++bootstrap and source inventories remain in the compiler lane. The schema is
++agreed by the compiler owner for the initial flat Float3/imported-helper/two-call/
++alias/add-multiply/exact-constant slice. This declaration/consumer agreement does
++not implement or authorize compiler hooks, resources or nested records.
++
++Function rows distinguish source/native callees in one table and preserve the
++rich catalog's native kind, actual intrinsic and direct admission. A call's
++callee index therefore has one meaning. Direct admission does not imply domain
++purity. Parameter spans reference Binding rows; Argument.parameter and .field
++reference their destination rows separately from actual source evaluation
++order. Omitted defaults follow supplied arguments and retain typed constant
++expressions plus call-site and declaration origins.
++
++The initial shared classifications name add/multiply and exact/wrap/clamp
++conversions independently of prepared/shader opcodes. Other ordinary-valid
++operations or callable shapes retain unsupported rows/ranges. Storage/container
++codes still come from the matching compiler target; semantic qualifiers use
++explicit schema categories rather than copied raw runtime flags. These choices
++have compiler-owner source agreement and do not establish a working facts producer.
++
++Keep a private compile-analysis result with owned arrays and source diagnostics
++instead of widening stable public Compile arguments. The compiler owner exports
++facts; the shader owner implements the domain pass and existing IR adapter. A
++native transport bridge may copy validated values and invoke the authored pass;
++it must not resolve source semantics. Real source-material acceptance still
++requires nested Sample/Parameters/Surface records, the typed constructor,
++resource/catalog integration, rendering and CPU source inspection.
+diff --git a/tools/compiler/compiler_facts/Facts.chibi b/tools/compiler/compiler_facts/Facts.chibi
+new file mode 100644
+index 000000000..1f3e18588
+--- /dev/null
++++ b/tools/compiler/compiler_facts/Facts.chibi
+@@ -0,0 +1,187 @@
++package compiler_facts
++
++import syntax "project:syntax_diagnostics"
++
++// Owned analysis output for domain compilers. These are semantic facts, not
++// prepared instructions or the package compiler's temporary work records.
++// All table references are result-local indices; -1 means absent. Origin.node
++// is instead an opaque source-tree anchor scoped by its document. A span is
++// [first, first + count). Source offsets and positions count bytes, with
++// half-open ranges and one-based line/column. Semantic IDs remain full width.
++
++pub Document :: struct {
++    key: string;
++    identity: string;
++    path: string;
++    text: string;
++}
++
++pub Origin :: struct {
++    document: int;
++    // Provenance only: no node table is exported or needed to consume facts.
++    // Never dereference this anchor or compare it across documents/generations.
++    node: int;
++    start: int;
++    end: int;
++    line: int;
++    column: int;
++    occurrence: uint64;
++}
++
++// Storage/container come from the matching compiler target. Qualifiers are
++// the semantic categories below, not raw prepared value or catalog flags.
++pub ReferenceQualifier: int : 1;
++pub OptionalQualifier: int : 2;
++pub ResultQualifier: int : 4;
++pub GenericQualifier: int : 8;
++pub TaskQualifier: int : 16;
++pub NamespaceQualifier: int : 32;
++
++pub Type :: struct {
++    storage: int;
++    container: int;
++    nominal: uint64;
++    qualifiers: int;
++    first_field: int;
++    field_count: int;
++}
++
++// A field's identity is (owner nominal identity, semantic). Its type is the
++// declared type, including nested record identity; ordinal is source order.
++pub Field :: struct {
++    owner_type: int;
++    type: int;
++    origin: int;
++    semantic: uint64;
++    name: string;
++    ordinal: int;
++}
++
++pub SourceFunction: int : 0;
++pub NativeFunction: int : 1;
++
++// Source and native calls both name rows here. Native metadata preserves the
++// shared catalog's kind, actual linked intrinsic and direct-call admission;
++// direct does not imply purity or eligibility for a domain compiler.
++// Source functions use native_kind/intrinsic = -1 and direct = false. All
++// reachable imported source helpers retain their bodies in this table; a
++// source helper is not replaced by a native catalog summary. effects is the
++// final transitive effect mask after ordinary call-graph analysis.
++// A single ordinary result has result_type; -1 means no result. A callable
++// shape this schema cannot represent is retained with unsupported and origin.
++pub Function :: struct {
++    semantic: uint64;
++    name: string;
++    origin: int;
++    kind: int;
++    first_parameter: int;
++    parameter_count: int;
++    result_type: int;
++    first_statement: int;
++    statement_count: int;
++    effects: int;
++    native_kind: int;
++    intrinsic: int;
++    direct: bool;
++    unsupported: string;
++}
++
++pub ParameterBinding: int : 0;
++pub LocalBinding: int : 1;
++pub ResultBinding: int : 2;
++
++// Parameter spans index this table, not types or arguments. Reads refer to
++// the resolved binding row, including through lexical aliases. write_origin
++// and ref_origin retain the first later write and first escaping reference;
++// a local's initialization alone is not a later write.
++pub Binding :: struct {
++    function: int;
++    type: int;
++    origin: int;
++    name: string;
++    role: int;
++    ordinal: int;
++    initializer: int;
++    write_origin: int;
++    ref_origin: int;
++}
++
++pub UnsupportedStatement: int : 0;
++pub InitializeStatement: int : 1;
++pub ReturnStatement: int : 2;
++
++// Unsupported ordinary-valid statements keep their source instead of being
++// silently omitted. Domain rejection can then report the originating range.
++pub Statement :: struct {
++    kind: int;
++    origin: int;
++    binding: int;
++    expression: int;
++    unsupported: string;
++}
++
++pub UnsupportedExpression: int : 0;
++pub ConstantExpression: int : 1;
++pub ReadExpression: int : 2;
++pub BinaryExpression: int : 3;
++pub ConvertExpression: int : 4;
++pub ConstructExpression: int : 5;
++pub ProjectExpression: int : 6;
++pub CallExpression: int : 7;
++
++// The initial export contract names these resolved scalar operators.
++// Other operators retain an UnsupportedExpression and their original range.
++// These classifications are independent of native shader/prepared opcodes.
++pub AddOperation: int : 1;
++pub MultiplyOperation: int : 2;
++
++pub ExactConversion: int : 0;
++pub WrapConversion: int : 1;
++pub ClampConversion: int : 2;
++
++// Each expression's arguments index Argument in source evaluation order.
++// A binary has two arguments; conversion/projection has one. A read uses
++// binding; a call uses callee; projection uses field. operand_type records the
++// resolved scalar operation/conversion input type, separate from result type.
++// Constants retain exact typed bits, with float32 in the low 32 bits and bool
++// as 0/1. Inactive references use -1; inactive scalar classifications use 0.
++pub Expression :: struct {
++    kind: int;
++    origin: int;
++    type: int;
++    operand_type: int;
++    binding: int;
++    callee: int;
++    field: int;
++    operation: int;
++    conversion: int;
++    bits: uint64;
++    first_argument: int;
++    argument_count: int;
++    unsupported: string;
++}
++
++// parameter indexes the destination Binding row; field indexes the
++// destination Field row. Neither changes source evaluation order. Supplied
++// arguments precede omitted defaults, which follow declaration order and
++// reference typed constant expressions. A default's expression origin is its
++// declaration; origin is its call site. Non-call/construct operands use -1
++// for both destinations and defaulted = false.
++pub Argument :: struct {
++    expression: int;
++    parameter: int;
++    field: int;
++    origin: int;
++    defaulted: bool;
++}
++
++// Accepted means ordinary source validation succeeded. A domain compiler must
++// still inspect all reachable unsupported rows, types, effects and bindings.
++// Returned strings/arrays keep their values after the input snapshot retires.
++// This schema declares no Analyze implementation or prepared transport API.
++pub Result :: union {
++    Accepted(entry: int, documents: Document[], origins: Origin[], types: Type[],
++             fields: Field[], functions: Function[], bindings: Binding[],
++             statements: Statement[], expressions: Expression[], arguments: Argument[])
++    | Rejected(documents: Document[], diagnostic: syntax.Diagnostic)
++}
+diff --git a/tools/compiler/shader_source/SourceMap.chibi b/tools/compiler/shader_source/SourceMap.chibi
+new file mode 100644
+index 000000000..bc3e72e1d
+--- /dev/null
++++ b/tools/compiler/shader_source/SourceMap.chibi
+@@ -0,0 +1,338 @@
++package shader_source
++
++import strings "core:strings"
++
++// Provenance policy only. The native program owns evaluation and raw lanes.
++// This module is preparation source until the authored facade replaces the
++// existing C policy; it is not a second production authority.
++pub Document :: struct {
++    identity: string;
++    text: string;
++}
++
++pub Origin :: struct {
++    source_id: uint64;
++    occurrence: uint64;
++    call_site: uint64;
++    document: int;
++    start: int;
++    end: int;
++}
++
++pub SourceResult :: struct {
++    source_id: uint64;
++    node: int;
++    // -1 is a scalar/vector result; nonnegative values identify aggregate fields.
++    field: int;
++}
++
++pub Failure :: struct {
++    // A source ID is never an IR node index. Zero means no source ID is known.
++    source_id: uint64;
++    // -1 means no node is implicated. A bad result binding can name a bad index.
++    node: int;
++    // -1 means no safe source range is available; document failures use [0, 0).
++    document: int;
++    start: int;
++    end: int;
++    message: string;
++}
++
++pub Validation :: union {
++    Checked | Failed(failure: Failure)
++}
++
++pub ChainResult :: union {
++    Found(origins: Origin[]) | Failed(failure: Failure)
++}
++
++DocumentLimit: int : 256;
++SourceBytesLimit: int : 524288;
++TotalBytesLimit: int : 8388608;
++IdentityBytesLimit: int : 4096;
++OriginLimit: int : 1024;
++ResultLimit: int : 1024;
++NodeLimit: int : 1024;
++
++WithoutRange :: (source_id: uint64, node: int, message: string) -> Failure {
++    return {source_id: source_id, node: node, document: -1, start: 0, end: 0, message: message};
++}
++
++FromDocument :: (document: int, message: string) -> Failure {
++    failure := WithoutRange(uint64(0), -1, message);
++    failure.document = document;
++    return failure;
++}
++
++// Only use after checking this origin's document and byte range.
++FromOrigin :: (origin: Origin, message: string) -> Failure {
++    return {source_id: origin.source_id, node: -1, document: origin.document,
++            start: origin.start, end: origin.end, message: message};
++}
++
++pub OriginIndex :: (origins: Origin[], source_id: uint64) -> int {
++    if (source_id == uint64(0)) {
++        return -1;
++    }
++    index: int = 0;
++    while (index < length(origins)) {
++        if (origins[index].source_id == source_id) {
++            return index;
++        }
++        index += 1;
++    }
++    return -1;
++}
++
++CheckDocuments :: (documents: Document[]) -> Failure {
++    if (length(documents) > DocumentLimit) {
++        return WithoutRange(uint64(0), -1, "Shader source document limit exceeded");
++    }
++    total: int = 0;
++    index: int = 0;
++    while (index < length(documents)) {
++        document := documents[index];
++        identity_size := strings.ByteLength(document.identity);
++        if (identity_size == 0) {
++            return FromDocument(index, "Shader source needs a document identity");
++        }
++        if (identity_size > IdentityBytesLimit) {
++            return FromDocument(index, "Shader source identity byte limit exceeded");
++        }
++        size := strings.ByteLength(document.text);
++        if (size > SourceBytesLimit || size > TotalBytesLimit - total) {
++            return FromDocument(index, "Shader source text byte limit exceeded");
++        }
++        total += size;
++        earlier: int = 0;
++        while (earlier < index) {
++            if (documents[earlier].identity == document.identity) {
++                return FromDocument(index, "Shader source document identities must be unique");
++            }
++            earlier += 1;
++        }
++        index += 1;
++    }
++    return WithoutRange(uint64(0), -1, "");
++}
++
++CheckOrigins :: (documents: Document[], origins: Origin[]) -> Failure {
++    if (length(origins) > OriginLimit) {
++        return WithoutRange(uint64(0), -1, "Shader source origin limit exceeded");
++    }
++    index: int = 0;
++    while (index < length(origins)) {
++        origin := origins[index];
++        if (origin.source_id == uint64(0) || origin.document < 0 || origin.document >= length(documents)) {
++            return WithoutRange(origin.source_id, -1, "Shader source origin has an invalid identity or document");
++        }
++        if (origin.start < 0 || origin.end <= origin.start ||
++            origin.end > strings.ByteLength(documents[origin.document].text)) {
++            return WithoutRange(origin.source_id, -1, "Shader source origin has an invalid byte range");
++        }
++        earlier: int = 0;
++        while (earlier < index) {
++            if (origins[earlier].source_id == origin.source_id) {
++                return FromOrigin(origin, "Shader source IDs must have unique origins");
++            }
++            earlier += 1;
++        }
++        index += 1;
++    }
++    return WithoutRange(uint64(0), -1, "");
++}
++
++CheckCalls :: (origins: Origin[]) -> Failure {
++    // Resolve links once. Colors are 0 unvisited, 1 on this path, 2 complete.
++    parents: int[] = [];
++    for (origin in origins) {
++        parent: int = -1;
++        if (origin.call_site != uint64(0)) {
++            parent = OriginIndex(origins, origin.call_site);
++            if (parent < 0) {
++                return FromOrigin(origin, "Shader source call chain has a missing origin");
++            }
++        }
++        parents.append(parent);
++    }
++    colors: int[] = resize([int(0)], length(origins));
++    index: int = 0;
++    while (index < length(origins)) {
++        at := index;
++        while (at >= 0 && colors[at] == 0) {
++            colors[at] = 1;
++            at = parents[at];
++        }
++        if (at >= 0 && colors[at] == 1) {
++            return FromOrigin(origins[at], "Shader source call chain contains a cycle");
++        }
++        at = index;
++        while (at >= 0 && colors[at] == 1) {
++            colors[at] = 2;
++            at = parents[at];
++        }
++        index += 1;
++    }
++    return WithoutRange(uint64(0), -1, "");
++}
++
++CheckResults :: (origins: Origin[], results: SourceResult[], node_count: int) -> Failure {
++    if (length(results) > ResultLimit) {
++        return WithoutRange(uint64(0), -1, "Shader source result limit exceeded");
++    }
++    index: int = 0;
++    while (index < length(results)) {
++        result := results[index];
++        found := OriginIndex(origins, result.source_id);
++        if (found < 0) {
++            return WithoutRange(result.source_id, result.node, "Shader source result has no origin");
++        }
++        if (result.node < 0 || result.node >= node_count || result.field < -1) {
++            failure := FromOrigin(origins[found], "Shader source result has an invalid node or field");
++            failure.node = result.node;
++            return failure;
++        }
++        earlier: int = 0;
++        while (earlier < index) {
++            if (results[earlier].source_id == result.source_id && results[earlier].field == result.field) {
++                return FromOrigin(origins[found], "Shader source result bindings must be unique per field");
++            }
++            earlier += 1;
++        }
++        index += 1;
++    }
++    return WithoutRange(uint64(0), -1, "");
++}
++
++// Node sources describe the same immutable program generation as these tables.
++// This checks provenance, not shader operations, types or aggregate member IDs.
++// Results may alias nodes carrying another source ID, or a synthetic zero ID.
++pub Validate :: (documents: Document[], origins: Origin[], results: SourceResult[],
++                 node_sources: uint64[]) -> Validation {
++    failure := CheckDocuments(documents);
++    if (failure.message != "") {
++        return Validation.Failed(failure);
++    }
++    failure = CheckOrigins(documents, origins);
++    if (failure.message != "") {
++        return Validation.Failed(failure);
++    }
++    failure = CheckCalls(origins);
++    if (failure.message != "") {
++        return Validation.Failed(failure);
++    }
++    if (length(node_sources) > NodeLimit) {
++        return Validation.Failed(WithoutRange(uint64(0), -1, "Shader source node limit exceeded"));
++    }
++    index: int = 0;
++    while (index < length(node_sources)) {
++        source_id := node_sources[index];
++        if (source_id != uint64(0) && OriginIndex(origins, source_id) < 0) {
++            return Validation.Failed(WithoutRange(source_id, index, "Shader operation has no source origin"));
++        }
++        index += 1;
++    }
++    failure = CheckResults(origins, results, length(node_sources));
++    if (failure.message != "") {
++        return Validation.Failed(failure);
++    }
++    return Validation.Checked;
++}
++
++// Documents are length-carrying strings. Native C-string rules do not apply.
++// Validate the captured tables before using these equality queries.
++pub DocumentMatches :: (captured: Document, current: Document) -> bool {
++    return captured.identity == current.identity && captured.text == current.text;
++}
++
++pub DocumentsMatch :: (captured: Document[], current: Document[]) -> bool {
++    if (length(captured) != length(current)) {
++        return false;
++    }
++    index: int = 0;
++    while (index < length(captured)) {
++        if (!DocumentMatches(captured[index], current[index])) {
++            return false;
++        }
++        index += 1;
++    }
++    return true;
++}
++
++pub GenerationMatches :: (captured: uint64, current: uint64) -> bool {
++    return captured != uint64(0) && current != uint64(0) && captured == current;
++}
++
++// A mechanical host can compare one document pair at a time, then reduce the
++// ordered results here without sending two entire source closures in one call.
++pub ClosureMatches :: (captured_program: uint64, current_program: uint64,
++                       captured_count: int, current_count: int, matches: bool[]) -> bool {
++    if (!GenerationMatches(captured_program, current_program) || captured_count < 0 ||
++        captured_count > DocumentLimit || current_count != captured_count || length(matches) != captured_count) {
++        return false;
++    }
++    for (matched in matches) {
++        if (!matched) {
++            return false;
++        }
++    }
++    return true;
++}
++
++// Lookups use tables accepted by Validate and return -1 when absent.
++pub ResultNode :: (results: SourceResult[], source_id: uint64, field: int) -> int {
++    if (source_id == uint64(0) || field < -1) {
++        return -1;
++    }
++    for (result in results) {
++        if (result.source_id == source_id && result.field == field) {
++            return result.node;
++        }
++    }
++    return -1;
++}
++
++pub FindNode :: (node_sources: uint64[], source_id: uint64, after: int) -> int {
++    if (source_id == uint64(0) || after < -1 || after >= length(node_sources)) {
++        return -1;
++    }
++    index := after + 1;
++    while (index < length(node_sources)) {
++        if (node_sources[index] == source_id) {
++            return index;
++        }
++        index += 1;
++    }
++    return -1;
++}
++
++// Returns owned origin copies, requested origin first and outermost caller
++// last. Origin-only callers are retained. Validate supplies range/uniqueness
++// guarantees; this query also rejects missing links and cycles on its own.
++pub CallChain :: (origins: Origin[], source_id: uint64) -> ChainResult {
++    if (length(origins) > OriginLimit) {
++        return ChainResult.Failed(WithoutRange(source_id, -1, "Shader source origin limit exceeded"));
++    }
++    at := OriginIndex(origins, source_id);
++    if (at < 0) {
++        return ChainResult.Failed(WithoutRange(source_id, -1, "Shader source origin was not found"));
++    }
++    seen: bool[] = resize([false], length(origins));
++    chain: Origin[] = [];
++    while (at >= 0) {
++        origin := origins[at];
++        if (seen[at]) {
++            return ChainResult.Failed(FromOrigin(origin, "Shader source call chain contains a cycle"));
++        }
++        seen[at] = true;
++        chain.append(origin);
++        if (origin.call_site == uint64(0)) {
++            return ChainResult.Found(chain);
++        }
++        at = OriginIndex(origins, origin.call_site);
++        if (at < 0) {
++            return ChainResult.Failed(FromOrigin(origin, "Shader source call chain has a missing origin"));
++        }
++    }
++    return ChainResult.Found(chain);
++}

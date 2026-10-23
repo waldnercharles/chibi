@@ -1,0 +1,33 @@
+{
+  "source_map": {
+    "git_blob": "bc3e72e1d50292543b9723e9f6156f8c6d03a75f",
+    "independent_review": "no concrete bugs found",
+    "scope": [
+      "validation order and safe ranges",
+      "cycle detection",
+      "source IDs versus node indices",
+      "alias and aggregate-field bindings",
+      "generation and closure checks",
+      "bounded document-pair byte transport"
+    ],
+    "precondition": "queries use tables accepted by Validate"
+  },
+  "facts": {
+    "git_blob": "1f3e18588dc51ed73c9ad3f4f17d63f771907003",
+    "independent_review": "opaque anchor, imported-body and final-effect invariants clarified",
+    "compiler_owner_semantic_agreement": "agreed for frozen declaration/consumer contract and initial flat Float3/imported helper/two-call/alias/add-multiply/exact-constant slice; no producer/hooks/resources/nested-record acceptance"
+  },
+  "executed_checks": [
+    "git diff --check",
+    "git diff --cached --check",
+    "frozen Git blob/source SHA256 comparison"
+  ],
+  "not_executed": [
+    "compilation",
+    "tests",
+    "prepared artifact generation",
+    "installed runtime consumer",
+    "GPU material rendering"
+  ],
+  "production_status": "C source policy remains until prepared Chibi service is integrated; no semantic fallback in final cutover"
+}

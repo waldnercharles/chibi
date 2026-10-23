@@ -1,0 +1,37 @@
+{
+  "docs/chibi-shaders/PLAN.md": {
+    "git_blob": "9289f5efbb2a9aaa41812aeb586782ceef3890f3",
+    "sha256": "0277579b1f47e01d2edfbae2fef3992dcc4a8222b96a239bf2aa07defe19ab94",
+    "bytes": 17708
+  },
+  "docs/chibi-shaders/chibi-boundary.md": {
+    "git_blob": "82b4de433ff5113502a377487c02e7c8c4c5641a",
+    "sha256": "1b28ca94f00fc119307bcd853c1574d58aa5d54c75e5715af8830d2f04a31f77",
+    "bytes": 16080
+  },
+  "docs/chibi-shaders/schema9-fit.md": {
+    "git_blob": "baf9bea0e81b0b735f64f0a476012e2c0632901a",
+    "sha256": "665d3cc655d6d75e409a1aeb42d68b21e797342335bc7980ad3f250007fd1212",
+    "bytes": 9078
+  },
+  "docs/chibi-shaders/source-material-contract.md": {
+    "git_blob": "3f616533c8ed2404b0f224a3dc475ec74afa2d03",
+    "sha256": "49706f2a3f51fbefd98a91165a333f0fea8bdc65a0b0c6892971f3c718670aa6",
+    "bytes": 6737
+  },
+  "docs/chibi-shaders/typed-facts.md": {
+    "git_blob": "8adaacd1d6d4de5c862473a82e2b74e9d74173fe",
+    "sha256": "5de22371d129aaa24108638b78f75f7ec46d11f184c527454f5c150f8ad930f0",
+    "bytes": 6276
+  },
+  "tools/compiler/compiler_facts/Facts.chibi": {
+    "git_blob": "1f3e18588dc51ed73c9ad3f4f17d63f771907003",
+    "sha256": "c4c507730160898a9848051282a79784d0d6dc599773f044cfc66c31412d8e51",
+    "bytes": 6297
+  },
+  "tools/compiler/shader_source/SourceMap.chibi": {
+    "git_blob": "bc3e72e1d50292543b9723e9f6156f8c6d03a75f",
+    "sha256": "aecf1c34a92b204b28e4735b110083438de0cd602b052cbc3a0c3172b8db44a7",
+    "bytes": 11899
+  }
+}

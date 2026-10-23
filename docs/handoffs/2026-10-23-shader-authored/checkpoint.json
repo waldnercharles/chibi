@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/waldnercharles/chibi.git",
+  "branch": "codex/chibi-shader-authored-handoff-20261023",
+  "status": "WIP source-only; schema agreed, policy reviewed; uncompiled/unrun/unwired",
+  "source_commit": "5cb470525ef8cef278de756326eb13501d203953",
+  "source_tree": "b9492169c5aaa89409e242860c2bac9085c0d025",
+  "source_parent": "1c1599fa1ca2405e0ee1d6a57dc7a9146db3b252",
+  "base_source_tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+  "preserved_merge_ancestors": [
+    "d34def7202f842b6408f151df96ab5c7d1b343b1",
+    "d0de4a84ecf50badcab661411470bdf6f3da5fa2"
+  ],
+  "native_handoff_commit": "1f82a73a7e0f76002e4fe9c9021176da24c090e4",
+  "active_paths": [
+    "docs/chibi-shaders/PLAN.md",
+    "docs/chibi-shaders/typed-facts.md",
+    "docs/chibi-shaders/chibi-boundary.md",
+    "docs/chibi-shaders/schema9-fit.md",
+    "docs/chibi-shaders/source-material-contract.md",
+    "tools/compiler/compiler_facts/Facts.chibi",
+    "tools/compiler/shader_source/SourceMap.chibi"
+  ],
+  "unapplied_drafts": "none of the native fa1 recovery patches are applied; see separate foundation handoff",
+  "compiler_checkpoints_owned_by_cloud": [
+    "0b1492796941d6bd4159dc8b920f7ca8fe35c2c9",
+    "8f6545bd8221748f3708036607762209a6f4e0ab",
+    "93d1a5d9cf46b1dfdbdb024207d9dbc6e3278ae7"
+  ],
+  "overlapping_work": "frozen; no further local overlapping implementation after handoff"
+}

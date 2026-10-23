@@ -1,0 +1,30 @@
+{
+  "README.md": {
+    "sha256": "8762c0d94c25ff339d906a3d725a83994372a78ccdfee85e173e7e32717ad792",
+    "bytes": 6351
+  },
+  "authored-source.patch": {
+    "sha256": "80ce59723a543dbaa9786dcc95bd9fb389ee340715b04d9f8532cfa8cfa327d1",
+    "bytes": 59308
+  },
+  "checkpoint.json": {
+    "sha256": "a76230c4ecb150d525171cb1dcfaa0e971f29bd6f8d2f52dcfa2567abe1c0dfa",
+    "bytes": 1403
+  },
+  "original-state.json": {
+    "sha256": "3b3763e0f62c38c077955fea7a93aeaad2c96dbd9c8c0d325c1d9a22733c2d5c",
+    "bytes": 3115
+  },
+  "receipts/manifest.json": {
+    "sha256": "ed3597a34b2bc5f86116ba7835c121a36d4efb7ca79d0659db1392d7fe2b8d2e",
+    "bytes": 658
+  },
+  "receipts/source-review.json": {
+    "sha256": "41e8d948aad20631804664140a7ac5db7087e661e1693b81e1e37776b211499c",
+    "bytes": 1285
+  },
+  "source-manifest.json": {
+    "sha256": "df822f9a0d7d3a9cca64be9cf0931d628ee5d91b44a2c56881f211a2202f98af",
+    "bytes": 1476
+  }
+}

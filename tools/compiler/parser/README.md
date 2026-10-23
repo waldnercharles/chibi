@@ -58,8 +58,9 @@ run through the existing compiler-host; they do not need an assertion native.
 The fixture needs these project packages: `authored_parser`, `parser`,
 `source_tokenizer`, `compiler_syntax`, `syntax_diagnostics`; `core:strings` is the
 existing dependency of `syntax_diagnostics`. Only the fixture imports the raw
-parser oracle. Build/test dispatcher wiring is a coordinated later change;
-placing this fixture here does not make existing aggregate selectors execute it.
+parser oracle. The [authored self-host aggregate](../../../test/selfhost/README.md)
+invokes `Check` in the compiler-recovery workflow after stage-two recovery.
+Existing Make/test-policy aggregate selectors are not wired by this change.
 
 Parser phases, contextual-name recognition and append/link columns are private,
 not a new public utility library. The append columns are temporary because
@@ -100,6 +101,8 @@ The source and fixture also parse without errors under main's grammar at
 `da6fe9beb4f7f67beb75914ca8e0d48ae48d6406`. No C implementation/test wrapper is
 added by this slice; the temporary raw-fact oracle is outside the repository.
 
-This is focused, Linux-only evidence. Production integration, aggregate test
-wiring, full grammar/recovery, source-free self-rebuild, other platforms and
-independent review remain gates; none is implied by this checkpoint.
+This is focused, Linux-only evidence. Current aggregate wiring is described
+above; this historical checkpoint does not establish production integration,
+legacy Make/test-policy dispatcher wiring, full grammar/recovery, source-free
+self-rebuild or other-platform execution. Final integrated candidates still
+require independent review and current execution evidence.

@@ -6,10 +6,11 @@ validation of the collection or query implementations.
 ## Checkpoints and ownership
 
 The clean managed-pointer dependency is `f04d9d37822edb44a8fb1d1f6f68e5546eb8e049`
-(prepared ABI 21). Its successor, `codex/value-semantics-20261022`, is integrating
-main at `1bc97b7305ee91102d3ee035e4852aa5341df31c`. That integration contains no
-collection or query draft source. The ABI 20 compiler/runtime publication work
-remains a separate candidate.
+(prepared ABI 21). Its successor, `codex/value-semantics-20261022`, merged main
+at `1bc97b7305ee91102d3ee035e4852aa5341df31c` into the local source checkpoint
+`60a407503d287316945f9a80457d051ff1781233`. That integration contains no collection
+or query draft source. The ABI 20 compiler/runtime publication work remains a
+separate candidate.
 
 The collection owner works in `.worktrees/value-array-cow/chibi`; the query owner
 works in `.worktrees/query-iterators/chibi`. Both drafts currently name prepared
@@ -122,9 +123,22 @@ and `python3 tools/test_policy.py tool SELECTOR`:
 | `language-package-compiler-chibi-collections-compiled` | 1 | 3,652 |
 | `language-record-prepared` | 8 | 1,142 |
 
-The corrected-source bootstrap proof and matching artifact refresh are still
-pending. The earlier bootstrap run was stopped when the source fix became
-necessary; it is not a passing result. Formatting of the edited C fixtures and
-`git diff --check` passed. Debug/sanitizer and Wasm checks, and the broad native,
-materials, projects, full-language and tools groups, have not run for this
-integration. No collection or query draft is covered by these results.
+The corrected-source bootstrap proof passed one case and 17,478 assertions,
+using `CHIBI_RELEASE_LANGUAGE_BUILD_DIR=build-release-cmake/test/language` and
+`language-package-compiler-chibi-bootstrap`. It produced a 13,422,214-byte seed
+and checked byte-identical self-reproduction, target identity, package samples
+and literal results. The matching artifact refresh completed through the Release
+CMake compiler host, using that seed and source revision
+`60a407503d287316945f9a80457d051ff1781233`. The host verified the seed, source and
+target identity and byte-identical self-reproduction before writing the tracked
+artifact and manifest. The resulting artifact is 13,422,214 bytes with SHA-256
+`3fb0d760a6bafa428b46beb42bfc8759b9d65e6e470f670443fa75c868fc3fe2`.
+Its manifest uses version 6, minimum 2; the runtime prepared ABI remains 21.
+All 19 manifest source hashes and lengths, and the artifact hash and length,
+match the files in this checkout. The earlier bootstrap run was stopped when
+the source fix became necessary; it is not a passing result.
+
+Formatting of the edited C fixtures and `git diff --check` passed.
+Debug/sanitizer and Wasm checks, and the broad native, materials, projects,
+full-language and tools groups, have not run for this integration. No collection
+or query draft is covered by these results.

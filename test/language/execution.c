@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
@@ -95,6 +96,7 @@ static behavior_managed_heap secondary_pointer_heap;
 static pin_value pointer_root;
 static bool pointer_root_registered;
 static int host_calls;
+static compiler_fixture sequences;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
 static execution_module *prepared_module;
@@ -110,6 +112,7 @@ static void release_invocation()
 
 static void cleanup()
 {
+    compiler_fixture_free(&sequences);
     release_invocation();
     if (pointer_root_registered) {
         behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
@@ -2686,9 +2689,187 @@ TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
     REQUIRE(pointer_root.type == PIN_FLOW && !pointer_root.ptr);
     return true;
 }
+typedef struct
+{
+    const char *entry;
+    int expected;
+} sequence_case;
+static bool sequence_results(const char *source, const sequence_case *cases, int count)
+{
+    source_package_input input = { "sequences/Main.chibi", source, strlen(source) };
+    REQUIRE(compiler_fixture_prepare(&sequences, &input, 1));
+    for (int backend = 0; backend < 2; backend++) {
+        for (int i = 0; i < count; i++) {
+            pin_value result = { 0 };
+            REQUIRE(compiler_fixture_call(
+                &sequences,
+                backend,
+                "project:sequences",
+                cases[i].entry,
+                NULL,
+                0,
+                100000,
+                &storage,
+                &result
+            ));
+            if (result.type != PIN_I32 || result.i != cases[i].expected) {
+                fprintf(
+                    stderr,
+                    "sequence %s backend=%d: expected %d, got type=%d "
+                    "value=%d\n",
+                    cases[i].entry,
+                    backend,
+                    cases[i].expected,
+                    result.type,
+                    result.i
+                );
+            }
+            REQUIRE(result.type == PIN_I32 && result.i == cases[i].expected);
+            arena_free(&storage);
+        }
+    }
+    return true;
+}
+TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries)
+{
+    const char *source =
+        "package sequences\n"
+        "Change :: (xs: int[]) -> int[] { xs.append(9); return xs; }\n"
+        "Pair :: () -> (left: int[], right: int[]) { return ([1], [2]); }\n"
+        "R :: struct { x: int; }\n"
+        "pub Assignment :: () -> int { a: int[] = [1]; b := a; b.append(2); "
+        "b[0] = 9; return length(a) * 100 + a[0] * 10 + length(b); }\n"
+        "pub Arguments :: () -> int { a: int[] = [1]; b := Change(a); "
+        "return length(a) * 10 + length(b); }\n"
+        "pub NestedArrays :: () -> int { a: int[][] = [[1], [2]]; b := a; "
+        "b[0].append(3); b[1][0] = 9; "
+        "return length(a[0]) * 100 + a[1][0] * 10 + length(b[0]); }\n"
+        "pub NestedMapArrays :: () -> int { a: [int: int[]] = [1: [4, 5]]; b "
+        ":= a; "
+        "b[1].append(6); b[2] = [7]; "
+        "return length(a[1]) * 100 + length(b[1]) * 10 + length(a[2]); }\n"
+        "pub NestedMaps :: () -> int { a: [int: [int: int]] = [1: [2: 3]]; b "
+        ":= a; "
+        "b[1][2] = 9; return a[1][2] * 10 + b[1][2]; }\n"
+        "pub Records :: () -> int { a: R[] = []; a.append({x: 4}); b := a; "
+        "b[0].x = 9; return a[0].x * 10 + b[0].x; }\n"
+        "pub Clone :: () -> int { a: int[] = [1]; b := a.clone(); b[0] = 9; "
+        "return a[0] * 10 + b[0]; }\n"
+        "pub PointerIdentity :: () -> int { a: int[] = [1]; p := &a; q := p; b "
+        ":= a; "
+        "p.append(2); q.append(3); return length(a) * 100 + length(b) * 10 + "
+        "length(q^); }\n"
+        "pub TupleAlias :: () -> int { p := Pair(); { q := p; seen := "
+        "q.left[0]; } "
+        "return p.left[0] * 10 + p.right[0]; }\n";
+    const sequence_case cases[] = {
+        { "Assignment", 112 },   { "Arguments", 12 },
+        { "NestedArrays", 122 }, { "NestedMapArrays", 230 },
+        { "NestedMaps", 39 },    { "Records", 49 },
+        { "Clone", 19 },         { "PointerIdentity", 313 },
+        { "TupleAlias", 12 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied)
+{
+    const char *source =
+        "package sequences\n"
+        "pub Bounds :: () -> int { a: int[] = [1, 2, 3, 4]; "
+        "negative := a[-1..<2]; if negative { return -1; } "
+        "reversed := a[3..<2]; if reversed { return -2; } "
+        "past := a.slice(0..<5); if past { return -3; } "
+        "outside := a[5..<5]; if outside { return -4; } "
+        "empty := a[0..<0]; if empty { tail := a.slice(4..<4); if tail { "
+        "whole := a[0..<4]; if whole { return length(empty) + length(tail) + "
+        "length(whole); } } } "
+        "return -5; }\n"
+        "pub CopiedRanges :: () -> int { a: int[] = [1, 2, 3]; b := a[0..<2]; "
+        "c := a.slice(1..<3); if b { if c { b[0] = 9; c[0] = 8; "
+        "return a[0] * 100 + a[1] * 10 + b[0] + c[0]; } } return -1; }\n"
+        "pub Clamped :: () -> int { a: int[] = [1, 2, 3]; b := a.slice(2, 99); "
+        "b[0] = 8; c := a.slice(99, 4); "
+        "return a[2] * 100 + length(b) * 10 + length(c) + b[0]; }\n"
+        "pub Bytes :: () -> int { text: string = \"a\\u0000bc\"; "
+        "part := text[1..<3]; if part { copied := part.clone(); "
+        "window := text.view(1..<3); if window { "
+        "return copied.length() * 100 + copied[0] + copied[1] + window[0] + "
+        "window[1]; } } return -1; }\n";
+    const sequence_case cases[] = {
+        { "Bounds", 4 },
+        { "CopiedRanges", 137 },
+        { "Clamped", 318 },
+        { "Bytes", 396 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions)
+{
+    const char *source =
+        "package sequences\n"
+        "Pass :: (v: view int[]) -> view int[] { return v; }\n"
+        "pub Rebound :: () -> int { a: int[] = [1, 2, 3, 4]; p := &a; "
+        "held := p.view(1..<3); if held { v := Pass(held); b := a; v[0] = 20; "
+        "p^ = [5, 6, 7, 8]; v[1] = 70; "
+        "return a[1] * 100 + a[2] * 10 + b[1]; } return -1; }\n"
+        "pub Regrown :: () -> int { a: int[] = [1, 2, 3]; p := &a; "
+        "held := p.view(1..<3); if held { p^ = [9]; expired := "
+        "held.slice(0..<0); "
+        "if expired { return -2; } p.append(8); p.append(7); "
+        "return held[0] * 10 + held[1]; } return -1; }\n"
+        "pub EmptyWindow :: () -> int { a: int[] = [1, 2]; p := &a; "
+        "held := p.view(2..<2); if held { p^ = [9]; expired := "
+        "held.slice(0..<0); "
+        "if expired { return -2; } p.append(8); restored := held.slice(0..<0); "
+        "if restored { return length(held) + length(restored); } } return -1; "
+        "}\n";
+    const sequence_case cases[] = {
+        { "Rebound", 1302 },
+        { "Regrown", 87 },
+        { "EmptyWindow", 0 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order)
+{
+    const char *source =
+        "package sequences\n"
+        "Grow :: (p: ^(int[])) -> int { p.append(9); return 0; }\n"
+        "Observe :: (xs: int[], ignored: int) -> int { return length(xs); }\n"
+        "Replace :: (p: ^(int[])) -> int { p^ = [8, 9]; return 7; }\n"
+        "Index :: (p: ^(int[])) -> int { p^ = [8, 9]; return 0; }\n"
+        "Next :: (p: ^int) -> int { n := p^; p^ += 1; return n; }\n"
+        "ReplaceNested :: (p: ^(int[][])) -> int { p^ = [[8, 9]]; return 7; }\n"
+        "pub Arguments :: () -> int { a: int[] = [1]; observed := Observe(a, "
+        "Grow(&a)); "
+        "return observed * 10 + length(a); }\n"
+        "pub ReceiverIndex :: () -> int { a: int[] = [1, 2]; value := "
+        "a[Index(&a)]; "
+        "return value * 10 + a[0]; }\n"
+        "pub Assignment :: () -> int { a: int[] = [1, 2]; a[0] = Replace(&a); "
+        "return a[0] * 10 + a[1]; }\n"
+        "pub MethodReceiver :: () -> int { a: int[] = [1]; "
+        "a.append(Replace(&a)); "
+        "return length(a) * 100 + a[0] * 10 + a[2]; }\n"
+        "pub Compound :: () -> int { a: int[] = [1, 2]; index: int = 0; "
+        "a[Next(&index)] += Replace(&a); return index * 100 + a[0] * 10 + "
+        "a[1]; }\n"
+        "pub NestedPlace :: () -> int { a: int[][] = [[1, 2]]; "
+        "a[0][1] = ReplaceNested(&a); return a[0][0] * 10 + a[0][1]; }\n";
+    const sequence_case cases[] = {
+        { "Arguments", 12 },  { "ReceiverIndex", 18 },
+        { "Assignment", 79 }, { "MethodReceiver", 387 },
+        { "Compound", 189 },  { "NestedPlace", 87 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries);
+    RUN_TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied);
+    RUN_TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions);
+    RUN_TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);

@@ -116,25 +116,9 @@ bool behavior_jit_host_call(
         sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
         sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_borrow_snapshot);
     } else if (spec->call->value) {
-        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_R2, 0);
-        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R2, 0, SLJIT_IMM, spec->result_first - spec->first);
-        sljit_emit_op1(
-            c,
-            SLJIT_MOV_P,
-            SLJIT_R0,
-            0,
-            SLJIT_MEM1(m->context),
-            execution_intrinsic_in_result(spec->capability_id)
-                ? offsetof(behavior_function_context, result_storage)
-                : offsetof(behavior_function_context, value_storage)
-        );
-        sljit_emit_icall(
-            c,
-            SLJIT_CALL,
-            SLJIT_ARGS4(P, P, P, 32, P),
-            SLJIT_IMM,
-            (sljit_sw)spec->call->value
-        );
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_value_call);
     } else {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_data_storage, calls));
         sljit_sw at = i->target * sizeof(behavior_data_binding);
@@ -160,6 +144,23 @@ bool behavior_jit_host_call(
     struct sljit_label *label = sljit_emit_label(c);
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
         sljit_set_label(ok, label);
+    }
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+    sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_host_results);
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_R0,
+        0
+    );
+    struct sljit_jump *results_ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    behavior_jit_failure(m, i, i->left);
+    struct sljit_label *results_label = sljit_emit_label(c);
+    if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
+        sljit_set_label(results_ok, results_label);
     }
     return true;
 }

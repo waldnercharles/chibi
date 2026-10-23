@@ -5,6 +5,10 @@ Approved and implemented locally on 2026-10-22 on
 call-site `ref` changes. This branch is not merged. The validation ledger below
 records what has actually passed.
 
+This document's verification ledger belongs to that pointer prerequisite. The
+current collection candidate includes further source changes; its build evidence
+and unrun coverage are recorded in [value sequences](value-sequences.md).
+
 ## Contract
 
 Assignment copies the value of its type. A pointer assignment copies a
@@ -12,18 +16,16 @@ reference to the same mutable value. Managed pointers keep their targets alive,
 including after a function returns. Users do not select shared or unique
 ownership, write `move`, or break reference cycles manually.
 
-The owner subsequently approved shared dynamic-array objects in the sequence
-chat on 2026-10-22: aliases share contents and length; `a[1..<3]` and
+The owner revised the collection contract on 2026-10-22: ordinary arrays and
+maps are independent values with copy-on-write storage, including nested values.
+Pointer elements retain their target identities. `a[1..<3]` and
 `a.slice(1..<3)` copy the selected elements into independent outer storage.
-`a.view(1..<3)` explicitly retains the array plus a fixed range, growth
-preserves those views, and `view.clone()` copies outer array storage. Pointer
-and nested dynamic-array elements retain their target identities. Fixed arrays
-retain value semantics. That chat owns the collection migration, including
-the explicit views' shrink/removal rules. This
-branch preserves pointer identity through collection copies and traces pointer
-elements; it does not migrate collection assignment or resizing. Explicit
-`ref` still identifies calls that can rebind the caller's variable. Mutating
-shared collection elements follows the collection's reference semantics.
+Mutable views require an array pointer: `p := &a; v := p.view(1..<3)`. They
+retain that pointer and fixed indices, resolve its current pointee on every
+access, and can become invalid after shrink until the whole range fits again.
+Reassigning `a` changes what the view resolves. The sequence chat owns this
+migration; the pointer prerequisite alone does not implement the revised
+collection contract. Its existing `ref` parameters remain invocation aliases.
 
 ```chibi
 actor: Actor = {health: 100}

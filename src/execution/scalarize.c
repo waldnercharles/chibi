@@ -101,7 +101,9 @@ static int intrinsic(const behavior_function *f, const behavior_function_instruc
         actual->context != canonical->context || actual->action != canonical->action ||
         actual->optional_service != canonical->optional_service ||
         actual->variadic != canonical->variadic ||
-        actual->reusable != canonical->reusable) {
+        actual->reusable != canonical->reusable ||
+        actual->language_values != canonical->language_values ||
+        actual->owned_result != canonical->owned_result) {
         return 0;
     }
     if (canonical == &EXECUTION_union_make_call ||

@@ -131,7 +131,8 @@ static int observe_target(
     if (!cache->value.type || changed) {
         arena next = { 0 };
         pin_value owned;
-        if (pin_value_snapshot_to_arena(&next, &owned, &value)) {
+        /* Comparison needs the previous content, not a live mutable alias. */
+        if (pin_value_capture_to_arena(&next, &owned, &value)) {
             arena_free(&next);
             arena_free(&temporary);
             return FLOW_ERR_ARGUMENT;
@@ -222,10 +223,26 @@ int program_observe(
     }
     return FLOW_OK;
 }
+static void edge_free(observer_edge *edge)
+{
+    pin_value_collection_release(&edge->value);
+    arena_free(&edge->storage);
+}
+static queued_event *edge_roots(observer_edge *edges, int count)
+{
+    queued_event *roots = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(roots, ((queued_event){ .arguments = &edges[i].value, .count = 1 }));
+    }
+    return roots;
+}
 int program_observers_maintain(execution_program *p, double now, double delta, unsigned budget)
 {
     observer_edge *edges = p->field_edges;
     p->field_edges = NULL;
+    queued_event *roots = edge_roots(edges, acount(edges));
+    queued_event_batch batch = { .previous = p->dispatch_events, .events = roots };
+    p->dispatch_events = &batch;
     int status = FLOW_OK;
     for (int e = 0; e < acount(edges) && status == FLOW_OK; e++) {
         for (int i = 0; i < acount(p->instances) && status == FLOW_OK; i++) {
@@ -242,8 +259,10 @@ int program_observers_maintain(execution_program *p, double now, double delta, u
             );
         }
     }
+    p->dispatch_events = batch.previous;
+    afree(roots);
     for (int e = 0; e < acount(edges); e++) {
-        arena_free(&edges[e].storage);
+        edge_free(&edges[e]);
     }
     afree(edges);
     for (int i = 0; i < acount(p->instances) && status == FLOW_OK; i++) {
@@ -262,11 +281,16 @@ int execution_program_field_changed(
     unsigned budget
 )
 {
-    if (behavior_managed_storage_owner_error(&p->owner_program->managed->storage, &value)) {
+    if (program_validate_values(p, &value, 1)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    pin_value owned;
+    if (pin_value_collection_copy(&p->owner_program->managed->storage, &owned, &value)) {
         return FLOW_ERR_ARGUMENT;
     }
     observer_edge edge = { .entity = entity, .component = component, .offset = offset };
-    if (pin_value_snapshot_to_arena(&edge.storage, &edge.value, &value)) {
+    if (pin_value_snapshot_to_arena(&edge.storage, &edge.value, &owned)) {
+        pin_value_collection_release(&owned);
         arena_free(&edge.storage);
         return FLOW_ERR_ARGUMENT;
     }
@@ -274,6 +298,9 @@ int execution_program_field_changed(
         apush(p->field_edges, edge);
         return FLOW_OK;
     }
+    queued_event *roots = edge_roots(&edge, 1);
+    queued_event_batch batch = { .previous = p->dispatch_events, .events = roots };
+    p->dispatch_events = &batch;
     p->dispatching = true;
     int status = FLOW_OK;
     for (int i = 0; i < acount(p->instances) && status == FLOW_OK; i++) {
@@ -288,7 +315,9 @@ int execution_program_field_changed(
             &edge.value
         );
     }
-    arena_free(&edge.storage);
+    p->dispatch_events = batch.previous;
+    afree(roots);
+    edge_free(&edge);
     p->dispatching = false;
     return status;
 }

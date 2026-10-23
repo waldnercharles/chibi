@@ -13,13 +13,12 @@
 #include "types/record.h"
 #include "types/text.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Five fixed cases; eight authored sources, two backends, 28 total calls,
- * four rejected module requirements, one rejected builder and four equality
- * rejection calls. At most 12 fields and three rows; no files/workers/frames. */
+/* Record values, escaped layouts and native metadata lifetime. */
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -517,6 +516,185 @@ TEST_CASE(record_runtime_formatter_layout)
     REQUIRE(again && !strcmp(formatted, again));
     return true;
 }
+typedef struct
+{
+    const type_desc *types;
+    int count;
+} private_types;
+static const type_desc *find_private_type(void *user, const char *name)
+{
+    const private_types *source = user;
+    for (int i = 0; source && i < source->count; i++) {
+        if (!strcmp(source->types[i].name, name)) {
+            return &source->types[i];
+        }
+    }
+    return NULL;
+}
+TEST_CASE(record_runtime_private_layout_lifetime)
+{
+    typedef struct
+    {
+        const char *label;
+        int count;
+    } child_value;
+    typedef struct
+    {
+        bool enabled;
+        child_value child;
+        uint64_t opaque;
+    } root_value;
+    char root_name[] = "private.Root", child_name[] = "private.Child";
+    char description[] = "Native child label", label[] = "retained";
+    type_field child_fields[] = {
+        { .name = "label",
+          .type = PIN_STR,
+          .offset = offsetof(child_value, label),
+          .size = sizeof(char *),
+          .type_name = "const char *",
+          .description = description },
+        { .name = "count",
+          .type = PIN_I32,
+          .offset = offsetof(child_value, count),
+          .size = sizeof(int),
+          .type_name = "int" },
+    };
+    type_field root_fields[] = {
+        { .name = "enabled",
+          .type = PIN_BOOL,
+          .offset = offsetof(root_value, enabled),
+          .size = sizeof(bool),
+          .type_name = "bool" },
+        { .name = "child",
+          .type = PIN_STRUCT,
+          .offset = offsetof(root_value, child),
+          .size = sizeof(child_value),
+          .type_name = child_name },
+    };
+    type_desc types[] = {
+        { .name = root_name, .size = sizeof(root_value), .fields = root_fields, .field_count = 2 },
+        { .name = child_name,
+          .size = sizeof(child_value),
+          .fields = child_fields,
+          .field_count = 2 },
+    };
+    private_types source = { types, 2 };
+    type_resolver resolver = { .find = find_private_type, .user = &source };
+    REQUIRE(!pin_record_from_type(&escaped, &types[0]));
+    const pin_record *record = pin_record_from_type_resolved(&escaped, &types[0], resolver);
+    REQUIRE(record && record->native && pin_record_valid(record));
+    root_value original = { true, { label, 7 }, UINT64_C(0x12345678) };
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = &original };
+    REQUIRE(!pin_value_snapshot_to_arena(&storage, &result, &value));
+
+    source = (private_types){ 0 };
+    memset(types, 0, sizeof types);
+    memset(child_fields, 0, sizeof child_fields);
+    memset(root_fields, 0, sizeof root_fields);
+    memset(root_name, 0, sizeof root_name);
+    memset(child_name, 0, sizeof child_name);
+    memset(description, 0, sizeof description);
+    memset(label, 'x', sizeof label - 1);
+    arena_reset(&escaped);
+    memset(arena_alloc(&escaped, 4096), 0, 4096);
+
+    REQUIRE(pin_record_valid(result.record));
+    resolver = pin_record_resolver(result.record);
+    const type_desc *root = type_resolve(resolver, "private.Root");
+    const type_desc *child = type_resolve(resolver, "private.Child");
+    REQUIRE(root && child && root->size == sizeof(root_value));
+    REQUIRE(root->fields[1].offset == offsetof(root_value, child));
+    REQUIRE(root->fields[1].layout == child);
+    REQUIRE(!child->fields[0].text_descriptor);
+    REQUIRE(!strcmp(child->fields[0].description, "Native child label"));
+    REQUIRE(((const root_value *)result.ptr)->opaque == UINT64_C(0x12345678));
+    pin_value selected, text;
+    REQUIRE(!pin_read_field(&escaped, result.ptr, &root->fields[1], &selected));
+    REQUIRE(selected.record == child->carrier);
+    REQUIRE(!pin_read_field(&escaped, selected.ptr, &child->fields[0], &text));
+    REQUIRE(pin_text(text).length == 8);
+    REQUIRE(!memcmp(pin_text(text).bytes, "retained", 8));
+    REQUIRE(!type_resolve(resolver, "private.Missing"));
+    REQUIRE(!type_resolve(pin_record_resolver(NULL), "private.Root"));
+    return true;
+}
+TEST_CASE(record_runtime_private_alias_identity)
+{
+    const type_field field = { .name = "value",
+                               .type = PIN_I32,
+                               .size = sizeof(int),
+                               .type_name = "int" };
+    const type_desc types[] = {
+        { .name = "private.Left", .size = sizeof(int), .fields = &field, .field_count = 1 },
+        { .name = "private.Right", .size = sizeof(int), .fields = &field, .field_count = 1 },
+    };
+    private_types source = { types, 2 };
+    type_resolver resolver = { .find = find_private_type, .user = &source };
+    type_desc alias = { .name = "private.Alias",
+                        .size = sizeof(int),
+                        .alias_of = "private.Left" };
+    const pin_record *left = pin_record_from_type_resolved(&escaped, &alias, resolver);
+    alias.alias_of = "private.Right";
+    const pin_record *right = pin_record_from_type_resolved(&escaped, &alias, resolver);
+    REQUIRE(left && right && pin_record_valid(left) && pin_record_valid(right));
+    source = (private_types){ 0 };
+    REQUIRE(!pin_record_same(left, right));
+    REQUIRE(
+        type_resolve(pin_record_resolver(left), "private.Left") == left->type.alias
+    );
+    REQUIRE(!type_resolve(pin_record_resolver(left), "private.Right"));
+    REQUIRE(!strcmp(right->type.alias->name, "private.Right"));
+
+    alias.alias_of = "private.Missing";
+    REQUIRE(!pin_record_from_type_resolved(&escaped, &alias, resolver));
+    alias.alias_of = alias.name;
+    source = (private_types){ &alias, 1 };
+    REQUIRE(!pin_record_from_type_resolved(&escaped, &alias, resolver));
+    return true;
+}
+TEST_CASE(record_runtime_conflicting_private_layouts)
+{
+    const type_field first = { .name = "first",
+                               .type = PIN_I32,
+                               .size = sizeof(int),
+                               .type_name = "int" };
+    const type_field second = { .name = "second",
+                                .type = PIN_I32,
+                                .size = sizeof(int),
+                                .type_name = "int" };
+    const type_desc children[] = {
+        { .name = "private.Duplicate", .size = sizeof(int), .fields = &first, .field_count = 1 },
+        { .name = "private.Duplicate", .size = sizeof(int), .fields = &second, .field_count = 1 },
+    };
+    const type_field fields[] = {
+        { .name = "a",
+          .type = PIN_STRUCT,
+          .size = sizeof(int),
+          .type_name = "private.Duplicate",
+          .layout = &children[0] },
+        { .name = "b",
+          .type = PIN_STRUCT,
+          .offset = sizeof(int),
+          .size = sizeof(int),
+          .type_name = "private.Duplicate",
+          .layout = &children[1] },
+    };
+    const type_desc type = { .name = "private.DuplicateRoot",
+                             .size = 2 * sizeof(int),
+                             .fields = fields,
+                             .field_count = 2 };
+    const pin_record *record = pin_record_from_type(&escaped, &type);
+    REQUIRE(record && pin_record_valid(record));
+    type_resolver resolver = pin_record_resolver(record);
+    REQUIRE(type_resolve(resolver, "private.DuplicateRoot") == &record->type);
+    REQUIRE(!type_resolve(resolver, "private.Duplicate"));
+    REQUIRE(!strcmp(record->type.fields[0].layout->fields[0].name, "first"));
+    REQUIRE(!strcmp(record->type.fields[1].layout->fields[0].name, "second"));
+    return true;
+}
 void test_language_record_runtime()
 {
     pu_setup(NULL, cleanup);
@@ -525,5 +703,8 @@ void test_language_record_runtime()
     RUN_TEST_CASE(record_runtime_fieldwise_equality);
     RUN_TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller);
     RUN_TEST_CASE(record_runtime_formatter_layout);
+    RUN_TEST_CASE(record_runtime_private_layout_lifetime);
+    RUN_TEST_CASE(record_runtime_private_alias_identity);
+    RUN_TEST_CASE(record_runtime_conflicting_private_layouts);
     pu_clear_setup();
 }

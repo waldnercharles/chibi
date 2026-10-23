@@ -50,7 +50,9 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         actual->context != canonical->context || actual->action != canonical->action ||
         actual->optional_service != canonical->optional_service ||
         actual->variadic != canonical->variadic ||
-        actual->reusable != canonical->reusable) {
+        actual->reusable != canonical->reusable ||
+        actual->language_values != canonical->language_values ||
+        actual->owned_result != canonical->owned_result) {
         return 0;
     }
     int count = host->result_first - host->first;
@@ -84,19 +86,33 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_POINTER_FIELD: expected = 5; break;
         case EXECUTION_INTRINSIC_POINTER_REFERENCE: expected = 1; break;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: expected = 9; break;
-        case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
+        case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+        case EXECUTION_INTRINSIC_REFERENCE_UNION: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_BYTES:
-        case EXECUTION_INTRINSIC_SNAPSHOT: expected = 1; break;
+        case EXECUTION_INTRINSIC_SNAPSHOT:
+        case EXECUTION_INTRINSIC_VALUE_COPY:
+        case EXECUTION_INTRINSIC_VALUE_DROP: expected = 1; break;
         case EXECUTION_INTRINSIC_STRING_ITEM:
         case EXECUTION_INTRINSIC_STRING_NEXT: expected = 2; break;
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
-        case EXECUTION_INTRINSIC_REFERENCE_WRITE: expected = 2; break;
+        case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+        case EXECUTION_INTRINSIC_MAP_DELETE_PLACE: expected = 2; break;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE: expected = 3; break;
         case EXECUTION_INTRINSIC_QUERY_SOURCE: expected = 5; break;
         case EXECUTION_INTRINSIC_QUERY_TARGET: expected = 4; break;
         case EXECUTION_INTRINSIC_COMPONENT_HAS: expected = 3; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW: expected = 4; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: expected = 1; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET: expected = 2; break;
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+            if (count < 2 || count > 4 || host->result_count != 1) {
+                return 0;
+            }
+            break;
         default: break;
     }
     if (expected >= 0 && (count != expected || host->result_count != 1)) {
@@ -112,8 +128,7 @@ static bool plain(pin_value v)
     if (v.type >= PIN_BOOL && v.type <= PIN_F64) {
         return true;
     }
-    const type_desc *type = v.type == PIN_STRUCT ? type_catalog_find(v.type_name)
-                                                 : NULL;
+    const type_desc *type = v.type == PIN_STRUCT ? pin_value_type(&v) : NULL;
     return type && type_is_plain(type);
 }
 static origin slot_origin(const behavior_function *, int, int, int, int *);
@@ -171,9 +186,17 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
                                  .component = component.bits,
                                  .readable = true };
             }
+            if (kind.constant && kind.bits == LANGUAGE_REFERENCE_VALUE &&
+                context.context) {
+                origin cell = bank_origin(f, j, call->first + 4, depth + 1, steps);
+                if (cell.private && cell.bank) {
+                    return cell;
+                }
+            }
             return none;
         }
         if (id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
+            id == execution_intrinsic_id(&EXECUTION_reference_union_call) ||
             id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
             origin source = bank_origin(f, j, call->first, depth + 1, steps);
             pin_value value = f->data_values[bank].initial;
@@ -188,7 +211,7 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
             pin_value value = f->data_values[bank].initial;
             const type_desc *type = value.type == PIN_STRUCT &&
                                             value.container == PIN_CONTAINER_SINGLE
-                                      ? type_catalog_find(value.type_name)
+                                      ? pin_value_type(&value)
                                       : NULL;
             if (target.component && type && type_is_plain(type)) {
                 /* The snapshot retains its source access, with its own bounds. */
@@ -412,7 +435,8 @@ static bool context_uses(const behavior_function *f, int slot, int *steps)
     }
     return true;
 }
-static bool predicate_host(const behavior_function *f, int pc)
+static bool share_local(const behavior_function *, bool built, bool *returned);
+static bool predicate_host(const behavior_function *f, int pc, bool local_arrays)
 {
     const behavior_function_host_call *host = &f->host_calls[f->instructions[pc].target];
     uint64_t id = intrinsic(host);
@@ -432,14 +456,21 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_POINTER_READ:
         case EXECUTION_INTRINSIC_POINTER_WRITE:
         case EXECUTION_INTRINSIC_POINTER_FIELD:
-        case EXECUTION_INTRINSIC_POINTER_REFERENCE: return false;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW: return false;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
         }
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
-        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+            /* A private value header may still hold a caller's array object. */
+            origin target = bank_origin(f, pc, host->first, 0, &steps);
+            return local_arrays && target.private && target.bank;
+        }
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+        case EXECUTION_INTRINSIC_MAP_DELETE_PLACE: return local_arrays;
         case EXECUTION_INTRINSIC_MAP_STORE:
         case EXECUTION_INTRINSIC_MAP_DELETE: {
             /* In-place updates write only the function's own local collection. */
@@ -453,6 +484,9 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_STRING_NEXT:
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+        case EXECUTION_INTRINSIC_REFERENCE_UNION:
+        case EXECUTION_INTRINSIC_VALUE_COPY:
+        case EXECUTION_INTRINSIC_VALUE_DROP:
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
@@ -463,6 +497,11 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
         case EXECUTION_INTRINSIC_LOCAL_RELEASE: return true;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+            return f->data_values[host->first].initial.container != PIN_CONTAINER_VIEW;
         default: return false;
     }
 }
@@ -478,6 +517,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
             valid = false;
             break;
         }
+        bool local_arrays = share_local(f, false, NULL);
         for (int i = 0; i < f->argument_count; i++) {
             pin_value type = f->argument_defaults[i];
             if (behavior_function_kind(f, BEHAVIOR_BANK_ARGUMENT, i) == BEHAVIOR_ADDRESS &&
@@ -559,7 +599,9 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     valid |= control_write(i, address);
                     break;
                 }
-                case BF_HOST_CALL: valid = predicate_host(f, pc); break;
+                case BF_HOST_CALL:
+                    valid = predicate_host(f, pc, local_arrays);
+                    break;
                 case BF_INVOKE: {
                     const behavior_function_invocation *call = &f->calls[i->left];
                     if (call->task) {
@@ -949,6 +991,7 @@ static void function(effects *e, const behavior_function *f, int depth)
     for (int j = 0; j < acount(f->definitions); j++) {
         function(e, f->definitions[j], depth + 1);
     }
+    int local_places = -1;
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         e->operation = i->op;
@@ -999,7 +1042,8 @@ static void function(effects *e, const behavior_function *f, int depth)
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_field_call)) {
+                    id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_reference_union_call)) {
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_union_test_call) ||
@@ -1025,26 +1069,46 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                bool place_write = kind == EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE ||
+                                   kind == EXECUTION_INTRINSIC_MAP_DELETE_PLACE;
                 if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_write_call)) {
+                    id == execution_intrinsic_id(&EXECUTION_reference_write_call) ||
+                    place_write) {
                     if (e->counting) {
                         add(e,
-                            id == execution_intrinsic_id(&EXECUTION_reference_write_call),
+                            place_write ||
+                                id == execution_intrinsic_id(&EXECUTION_reference_write_call),
                             0);
+                        if (place_write) {
+                            add(e, false, 0);
+                        }
                         break;
                     }
                     int steps = EFFECT_STEPS;
                     origin target = bank_origin(f, pc, call->first, 0, &steps);
-                    bool write = id == execution_intrinsic_id(&EXECUTION_reference_write_call);
+                    bool write = place_write ||
+                                 id == execution_intrinsic_id(&EXECUTION_reference_write_call);
+                    if (place_write && target.private && target.bank) {
+                        if (local_places < 0) {
+                            local_places = share_local(f, false, NULL);
+                        }
+                        if (local_places) {
+                            break;
+                        }
+                    }
                     const pin_value *value = &f->data_values[write ? call->first + 1 : call->result_first]
                                                   .initial;
-                    if (!target.component || !plain(*value)) {
+                    if (!target.component || (!place_write && !plain(*value))) {
                         unknown(e);
                     }
                     if (!target.owner && (!e->reducing || write)) {
                         e->summary->parallel_safe = false;
                     }
                     add(e, write, target.component);
+                    if (place_write) {
+                        add(e, false, target.component);
+                    }
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
@@ -1060,6 +1124,28 @@ static void function(effects *e, const behavior_function *f, int depth)
                     /* The owner heap is mutable across invocations. Its access
                      * cannot be attributed to one ECS column or worker. */
                     unknown(e);
+                    break;
+                }
+                if (kind == EXECUTION_INTRINSIC_VALUE_COPY) {
+                    payload_read(e, f, pc, call->first);
+                    add_access(e, call->access);
+                    break;
+                }
+                if (kind == EXECUTION_INTRINSIC_VALUE_DROP) {
+                    /* Retires only this context's owned value shells. */
+                    break;
+                }
+                if (id && kind >= EXECUTION_INTRINSIC_SEQUENCE_SLICE &&
+                    kind <= EXECUTION_INTRINSIC_SEQUENCE_LENGTH) {
+                    for (int bank = call->first; bank < call->result_first; bank++) {
+                        payload_read(e, f, pc, bank);
+                    }
+                    pin_value source = f->data_values[call->first].initial;
+                    bool text = source.container == PIN_CONTAINER_SINGLE &&
+                                source.type == PIN_STR;
+                    if (!text) {
+                        add_access(e, call->access);
+                    }
                     break;
                 }
                 if (id) {
@@ -1504,6 +1590,7 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Logical reference construction allocates reference storage");
             return;
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+        case EXECUTION_INTRINSIC_REFERENCE_UNION:
             cost_add(c, f, pc, id, allocate_copy, 0, "Field reference construction allocates and copies a reference path");
             return;
         case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -1515,14 +1602,35 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
                 }
             }
             return;
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+        case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
-            cost_add(c, f, pc, id, 0, COST_ALL, "Reference write can retain and copy the referenced root value");
+            cost_add(c, f, pc, id, 0, COST_ALL, "Logical place write can detach ancestors, grow storage, and copy nested value shells");
             return;
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place array update can grow storage and copy the item");
             return;
+        case EXECUTION_INTRINSIC_VALUE_COPY:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Value copy can allocate a shell, import storage, or copy nested value metadata");
+            return;
+        case EXECUTION_INTRINSIC_VALUE_DROP:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Value retirement can allocate traversal scratch and release nested backing owners");
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Sequence copy allocates an outer buffer and forks nested value shells");
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Sequence view retains its pointer cell and allocates a fixed-window descriptor");
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+            if (snapshot_storage(f->data_values[call->result_first].initial)) {
+                cost_add(c, f, pc, id, 0, allocate_copy, "Element access may retain ownership metadata or copy a value payload");
+            }
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: return;
         case EXECUTION_INTRINSIC_MAP_STORE:
         case EXECUTION_INTRINSIC_MAP_DELETE:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place map update can grow storage, copy the entry and rebuild the index");
@@ -1598,8 +1706,10 @@ static void cost_function(costs *c, const behavior_function *f)
                 break;
             }
             case BF_COPY_STRING:
+                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Text retention allocates a descriptor and copies borrowed bytes when needed");
+                break;
             case BF_COPY_ARRAY:
-                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Managed copy allocates and copies when its input is non-null");
+                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Array value copy allocates a shell and can import or detach collection backing");
                 break;
             case BF_INTERN_STRING:
                 cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "World string interning retains text and allocates/copies on a cache miss");
@@ -1700,8 +1810,9 @@ execution_cost_summary execution_module_costs(const execution_module *m)
  * update a tainted local in place, or write through a reference other than a
  * value reference to an own, untainted cell. Writes through addresses the
  * analysis cannot place forget what every cell holds. Values copied by
- * snapshots, constructors, reference reads and authored returns are fresh while
- * the copied headers keep their declared types: the verifier rejects direct
+ * snapshots, constructors, reference reads and authored returns can retain
+ * mutable array roots even when their outer value storage is fresh. Plain
+ * values and immutable text remain independent. The verifier rejects direct
  * writes to a cell's type and container, a return checks its results'
  * headers, a reference read checks its result's header and its root's type,
  * a reference write checks the written value's type, and `retyped` covers the
@@ -1752,6 +1863,87 @@ static bool text_type(pin_type type)
 static bool pointer_slot(const behavior_function *f, int slot)
 {
     return pointer_value((pin_value){ .type = f->slots[slot] }, f->slot_kinds[slot]);
+}
+/* A retained value can carry arrays or managed pointers through a union or
+ * struct. Pointer identity survives; this analysis never follows targets. */
+static bool mutable_payload(pin_value value, int depth)
+{
+    if (value.container != PIN_CONTAINER_SINGLE || value.type == PIN_UNION ||
+        value.type == PIN_POINTER) {
+        return true;
+    }
+    if (value.container != PIN_CONTAINER_SINGLE || value.type != PIN_STRUCT) {
+        return false;
+    }
+    const type_desc *type = pin_value_type(&value);
+    if (!type || depth >= TYPE_MAX_NESTING) {
+        return true;
+    }
+    if (type->alias_of || type->alias) {
+        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
+        return !target || mutable_payload(
+                              (pin_value){ .type = PIN_STRUCT,
+                                           .type_name = target->name,
+                                           .record = target->carrier },
+                              depth + 1
+                          );
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        const type_desc *child = field->type == PIN_STRUCT
+                                   ? type_field_type(field, (type_resolver){ 0 })
+                                   : NULL;
+        if (mutable_payload(
+                (pin_value){ .type = field->type,
+                             .type_name = child ? child->name : field->type_name,
+                             .record = child ? child->carrier : NULL },
+                depth + 1
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+/* VALUE copies separate collection owners. Explicit pointers and views still
+ * reach shared targets; opaque union payloads may contain either. */
+static bool shared_targets(pin_value value, int depth)
+{
+    if (value.container == PIN_CONTAINER_VIEW || value.type == PIN_POINTER ||
+        value.type == PIN_UNION) {
+        return true;
+    }
+    value.container = PIN_CONTAINER_SINGLE;
+    if (value.type != PIN_STRUCT) {
+        return false;
+    }
+    const type_desc *type = pin_value_type(&value);
+    if (!type || depth >= TYPE_MAX_NESTING) {
+        return true;
+    }
+    if (type->alias_of || type->alias) {
+        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
+        return !target || shared_targets(
+                              (pin_value){ .type = PIN_STRUCT,
+                                           .type_name = target->name,
+                                           .record = target->carrier },
+                              depth + 1
+                          );
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        const type_desc *child = field->type == PIN_STRUCT
+                                   ? type_field_type(field, (type_resolver){ 0 })
+                                   : NULL;
+        if (shared_targets(
+                (pin_value){ .type = field->type,
+                             .type_name = child ? child->name : field->type_name,
+                             .record = child ? child->carrier : NULL },
+                depth + 1
+            )) {
+            return true;
+        }
+    }
+    return false;
 }
 static int share_merge(int old, int value)
 {
@@ -1877,39 +2069,6 @@ static int share_target(const share_flow *s, int cell)
     int target = s->contents[cell];
     return target >= 0 && !s->cells[target] ? target : -1;
 }
-/* Snapshotting containers or records copies their ordinary payloads, but
- * managed pointer fields retain identity. Unknown union payloads may carry
- * such pointers too. */
-static bool snapshot_aliases(pin_value value, int depth)
-{
-    if (value.type == PIN_POINTER || value.type == PIN_UNION || depth >= EFFECT_DEPTH) {
-        return true;
-    }
-    if (value.type != PIN_STRUCT) {
-        return false;
-    }
-    value.container = PIN_CONTAINER_SINGLE;
-    const type_desc *type = pin_value_type(&value);
-    if (!type) {
-        return true;
-    }
-    if (type->alias_of) {
-        return snapshot_aliases(
-            (pin_value){ .type = PIN_STRUCT, .type_name = type->alias_of },
-            depth + 1
-        );
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        if (snapshot_aliases(
-                (pin_value){ .type = field->type, .type_name = field->type_name },
-                depth + 1
-            )) {
-            return true;
-        }
-    }
-    return false;
-}
 static void share_host(share_flow *s, int pc)
 {
     const behavior_function *f = s->f;
@@ -1954,6 +2113,10 @@ static void share_host(share_flow *s, int pc)
                      (access->flags & ~allowed) || host->call->action;
     } else {
         switch (execution_intrinsic_kind(id)) {
+            case EXECUTION_INTRINSIC_VALUE_COPY:
+                output = s->retyped ||
+                         shared_targets(f->data_values[host->result_first].initial, 0);
+                break;
             /* Copies follow the copied headers; a rewritten one may keep the
              * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -1962,20 +2125,19 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_count; k++) {
                     output |= inputs &&
-                              snapshot_aliases(
+                              mutable_payload(
                                   f->data_values[host->result_first + k].initial,
                                   0
                               );
                 }
                 break;
             case EXECUTION_INTRINSIC_UNION_MAKE:
-                /* The constructor exposes every payload header, unlike an
-                 * arbitrary union snapshot. Ordinary payload copies sever
-                 * aliases; only pointer-bearing payloads keep them. */
+                /* Constructors expose their payload headers. The explicit
+                 * VALUE barrier below separates ordinary collection owners. */
                 output = s->retyped && inputs;
                 for (int cell = host->first + 1; cell < host->result_first; cell++) {
                     output |= share_cell(s, cell) &&
-                              snapshot_aliases(f->data_values[cell].initial, 0);
+                              mutable_payload(f->data_values[cell].initial, 0);
                 }
                 break;
             case EXECUTION_INTRINSIC_POINTER_MAKE:
@@ -1990,8 +2152,30 @@ static void share_host(share_flow *s, int pc)
                 s->unsafe = true;
                 output = false;
                 break;
+            case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+                /* Array views retain the pointer cell's logical pointee. */
+                output = f->data_values[host->first].initial.type != PIN_STR ||
+                         f->data_values[host->first].initial.container !=
+                             PIN_CONTAINER_SINGLE;
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+            case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+                /* Nested values fork their owners. Pointers inside elements
+                 * retain shared target provenance after that fork. */
+                {
+                    pin_value element = f->data_values[host->first].initial;
+                    element.container = PIN_CONTAINER_SINGLE;
+                    output = s->retyped || shared_targets(element, 0);
+                }
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_GET:
+                output = s->retyped ||
+                         shared_targets(f->data_values[host->result_first].initial, 0);
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: output = false; break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
+            case EXECUTION_INTRINSIC_VALUE_DROP:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
             case EXECUTION_INTRINSIC_UNION_GET: break;
             case EXECUTION_INTRINSIC_UNION_KEEP: {
@@ -2001,15 +2185,14 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_first - host->first - 2; k++) {
                     bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
-                    output |= (kept || snapshot_aliases(
-                                           f->data_values[host->first + 2 + k].initial,
-                                           0
-                                       )) &&
+                    pin_value payload = f->data_values[host->first + 2 + k].initial;
+                    output |= (kept || mutable_payload(payload, 0)) &&
                               share_cell(s, host->first + 2 + k);
                 }
                 break;
             }
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+            case EXECUTION_INTRINSIC_REFERENCE_UNION:
                 output = share_cell(s, host->first);
                 root = s->contents[host->first];
                 break;
@@ -2023,12 +2206,25 @@ static void share_host(share_flow *s, int pc)
                     share_taint(s, &s->referenced[root], true);
                 }
                 break;
+            case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+            case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
             case EXECUTION_INTRINSIC_REFERENCE_WRITE: {
                 /* Text the value cell holds marked `texts`, not its taint, and
                  * the text input above records where it went. */
                 int written = s->contents[host->first];
-                bool value = share_cell(s, host->first + 1);
-                s->unsafe |= share_cell(s, host->first) || (written < 0 && value);
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                bool value = false;
+                int first = kind == EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE
+                              ? host->first + 2
+                              : host->first + 1;
+                for (int cell = first; cell < host->result_first; cell++) {
+                    value |= share_cell(s, cell) &&
+                             shared_targets(f->data_values[cell].initial, 0);
+                }
+                if (kind == EXECUTION_INTRINSIC_MAP_DELETE_PLACE) {
+                    value = false;
+                }
+                s->unsafe |= share_cell(s, host->first) || written < 0;
                 if (written >= 0) {
                     share_taint(s, &s->cells[written], value);
                 }
@@ -2038,7 +2234,22 @@ static void share_host(share_flow *s, int pc)
             }
             case EXECUTION_INTRINSIC_ARRAY_PUSH:
             case EXECUTION_INTRINSIC_ARRAY_STORE:
-            case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+                int target = share_target(s, host->first);
+                s->unsafe |= target < 0;
+                if (target >= 0) {
+                    share_set(s, &s->contents[target], SHARE_UNKNOWN);
+                    share_set(s, &s->cell_literals[target], SHARE_UNKNOWN);
+                }
+                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                    if (share_cell(s, cell) &&
+                        mutable_payload(f->data_values[cell].initial, 0)) {
+                        share_scatter(s, true);
+                    }
+                }
+                output = false;
+                break;
+            }
             case EXECUTION_INTRINSIC_MAP_STORE:
             case EXECUTION_INTRINSIC_MAP_DELETE: {
                 int target = share_target(s, host->first);
@@ -2081,8 +2292,12 @@ static void share_instruction(share_flow *s, int pc)
             share_define(s, out, false, SHARE_NONE, literal);
             break;
         }
-        case BF_COPY_STRING:
         case BF_COPY_ARRAY:
+            /* This raw opcode has no element schema proving pointer-free
+             * payloads, so preserve potential shared-target provenance. */
+            share_define(s, out, s->slots[i->left], s->addresses[i->left], SHARE_UNKNOWN);
+            break;
+        case BF_COPY_STRING:
             share_define(s, out, false, SHARE_NONE, SHARE_UNKNOWN);
             break;
         case BF_ARGUMENT:
@@ -2210,13 +2425,16 @@ static void share_instruction(share_flow *s, int pc)
                               argument->initial.type == BF_POINTER_TYPE) &&
                              callee->argument_sharing != BEHAVIOR_SHARING_SAFE;
             }
-            /* Authored returns copy managed values; raw pointers keep their bits. */
+            /* A callee's retained mutable result may alias its arguments or
+             * state unless its result-building proof establishes independence. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;
                 bool raw = k >= callee->result_count ||
                            callee->result_kinds[k] != BEHAVIOR_VALUE ||
                            callee->result_defaults[k].type == BF_POINTER_TYPE;
-                share_taint(s, &s->cells[cell], raw);
+                bool retained = k < callee->result_count && !callee->builds_results &&
+                                mutable_payload(callee->result_defaults[k], 0);
+                share_taint(s, &s->cells[cell], raw || retained);
                 share_set(s, &s->contents[cell], SHARE_UNKNOWN);
                 share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
             }

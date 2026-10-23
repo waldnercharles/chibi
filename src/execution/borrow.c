@@ -231,6 +231,7 @@ static bool snapshot(const behavior_function *f, const behavior_function_instruc
         call->service || call->missing_service || call->invoke ||
         call->context || call->action || call->value != canonical->value ||
         call->optional_service || call->variadic || call->reusable ||
+        call->language_values || call->owned_result ||
         h->result_first != h->first + 1 || h->result_count != 1) {
         return false;
     }

@@ -319,7 +319,7 @@ source_package_exports *source_package_exports_new(
             retained[i].name = own(owner, retained[i].name);
             retained[i].unit = own(owner, retained[i].unit);
             if (retained[i].kind == SCRIPT_PACKAGE_CONSTANT &&
-                pin_value_snapshot_to_arena(
+                pin_value_capture_to_arena(
                     &owner->storage,
                     &retained[i].value,
                     &b.members[i].value

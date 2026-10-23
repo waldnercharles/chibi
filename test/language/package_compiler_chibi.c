@@ -128,6 +128,30 @@ static const native_parameter_definition CSTRING_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+/* Borrowed native result banks exercise tuple copies without authored named
+ * collection results, which stage one does not support. */
+static const char *sequence_pair_probe(void *, const pin_value *, pin_value *results)
+{
+    static int items[] = { 3, 4 };
+    static pin_array values = {
+        .element_type = PIN_I32,
+        .count = 2,
+        .capacity = 2,
+        .data = items,
+        .stride = sizeof *items,
+    };
+    results[0].ptr = &values;
+    results[1].i = 9;
+    return NULL;
+}
+static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
+    { .name = "values",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .container = PIN_CONTAINER_ARRAY,
+      .type_name = "int" },
+    { .name = "stamp", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     { .canonical_name = "CString Probe",
       .source_name = "cstring_probe",
@@ -138,18 +162,28 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
       .output_count = 1,
       .completion_output = -1,
       .pure = true },
+    { .canonical_name = "Sequence Pair Probe",
+      .source_name = "Multi",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .outputs = SEQUENCE_PAIR_OUTPUTS,
+      .output_count = 2,
+      .completion_output = -1,
+      .pure = true },
 };
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call SEQUENCE_PAIR_CALL = { .invoke = sequence_pair_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const native_definition_binding CSTRING_BINDINGS[] = {
     { .canonical_name = "CString Probe",
       .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+    { .canonical_name = "Sequence Pair Probe",
+      .implementation = { .call = &SEQUENCE_PAIR_CALL, .access = &CSTRING_ACCESS } },
 };
 static const native_definition_pack CSTRING_PACK = {
     .definitions = CSTRING_DEFINITIONS,
-    .definition_count = 1,
+    .definition_count = 2,
     .bindings = CSTRING_BINDINGS,
-    .binding_count = 1,
+    .binding_count = 2,
 };
 static const sample samples[] = {
     { .name = "typed constant shifts discard bits",
@@ -673,6 +707,156 @@ static const sample samples[] = {
                  { .function = "Small", .arguments = "[3]", .expected = "[4]" },
                  { .function = "Keys", .arguments = "[[5,6,7]]", .expected = "[20]" },
                  { .function = "Back", .arguments = "[[1,2,3]]", .expected = "[322110]" } } },
+    /* Observable sequence semantics use the supported package subset: ordinary
+     * parameters, unnamed results, scalar record fields and inferred optionals.
+     * Multi() below supplies a native result bank; authored named collection
+     * results and nonnumeric state remain outside this fixture's subset. */
+    { .name = "value sequence copies",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Change :: (values: int[]) -> int { values[0] = 8; values.append(9); return values.length() * 10 + values[0]; }\n"
+          "Identity :: (values: int[]) -> int[] { return values; }\n"
+          "Assignment :: () -> int { original: int[] = [1, 2]; copied := original; copied[0] = 7; copied.append(3); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }\n"
+          "Parameter :: () -> int { original: int[] = [1, 2]; changed := Change(original); return original[0] * 100 + original.length() * 10 + changed; }\n"
+          "Returned :: () -> int { original: int[] = [1, 2]; copied := Identity(original); copied[1] = 9; return original[1] * 10 + copied[1]; }\n"
+          "Nested :: () -> int { original: int[][] = [[1, 2], [3]]; copied := original; copied[0].append(7); copied[1][0] = 8; return original[0].length() * 1000 + original[1][0] * 100 + copied[0].length() * 10 + copied[1][0]; }\n"
+          "Maps :: () -> int { original: [int: int[]] = [1: [2, 3]]; copied := original; copied[1].append(4); copied[2] = [9]; delete copied[1]; return original[1].length() * 100 + original[1][0] * 10 + copied[2][0]; }\n"
+          "Records :: () -> int { original: Point[] = [{x: 2, y: 3}]; copied := original; copied[0].x = 9; return original[0].x * 100 + copied[0].x * 10 + copied[0].y; }\n"
+          "Pointers :: () -> int { value: int = 1; other: int = 9; original: ^int[] = [&value]; copied := original; copied[0]^ = 5; copied[0] = &other; return original[0]^ * 100 + copied[0]^ * 10 + value; }\n"
+          "Cloned :: () -> int { original: int[] = [4, 5]; copied := original.clone(); copied[0] = 8; return original[0] * 10 + copied[0]; }\n"
+          "Empty :: () -> int { original: int[] = []; copied := original; copied.append(7); return original.length() * 100 + copied.length() * 10 + copied[0]; }\n",
+      .calls = {
+          { .function = "Assignment", .arguments = "[]",
+            .expected = "[1273]" },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[158]" },
+          { .function = "Returned", .arguments = "[]",
+            .expected = "[29]" },
+          { .function = "Nested", .arguments = "[]",
+            .expected = "[2338]" },
+          { .function = "Maps", .arguments = "[]",
+            .expected = "[229]" },
+          { .function = "Records", .arguments = "[]",
+            .expected = "[293]" },
+          { .function = "Pointers", .arguments = "[]",
+            .expected = "[595]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[48]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[17]" },
+      } },
+    { .name = "strict sequence ranges",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Bracket :: () -> int { original: int[] = [1, 2, 3, 4]; selected := original[1..<3]; if selected { selected[0] = 9; return original[1] * 100 + selected[0] * 10 + selected.length(); } return -1; }\n"
+          "Method :: () -> int { original: int[] = [1, 2, 3]; selected := original.slice(0..<2); if selected { selected[1] = 8; return original[1] * 10 + selected[1]; } return -1; }\n"
+          "Empty :: () -> int { original: int[] = [1, 2]; selected := original[2..<2]; if selected { return selected.length() + 1; } return -1; }\n"
+          "EmptySource :: () -> int { original: int[] = []; selected := original[0..<0]; if selected { return selected.length() + 1; } return -1; }\n"
+          "Bounds :: (first: int, last: int) -> int { original: int[] = [1, 2]; selected := original.slice(first..<last); if selected { return selected.length() + 1; } return 0; }\n"
+          "Text :: () -> string { original: string = \"abcd\"; selected := original[1..<3]; if selected { copied := selected.clone(); return format_text(\"{}|{}\", selected, copied); } return \"invalid\"; }\n"
+          "Bytes :: () -> int { original: string = \"a\\u03bbz\"; selected := original[1..<2]; if selected { return selected.length(); } return -1; }\n"
+          "EmptyText :: () -> int { original: string = \"abc\"; selected := original[3..<3]; if selected { return selected.length() + 1; } return -1; }\n",
+      .calls = {
+          { .function = "Bracket", .arguments = "[]",
+            .expected = "[292]" },
+          { .function = "Method", .arguments = "[]",
+            .expected = "[28]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptySource", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[-1,1]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[1,0]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[0,3]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[2,2]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[0,2]",
+            .expected = "[3]" },
+          { .function = "Text", .arguments = "[]",
+            .expected = "[\"bc|bc\"]" },
+          { .function = "Bytes", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptyText", .arguments = "[]",
+            .expected = "[1]" },
+      } },
+    { .name = "pointer sequence views",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Owner :: () -> ^(int[]) { values: int[] = [4, 5]; return &values; }\n"
+          "Touch :: (window: view int[]) { window[0] = 7; }\n"
+          "ReadWindow :: (window: view int[]) -> int { return window.length() * 100 + window[0]; }\n"
+          "Follow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { selected[0] = 8; previous := values[1]; pointer^ = [4, 5, 6, 7]; selected[1] = 9; return previous * 1000 + values[1] * 100 + values[2] * 10 + selected.length(); } return -1; }\n"
+          "OrdinaryCopy :: () -> int { values: int[] = [1, 2]; copied := values; pointer := &values; selected := pointer.view(0..<2); if selected { selected[1] = 7; return values[1] * 100 + copied[1] * 10 + selected[1]; } return -1; }\n"
+          "Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }\n"
+          "Cloned :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected.clone(); copied[0] = 9; return values[0] * 100 + selected[0] * 10 + copied[0]; } return -1; }\n"
+          "Sliced :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected[0..<1]; if copied { copied[0] = 7; return values[0] * 100 + selected[0] * 10 + copied[0]; } } return -1; }\n"
+          "Empty :: () -> int { values: int[] = []; pointer := &values; selected := pointer.view(0..<0); if selected { return selected.length() + 1; } return -1; }\n"
+          "Escaped :: () -> int { pointer := Owner(); selected := pointer.view(0..<2); if selected { selected[0] = 8; return pointer^[0] * 10 + selected[1]; } return -1; }\n"
+          "InvalidRange :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(2..<2); if selected { return 1; } return 0; }\n"
+          "Shrunk :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer^ = [9]; return selected.length(); } return -1; }\n"
+          "Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); return values[1] * 100 + ReadWindow(selected); } return -1; }\n",
+      .calls = {
+          { .function = "Follow", .arguments = "[]",
+            .expected = "[8592]" },
+          { .function = "OrdinaryCopy", .arguments = "[]",
+            .expected = "[727]" },
+          { .function = "Grow", .arguments = "[]",
+            .expected = "[824]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[119]" },
+          { .function = "Sliced", .arguments = "[]",
+            .expected = "[117]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Escaped", .arguments = "[]",
+            .expected = "[85]" },
+          { .function = "InvalidRange", .arguments = "[]",
+            .expected = "[0]" },
+          { .function = "Shrunk", .arguments = "[]",
+            .expected = NULL },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[907]" },
+      } },
+    { .name = "value arguments and result banks",
+      .group = COLLECTION_SAMPLES,
+      .c_string_probe = true,
+      .source =
+          "package facts\n"
+          "Change :: (pointer: ^(int[])) -> int { pointer^[0] = 9; pointer.append(3); return 7; }\n"
+          "Observe :: (values: int[], changed: int) -> int { return values[0] * 100 + values.length() * 10 + changed; }\n"
+          "ObservePointer :: (pointer: ^(int[]), changed: int) -> int { return pointer^[0] + pointer^.length() * 10 + changed; }\n"
+          "ChangeRows :: (pointer: ^(int[][])) -> int { pointer^[0].append(7); return 0; }\n"
+          "ObserveRows :: (values: int[][], changed: int) -> int { return values[0][0] * 10 + values[0].length() + changed; }\n"
+          "ChangeMap :: (pointer: ^([int: int])) -> int { pointer^[1] = 8; return 2; }\n"
+          "ObserveMap :: (values: [int: int], changed: int) -> int { return values[1] * 10 + changed; }\n"
+          "EarlierArray :: () -> int { values: int[] = [1, 2]; observed := Observe(values, Change(&values)); return observed * 1000 + values[0] * 10 + values.length(); }\n"
+          "EarlierNested :: () -> int { values: int[][] = [[1]]; observed := ObserveRows(values, ChangeRows(&values)); return observed * 10 + values[0].length(); }\n"
+          "EarlierPointer :: () -> int { values: int[] = [1]; return ObservePointer(&values, Change(&values)); }\n"
+          "EarlierMap :: () -> int { values: [int: int] = [1: 3]; observed := ObserveMap(values, ChangeMap(&values)); return observed * 10 + values[1]; }\n"
+          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
+          "KeepTupleValue :: () -> int[] { p := Multi(); { q := p; return q.values; } }\n"
+          "TupleReturned :: () -> int { values := KeepTupleValue(); values.append(5); return values[0] * 100 + values[2] * 10 + values.length(); }\n",
+      .calls = {
+          { .function = "EarlierArray", .arguments = "[]",
+            .expected = "[127093]" },
+          { .function = "EarlierNested", .arguments = "[]",
+            .expected = "[112]" },
+          { .function = "EarlierPointer", .arguments = "[]",
+            .expected = "[36]" },
+          { .function = "EarlierMap", .arguments = "[]",
+            .expected = "[328]" },
+          { .function = "TupleLifetime", .arguments = "[]",
+            .expected = "[1139]" },
+          { .function = "TupleReturned", .arguments = "[]",
+            .expected = "[353]" },
+      } },
     { .name = "arrays",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"

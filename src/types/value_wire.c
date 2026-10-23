@@ -642,16 +642,30 @@ static void collection(value_codec *c, pin_value *v, unsigned depth)
 static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_value *destination)
 {
     execution_wire *w = c->wire;
-    if (!w->reading && v->record && !c->resolve) {
+    if (!w->reading && v->container == PIN_CONTAINER_VIEW && v->ptr) {
+        fail(w, "Array views cannot be persisted");
+        return;
+    }
+    if (!w->reading && v->record && v->record->native &&
+        !pin_record_native_current(v->record)) {
+        fail(w, "Native record type is retired or its layout is incompatible");
+        return;
+    }
+    if (!w->reading && v->record && !v->record->native &&
+        !pin_record_fields_current(v->record)) {
+        fail(w, "Authored record nested native layout is retired or incompatible");
+        return;
+    }
+    if (!w->reading && v->record && !v->record->native && !c->resolve) {
         fail(w, "Authored record requires a prepared layout table");
     }
     if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_POINTER ||
                         v->container < PIN_CONTAINER_SINGLE ||
-                        v->container > PIN_CONTAINER_MAP ||
+                        v->container > PIN_CONTAINER_VIEW ||
                         (v->type == PIN_FLOW && v->container))) {
         fail(w, "Prepared value tag is invalid");
     }
-    bool authored = !w->reading && v->record;
+    bool authored = !w->reading && v->record && !v->record->native;
     if (!w->reading && c->resolve) {
         c->resolve(w, c->user, v, authored);
     }
@@ -670,7 +684,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         return;
     }
     if (tag < PIN_FLOW || tag > PIN_POINTER || container < PIN_CONTAINER_SINGLE ||
-        container > PIN_CONTAINER_MAP || (tag == PIN_FLOW && container)) {
+        container > PIN_CONTAINER_VIEW || (tag == PIN_FLOW && container)) {
         fail(w, "Prepared value tag is invalid");
         return;
     }
@@ -712,6 +726,14 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
                         !same_name(v->type_name, destination->type_name) ||
                         !pin_record_same(v->record, destination->record))) {
         fail(w, "Prepared inline value differs from its destination type");
+        return;
+    }
+    if (container == PIN_CONTAINER_VIEW) {
+        bool present = false;
+        execution_wire_bool(w, &present);
+        if (!w->error && present) {
+            fail(w, "Array views cannot be persisted");
+        }
         return;
     }
     if (container == PIN_CONTAINER_MAP) {

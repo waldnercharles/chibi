@@ -28,7 +28,8 @@ implemented before the ports that need them.
 - Managed pointers and explicit call-site `ref` are implemented locally on
   `codex/managed-pointers-20261022`. The [pointer contract and verification
   ledger](managed-pointers.md) record supported operations and remaining limits.
-  The separate sequence workstream owns shared array objects and retained slices.
+  The separate [sequence workstream](value-sequences.md) owns value arrays/maps
+  with copy-on-write storage, copied ranges and explicit pointer-backed views.
 - Shift behavior approved on 2026-10-21: reject counts outside the operand
   width and discard shifted-out bits. Implemented and verified locally across
   compiler stages and execution backends in this branch; not merged into main.

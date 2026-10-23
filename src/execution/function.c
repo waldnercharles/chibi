@@ -1,8 +1,10 @@
 #include "ecs/execution.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module_effects.h"
 #include "execution/service.h"
+#include "execution/status.h"
 #include "execution/wasm_jit.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -606,7 +608,11 @@ static const pin_string *copy_text(void *storage, const pin_string *text)
         return NULL;
     }
     pin_value value;
-    const char *error = pin_value_text(storage, &value, text->bytes, text->length);
+    const char *error = pin_value_text_share(
+        storage,
+        &value,
+        (pin_value){ .type = PIN_STR, .text = text }
+    );
     assert(!error);
     (void)error;
     return value.text;
@@ -637,6 +643,245 @@ static pin_array *copy_array(void *storage, const pin_array *array)
     pin_array *copy = pin_array_snapshot_to_arena(storage, array);
     assert(!array || copy);
     return copy;
+}
+static behavior_managed_heap *managed_owner(behavior_managed_heap *);
+static arena *array_storage(behavior_function_context *context)
+{
+    if (!context->managed_heap || !context->managed_heap->storage.collectable) {
+        context->error_message = "Dynamic arrays require an initialized "
+                                 "caller-owned managed heap";
+        return NULL;
+    }
+    return &managed_owner(context->managed_heap)->storage;
+}
+pin_array *behavior_function_copy_array(behavior_function_context *context, const pin_array *source)
+{
+    arena *storage = array_storage(context);
+    if (!storage) {
+        return NULL;
+    }
+    if (!source) {
+        context
+            ->error_message = "Array copy requires a materialized typed array";
+        return NULL;
+    }
+    pin_value input = { .type = source->element_type,
+                        .type_name = source->type_name,
+                        .record = source->record,
+                        .container = source->pointer ? PIN_CONTAINER_VIEW
+                                                     : PIN_CONTAINER_ARRAY,
+                        .ptr = (void *)source },
+              value;
+    const char *error = behavior_managed_storage_value_error(storage, &input);
+    if (error || pin_value_collection_copy(storage, &value, &input)) {
+        context->error_message = error ? error : "Cannot retain dynamic array";
+        return NULL;
+    }
+    behavior_function_collection_retain(context, &value);
+    return value.ptr;
+}
+typedef struct
+{
+    behavior_function_context *from, *to;
+    bool drop;
+} collection_transfer;
+static bool collection_owner_same(pin_value a, pin_value b)
+{
+    return a.ptr == b.ptr && a.container == b.container;
+}
+static void collection_retain(const pin_value *value, void *user)
+{
+    behavior_function_context *context = user;
+    if (!value->ptr) {
+        return;
+    }
+    for (int i = 0; i < acount(context->collection_owners); i++) {
+        if (collection_owner_same(context->collection_owners[i], *value)) {
+            return;
+        }
+    }
+    apush(context->collection_owners, *value);
+}
+void behavior_function_collection_retain(behavior_function_context *context, const pin_value *value)
+{
+    pin_value_collection_visit_owners(value, collection_retain, context);
+}
+static void collection_remove(const pin_value *value, void *user)
+{
+    collection_transfer *transfer = user;
+    pin_value *owners = transfer->from->collection_owners;
+    for (int i = 0; i < acount(owners); i++) {
+        if (collection_owner_same(owners[i], *value)) {
+            owners[i] = owners[acount(owners) - 1];
+            asetlen(owners, acount(owners) - 1);
+            if (transfer->to) {
+                collection_retain(value, transfer->to);
+            }
+            if (transfer->drop) {
+                pin_value_collection_release(value);
+            }
+            return;
+        }
+    }
+    if (transfer->to) {
+        collection_retain(value, transfer->to);
+    }
+}
+void behavior_function_collection_drop(behavior_function_context *context, const pin_value *value)
+{
+    collection_transfer transfer = { .from = context, .drop = true };
+    pin_value_collection_visit_owners(value, collection_remove, &transfer);
+}
+void behavior_function_collection_transfer(
+    behavior_function_context *from,
+    behavior_function_context *to,
+    const pin_value *value
+)
+{
+    collection_transfer transfer = { .from = from, .to = to };
+    pin_value_collection_visit_owners(value, collection_remove, &transfer);
+}
+void behavior_function_collection_clear(behavior_function_context *context)
+{
+    for (int i = 0; i < acount(context->collection_owners); i++) {
+        pin_value_collection_release(&context->collection_owners[i]);
+    }
+    afree(context->collection_owners);
+}
+void behavior_function_collection_trace(
+    const behavior_function_context *context,
+    arena_marker mark,
+    void *user
+)
+{
+    for (int i = 0; i < acount(context->collection_owners); i++) {
+        pin_value_trace(&context->collection_owners[i], mark, user);
+    }
+}
+static const char *managed_scan(behavior_managed_heap *, const pin_value *, bool, unsigned *);
+const char *behavior_function_value_call(behavior_function_context *context, int host_call)
+{
+    const behavior_function *function = context->data->function;
+    const behavior_function_host_call *spec = &function->host_calls[host_call];
+    const behavior_data_binding *binding = &context->data->calls[host_call];
+    pin_value *arguments = context->data->values + spec->first;
+    pin_value *result = context->data->values + spec->result_first;
+    int count = spec->result_first - spec->first;
+    execution_intrinsic kind = execution_intrinsic_kind(spec->capability_id);
+    bool intrinsic = execution_intrinsic_resolve(spec->capability_id) != NULL;
+    bool strict_range = intrinsic && (kind == EXECUTION_INTRINSIC_SEQUENCE_SLICE ||
+                                      kind == EXECUTION_INTRINSIC_SEQUENCE_VIEW);
+    for (int i = 0; i < count; i++) {
+        if (arguments[i].container == PIN_CONTAINER_VIEW &&
+            (!arguments[i].ptr || !pin_array_view_valid(arguments[i].ptr)) &&
+            !(strict_range && i == 0)) {
+            return "Array view is out of range";
+        }
+    }
+    bool array_result = result->container == PIN_CONTAINER_ARRAY ||
+                        result->container == PIN_CONTAINER_VIEW;
+    bool array_input = count && (arguments[0].container == PIN_CONTAINER_ARRAY ||
+                                 arguments[0].container == PIN_CONTAINER_VIEW);
+    bool sequence = intrinsic && kind >= EXECUTION_INTRINSIC_SEQUENCE_SLICE &&
+                    kind <= EXECUTION_INTRINSIC_SEQUENCE_CLONE;
+    bool mutation = intrinsic && (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+                                  kind == EXECUTION_INTRINSIC_ARRAY_STORE ||
+                                  kind == EXECUTION_INTRINSIC_ARRAY_EXTEND);
+    bool retained_collections = false;
+    if (intrinsic && (kind == EXECUTION_INTRINSIC_VALUE_COPY ||
+                      kind == EXECUTION_INTRINSIC_CONSTRUCT ||
+                      kind == EXECUTION_INTRINSIC_UNION_MAKE ||
+                      kind == EXECUTION_INTRINSIC_UNION_KEEP)) {
+        unsigned managed = 0;
+        for (int i = 0; i < count; i++) {
+            const char *error = managed_scan(NULL, &arguments[i], false, &managed);
+            if (error) {
+                return error;
+            }
+        }
+        retained_collections = managed != 0;
+    }
+    bool array_operation = array_result || mutation || retained_collections ||
+                           (intrinsic &&
+                            (kind == EXECUTION_INTRINSIC_MAP_MAKE ||
+                             kind == EXECUTION_INTRINSIC_MAP_REMOVE ||
+                             kind == EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE ||
+                             kind == EXECUTION_INTRINSIC_MAP_DELETE_PLACE ||
+                             (kind == EXECUTION_INTRINSIC_SEQUENCE_VIEW &&
+                              count && arguments[0].type == PIN_POINTER))) ||
+                           (intrinsic && ((kind == EXECUTION_INTRINSIC_CONSTRUCT ||
+                                           kind == EXECUTION_INTRINSIC_SNAPSHOT) &&
+                                          array_input));
+    arena *storage = execution_intrinsic_in_result(spec->capability_id)
+                       ? context->result_storage
+                       : context->value_storage;
+    if (array_operation || (sequence && array_input)) {
+        storage = array_storage(context);
+        if (!storage) {
+            return context->error_message;
+        }
+        for (int i = 0; i < count; i++) {
+            const char *error = behavior_managed_storage_value_error(storage, &arguments[i]);
+            if (error) {
+                return error;
+            }
+        }
+    }
+    if (intrinsic && kind == EXECUTION_INTRINSIC_VALUE_DROP) {
+        /* A moved or borrowed shell has no owner here and must stay live. */
+        behavior_function_collection_drop(context, arguments);
+    }
+    const char *error = binding->value(storage, arguments, count, result);
+    if (error) {
+        return error;
+    }
+    if (!intrinsic) {
+        error = behavior_function_validate_value(context, result);
+        if (error) {
+            return error;
+        }
+    }
+    bool owned_result = spec->call->owned_result &&
+                        spec->call->value == binding->value &&
+                        binding->capability_abi == spec->capability_abi &&
+                        spec->capability_abi;
+    if (!intrinsic && !owned_result) {
+        pin_value copy;
+        arena *heap = context->managed_heap ? array_storage(context) : storage;
+        if (!heap || pin_value_collection_copy(heap, &copy, result)) {
+            return "Cannot copy native result";
+        }
+        *result = copy;
+    }
+    if (result->container == PIN_CONTAINER_ARRAY ||
+        result->container == PIN_CONTAINER_VIEW) {
+        arena *heap = array_storage(context);
+        if (!heap) {
+            return context->error_message;
+        }
+        pin_array *array = result->ptr;
+        if (array && !array->pointer && !array->storage && arena_contains(heap, array)) {
+            if (pin_array_manage(heap, array)) {
+                *result = (pin_value){ 0 };
+                return "Cannot retain native array layout";
+            }
+        }
+        pin_value retained;
+        if (pin_value_array_promote(heap, &retained, result)) {
+            return "Cannot retain dynamic array result";
+        }
+        *result = retained;
+    }
+    if (!intrinsic || kind == EXECUTION_INTRINSIC_VALUE_COPY ||
+        kind == EXECUTION_INTRINSIC_CONSTRUCT || kind == EXECUTION_INTRINSIC_UNION_MAKE ||
+        kind == EXECUTION_INTRINSIC_UNION_KEEP ||
+        kind == EXECUTION_INTRINSIC_MAP_MAKE || kind == EXECUTION_INTRINSIC_MAP_REMOVE ||
+        kind == EXECUTION_INTRINSIC_STRING_BYTES ||
+        kind == EXECUTION_INTRINSIC_SEQUENCE_SLICE ||
+        kind == EXECUTION_INTRINSIC_SEQUENCE_CLONE) {
+        behavior_function_collection_retain(context, result);
+    }
+    return NULL;
 }
 void behavior_function_bind_storage(behavior_function_context *ctx, arena *storage)
 {
@@ -759,70 +1004,220 @@ static behavior_managed_heap *managed_owner(behavior_managed_heap *heap)
     }
     return heap;
 }
-/* Inline record layouts currently resolve nested types through the mutable
- * catalog. Such shapes cannot escape a module generation in a managed heap. */
-static const char *managed_value_error(behavior_managed_heap *heap, const pin_value *root, bool restricted)
+typedef struct
+{
+    const void *address, *shape;
+    pin_type type;
+    pin_container container;
+    bool restricted;
+} managed_seen_entry;
+typedef struct
+{
+    managed_seen_entry *entries;
+    size_t count, capacity;
+} managed_seen;
+static size_t managed_seen_slot(managed_seen_entry entry, size_t capacity)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)entry.address * UINT64_C(0x9e3779b97f4a7c15);
+    hash ^= (uint64_t)(uintptr_t)entry.shape * UINT64_C(0xbf58476d1ce4e5b9);
+    hash ^= (uint64_t)entry.type * UINT64_C(0x94d049bb133111eb);
+    hash ^= (unsigned)entry.container * 2u + entry.restricted;
+    return (size_t)(hash ^ (hash >> 32)) & (capacity - 1);
+}
+static bool managed_seen_before(managed_seen *seen, pin_value value, bool restricted)
+{
+    if (!value.ptr || (value.container == PIN_CONTAINER_SINGLE && value.type != PIN_STRUCT &&
+                       value.type != PIN_UNION && value.type != PIN_POINTER)) {
+        return false;
+    }
+    managed_seen_entry entry = { .address = value.ptr,
+                                 .type = value.type,
+                                 .container = value.container,
+                                 .restricted = restricted,
+                                 .shape = value.container == PIN_CONTAINER_SINGLE &&
+                                                  value.type == PIN_STRUCT
+                                            ? pin_value_type(&value)
+                                            : NULL };
+    if (!seen->capacity || (seen->count + 1) * 2 > seen->capacity) {
+        size_t capacity = seen->capacity ? seen->capacity * 2 : 32;
+        managed_seen_entry *entries = xcalloc(capacity, sizeof *entries);
+        for (size_t i = 0; i < seen->capacity; i++) {
+            managed_seen_entry old = seen->entries[i];
+            if (!old.address) {
+                continue;
+            }
+            size_t slot = managed_seen_slot(old, capacity);
+            while (entries[slot].address) {
+                slot = (slot + 1) & (capacity - 1);
+            }
+            entries[slot] = old;
+        }
+        free(seen->entries);
+        seen->entries = entries;
+        seen->capacity = capacity;
+    }
+    size_t slot = managed_seen_slot(entry, seen->capacity);
+    while (seen->entries[slot].address) {
+        managed_seen_entry old = seen->entries[slot];
+        if (old.address == entry.address && old.shape == entry.shape &&
+            old.type == entry.type && old.container == entry.container &&
+            old.restricted == entry.restricted) {
+            return true;
+        }
+        slot = (slot + 1) & (seen->capacity - 1);
+    }
+    seen->entries[slot] = entry;
+    seen->count++;
+    return false;
+}
+static bool managed_family_contains(const behavior_managed_heap *heap, const void *address)
+{
+    for (const behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
+        if (arena_contains(&scope->storage, address)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool managed_family_owns(const behavior_managed_heap *heap, const arena *storage, const void *address)
+{
+    for (const behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
+        if (&scope->storage == storage && arena_contains(storage, address)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Shape restrictions belong to newly retained values. An existing managed
+ * array already passed retention validation; all heap-family edges still need
+ * checking when it crosses an execution boundary. */
+static const char *managed_scan(
+    behavior_managed_heap *heap,
+    const pin_value *root,
+    bool restricted,
+    unsigned *arrays
+)
 {
     typedef struct
     {
         pin_value value;
-        int depth;
+        bool restricted;
     } pending_value;
     pending_value *pending = NULL;
+    managed_seen seen = { 0 };
+    typedef struct
+    {
+        const type_desc *source;
+        const pin_record *frozen;
+    } checked_layout;
+    checked_layout *checked = NULL;
+    arena proof = { 0 };
     const char *error = NULL;
-    apush(pending, ((pending_value){ *root, 0 }));
+    apush(pending, ((pending_value){ *root, restricted }));
     while (acount(pending) && !error) {
         pending_value current = apop(pending);
         pin_value value = current.value;
-        if (current.depth >= 64) {
-            error = "Managed ownership scan exceeds value nesting limit";
-            break;
+        bool dynamic = value.container == PIN_CONTAINER_ARRAY ||
+                       value.container == PIN_CONTAINER_VIEW;
+        const pin_array *array = dynamic ? value.ptr : NULL;
+        const pin_array *owner = array ? pin_array_owner(array) : NULL;
+        if (dynamic && arrays) {
+            *arrays |= 1u;
+            if (!owner || !owner->storage) {
+                *arrays |= 2u;
+            }
         }
-#define PUSH_VALUE(v)                                                          \
-    apush(pending, ((pending_value){ (v), current.depth + 1 }))
-        if (heap && value.type == PIN_POINTER &&
-            value.container == PIN_CONTAINER_SINGLE && value.ptr) {
-            bool owned = false;
-            for (behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
-                if (arena_contains(&scope->storage, value.ptr)) {
-                    owned = ((const pin_pointer *)value.ptr)->storage == &scope->storage;
-                    break;
+        if (value.container == PIN_CONTAINER_MAP) {
+            const pin_map *map = value.ptr;
+            if (arrays) {
+                *arrays |= 1u;
+                if (!map || !map->storage) {
+                    *arrays |= 2u;
                 }
             }
-            if (!owned) {
+            if (map && map->storage) {
+                if (heap && !managed_family_owns(heap, map->storage, map)) {
+                    error = "Managed maps cannot cross heap owners";
+                    break;
+                }
+                continue;
+            }
+        }
+        if (owner && owner->storage) {
+            if (heap && (!managed_family_owns(heap, owner->storage, owner) ||
+                         (array->pointer && !managed_family_contains(heap, array)))) {
+                error = "Managed arrays cannot cross heap owners";
+                break;
+            }
+            /* Import and each write establish the subtree's ownership. Reads
+             * and alias transfers validate this root in constant time. */
+            continue;
+        }
+        if (managed_seen_before(&seen, value, current.restricted)) {
+            continue;
+        }
+#define PUSH_VALUE(v)                                                          \
+    apush(pending, ((pending_value){ (v), current.restricted }))
+        if (arrays && value.type == PIN_POINTER &&
+            value.container == PIN_CONTAINER_SINGLE && value.ptr) {
+            *arrays |= 4u;
+        }
+        if (heap && value.type == PIN_POINTER &&
+            value.container == PIN_CONTAINER_SINGLE && value.ptr) {
+            const pin_pointer *pointer = value.ptr;
+            if (!managed_family_contains(heap, pointer) ||
+                !managed_family_owns(heap, pointer->storage, pointer)) {
                 error = "Managed pointers cannot cross heap owners";
                 break;
             }
         }
+        /* Synthetic nested-collection headers describe boxed containers, not
+         * native struct payloads. Their actual items carry their own shapes. */
         bool collection_header = value.container != PIN_CONTAINER_SINGLE &&
-                                 value.type_name &&
+                                 !value.record && value.type_name &&
                                  !strncmp(value.type_name, "__collection_", 13);
-        if (restricted && value.type == PIN_STRUCT && !value.record &&
-            !collection_header) {
-            error = "Managed values require authored record layouts";
-            break;
-        }
-        if (value.type == PIN_STRUCT &&
-            (value.container == PIN_CONTAINER_SINGLE || value.record)) {
+        /* New native layouts are frozen by the import/snapshot path. A
+         * borrowed descriptor is used only while this boundary validates it. */
+        if (value.type == PIN_STRUCT && !collection_header) {
             const type_desc *layout = pin_value_type(&value);
             if (!layout) {
                 error = "Managed value requires a resolved record layout";
                 break;
             }
+            if (current.restricted && !value.record) {
+                const pin_record *frozen = NULL;
+                for (int i = 0; i < acount(checked); i++) {
+                    if (checked[i].source == layout) {
+                        frozen = checked[i].frozen;
+                    }
+                }
+                if (!frozen) {
+                    frozen = pin_record_from_type(&proof, layout);
+                    if (!frozen) {
+                        error = "Cannot retain native record layout";
+                        break;
+                    }
+                    apush(checked, ((checked_layout){ layout, frozen }));
+                }
+                layout = &frozen->type;
+            }
             for (int i = 0; i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
-                if (restricted && field->type == PIN_STRUCT) {
-                    error = "Managed pointers do not yet support inline nested "
-                            "record layouts";
-                    break;
-                }
-                if (!heap || value.container != PIN_CONTAINER_SINGLE || !value.ptr) {
+                if (value.container != PIN_CONTAINER_SINGLE || !value.ptr) {
                     continue;
                 }
                 pin_value member = { .type = field->type, .type_name = field->type_name };
                 const void *data = (const char *)value.ptr + field->offset;
                 if (field->type == PIN_STRUCT) {
+                    const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+                    if (!child) {
+                        error = "Managed value requires a resolved nested "
+                                "record layout";
+                        break;
+                    }
                     member.ptr = (void *)data;
+                    member.type_name = child->name;
+                    member.record = child->carrier;
                 } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
@@ -838,9 +1233,12 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
                 PUSH_VALUE(map->entries[i].value);
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
-            const pin_array *array = value.ptr;
-            for (int i = 0; array && i < array->count; i++) {
-                PUSH_VALUE(pin_array_get(array, i));
+            const pin_array *items = value.ptr;
+            if (items && !pin_array_view_valid(items)) {
+                continue;
+            }
+            for (int i = 0; items && i < items->count; i++) {
+                PUSH_VALUE(pin_array_get(items, i));
             }
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
@@ -851,7 +1249,125 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
 #undef PUSH_VALUE
     }
     afree(pending);
+    free(seen.entries);
+    afree(checked);
+    arena_free(&proof);
     return error;
+}
+static const char *managed_value_error(behavior_managed_heap *heap, const pin_value *value, bool restricted)
+{
+    return managed_scan(heap, value, restricted, NULL);
+}
+const char *behavior_function_import_arguments(behavior_function_context *context)
+{
+    unsigned arrays = 0;
+    for (int i = 0; i < context->argument_count; i++) {
+        const pin_value *value = &context->arguments[i];
+        if (value->container == PIN_CONTAINER_SINGLE &&
+            value->type != PIN_STRUCT && value->type != PIN_UNION) {
+            continue;
+        }
+        const char *error = managed_scan(NULL, value, false, &arrays);
+        if (error) {
+            return error;
+        }
+    }
+    if (!arrays) {
+        return NULL;
+    }
+    arena *storage = array_storage(context);
+    if (!storage) {
+        return context->error_message;
+    }
+    behavior_managed_heap *heap = managed_owner(context->managed_heap);
+    for (int i = 0; i < context->argument_count; i++) {
+        const char *error = managed_value_error(heap, &context->arguments[i], (arrays & 2u) != 0);
+        if (error) {
+            return error;
+        }
+    }
+    if (!(arrays & 2u)) {
+        return NULL;
+    }
+    pin_value *arguments = arena_alloc(storage, (size_t)context->argument_count * sizeof *arguments);
+    if (pin_values_array_promote(storage, arguments, context->arguments, context->argument_count)) {
+        return "Cannot import dynamic array arguments";
+    }
+    context->arguments = arguments;
+    return NULL;
+}
+const char *behavior_function_validate_value(behavior_function_context *context, const pin_value *value)
+{
+    if (context->managed_heap) {
+        return behavior_managed_storage_value_error(array_storage(context), value);
+    }
+    unsigned managed = 0;
+    const char *error = managed_scan(NULL, value, true, &managed);
+    if (error) {
+        return error;
+    }
+    return managed ? "Managed values require an initialized caller-owned heap" : NULL;
+}
+const char *behavior_function_value_arguments(behavior_function_context *context)
+{
+    if (context->arguments_stabilized) {
+        return NULL;
+    }
+    const pin_value *source = context->arguments;
+    arena *storage = context->managed_heap ? array_storage(context)
+                                           : context->value_storage;
+    for (int i = 0; i < context->argument_count; i++) {
+        const char *error = behavior_function_validate_value(context, &source[i]);
+        if (error) {
+            return error;
+        }
+    }
+    if (context->argument_count && !storage) {
+        context->arguments = source;
+        return "Value arguments require invocation storage";
+    }
+    pin_value *values = context->argument_count
+                          ? arena_alloc(storage, (size_t)context->argument_count * sizeof *values)
+                          : NULL;
+    for (int i = 0; i < context->argument_count; i++) {
+        if (pin_value_collection_copy(storage, &values[i], &context->arguments[i])) {
+            for (int j = 0; j < i; j++) {
+                behavior_function_collection_drop(context, &values[j]);
+            }
+            context->arguments = source;
+            return "Cannot copy value argument";
+        }
+        behavior_function_collection_retain(context, &values[i]);
+    }
+    context->argument_source = source;
+    context->arguments = values;
+    context->arguments_stabilized = true;
+    return NULL;
+}
+void behavior_function_restore_arguments(behavior_function_context *context)
+{
+    if (context->argument_source) {
+        context->arguments = context->argument_source;
+    }
+    context->argument_source = NULL;
+    context->arguments_stabilized = false;
+}
+int behavior_function_finish_values(behavior_function_context *context, int status, int result_count)
+{
+    /* Program contexts detach escaping reference boxes in their leave hook
+     * before host teardown releases the remaining logical owners. */
+    if (context->parent || context->call_leave || status == FLOW_PAUSED_RESULT ||
+        status == FLOW_SUSPENDED_RESULT || status == BEHAVIOR_FUNCTION_CALL_RESULT) {
+        return status;
+    }
+    if (status >= 0) {
+        for (int i = 0; context->results && i < result_count; i++) {
+            behavior_function_collection_transfer(context, NULL, &context->results[i]);
+        }
+    }
+    behavior_function_collection_clear(context);
+    behavior_function_restore_arguments(context);
+    return status;
 }
 const char *behavior_managed_value_error(const pin_value *value)
 {
@@ -882,7 +1398,7 @@ const char *behavior_managed_heap_root(behavior_managed_heap *heap, pin_value *v
         }
     }
     pin_value retained;
-    if (pin_value_snapshot_to_arena(&heap->storage, &retained, value)) {
+    if (pin_value_array_promote(&heap->storage, &retained, value)) {
         return "Cannot retain managed host root";
     }
     *value = retained;
@@ -909,9 +1425,13 @@ void behavior_managed_heap_unroot(behavior_managed_heap *heap, pin_value *value)
 void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark, void *user)
 {
     pin_value *pending = NULL;
+    managed_seen seen = { 0 };
     apush(pending, *root);
     while (acount(pending)) {
         pin_value value = apop(pending);
+        if (managed_seen_before(&seen, value, false)) {
+            continue;
+        }
         pin_value_trace(&value, mark, user);
         if (value.container == PIN_CONTAINER_MAP) {
             const pin_map *map = value.ptr;
@@ -921,6 +1441,9 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
             const pin_array *array = value.ptr;
+            if (array && !pin_array_view_valid(array)) {
+                continue;
+            }
             for (int i = 0; array && i < array->count; i++) {
                 apush(pending, pin_array_get(array, i));
             }
@@ -936,7 +1459,11 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 const void *data = (const char *)value.ptr + field->offset;
                 pin_value member = { .type = field->type, .type_name = field->type_name };
                 if (field->type == PIN_STRUCT) {
+                    const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+                    assert(child);
                     member.ptr = (void *)data;
+                    member.type_name = child->name;
+                    member.record = child->carrier;
                 } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
@@ -947,6 +1474,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         }
     }
     afree(pending);
+    free(seen.entries);
 }
 void behavior_managed_heap_trace_roots(const behavior_managed_heap *heap, arena_marker mark, void *user)
 {

@@ -187,6 +187,7 @@ script_type script_analyzer_collection_type(analyzer *, pin_container, script_ty
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
+int script_analyzer_sequence(analyzer *, TSNode node, TSNode object, TSNode range, script_sequence_operation);
 script_type script_analyzer_expr_type(const analyzer *a, int expression);
 unsigned script_analyzer_expr_effects(const analyzer *a, int expression);
 int script_analyzer_initializer_find(const analyzer *a, int symbol);

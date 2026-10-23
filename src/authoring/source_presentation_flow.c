@@ -152,8 +152,9 @@ static node *statement_box(source_projection *p, int index)
     const script_statement *s = &p->analysis->statements[index];
     if (s->kind == SCRIPT_STMT_EXPRESSION && s->expression >= 0) {
         script_expression_kind kind = p->analysis->expressions[s->expression].kind;
-        if (kind == SCRIPT_EXPR_CALL || kind == SCRIPT_EXPR_JOIN ||
-            kind == SCRIPT_EXPR_CANCEL || kind == SCRIPT_EXPR_YIELD) {
+        if (kind == SCRIPT_EXPR_CALL || kind == SCRIPT_EXPR_ARRAY_MUTATE ||
+            kind == SCRIPT_EXPR_JOIN || kind == SCRIPT_EXPR_CANCEL ||
+            kind == SCRIPT_EXPR_YIELD) {
             return statement_call(p, index);
         }
     }
@@ -383,7 +384,10 @@ static node *statement_box(source_projection *p, int index)
  * both operands into a chain would incorrectly promise eager evaluation. */
 static int receiver(const script_expression *e)
 {
-    for (int i = 0; e->kind == SCRIPT_EXPR_CALL && i < e->argument_count; i++) {
+    for (int i = 0;
+         (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_ARRAY_MUTATE) &&
+         i < e->argument_count;
+         i++) {
         if (e->arguments[i].value == e->left) {
             return -1;
         }
@@ -437,7 +441,7 @@ static source_flow_target expression_flow(source_projection *p, int index, sourc
     for (int i = e->argument_count - 1; i >= 0; i--) {
         next = expression_flow(p, e->arguments[i].value, next, cached);
     }
-    if (e->kind != SCRIPT_EXPR_CALL) {
+    if (e->kind != SCRIPT_EXPR_CALL && e->kind != SCRIPT_EXPR_ARRAY_MUTATE) {
         next = expression_flow(p, e->right, next, cached);
     }
     return expression_flow(p, receiver(e), next, cached);
@@ -450,8 +454,9 @@ static source_flow_target statement_values_flow(
 {
     if (s->kind == SCRIPT_STMT_EXPRESSION && s->expression >= 0) {
         const script_expression *e = &p->analysis->expressions[s->expression];
-        if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_JOIN ||
-            e->kind == SCRIPT_EXPR_CANCEL || e->kind == SCRIPT_EXPR_YIELD) {
+        if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_ARRAY_MUTATE ||
+            e->kind == SCRIPT_EXPR_JOIN || e->kind == SCRIPT_EXPR_CANCEL ||
+            e->kind == SCRIPT_EXPR_YIELD) {
             for (int i = e->argument_count - 1; i >= 0; i--) {
                 next = expression_flow(p, e->arguments[i].value, next, -1);
             }

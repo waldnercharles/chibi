@@ -102,7 +102,10 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
     }
     return Decoded.Name(decoded.value, diagnostics);
 }
-pub AddType :: (types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
+pub AddType :: (source_types: named.Type[], source_ids: uint64[], value: named.Value) -> Indexed {
+    // Type publication returns a new table without mutating its input catalog.
+    types := slice(source_types, 0, length(source_types));
+    ids := slice(source_ids, 0, length(source_ids));
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             slot := length(ids);
@@ -130,7 +133,7 @@ pub AddTypeCollection :: (types: named.Type[], ids: uint64[], value: named.Value
 // materializes these plans in the same order before retiring input owners.
 Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
-        case .Constructed(value, publish, id, name, definition, size, internal, variants, field_rows, output_ids, diagnostics, element_type, element_collection):
+        case .Constructed(value, publish, id, name, definition, size, internal, variants, field_rows, output_ids, diagnostics, element_type, element_collection, collection_container, key_type, key_collection):
             if (!publish) {
                 return environment;
             }
@@ -140,7 +143,9 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     switch names {
                         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                      identity, package_scope, has_native, has_documents, entity_id):
-                            switch AddType(types, ids, definition) {
+                            published_collection: uint64 = 0;
+                            if (collection_container != 0) { published_collection = id; }
+                            switch AddTypeCollection(types, ids, definition, published_collection) {
                                 case .Added(new_types, new_ids, type_index):
                                     identity_slot := length(new_ids);
                                     final_ids := append(new_ids, id);
@@ -155,8 +160,8 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     switch constructor_tables {
                         case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
                             new_types := types;
-                            new_ids := ids;
-                            new_variants := raw_variants;
+                            new_ids := slice(ids, 0, length(ids));
+                            new_variants := slice(raw_variants, 0, length(raw_variants));
                             variant_start := length(new_variants);
                             count := length(variants);
                             index: int = 0;
@@ -179,7 +184,7 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                             element_index: int = -1;
                             switch definition {
                                 case .Typed(storage, container, flags, nominal, parameter):
-                                    if (storage == 19) {
+                                    if (storage == 19 || collection_container != 0) {
                                         switch AddTypeCollection(new_types, new_ids, element_type, element_collection) {
                                             case .Added(rows, pool, index):
                                                 new_types = rows;
@@ -247,7 +252,7 @@ Resolve :: (environment: Environment, result: named.Resolution) -> Reading {
 Prefix :: (reading: Reading, prefix: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-            combined := prefix;
+            combined := slice(prefix, 0, length(prefix));
             for (item in diagnostics) {
                 combined.append(item);
             }
@@ -259,9 +264,9 @@ Merge :: (earlier: Reading, later: Reading) -> Reading {
         case .Read(old_value, old_has_unit, old_unit, old_environment, old_diagnostics, old_uses, old_publications, old_collection):
             switch later {
                 case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-                    all_diagnostics := old_diagnostics;
-                    all_uses := old_uses;
-                    all_publications := old_publications;
+                    all_diagnostics := slice(old_diagnostics, 0, length(old_diagnostics));
+                    all_uses := slice(old_uses, 0, length(old_uses));
+                    all_publications := slice(old_publications, 0, length(old_publications));
                     for (item in diagnostics) {
                         all_diagnostics.append(item);
                     }
@@ -285,60 +290,107 @@ Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
     switch reading {
         case .Read(old_value, has_unit, unit, environment, old_diagnostics, uses, old_publications, collection):
             switch plan {
-                case .Constructed(value, publish, id, name, definition, size, internal, variants, fields, ids, diagnostics, element_type, element_collection):
-                    all_diagnostics := old_diagnostics;
-                    publications := old_publications;
+                case .Constructed(value, publish, id, name, definition, size, internal, variants, fields, ids, diagnostics, element_type, element_collection, collection_container, key_type, key_collection):
+                    all_diagnostics := slice(old_diagnostics, 0, length(old_diagnostics));
+                    publications := slice(old_publications, 0, length(old_publications));
                     for (item in diagnostics) {
                         all_diagnostics.append(item);
                     }
                     if (publish) {
                         publications.append(plan);
                     }
-                    return Reading.Read(value, false, "", Publish(environment, plan), all_diagnostics, uses, publications, 0);
+                    result_collection: uint64 = 0;
+                    if (collection_container != 0) { result_collection = id; }
+                    return Reading.Read(value, false, "", Publish(environment, plan), all_diagnostics, uses, publications, result_collection);
             }
     }
 }
-Modifiers :: (reading: Reading, tree: Tree, node: int) -> Reading {
+OptionalModifier :: (reading: Reading) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
             switch value {
-                case .Typed(storage, old_container, old_flags, nominal, parameter):
-                    container := old_container;
-                    flags := old_flags;
-                    switch tree {
-                        case .Raw(nodes, fields, named_flags, extra_flags, source):
-                            child := nodes[node].first_child;
-                            while (child >= 0) {
-                                token := Text(tree, child);
-                                if (token == "ref") {
-                                    flags = flags | 4;
-                                }
-                                if (token == "?") {
-                                    flags = flags | 2;
-                                }
-                                if (token == "[" || token == "[]") {
-                                    container = 1;
-                                }
-                                child = nodes[child].next_sibling;
-                            }
-                    }
-                    if ((flags & 2) != 0 && (storage != 19 || container != 0)) {
+                case .Typed(storage, container, flags, nominal, parameter):
+                    result_flags := flags | 2;
+                    if (storage != 19 || container != 0) {
                         switch environment {
                             case .Tables(names, constructor_tables, pointer_size):
                                 switch names {
                                     case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, all_uses,
                                                  identity, package_scope, has_native, has_documents, entity_id):
                                         found := named.TypeIndex(merged, ids, nominal);
-                                        if (found < 0 || !merged[found].component) {
-                                            flags = flags | 2048;
-                                        }
+                                        if (found < 0 || !merged[found].component) { result_flags = result_flags | 2048; }
                                 }
                         }
                     }
-                    return Reading.Read(named.Value.Typed(storage, container, flags, nominal, parameter), has_unit, unit,
+                    return Reading.Read(named.Value.Typed(storage, container, result_flags, nominal, parameter), has_unit, unit,
                                         environment, diagnostics, uses, publications, collection);
             }
     }
+}
+CollectionModifier :: (reading: Reading, container: int, key: named.Value, key_collection: uint64) -> Reading {
+    switch reading {
+        case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
+            switch environment {
+                case .Tables(names, constructor_tables, pointer_size):
+                    id := constructors.CollectionID(container, key, key_collection, value, collection);
+                    completed := Construct(reading, constructors.Collection(constructor_tables, container, key, key_collection,
+                                                                           value, collection, pointer_size));
+                    switch completed {
+                        case .Read(result, result_has_unit, result_unit, updated, errors, all_uses, all_publications, old_collection):
+                            return Reading.Read(result, result_has_unit, result_unit, updated, errors, all_uses, all_publications, id);
+                    }
+            }
+    }
+}
+ArrayModifier :: (reading: Reading, container: int) -> Reading {
+    switch reading {
+        case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
+            switch value {
+                case .Typed(storage, old_container, flags, nominal, parameter):
+                    if (collection != 0 || old_container != 0 || (flags & 2) != 0) {
+                        return CollectionModifier(reading, container, named.Value.Typed(0, 0, 0, 0, 0), 0);
+                    }
+                    return Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter));
+            }
+    }
+}
+Modifiers :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading {
+    result := reading;
+    view: bool = false;
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, source):
+            child := nodes[node].first_child;
+            while (child >= 0) {
+                token := Text(tree, child);
+                if (token == "view") { view = true; }
+                if (token == "?") { result = OptionalModifier(result); }
+                if (token == "[" || token == "[]") { result = ArrayModifier(result, 1); }
+                if (token == "ref") {
+                    switch result {
+                        case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
+                            switch value {
+                                case .Typed(storage, container, flags, nominal, parameter):
+                                    result = Replace(result, named.Value.Typed(storage, container, flags | 4, nominal, parameter));
+                            }
+                    }
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    if (view) {
+        switch result {
+            case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
+                switch value {
+                    case .Typed(storage, container, flags, nominal, parameter):
+                        if (container != 1) {
+                            errors: syntax.Diagnostic[] = [Diagnostic(tree, node, document, "view requires an array type")];
+                            return Replace(AppendDiagnostics(result, errors), named.Builtin("invalid"));
+                        }
+                        result = Replace(result, named.Value.Typed(storage, 4, flags, nominal, parameter));
+                }
+        }
+    }
+    return result;
 }
 // Explicit source continuations keep callable depth independent of annotation
 // nesting. Frames and member suffixes belong to this one bounded invocation.
@@ -356,7 +408,7 @@ WorkValue :: (node: int, kind: int, child: int, member_start: int, name: string)
 AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-            combined := diagnostics;
+            combined := slice(diagnostics, 0, length(diagnostics));
             for (item in added) {
                 combined.append(item);
             }
@@ -376,6 +428,8 @@ Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -
                     storage := old_storage;
                     container := old_container;
                     if (name == "array" || name == "set" || name == "map") {
+                        if (name == "array") { return Modifiers(ArrayModifier(reading, 1), tree, node, document); }
+                        if (name == "set") { return Modifiers(ArrayModifier(reading, 2), tree, node, document); }
                         container = 1;
                         if (name == "set") {
                             container = 2;
@@ -388,11 +442,11 @@ Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -
                     } else if (name == "handle") {
                         storage = 14;
                     }
-                    return Modifiers(Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter)), tree, node);
+                    return Modifiers(Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter)), tree, node, document);
             }
     }
 }
-FinishTask :: (reading: Reading, tree: Tree, node: int) -> Reading {
+FinishTask :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
             switch environment {
@@ -402,13 +456,13 @@ FinishTask :: (reading: Reading, tree: Tree, node: int) -> Reading {
                             switch AddTypeCollection(types, ids, value, collection) {
                                 case .Added(rows, pool, result_index):
                                     facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
-                                    return Modifiers(Construct(reading, constructors.Task(facts, result_index, 0)), tree, node);
+                                    return Modifiers(Construct(reading, constructors.Task(facts, result_index, 0)), tree, node, document);
                             }
                     }
             }
     }
 }
-FinishPointer :: (reading: Reading, tree: Tree, node: int) -> Reading {
+FinishPointer :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
             switch environment {
@@ -418,7 +472,7 @@ FinishPointer :: (reading: Reading, tree: Tree, node: int) -> Reading {
                             switch AddTypeCollection(types, ids, value, collection) {
                                 case .Added(rows, pool, pointee):
                                     facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
-                                    return Modifiers(Construct(reading, constructors.Pointer(facts, pointee, pointer_size)), tree, node);
+                                    return Modifiers(Construct(reading, constructors.Pointer(facts, pointee, pointer_size)), tree, node, document);
                             }
                     }
             }
@@ -481,7 +535,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                     work := frames[top];
                     frames = slice(frames, 0, top);
                     if (work.kind == 1) {
-                        reading = FinishTask(reading, tree, work.node);
+                        reading = FinishTask(reading, tree, work.node, document);
                         continue;
                     }
                     if (work.kind == 2) {
@@ -489,11 +543,38 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                         continue;
                     }
                     if (work.kind == 4) {
-                        reading = FinishPointer(reading, tree, work.node);
+                        reading = FinishPointer(reading, tree, work.node, document);
                         continue;
                     }
                     if (work.kind == 5) {
-                        reading = Modifiers(reading, tree, work.node);
+                        reading = Modifiers(reading, tree, work.node, document);
+                        continue;
+                    }
+                    if (work.kind == 6) {
+                        switch reading {
+                            case .Read(value, has_unit, unit, live, diagnostics, uses, publications, collection):
+                                members.append(value);
+                                member_collections.append(collection);
+                        }
+                        frames.append(WorkValue(work.node, 7, -1, work.member_start, ""));
+                        position = Field(tree, work.node, "value");
+                        ready = false;
+                        continue;
+                    }
+                    if (work.kind == 7) {
+                        key := members[work.member_start];
+                        key_collection := member_collections[work.member_start];
+                        members = slice(members, 0, work.member_start);
+                        member_collections = slice(member_collections, 0, work.member_start);
+                        switch key {
+                            case .Typed(storage, container, flags, nominal, parameter):
+                                if (container != 0 || (flags & 322) != 0 ||
+                                    !((storage >= 1 && storage <= 14) || storage == 16)) {
+                                    errors: syntax.Diagnostic[] = [Diagnostic(tree, work.node, document, "Unsupported map key type")];
+                                    reading = AppendDiagnostics(reading, errors);
+                                }
+                        }
+                        reading = CollectionModifier(reading, 3, key, key_collection);
                         continue;
                     }
                     switch reading {
@@ -538,7 +619,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             wrapper: int = -1;
                             child = nodes[position].first_child;
                             while (child >= 0 && wrapper < 0) {
-                                if (named_flags[child] && (Kind(tree, child, "pointer_type") || Kind(tree, child, "parenthesized_type"))) {
+                                if (named_flags[child] && (Kind(tree, child, "pointer_type") || Kind(tree, child, "parenthesized_type") || Kind(tree, child, "map_type"))) {
                                     wrapper = child;
                                 }
                                 child = nodes[child].next_sibling;
@@ -547,6 +628,9 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 if (Kind(tree, wrapper, "pointer_type")) {
                                     frames.append(WorkValue(position, 4, -1, 0, ""));
                                     position = Field(tree, wrapper, "target");
+                                } else if (Kind(tree, wrapper, "map_type")) {
+                                    frames.append(WorkValue(position, 5, -1, 0, ""));
+                                    position = wrapper;
                                 } else {
                                     frames.append(WorkValue(position, 5, -1, 0, ""));
                                     position = Field(tree, wrapper, "type");
@@ -576,7 +660,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                         if (count != 1) {
                                             errors: syntax.Diagnostic[] = [];
                                             errors.append(Diagnostic(tree, position, document, "task requires one result type"));
-                                            reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position);
+                                            reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, document);
                                             ready = true;
                                             continue;
                                         }
@@ -614,11 +698,16 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                     }
                                     switch live {
                                         case .Tables(names, constructor_tables, pointer_size):
-                                            reading = Merge(reading, Resolve(live, named.Parsed(names, Request(tree, name_node, scope, document, name), tokens)));
+                                            reading = Merge(reading, Modifiers(Resolve(live, named.Parsed(names, Request(tree, name_node, scope, document, name), [])), tree, position, document));
                                     }
                                     ready = true;
                                     continue;
                             }
+                        }
+                        if (Kind(tree, position, "map_type")) {
+                            frames.append(WorkValue(position, 6, -1, length(members), ""));
+                            position = Field(tree, position, "key");
+                            continue;
                         }
                         if (Kind(tree, position, "union_type")) {
                             first := NextMember(tree, nodes[position].first_child);
@@ -700,7 +789,7 @@ WithUnit :: (reading: Reading, tree: Tree, node: int, scope: int, document: int)
         case .Read(value, old_has_unit, old_unit, environment, diagnostics, uses, publications, collection):
             switch ReadUnit(environment, tree, node, scope, document) {
                 case .Unit(unit, errors):
-                    all_diagnostics := diagnostics;
+                    all_diagnostics := slice(diagnostics, 0, length(diagnostics));
                     for (item in errors) {
                         all_diagnostics.append(item);
                     }
@@ -717,7 +806,7 @@ pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, d
         reading = WithUnit(reading, tree, Field(tree, node, "unit"), scope, document);
         switch reading {
             case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
-                all_diagnostics := diagnostics;
+                all_diagnostics := slice(diagnostics, 0, length(diagnostics));
                 if (!Numeric(value)) {
                     all_diagnostics.append(Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
                 }

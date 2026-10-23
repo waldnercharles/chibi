@@ -63,10 +63,11 @@ const K = Object.fromEntries(
     "relationship",
     "pub",
     "delete",
+    "view",
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["package", "import", "struct", "from", "split", "component", "not", "join", "unordered"];
+const CONTEXTUAL = ["package", "import", "struct", "from", "split", "component", "not", "join", "unordered", "view"];
 
 const P = {
   or: 1,
@@ -122,6 +123,7 @@ module.exports = grammar({
     member: ($) => [],
   },
   conflicts: ($) => [
+    [$._name],
     [$._common_declaration, $._statement],
     [$._single_type],
     [$._type_primary],
@@ -134,6 +136,7 @@ module.exports = grammar({
     [$.event_declaration, $.builtin_reference],
     [$._single_type, $._expression],
     [$._single_type, $.reference_argument],
+    [$._single_type, $._name],
     [$.argument_list, $.parenthesized_expression],
     [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
@@ -407,7 +410,7 @@ module.exports = grammar({
       repeat1(seq("|", field("member", alias($._single_type, $.type)))),
     )),
     _single_type: ($) => seq(
-      repeat(field("trait", choice(K.plain, K.ref, K.service, "self", K.setting,
+      repeat(field("trait", choice(K.plain, K.ref, K.view, K.service, "self", K.setting,
         seq(K.wildcard, "(", $.number, ")")))),
       $._type_primary,
       repeat(choice(seq("[", "]"), "?")),
@@ -590,7 +593,7 @@ module.exports = grammar({
         seq(
           field("object", $._expression),
           "[",
-          field("index", $._expression),
+          field("index", choice($._expression, $.range_expression)),
           "]",
         ),
       ),
@@ -603,6 +606,9 @@ module.exports = grammar({
           field("arguments", $.argument_list),
         ),
       )),
+    // Ranges are arguments to sequence operations, not stored values.
+    range_expression: ($) => seq(
+      field("start", $._expression), "..<", field("end", $._expression)),
     _call_target: ($) => choice(
       $._name, $.builtin_reference,
       $.member_expression, $.index_expression, $.call_expression,
@@ -612,7 +618,7 @@ module.exports = grammar({
       seq(
         "(",
         optional(
-          comma(choice($.named_argument, $.typed_argument, $.reference_argument, $._expression)),
+          comma(choice($.named_argument, $.typed_argument, $.reference_argument, $.range_expression, $._expression)),
         ),
         ")",
       ),

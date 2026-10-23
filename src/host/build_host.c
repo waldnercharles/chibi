@@ -3,6 +3,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_files.h"
 #include "authoring/source_package_prepare.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
@@ -647,6 +648,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     behavior_function_context context = { 0 };
     behavior_function_activation activation = { 0 };
     arena storage = { 0 };
+    behavior_managed_heap managed;
+    behavior_managed_heap_init(&managed);
     service_binding *services = NULL;
     bool success = false;
     size_t argument_bytes = 0;
@@ -738,7 +741,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         behavior_function_activation_init(entry, &activation);
     }
     pin_value value = { .type = PIN_I32 };
-    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
+    context = (behavior_function_context){ .managed_heap = &managed,
+                                           .activation = resumable ? &activation : NULL,
                                            .results = &value,
                                            .budget = options->instruction_budget
                                                        ? options->instruction_budget
@@ -778,6 +782,7 @@ done:
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
+    behavior_managed_heap_free(&managed);
     afree(services);
     authoring_packages_free(packages);
     native_capabilities_free(native);

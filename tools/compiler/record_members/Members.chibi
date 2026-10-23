@@ -69,7 +69,7 @@ pub Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
     token := reader.Field(tree, member, "name");
     switch reader.Name(tree, token, document) {
         case .Name(name, name_diagnostics):
-            diagnostics := name_diagnostics;
+            diagnostics := slice(name_diagnostics, 0, length(name_diagnostics));
             annotation := reader.Type(environment, tree, reader.Field(tree, member, "type"), scope, document);
             switch annotation {
                 case .Read(value, has_unit, unit, updated, errors, uses, publications, collection):

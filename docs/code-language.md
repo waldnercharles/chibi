@@ -116,8 +116,9 @@ Left shifts discard outgoing bits. Signed right shifts extend the sign bit;
 unsigned right shifts insert zeros. The operation uses its resolved operand
 type, even when its result is then converted to a wider type.
 
-A character literal contains one Unicode scalar. A string contains text.
-Runtime strings cannot contain embedded NUL bytes.
+A character literal contains one Unicode scalar. A string is an immutable byte
+sequence with a stored length. Strings may contain embedded NUL bytes or invalid
+UTF-8; Unicode validation and decoding are explicit operations.
 
 ```chibi
 Example :: library {
@@ -184,8 +185,10 @@ Example :: library {
 }
 ```
 
-Parameters normally receive value copies. A `ref` parameter writes to the
-caller's mutable value. Mark that argument with `ref` at the call site too.
+Parameters follow each type's assignment rule: scalars and records copy their
+values; dynamic arrays and managed pointers retain their objects. A `ref`
+parameter can rebind the caller's variable. Mark that argument with `ref` at the
+call site too. Mutating an array's shared elements or length needs no `ref`.
 
 ```chibi
 // chibi-mit-example: reference-parameter
@@ -354,27 +357,68 @@ Every array function is also a method on its first argument: `xs.length()`,
 `xs.extend(ys)` adds another array's items. Methods that change their array
 (`append`, `extend`, `insert`, `remove_index`, `remove_item`, `add_unique`,
 `set_array_elem`, `clear`, `reverse`, `swap` and `resize`) are statements on
-the array's name and change it in place; using one in an expression is an
-error. As functions, they return a changed copy instead: `ys := append(xs, x)`
+a writable array receiver and change that value. Mutation returns a bool indicating success. As functions, they return a changed copy instead: `ys := append(xs, x)`
 and `zs := extend(xs, ys)` leave `xs` as it was. Project version 32 renamed
 `array_add` to `append` and the concatenating `append` to `extend`.
 
-Arrays have value semantics. Changing a copy leaves the original unchanged.
-Appending to an owned local array and writing its elements update that local
-storage in place.
+Dynamic arrays and maps have value semantics. Assignment, ordinary arguments
+and returns produce independent values. Copies may share backing storage until
+one is changed. Nested arrays and maps follow the same rule; pointer elements
+keep their shared targets. `clone()` copies the outer array.
 
 ```chibi
 Example :: library {
     Run :: () {
-        original: int[] = [1, 2]
+        original: int[] = [1, 2, 3]
         copy := original
         copy[0] = 9 // original[0] remains 1.
+        cloned := original.clone()
+        cloned[0] = 7 // original[0] remains 1.
     }
 }
 ```
 
+`a[start..<end]` and `a.slice(start..<end)` copy a half-open range into a new
+array. To share mutable positions explicitly, use a pointer: `p := &a`, then
+`p.view(start..<end)`. A view retains that pointer and a fixed offset and length.
+Both range forms return an optional: invalid bounds yield `nil`; a valid empty range is
+present. Bounds must satisfy `0 <= start <= end <= a.length()`.
+
+```chibi
+Example :: library {
+    Run :: () {
+        values: int[] = [10, 20, 30]
+        selected := values[1..<3]
+        if selected {
+            selected[0] = 90 // values[1] remains 20.
+        }
+        owner := &values
+        window := owner.view(1..<3)
+        if window {
+            window[0] = 80 // values[1] is now 80.
+        }
+    }
+}
+```
+
+A `view T[]` parameter or result names a view explicitly. Views support indexing,
+iteration, element assignment, `reverse()`, `swap()` and `clone()`. Structural
+operations such as append, insertion and removal belong to the owning array.
+A view resolves the current array through its pointer on each access. Buffer
+growth and reassignment through that pointer preserve the view. Its numeric
+offset and length stay fixed; insertion or removal can change the elements at
+those positions. Mutating the view changes the pointed-to array value and
+preserves independent copies of that value.
+If its whole range no longer fits after a shrink, use fails with a bounds error;
+sufficient regrowth makes the view usable again.
+
+The existing `slice(a, start, count)` and `a.slice(start, count)` operations
+remain clamped copies. They clamp the start to the array bounds, treat a negative
+count as zero, and limit the count to the remaining elements.
+
 Array iteration binds the item first and an optional index second.
-Ordinary iteration takes a snapshot before the loop.
+Ordinary iteration takes an independent array value before the loop. Changing
+the source does not change that snapshot. Pointer elements keep their targets.
 
 ```chibi
 // chibi-mit-example: weighted-total
@@ -391,8 +435,10 @@ Example :: library {
 }
 ```
 
-Reference iteration changes the items of a mutable owned array.
-The loop cannot access the source array directly or suspend.
+Reference iteration changes the items of the original array object. The loop
+retains that object and its initial iteration length; each access checks the
+current bounds. Rebinding the source variable does not redirect the loop.
+Reference iteration cannot suspend.
 
 ```chibi
 Example :: library {
@@ -467,6 +513,12 @@ Example :: library {
     }
 }
 ```
+
+String indexing reads a byte. String range copies, `slice(range)`, `view(range)`
+and `clone()` use the same bounds and copy/view distinction as arrays. String
+views retain immutable bytes and do not permit writes. Offsets count bytes, so a
+range may split a UTF-8 encoding. `strings.Slice(text, start, count)` keeps its
+clamped start/count behavior.
 
 Packages can import `core:strings` for text operations.
 
@@ -907,7 +959,7 @@ Some language features remain unavailable:
 - Array, union and nested-record fields in authored records.
 - Union fields in ECS components.
 - Exported generic specialization between packages.
-- Embedded NUL bytes and multiline string literals.
+- Multiline string literals.
 
 These examples describe the language accepted by the native frontend. The
 authored stage-one package compiler supports a smaller subset. It still needs

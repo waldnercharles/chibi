@@ -109,20 +109,20 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
-        bound: Name = {name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
+        bound: Name = {owned: false, name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
                        container: 0, record: globals[index].record, writable: false, node: -1};
         names.append(bound);
         index += 1;
     }
     index = 0;
     while (index < length(kept_states)) {
-        kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
+        kept: Name = {owned: false, name: kept_states[index].name, place: StatePlace, index: index,
                       storage: kept_states[index].storage, container: 0, record: -1, writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
+    owner: Name = {owned: false, name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
                    writable: false, node: -1};
     return append(names, owner);
 }
@@ -331,12 +331,15 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     while (member >= 0) {
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            declared := ReadType(forest, source, declared_types, no_names, 0, Field(forest, member, "type"));
+            declared := ReadType(forest, source, &declared_types, no_names, 0, Field(forest, member, "type"));
+            value := Field(forest, member, "value");
+            if (declared.container == ViewContainer && (value < 0 || Is(forest, value, "nil"))) {
+                return Result.Rejected(Diagnose(forest, member, 0, "view state requires an initial value"));
+            }
             if (!Numeric(declared.storage) || declared.container != 0) {
                 return Result.Rejected(Diagnose(forest, member, 0, "state needs a number type"));
             }
             bits: uint64 = 0;
-            value := Field(forest, member, "value");
             if (value >= 0 && Floating(declared.storage)) {
                 literal := Typed(-1, NumberStorage, 0, value);
                 if (!Is(forest, value, "number") && !Is(forest, value, "unary_expression")) {
@@ -394,7 +397,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         } else if (Is(forest, member, "function_declaration")) {
             // A member procedure, which the behavior's handlers call.
             name := Text(forest, source, Field(forest, member, "name"));
-            switch FunctionSignature(forest, source, identity, solid, declared_types, no_names, 0, 0, member, name,
+            switch FunctionSignature(forest, source, identity, solid, &declared_types, no_names, 0, 0, member, name,
                                      length(params)) {
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);

@@ -124,7 +124,7 @@ int behavior_asset_retype_variable(behavior_asset *asset, uint64_t id, pin_type 
 int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pin_container container)
 {
     if (!asset || !behavior_asset_mutable(asset) ||
-        container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_MAP) {
+        container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_VIEW) {
         return -1;
     }
     behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);

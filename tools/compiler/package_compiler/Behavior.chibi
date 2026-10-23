@@ -116,7 +116,7 @@ InvocationReadEffect: int : 64;
 
 // A behavior's names: the game's globals, its states, then `self`, its owner,
 // whatever global the game names so.
-BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
+BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record: int) -> Name[] {
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
@@ -128,12 +128,14 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     index = 0;
     while (index < length(kept_states)) {
         kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
-                      storage: kept_states[index].storage, container: 0, record: -1, writable: true,
+                      storage: kept_states[index].storage, container: 0, record: kept_states[index].record,
+                      writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
+    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
+                   record: owner_record,
                    writable: false, node: -1};
     return append(names, owner);
 }

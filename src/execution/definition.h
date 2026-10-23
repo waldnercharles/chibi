@@ -245,6 +245,22 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
 /* Prepared readers reconstruct this canonical definition, then use the same
  * producer verifier and finalizer. Ownership remains with the caller on failure. */
 bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
+/* Private per-attempt descriptor checks. Entries borrow immutable records.
+ * Preflight uses `seen` for reservation; verification uses it only after a
+ * successful full validation. Neither table escapes its current catalog scope.
+ * Budget covers both constructions, bounded comparisons, and temporary bytes. */
+typedef struct
+{
+    const pin_record *record;
+    bool seen;
+} behavior_record_check;
+size_t behavior_function_record_check_budget(const behavior_function *, size_t *bytes);
+behavior_record_check *behavior_function_record_checks(
+    const behavior_function *,
+    size_t bytes,
+    int *count
+);
+int behavior_record_check_find(const behavior_record_check *, int count, const pin_record *);
 /* arena_budget caps the owned arena's total storage before each allocation;
  * SIZE_MAX leaves it unbounded. */
 bool behavior_function_finalize(behavior_function *function, size_t arena_budget);

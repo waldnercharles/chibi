@@ -177,10 +177,13 @@ These counts describe coverage and do not record a pass.
   10,000-instruction per-call budget.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
-  budget failure, metadata rejection and invalid field markers. A native-field
-  size check uses an 81-byte stack string and a nearly exhausted logical budget
-  with a hash sink; it allocates no large output buffer.
+- `language-record-prepared`: eleven cases, including a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. Shared-layout
+  validation uses one 128-field record and 256 headers under the default work
+  limit; tiny decoded definitions check distinct invalid layouts, later headers,
+  retries and native catalog replacement. A native-field size check uses an
+  81-byte stack string and a nearly exhausted logical budget with a hash sink;
+  it allocates no large output buffer.
 - `build-process`: thirty-seven cases. The new helper case adds seven operations
   on at most seven bytes and no processes. Existing invocation and child limits
   remain unchanged; binary-output and file assertions replace text rejection.
@@ -1250,7 +1253,10 @@ The Chrome C driver also includes counted-row construction and Outliner
 projection among its ten selectors. It retains its internal 55-second timeout.
 
 Exceeding an explicit timeout fails the run. The runner verifies cleanup
-discovery before test work. Linux subreaping contains escaped sessions;
+discovery before test work. Portable process inspection allows five seconds for
+each `ps` snapshot, kills and reaps a stuck probe, and refuses to launch work if
+discovery fails. The C runner cases cover delayed inspection, stuck-probe refusal,
+descendant cleanup and sibling preservation. Linux subreaping contains escaped sessions;
 arbitrary already-detached descendants are not proven contained on macOS.
 Platform validation must report what actually ran.
 
@@ -3035,8 +3041,10 @@ acquisition cases were removed, 2026-10-20). Its existing ten-second child limit
 remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
 Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
-consumers alone. The OpenGL case relocates discovered roles on Linux and asserts
-that other hosts reject the same absolute paths as unowned. The complete selector
+consumers alone. OpenGL fixtures configure explicit Linux and Darwin systems
+without enabling a compiler language. They relocate exact discovered paths and
+imported provider targets, verify consumer-side rediscovery, and reject spoofed
+provider locations, unowned paths and foreign-platform role rewriting. The complete selector
 passes 8 cases in 6.8s on macOS.
 ### Snapshot-to-reader composition
 
@@ -3092,3 +3100,87 @@ configuration/build time stays separate. Source and row limits remain part of
 the fixture contract. Header environments, semantic sidecars, body
 analysis, exports, lowering, artifact assembly and `Checked` remain
 unimplemented here.
+
+
+## Third-party publication recovery
+
+Seventeen C/pico_unit cases use the production tools dispatcher selector
+`python3 tools/test_policy.py tool third-party-publish`. Twenty-six disposable local
+Git repositories and a shell `gh` transport fixture exercise the production
+publication helper: invalid inputs, new publication, original-artifact retry,
+partial uploads, completed-release/main-pin no-ops, existing-branch/PR ownership,
+closed/retargeted/fork-owned PRs, different pin contents/source parents, unverified
+and duplicate assets, wrong/concurrently moved source tags and denied API reads. The fixture never contacts GitHub;
+all pushes target disposable local bare repositories. Both publication recovery
+and the SDK release-pin/public Studio checkout preflight cases run in the default
+`make test-tools` aggregate. Configuration and build
+results are separate from test execution.
+
+A failed Third-party **publish job** may be retried with the original workflow
+artifacts. Matching existing assets are verified and retained; only missing
+assets are uploaded. Existing pin branches must contain exactly one pin-only
+commit on the original source, and an existing PR must still be open against
+`main`. Closed or changed work requires an explicit owner decision, not a
+force-push or automatic reopening. A full workflow rebuild can change tarball
+bytes even at the same source commit; use a fresh release tag rather than
+replacing mismatched assets. API failures, absent asset digests and mismatches
+remain failures. This does not enable Actions PR creation, waive repository
+checks or prove a successful SDK build.
+
+Before any publication, the helper validates all nine gzip tar inventories and
+one nonempty regular root `third-party.cmake` per archive (100,000 members /
+8 GiB logical contents per archive), then checks pin-branch/PR ownership. It
+rechecks source tag binding after uploads and ownership before pin writes.
+
+
+### Prepared-source dependency releases
+
+The Third-party workflow accepts optional paired `source_pr` and `main_sha`
+inputs for a reviewed same-repository source branch. Dispatch at that exact
+branch commit and supply the current main SHA. The source PR must be open and
+ready for review against main, with matching repository, branch, source commit
+and frozen main. Main must remain at that SHA and be ancestral to the source.
+The publisher rechecks source/main/PR binding before publication and pin writes;
+any drift requires a newly reviewed binding and fresh release identity.
+
+The pin branch contains exactly one pin-only commit on the frozen source. The
+resulting integration PR is draft and includes the source changes and archive
+pins together, with a source/main marker required on retries. The source PR is
+not retargeted, closed or merged automatically. A non-draft source PR is not proof
+that explicit holds, independent review or required checks are cleared; the
+publication owner verifies those before dispatch. No new token, permission or
+`pull_request_target` route is used.
+
+With both inputs empty, ordinary main-source publication/recovery is unchanged.
+A completed release whose pins already match main is a read-only no-op even
+after source integration. Prepared-mode no-op recovery never uploads missing
+assets without a live source binding. Rebuilt archives require a new release
+tag, including after source, main or PR changes. The original artifacts and
+release digests remain the authority for an original-job retry.
+
+## Paired Studio SDK verification
+
+The registered CI workflow accepts an optional `studio_sha` dispatch input. Use
+a reviewed full lowercase 40-character commit SHA from the public
+`waldnercharles/chibi-studio` repository. This adds the distinct paired Studio
+native/Web verification job; the normal CI jobs keep their existing conditions
+and still run. Dispatch the reviewed engine branch at its frozen commit and
+retain the resulting run's engine and Studio source identities.
+
+The paired job packages a native Linux Debug SDK and a serial Emscripten 6.0.10
+Release SDK from that engine, compiles the exact Studio revision against each,
+and opens an external copy of the starter project for two hidden native frames.
+Sibling source checkouts stay clean while startup upgrades the disposable copy.
+SDK inventories, manifest identities, consumed CMake SDK bindings, source/format
+agreement and nonempty native/Web products are checked. The retained artifact
+records source revisions/trees, SDK manifests, compiler version, startup log and
+product hashes; failures retain evidence collected before the failed step.
+
+The default Studio CI job also uses sibling checkouts and an external starter
+copy, and retains clean SDK identity and consumer binding evidence. Its Studio
+revision follows that repository's default branch; use the paired job for an
+exact cross-repository candidate.
+
+The two hidden frames cover starter project startup. Web compilation does not
+establish browser execution, Studio UI interaction or visual acceptance. These
+checks do not publish packages or clear renderer, deployment or PR holds.

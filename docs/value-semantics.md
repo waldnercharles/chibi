@@ -190,6 +190,50 @@ selected recoverable invalid-target failure for subsequent access. The query
 owner is implementing this policy; its concrete failure representation and
 public recovery API must be documented before claiming full recovery support.
 
+The owner subsequently approved prevention through task lifetime binding.
+An operation explicitly bound to that original target cancels if the target is
+removed; its children cancel through the existing task tree. Surviving independent
+awaiters receive the existing typed `Cancelled` result; owned child waiters
+cancel with their parent. Completed successful tasks remain successful if their
+former target is removed later. Unrelated tasks can hold the same pointer
+without acquiring that dependency. Retaining a pointer does not delay deletion,
+and replacement does not revive a bound operation.
+
+Children inherit the explicit lifetime dependencies when they start. A child
+that continues after its parent completes retains those dependencies itself;
+later target removal cancels the child without changing the parent's retained
+successful result.
+
+Select the binding at the call site and register it before the task's first
+instruction. The same task declaration can therefore run with different
+lifetime dependencies. Do not infer a dependency from pointer arguments,
+captures, or ordinary pointer access. Exact public spelling remains separate
+from this approved placement and runtime contract.
+
+Removal takes effect at safe execution boundaries. A bound operation must not
+consume a pending request's result or execute another authored continuation
+after its target is invalid. The scheduler must also inspect pending tasks whose requests
+never complete. Short protected access prevents removal during the protected
+operation; suspension ends that protection. External asynchronous work may have
+already completed; cancellation does not reverse its effects. Runtime cleanup
+releases requests and captured values. It does not undo earlier writes or imply an authored
+cleanup callback. General checked access to an already-invalid unbound pointer
+remains a separate typed-result API question.
+
+Followup actions belong in task sequencing. The owner rejected `destroy_after()`.
+Existing `await` can sequence a followup on successful completion:
+
+```chibi
+animation := DeathAnimation()
+result := await animation
+if result is not Cancelled {
+    // Perform the followup here.
+}
+```
+
+The existing `after` declaration targets declared actions. Extending it to task
+handles is a separate language change, not required for this runtime increment.
+
 Recovery audit: authored Chibi currently has tagged unions and `switch`, but no
 general `try`/`catch` or result-producing runtime failure boundary. A checked
 dereference failure stops the activation and reports structured diagnostics to

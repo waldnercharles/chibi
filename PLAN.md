@@ -186,6 +186,34 @@ assignment with copy-on-write values and calls for removing authored `ref` in
 favor of pointers. That document owns the approved behavior, prerequisites and
 remaining lifetime questions; the new changes are not yet implemented.
 
+#### Component lifetime and task cancellation, 2026-10-22
+
+Approved: operations explicitly bound to an original component or entity cancel
+when that target is removed. Select the binding at the call site and install it
+before the first task instruction. Removal respects safe execution boundaries;
+an ordinary stored pointer does not create a task dependency. Reuse task-tree
+cancellation and typed `Cancelled` results. Resource cleanup means pending
+requests and captured values; no authored cleanup callback is implied.
+
+The query owner implements the runtime seam in a separate query-lifetime
+increment, preserving its frozen query candidate. `program_tasks.c` owns
+retained target bindings and cancellation; `program_activation.c` checks
+validity before consuming a request result or executing a continuation. `ecs.c`
+remains the source of original component identity. Sweep pending tasks even
+when their requests never complete. Public call-site spelling follows this
+runtime contract; do not infer dependency from arguments or captures.
+
+Use task sequencing for followup actions. The owner rejected `destroy_after()`.
+`await` followed by an explicit successful-result case already works; current
+`after` accepts declared actions, not task variables. No `try`/`catch` or unsafe
+immediate-deletion API is added.
+
+Validate target removal/re-addition before resume, unrelated tasks retaining the
+same pointer, child cancellation, typed waiter results, pending-request cleanup,
+world teardown and successful followups. Shared collection/query representation
+and artifact work follows [the integration contract](docs/value-runtime-integration.md)
+under each owner's existing validation restrictions.
+
 The current prerequisite is the approved byte-preserving string representation:
 one immutable public `string` carrying bytes and length, with explicit UTF-8
 operations. This branch implements descriptors and ownership throughout the

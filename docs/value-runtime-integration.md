@@ -41,12 +41,59 @@ The owners agreed on these draft intrinsic reservations:
 | IDs | Reservation |
 | --- | --- |
 | 46–50 | Existing managed pointers |
-| 51–60 | Collections, including value copy/drop, mutation of a logical location, and union projection |
-| 61–79 | Unallocated |
+| 51–61 | Collections, including value copy/drop, mutation of a logical location, and union projection; 54 reserved |
+| 62–79 | Unallocated |
 | 80–95 | Queries; currently 80–88 assigned |
 
 Reservations prevent collisions; they are not a frozen executable contract.
 Do not publish an artifact from one draft as compatible with the other.
+
+## Agreed source integration contract
+
+The collection and query owners reviewed the following consolidation on
+2026-10-22. This agreement does not claim a combined implementation or artifact.
+
+- Use collection's immutable native/frozen `pin_record` as the sole owned layout
+  carrier. Adapt query's parallel `pin_value.schema`, `pin_array.schema` and
+  `schema.c` consumers. Add a temporary resolver argument to both native closure
+  sizing and initialization. Freeze exact offsets, sizes, text-descriptor flags,
+  aliases, names, field metadata and nested links before that resolver expires.
+  Conflicting carried and named identity must fail instead of consulting a newer
+  catalog. Preserve full carried-closure comparison: a layout hash alone does not
+  completely identify a root alias target. Native/frozen metadata remains
+  distinct from authored wire records.
+- Use `arena_set_cleanup`/`arena_replace_cleanup` with a retained resource as
+  callback data. A component cell and its completed layout have a fixed charged
+  size. Remove query's arena owner vector and storage retain/release accounting;
+  attach each acquired cell reference directly, deduplicating its bytes per
+  arena. World ownership is separate. Cleanup releases the cell or module itself
+  and must not dereference sibling arena allocations. Remove retirement-only
+  cursor finalizers while preserving explicit cursor end/error state.
+- Replace direct `root->value` view access with one checked logical root/path
+  resolver for managed values and original-incarnation ECS cells. Reads, bounds,
+  projections and nested writes share this resolution. Preserve checked engine
+  publication, expected type/layout and world checks, fixed numeric view indices
+  and current-pointee replacement behavior. Removal never revives on re-add.
+- Preserve logical collection copies at argument evaluation, captures, row
+  values and results. Reads borrow; pointers and views retain explicit identity.
+  Retained native call banks survive suspension, and owned results transfer
+  before child cleanup. Keep trusted `language_values` and `owned_result`
+  capability contracts distinct from ordinary foreign callbacks.
+- Reconcile native and Chibi prepared layouts together. Preserve host-call
+  `owned_arguments` after `result_count` and before `outcome_count`, and invocation
+  `owned_arguments` after `task`. Append `PIN_QUERY` without renumbering existing
+  tags. Recompute one target fingerprint over the complete combined structures,
+  component-root pointer shape, capabilities and intrinsic registry. Collection
+  source currently expects bootstrap version 7/minimum 6; its included artifact
+  is still prerequisite ABI 21/version 6/minimum 2. Neither artifact is evidence
+  for the combined source.
+
+The pointer owner coordinates this source contract and later common artifact.
+The collection candidate remains isolated under its existing validation hold.
+The subsequent-main checkpoint supplied by the coordinator is
+`5c28191b3ea53afa232c34e37b14fd9b01024aef`; it has not been merged here. Preserve
+the proven common checkpoint `22dc0d935b1478b519801597f16d547974d30c67` separately
+while preparing that later integration.
 
 ## Semantic holds
 
@@ -64,6 +111,26 @@ supersedes the query prototype's detached-final-value behavior. The query owner
 owns that implementation. Concrete error representation and the public recovery
 API must be documented before claiming complete recovery support. The owner
 ruled out `try`/`catch` permanently; authored recovery must use typed values/results.
+
+Subsequent approval: explicitly bind a task to the original target at its call
+site, before its first instruction. Removal cancels that task and its children
+at safe boundaries, delivering typed `Cancelled` to surviving independent awaiters.
+Completed successful results remain successful after later target removal.
+Children inherit retained dependencies so they stay protected after their
+parent completes. Pointer ownership does not imply dependency. Delayed actions
+use task sequencing; `destroy_after()`
+was rejected. See [the lifetime contract](value-semantics.md).
+
+The query owner owns the separate task-lifetime runtime increment in
+`program_tasks.c`, `program_internal.h`, `program_activation.c`, `program.c`,
+the narrow ECS cell retain/liveness helpers, and existing C test dispatchers.
+The pointer owner owns authored call-site lowering and documentation. The first
+runtime implementation uses retained-cell liveness checks before task start,
+pending-request result consumption and continuations, plus pending-task sweeps even
+when a request never completes. Cell invalidation does not execute tasks or
+mutate the world inline. Existing task cancellation handles child teardown and
+typed waiter results. This interface is approved; implementation evidence is
+still pending.
 
 ## Integration order and evidence
 

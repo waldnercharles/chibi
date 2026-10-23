@@ -1097,3 +1097,12 @@ Discuss checked operations returning typed cases or scoped mutable access before
 adopting a public API. Validation must accompany access, or scoped access must
 prevent invalidation throughout use; a separate validity check cannot make a
 later access safe across suspension or mutation.
+
+Subsequent approved direction: explicitly bind an operation to its component or
+entity at the call site, before the task starts. Target removal cancels that
+task and its children through existing typed `Cancelled` delivery. This prevents
+invalid continuation for bound work; it does not make arbitrary unbound pointers
+infallible. Runtime cleanup covers pending requests and captured values, not an
+authored cancellation callback. Followup actions use task sequencing; no
+`destroy_after()` API is wanted. Existing `await` and a successful-result check
+provide sequencing, while `after` currently accepts declared actions only.

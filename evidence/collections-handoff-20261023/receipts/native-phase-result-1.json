@@ -1,0 +1,46 @@
+{
+  "tree": "cb5cbcfe904e40d89cc94f9351a2107f90556fa0",
+  "status": "native-types failed; remaining groups unrun",
+  "types": {
+    "passed": 26,
+    "failed": 1,
+    "assertions": 4845,
+    "new_runtime_cases_passed": 11,
+    "failure": "test/tools/types.c:934 snapshots.retained_bytes >= sizeof embedded",
+    "wall_seconds": 0.828
+  },
+  "unrun": [
+    "language-record-runtime",
+    "language-semantic",
+    "language-execution",
+    "authored collections/sharing",
+    "bootstrap generation/reproduction"
+  ],
+  "files": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-build.log",
+      "bytes": 633,
+      "sha256": "ea9f1a5c1bcf774c0d512249bb8bac9fb8b94f170caf6bab423dfdafc7c93884"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-types-1.log",
+      "bytes": 2583,
+      "sha256": "f60e02781612920118a680db15e6327fe8e4e832c64559cc4039d9f81b62b376"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-binaries-1.json",
+      "bytes": 1638,
+      "sha256": "c58d4e96992b6621ff808d14c9be68652c6840d0dcecf2905e1f278a1c2a63ef"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source.json",
+      "bytes": 2200,
+      "sha256": "5f7faaaaa797d9674a9b47682eb5ee5c220f6ed1ba784de9b563758d41a3d16a"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree.txt",
+      "bytes": 339588,
+      "sha256": "c74c8676dfeceb58a6e41a4d5f446d2a909c74deda8f605e36c691f30455b102"
+    }
+  ]
+}

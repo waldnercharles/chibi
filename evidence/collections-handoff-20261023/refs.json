@@ -1,0 +1,74 @@
+{
+  "main_handoff_branch": "codex/wip-collections-handoff-20261023",
+  "active_source_commit": "bd249b8750c098ff53c7626adcd1cc348ce20700",
+  "active_source_tree": "97c1656f3c42a42ad3b349ccd7cb0768f940c1e8",
+  "retained_refs": [
+    {
+      "branch": "codex/wip-shared-array-recovery-20261023",
+      "commit": "11434af1c1a9c4543ae4ced6c845d7efe976ccd1",
+      "parent": "65bb34921cb7af2c194c33bfc93b4e35f7915997",
+      "tree": "7828ad629e56b181f75653cd261c956da5cf473e",
+      "source_tree": "77d42a44b0583cfcf45a03c37f4c38477071e935",
+      "source_commit": "65bb34921cb7af2c194c33bfc93b4e35f7915997",
+      "base": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+      "pending_merge_parents": [
+        "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049"
+      ],
+      "status": "recovery-only; unvalidated",
+      "git_parents": [
+        "65bb34921cb7af2c194c33bfc93b4e35f7915997"
+      ]
+    },
+    {
+      "branch": "codex/wip-string-slices-recovery-20261023",
+      "commit": "5f87fcce92bbd72b87bfb7b1920acdc99b8c433c",
+      "parent": "2bb6acd7c44a3b913d2dcd862daacafb2e644cdc",
+      "tree": "c12f6c354aa921a368284e52470eae021159b85f",
+      "source_tree": "3c2ae5c66d3310477810817e96a18968ffb96cf6",
+      "source_commit": "2bb6acd7c44a3b913d2dcd862daacafb2e644cdc",
+      "base": "8b62b1cce22ee2f339b01eeecec4c952e769294d",
+      "pending_merge_parents": [
+        "17aa9ad383fddb7eeb223e2f1ee3445d0648670c"
+      ],
+      "status": "recovery-only; unvalidated",
+      "git_parents": [
+        "2bb6acd7c44a3b913d2dcd862daacafb2e644cdc"
+      ]
+    },
+    {
+      "branch": "codex/wip-collections-reviewed-20261023",
+      "commit": "bd249b8750c098ff53c7626adcd1cc348ce20700",
+      "parent": "44ac88ca907777625d8242f3dec12d66698770a0",
+      "tree": "97c1656f3c42a42ad3b349ccd7cb0768f940c1e8",
+      "source_tree": "97c1656f3c42a42ad3b349ccd7cb0768f940c1e8",
+      "status": "source-reviewed; execution unrun",
+      "git_parents": [
+        "44ac88ca907777625d8242f3dec12d66698770a0"
+      ],
+      "base": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+      "pending_merge_parents": [
+        "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049"
+      ]
+    },
+    {
+      "branch": "codex/wip-collections-pointer-base-20261023",
+      "commit": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+      "status": "existing pending prerequisite parent, preserved only",
+      "git_parents": [
+        "36f3e9350145242e0c0fc48f9f2e459dbd7c14ef"
+      ],
+      "tree": "310bf387bc87975d7e263ae88406b4cfaa157d34"
+    },
+    {
+      "branch": "codex/wip-string-slices-merge-base-20261023",
+      "commit": "17aa9ad383fddb7eeb223e2f1ee3445d0648670c",
+      "status": "existing unresolved merge parent, preserved only",
+      "git_parents": [
+        "20c24736a521964f0f07c3b0edc89d131a96f790",
+        "54a7b533f6349d864a54639b96ae399be2127e68"
+      ],
+      "tree": "d13883d2f9527e9e3d9aff78daa09c0688a85027"
+    }
+  ],
+  "publication": "Intended refs at packet sealing. Verify actual remote refs; the owner returns a separate remote verification receipt."
+}

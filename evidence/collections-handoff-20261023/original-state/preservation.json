@@ -1,0 +1,29 @@
+[
+  {
+    "lane": "value-array-cow",
+    "index_sha256": "acc0dd04d0037839efa19a4eeb3436c14829c132374f52ce7a0915cf647e59e8",
+    "head": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+    "pending_merge_head": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+    "index_entries_unchanged": true,
+    "dirty_status_unchanged": true,
+    "index_bytes_unchanged": true
+  },
+  {
+    "lane": "shared-array-objects",
+    "index_sha256": "6232f947b6c570762134aeacd14cad5377de5a835570512d968098001a4a00f1",
+    "head": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+    "pending_merge_head": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+    "index_entries_unchanged": true,
+    "dirty_status_unchanged": true,
+    "index_bytes_unchanged": true
+  },
+  {
+    "lane": "shared-sequence-slices",
+    "index_sha256": "c0e8ce0d2ff584281f0f2b8317104f94f70791dcc0982eb729c5f93dd6fb7c45",
+    "head": "8b62b1cce22ee2f339b01eeecec4c952e769294d",
+    "pending_merge_head": "17aa9ad383fddb7eeb223e2f1ee3445d0648670c",
+    "index_entries_unchanged": true,
+    "dirty_status_unchanged": true,
+    "index_bytes_unchanged": true
+  }
+]

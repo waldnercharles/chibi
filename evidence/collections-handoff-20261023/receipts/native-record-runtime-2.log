@@ -1,0 +1,17 @@
+record run: -100 Managed values require an initialized caller-owned heap
+(FAILED: test/language/record_runtime.c (201): status == FLOW_OK && context.returned)
+(FAILED: test/language/record_runtime.c (323): run(backends[b], args, 2))
+record run: -106 Dynamic arrays require an initialized caller-owned managed heap
+(FAILED: test/language/record_runtime.c (201): status == FLOW_OK && context.returned)
+(FAILED: test/language/record_runtime.c (419): run(backends[b], NULL, 0))
+Running: record_runtime_owned_return_and_value_copy (OK) (0.004530 secs)
+Running: record_runtime_array_results 
+Running: record_runtime_fieldwise_equality (OK) (0.001487 secs)
+Running: record_runtime_pure_owned_mutation_preserves_caller 
+Running: record_runtime_formatter_layout (OK) (0.000163 secs)
+Running: record_runtime_private_layout_lifetime (OK) (0.000132 secs)
+Running: record_runtime_private_alias_identity (OK) (0.000013 secs)
+Running: record_runtime_conflicting_private_layouts (OK) (0.000001 secs)
+===============================================================
+Summary: Passed: 6 Failed: 2 Total: 8 Suites: 0 Asserts: 834
+Test command wall time: 0.659s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,11 @@
+Release stage-zero build completed 2026-10-22.
+Targets: test_language test_tools chibi-compiler-host
+Sanitizers: OFF
+Configuration: 2.7 s
+CMake native host: 3.0 s
+Third-party: 0.6 s
+Graph: 14.4 s
+Graph log: .chibi/logs/1792715022572335000-40519-graph.log
+Compile-only compiler preparation: 42 files in 30 authored packages, 7.793 s including helper link.
+No drivers, tests, compiler self-invocation or bootstrap regeneration executed.
+Source hashes: candidate-source-hashes.json

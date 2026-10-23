@@ -1,0 +1,39 @@
+{
+  "tree": "cb5cbcfe904e40d89cc94f9351a2107f90556fa0",
+  "profile": "Release",
+  "sanitizers": false,
+  "jobs": 2,
+  "build_log": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-build.log",
+  "binaries": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/test/tools/test_tools",
+      "bytes": 32346584,
+      "mtime_ns": 1792731814965071278,
+      "sha256": "7a8cde666af2917515f4199e5554725d877610c83a3a0978464584769ffbc6a3"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/test/language/test_language",
+      "bytes": 11088928,
+      "mtime_ns": 1792731814667846119,
+      "sha256": "385854fe6ae589eececab3c88c4dd03b167a7850590fb3ae017ccd0c42d1f1fc"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/sdk/chibi-compiler-host",
+      "bytes": 1273328,
+      "mtime_ns": 1792731813977922249,
+      "sha256": "e63a9f17ba2d986fe500b0003e8d6a52ea2ce2a6f8126c12733c16147848def4"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/sdk/chibi-build-host",
+      "bytes": 2229760,
+      "mtime_ns": 1792731813833304104,
+      "sha256": "90fcbd79c0985a473cb768c3aa05202a78e7f1f5f70379df74e2289704fc8cbf"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release-cmake/sdk/chibi-build-host",
+      "bytes": 2229760,
+      "mtime_ns": 1792731793941323596,
+      "sha256": "90fcbd79c0985a473cb768c3aa05202a78e7f1f5f70379df74e2289704fc8cbf"
+    }
+  ]
+}

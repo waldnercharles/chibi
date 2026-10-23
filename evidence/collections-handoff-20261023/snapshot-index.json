@@ -1,0 +1,99 @@
+{
+  "active": [
+    {
+      "label": "original-live-index",
+      "commit": "81594302dd50f7b91eda7e035644c15e64b710ff",
+      "parent": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+      "tree": "62b0f2157b4c59bf1ba04aca7aea56808cc0fc07"
+    },
+    {
+      "label": "types-failure",
+      "commit": "29e710a9bba1a05bd49be219ac8b8a489ff7bae3",
+      "parent": "81594302dd50f7b91eda7e035644c15e64b710ff",
+      "tree": "cb5cbcfe904e40d89cc94f9351a2107f90556fa0"
+    },
+    {
+      "label": "intermediate-assertion-correction",
+      "commit": "ee8a38f4e69c43a6203c7e9dad3e651ad017db64",
+      "parent": "29e710a9bba1a05bd49be219ac8b8a489ff7bae3",
+      "tree": "0dff9103d948502256244a97fdaa3f77b8817d66"
+    },
+    {
+      "label": "types-pass-record-failure",
+      "commit": "44ac88ca907777625d8242f3dec12d66698770a0",
+      "parent": "ee8a38f4e69c43a6203c7e9dad3e651ad017db64",
+      "tree": "f90c191e8be1305f4ea05344e7f01fbf155889c8"
+    },
+    {
+      "label": "reviewed-unrun",
+      "commit": "bd249b8750c098ff53c7626adcd1cc348ce20700",
+      "parent": "44ac88ca907777625d8242f3dec12d66698770a0",
+      "tree": "97c1656f3c42a42ad3b349ccd7cb0768f940c1e8"
+    }
+  ],
+  "recovery": {
+    "shared-array-objects": {
+      "source_commit": "65bb34921cb7af2c194c33bfc93b4e35f7915997",
+      "source_tree": "77d42a44b0583cfcf45a03c37f4c38477071e935",
+      "snapshots": [
+        {
+          "label": "index-stage-0",
+          "commit": "8bca1ba53ddce2bde590393355252a79cd09a669",
+          "parent": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+          "tree": "2daf5d673b244afabde9765091524312044727bc"
+        },
+        {
+          "label": "live-working-files",
+          "commit": "65bb34921cb7af2c194c33bfc93b4e35f7915997",
+          "parent": "8bca1ba53ddce2bde590393355252a79cd09a669",
+          "tree": "77d42a44b0583cfcf45a03c37f4c38477071e935"
+        }
+      ],
+      "original_head": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+      "pending_merge_head": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+      "archived_source_tar_same_tree": "77d42a44b0583cfcf45a03c37f4c38477071e935"
+    },
+    "shared-sequence-slices": {
+      "source_commit": "2bb6acd7c44a3b913d2dcd862daacafb2e644cdc",
+      "source_tree": "3c2ae5c66d3310477810817e96a18968ffb96cf6",
+      "snapshots": [
+        {
+          "label": "index-stage-1",
+          "commit": "e7c4b4689917ca6639e583e12298b0691c0b1446",
+          "parent": "8b62b1cce22ee2f339b01eeecec4c952e769294d",
+          "tree": "9d79c37f5770da3c34214e34a4d5501665b858c7"
+        },
+        {
+          "label": "index-stage-2",
+          "commit": "bc67276083aedf7a7ce52b80b289c51515e970a7",
+          "parent": "e7c4b4689917ca6639e583e12298b0691c0b1446",
+          "tree": "465d445fed9cf2f744c854bb1675cfcb94937bdc"
+        },
+        {
+          "label": "index-stage-3",
+          "commit": "fe3d242d94a32e4f7c2740cadb23f225bdd2d3bb",
+          "parent": "bc67276083aedf7a7ce52b80b289c51515e970a7",
+          "tree": "85e68cad7a2c89cf7e2b55842286835a04f37cac"
+        },
+        {
+          "label": "live-working-files",
+          "commit": "2bb6acd7c44a3b913d2dcd862daacafb2e644cdc",
+          "parent": "fe3d242d94a32e4f7c2740cadb23f225bdd2d3bb",
+          "tree": "3c2ae5c66d3310477810817e96a18968ffb96cf6"
+        }
+      ],
+      "original_head": "8b62b1cce22ee2f339b01eeecec4c952e769294d",
+      "pending_merge_head": "17aa9ad383fddb7eeb223e2f1ee3445d0648670c"
+    }
+  },
+  "pending_parents": [
+    {
+      "commit": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+      "ref": "codex/wip-collections-pointer-base-20261023"
+    },
+    {
+      "commit": "17aa9ad383fddb7eeb223e2f1ee3445d0648670c",
+      "ref": "codex/wip-string-slices-merge-base-20261023"
+    }
+  ]
+}

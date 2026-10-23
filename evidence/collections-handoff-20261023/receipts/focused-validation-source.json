@@ -1,0 +1,63 @@
+{
+  "tree": "cb5cbcfe904e40d89cc94f9351a2107f90556fa0",
+  "head": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+  "merge_head": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+  "resolver_patch": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record.patch",
+  "resolver_patch_sha256": "b64d7ebb95cbdb485a2daf4d11b5161c8213d4dd8cd507405a01f6aaceec9a28",
+  "prepared_source_abi": 22,
+  "included_artifact_abi": 21,
+  "tests_executed": false,
+  "native_selectors": [
+    "types",
+    "language-record-runtime",
+    "language-semantic",
+    "language-execution"
+  ],
+  "authored_selectors": [
+    "language-package-compiler-chibi-collections",
+    "language-package-compiler-chibi-collections-compiled",
+    "language-package-compiler-chibi-sharing"
+  ],
+  "format22": "passed",
+  "source_syntax": "passed",
+  "inventory": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree.txt",
+  "inventory_sha256": "c74c8676dfeceb58a6e41a4d5f446d2a909c74deda8f605e36c691f30455b102",
+  "focus_files": [
+    {
+      "path": "src/types/record.c",
+      "sha256": "fe447bfb4ecf89e8620a49e40d7c23be850e48e589b853b64be2e63ea43c7ec3",
+      "bytes": 26110
+    },
+    {
+      "path": "src/types/record.h",
+      "sha256": "a7c6e1dfda409989987445d8d110faf9c5c24416bc2cedc9ec9646c5b07eb710",
+      "bytes": 3504
+    },
+    {
+      "path": "test/language/record_runtime.c",
+      "sha256": "9694a89ba2ecbb7fea608ef71bac744b16344c02083437adad3a8d88f748a1bd",
+      "bytes": 30449
+    },
+    {
+      "path": "test/language/execution.c",
+      "sha256": "767d7138b642de84e2236fe700b1eb3a2b942acafafeb1e67dae11e52cc83f58",
+      "bytes": 136784
+    },
+    {
+      "path": "test/language/semantic.c",
+      "sha256": "d23f72f0f21239959e63496e0dc858c921dbe92d0831e59bf815a452eb033558",
+      "bytes": 111034
+    },
+    {
+      "path": "test/tools/types.c",
+      "sha256": "b7ec163bb97dfe86608cd95c8ab8095ad00279e4eaf58b6d363594ef5ce27023",
+      "bytes": 64355
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "911d235c4e60531356a7aec8e6eb47b25fb09548a228cf037fb3b01e44583a81",
+      "bytes": 213990
+    }
+  ],
+  "file_count": 3362
+}

@@ -1,0 +1,96 @@
+{
+  "tree": "97c1656f3c42a42ad3b349ccd7cb0768f940c1e8",
+  "head": "329d8fb046612caa17f4aa99ee61f96512a2fa60",
+  "merge_head": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+  "resolver_patch": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record.patch",
+  "resolver_patch_sha256": "b64d7ebb95cbdb485a2daf4d11b5161c8213d4dd8cd507405a01f6aaceec9a28",
+  "prepared_source_abi": 22,
+  "included_artifact_abi": 21,
+  "tests_executed": false,
+  "native_selectors": [
+    "types",
+    "language-record-runtime",
+    "language-semantic",
+    "language-execution"
+  ],
+  "authored_selectors": [
+    "language-package-compiler-chibi-collections",
+    "language-package-compiler-chibi-collections-compiled",
+    "language-package-compiler-chibi-sharing"
+  ],
+  "format22": "passed",
+  "source_syntax": "not rerun after harness and analysis changes",
+  "inventory": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree-4.txt",
+  "inventory_sha256": "4d51531b6005432cabb29c19e20ca3e8a45df906c864a7515598f355bc1107b3",
+  "focus_files": [
+    {
+      "path": "src/types/record.c",
+      "sha256": "fe447bfb4ecf89e8620a49e40d7c23be850e48e589b853b64be2e63ea43c7ec3",
+      "bytes": 26110
+    },
+    {
+      "path": "src/types/record.h",
+      "sha256": "a7c6e1dfda409989987445d8d110faf9c5c24416bc2cedc9ec9646c5b07eb710",
+      "bytes": 3504
+    },
+    {
+      "path": "test/language/record_runtime.c",
+      "sha256": "df14e6dfec0432c2673898443a093f9a0c013a649f067e02465eb0fce3fa3c7f",
+      "bytes": 31476
+    },
+    {
+      "path": "test/language/execution.c",
+      "sha256": "1ad399d25f395fa2fb420a5c0f17820d4a4c90643d2e5793af696ee75b99d512",
+      "bytes": 141352
+    },
+    {
+      "path": "test/language/semantic.c",
+      "sha256": "d23f72f0f21239959e63496e0dc858c921dbe92d0831e59bf815a452eb033558",
+      "bytes": 111034
+    },
+    {
+      "path": "test/tools/types.c",
+      "sha256": "954a0b6295d69ea288f60af694e2587a38c3ca478f56911f60cf23e72ff4b7d3",
+      "bytes": 64567
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "911d235c4e60531356a7aec8e6eb47b25fb09548a228cf037fb3b01e44583a81",
+      "bytes": 213990
+    },
+    {
+      "path": "src/execution/module_effects.c",
+      "sha256": "d4aad4df0ae3e754d2d6486e999683d1c61a430be7ac4d91573881858a805db2",
+      "bytes": 113593
+    },
+    {
+      "path": "docs/value-sequences.md",
+      "sha256": "7096ab54ba44b26cdbe34ff05add3d0cbe94cef8d0f3dd8e8b498c513bcc4bcf",
+      "bytes": 13910
+    },
+    {
+      "path": "docs/language-friction.md",
+      "sha256": "64fc403007401e4d4045f7feed6d83e61ab872ea94939da4b68223cb26ba1ac8",
+      "bytes": 56867
+    }
+  ],
+  "file_count": 3362,
+  "previous_tree": "f90c191e8be1305f4ea05344e7f01fbf155889c8",
+  "source_correction": "Caller-owned test heaps, historical array capture before producer teardown, stabilized saved roots, real managed pointer fixtures; mask-independent union cost/provenance summaries including named scalar metadata. Runtime/resolver implementation unchanged.",
+  "patch": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-harness-and-union-cost.patch",
+  "patch_sha256": "5efb000487d9fc09d92016efb4db7a5bbb54b0fe5a43c5449119b717b0741a0e",
+  "independent_source_review": "passed for record/execution harness and union cost/provenance increment",
+  "prior_native_evidence": {
+    "tree": "f90c191e8be1305f4ea05344e7f01fbf155889c8",
+    "types": {
+      "passed": 27,
+      "assertions": 4861
+    },
+    "record_runtime": {
+      "passed": 6,
+      "failed": 2,
+      "new_resolver_cases_passed": 3
+    }
+  },
+  "current_tree_execution": "unrun; queued after shared CI execution release"
+}

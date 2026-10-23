@@ -1,0 +1,265 @@
+{
+  "files": [
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/cow-candidate-deleted.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/cow-candidate-deleted.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/cow-candidate-files.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/cow-candidate-files.txt",
+      "sha256": "11b699386ff9d150e2619f51687b5977550dec910ec421c9512d29e9331ad177",
+      "bytes": 6522
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/feature-before-pointers.patch",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/feature-before-pointers.patch",
+      "sha256": "a53d74550f9eea4da114902d64c01bca87d7e62b52614c836c97f64151ea37ee",
+      "bytes": 3383779
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/feature-source.patch",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/feature-source.patch",
+      "sha256": "fffcde56dfea16fb5a56c3030fd27b141fb35e61b7f1f2a90b86d11e60da5f0c",
+      "bytes": 266772
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source-2.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-source-2.json",
+      "sha256": "ccf08450ff38eedae3f17ca9a3bdb8cae569fe025a9a23f18692a174a5976545",
+      "bytes": 2387
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source-3.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-source-3.json",
+      "sha256": "eb8c9cb3711c72540fae02e0fcdb8a772fc05ad7ab916c93b2d863164c9f232c",
+      "bytes": 2386
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source-4.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-source-4.json",
+      "sha256": "841d2709715432d186c00b7984f8d7619142cc4446b65a3195699a75e3e50eb0",
+      "bytes": 3721
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-source.json",
+      "sha256": "5f7faaaaa797d9674a9b47682eb5ee5c220f6ed1ba784de9b563758d41a3d16a",
+      "bytes": 2200
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree-2.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-tree-2.txt",
+      "sha256": "fd721c4dab51e9365f6d16a287ea6f87001cbbf9c38ecb705221d38ac59f46b2",
+      "bytes": 339588
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree-3.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-tree-3.txt",
+      "sha256": "a7abce9a9442cd52de956d423a36608e5f23e59cddb3e2dd1518aa4a04be529d",
+      "bytes": 339588
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree-4.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-tree-4.txt",
+      "sha256": "4d51531b6005432cabb29c19e20ca3e8a45df906c864a7515598f355bc1107b3",
+      "bytes": 339588
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/focused-validation-tree.txt",
+      "sha256": "c74c8676dfeceb58a6e41a4d5f446d2a909c74deda8f605e36c691f30455b102",
+      "bytes": 339588
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-harness-and-union-cost.patch",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-harness-and-union-cost.patch",
+      "sha256": "5efb000487d9fc09d92016efb4db7a5bbb54b0fe5a43c5449119b717b0741a0e",
+      "bytes": 37640
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-binaries-1.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-phase-binaries-1.json",
+      "sha256": "c58d4e96992b6621ff808d14c9be68652c6840d0dcecf2905e1f278a1c2a63ef",
+      "bytes": 1638
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-build.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-phase-build.log",
+      "sha256": "ea9f1a5c1bcf774c0d512249bb8bac9fb8b94f170caf6bab423dfdafc7c93884",
+      "bytes": 633
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-result-1.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-phase-result-1.json",
+      "sha256": "9d5808c04cae2432e70663e2b80e1eb4dbe7b294c6af4a8b7c97d9e6bba0436c",
+      "bytes": 1664
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-phase-result-2.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-phase-result-2.json",
+      "sha256": "e7b65cfad412e6534296430f67abcc27d75ef5064fa83148eeb9721c86e2793d",
+      "bytes": 3367
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-record-runtime-2.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-record-runtime-2.log",
+      "sha256": "2d4a26576ea1a9ce6684e21c3ea9c42fd1da8701a062eac3782ae2778dfe5278",
+      "bytes": 1212
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-tools-rebuild-2.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-tools-rebuild-2.log",
+      "sha256": "3dcee31c97da993efe1158a3924ac73316d54f9dc6f35dd5a77b458f3e7d4095",
+      "bytes": 306
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-types-1.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-types-1.log",
+      "sha256": "f60e02781612920118a680db15e6327fe8e4e832c64559cc4039d9f81b62b376",
+      "bytes": 2583
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-types-2.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/native-types-2.log",
+      "sha256": "0e2c9057db79703e1cf862dfd1ac54f403f9a5e4fd04c05849592c6fc02ebcea",
+      "bytes": 2523
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792715022572335000-40519-graph.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792715022572335000-40519-graph.log",
+      "sha256": "b534d6c7fd9eadf01fa2e80ee746351233ae9c2d23fa33ad037e0c915e8efd3d",
+      "bytes": 4118
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792731782459387000-52020-configure-native.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792731782459387000-52020-configure-native.log",
+      "sha256": "3c071b9b91c117d428b8f6f97a89faed20121c842d9c83a02a353db1cc783721",
+      "bytes": 213
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792731785162140000-52100-build.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792731785162140000-52100-build.log",
+      "sha256": "ca53869c12ffa070ced7178ff5f0918ca9d6bda0919ad7de2aabc0e2f0f3b33a",
+      "bytes": 397906
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792731794058644000-52851-third-party.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792731794058644000-52851-third-party.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792731794739320000-52858-graph.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792731794739320000-52858-graph.log",
+      "sha256": "320a2dad3216c2c26e1bc900cdb2d02c7c49775bb098daea204754507b1818bd",
+      "bytes": 8236
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792732536061576000-62891-third-party.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792732536061576000-62891-third-party.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/.chibi/logs/1792732536354769000-62898-graph.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/referenced-build-logs/1792732536354769000-62898-graph.log",
+      "sha256": "96d7d4983efc5bb789a8355bfa74b12dafea571b65996bfbd0a8ecdcf1741d1c",
+      "bytes": 4118
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record-before/src/types/record.c",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/resolver-record-before/src/types/record.c",
+      "sha256": "70e8e8d36aa6e69247f04efc595f11c6824e6192923e41a58295471575d26d3e",
+      "bytes": 24600
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record-before/src/types/record.h",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/resolver-record-before/src/types/record.h",
+      "sha256": "f11923e9e76d26cdc7012d9953a1349d013d608f36299d2bf0b9ff5262d957a7",
+      "bytes": 2999
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record-before/src/types/type.h",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/resolver-record-before/src/types/type.h",
+      "sha256": "bc45efcf4ee6e31bf58b0bf8a0626d768bd8996bbcc6f812977a76b3de512f8c",
+      "bytes": 4863
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record-before/test/language/record_runtime.c",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/resolver-record-before/test/language/record_runtime.c",
+      "sha256": "c1190dab67fc65e8ba48c84ce650ceada93c9ecffce1a6d2baf8c640377267c4",
+      "bytes": 22920
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/resolver-record.patch",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/resolver-record.patch",
+      "sha256": "b64d7ebb95cbdb485a2daf4d11b5161c8213d4dd8cd507405a01f6aaceec9a28",
+      "bytes": 15119
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/shared-array-before-cow-status.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/shared-array-before-cow-status.txt",
+      "sha256": "a2fb4668ac392c137cea26b2e6ec6b0e21338cab46d434c27c46c919376a710d",
+      "bytes": 7269
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/shared-array-before-cow.patch",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/shared-array-before-cow.patch",
+      "sha256": "47fd42faf7c45bf87cd1f52ab8a9dbf6fbdf8912276204cedb15ded0b33f7af9",
+      "bytes": 9706137
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/candidate-source-hashes.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/candidate-source-hashes.json",
+      "sha256": "8da8fb99df83076d544dd0b1d259043d2e06a4a2fbfa2c3021860c03e195eea2",
+      "bytes": 34418
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/graph-build-result.txt",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/graph-build-result.txt",
+      "sha256": "2ca3e98780f51f359ebc355ff75f23972be51a619d1dbe000933f1dd28e12143",
+      "bytes": 479
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/prepare-compiler-link.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/prepare-compiler-link.log",
+      "sha256": "667ed93c9b6b327f921a257416487904ebe70dd4c46c22ffecc2554ba586cfae",
+      "bytes": 146
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/prepare-compiler.c",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/prepare-compiler.c",
+      "sha256": "2d25945a76438b7e8a1bfc8019fa6a9c09d9ecfc9a8246fa2c2aa6efbf392725",
+      "bytes": 3306
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/prepare-compiler.log",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/prepare-compiler.log",
+      "sha256": "77c3546ad86f40543c7c21cc4e0f0d6f3cad99f9238406ed3794bfb9e0b9a11a",
+      "bytes": 72
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/prepare-compiler.py",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/prepare-compiler.py",
+      "sha256": "88f271817a038c3990a55e9109a2168f645075fa4556e35adddfbc6e128526b7",
+      "bytes": 1642
+    },
+    {
+      "original_path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/source-build/reference-host-link.json",
+      "repository_path": "evidence/collections-handoff-20261023/receipts/source-build/reference-host-link.json",
+      "sha256": "fddd272b15831d8e65981ec1bdf825b523b0ba8b65ebba27bef05d713b07f6ce",
+      "bytes": 1860
+    }
+  ],
+  "source_roots": {
+    "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi": "repository source paths at reviewed97c",
+    "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022": "evidence/collections-handoff-20261023/receipts/"
+  },
+  "intentional_exclusions": [
+    "Binary paths listed by native receipts identify historical binaries by hashes; machine binaries are excluded.",
+    "Raw original Git index backups remain local; portable index entries and reachable staged/conflict blobs are retained.",
+    "Historical compile_commands/build paths in helper scripts are environment inputs, not portable dependencies."
+  ]
+}

@@ -1,0 +1,209 @@
+M  PLAN.md
+MM docs/code-language.md
+MM docs/language-friction.md
+A  docs/managed-pointers.md
+M  docs/package-library-plan.md
+M  docs/testing.md
+M  packages/core/strings/Strings.chibi
+M  sdk/CMakeLists.txt
+M  src/assets/project.h
+M  src/assets/project_migrate.c
+M  src/assets/project_migrate.h
+M  src/assets/prototype.c
+M  src/authoring/package_tests.c
+M  src/authoring/project_compile.c
+ M src/authoring/source_catalog.c
+M  src/authoring/source_edit_capability.c
+M  src/authoring/source_edit_inline.c
+M  src/authoring/source_edit_refactor.c
+M  src/authoring/source_format.c
+M  src/authoring/source_graph_library.c
+M  src/authoring/source_literal.c
+MM src/authoring/source_package_exports.c
+ M src/authoring/source_presentation_flow.c
+MM src/authoring/source_presentation_values.c
+MM src/automation/controller.c
+MM src/capabilities/catalog.c
+MM src/capabilities/catalog.h
+ M src/capabilities/catalog_snapshot.c
+M  src/capabilities/catalog_values.c
+ M src/capabilities/definition.c
+ M src/capabilities/definition.h
+M  src/ecs/ecs.c
+ M src/execution/borrow.c
+MM src/execution/c.c
+MM src/execution/call.c
+MM src/execution/function.c
+MM src/execution/function.h
+MM src/execution/function_builder.c
+MM src/execution/host.c
+ M src/execution/host.h
+MM src/execution/intrinsics.c
+MM src/execution/intrinsics.h
+M  src/execution/jit.c
+MM src/execution/jit_host_call.c
+M  src/execution/jit_integer.c
+M  src/execution/jit_internal.h
+M  src/execution/jit_memory.c
+M  src/execution/jit_registers.c
+MM src/execution/machine.c
+A  src/execution/managed.h
+ M src/execution/module.c
+M  src/execution/module.h
+MM src/execution/module_effects.c
+ M src/execution/parallel.c
+ M src/execution/prepared.c
+MM src/execution/prepared.h
+MM src/execution/prepared_record.c
+MM src/execution/program.c
+MM src/execution/program_activation.c
+M  src/execution/program_bindings.c
+M  src/execution/program_inspection.c
+MM src/execution/program_internal.h
+M  src/execution/program_observers.c
+M  src/execution/program_preflight.c
+MM src/execution/program_storage.c
+M  src/execution/program_tasks.c
+ M src/execution/runner.c
+MM src/execution/scalar_lowering_plan.c
+ M src/execution/scalarize.c
+M  src/execution/wasm_emit.c
+ M src/graph/authoring/asset_edit.c
+ M src/graph/model/graph.c
+ M src/graph/model/value_copy.c
+M  src/host/build_host.c
+M  src/language/component.c
+M  src/language/effect_analysis.c
+M  src/language/grammar.js
+MM src/language/lower.c
+M  src/language/semantic.h
+MM src/language/semantic_calls.c
+MM src/language/semantic_context.c
+M  src/language/semantic_effects.c
+MM src/language/semantic_expression.c
+MM src/language/semantic_generic.c
+M  src/language/semantic_internal.h
+ M src/language/semantic_package.c
+M  src/language/semantic_record.c
+MM src/language/semantic_statement.c
+M  src/language/semantic_union.c
+MM src/language/signature_reader.c
+MM src/language/src/grammar.json
+MM src/language/src/node-types.json
+MM src/language/src/parser.c
+MM src/language/type_constructors.c
+MM src/language/type_constructors.h
+MM src/runtime/arrays.c
+MM src/runtime/behaviors/entities.c
+ M src/runtime/event_catalog.c
+ M src/runtime/native_capabilities.c
+ M src/runtime/native_definitions.c
+M  src/runtime/text_format.h
+M  src/support/arena.c
+M  src/support/arena.h
+M  src/toolchain/compiler_host.c
+MM src/types/array.c
+MM src/types/array.h
+M  src/types/index.c
+A  src/types/pointer.h
+MM src/types/record.c
+ M src/types/record.h
+M  src/types/scalar.h
+M  src/types/text.c
+M  src/types/text.h
+MM src/types/trace.c
+M  src/types/trace.h
+MM src/types/type.c
+ M src/types/type.h
+M  src/types/value.h
+MM src/types/value_document.c
+MM src/types/value_document_read.c
+M  src/types/value_format.c
+MM src/types/value_wire.c
+ M src/types/value_wire.h
+M  test/authoring/source_edit.c
+M  test/fixtures/behavior-catalog/project.kdl
+M  test/fixtures/component-presentation/project.kdl
+M  test/fixtures/content/behaviors/WaveBehavior.chibi
+M  test/fixtures/courtyard/project.kdl
+M  test/fixtures/declared-components/project.kdl
+M  test/fixtures/environment-authoring/project.kdl
+M  test/fixtures/feature-coverage/content/behaviors/EntityProbe.chibi
+M  test/fixtures/feature-coverage/content/behaviors/PanelProbe.chibi
+M  test/fixtures/feature-coverage/project.kdl
+M  test/fixtures/graph-routing/content/behaviors/Weapon.chibi
+M  test/fixtures/graph-routing/project.kdl
+M  test/fixtures/language/project.kdl
+M  test/fixtures/material-contracts/project.kdl
+M  test/fixtures/project.kdl
+M  test/fixtures/refactor/references/behaviors/Weapon.chibi
+M  test/fixtures/scene3d/project.kdl
+M  test/fixtures/sprites/project.kdl
+M  test/fixtures/studio-workspace/content/behaviors/Weapon.chibi
+M  test/fixtures/studio-workspace/project.kdl
+M  test/fixtures/studio/project.kdl
+M  test/fixtures/terrain-lab/project.kdl
+M  test/language/borrow.c
+M  test/language/compiler_fixture.c
+M  test/language/compiler_fixture.h
+M  test/language/effects.c
+M  test/language/execution.c
+M  test/language/format.c
+M  test/language/generic.c
+M  test/language/named_binding_chibi.c
+M  test/language/package_compiler_chibi.c
+M  test/language/package_compiler_chibi_source.h.in
+M  test/language/package_imports.c
+M  test/language/program.c
+M  test/language/prototype.c
+MM test/language/record_members_chibi.c
+M  test/language/record_prepared_runtime.c
+M  test/language/record_runtime.c
+M  test/language/record_services.c
+M  test/language/row_array.c
+M  test/language/semantic.c
+M  test/language/signature_fixture.c
+MM test/language/signature_reader_chibi.c
+M  test/language/source_tokenizer_chibi.c
+M  test/language/syntax.c
+M  test/language/syntax_corpus.c
+MM test/language/type_constructors_chibi.c
+MM test/language/union_members_chibi.c
+M  test/stories/Controls/content/behaviors/Pilot.chibi
+M  test/stories/Controls/project.kdl
+M  test/stories/Counter/content/behaviors/Counter.chibi
+M  test/stories/Counter/project.kdl
+M  test/stories/Follow/project.kdl
+M  test/stories/Motion/project.kdl
+M  test/stories/Results/project.kdl
+M  test/tools/main.c
+M  test/tools/types.c
+MM tools/compiler/bootstrap.kdl
+M  tools/compiler/bootstrap/bootstrap.json
+M  tools/compiler/bootstrap/compiler.chibip
+M  tools/compiler/bounded_compiler/Compile.chibi
+M  tools/compiler/callable_headers/Headers.chibi
+M  tools/compiler/named_binding/Binding.chibi
+ M tools/compiler/package_compiler/Behavior.chibi
+MM tools/compiler/package_compiler/Body.chibi
+MM tools/compiler/package_compiler/Compile.chibi
+MM tools/compiler/package_compiler/Maps.chibi
+AM tools/compiler/package_compiler/Pointers.chibi
+M  tools/compiler/package_compiler/References.chibi
+MM tools/compiler/package_compiler/Steps.chibi
+MM tools/compiler/prepared_writer/Writer.chibi
+M  tools/compiler/record_members/Members.chibi
+M  tools/compiler/scalar_lowering/Lower.chibi
+M  tools/compiler/signature_reader/Reader.chibi
+M  tools/compiler/source_tokenizer/Tokenizer.chibi
+MM tools/compiler/type_constructors/Constructors.chibi
+MM tools/compiler/union_members/Members.chibi
+M  tools/compiler/unit_algebra/Units.chibi
+M  tools/docs/markdown/Markdown.chibi
+M  tools/graph/c/C.chibi
+M  tools/graph/engine/Engine.chibi
+M  tools/graph/engine/Targets.chibi
+M  tools/test_policy.py
+?? docs/shared-sequences.md
+?? tools/compiler/package_compiler/Optional.chibi
+?? tools/compiler/package_compiler/Sequences.chibi

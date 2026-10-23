@@ -1,0 +1,89 @@
+{
+  "tree": "f90c191e8be1305f4ea05344e7f01fbf155889c8",
+  "profile": "Release",
+  "sanitizers": false,
+  "jobs": 2,
+  "status": "record-runtime failed; remaining groups unrun",
+  "types": {
+    "passed": 27,
+    "failed": 0,
+    "assertions": 4861,
+    "wall_seconds": 0.55
+  },
+  "record_runtime": {
+    "passed": 6,
+    "failed": 2,
+    "assertions": 834,
+    "wall_seconds": 0.659,
+    "new_resolver_cases_passed": 3,
+    "failures": [
+      "record_runtime_array_results: managed values require caller-owned heap",
+      "record_runtime_pure_owned_mutation_preserves_caller: dynamic arrays require initialized caller-owned managed heap"
+    ]
+  },
+  "unrun": [
+    "language-semantic",
+    "language-execution",
+    "authored collections/sharing",
+    "bootstrap generation/reproduction"
+  ],
+  "binaries": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/test/tools/test_tools",
+      "bytes": 32346584,
+      "mtime_ns": 1792732541772136525,
+      "sha256": "396570143d5a7c82e3813fb9bea4b73c4f9de4f0f8bd178cea4ccfba03f618dc"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/test/language/test_language",
+      "bytes": 11088928,
+      "mtime_ns": 1792731814667846119,
+      "sha256": "385854fe6ae589eececab3c88c4dd03b167a7850590fb3ae017ccd0c42d1f1fc"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/sdk/chibi-compiler-host",
+      "bytes": 1273328,
+      "mtime_ns": 1792731813977922249,
+      "sha256": "e63a9f17ba2d986fe500b0003e8d6a52ea2ce2a6f8126c12733c16147848def4"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release/sdk/chibi-build-host",
+      "bytes": 2229760,
+      "mtime_ns": 1792731813833304104,
+      "sha256": "90fcbd79c0985a473cb768c3aa05202a78e7f1f5f70379df74e2289704fc8cbf"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/value-array-cow/chibi/build-release-cmake/sdk/chibi-build-host",
+      "bytes": 2229760,
+      "mtime_ns": 1792731793941323596,
+      "sha256": "90fcbd79c0985a473cb768c3aa05202a78e7f1f5f70379df74e2289704fc8cbf"
+    }
+  ],
+  "files": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-tools-rebuild-2.log",
+      "bytes": 306,
+      "sha256": "3dcee31c97da993efe1158a3924ac73316d54f9dc6f35dd5a77b458f3e7d4095"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-types-2.log",
+      "bytes": 2523,
+      "sha256": "0e2c9057db79703e1cf862dfd1ac54f403f9a5e4fd04c05849592c6fc02ebcea"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/native-record-runtime-2.log",
+      "bytes": 1212,
+      "sha256": "2d4a26576ea1a9ce6684e21c3ea9c42fd1da8701a062eac3782ae2778dfe5278"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-source-3.json",
+      "bytes": 2386,
+      "sha256": "eb8c9cb3711c72540fae02e0fcdb8a772fc05ad7ab916c93b2d863164c9f232c"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.scratch/shared-sequences-20261022/focused-validation-tree-3.txt",
+      "bytes": 339588,
+      "sha256": "a7abce9a9442cd52de956d423a36608e5f23e59cddb3e2dd1518aa4a04be529d"
+    }
+  ]
+}

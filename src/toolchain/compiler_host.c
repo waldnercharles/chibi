@@ -31,6 +31,7 @@ struct compiler_host
     native_capabilities *native;
     package_collection *packages;
     execution_module *root;
+    size_t package_bytes;
     behavior_backend backend;
     bool values_only;
 };
@@ -76,6 +77,7 @@ static compiler_host *load(
         compiler_host_free(host);
         return NULL;
     }
+    host->package_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES - remaining;
     for (int i = 0; i < package_collection_count(host->packages); i++) {
         execution_module *module = package_collection_module(host->packages, i);
         if (execution_module_id(module) == root) {
@@ -109,6 +111,17 @@ compiler_host *compiler_host_load_values(
 )
 {
     return load(bytes, length, backend, true, error, size);
+}
+size_t compiler_host_storage_bytes(const compiler_host *host)
+{
+    assert(host);
+    size_t bytes = native_capabilities_storage_bytes(host->native);
+    if (bytes > SIZE_MAX - sizeof *host) {
+        return SIZE_MAX;
+    }
+    bytes += sizeof *host;
+    return host->package_bytes > SIZE_MAX - bytes ? SIZE_MAX
+                                                  : bytes + host->package_bytes;
 }
 uint64_t compiler_host_entry(const char *symbol)
 {

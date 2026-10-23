@@ -56,6 +56,11 @@ compiler_host *compiler_host_load(const void *, size_t, behavior_backend, char *
  * parsing remain capabilities of the separately loaded compiler artifact. */
 compiler_host *compiler_host_load_values(const void *, size_t, behavior_backend, char *, size_t);
 void compiler_host_free(compiler_host *);
+/* Owned host/native table and canonical decoded package/module storage. Uses
+ * the loader's retained-storage debit; no parsing or allocation occurs here.
+ * This accounts bytecode storage, not process RSS or executable JIT pages.
+ * Saturates at SIZE_MAX on overflow. */
+size_t compiler_host_storage_bytes(const compiler_host *);
 /* Resolve an owned-value callable without executing it. Requires the specified
  * argument count and exactly one primitive byte[] result. */
 bool compiler_host_accepts_byte_entry(compiler_host *, uint64_t entry, int arguments, char *, size_t);

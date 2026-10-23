@@ -552,6 +552,20 @@ static const char
                             "1))) }\n";
 static const char *cache_helper = "package cache_fixture\npub Value :: () -> "
                                   "int { return 7 }\n";
+/* Use the same nested union/array aggregate shape as game:assets.Value. */
+static const char *cache_mutating_source =
+    "package asset\nimport data \"game:assets\"\n"
+    "Row :: union { Seed(values: int[]) }\n"
+    "SeedRow :: () -> Row { return Row.Seed([1, 2]) }\n"
+    "First :: (row: Row) -> int {\n"
+    " switch row { case .Seed(values): return values[0]; } return 0;\n}\n"
+    "pub Build :: () -> byte[] {\n"
+    " original := SeedRow(); answer: int = 0;\n"
+    " switch original { case .Seed(values): changed := values; "
+    "changed[0] += 6; answer = changed[0]; }\n"
+    " assert(First(original) == 1); i: int = 0;\n"
+    " while (i < 200) { i += 1; }\n"
+    " return data.Encode(data.Value.Int(int64(answer)))\n}\n";
 static char cache_directory[256];
 static asset_source_library *cache_libraries;
 static unsigned char *cache_bad_compiler;
@@ -612,7 +626,8 @@ int test_asset_cache_worker(const char *directory)
     bool valid = limited && cache_value(cache_source, &options, 7);
     asset_compiler_cache_stats stats = asset_source_cache_stats();
     valid &= stats.compile_attempts == 0 && stats.persistent_hits == 1 &&
-             stats.memory_hits == 1;
+             stats.memory_hits == 1 && stats.preparation_attempts == 1 &&
+             stats.evaluations == 2;
     cache_cleanup();
     return valid ? 0 : 1;
 }
@@ -626,6 +641,42 @@ static bool cache_cancel_compilation(void *user)
     }
     int *remaining = user;
     return --*remaining <= 0;
+}
+
+typedef struct
+{
+    uint64_t evaluations;
+    int polls;
+    bool fired, held, release, nested_ok;
+    asset_compiler_options nested;
+} cache_callback;
+
+static bool cache_cancel_evaluation(void *user)
+{
+    cache_callback *callback = user;
+    if (asset_source_cache_stats().evaluations <= callback->evaluations) {
+        return false;
+    }
+    return ++callback->polls == 128;
+}
+
+static bool cache_reenter_evaluation(void *user)
+{
+    cache_callback *callback = user;
+    if (callback->fired ||
+        asset_source_cache_stats().evaluations <= callback->evaluations ||
+        ++callback->polls < 128) {
+        return false;
+    }
+    callback->fired = true;
+    if (callback->release) {
+        asset_source_release_thread();
+    } else {
+        callback->nested_ok = cache_value(cache_source, &callback->nested, 9);
+    }
+    size_t resident = asset_source_cache_stats().resident_bytes;
+    callback->held = resident > 0 && resident <= 128u * 1024u * 1024u;
+    return false;
 }
 
 TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
@@ -753,6 +804,64 @@ TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
         asset_source_cache_stats().persistent_hits == 1 &&
         !asset_source_cache_stats().compile_attempts
     );
+    /* Decode once, but reevaluate on every read with fresh nested values. */
+    asset_source_release_thread();
+    options.cache_directory = "";
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    stats = asset_source_cache_stats();
+    REQUIRE(stats.preparation_attempts == 1 && stats.evaluations == 1);
+    REQUIRE(stats.resident_bytes > 0 && stats.resident_bytes <= 128u * 1024u * 1024u);
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    options.evaluation_budget = 1;
+    rejected = asset_source_read(cache_mutating_source, NULL, &options, &failed);
+    limited = !rejected && strstr(failed.message, "budget");
+    av_doc_free(rejected);
+    REQUIRE(limited);
+    options.evaluation_budget = 0;
+    cache_callback callback = { .evaluations = asset_source_cache_stats().evaluations };
+    options.cancelled = cache_cancel_evaluation;
+    options.user = &callback;
+    rejected = asset_source_read(cache_mutating_source, NULL, &options, &failed);
+    cancelled = !rejected && strstr(failed.message, "cancelled");
+    av_doc_free(rejected);
+    REQUIRE(cancelled && callback.polls == 128);
+    options.cancelled = NULL;
+    options.user = NULL;
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    stats = asset_source_cache_stats();
+    REQUIRE(stats.preparation_attempts == 1 && stats.evaluations == 5);
+
+    /* Thread release detaches the cache, while this invocation owns its lease. */
+    callback = (cache_callback){ .evaluations = stats.evaluations, .release = true };
+    options.cancelled = cache_reenter_evaluation;
+    options.user = &callback;
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    REQUIRE(callback.fired && callback.held);
+    REQUIRE(asset_source_cache_stats().resident_bytes == 0);
+    options.cancelled = NULL;
+    options.user = NULL;
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    REQUIRE(asset_source_cache_stats().preparation_attempts == 1);
+
+    /* A nested read replaces the immutable library snapshot during Build. */
+    changed = xcalloc((size_t)options.library_count, sizeof *changed);
+    memcpy(changed, cache_libraries, (size_t)options.library_count * sizeof *changed);
+    changed[options.library_count - 1]
+        .source = "package cache_fixture\npub Value :: () -> int { return 9 "
+                  "}\n";
+    callback = (cache_callback){ .evaluations = asset_source_cache_stats().evaluations,
+                                 .nested = options };
+    callback.nested.libraries = changed;
+    options.cancelled = cache_reenter_evaluation;
+    options.user = &callback;
+    bool survived = cache_value(cache_mutating_source, &options, 7);
+    free(changed);
+    REQUIRE(survived && callback.fired && callback.nested_ok && callback.held);
+    options.cancelled = NULL;
+    options.user = NULL;
+    REQUIRE(cache_value(cache_mutating_source, &options, 7));
+    asset_source_release_thread();
+    REQUIRE(asset_source_cache_stats().resident_bytes == 0);
     return true;
 }
 

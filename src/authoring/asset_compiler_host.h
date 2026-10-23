@@ -39,11 +39,17 @@ void asset_source_set_default(const asset_compiler_options *);
 typedef struct
 {
     uint64_t memory_hits, persistent_hits, compile_attempts;
+    uint64_t preparation_attempts, evaluations;
+    size_t resident_bytes; /* Includes decoded leases detached during an invocation. */
 } asset_compiler_cache_stats;
 /* Hits count validated prepared-code reuse; attempts count CompileBytes calls.
+ * Preparation counts decoded asset loads; every Build attempt increments evaluations.
  * Reading statistics does not change execution or enable runtime observers. */
 asset_compiler_cache_stats asset_source_cache_stats();
 /* Releases this thread's compiler/memory cache and resets its statistics.
+ * Active invocations retain leased hosts until they return. Their decoded
+ * storage remains charged; options and immutable source snapshots are borrowed
+ * for the whole invocation and must remain valid across cancellation callbacks.
  * Persistent storage remains available to subsequent calls and processes. */
 void asset_source_release_thread();
 /* Generated SDK resource adapter, target-compatible and immutable. */

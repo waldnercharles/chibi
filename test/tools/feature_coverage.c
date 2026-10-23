@@ -282,6 +282,29 @@ static int compare_paths(const void *a, const void *b)
     return strcmp(*(char *const *)a, *(char *const *)b);
 }
 
+static bool asset_file_name(const char *name)
+{
+    size_t length = strlen(name), extension = strlen(DECLARATIVE_ASSET_EXTENSION);
+    return name[0] != '.' && !strchr(name, '\\') && !strstr(name, "..") &&
+           length > extension &&
+           !strcmp(name + length - extension, DECLARATIVE_ASSET_EXTENSION);
+}
+
+TEST_CASE(feature_asset_names_follow_the_source_extension)
+{
+    REQUIRE(asset_file_name("Start.chibi"));
+    REQUIRE(asset_file_name("a.chibi"));
+    REQUIRE(!asset_file_name(""));
+    REQUIRE(!asset_file_name(".chibi"));
+    REQUIRE(!asset_file_name(".Start.chibi"));
+    REQUIRE(!asset_file_name("Start.json"));
+    REQUIRE(!asset_file_name("Start.chib"));
+    REQUIRE(!asset_file_name("Start.chibi.json"));
+    REQUIRE(!asset_file_name("Start..chibi"));
+    REQUIRE(!asset_file_name("folder\\Start.chibi"));
+    return true;
+}
+
 /* The Chibi asset files in content/<folder> in name order, owned by the caller. */
 static char **directory_files(const char *folder)
 {
@@ -295,9 +318,7 @@ static char **directory_files(const char *folder)
     /* The files chibi_ctl enumerates as assets: visible, regular .chibi files. */
     for (struct dirent *item; (item = readdir(directory));) {
         const char *name = item->d_name;
-        size_t length = strlen(name);
-        if (name[0] == '.' || strchr(name, '\\') || strstr(name, "..") ||
-            length <= 4 || strcmp(name + length - 4, ".chibi")) {
+        if (!asset_file_name(name)) {
             continue;
         }
         char *file = xmalloc(MAX_PATH);
@@ -885,6 +906,7 @@ int run_feature_coverage(const char *root, const char *binary)
         fprintf(stderr, "%s: feature coverage needs the content folder at %s\n", root, expected);
         return 1;
     }
+    RUN_TEST_CASE(feature_asset_names_follow_the_source_extension);
     RUN_TEST_CASE(test_catalog_coverage);
     RUN_TEST_CASE(test_scenes_run);
     source_catalog_free(project);

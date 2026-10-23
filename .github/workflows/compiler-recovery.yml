@@ -183,6 +183,159 @@ jobs:
             $evidence['proof_seconds'] = $timer.Elapsed.TotalSeconds
             $evidence | ConvertTo-Json -Depth 8 | Set-Content "$proof/evidence.json"
           }
+      - name: Compile and execute authored foundation regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $tests = Join-Path $proof 'authored-tests'
+          New-Item -ItemType Directory -Path $tests | Out-Null
+          $suffix = if ($IsWindows) { '.exe' } else { '' }
+          $hostPath = Join-Path $proof ('chibi-compiler-host' + $suffix)
+          $evidence = [ordered]@{ revision = $env:GITHUB_SHA; invocations = @(); sources = @(); passed = $false }
+          function Invoke-Host($name, $arguments, $backend, $timeout) {
+            $record = [ordered]@{ name = $name; backend = $backend; arguments = $arguments }
+            $evidence.invocations += $record
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = $hostPath
+            $start.WorkingDirectory = $proof
+            $start.UseShellExecute = $false
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            $start.Environment.Clear()
+            if ($IsWindows) { $start.Environment['SystemRoot'] = $env:SystemRoot }
+            $start.Environment['PATH'] = ''
+            $start.Environment['CC'] = 'unavailable-in-authored-tests'
+            $start.Environment['CXX'] = 'unavailable-in-authored-tests'
+            foreach ($key in @('TEMP', 'TMP', 'TMPDIR')) { $start.Environment[$key] = $tests }
+            $record['child_environment'] = [ordered]@{}
+            foreach ($key in $start.Environment.Keys | Sort-Object) { $record.child_environment[$key] = $start.Environment[$key] }
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $process = [Diagnostics.Process]::Start($start)
+            try {
+              $stdout = $process.StandardOutput.ReadToEndAsync()
+              $stderr = $process.StandardError.ReadToEndAsync()
+              $timedOut = !$process.WaitForExit($timeout + 5000)
+              if ($timedOut) { $process.Kill($true); $process.WaitForExit() }
+              $out = $stdout.GetAwaiter().GetResult()
+              $err = $stderr.GetAwaiter().GetResult()
+              [IO.File]::WriteAllText((Join-Path $tests "$name.stdout.txt"), $out)
+              [IO.File]::WriteAllText((Join-Path $tests "$name.stderr.txt"), $err)
+              $record['stdout_sha256'] = (Get-FileHash (Join-Path $tests "$name.stdout.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
+              $record['stderr_sha256'] = (Get-FileHash (Join-Path $tests "$name.stderr.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
+              Write-Host $out
+              if ($err) { Write-Host $err }
+              $record['exit_code'] = $process.ExitCode
+              $record['timed_out'] = $timedOut
+              if ($timedOut -or $process.ExitCode) { throw "$name failed or exceeded its deadline" }
+              $counters = [regex]::Matches($err, '(?m)^compiler-host bytecode=(\d+) sljit=(\d+) wasm=(\d+) fallback=(\d+) overflow=(\d+)\r?$')
+              if ($counters.Count -ne 1) { throw "$name has no unambiguous backend evidence" }
+              $counts = $counters[0].Groups
+              $record['counts'] = [ordered]@{ bytecode = [uint64]$counts[1].Value; sljit = [uint64]$counts[2].Value; wasm = [uint64]$counts[3].Value; fallback = [uint64]$counts[4].Value; overflow = [uint64]$counts[5].Value }
+              $other = if ($backend -eq 'sljit') { 'bytecode' } else { 'sljit' }
+              if ($record.counts[$backend] -eq 0 -or $record.counts[$other] -ne 0 -or $record.counts.wasm -ne 0 -or $record.counts.fallback -ne 0 -or $record.counts.overflow -ne 0) {
+                throw "$name did not execute exclusively on the requested backend"
+              }
+              return $out
+            } finally {
+              $timer.Stop()
+              $record['seconds'] = $timer.Elapsed.TotalSeconds
+              if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+              $process.Dispose()
+            }
+          }
+          try {
+            $recovery = Get-Content "$proof/evidence.json" -Raw | ConvertFrom-Json
+            $compiler = Join-Path $proof 'stage2/compiler.chibip'
+            $evidence['runtime_sha256'] = (Get-FileHash $hostPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $evidence['compiler_sha256'] = (Get-FileHash $compiler -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($recovery.error -or $evidence.runtime_sha256 -ne $recovery.runtime_sha256 -or $evidence.compiler_sha256 -ne $recovery.compiler_sha256) {
+              throw 'Authored tests must use the exact verified runtime and recovered stage two'
+            }
+            $mapPath = Join-Path $env:GITHUB_WORKSPACE 'test/selfhost/sources.json'
+            $map = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($mapPath))
+            $manifest = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText("$proof/tools/compiler/bootstrap/bootstrap.json"))
+            $evidence['source_map_sha256'] = (Get-FileHash $mapPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($map['format'].ToJsonString() -ne '1' -or $map['entry'].ToString() -notmatch '^0x[a-f0-9]{16}$' -or
+                $map['files'].AsArray().Count -lt 1 -or $map['files'].AsArray().Count -gt 256) { throw 'Invalid authored-test source map' }
+            $names = [System.Text.Json.Nodes.JsonArray]::new()
+            $roots = [System.Text.Json.Nodes.JsonArray]::new()
+            foreach ($collection in $map['collections'].AsArray()) {
+              $names.Add($collection['name'].DeepClone())
+              $roots.Add($collection['root'].DeepClone())
+            }
+            $paths = [System.Text.Json.Nodes.JsonArray]::new()
+            $sources = [System.Text.Json.Nodes.JsonArray]::new()
+            $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            $listed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            foreach ($file in $map['files'].AsArray()) {
+              $source = $file['source'].ToString()
+              $virtual = $file['path'].ToString()
+              if ($source -notmatch '^[A-Za-z0-9_./-]+\.chibi$' -or $source.StartsWith('/') -or
+                  @($source.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -or !$seen.Add($virtual) -or !$listed.Add($source)) {
+                throw 'Source map paths must be unique, regular repository-relative Chibi files'
+              }
+              $path = $env:GITHUB_WORKSPACE
+              foreach ($part in $source.Split('/')) {
+                $path = Join-Path $path $part
+                $item = Get-Item -LiteralPath $path
+                if ($item.LinkType) { throw "Source map must not traverse a symlink: $source" }
+              }
+              if ($item.LinkType -or $item.PSIsContainer -or $item.Length -gt 1048576) { throw "Unsupported source file: $source" }
+              $text = [Text.UTF8Encoding]::new($false, $true).GetString([IO.File]::ReadAllBytes($path))
+              $paths.Add($file['path'].DeepClone())
+              $sources.Add([System.Text.Json.Nodes.JsonNode]::Parse((ConvertTo-Json -InputObject $text -Compress)))
+              $evidence.sources += [ordered]@{ source = $source; path = $virtual; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+            }
+            # A selected production package is complete, not a filtered copy that hides
+            # unsupported files. Explicit fixture files may omit their assert wrappers.
+            $directories = @($evidence.sources.source | Where-Object { $_.StartsWith('tools/') -or $_.StartsWith('packages/') } | ForEach-Object { Split-Path $_ -Parent } | Sort-Object -Unique)
+            foreach ($directory in $directories) {
+              foreach ($file in Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $directory) -Filter '*.chibi' -File) {
+                $relative = [IO.Path]::GetRelativePath($env:GITHUB_WORKSPACE, $file.FullName).Replace('\', '/')
+                if (!$listed.Contains($relative)) { throw "Source map omits production package member: $relative" }
+              }
+            }
+            # Preserve target uint64 identities as JSON nodes, never floating-point values.
+            $compileInput = [System.Text.Json.Nodes.JsonArray]::new()
+            $compileInput.Add([System.Text.Json.Nodes.JsonNode]::Parse('"/project"'))
+            $compileInput.Add($names); $compileInput.Add($roots); $compileInput.Add($paths); $compileInput.Add($sources)
+            $compileInput.Add([System.Text.Json.Nodes.JsonNode]::Parse('false'))
+            foreach ($part in $manifest['target'].AsArray()) { $compileInput.Add($part.DeepClone()) }
+            $inputPath = Join-Path $tests 'compile-input.json'
+            [IO.File]::WriteAllText($inputPath, $compileInput.ToJsonString())
+            if ((Get-Item $inputPath).Length -gt 16777216) { throw 'Authored test input exceeds its bounded fixture size' }
+            $evidence['input_sha256'] = (Get-FileHash $inputPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $artifact = Join-Path $tests 'regressions.chibip'
+            $null = Invoke-Host 'compile' @('--artifact', $compiler, '--entry', $manifest['entry'].ToString(), '--input', $inputPath,
+              '--backend', 'sljit', '--budget', '2000000000', '--timeout-ms', '120000', '--output-artifact', $artifact) 'sljit' 120000
+            $evidence['fixture_bytes'] = (Get-Item $artifact).Length
+            $evidence['fixture_sha256'] = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+            if (!$evidence.fixture_bytes) { throw 'Compilation produced an empty authored-test closure' }
+            $argumentsPath = Join-Path $tests 'arguments.json'
+            [IO.File]::WriteAllText($argumentsPath, '[]')
+            foreach ($backend in @('bytecode', 'sljit')) {
+              $output = Invoke-Host $backend @('--artifact', $artifact, '--entry', $map['entry'].ToString(), '--input', $argumentsPath,
+                '--backend', $backend, '--budget', '2000000000', '--timeout-ms', '30000') $backend 30000
+              $document = [System.Text.Json.JsonDocument]::Parse($output)
+              try {
+                $result = $document.RootElement
+                if ($result.ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or $result.GetArrayLength() -ne 1) { throw 'Authored tests returned an invalid result envelope' }
+                $values = @($result.EnumerateArray())
+                if ($values[0].ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or $values[0].GetArrayLength() -ne 0) {
+                  throw "$backend authored regression assertions failed: $output"
+                }
+              } finally { $document.Dispose() }
+            }
+            $evidence['passed'] = $true
+            Remove-Item -LiteralPath $artifact
+            "Authored regressions passed on bytecode and SLJIT; fixture SHA-256 $($evidence.fixture_sha256)" >> $env:GITHUB_STEP_SUMMARY
+          } catch {
+            $evidence['error'] = $_.Exception.Message
+            throw
+          } finally {
+            $evidence | ConvertTo-Json -Depth 8 | Set-Content "$tests/evidence.json"
+          }
       - name: Upload both compiler stages and evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -199,6 +352,9 @@ jobs:
             ${{ runner.temp }}/compiler-recovery-proof/stage1.stderr.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage2.stdout.txt
             ${{ runner.temp }}/compiler-recovery-proof/stage2.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/authored-tests/evidence.json
+            ${{ runner.temp }}/compiler-recovery-proof/authored-tests/*.stdout.txt
+            ${{ runner.temp }}/compiler-recovery-proof/authored-tests/*.stderr.txt
 
   compare:
     name: Compiler self-build across platforms
@@ -245,4 +401,58 @@ jobs:
           }
           if (@($digests | Select-Object -Unique).Count -ne 1) {
             throw 'The compiler stages differ across platforms with the validated bootstrap ABI'
+          }
+      - name: Require identical authored regressions on all three platforms
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fixtureDigests = @()
+          $sourceMapDigests = @()
+          $inputDigests = @()
+          foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
+            $root = "recovered/compiler-self-build-$platform"
+            $recovery = Get-Content "$root/evidence.json" -Raw | ConvertFrom-Json
+            $tests = Get-Content "$root/authored-tests/evidence.json" -Raw | ConvertFrom-Json
+            if ($tests.error -or $tests.passed -ne $true -or $tests.invocations.Count -ne 3 -or
+                $tests.revision -ne $recovery.revision -or $tests.compiler_sha256 -ne $recovery.compiler_sha256 -or
+                $tests.runtime_sha256 -ne $recovery.runtime_sha256 -or $tests.fixture_bytes -le 0 -or
+                $tests.fixture_sha256 -notmatch '^[a-f0-9]{64}$' -or $tests.source_map_sha256 -notmatch '^[a-f0-9]{64}$' -or
+                $tests.input_sha256 -notmatch '^[a-f0-9]{64}$') { throw "$platform has no successful authored-test evidence for its recovered compiler" }
+            foreach ($index in 0, 1, 2) {
+              $name = @('compile', 'bytecode', 'sljit')[$index]
+              $backend = @('sljit', 'bytecode', 'sljit')[$index]
+              $other = if ($backend -eq 'sljit') { 'bytecode' } else { 'sljit' }
+              $invocation = $tests.invocations[$index]
+              if ($invocation.name -ne $name -or $invocation.backend -ne $backend -or $invocation.exit_code -ne 0 -or
+                  $invocation.timed_out -ne $false -or $invocation.counts.$backend -le 0 -or $invocation.counts.$other -ne 0 -or
+                  $invocation.counts.wasm -ne 0 -or $invocation.counts.fallback -ne 0 -or $invocation.counts.overflow -ne 0) {
+                throw "$platform $name lacks exclusive requested-backend execution"
+              }
+              foreach ($stream in @('stdout', 'stderr')) {
+                $log = "$root/authored-tests/$name.$stream.txt"
+                if ((Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant() -ne $invocation."${stream}_sha256") {
+                  throw "$platform $name $stream differs from recorded evidence"
+                }
+              }
+              if ($name -ne 'compile') {
+                $document = [System.Text.Json.JsonDocument]::Parse([IO.File]::ReadAllText("$root/authored-tests/$name.stdout.txt"))
+                try {
+                  $result = $document.RootElement
+                  if ($result.ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or $result.GetArrayLength() -ne 1) { throw "$platform $name has an invalid result envelope" }
+                  $values = @($result.EnumerateArray())
+                  if ($values[0].ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or $values[0].GetArrayLength() -ne 0) {
+                    throw "$platform $name contains authored assertion failures"
+                  }
+                } finally { $document.Dispose() }
+              }
+            }
+            $fixtureDigests += $tests.fixture_sha256
+            $sourceMapDigests += $tests.source_map_sha256
+            $inputDigests += $tests.input_sha256
+            "$platform authored tests: $($tests.fixture_sha256), bytecode and SLJIT passed" >> $env:GITHUB_STEP_SUMMARY
+          }
+          if (@($fixtureDigests | Select-Object -Unique).Count -ne 1 -or
+              @($sourceMapDigests | Select-Object -Unique).Count -ne 1 -or
+              @($inputDigests | Select-Object -Unique).Count -ne 1) {
+            throw 'The authored source map, compile input or generated closure differs across platforms'
           }

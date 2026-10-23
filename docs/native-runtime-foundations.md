@@ -81,6 +81,10 @@ runner, stage the same complete production package but only the test fixture's
 entry `project:native_abi_checks:1:Tests:callable`. This selects a pure test
 entry; it does not filter production package files or maintain a second corpus.
 
+The [authored self-host aggregate](../test/selfhost/README.md) includes this pure
+entry in the compiler-recovery workflow, using recovered stage two and running
+both bytecode and SLJIT. That test wiring does not establish native execution.
+
 LLVM emitter integration, bootstrap and standalone native execution are
 separate checks. A source review or an authored test file is not execution
 evidence; report each exact tested revision and unavailable check separately.

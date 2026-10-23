@@ -2,9 +2,10 @@
 
 This additive slice implements pure policy for the all-first-party-Chibi
 migration. It does **not** change the current build default,
-`tools/compiler/runtime.json`, SDK installation, release publication, or any
-workflow. The runtime manifest pins compiler-only hosts; it is not a complete
-cold-build package. No new production Python, shell, C or CMake is introduced.
+`tools/compiler/runtime.json`, SDK installation or release publication. The
+compiler-recovery workflow exercises the pure policy, not a production resolver.
+The runtime manifest pins compiler-only hosts; it is not a complete cold-build
+package. No new production Python, shell, C or CMake is introduced.
 
 ## Selection policy
 
@@ -127,9 +128,11 @@ The bounded fixture has been compiled and run on the checksum-pinned Linux
 runtime host using the existing compiler closure. Execution evidence is recorded
 in the checkpoint report; full repository suites, macOS/Windows execution,
 network transport, installed SDK relocation and publication are separate gates.
-The fixture is not yet connected to the repository test dispatcher. Decoder,
-I/O adapter, production package creation, CI resolve-once wiring and channel
-promotion remain unimplemented; the existing compiler runtime pin stays intact.
+The fixture is included in the [authored self-host aggregate](../test/selfhost/README.md),
+which the compiler-recovery workflow compiles with recovered stage two and runs
+on bytecode and SLJIT. This is test wiring, not production bootstrap selection.
+Decoder, I/O adapter, production package creation, CI resolve-once selection and
+channel promotion remain unimplemented; the compiler runtime pin stays intact.
 
 This private module reuses `core:strings` rather than adding another text
 implementation. General helpers move to a shared package only with a real

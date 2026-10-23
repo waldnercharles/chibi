@@ -59,6 +59,7 @@ CPU_SELECTORS = {
     '--render-geometry': 'render-geometry',
     '--shader-graphs': 'shader-graphs',
     '--shader-bake': 'shader-bake',
+    '--shader-source-debug': 'shader-source-debug',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
     '--terrain-seams': 'terrain-seams',

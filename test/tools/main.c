@@ -30,6 +30,7 @@ int main(int argc, char **argv)
 #else
 #ifdef CHIBI_TEST_SHADER_BAKE
 void test_tool_shader_bake();
+void test_tool_shader_source_debug();
 #endif
 #ifdef CHIBI_TEST_TILEMAP
 void test_tool_tilemap();
@@ -939,11 +940,16 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 2 && !strcmp(argv[1], "--shader-bake")) {
+    if (argc == 2 && (!strcmp(argv[1], "--shader-bake") ||
+                      !strcmp(argv[1], "--shader-source-debug"))) {
 #ifdef CHIBI_TEST_SHADER_BAKE
         tool_init();
         pu_display_time(true);
-        test_tool_shader_bake();
+        if (!strcmp(argv[1], "--shader-source-debug")) {
+            test_tool_shader_source_debug();
+        } else {
+            test_tool_shader_bake();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

@@ -50,6 +50,8 @@ CHIBI_CPU_SELECTOR("--arena")
 /* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
 CHIBI_CPU_SELECTOR("--shader-graphs")
 CHIBI_CPU_SELECTOR("--shader-bake")
+/* Owned CPU intermediate/source snapshots; no device, files or resolver IO. */
+CHIBI_CPU_SELECTOR("--shader-source-debug")
 CHIBI_CPU_SELECTOR("--material-bake")
 CHIBI_CPU_SELECTOR("--environment-authoring")
 CHIBI_CPU_SELECTOR("--terrain-seams")

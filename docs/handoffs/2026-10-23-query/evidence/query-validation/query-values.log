@@ -1,0 +1,20 @@
+query lower: instruction 10: invalid argument type or default
+(FAILED: test/language/query_values.c (169): compile(sources[source], backends[b]))
+Running: query_system_shares_snapshot_with_guard_and_body (OK) (0.001888 secs)
+Running: query_nested_native_collections_bind_and_capture 
+Running: query_empty_systems_require_attached_instances (OK) (0.000190 secs)
+Running: query_values_capture_and_restart_iteration (OK) (0.000515 secs)
+Running: query_pure_helpers_can_mutate_their_own_collections (OK) (0.000644 secs)
+Running: query_guards_skip_later_computations (OK) (0.000271 secs)
+Running: query_value_bindings_and_headers_are_readonly (OK) (0.000437 secs)
+Running: query_optional_row_fields_narrow_in_body (OK) (0.000572 secs)
+Running: query_snapshots_observe_reduction_components (OK) (0.000094 secs)
+Running: query_pointer_aliases_preserve_reduction_targets (OK) (0.000278 secs)
+Running: query_pure_helper_failure_preserves_error (OK) (0.001168 secs)
+Running: query_nested_descriptions_capture_at_construction (OK) (0.000551 secs)
+Running: query_captures_existing_pointers_and_projects_component_fields (OK) (0.000541 secs)
+Running: query_returned_snapshots_survive_and_removed_references_fail (OK) (0.002032 secs)
+Running: query_scheduled_rows_survive_payload_collection (OK) (0.001912 secs)
+===============================================================
+Summary: Passed: 14 Failed: 1 Total: 15 Suites: 0 Asserts: 1448
+Test command wall time: 0.598s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,13 @@
+{
+  "status": "source-only query/task owner clarifications; all proposed cases unrun",
+  "before_sha256": "98ac5b1cd0ea39e4af20a6cbf49ee2ee73ca9456ecebedbd37baaea3a8476e5c",
+  "after_sha256": "e36513f89f4042f2e63a136f645cd7afb2ac139adec82bba5e559175504947d3",
+  "frozen_source_tree": "1a59410022d128108e7744cf2b5641047a44d713",
+  "query_only_successor_sha256": "239cdb35c8a856361bd9c52a8807d88ee6b31054b5c4fb1dd7449314ce427102",
+  "additional_query_source_sha256": {
+    "docs/code-language.md": "3236870d0c3aba1ec1926437cc327ad45a6ece87ab1f37bc3bc7d2c66c1cb847",
+    "test/language/query_values.c": "3e132ae503709bbdf29f03db7ebf3cfa371a4314bbe5db1dfb62d8b597c779b9",
+    "test/language/program.c": "ff49db36da653c4bf599db0bd097b49c397d7494a0f884b2d7cd01d52abc692f",
+    "src/execution/program.c": "d7e85ea3e0b88573b8ad219843da9a7b49c15911456c3204acdf4018dab4cd51"
+  }
+}

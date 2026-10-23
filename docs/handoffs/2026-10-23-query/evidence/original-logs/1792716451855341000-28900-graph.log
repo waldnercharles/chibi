@@ -1,0 +1,5 @@
+/Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/src/execution/query.c:3:10: fatal error: 'capabilities/catalog.h' file not found
+    3 | #include "capabilities/catalog.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+graph: the build failed

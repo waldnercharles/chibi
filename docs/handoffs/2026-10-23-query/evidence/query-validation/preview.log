@@ -1,0 +1,7 @@
+Running: sources_load_into_both_worlds_or_neither (OK) (0.013948 secs)
+Running: required_relationship_queries_publish_before_scenes (OK) (0.024595 secs)
+Running: scene_launch_prepares_what_overrides_name (OK) (0.000691 secs)
+Running: failed_scene_launch_destroys_entities_before_their_strings (OK) (0.000358 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 55
+Test command wall time: 1.134s; includes in-test fixture setup; external configuration/build excluded.

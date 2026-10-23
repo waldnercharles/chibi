@@ -1,0 +1,1219 @@
+{
+  "changed": {
+    "test/language/program.c": 4,
+    "test/language/semantic.c": 9
+  },
+  "failures": [
+    {
+      "file": "test/language/semantic.c",
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "error": "Query migration at 1:22: compact component provider and from source are both present; choose one source before migrating"
+    }
+  ],
+  "ledger": [
+    {
+      "file": "test/language/binding_benchmark.c",
+      "line": 460,
+      "function": "binding_schedule_rechecks_query_gates_and_uses_bounded_fallback",
+      "before": "Gate :: system( p:Position) where p.x > 0 { bind self.Velocity.x = p.x + 1; }",
+      "after": "Gate :: system( p:^Position , if p.x > 0) { bind self.Velocity.x = p.x + 1; }"
+    },
+    {
+      "file": "test/language/effect_analysis_chibi.c",
+      "line": 1290,
+      "function": "effect_analysis_actual_final_facts_replay_without_seed_discovery_claim",
+      "before": "E :: system(position: Position) where Touch() { Touch :: () -> bool { mutate(); return true; } }",
+      "after": "E :: system(position: ^Position , if Touch()) { Touch :: () -> bool { mutate(); return true; } }"
+    },
+    {
+      "file": "test/language/effect_analysis_chibi.c",
+      "line": 1292,
+      "function": "effect_analysis_actual_final_facts_replay_without_seed_discovery_claim",
+      "before": "E :: system(position: Position) where Deferred() { Deferred :: () -> bool { yield; return true; } }",
+      "after": "E :: system(position: ^Position , if Deferred()) { Deferred :: () -> bool { yield; return true; } }"
+    },
+    {
+      "file": "test/language/effect_analysis_chibi.c",
+      "line": 1294,
+      "function": "effect_analysis_actual_final_facts_replay_without_seed_discovery_claim",
+      "before": "E :: system(position: Position) { reduce position.x += position.y; }",
+      "after": "E :: system(position: ^Position) { reduce position.x += position.y; }"
+    },
+    {
+      "file": "test/language/effects.c",
+      "line": 123,
+      "function": "effects_query_checks_inferred_helpers_and_retained_reads",
+      "before": "Filter :: system() where Match(3) { Match :: (n: int) -> bool { local := n + 1; return local > 0; } }",
+      "after": "Filter :: system( if Match(3)) { Match :: (n: int) -> bool { local := n + 1; return local > 0; } }"
+    },
+    {
+      "file": "test/language/effects.c",
+      "line": 128,
+      "function": "effects_query_checks_inferred_helpers_and_retained_reads",
+      "before": "Filter :: system() where Match() { Match :: () -> bool { Mutate(); return true; } }",
+      "after": "Filter :: system( if Match()) { Match :: () -> bool { Mutate(); return true; } }"
+    },
+    {
+      "file": "test/language/effects.c",
+      "line": 132,
+      "function": "effects_query_checks_inferred_helpers_and_retained_reads",
+      "before": "Filter :: system() where Match() { count: retain int = 0; Match :: () -> bool { return count > 0; } }",
+      "after": "Filter :: system( if Match()) { count: retain int = 0; Match :: () -> bool { return count > 0; } }"
+    },
+    {
+      "file": "test/language/effects.c",
+      "line": 206,
+      "function": "effects_imports_publish_transitive_effects_before_query_analysis",
+      "before": "Filter :: system() where A.Check() {}",
+      "after": "Filter :: system( if A.Check()) {}"
+    },
+    {
+      "file": "test/language/effects.c",
+      "line": 211,
+      "function": "effects_imports_publish_transitive_effects_before_query_analysis",
+      "before": "Filter :: system() where B.Read() {}",
+      "after": "Filter :: system( if B.Read()) {}"
+    },
+    {
+      "file": "test/language/format.c",
+      "line": 620,
+      "function": "source_format_reductions",
+      "before": "Damage :: system(health:Health){reduce health.damage+=2;reduce min (health.damage,3);reduce max(health.damage,4);reduce unordered health.damage+=5; }",
+      "after": "Damage :: system(health:^Health){reduce health.damage+=2;reduce min (health.damage,3);reduce max(health.damage,4);reduce unordered health.damage+=5; }"
+    },
+    {
+      "file": "test/language/format.c",
+      "line": 626,
+      "function": "source_format_reductions",
+      "before": "Damage :: system(health: Health) {\n    reduce health.damage += 2;\n    reduce min(health.damage, 3);\n    reduce max(health.damage, 4);\n    reduce unordered health.damage += 5;\n}\n",
+      "after": "Damage :: system(health: ^Health) {\n    reduce health.damage += 2;\n    reduce min(health.damage, 3);\n    reduce max(health.damage, 4);\n    reduce unordered health.damage += 5;\n}\n"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 787,
+      "function": "program_handlers_name_payload_fields",
+      "before": "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = event.dt; } }",
+      "after": "M :: system(p: ^Position) { on Impulse :: (enabled: bool) { p.x = event.dt; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 852,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(position: Position, velocity: Velocity) on Tick :: (dt: double) { position.x += velocity.x * dt; }",
+      "after": "Motion :: system(position: ^Position, velocity: ^Velocity)      { position.x += velocity.x * dt; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 867,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: (dt: double) { p.x += event.dt; }",
+      "after": "Motion :: system(p: ^Position)      { p.x += event.dt; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 870,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: (dt: double) { Step :: () -> double { return dt; } p.x += Step(); }",
+      "after": "Motion :: system(p: ^Position)      { Step :: () -> double { return dt; } p.x += Step(); }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 876,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: (dt: double) {\nStep :: () { return dt; }\np.x += Step(); }",
+      "after": "Motion :: system(p: ^Position)      {\nStep :: () { return dt; }\np.x += Step(); }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 879,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: (dt: double) {\non Impulse :: (amount: double) { p.x += dt; } }",
+      "after": "Motion :: system(p: ^Position)      {\non Impulse :: (amount: double) { p.x += dt; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 882,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
+      "after": "Motion :: system(p: ^Position)     { p.x += 1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 884,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) on Tick :: (dt: double) {\nbind self.Position.x = dt;\np.x += 1; }",
+      "after": "Motion :: system(p: ^Position)      {\nbind self.Position.x = dt;\np.x += 1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 887,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) { p.x += event.dt; }",
+      "after": "Motion :: system(p: ^Position) { p.x += event.dt; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 888,
+      "function": "program_systems_name_their_step",
+      "before": "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: double) { p.x += dt; }",
+      "after": "Motion :: system(p: ^Position , if dt > 0)      { p.x += dt; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 936,
+      "function": "program_query_owner_snapshots_preserve_parallel_effects",
+      "before": "Motion :: system( position: Position, velocity: Velocity) on Tick :: (dt: float s) { position.x += velocity.x * dt; position.y = position.x + velocity.x; }",
+      "after": "Motion :: system( position: ^Position, velocity: ^Velocity)       { position.x += velocity.x * dt; position.y = position.x + velocity.x; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 963,
+      "function": "program_system_membership_exit_cancels_pending_work",
+      "before": "Motion :: system(position: Position, velocity: Velocity) on Tick :: (dt: float s) {\n    position.x += velocity.x * dt;\n    await Delay(10);\n    position.y = 99;\n}\n",
+      "after": "Motion :: system(position: ^Position, velocity: ^Velocity)       {\n    position.x += velocity.x * dt;\n    await Delay(10);\n    position.y = 99;\n}\n"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1027,
+      "function": "program_query_sources_resolve_current_targets_and_nearest_ancestors",
+      "before": "Follow :: system( p: Position, aim: Targets.Position?, team: Position from ancestor(ChildOf)) where not Velocity { p.x = team.x; if aim { p.y = aim.x; } }",
+      "after": "Follow :: system( p: ^Position, aim: ^Position? from Targets, team: ^Position from ancestor(ChildOf) , if not Velocity) { p.x = team.x; if aim { p.y = aim.x; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1096,
+      "function": "program_query_required_path_keeps_one_instance_per_root",
+      "before": "Follow :: system( p: Position, aim: Targets.Position) where not self.Velocity { p.x += 1; aim.y += 1; }",
+      "after": "Follow :: system( p: ^Position, aim: ^Position from Targets , if not self.Velocity) { p.x += 1; aim.y += 1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1150,
+      "function": "program_query_joins_filter_targets_and_refresh_across_suspension",
+      "before": "Follow :: system( p: Position from self) join aim: Targets.Position where not self.Velocity and Targets.Velocity and has(Likes) { count: retain double = 0; count += 1; p.x = count; await Delay(1); p.y = aim.x; }",
+      "after": "Follow :: system( p: ^Position from self , aim: ^Position from Targets , if not self.Velocity and Targets.Velocity and has(Likes)) { count: retain double = 0; count += 1; p.x = count; await Delay(1); p.y = aim.x; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1238,
+      "function": "program_query_optional_joins_preserve_missing_target_exclusions",
+      "before": "Follow :: system( p: Position) join aim: Targets.Position? where not self.Velocity and not Targets.Velocity { p.y += 1; if aim { p.x = aim.x; } }",
+      "after": "Follow :: system( p: ^Position , aim: ^Position? from Targets , if not self.Velocity and not Targets.Velocity) { p.y += 1; if aim { p.x = aim.x; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1284,
+      "function": "program_relationship_loops_stream_targets_explicitly",
+      "before": "Sum :: system( p: Position) where not Velocity { ticks: retain double = 0; ticks += 1; p.y = ticks; p.x = 0; for target in self.Targets { if not target.Position { continue; } p.x += target.Position.x; } }",
+      "after": "Sum :: system( p: ^Position , if not Velocity) { ticks: retain double = 0; ticks += 1; p.y = ticks; p.x = 0; for target in self.Targets { if not target.Position { continue; } p.x += target.Position.x; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1327,
+      "function": "program_relationship_loops_stream_targets_explicitly",
+      "before": "Bad :: system( p: Position) { for target in self.Targets { await Delay(1); } }",
+      "after": "Bad :: system( p: ^Position) { for target in self.Targets { await Delay(1); } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1438,
+      "function": "program_query_chained_variables_filter_values_and_keep_event_tuples",
+      "before": "Chained :: system( p:Position) join middle in self.Targets join leaf in middle.Leaves join mid:Position from middle join aim:Position from leaf where aim.x > mid.x { ticks:retain double=0; seen:retain double=0; on Impulse :: (amount: double, enabled: bool) { if enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
+      "after": "Chained :: system( p:^Position , middle in self.Targets , leaf in middle.Leaves , mid:^Position from middle , aim:^Position from leaf , if aim.x > mid.x) { ticks:retain double=0; seen:retain double=0; on Impulse :: (amount: double, enabled: bool) { if enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1580,
+      "function": "program_query_changed_preserves_busy_published_writes",
+      "before": "Changed :: system( p:Position) where changed(p) and Accept(p.x) { Accept :: (value:double)->bool { return value>=0; } calls:retain double=0; calls+=1; await Delay(1); }",
+      "after": "Changed :: system( p:^Position , if changed(p) and Accept(p.x)) { Accept :: (value:double)->bool { return value>=0; } calls:retain double=0; calls+=1; await Delay(1); }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1639,
+      "function": "program_query_admission_is_frozen_before_row_writes",
+      "before": "Snapshot :: system( p:Position) join target in self.Targets where p.x==0 { p.x+=1; }",
+      "after": "Snapshot :: system( p:^Position , target in self.Targets , if p.x==0) { p.x+=1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1673,
+      "function": "program_query_value_filters_preserve_short_circuit_failure_order",
+      "before": "Ordered :: system() where Risky(int(self.Position.x)) and has(Velocity) { Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; } }",
+      "after": "Ordered :: system( if Risky(int(self.Position.x)) and has(Velocity)) { Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1676,
+      "function": "program_query_value_filters_preserve_short_circuit_failure_order",
+      "before": "Guarded :: system() where has(Velocity) and Risky(int(self.Position.x)) { Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; } }",
+      "after": "Guarded :: system( if has(Velocity) and Risky(int(self.Position.x))) { Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; } }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1722,
+      "function": "program_query_predicates_reuse_bounded_scratch_and_fresh_values",
+      "before": "Filter :: system( p:Position) where Above(p.x) and Below(p.x) and p.x<100 { Above :: (value:double)->bool { return Positive(value); } Positive :: (value:double)->bool { return value>0; } Below :: (value:double)->bool { return value<4; } p.y+=1; }",
+      "after": "Filter :: system( p:^Position , if Above(p.x) and Below(p.x) and p.x<100) { Above :: (value:double)->bool { return Positive(value); } Positive :: (value:double)->bool { return value>0; } Below :: (value:double)->bool { return value<4; } p.y+=1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1757,
+      "function": "program_query_predicates_reuse_bounded_scratch_and_fresh_values",
+      "before": "Filter :: system( p:Position) where Above(p.x) and Below(p.x) { Above :: (value:double)->bool { return Negative(value); } Negative :: (value:double)->bool { return value<0; } Below :: (value:double)->bool { return value<4; } p.y+=1; }",
+      "after": "Filter :: system( p:^Position , if Above(p.x) and Below(p.x)) { Above :: (value:double)->bool { return Negative(value); } Negative :: (value:double)->bool { return value<0; } Below :: (value:double)->bool { return value<4; } p.y+=1; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1873,
+      "function": "program_system_shared_state_survives_membership_and_is_registration_owned",
+      "before": "Shared :: system(position: Position) { total: retain double = 0; position.x += 1; total += 1; position.y = total; }",
+      "after": "Shared :: system(position: ^Position) { total: retain double = 0; position.x += 1; total += 1; position.y = total; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 9653,
+      "function": "program_reduction_query_rows_count_filtered_candidates",
+      "before": "Count :: system( p:Position,v:Velocity) where v.x>0 { reduce p.x+=v.x; }",
+      "after": "Count :: system( p:^Position,v:^Velocity , if v.x>0) { reduce p.x+=v.x; }"
+    },
+    {
+      "file": "test/language/query_boundary.c",
+      "line": 942,
+      "function": "query_binding_authored_join_lowers_without_host_banks",
+      "before": "Direct :: system( root:Position) join entity in self.Targets where entity != self { if entity == self {} }",
+      "after": "Direct :: system( root:^Position , entity in self.Targets , if entity != self) { if entity == self {} }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 261,
+      "function": "reductions_prepared_ordered_fold_preserves_storage_and_clamps",
+      "before": "Fold :: system(input: ReductionInput) {reduce input.target.ReductionResult.total += input.amount;reduce input.target.ReductionResult.clamped += input.amount;reduce input.target.ReductionResult.count += 1;reduce input.target.ReductionResult.small += 1;reduce input.target.ReductionResult.single += 1;reduce input.target.ReductionResult.wide += 1; }",
+      "after": "Fold :: system(input: ^ReductionInput) {reduce input.target.ReductionResult.total += input.amount;reduce input.target.ReductionResult.clamped += input.amount;reduce input.target.ReductionResult.count += 1;reduce input.target.ReductionResult.small += 1;reduce input.target.ReductionResult.single += 1;reduce input.target.ReductionResult.wide += 1; }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 330,
+      "function": "reductions_min_max_preserve_candidate_nan_and_signed_zero",
+      "before": "Bounds :: system(input: ReductionInput) {reduce min(input.target.ReductionResult.minimum, input.amount);reduce max(input.target.ReductionResult.maximum, input.amount); }",
+      "after": "Bounds :: system(input: ^ReductionInput) {reduce min(input.target.ReductionResult.minimum, input.amount);reduce max(input.target.ReductionResult.maximum, input.amount); }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 357,
+      "function": "reductions_failures_and_discard_do_not_publish_partial_results",
+      "before": "Sum :: system(input: ReductionInput) {reduce input.target.ReductionResult.total += input.amount; }",
+      "after": "Sum :: system(input: ^ReductionInput) {reduce input.target.ReductionResult.total += input.amount; }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 393,
+      "function": "reductions_scalar_helper_closure_streams_and_preserves_fallbacks",
+      "before": "Sum :: system(input: ReductionInput) {Twice :: (amount: double) -> double { return amount * 2; }Adjust :: (amount: double) -> double { adjusted := Twice(amount);if adjusted > 0 { adjusted += 1; } return adjusted; }reduce input.target.ReductionResult.total += Adjust(input.amount); }",
+      "after": "Sum :: system(input: ^ReductionInput) {Twice :: (amount: double) -> double { return amount * 2; }Adjust :: (amount: double) -> double { adjusted := Twice(amount);if adjusted > 0 { adjusted += 1; } return adjusted; }reduce input.target.ReductionResult.total += Adjust(input.amount); }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 398,
+      "function": "reductions_scalar_helper_closure_streams_and_preserves_fallbacks",
+      "before": "Sum :: system(input: ReductionInput) {Read :: (extra: double) -> double { if self.ReductionInput {return self.ReductionInput.amount + extra; } return extra; }reduce input.target.ReductionResult.total += Read(0); }",
+      "after": "Sum :: system(input: ^ReductionInput) {Read :: (extra: double) -> double { if self.ReductionInput {return self.ReductionInput.amount + extra; } return extra; }reduce input.target.ReductionResult.total += Read(0); }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 402,
+      "function": "reductions_scalar_helper_closure_streams_and_preserves_fallbacks",
+      "before": "Sum :: system(input: ReductionInput) {First :: (amounts: double[]) -> double { return amounts[0]; }reduce input.target.ReductionResult.total += First([input.amount]); }",
+      "after": "Sum :: system(input: ^ReductionInput) {First :: (amounts: double[]) -> double { return amounts[0]; }reduce input.target.ReductionResult.total += First([input.amount]); }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 405,
+      "function": "reductions_scalar_helper_closure_streams_and_preserves_fallbacks",
+      "before": "Sum :: system(input: ReductionInput) {Unused :: (amount: double) -> double { return amount * 2; }reduce input.target.ReductionResult.total += input.amount; }",
+      "after": "Sum :: system(input: ^ReductionInput) {Unused :: (amount: double) -> double { return amount * 2; }reduce input.target.ReductionResult.total += input.amount; }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 581,
+      "function": "reductions_mixed_public_ir_preserves_serial_failure_owner",
+      "before": "Mixed :: system(result: ReductionResult) { reduce result.total += 1; }",
+      "after": "Mixed :: system(result: ^ReductionResult) { reduce result.total += 1; }"
+    },
+    {
+      "file": "test/language/reductions.c",
+      "line": 722,
+      "function": "reductions_effects_include_component_payload_reads",
+      "before": "Add :: system(result: ReductionResult) { reduce result.total += 1; }",
+      "after": "Add :: system(result: ^ReductionResult) { reduce result.total += 1; }"
+    },
+    {
+      "file": "test/language/retention.c",
+      "line": 164,
+      "function": "retention_system_owner_survives_row_exit_and_registration_isolation",
+      "before": "Counter :: system( row: RetentionMarker) { total: retain int = 0; visits: retain int = 0; Next :: () { calls:retain int=0; calls+=1; } total += 1; visits += 1; Next(); }",
+      "after": "Counter :: system( row: ^RetentionMarker) { total: retain int = 0; visits: retain int = 0; Next :: () { calls:retain int=0; calls+=1; } total += 1; visits += 1; Next(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 407,
+      "function": "language_system_invocation_locals_cross_calls_only_as_arguments",
+      "before": "Motion :: system(position: Position) { step := position.x; Apply :: (value: float) { position.y = value; } Apply(step); }",
+      "after": "Motion :: system(position: ^Position) { step := position.x; Apply :: (value: float) { position.y = value; } Apply(step); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 413,
+      "function": "language_system_invocation_locals_cross_calls_only_as_arguments",
+      "before": "Motion :: system(position: Position) { step := position.x; Apply :: () { position.y = step; } Apply(); }",
+      "after": "Motion :: system(position: ^Position) { step := position.x; Apply :: () { position.y = step; } Apply(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 428,
+      "function": "language_optional_component_requires_presence_guard",
+      "before": "Motion :: system(position: Position?) { position.x = 1; }",
+      "after": "Motion :: system(position: ^Position?) { position.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 437,
+      "function": "language_optional_component_requires_presence_guard",
+      "before": "Motion :: system(position: Position?) { if (position) { position.x = 1; } }",
+      "after": "Motion :: system(position: ^Position?) { if (position) { position.x = 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 441,
+      "function": "language_optional_component_requires_presence_guard",
+      "before": "Motion :: system(position: Position?) { Change :: () { mutate(); } if position { Change(); position.x = 1; } }",
+      "after": "Motion :: system(position: ^Position?) { Change :: () { mutate(); } if position { Change(); position.x = 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 461,
+      "function": "language_coalesce_types_its_operands",
+      "before": "Motion :: system(position: Position?) { x := position ?? position; }",
+      "after": "Motion :: system(position: ^Position?) { x := position ?? position; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 474,
+      "function": "language_reductions_resolve_stored_fields_and_membership",
+      "before": "Motion :: system(position: Position?) where has(Position) { Amount :: () -> float { return 2; } if position { reduce position.x += Amount(); reduce min(position.x, 3); reduce max(position.y, 4); } }",
+      "after": "Motion :: system(position: ^Position? , if has(Position)) { Amount :: () -> float { return 2; } if position { reduce position.x += Amount(); reduce min(position.x, 3); reduce max(position.y, 4); } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 491,
+      "function": "language_reductions_resolve_stored_fields_and_membership",
+      "before": "Motion :: system(position: Position) { reduce self.Position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { reduce self.Position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 493,
+      "function": "language_reductions_resolve_stored_fields_and_membership",
+      "before": "Motion :: system(position: Position?) { if position != nil { reduce position.x += 1; } }",
+      "after": "Motion :: system(position: ^Position?) { if position != nil { reduce position.x += 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 502,
+      "function": "language_reductions_require_system_component_fields",
+      "before": "Motion :: system(position: Position) { reduce position += position; }",
+      "after": "Motion :: system(position: ^Position) { reduce position^ += position^; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 503,
+      "function": "language_reductions_require_system_component_fields",
+      "before": "Motion :: system(position: Placement) { reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Placement) { reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 504,
+      "function": "language_reductions_require_system_component_fields",
+      "before": "Motion :: system(position: Position?) { reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position?) { reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 513,
+      "function": "language_reductions_require_system_component_fields",
+      "before": "Motion :: system(position: Position) { Update :: () { reduce position.x += 1; } Update(); }",
+      "after": "Motion :: system(position: ^Position) { Update :: () { reduce position.x += 1; } Update(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 565,
+      "function": "language_reduction_producers_cannot_suspend_or_start_tasks",
+      "before": "Motion :: system(position: Position) { reduce position.x += 1; yield; }",
+      "after": "Motion :: system(position: ^Position) { reduce position.x += 1; yield; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 567,
+      "function": "language_reduction_producers_cannot_suspend_or_start_tasks",
+      "before": "Motion :: system(position: Position) { Work :: () { yield; } Work(); reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { Work :: () { yield; } Work(); reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 573,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce unordered position.x += 1; reduce unordered position.y += 2; }",
+      "after": "Motion :: system(position: ^Position) { reduce unordered position.x += 1; reduce unordered position.y += 2; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 584,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(unordered: Position) { reduce unordered.x += 1; }",
+      "after": "Motion :: system(unordered: ^Position) { reduce unordered.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 586,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce unordered position.x += 1; reduce position.y += 2; }",
+      "after": "Motion :: system(position: ^Position) { reduce unordered position.x += 1; reduce position.y += 2; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 588,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce min(position.y, 2); reduce unordered position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { reduce min(position.y, 2); reduce unordered position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 602,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce unordered position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { reduce unordered position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 606,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 611,
+      "function": "language_unordered_reductions_require_unbounded_isolated_components",
+      "before": "Motion :: system(position: Position) { reduce unordered position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { reduce unordered position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 627,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Follow :: system(p: Position, aim: Targets.Position?, up: Placement from ancestor(ChildOf) ) where (Position or Placement) and not self.Placement { if aim { p.x = aim.x + up.x; } }",
+      "after": "Follow :: system(p: ^Position, aim: ^Position? from Targets, up: ^Placement from ancestor(ChildOf)  , if (Position or Placement) and not self.Placement) { if aim { p.x = aim.x + up.x; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 645,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Follow :: system(target: Targets.Position ) without Position { target.x += 1; }",
+      "after": "Follow :: system(target: ^Position from Targets  , if ! Position) { target.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 650,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Bad :: system(p: Position ) without Position { p.x = 1; }",
+      "after": "Bad :: system(p: ^Position  , if ! Position) { p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 654,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Inherit :: system(p: Position from ancestor(ChildOf) ) without Position { p.x += 1; }",
+      "after": "Inherit :: system(p: ^Position from ancestor(ChildOf)  , if ! Position) { p.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 659,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Inherit :: system(p: Position from self_or_ancestor(ChildOf) ) without Position { p.x += 1; }",
+      "after": "Inherit :: system(p: ^Position from self_or_ancestor(ChildOf)  , if ! Position) { p.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 664,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Bad :: system(p: Likes.Position ) { p.x = 1; }",
+      "after": "Bad :: system(p: ^Position from Likes ) { p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 670,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Bad :: system(p: Position ) where target.Position { p.x = 1; }",
+      "after": "Bad :: system(p: ^Position  , if target.Position) { p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 672,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Safe :: system(p: Position? ) { if p { p.x = 1; p.y = 2; } }",
+      "after": "Safe :: system(p: ^Position? ) { if p { p.x = 1; p.y = 2; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 674,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Waiting :: system(p: Position? ) { if p { yield; p.x = 1; } }",
+      "after": "Waiting :: system(p: ^Position? ) { if p { yield; p.x = 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 686,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Changed :: system(p: Position? ) { if p { mutate(); p.x = 1; } }",
+      "after": "Changed :: system(p: ^Position? ) { if p { mutate(); p.x = 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 698,
+      "function": "language_query_header_resolves_boolean_filters_and_sources",
+      "before": "Builtin :: system(p: ChildOf.Position ) { for target in self.ChildOf {} }",
+      "after": "Builtin :: system(p: ^Position from ChildOf ) { for target in self.ChildOf {} }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 724,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system(p: Position from self ) join aim: Position? from Targets join up: Placement from ancestor(ChildOf) where self.Position and not Targets.Placement and ancestor(ChildOf).Position and has(Likes) { if aim { p.x = aim.x + up.x; } }",
+      "after": "Follow :: system(p: ^Position from self  , aim: ^Position? from Targets , up: ^Placement from ancestor(ChildOf) , if self.Position and not Targets.Placement and ancestor(ChildOf).Position and has(Likes)) { if aim { p.x = aim.x + up.x; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 746,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system(p: Position ) join aim: Targets.Position { p.x = aim.x; }",
+      "after": "Follow :: system(p: ^Position  , aim: ^Position from Targets) { p.x = aim.x; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 748,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system() join aim: Targets.Position? where not Targets.Placement { if aim { aim.x = 1; } }",
+      "after": "Follow :: system(  aim: ^Position? from Targets , if not Targets.Placement) { if aim { aim.x = 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 751,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system(p: Position ) where has(Targets.Position) or not has(Likes) { p.x = 1; }",
+      "after": "Follow :: system(p: ^Position  , if has(Targets.Position) or not has(Likes)) { p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 753,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system(p: Position ) where self_or_ancestor(ChildOf).Placement { p.x = 1; }",
+      "after": "Follow :: system(p: ^Position  , if self_or_ancestor(ChildOf).Placement) { p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 755,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Follow :: system(p: Position ) join up: Position from ancestor(/* parent */ ChildOf /* edge */) where has(/* any target */ Likes) and self_or_ancestor(/* provider */ ChildOf).Position { p.x = up.x; }",
+      "after": "Follow :: system(p: ^Position  , up: ^Position from ancestor(/* parent */ ChildOf /* edge */) , if has(/* any target */ Likes) and self_or_ancestor(/* provider */ ChildOf).Position) { p.x = up.x; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 767,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system() join p: Position {}",
+      "after": "Bad :: system(  p: ^Position) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 768,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system() join p: Targets.Position from self {}",
+      "after": "Bad :: system(  p: ^Targets.Position from self) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 769,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system() join p: Likes.Position {}",
+      "after": "Bad :: system(  p: ^Position from Likes) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 770,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system(p: Position ) where Likes.Placement {}",
+      "after": "Bad :: system(p: ^Position  , if Likes.Placement) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 771,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system(p: Position ) join aim: Targets.Position? { if aim { yield; p.x = aim.x; } }",
+      "after": "Bad :: system(p: ^Position  , aim: ^Position? from Targets) { if aim { yield; p.x = aim.x; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 773,
+      "function": "language_query_joins_and_filters_share_source_rules",
+      "before": "Bad :: system(p: Position ) join aim: Targets.Position? where Targets.Position { p.x = aim.x; }",
+      "after": "Bad :: system(p: ^Position  , aim: ^Position? from Targets , if Targets.Position) { p.x = aim.x; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 795,
+      "function": "language_query_generators_bind_rows_and_pure_value_filters",
+      "before": "Follow :: system(p: Position ) join target in self.Targets join next in target.Likes join aim: Position? from next where Positive(p.x) and (aim and aim.x > p.x) and changed(aim) and has(target.Likes) and not has(next.Placement) { Positive :: (x: float) -> bool { positive := x > 0; return positive; } if aim { p.x = aim.x; } }",
+      "after": "Follow :: system(p: ^Position  , target in self.Targets , next in target.Likes , aim: ^Position? from next , if Positive(p.x) and (aim and aim.x > p.x) and changed(aim) and has(target.Likes) and not has(next.Placement)) { Positive :: (x: float) -> bool { positive := x > 0; return positive; } if aim { p.x = aim.x; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 905,
+      "function": "language_derived_component_is_read_only",
+      "before": "Follow :: system(placement: Placement, position: Position) { position.x = placement.x; }",
+      "after": "Follow :: system(placement: ^Placement, position: ^Position) { position.x = placement.x; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 908,
+      "function": "language_derived_component_is_read_only",
+      "before": "Follow :: system(placement: Placement) { placement.x = 1; }",
+      "after": "Follow :: system(placement: ^Placement) { placement.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1235,
+      "function": "language_vector_operator_resolves_catalog_identity",
+      "before": "Motion :: system(position: Position) { position = position + position; }",
+      "after": "Motion :: system(position: ^Position) { position^ = position^ + position^; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1832,
+      "function": "language_units_follow_constant_and_state_initializers",
+      "before": "Move :: system(body: Body) { elapsed := dt; if true { body.x = elapsed; } }",
+      "after": "Move :: system(body: ^Body) { elapsed := dt; if true { body.x = elapsed; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1835,
+      "function": "language_units_follow_constant_and_state_initializers",
+      "before": "Move :: system(body: Body) { elapsed: retain = dt; if true { body.x = elapsed; } }",
+      "after": "Move :: system(body: ^Body) { elapsed: retain = dt; if true { body.x = elapsed; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1871,
+      "function": "language_units_follow_constant_and_state_initializers",
+      "before": "Move :: system(body: Body) { elapsed: retain = dt; if true { set_measure<elapsed>(body.x); } }",
+      "after": "Move :: system(body: ^Body) { elapsed: retain = dt; if true { set_measure<elapsed>(body.x); } }"
+    },
+    {
+      "file": "test/language/source_assets.c",
+      "line": 454,
+      "function": "source_authored_relationship_rows_retire_and_restart_on_membership_change",
+      "before": "Rows :: system(h: Health) join target in self.Targets { visits: retain int = 0; visits += 1 }",
+      "after": "Rows :: system(h: ^Health , target in self.Targets) { visits: retain int = 0; visits += 1 }"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 231,
+      "function": "<global>",
+      "before": "ReduceA :: system(t:ReductionTotals){reduce t.total += 10000000000000000; reduce t.total += -10000000000000000;reduce t.single += 16777216; reduce t.single += -16777216;reduce t.count += 1;reduce t.bounded += 100; reduce t.bounded += -1;reduce t.limited += 100; reduce t.limited += -1;reduce min(t.minimum,-4); reduce max(t.maximum,4);}",
+      "after": "ReduceA :: system(t:^ReductionTotals){reduce t.total += 10000000000000000; reduce t.total += -10000000000000000;reduce t.single += 16777216; reduce t.single += -16777216;reduce t.count += 1;reduce t.bounded += 100; reduce t.bounded += -1;reduce t.limited += 100; reduce t.limited += -1;reduce min(t.minimum,-4); reduce max(t.maximum,4);}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 237,
+      "function": "<global>",
+      "before": "ReduceB :: system(t:ReductionTotals){reduce t.total += 1; reduce t.single += 1; reduce t.count += 1;reduce t.bounded += 100; reduce t.bounded += -1;reduce t.limited += 100; reduce t.limited += -1;reduce min(t.minimum,-6); reduce max(t.maximum,6);}",
+      "after": "ReduceB :: system(t:^ReductionTotals){reduce t.total += 1; reduce t.single += 1; reduce t.count += 1;reduce t.bounded += 100; reduce t.bounded += -1;reduce t.limited += 100; reduce t.limited += -1;reduce min(t.minimum,-6); reduce max(t.maximum,6);}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 251,
+      "function": "source_reductions_publish_before_dependent_filtered_query",
+      "before": "Observe :: system( t:ReductionTotals, s:ReductionSeen) where t.total == 1 and changed(t) {s.total=t.total; s.count=t.count; s.hits+=1;}",
+      "after": "Observe :: system( t:^ReductionTotals, s:^ReductionSeen , if t.total == 1 and changed(t)) {s.total=t.total; s.count=t.count; s.hits+=1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 329,
+      "function": "source_reductions_keep_row_order_and_comparison_select_values",
+      "before": "Ordered :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce min(c.target.ReductionTotals.minimum,c.candidate);reduce max(c.target.ReductionTotals.maximum,c.candidate);}",
+      "after": "Ordered :: system(c:^ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce min(c.target.ReductionTotals.minimum,c.candidate);reduce max(c.target.ReductionTotals.maximum,c.candidate);}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 347,
+      "function": "source_reductions_keep_row_order_and_comparison_select_values",
+      "before": "Zero :: system(t:ReductionTotals){reduce min(t.minimum,-0.0);reduce max(t.maximum,-0.0);}",
+      "after": "Zero :: system(t:^ReductionTotals){reduce min(t.minimum,-0.0);reduce max(t.maximum,-0.0);}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 363,
+      "function": "source_reductions_discard_failed_system_and_later_peers",
+      "before": "Earlier :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += 1;}",
+      "after": "Earlier :: system(c:^ReductionContribution){reduce c.target.ReductionTotals.total += 1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 366,
+      "function": "source_reductions_discard_failed_system_and_later_peers",
+      "before": "Failed :: system(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}",
+      "after": "Failed :: system(c:^ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 369,
+      "function": "source_reductions_discard_failed_system_and_later_peers",
+      "before": "Later :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += 100;}",
+      "after": "Later :: system(c:^ReductionContribution){reduce c.target.ReductionTotals.total += 100;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 734,
+      "function": "source_reductions_preflight_all_records_before_publication",
+      "before": "Preflight :: system(t:ReductionTotals){reduce t.total += 1;}",
+      "after": "Preflight :: system(t:^ReductionTotals){reduce t.total += 1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 949,
+      "function": "source_reductions_cancel_later_paused_peer_after_earlier_failure",
+      "before": "Failed :: system(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}",
+      "after": "Failed :: system(c:^ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 953,
+      "function": "source_reductions_cancel_later_paused_peer_after_earlier_failure",
+      "before": "Later :: system(c:ReductionContribution){\nreduce c.target.ReductionTotals.total += 1;\nreduce c.target.ReductionTotals.total += 2;\n}",
+      "after": "Later :: system(c:^ReductionContribution){\nreduce c.target.ReductionTotals.total += 1;\nreduce c.target.ReductionTotals.total += 2;\n}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 992,
+      "function": "source_reductions_resume_post_physics_without_replaying_prior_stages",
+      "before": "Paused :: system(t:ReductionTotals){\nreduce t.total += 1;\nreduce t.total += 2;\n}",
+      "after": "Paused :: system(t:^ReductionTotals){\nreduce t.total += 1;\nreduce t.total += 2;\n}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 998,
+      "function": "source_reductions_resume_post_physics_without_replaying_prior_stages",
+      "before": "Consumer :: system(t:ReductionTotals,s:ReductionSeen){s.total=t.total;s.hits+=1;}",
+      "after": "Consumer :: system(t:^ReductionTotals,s:^ReductionSeen){s.total=t.total;s.hits+=1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 1171,
+      "function": "source_reductions_discard_paused_log_when_descriptor_edit_restarts_phase",
+      "before": "B :: system(c:ReductionContribution){\nreduce c.target.ReductionTotals.total += c.amount;\nreduce c.target.ReductionTotals.total += c.amount;\n}",
+      "after": "B :: system(c:^ReductionContribution){\nreduce c.target.ReductionTotals.total += c.amount;\nreduce c.target.ReductionTotals.total += c.amount;\n}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 1428,
+      "function": "source_parallel_rows_keep_order_and_discard_failed_dispatch",
+      "before": "Rows :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce c.target.ReductionTotals.count += 1;}",
+      "after": "Rows :: system(c:^ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce c.target.ReductionTotals.count += 1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 1505,
+      "function": "source_parallel_rows_publish_through_scheduler_hook",
+      "before": "Rows :: system(c:ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}",
+      "after": "Rows :: system(c:^ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 1508,
+      "function": "source_parallel_rows_publish_through_scheduler_hook",
+      "before": "Observe :: system( t:ReductionTotals, s:ReductionSeen) where t.total == 256 {s.total=t.total; s.hits+=1;}",
+      "after": "Observe :: system( t:^ReductionTotals, s:^ReductionSeen , if t.total == 256) {s.total=t.total; s.hits+=1;}"
+    },
+    {
+      "file": "test/runtime/source_reductions.c",
+      "line": 1551,
+      "function": "source_parallel_rows_fall_back_for_inspection_and_profiling",
+      "before": "Rows :: system(c:ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}",
+      "after": "Rows :: system(c:^ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 229,
+      "function": "<global>",
+      "before": "FreeMotion :: system(position:Transform, velocity:Velocity, appearance:Appearance, health:Health) without Collider, Body on Tick :: (dt: float s) { position += velocity * dt; }",
+      "after": "FreeMotion :: system(position:^Transform, velocity:^Velocity, appearance:^Appearance, health:^Health , if ! Collider && ! Body)       { position^ += velocity^ * dt; }"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 306,
+      "function": "<global>",
+      "before": "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: float s) {position.x+=velocity.x*dt;}",
+      "after": "Motion :: system(position:^Transform,velocity:^Velocity)      {position.x+=velocity.x*dt;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 307,
+      "function": "<global>",
+      "before": "Heal :: system(health:Health){health.current+=1;}",
+      "after": "Heal :: system(health:^Health){health.current+=1;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 308,
+      "function": "<global>",
+      "before": "Scale :: system(position:Transform){position.x*=2;}",
+      "after": "Scale :: system(position:^Transform){position.x*=2;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 395,
+      "function": "<global>",
+      "before": "Heal :: system(health:Health){hits:retain int=0;health.current+=1;hits+=1;}",
+      "after": "Heal :: system(health:^Health){hits:retain int=0;health.current+=1;hits+=1;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 404,
+      "function": "<global>",
+      "before": "Heal :: system(health:Health){health.current+=1;}",
+      "after": "Heal :: system(health:^Health){health.current+=1;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 419,
+      "function": "<global>",
+      "before": "Scale :: system(position:Transform){position.x*=3;}",
+      "after": "Scale :: system(position:^Transform){position.x*=3;}"
+    },
+    {
+      "file": "test/runtime/system_schedule.c",
+      "line": 430,
+      "function": "<global>",
+      "before": "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: float s) {position.x+=velocity.x*dt;}",
+      "after": "Motion :: system(position:^Transform,velocity:^Velocity)      {position.x+=velocity.x*dt;}"
+    },
+    {
+      "file": "test/authoring/source_presentation.c",
+      "line": 728,
+      "function": "source_view_component_setters_expose_entity_not_component_read",
+      "before": "Motion :: system(position: Position) { reduce self.Position.x += 7; }",
+      "after": "Motion :: system(position: ^Position) { reduce self.Position.x += 7; }"
+    },
+    {
+      "file": "test/authoring/source_presentation.c",
+      "line": 729,
+      "function": "source_view_component_setters_expose_entity_not_component_read",
+      "before": "Motion :: system(position: Position) { reduce min(self.Position.x, 7); }",
+      "after": "Motion :: system(position: ^Position) { reduce min(self.Position.x, 7); }"
+    },
+    {
+      "file": "test/authoring/source_presentation.c",
+      "line": 731,
+      "function": "source_view_component_setters_expose_entity_not_component_read",
+      "before": "Motion :: system(position: Position) { reduce max(self.Position.x, 7); }",
+      "after": "Motion :: system(position: ^Position) { reduce max(self.Position.x, 7); }"
+    },
+    {
+      "file": "test/authoring/source_presentation.c",
+      "line": 733,
+      "function": "source_view_component_setters_expose_entity_not_component_read",
+      "before": "Motion :: system(position: Position) { reduce unordered self.Position.x += 7; }",
+      "after": "Motion :: system(position: ^Position) { reduce unordered self.Position.x += 7; }"
+    },
+    {
+      "file": "test/authoring/source_presentation.c",
+      "line": 810,
+      "function": "source_view_component_setters_expose_entity_not_component_read",
+      "before": "Motion :: system(position: Position) where position.x > 0 { position.x = 7; }",
+      "after": "Motion :: system(position: ^Position , if position.x > 0) { position.x = 7; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 1529,
+      "function": "program_query_rows_keep_locals_and_cancel_removed_tuple",
+      "before": "Rows :: system( p:Position) join target in self.Targets join aim:Position from target { starts:retain double=0; starts+=1; saved:=aim.x; await Delay(1); p.y+=saved; }",
+      "after": "Rows :: system( p:^Position , target in self.Targets , aim:^Position from target) { starts:retain double=0; starts+=1; saved:=aim.x; await Delay(1); p.y+=saved; }"
+    },
+    {
+      "file": "test/language/program.c",
+      "line": 4778,
+      "function": "program_task_semantics_reject_invalid_uses",
+      "before": "S :: system(p: Position) { worker: retain task }",
+      "after": "S :: system(p: ^Position) { worker: retain task }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 520,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { reduce position.x += position.y; }",
+      "after": "Motion :: system(position: ^Position) { reduce position.x += position.y; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 523,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { position.y = 0; reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { position.y = 0; reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 526,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { if position.y > 0 { reduce position.x += 1; } }",
+      "after": "Motion :: system(position: ^Position) { if position.y > 0 { reduce position.x += 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 528,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) where position.y > 0 { reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position , if position.y > 0) { reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 530,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) where changed(position) { reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position , if changed(position)) { reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 532,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { if true { snapshot := position; reduce position.x += 1; } }",
+      "after": "Motion :: system(position: ^Position) { if true { snapshot := position^; reduce position.x += 1; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 535,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { Read :: () -> float { return position.y; } reduce position.x += Read(); }",
+      "after": "Motion :: system(position: ^Position) { Read :: () -> float { return position.y; } reduce position.x += Read(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 537,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { reduce position.x += 1; self.Position.y = 2; }",
+      "after": "Motion :: system(position: ^Position) { reduce position.x += 1; self.Position.y = 2; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 539,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { bind position.y = 2; reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { bind position.y = 2; reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 541,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { Read :: (n: int) -> float { if n > 0 { return Read(n - 1); } return position.y; } reduce position.x += Read(1); }",
+      "after": "Motion :: system(position: ^Position) { Read :: (n: int) -> float { if n > 0 { return Read(n - 1); } return position.y; } reduce position.x += Read(1); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 545,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { Owner :: () -> entity { position.y = 1; return self; } reduce Owner().Position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { Owner :: () -> entity { position.y = 1; return self; } reduce Owner().Position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 555,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { mutate(); reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { mutate(); reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 557,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position) { opaque_host(); reduce position.x += 1; }",
+      "after": "Motion :: system(position: ^Position) { opaque_host(); reduce position.x += 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 559,
+      "function": "language_reduction_producers_reject_conflicting_component_values",
+      "before": "Motion :: system(position: Position, other: Placement) { reduce position.x += other.y; }",
+      "after": "Motion :: system(position: ^Position, other: ^Placement) { reduce position.x += other.y; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 841,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in later.Targets join later in self.Targets {}",
+      "after": "Bad :: system(  target in later.Targets , later in self.Targets) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 843,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in target.Targets {}",
+      "after": "Bad :: system(  target in target.Targets) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 844,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in self.Unknown {}",
+      "after": "Bad :: system(  target in self.Unknown) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 845,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in self.Targets join target in self.Targets {}",
+      "after": "Bad :: system(  target in self.Targets , target in self.Targets) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 847,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in self.Targets join p: Position? from target where p.x > 0 {}",
+      "after": "Bad :: system(  target in self.Targets , p: ^Position? from target , if p.x > 0) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 850,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in self.Targets join p: Position? from target where p or p.x > 0 {}",
+      "after": "Bad :: system(  target in self.Targets , p: ^Position? from target , if p or p.x > 0) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 853,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system() join target in self.Targets join p: Position from target { bind p.x = 1; }",
+      "after": "Bad :: system(  target in self.Targets , p: ^Position from target) { bind p.x = 1; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 856,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where changed(p.x) {}",
+      "after": "Bad :: system(p: ^Position  , if changed(p.x)) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 859,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where changed(p, p) {}",
+      "after": "Bad :: system(p: ^Position  , if changed(p, p)) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 860,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where p.x {}",
+      "after": "Bad :: system(p: ^Position  , if p.x) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 861,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where Mutating() { Mutating :: () -> bool { mutate(); return true; } }",
+      "after": "Bad :: system(p: ^Position  , if Mutating()) { Mutating :: () -> bool { mutate(); return true; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 863,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where Deferred() { Deferred :: () -> bool { yield; return true; } }",
+      "after": "Bad :: system(p: ^Position  , if Deferred()) { Deferred :: () -> bool { yield; return true; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 865,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where await Deferred() { A :: () {} B :: () {} C :: () {} D :: () {} E :: () {} F :: () {} Deferred :: () -> bool { yield; return true; } }",
+      "after": "Bad :: system(p: ^Position  , if await Deferred()) { A :: () {} B :: () {} C :: () {} D :: () {} E :: () {} F :: () {} Deferred :: () -> bool { yield; return true; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 868,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where enabled { enabled: retain = true; }",
+      "after": "Bad :: system(p: ^Position  , if enabled) { enabled: retain = true; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 870,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where enabled { enabled := true; }",
+      "after": "Bad :: system(p: ^Position  , if enabled) { enabled := true; }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 871,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where ReadLocal() { enabled := true; ReadLocal :: () -> bool { return enabled; } }",
+      "after": "Bad :: system(p: ^Position  , if ReadLocal()) { enabled := true; ReadLocal :: () -> bool { return enabled; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 873,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where ReadState() { enabled: retain = true; ReadState :: () -> bool { return enabled; } }",
+      "after": "Bad :: system(p: ^Position  , if ReadState()) { enabled: retain = true; ReadState :: () -> bool { return enabled; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 876,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where ReadState() { enabled: retain = true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool { return enabled; } }",
+      "after": "Bad :: system(p: ^Position  , if ReadState()) { enabled: retain = true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool { return enabled; } }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 879,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Bad :: system(p: Position ) where dt > 0 on Tick :: (dt: double) {}",
+      "after": "Bad :: system(p: ^Position  , if dt > 0)      {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 893,
+      "function": "language_query_filters_reject_effects_and_unbound_variables",
+      "before": "Many :: system() join a in self.Targets join b in a.Targets join c in b.Targets join d in c.Targets join e in d.Targets join f in e.Targets join g in f.Targets join h in g.Targets join i in h.Targets {}",
+      "after": "Many :: system(  a in self.Targets , b in a.Targets , c in b.Targets , d in c.Targets , e in d.Targets , f in e.Targets , g in f.Targets , h in g.Targets , i in h.Targets) {}"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1314,
+      "function": "language_discarded_pure_result_rejected",
+      "before": "Motion :: system(position: Position) { VectorAdd(position, position); mutate(); }",
+      "after": "Motion :: system(position: ^Position) { VectorAdd(position^, position^); mutate(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1318,
+      "function": "language_discarded_pure_result_rejected",
+      "before": "Motion :: system(position: Position) { action sum = VectorAdd(position, position); sum(); mutate(); }",
+      "after": "Motion :: system(position: ^Position) { action sum = VectorAdd(position^, position^); sum(); mutate(); }"
+    },
+    {
+      "file": "test/language/semantic.c",
+      "line": 1325,
+      "function": "language_discarded_pure_result_rejected",
+      "before": "Motion :: system(position: Position) { position = VectorAdd(position, position); mutate(); }",
+      "after": "Motion :: system(position: ^Position) { position^ = VectorAdd(position^, position^); mutate(); }"
+    }
+  ]
+}

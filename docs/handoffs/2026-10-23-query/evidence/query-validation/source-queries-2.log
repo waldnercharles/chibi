@@ -1,0 +1,14 @@
+Running: package_compiler_query_rows_capture_and_restart (OK) (10.634041 secs)
+Running: package_compiler_query_nested_return_and_empty_iteration (OK) (11.080657 secs)
+Running: package_compiler_query_header_constructs_captured_description (OK) (11.893344 secs)
+Running: package_compiler_system_query_shares_snapshot_and_implicit_dt (OK) (13.075786 secs)
+Running: package_compiler_system_keeps_state_and_calls_pure_header_helper (OK) (15.220134 secs)
+Running: package_compiler_empty_system_runs_only_attached_owner (OK) (13.315646 secs)
+Running: package_compiler_query_optional_guards_and_inferred_values (OK) (19.368425 secs)
+Running: package_compiler_query_generators_bind_target_components (OK) (16.017251 secs)
+Running: package_compiler_query_rejects_hidden_mutation_and_old_headers (OK) (11.856027 secs)
+Running: package_compiler_query_values_are_readonly (OK) (11.509863 secs)
+Running: package_compiler_query_captures_lexical_bindings (OK) (9.221088 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 65210
+Test command wall time: 186.327s; includes in-test fixture setup; external configuration/build excluded.

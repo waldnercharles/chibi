@@ -1,0 +1,11 @@
+Running: query_migration_preserves_live_bindings_and_step_reads (OK) (0.000718 secs)
+Running: query_migration_keeps_comments_literals_and_empty_roots (OK) (0.000116 secs)
+Running: query_migration_is_idempotent_and_refuses_unsafe_sources (OK) (0.000340 secs)
+Running: query_migration_expands_compact_providers_and_preserves_imports (OK) (0.000439 secs)
+Running: query_migration_dereferences_whole_values_without_capturing_shadows (OK) (0.000405 secs)
+Running: query_migration_visits_nested_provider_queries (OK) (0.000487 secs)
+Running: query_migration_keeps_outer_reads_in_local_initializers (OK) (0.000164 secs)
+Running: query_migration_stages_project_sources_atomically (OK) (0.001582 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 114
+Test command wall time: 0.587s; includes in-test fixture setup; external configuration/build excluded.

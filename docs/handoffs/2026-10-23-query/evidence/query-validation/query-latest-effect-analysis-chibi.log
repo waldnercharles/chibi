@@ -1,0 +1,6 @@
+Running: effect_analysis_raw_seeds_dependencies_and_restrictions_match (OK) (0.154181 secs)
+Running: effect_analysis_binding_order_is_stable_and_cycles_keep_original (OK) (0.001242 secs)
+Running: effect_analysis_actual_final_facts_replay_without_seed_discovery_claim (OK) (0.013157 secs)
+Running: effect_analysis_original_oracle_and_detached_results_outlive_inputs (OK) (0.003809 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 79683

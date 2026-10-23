@@ -1,0 +1,1203 @@
+{
+  "status": "WIP source-reviewed query candidate; historical focused checks passed; not merge-ready; cloud takeover verification pending",
+  "repository": "https://github.com/waldnercharles/chibi",
+  "branch": "codex/query-handoff-20261023",
+  "source_commit": "4d9b2d2f86c671d169a42b7d660dce353a8433fc",
+  "source_parent": "cbed73d239f7b50d0a2a6c5644afa4cc8cdf4e91",
+  "reviewed_source_tree": "4c3d1d844eec07fa02791d7b1b1f0b65d834a5a3",
+  "current_candidate_tree_before_handoff": "f7755c94e403c497b3ab1448b1a36d17d0ebb6f4",
+  "active_docs_overlay": [
+    "PLAN.md"
+  ],
+  "pointer_foundation_commits": [
+    "5e254084af35cc84f8c987fa8a289ac054e13f9b",
+    "cbed73d239f7b50d0a2a6c5644afa4cc8cdf4e91"
+  ],
+  "inherited_merge": {
+    "commit": "afe04307bde9a43b625cba82f6a763a10f20349a",
+    "parents": [
+      "b93472018544ae27e84a8277035bc3116e31ff47",
+      "e556a02ee31a0ac634013313820ee822ef73b8cb"
+    ]
+  },
+  "abi": {
+    "query_prepared": 22,
+    "pointer_foundation": 21,
+    "main_d0": 20,
+    "collection_22_compatible": false,
+    "matching_query_bootstrap_proven": false
+  },
+  "original_state": {
+    "original_head": "cbed73d239f7b50d0a2a6c5644afa4cc8cdf4e91",
+    "reviewed_tree": "4c3d1d844eec07fa02791d7b1b1f0b65d834a5a3",
+    "current_tree": "f7755c94e403c497b3ab1448b1a36d17d0ebb6f4",
+    "docs_overlay_paths": [
+      "PLAN.md"
+    ],
+    "original_index_sha256": "53582c1e0b8403bf283560de57cbbbad43730af447e2baee1814881409148fdc",
+    "original_status_sha256": "ed96ebfa14caa561b98f355b6ed6e951c6ad12972fc289c7578ca4ba640d264a"
+  },
+  "changed_source_paths": [
+    {
+      "status": "M",
+      "path": "PLAN.md",
+      "sha256": "45607ca2d6001df6e8c4ca776b60aecc5506cb757e76f18937a423db92313571",
+      "bytes": 113276
+    },
+    {
+      "status": "M",
+      "path": "docs/authored-prepared-writer.md",
+      "sha256": "1f8d82af0a04065b04e280eed379d23f0e552a39a83d7ff3c409334f4d0f3367",
+      "bytes": 4849
+    },
+    {
+      "status": "M",
+      "path": "docs/code-language.md",
+      "sha256": "3236870d0c3aba1ec1926437cc327ad45a6ece87ab1f37bc3bc7d2c66c1cb847",
+      "bytes": 29537
+    },
+    {
+      "status": "M",
+      "path": "docs/design-notes.md",
+      "sha256": "4c9f38290a72c9ed1c5dc3974af94af9e5c478a442d3dc5a800fccf63ba8f7c9",
+      "bytes": 14446
+    },
+    {
+      "status": "M",
+      "path": "docs/examples.md",
+      "sha256": "2daf63b23f73a2136922612244267a9ba83479415099aaf50537174a16b92aa1",
+      "bytes": 6111
+    },
+    {
+      "status": "M",
+      "path": "docs/language-friction.md",
+      "sha256": "2cf8257d4faebb1b413ecac4df9237f4d222e5c2e8e9b41c6f85c9692905b876",
+      "bytes": 57859
+    },
+    {
+      "status": "M",
+      "path": "docs/managed-pointers.md",
+      "sha256": "217d8102365ddf11c3100e39b239416d6f0ad32b02521d4ddd2b2a2e41864911",
+      "bytes": 12448
+    },
+    {
+      "status": "M",
+      "path": "docs/runtime-authoring.md",
+      "sha256": "4f44f277e334f839002d98e6366832719979658bf084a2d815146b00ebfaab1b",
+      "bytes": 47158
+    },
+    {
+      "status": "M",
+      "path": "docs/source-tokenizer.md",
+      "sha256": "b4fa7f9a03ac3e4a3fe2cd4e1bced7ff3b2e0aa403d80256b4c20ed15e663bec",
+      "bytes": 6127
+    },
+    {
+      "status": "M",
+      "path": "docs/testing.md",
+      "sha256": "43a5f7a54cfd7231e0fdddafa35c6f1a9a5df6c1bdd2a7cbe5aafddc702d73a3",
+      "bytes": 210094
+    },
+    {
+      "status": "M",
+      "path": "sdk/CMakeLists.txt",
+      "sha256": "3f2a94817ac766b53a1e10c785d0198759f5cee4b6e6aa9bdf177d308666967f",
+      "bytes": 45643
+    },
+    {
+      "status": "M",
+      "path": "sdk/execution.cmake",
+      "sha256": "3e13a548322bceaee4ff5de51082e1ca07519ee8989754e181d89aa41fe11821",
+      "bytes": 4226
+    },
+    {
+      "status": "M",
+      "path": "src/assets/project.h",
+      "sha256": "8e9940e57fd9f30fe2026cc003897adf1c3671167fd1fb9cc74c89654a808fd9",
+      "bytes": 4815
+    },
+    {
+      "status": "M",
+      "path": "src/assets/project_migrate.c",
+      "sha256": "24f11a88957fa431e322b516131fd1df04393d76e7554ae3b57a775e56c126dd",
+      "bytes": 243789
+    },
+    {
+      "status": "M",
+      "path": "src/assets/project_migrate.h",
+      "sha256": "c391f0410a285df0033dd913ffdc295a197672b1bccc623e3dde231c471d093b",
+      "bytes": 9089
+    },
+    {
+      "status": "M",
+      "path": "src/assets/project_migrate26.h",
+      "sha256": "28c69cb693d2ab426480a6a355bab2e997d0ecd26260bd4167e8f9fdd64856bf",
+      "bytes": 766
+    },
+    {
+      "status": "A",
+      "path": "src/assets/project_migrate33.c",
+      "sha256": "7833fc79b6b7bb50661df195c854c2b03f8d87dba667d4d205e3865c6c1d94a6",
+      "bytes": 20413
+    },
+    {
+      "status": "A",
+      "path": "src/assets/project_migrate33.h",
+      "sha256": "6e4aef53005a62e4ff8186724c078ca3ce62766e0d15b3f3d9907d1252310aac",
+      "bytes": 1885
+    },
+    {
+      "status": "A",
+      "path": "src/assets/project_parser33.c",
+      "sha256": "ccb4b2620f080b58d9546d659be40fa695b34b9a7413de9f7683000b1790d68a",
+      "bytes": 1771716
+    },
+    {
+      "status": "M",
+      "path": "src/assets/prototype.c",
+      "sha256": "f5e58b7d10a3d657364722ba9cc5a1f07927a5048efa6672371009c9b091566e",
+      "bytes": 85084
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/preview_source.h",
+      "sha256": "ca76b4101e2039f7ce18b03e41559af2ff23351bfae5fb14084dd55520f79c0c",
+      "bytes": 4585
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/preview_source_publish.c",
+      "sha256": "4bf904ac30637b7d58c717e8986267d5798f32bb079767b93f92219b95d29a8b",
+      "bytes": 15778
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_format.c",
+      "sha256": "2d85bc859f20fe93958f28162f7a517d444abc8c1a9d33d874fda7552b1bd4d9",
+      "bytes": 21604
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_literal.c",
+      "sha256": "7563cdcb0337d7cf77962753cbb85b0ffe492bd99382ea9d77bd77e983ded3a4",
+      "bytes": 15910
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_minimize.c",
+      "sha256": "3ff482ea994554c842971aba65d2e36c819fbce366b59b2a7dceda5b89859dfe",
+      "bytes": 70858
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_presentation.c",
+      "sha256": "87d25589883273ada39840f875bb55b45b38e6661bd58d1385b781e3f74bbf8a",
+      "bytes": 20873
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_presentation_flow.c",
+      "sha256": "658697f8b43fdaedf580aac0d7d048b1bccb2645bdcf3104f40482d466e0c96c",
+      "bytes": 34595
+    },
+    {
+      "status": "M",
+      "path": "src/authoring/source_presentation_values.c",
+      "sha256": "b2d6ab540d72d621a01ea311eb148fbf1498965dd4065aa1b00b985f5abdbfbf",
+      "bytes": 17342
+    },
+    {
+      "status": "M",
+      "path": "src/automation/controller.c",
+      "sha256": "adda6a6bbe86e1ea02303c72a5e04bb76f35c28d232a577e754a7dd80d82a67a",
+      "bytes": 531211
+    },
+    {
+      "status": "M",
+      "path": "src/capabilities/catalog.c",
+      "sha256": "4c1da46917f63a957d3e314180e86cee3b18e0555a307d25a776ed01e79a2c3a",
+      "bytes": 25041
+    },
+    {
+      "status": "M",
+      "path": "src/capabilities/catalog.h",
+      "sha256": "b090dcb1a7caf74e41c5cc0383dac215b3263b6b5f3e06c82ac0b94b8b4750f8",
+      "bytes": 11525
+    },
+    {
+      "status": "M",
+      "path": "src/capabilities/catalog_values.c",
+      "sha256": "9b0db94a84a07c3e9e73a980084104e9958a8a752f70d19b35dad3d3de7403a9",
+      "bytes": 10649
+    },
+    {
+      "status": "M",
+      "path": "src/ecs/ecs.c",
+      "sha256": "5f74d92e357cd66c23541f02fa674c125d346b85c5830129560900acf453bf15",
+      "bytes": 86797
+    },
+    {
+      "status": "M",
+      "path": "src/ecs/ecs.h",
+      "sha256": "37bbee68eb3ab8394da88ad396eeb1498a84be5a0f4fa6a70c8c9830ac41edb9",
+      "bytes": 20937
+    },
+    {
+      "status": "M",
+      "path": "src/ecs/ecs_internal.h",
+      "sha256": "5615273abf86a30c722f63ffd09086a174fdb5bc3a294db9b672ee9348669e01",
+      "bytes": 6608
+    },
+    {
+      "status": "M",
+      "path": "src/execution/call.c",
+      "sha256": "f81a587c06fdd3939c97e5d6d8bcd6cf8c802ba43afbb9e55dc664e19c78f648",
+      "bytes": 33126
+    },
+    {
+      "status": "M",
+      "path": "src/execution/function.c",
+      "sha256": "2b3ac06704d64f318df6a4aea030a5858cb8566dfa711f8177e82e602b62c080",
+      "bytes": 36872
+    },
+    {
+      "status": "M",
+      "path": "src/execution/function.h",
+      "sha256": "9ade6bcedfd492ede7a61afc658308780c95334c29ef5d5f4e539f4de230e913",
+      "bytes": 24802
+    },
+    {
+      "status": "M",
+      "path": "src/execution/function_builder.c",
+      "sha256": "7f90bd1bdd9d9fefbae80429f30ef58c747527fad1ba173737bef3be0daaa867",
+      "bytes": 103224
+    },
+    {
+      "status": "M",
+      "path": "src/execution/intrinsics.c",
+      "sha256": "3d1d79c0f18014cb3061eecf38c5f706ee8dc3206db59b0687e7e74649f2b684",
+      "bytes": 84739
+    },
+    {
+      "status": "M",
+      "path": "src/execution/intrinsics.h",
+      "sha256": "704c58b8b2f3d021d900958811da98293bd8f5a4284777d6e8a9ddc1c031c136",
+      "bytes": 8019
+    },
+    {
+      "status": "M",
+      "path": "src/execution/jit.c",
+      "sha256": "8f159b1f32a920f30469f2ee319ff3168088bd5a520e874a1cb0a0557e56b2cc",
+      "bytes": 55084
+    },
+    {
+      "status": "M",
+      "path": "src/execution/jit_integer.c",
+      "sha256": "dd05ee70f2e338dd22002cb0bfe0dbb615ee9fdbc6af79d98b7a884bbb14def3",
+      "bytes": 22620
+    },
+    {
+      "status": "M",
+      "path": "src/execution/jit_registers.c",
+      "sha256": "21c46659b6365fddd8e6e6bb1f95530ec995aa83644dcf8fb0295baccbc04290",
+      "bytes": 26343
+    },
+    {
+      "status": "M",
+      "path": "src/execution/module.c",
+      "sha256": "0d9fea2c8dbd4a23de4675490050fc4e707860f63986bf1a9ed6bcc8245f97f8",
+      "bytes": 52178
+    },
+    {
+      "status": "M",
+      "path": "src/execution/module.h",
+      "sha256": "709dab896f30beda544df4a25a8fad12111bd6f920e4e914dac95c532b0ef0f7",
+      "bytes": 15149
+    },
+    {
+      "status": "M",
+      "path": "src/execution/module_builder.h",
+      "sha256": "c88bf56de301709195a869c2261e5a0fc84959d90478b3dcb670211ac729c826",
+      "bytes": 5734
+    },
+    {
+      "status": "M",
+      "path": "src/execution/module_effects.c",
+      "sha256": "eda1c42d7d7238a8d823051075a2d357c8e840ef4ad07e5c28037d24f541e4b8",
+      "bytes": 127329
+    },
+    {
+      "status": "M",
+      "path": "src/execution/module_effects.h",
+      "sha256": "5c0343ef3b0f314d77ec0c34353cfc156426c2e96becc289e253a5f9e6b93508",
+      "bytes": 1072
+    },
+    {
+      "status": "M",
+      "path": "src/execution/prepared.c",
+      "sha256": "ae3805aa7c0bb55e0a6ac5886c5960b37e6df406ecf13fd553f6cb98cba09b5b",
+      "bytes": 38265
+    },
+    {
+      "status": "M",
+      "path": "src/execution/prepared.h",
+      "sha256": "6597cf7904eefe1cc14a5c0b8499cb66a1909000b01f1813815bb292975fb389",
+      "bytes": 4075
+    },
+    {
+      "status": "M",
+      "path": "src/execution/prepared_function.c",
+      "sha256": "88d3a6769773952e3e418e74788548746ca151e7764b737b4affc1674684b0c1",
+      "bytes": 17807
+    },
+    {
+      "status": "M",
+      "path": "src/execution/prepared_record.c",
+      "sha256": "eec921a49ad3b9d11ffd0fd2c4daf6b963737f80143714cdd88e6acbd9cdf4e1",
+      "bytes": 18731
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program.c",
+      "sha256": "d7e85ea3e0b88573b8ad219843da9a7b49c15911456c3204acdf4018dab4cd51",
+      "bytes": 118538
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_activation.c",
+      "sha256": "2cf49b323ffe95f19e18380c4de52884a7851c0c2b383ad921c8fcf3e2033cfc",
+      "bytes": 16277
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_internal.h",
+      "sha256": "c3b74d0883165250fb52c62087971d225d4e1ceff24e6ae22949178286452c6f",
+      "bytes": 10487
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_preflight.c",
+      "sha256": "b5b0bc31cb4b8e84dcf623dc11b4b48251178c7a8e637fcf7364505fe322908f",
+      "bytes": 12229
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_storage.c",
+      "sha256": "02958d048bfb6cd9e05d6600ddb25c6c6130035109e905b925743c6a8f6814c7",
+      "bytes": 14069
+    },
+    {
+      "status": "M",
+      "path": "src/execution/program_tasks.c",
+      "sha256": "63c46aa94e9ae65ee87a4d0f7ecef05c1389b037b87646ad96bffe81e0926e51",
+      "bytes": 26588
+    },
+    {
+      "status": "A",
+      "path": "src/execution/query.c",
+      "sha256": "9d297d8ae314c4ca102787bdfffd19c4baa2440b15265ac0bd4fd0b50b55e191",
+      "bytes": 32951
+    },
+    {
+      "status": "A",
+      "path": "src/execution/query.h",
+      "sha256": "90cbceb0153ed5c4c2751c747e09fd0f6bc73f3aa862bd7d790d4730989cecb6",
+      "bytes": 1339
+    },
+    {
+      "status": "M",
+      "path": "src/execution/scalar_lowering_plan.c",
+      "sha256": "0c45678dfc0aaec913a93d4a31896fb79dbeb7f200807c4bda1aeb5874d3eecc",
+      "bytes": 18963
+    },
+    {
+      "status": "M",
+      "path": "src/execution/value_kind.h",
+      "sha256": "49e639ea89befdc44475ef567e8ff4e7140c07928b13d48d6cb010b61f4a343b",
+      "bytes": 716
+    },
+    {
+      "status": "M",
+      "path": "src/language/component.c",
+      "sha256": "efada4fc2ea1ba4145da7d6d6e6354bf282b0da5b8d399a848ec6346d862521b",
+      "bytes": 11565
+    },
+    {
+      "status": "M",
+      "path": "src/language/effect_analysis.c",
+      "sha256": "e9495e9be7b3039908520ddb03c8b2597b8ddb02639a8d181bda44a47f2d05a9",
+      "bytes": 27660
+    },
+    {
+      "status": "M",
+      "path": "src/language/effect_analysis.h",
+      "sha256": "ec9cacde3d40892eb2abcca5412ca83cc802213e666c6c2955aa9e649e68ab35",
+      "bytes": 1623
+    },
+    {
+      "status": "M",
+      "path": "src/language/grammar.js",
+      "sha256": "48720e31abaf05014bf73bd06dce86c7379a84f4be161eaa9b4e17f784ac9b80",
+      "bytes": 26125
+    },
+    {
+      "status": "M",
+      "path": "src/language/lower.c",
+      "sha256": "408ef19e443c6f7be036384fc7dd19cb9df37b65feee7b39513a393657c35c51",
+      "bytes": 368629
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic.c",
+      "sha256": "5df801b46413d05f446aec4d6b668bbe68ec58cefba5ba04d3ff5d7defb09592",
+      "bytes": 23760
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic.h",
+      "sha256": "18f569bb272ac5774b9e379c8f8c050f5c5d8caa59b18f3ac78ed5a37564e053",
+      "bytes": 14665
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_calls.c",
+      "sha256": "269134ada86c18a03134ece1cfa5a5efb03bd7a0f59418ba419fdc83f8480794",
+      "bytes": 96030
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_declaration.c",
+      "sha256": "58646517d59a5c15e898837d511cb30fed5cd2b7cf71e203b403a9bad8c64a2b",
+      "bytes": 71360
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_effects.c",
+      "sha256": "1753e29c5e65cd3c34af5a5fae1fb1568019a5ce3c3e8d61974af6d0f9ad659a",
+      "bytes": 40084
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_expression.c",
+      "sha256": "40c7b7a12d5058bdf3e0687cd30754d519699ee54869caac832d6e0c74643832",
+      "bytes": 73958
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_internal.h",
+      "sha256": "9bd13a328ce82fe1f051d5ff0920ef3b0aae343c44a80800fe5c601334bb9e52",
+      "bytes": 15155
+    },
+    {
+      "status": "M",
+      "path": "src/language/semantic_statement.c",
+      "sha256": "a49e02d7ad4ce27dfb603760c6460b0344f0765491874c5ed99ebb32735cc295",
+      "bytes": 71478
+    },
+    {
+      "status": "M",
+      "path": "src/language/src/grammar.json",
+      "sha256": "628bcef762412ac46a14aaf282c0410a9d9d2e16e15216162362ad899be9da12",
+      "bytes": 160169
+    },
+    {
+      "status": "M",
+      "path": "src/language/src/node-types.json",
+      "sha256": "a74c97bb8a381d86dbddf95814a321832fa0abf13117db1b313587916e2b2c94",
+      "bytes": 157141
+    },
+    {
+      "status": "M",
+      "path": "src/language/src/parser.c",
+      "sha256": "36a9e259f1d2b993a064b0e363e785e15bd8db8c8ae9f80ab2e18ab7e65f4c3f",
+      "bytes": 1632414
+    },
+    {
+      "status": "M",
+      "path": "src/language/unit_analysis.c",
+      "sha256": "9c27ebe33e290b35a9db599683c4a813b7a4b137e29534ab8dcde9816ac2514b",
+      "bytes": 17174
+    },
+    {
+      "status": "M",
+      "path": "src/support/arena.c",
+      "sha256": "dab87e4586fc214e78ffdb4cb974beb276a3f6b5fb5ebe9d1b1684aecfd15ed7",
+      "bytes": 15458
+    },
+    {
+      "status": "M",
+      "path": "src/support/arena.h",
+      "sha256": "bd797fa0dc121a735df5ca2109bd324218751cbed2f22d2fe7e6ff70be135a07",
+      "bytes": 4234
+    },
+    {
+      "status": "M",
+      "path": "src/toolchain/compiler_target.c",
+      "sha256": "e1fef5079e3d57335448b461394594529e4e4fd7e11908ccb16ffe511f598878",
+      "bytes": 16353
+    },
+    {
+      "status": "M",
+      "path": "src/types/array.c",
+      "sha256": "43c460a703d8e0a51184175723512954a55bc66ea9c14791e82d3e85f3a80c39",
+      "bytes": 38698
+    },
+    {
+      "status": "M",
+      "path": "src/types/array.h",
+      "sha256": "a11bfe0299fe2e567bb5ecf27d17e2cfa43ce46185b51420ac97f67da26374c9",
+      "bytes": 5182
+    },
+    {
+      "status": "M",
+      "path": "src/types/index.c",
+      "sha256": "071853f9d0b5ca1b63ffed20f9b4e798260ee0a0240025ab5f5c366e6a619353",
+      "bytes": 7990
+    },
+    {
+      "status": "M",
+      "path": "src/types/map.c",
+      "sha256": "332e8520c16af973072bbd173edb2b3ad48b1f8277b4faced38d0ea47499d3dd",
+      "bytes": 17030
+    },
+    {
+      "status": "M",
+      "path": "src/types/pointer.h",
+      "sha256": "bc18f40787c9183290d0adf9a14e76ebdb3861bd4bb2a23067e168c5741d3e09",
+      "bytes": 955
+    },
+    {
+      "status": "A",
+      "path": "src/types/query.h",
+      "sha256": "40b4c8269db5f5038a201ef913193446e92246aa6af659a6298597eaa4f86776",
+      "bytes": 601
+    },
+    {
+      "status": "M",
+      "path": "src/types/record.c",
+      "sha256": "9b099d16f1806c9f84d22edfee42961b9d942235e7d85d9f8c709200cdbe54d6",
+      "bytes": 12269
+    },
+    {
+      "status": "M",
+      "path": "src/types/record.h",
+      "sha256": "a4714eea21072762429c42c842857874785aa67d3a7a443342adf2738e2bb577",
+      "bytes": 2162
+    },
+    {
+      "status": "M",
+      "path": "src/types/scalar.h",
+      "sha256": "9b676c24b0f30f69d67904b9c72416c33b41b687f8626dc9dd987a8cbb0c76cc",
+      "bytes": 9388
+    },
+    {
+      "status": "A",
+      "path": "src/types/schema.c",
+      "sha256": "3a3025e6e75592e8a2268e492f5a295baef30388f19df1628eed908de463d1ac",
+      "bytes": 16033
+    },
+    {
+      "status": "A",
+      "path": "src/types/schema.h",
+      "sha256": "9c57da054ad9566302e43b477aed9e800d9b133a5269dd860078121589a59e17",
+      "bytes": 1407
+    },
+    {
+      "status": "M",
+      "path": "src/types/trace.c",
+      "sha256": "20536b535df84c67a7940dfdddbd49e326c9cd0736cd99c7216eb7201109b278",
+      "bytes": 13607
+    },
+    {
+      "status": "M",
+      "path": "src/types/type.c",
+      "sha256": "32192a2542f649ddc889e785292ade6857012230d51a2affa2f4cd8f40f91987",
+      "bytes": 23735
+    },
+    {
+      "status": "M",
+      "path": "src/types/value.h",
+      "sha256": "a37aac61b0a9bce6fe80ff7535dec415b9d91a5b2f5d84a36aefa9c574ead90a",
+      "bytes": 2841
+    },
+    {
+      "status": "M",
+      "path": "src/types/value_document.c",
+      "sha256": "58fb5b6cf747e5644d1cc11c9646e7208dac4ba160ebcf27cb516b6a6d34ad36",
+      "bytes": 11935
+    },
+    {
+      "status": "M",
+      "path": "src/types/value_document_read.c",
+      "sha256": "78024338f6c2331a86db7f8330aab0d93e0105b5eeae41fec696b93a908fb521",
+      "bytes": 29116
+    },
+    {
+      "status": "M",
+      "path": "src/types/value_format.c",
+      "sha256": "52555a25fce626f8bc5be6296c49dd7dafe8db2aa4a8de430e34406d4802d7c0",
+      "bytes": 5371
+    },
+    {
+      "status": "M",
+      "path": "src/types/value_wire.c",
+      "sha256": "15f9956044d786bd97598acd779ec2498c89ffedcbf5534f63953c5c9c60a5b7",
+      "bytes": 29930
+    },
+    {
+      "status": "M",
+      "path": "test/authoring/behavior_loader.c",
+      "sha256": "3b66fbcfeacac2ed9ae7d19a52ce2f9a2bb584d1b95e299d2cbfb0468aa4b142",
+      "bytes": 11677
+    },
+    {
+      "status": "M",
+      "path": "test/authoring/source_presentation.c",
+      "sha256": "3b4380ab88afac1d56ef5480df1e1d247d42aabc11a0b83aec003612a62dc9be",
+      "bytes": 55145
+    },
+    {
+      "status": "M",
+      "path": "test/code_system_runtime.c",
+      "sha256": "16bd4450d3a1f02a3d0098c53903d8f04a83095e07725bd6e5542f9171ca0168",
+      "bytes": 41333
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/behavior-catalog/project.kdl",
+      "sha256": "a228a70b5b1d73b1d7ab026beead114945752c1c837f80865e4e932c312f08a0",
+      "bytes": 94
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/component-presentation/project.kdl",
+      "sha256": "d0f403ef2dd391c01224178deb00a4706426b838cc41175b782e0721ee07e6af",
+      "bytes": 100
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/courtyard/project.kdl",
+      "sha256": "76e348c85901b26bb263d362a294463576bd2112f588c3c1ccd15a73e078502b",
+      "bytes": 77
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/declared-components/content/systems/Recharge.chibi",
+      "sha256": "2468e3790c07cf647912207e2a7b5d07b656742d2b606cc6ea4050f03c2f357d",
+      "bytes": 226
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/declared-components/project.kdl",
+      "sha256": "e8508253c3e15882d491134748c2218a7cad7dcf5dc9f664222b639ebb5c6e0e",
+      "bytes": 87
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/environment-authoring/project.kdl",
+      "sha256": "9ca080528df1ac21c7290f28dedad2c9d93d499cad3bb9e881ef1ccdfb297f3b",
+      "bytes": 97
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/feature-coverage/content/systems/Cool.chibi",
+      "sha256": "f8e9fec08d4b2b616e4a56ce1cf9bf3ac0978af8b47d13922c4eb17386f8f707",
+      "bytes": 65
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/feature-coverage/content/systems/Drift.chibi",
+      "sha256": "8d291741622a8a4fc80e1ec764ac0d15627e58a8ff16a62753dcc72037013732",
+      "bytes": 95
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/feature-coverage/project.kdl",
+      "sha256": "1cd8f687bb2ddd7f4cacc25c36979f72eb76ae701310fbff67311891f016c92f",
+      "bytes": 88
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/graph-routing/project.kdl",
+      "sha256": "8b0935e162bb027999e7eb544205ccfe0f4797c049fd9addd7e39abe3baddd8f",
+      "bytes": 88
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/language/content/systems/FreeMotion.chibi",
+      "sha256": "af3385d33cba0cc4e2a5ac0eadce22713304a0a974adbcab9ac1197d52599b51",
+      "bytes": 148
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/language/project.kdl",
+      "sha256": "41c98d957b53f41430008a93761670db8d18180c1dd4476003b61611ea8710a7",
+      "bytes": 86
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/material-contracts/project.kdl",
+      "sha256": "12996687455f96b3be310706593c6b90ce0aaa0046e86a33554c11fc1e71ae9b",
+      "bytes": 86
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/project.kdl",
+      "sha256": "e34528f6857fd5114098b28adec3ed3b572944303895fe00da30a8022acb93a7",
+      "bytes": 85
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/refactor/references/systems/FreeMotion.chibi",
+      "sha256": "af3385d33cba0cc4e2a5ac0eadce22713304a0a974adbcab9ac1197d52599b51",
+      "bytes": 148
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/scene3d/project.kdl",
+      "sha256": "a60cde3088f6dcdcdef20c8d590d3af6889d29e153016733c548462a3de33c6c",
+      "bytes": 77
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/sprites/project.kdl",
+      "sha256": "6db620a064f82d9d9d38eaacba55a77d0402d3cacdf19fabf47ea736635d98df",
+      "bytes": 84
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/studio-workspace/project.kdl",
+      "sha256": "114db0f706bf839bd4472d131a11732742f79cb4ddde0b3f1092a9ab1ffaf8e2",
+      "bytes": 96
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/studio/project.kdl",
+      "sha256": "d2a277a2539d69ca0cceb2e1597dd03f430cfc216805af304d647444961b1eeb",
+      "bytes": 83
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/systems/MovementSystem.chibi",
+      "sha256": "bf36f31b14b0b62e8353ee8f6166d679eb8b94d2df00ff075211bfe9eaef7425",
+      "bytes": 173
+    },
+    {
+      "status": "M",
+      "path": "test/fixtures/terrain-lab/project.kdl",
+      "sha256": "4f9a1b03fbbbb87cc5d5919fead027a8a01644ff7a81c04431cc9a7b69edc821",
+      "bytes": 80
+    },
+    {
+      "status": "M",
+      "path": "test/language/CMakeLists.txt",
+      "sha256": "dd6be73858fe9398fe03ae6da8e6f1a987bb989347963e81cfe048d40106e17f",
+      "bytes": 25838
+    },
+    {
+      "status": "M",
+      "path": "test/language/binding_benchmark.c",
+      "sha256": "662def30b1af273f2bd7fc5c5d412c4dc422cd047d1a30482c466d263de6817d",
+      "bytes": 40719
+    },
+    {
+      "status": "M",
+      "path": "test/language/effect_analysis_chibi.c",
+      "sha256": "1a12148c1aeeb21544c093f1c3782d46f7407801b998eeffd6a378a962ef9dd0",
+      "bytes": 66436
+    },
+    {
+      "status": "M",
+      "path": "test/language/effects.c",
+      "sha256": "f02feb34e3b775f3e442300eaef53e0d7bb5237c0a6895c619b75b270e8c6a2c",
+      "bytes": 8876
+    },
+    {
+      "status": "M",
+      "path": "test/language/execution.c",
+      "sha256": "b555064a6b53ef98b74b1796636675a16ab39a8f24047641cf201edbbfdb3c46",
+      "bytes": 247938
+    },
+    {
+      "status": "M",
+      "path": "test/language/format.c",
+      "sha256": "c816a9db4adfff47be673cbb6d4afb4a13a58e64b97895066881bc71fcdffad8",
+      "bytes": 70503
+    },
+    {
+      "status": "M",
+      "path": "test/language/main.c",
+      "sha256": "b67982e812b08bba83f9d3412d5aedab0b0e60970f2b7f48279040ceafc90a6f",
+      "bytes": 30951
+    },
+    {
+      "status": "M",
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "73bd0a8e972f12000da584dfd0a383a5c120fbc6acbb875ca6bf044f6ec0d2aa",
+      "bytes": 242261
+    },
+    {
+      "status": "M",
+      "path": "test/language/package_compiler_chibi.cmake",
+      "sha256": "3381b464734ce766e7f1aa724409087639f6409201ac7ee0ea671a10f65a055f",
+      "bytes": 932
+    },
+    {
+      "status": "M",
+      "path": "test/language/package_compiler_chibi.h",
+      "sha256": "aec2652287f791d71a3b21250506b18eb191305d0e47799f5491d561dcb09594",
+      "bytes": 931
+    },
+    {
+      "status": "M",
+      "path": "test/language/package_compiler_chibi_source.h.in",
+      "sha256": "6f7c9e2e58467f9c714e0c16b7e4c4b066a020c3928f5835d30e65def73aa086",
+      "bytes": 3661
+    },
+    {
+      "status": "M",
+      "path": "test/language/prepared_writer_chibi.c",
+      "sha256": "b71678c37047c9ae2d47ce68d7a391d91e1bff9742b32f9e994f101204123ebd",
+      "bytes": 48335
+    },
+    {
+      "status": "M",
+      "path": "test/language/program.c",
+      "sha256": "d59b6b8d8ca97fc9aa89b03e12f18e4c4594c2ade36a167271c316be31daf753",
+      "bytes": 490823
+    },
+    {
+      "status": "M",
+      "path": "test/language/query_boundary.c",
+      "sha256": "dbbaf5eb6ac5db1e6e393df23c4136eea4fe9774e995b7bc435d8fdb9ef53761",
+      "bytes": 53238
+    },
+    {
+      "status": "A",
+      "path": "test/language/query_migration.c",
+      "sha256": "1ea94d20665c32fcfaa310dc44f6c2a6dbd2be42070e89395633a3936dd2567d",
+      "bytes": 13790
+    },
+    {
+      "status": "A",
+      "path": "test/language/query_values.c",
+      "sha256": "3e132ae503709bbdf29f03db7ebf3cfa371a4314bbe5db1dfb62d8b597c779b9",
+      "bytes": 24344
+    },
+    {
+      "status": "M",
+      "path": "test/language/reductions.c",
+      "sha256": "daee5ea3408966ef411327cc95906a5c79982f1a234fef4f6373dfde6997c97b",
+      "bytes": 33885
+    },
+    {
+      "status": "M",
+      "path": "test/language/retention.c",
+      "sha256": "a98c96ce904e72892e5f246839abf849765f41e62f40b9d97b36519faeb23049",
+      "bytes": 12682
+    },
+    {
+      "status": "M",
+      "path": "test/language/semantic.c",
+      "sha256": "6fa4cc996af80070aa3606987a5a2819af9aba242c2ca58b06ff0b0db52d4c2a",
+      "bytes": 110028
+    },
+    {
+      "status": "M",
+      "path": "test/language/source_assets.c",
+      "sha256": "14ad254126f46295068931e56da0e417db611bf13f576e6e5a9753464f6b115a",
+      "bytes": 53595
+    },
+    {
+      "status": "M",
+      "path": "test/language/source_tokenizer_chibi.c",
+      "sha256": "f311448ea5a817ec5ba25055c2f577a471157ae0c622639f3e46c036a455d7a9",
+      "bytes": 27223
+    },
+    {
+      "status": "M",
+      "path": "test/language/syntax.c",
+      "sha256": "fd116df3bca31a6fee4729d58fff242823922a652e17f26cf3f011e7183a5415",
+      "bytes": 43082
+    },
+    {
+      "status": "M",
+      "path": "test/language/unit_analysis_chibi.c",
+      "sha256": "5d4bed5262afaee931292bf54eaf5c64ee49d41af69ee717d56e6b86e275ca1e",
+      "bytes": 58226
+    },
+    {
+      "status": "M",
+      "path": "test/runtime/source_reductions.c",
+      "sha256": "fc683c356d7cf8e44949de3abc1559e53493ef4300edc30d21056dfd0db5ce8e",
+      "bytes": 68977
+    },
+    {
+      "status": "M",
+      "path": "test/runtime/system_schedule.c",
+      "sha256": "0be1231db2e9be4dbf775269faef717d6af7f0ef8d195dcffba4dc0a1b3a0402",
+      "bytes": 27146
+    },
+    {
+      "status": "M",
+      "path": "test/stories/Controls/project.kdl",
+      "sha256": "436426c162c0289d9524d853228593fdadeb9dbe8f3a26aad7d878fee98fe2e3",
+      "bytes": 81
+    },
+    {
+      "status": "M",
+      "path": "test/stories/Counter/project.kdl",
+      "sha256": "cba201bee39bb268819dc2825855cbb0d8ca75b7d0f29531c4ec5319fd1e8068",
+      "bytes": 80
+    },
+    {
+      "status": "M",
+      "path": "test/stories/Follow/project.kdl",
+      "sha256": "80a06e2f1c7a5ba233aeddda601f211742a658995bdadc939c8eeae725633064",
+      "bytes": 79
+    },
+    {
+      "status": "M",
+      "path": "test/stories/Motion/project.kdl",
+      "sha256": "97ce609c3b98e02471fc81ef6cf4bd2b000d27d921d8e8aa096f7d00a5bf7490",
+      "bytes": 79
+    },
+    {
+      "status": "M",
+      "path": "test/stories/Results/project.kdl",
+      "sha256": "0f2286993522bb10d4032550e0363b023858adb22b60181b9288304cde7b387f",
+      "bytes": 80
+    },
+    {
+      "status": "M",
+      "path": "test/tools/controller.c",
+      "sha256": "07c1b54dba09775a80c864b2f99022af79de797288fd60535b4f8bdd643323df",
+      "bytes": 27687
+    },
+    {
+      "status": "M",
+      "path": "test/tools/policy_worker.c",
+      "sha256": "f55f7c40925861163ce2473b77b0be50f46d1e544f703dee1a01e44383d6e2b4",
+      "bytes": 15098
+    },
+    {
+      "status": "M",
+      "path": "test/tools/test_policy.c",
+      "sha256": "e5e76cda2500f0da6c67af52e2b4c3bab0252dc1365a5eb783ae1f7eef7cb4e7",
+      "bytes": 35525
+    },
+    {
+      "status": "M",
+      "path": "test/tools/types.c",
+      "sha256": "2b4bc70a8b526de266bf02ef2a823acccea814276e560c5816cd4072e1a4d6fe",
+      "bytes": 65979
+    },
+    {
+      "status": "M",
+      "path": "test/tools/validate_project.c",
+      "sha256": "e90166a6edbea4acf7dc213cac3b47a13a203ab267c24a6a5d4e8fcb12e8705a",
+      "bytes": 79706
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/bootstrap.kdl",
+      "sha256": "9a46ef5c746f8f95f04fbec9f9f41ae2a5c593f564d1037a65119b8519e53b30",
+      "bytes": 579
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/bounded_compiler/Compile.chibi",
+      "sha256": "a8a21d369705a4fb2e6f56bbb6722946959893d5da6cf52f1f885f0359b13d23",
+      "bytes": 15592
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/bounded_compiler/Prepare.chibi",
+      "sha256": "258b48e886282454fb3342d4fa096eb567511c551d078f0319e2ddbccb9f9a6f",
+      "bytes": 8047
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/effect_analysis/Effects.chibi",
+      "sha256": "aedd748644556e88a946379d7ad7cd5e56eec3731c3324b74afcb5e278e7f38b",
+      "bytes": 35745
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/Behavior.chibi",
+      "sha256": "480617dcec4ff62be7a31883a112d5353897e1b690539540e049df3cf6f87ba6",
+      "bytes": 30868
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "sha256": "35f4847947fd694497e1e5fdc0344565272ecc92af2bfa127e12583b316c3300",
+      "bytes": 128839
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "sha256": "1990d265e50c18100d87dcc3df404a3403a95150fe81f1d8f10775097749981f",
+      "bytes": 102760
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/Pointers.chibi",
+      "sha256": "42f90c7aadce78c88936e834b87e42efa107873bad959aa219da9e1e0cc87150",
+      "bytes": 48017
+    },
+    {
+      "status": "A",
+      "path": "tools/compiler/package_compiler/Queries.chibi",
+      "sha256": "706915b2d284cbcc81d53d92285f04a0ae2f1f6bceeb20ff68215863c2f71f41",
+      "bytes": 90305
+    },
+    {
+      "status": "A",
+      "path": "tools/compiler/package_compiler/QueryLoops.chibi",
+      "sha256": "761c42acf532f4eee1067682047124473c0431b2b58ab5ee828a54dce417c406",
+      "bytes": 12108
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/References.chibi",
+      "sha256": "24ddada2c98153b8b49dd4e54defbd630305741ac3d2ff9621126d16976240e8",
+      "bytes": 28382
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "sha256": "ec377d61dc1a23feb60719c23a2424981dee47b3e5de65baa7f73d2b7acef7f5",
+      "bytes": 208055
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/prepared_writer/Writer.chibi",
+      "sha256": "c64ee574824db8f829dd63b71eab30a4b35d22d717832dd2c9e74dda7322a40c",
+      "bytes": 28489
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/scalar_lowering/Lower.chibi",
+      "sha256": "3dd9face3eb203a3323da1383129b5db3b764f0d0d8eef68072c8079f78ab98b",
+      "bytes": 23733
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/source_tokenizer/Tokenizer.chibi",
+      "sha256": "5c0d20fa4413ae16a0edecb5558a1f70449d3b9fad88649e325b1a64f062c9ba",
+      "bytes": 27759
+    },
+    {
+      "status": "M",
+      "path": "tools/compiler/unit_analysis/Analysis.chibi",
+      "sha256": "55159b1ee46d333922d84191c8e24e87970cc11c255cfe244d7bc0fb7e1417aa",
+      "bytes": 36947
+    },
+    {
+      "status": "M",
+      "path": "tools/graph/engine/Targets.chibi",
+      "sha256": "e00f936bc750eb5396a9a343a36404e9c3226ecc0b675e526ace0c6c47873f2d",
+      "bytes": 229226
+    },
+    {
+      "status": "M",
+      "path": "tools/test_policy.py",
+      "sha256": "47ac53d9a781688549ccc099071a21884d51a64985ed9b3320bd7a98d8ea8e75",
+      "bytes": 64152
+    }
+  ],
+  "historical_selected_checks": [
+    {
+      "log": "evidence/query-validation/source-queries-2.log",
+      "passed": 11,
+      "failed": 0,
+      "assertions": 65210,
+      "seconds": 186.327,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/query-values-2.log",
+      "passed": 15,
+      "failed": 0,
+      "assertions": 1458,
+      "seconds": 0.649,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/execution-3.log",
+      "passed": 55,
+      "failed": 0,
+      "assertions": 4760,
+      "seconds": 0.414,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/effects.log",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 83656,
+      "seconds": 0.761,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/migration.log",
+      "passed": 8,
+      "failed": 0,
+      "assertions": 114,
+      "seconds": 0.587,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/source-systems.log",
+      "passed": 11,
+      "failed": 0,
+      "assertions": 334,
+      "seconds": 1.137,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/preview.log",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 55,
+      "seconds": 1.134,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    },
+    {
+      "log": "evidence/query-validation/runner.log",
+      "passed": 17,
+      "failed": 0,
+      "assertions": 173,
+      "seconds": 0.132,
+      "scope": "Historical focused Release check on original query candidate; no handoff-time rerun."
+    }
+  ],
+  "failed_or_unrun": {
+    "historical_failures": "Earlier query source7/11, runtime/schema/capture, preview relationship publication and runner inspection failures are retained in logs; later focused results above pass after corrections. Earlier broad survey failed/stopped before the final freeze. Materials passed only in that earlier survey.",
+    "unrun_final": [
+      "five required Make groups on final combined candidate",
+      "matching query bootstrap/self-reproduction/isolated recovery",
+      "current main + pointer/task/query composition",
+      "authored automatic target-dependency inference",
+      "lifetime b2 execution",
+      "installed SDK, Linux/Windows and Studio/browser parity for this query ABI"
+    ]
+  },
+  "unapplied_drafts": [
+    {
+      "path": "drafts/primary-design-notes.patch",
+      "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+      "source": "docs/design-notes.md",
+      "sha256": "85c70eafb48f60111c2a9fcdbc0c9020c838795b18b5c586de66727d69e4ef00",
+      "status": "Original primary dirty design notes preserved only; not applied to active query source."
+    }
+  ],
+  "composition": "No reconciled common source candidate exists in this lane. Reviews and overlays are planning/evidence, not imports.",
+  "local_only_exclusions": [
+    "build*/ object files, executables, libraries, third-party caches and generated SDK trees",
+    "compile_commands.json and Python bytecode",
+    "Git temporary indexes and component_ids.tsv.lock"
+  ],
+  "no_overlap": "After checkpoint handoff this owner makes no further overlapping implementation changes; original worktrees held pending cloud confirmation."
+}

@@ -1,0 +1,26 @@
+query evaluator rejected function=0 pc=56 op=79 type=10 out=27 left=24 right=0 target=0 offset=0 host=0 arguments=1 locals=3
+stage one query Rows load: query description has an invalid row evaluator
+(FAILED: test/language/package_compiler_chibi.c (4765): passed)
+query evaluator rejected function=0 pc=54 op=79 type=10 out=26 left=23 right=0 target=0 offset=0 host=0 arguments=0 locals=2
+stage one query Apply load: query description has an invalid row evaluator
+(FAILED: test/language/package_compiler_chibi.c (4884): passed)
+query evaluator rejected function=0 pc=51 op=79 type=10 out=26 left=23 right=0 target=0 offset=0 host=0 arguments=0 locals=2
+stage one query Accumulate load: query description has an invalid row evaluator
+(FAILED: test/language/package_compiler_chibi.c (4924): passed)
+query Spot: expected 1,0.25, got 1,0
+(FAILED: test/language/package_compiler_chibi.c (4951): passed)
+(FAILED: test/language/package_compiler_chibi.c (4221): out->instance)
+(FAILED: test/language/package_compiler_chibi.c (5004): passed)
+Running: package_compiler_query_rows_capture_and_restart 
+Running: package_compiler_query_nested_return_and_empty_iteration (OK) (6.249989 secs)
+Running: package_compiler_query_header_constructs_captured_description (OK) (6.215118 secs)
+Running: package_compiler_system_query_shares_snapshot_and_implicit_dt 
+Running: package_compiler_system_keeps_state_and_calls_pure_header_helper 
+Running: package_compiler_empty_system_runs_only_attached_owner 
+Running: package_compiler_query_optional_guards_and_inferred_values (OK) (7.088219 secs)
+Running: package_compiler_query_generators_bind_target_components 
+Running: package_compiler_query_rejects_hidden_mutation_and_old_headers (OK) (7.425573 secs)
+Running: package_compiler_query_values_are_readonly (OK) (7.524477 secs)
+Running: package_compiler_query_captures_lexical_bindings (OK) (8.426031 secs)
+===============================================================
+Summary: Passed: 6 Failed: 5 Total: 11 Suites: 0 Asserts: 51167

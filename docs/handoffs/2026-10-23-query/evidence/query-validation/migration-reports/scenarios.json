@@ -1,0 +1,145 @@
+[
+  {
+    "root": "test/fixtures/declared-components",
+    "scene": "Start",
+    "status": 0,
+    "response": {
+      "contract": 1,
+      "operation": "run_scenario",
+      "result": {
+        "kind": "scene",
+        "name": "Start",
+        "path": "content/scenes/Start.kdl",
+        "bytes": 413,
+        "hash": "3654cf418f66fc1e",
+        "frames": 4,
+        "fixed_dt": 0.016666666666666666,
+        "world_hash": "17a5ded9b9e792e5",
+        "live_entities": 4,
+        "authored_entities": 4,
+        "timing": {
+          "frame": 4,
+          "simulation_steps": 4,
+          "simulation_time": 0.06666666666666667,
+          "fixed_dt": 0.016666666666666666
+        },
+        "saved_state": {},
+        "sound_cues": 0,
+        "visibility": {
+          "enabled": false
+        },
+        "behavior_failures": []
+      },
+      "ok": true
+    },
+    "stderr": ""
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "scene": "Entities",
+    "status": 0,
+    "response": {
+      "contract": 1,
+      "operation": "run_scenario",
+      "result": {
+        "kind": "scene",
+        "name": "Entities",
+        "path": "content/scenes/Entities.kdl",
+        "bytes": 199,
+        "hash": "d5a9399e5eb0cc0d",
+        "frames": 4,
+        "fixed_dt": 0.016666666666666666,
+        "world_hash": "0f0eac5349eda49e",
+        "live_entities": 4,
+        "authored_entities": 2,
+        "timing": {
+          "frame": 4,
+          "simulation_steps": 4,
+          "simulation_time": 0.06666666666666667,
+          "fixed_dt": 0.016666666666666666
+        },
+        "saved_state": {},
+        "sound_cues": 0,
+        "visibility": {
+          "enabled": false
+        },
+        "behavior_failures": []
+      },
+      "ok": true
+    },
+    "stderr": ""
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "scene": "Materials",
+    "status": 0,
+    "response": {
+      "contract": 1,
+      "operation": "run_scenario",
+      "result": {
+        "kind": "scene",
+        "name": "Materials",
+        "path": "content/scenes/Materials.kdl",
+        "bytes": 196,
+        "hash": "fbd1e911e6f1c550",
+        "frames": 4,
+        "fixed_dt": 0.016666666666666666,
+        "world_hash": "90a274b00838edeb",
+        "live_entities": 2,
+        "authored_entities": 2,
+        "timing": {
+          "frame": 4,
+          "simulation_steps": 4,
+          "simulation_time": 0.06666666666666667,
+          "fixed_dt": 0.016666666666666666
+        },
+        "saved_state": {},
+        "sound_cues": 0,
+        "materials": {
+          "particles": 0,
+          "active_particles": 0,
+          "particle_bounds": {
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "streaming": {
+            "resident": 0,
+            "stored": 0,
+            "loaded": 0,
+            "unloaded": 0,
+            "resident_bytes": 0,
+            "stored_bytes": 0
+          },
+          "fuel_particles": 0,
+          "burning_particles": 0,
+          "thermal_particles": 0,
+          "fuel_remaining": 0.0,
+          "thermal_energy": 0.0,
+          "elastic_particles": 0,
+          "volume_min": 1.0,
+          "volume_max": 1.0,
+          "strain_max": 0.0,
+          "mpm": {
+            "substeps": 0,
+            "nodes": 0,
+            "advanced_time": 0.0,
+            "limited": false
+          },
+          "solids": 1,
+          "cells": 60,
+          "fragments": 0,
+          "chunks": 0,
+          "hash": "933eddace9a2b4ea"
+        },
+        "visibility": {
+          "enabled": false
+        },
+        "behavior_failures": []
+      },
+      "ok": true
+    },
+    "stderr": ""
+  }
+]

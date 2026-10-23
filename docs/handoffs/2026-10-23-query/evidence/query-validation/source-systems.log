@@ -1,0 +1,14 @@
+Running: source_system_persistent_wait_membership (OK) (0.009510 secs)
+Running: source_system_host_spawn_resume (OK) (0.004144 secs)
+Running: source_behavior_nested_spawn_outlives_frame (OK) (0.004585 secs)
+Running: source_system_live_component_resume (OK) (0.003983 secs)
+Running: source_system_optional_membership_roundtrip (OK) (0.009496 secs)
+Running: source_system_any_query_membership (OK) (0.003601 secs)
+Running: source_system_empty_any_query_matches_nothing (OK) (0.003582 secs)
+Running: source_system_reactive_checkpoint (OK) (0.003387 secs)
+Running: source_system_synchronous_batch_path (OK) (0.003949 secs)
+Running: source_system_camera_follow_runtime (OK) (0.004926 secs)
+Running: source_input_actions_deliver_one_typed_edge_without_graph_objects (OK) (0.003021 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 334
+Test command wall time: 1.137s; includes in-test fixture setup; external configuration/build excluded.

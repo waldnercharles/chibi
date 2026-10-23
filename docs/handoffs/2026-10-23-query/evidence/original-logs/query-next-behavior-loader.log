@@ -1,0 +1,7 @@
+(FAILED: test/authoring/behavior_loader.c (200): source_run_system(worlds[i]->runtime->sources, "MoveTargets", 0, .1) >= 0)
+Running: sources_load_into_both_worlds_or_neither (OK) (0.014207 secs)
+Running: required_relationship_queries_publish_before_scenes 
+Running: scene_launch_prepares_what_overrides_name (OK) (0.000574 secs)
+Running: failed_scene_launch_destroys_entities_before_their_strings (OK) (0.000301 secs)
+===============================================================
+Summary: Passed: 3 Failed: 1 Total: 4 Suites: 0 Asserts: 32

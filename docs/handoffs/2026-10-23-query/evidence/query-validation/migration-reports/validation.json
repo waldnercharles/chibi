@@ -1,0 +1,1155 @@
+[
+  {
+    "root": "test/fixtures",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"prototype\",\"name\":\"Enemy\",\"path\":\"content/prototypes/Enemy.kdl\",\"errors\":2,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'EnemyBehavior'\",\"line\":12,\"column\":18},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'HealthBehavior'\",\"line\":12,\"column\":34}]},{\"kind\":\"prototype\",\"name\":\"Player\",\"path\":\"content/prototypes/Player.kdl\",\"errors\":2,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'HealthBehavior'\",\"line\":15,\"column\":39},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'PlayerContactBehavior'\",\"line\":15,\"column\":96}]},{\"kind\":\"prototype\",\"name\":\"Projectile\",\"path\":\"content/prototypes/Projectile.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'ProjectileHitBehavior'\",\"line\":12,\"column\":39}]},{\"kind\":\"scene\",\"name\":\"Editor2D\",\"path\":\"content/scenes/Editor2D.kdl\",\"errors\":3,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ArenaFloor'\",\"line\":6,\"column\":19},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ArenaPlayer'\",\"line\":14,\"column\":19},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ArenaEnemy'\",\"line\":22,\"column\":19}]},{\"kind\":\"scene\",\"name\":\"NeonSwarm\",\"path\":\"content/scenes/NeonSwarm.kdl\",\"errors\":3,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'HealthBehavior'\",\"line\":12,\"column\":59},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown behavior or system 'PlayerContactBehavior'\",\"line\":12,\"column\":97},{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"asset not found: content/behaviors/HealthBehavior.chibi\"}]},{\"kind\":\"scene\",\"name\":\"ShaderImageDemo\",\"path\":\"content/scenes/ShaderImageDemo.kdl\",\"errors\":3,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ShaderEnergy'\",\"line\":7,\"column\":19},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ShaderEnergy'\",\"line\":14,\"column\":19},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype 'ShaderEnergy'\",\"line\":22,\"column\":19}]}],\"valid\":false,\"assets\":37,\"errors\":14,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "prototype",
+            "name": "Enemy",
+            "path": "content/prototypes/Enemy.kdl",
+            "errors": 2,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'EnemyBehavior'",
+                "line": 12,
+                "column": 18
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'HealthBehavior'",
+                "line": 12,
+                "column": 34
+              }
+            ]
+          },
+          {
+            "kind": "prototype",
+            "name": "Player",
+            "path": "content/prototypes/Player.kdl",
+            "errors": 2,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'HealthBehavior'",
+                "line": 15,
+                "column": 39
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'PlayerContactBehavior'",
+                "line": 15,
+                "column": 96
+              }
+            ]
+          },
+          {
+            "kind": "prototype",
+            "name": "Projectile",
+            "path": "content/prototypes/Projectile.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'ProjectileHitBehavior'",
+                "line": 12,
+                "column": 39
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Editor2D",
+            "path": "content/scenes/Editor2D.kdl",
+            "errors": 3,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ArenaFloor'",
+                "line": 6,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ArenaPlayer'",
+                "line": 14,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ArenaEnemy'",
+                "line": 22,
+                "column": 19
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "NeonSwarm",
+            "path": "content/scenes/NeonSwarm.kdl",
+            "errors": 3,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'HealthBehavior'",
+                "line": 12,
+                "column": 59
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown behavior or system 'PlayerContactBehavior'",
+                "line": 12,
+                "column": 97
+              },
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "asset not found: content/behaviors/HealthBehavior.chibi"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "ShaderImageDemo",
+            "path": "content/scenes/ShaderImageDemo.kdl",
+            "errors": 3,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ShaderEnergy'",
+                "line": 7,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ShaderEnergy'",
+                "line": 14,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype 'ShaderEnergy'",
+                "line": 22,
+                "column": 19
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 37,
+        "errors": 14,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/behavior-catalog",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"library\",\"name\":\"WeaponActions\",\"path\":\"content/libraries/WeaponActions.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype reference 'ArenaProjectile'\",\"line\":6,\"column\":128}]}],\"valid\":false,\"assets\":10,\"errors\":1,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "library",
+            "name": "WeaponActions",
+            "path": "content/libraries/WeaponActions.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype reference 'ArenaProjectile'",
+                "line": 6,
+                "column": 128
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 10,
+        "errors": 1,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/component-presentation",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":3,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 3,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/courtyard",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":8,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 8,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/declared-components",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"system\",\"name\":\"Recharge\",\"path\":\"content/systems/Recharge.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"invalid host value provenance schema\",\"line\":1,\"column\":37}]}],\"valid\":false,\"assets\":5,\"errors\":1,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "system",
+            "name": "Recharge",
+            "path": "content/systems/Recharge.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "invalid host value provenance schema",
+                "line": 1,
+                "column": 37
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 5,
+        "errors": 1,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/environment-authoring",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":12,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 12,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"scene\",\"name\":\"Audio\",\"path\":\"content/scenes/Audio.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Entities\",\"path\":\"content/scenes/Entities.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Flow\",\"path\":\"content/scenes/Flow.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Input\",\"path\":\"content/scenes/Input.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Materials\",\"path\":\"content/scenes/Materials.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"MovingPlatforms3D\",\"path\":\"content/scenes/MovingPlatforms3D.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Particles\",\"path\":\"content/scenes/Particles.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Physics2D\",\"path\":\"content/scenes/Physics2D.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Physics3D\",\"path\":\"content/scenes/Physics3D.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Relationships\",\"path\":\"content/scenes/Relationships.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Reload\",\"path\":\"content/scenes/Reload.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Rendering3D\",\"path\":\"content/scenes/Rendering3D.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Rhythm\",\"path\":\"content/scenes/Rhythm.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Save\",\"path\":\"content/scenes/Save.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Tilemap\",\"path\":\"content/scenes/Tilemap.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"scene\",\"name\":\"Ui\",\"path\":\"content/scenes/Ui.kdl\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"LOAD\",\"message\":\"Project source preparation failed\"}]},{\"kind\":\"system\",\"name\":\"Cool\",\"path\":\"content/systems/Cool.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"invalid host value provenance schema\",\"line\":1,\"column\":29}]},{\"kind\":\"system\",\"name\":\"Drift\",\"path\":\"content/systems/Drift.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"invalid host value provenance schema\",\"line\":1,\"column\":60}]}],\"valid\":false,\"assets\":93,\"errors\":18,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\n",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "scene",
+            "name": "Audio",
+            "path": "content/scenes/Audio.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Entities",
+            "path": "content/scenes/Entities.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Flow",
+            "path": "content/scenes/Flow.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Input",
+            "path": "content/scenes/Input.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Materials",
+            "path": "content/scenes/Materials.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "MovingPlatforms3D",
+            "path": "content/scenes/MovingPlatforms3D.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Particles",
+            "path": "content/scenes/Particles.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Physics2D",
+            "path": "content/scenes/Physics2D.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Physics3D",
+            "path": "content/scenes/Physics3D.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Relationships",
+            "path": "content/scenes/Relationships.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Reload",
+            "path": "content/scenes/Reload.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Rendering3D",
+            "path": "content/scenes/Rendering3D.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Rhythm",
+            "path": "content/scenes/Rhythm.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Save",
+            "path": "content/scenes/Save.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Tilemap",
+            "path": "content/scenes/Tilemap.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "scene",
+            "name": "Ui",
+            "path": "content/scenes/Ui.kdl",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "LOAD",
+                "message": "Project source preparation failed"
+              }
+            ]
+          },
+          {
+            "kind": "system",
+            "name": "Cool",
+            "path": "content/systems/Cool.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "invalid host value provenance schema",
+                "line": 1,
+                "column": 29
+              }
+            ]
+          },
+          {
+            "kind": "system",
+            "name": "Drift",
+            "path": "content/systems/Drift.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "invalid host value provenance schema",
+                "line": 1,
+                "column": 60
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 93,
+        "errors": 18,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/graph-routing",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"behavior\",\"name\":\"HudDisplay\",\"path\":\"content/behaviors/HudDisplay.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown event 'Repair'\",\"line\":25,\"column\":8}]},{\"kind\":\"behavior\",\"name\":\"HullDamage\",\"path\":\"content/behaviors/HullDamage.chibi\",\"errors\":6,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'WeaponActions'\",\"line\":6,\"column\":15},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown callable 'WeaponActions.Spawn_Prototype_At'\",\"line\":6,\"column\":15},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'HitEmitter'\",\"line\":6,\"column\":48},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'WeaponActions'\",\"line\":8,\"column\":19},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown callable 'WeaponActions.Spawn_Prototype_At'\",\"line\":8,\"column\":19},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'DeathEmitter'\",\"line\":8,\"column\":52}]},{\"kind\":\"behavior\",\"name\":\"ProjectileEffects\",\"path\":\"content/behaviors/ProjectileEffects.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown prototype reference 'TrailEmitter'\",\"line\":3,\"column\":64}]},{\"kind\":\"behavior\",\"name\":\"SwarmerEffects\",\"path\":\"content/behaviors/SwarmerEffects.chibi\",\"errors\":3,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'WeaponActions'\",\"line\":3,\"column\":15},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown callable 'WeaponActions.Spawn_Prototype_At'\",\"line\":3,\"column\":15},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'SpawnEmitter'\",\"line\":3,\"column\":48}]},{\"kind\":\"behavior\",\"name\":\"Weapon\",\"path\":\"content/behaviors/Weapon.chibi\",\"errors\":2,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown value 'WeaponActions'\",\"line\":27,\"column\":23},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown callable 'WeaponActions.Fire_Projectile'\",\"line\":27,\"column\":23}]},{\"kind\":\"library\",\"name\":\"WeaponActions\",\"path\":\"content/libraries/WeaponActions.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype reference 'Projectile'\",\"line\":10,\"column\":128}]}],\"valid\":false,\"assets\":22,\"errors\":14,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "behavior",
+            "name": "HudDisplay",
+            "path": "content/behaviors/HudDisplay.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown event 'Repair'",
+                "line": 25,
+                "column": 8
+              }
+            ]
+          },
+          {
+            "kind": "behavior",
+            "name": "HullDamage",
+            "path": "content/behaviors/HullDamage.chibi",
+            "errors": 6,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'WeaponActions'",
+                "line": 6,
+                "column": 15
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown callable 'WeaponActions.Spawn_Prototype_At'",
+                "line": 6,
+                "column": 15
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'HitEmitter'",
+                "line": 6,
+                "column": 48
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'WeaponActions'",
+                "line": 8,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown callable 'WeaponActions.Spawn_Prototype_At'",
+                "line": 8,
+                "column": 19
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'DeathEmitter'",
+                "line": 8,
+                "column": 52
+              }
+            ]
+          },
+          {
+            "kind": "behavior",
+            "name": "ProjectileEffects",
+            "path": "content/behaviors/ProjectileEffects.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown prototype reference 'TrailEmitter'",
+                "line": 3,
+                "column": 64
+              }
+            ]
+          },
+          {
+            "kind": "behavior",
+            "name": "SwarmerEffects",
+            "path": "content/behaviors/SwarmerEffects.chibi",
+            "errors": 3,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'WeaponActions'",
+                "line": 3,
+                "column": 15
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown callable 'WeaponActions.Spawn_Prototype_At'",
+                "line": 3,
+                "column": 15
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'SpawnEmitter'",
+                "line": 3,
+                "column": 48
+              }
+            ]
+          },
+          {
+            "kind": "behavior",
+            "name": "Weapon",
+            "path": "content/behaviors/Weapon.chibi",
+            "errors": 2,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown value 'WeaponActions'",
+                "line": 27,
+                "column": 23
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown callable 'WeaponActions.Fire_Projectile'",
+                "line": 27,
+                "column": 23
+              }
+            ]
+          },
+          {
+            "kind": "library",
+            "name": "WeaponActions",
+            "path": "content/libraries/WeaponActions.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype reference 'Projectile'",
+                "line": 10,
+                "column": 128
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 22,
+        "errors": 14,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/language",
+    "status": 4,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[{\"kind\":\"behavior\",\"name\":\"ArenaDropBehavior\",\"path\":\"content/behaviors/ArenaDropBehavior.chibi\",\"errors\":3,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown prototype reference 'ArenaDeathPulse'\",\"line\":8,\"column\":50},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown prototype reference 'ArenaEnemyShard'\",\"line\":52,\"column\":68},{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype reference 'ArenaHitPulse'\",\"line\":41,\"column\":52}]},{\"kind\":\"behavior\",\"name\":\"HealthBehavior\",\"path\":\"content/behaviors/HealthBehavior.chibi\",\"errors\":10,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown event 'Died'\",\"line\":20,\"column\":8},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown event declaration\",\"line\":47,\"column\":30},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown argument 'Amount'\",\"line\":47,\"column\":53},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Too many arguments\",\"line\":47,\"column\":53},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown argument 'Source'\",\"line\":47,\"column\":142},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Too many arguments\",\"line\":47,\"column\":142},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown event declaration\",\"line\":49,\"column\":34},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown argument 'Source'\",\"line\":49,\"column\":54},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Too many arguments\",\"line\":49,\"column\":54},{\"severity\":\"error\",\"rule\":0,\"rule_name\":\"SOURCE\",\"message\":\"Unknown event declaration\",\"line\":63,\"column\":28}]},{\"kind\":\"library\",\"name\":\"WeaponActions\",\"path\":\"content/libraries/WeaponActions.chibi\",\"errors\":1,\"warnings\":0,\"diagnostics\":[{\"severity\":\"error\",\"rule_name\":\"CATALOG\",\"message\":\"Unknown prototype reference 'Projectile'\",\"line\":10,\"column\":128}]}],\"valid\":false,\"assets\":13,\"errors\":14,\"warnings\":0},\"error\":{\"code\":\"validation_failed\",\"message\":\"project validation failed\"},\"ok\":false}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [
+          {
+            "kind": "behavior",
+            "name": "ArenaDropBehavior",
+            "path": "content/behaviors/ArenaDropBehavior.chibi",
+            "errors": 3,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown prototype reference 'ArenaDeathPulse'",
+                "line": 8,
+                "column": 50
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown prototype reference 'ArenaEnemyShard'",
+                "line": 52,
+                "column": 68
+              },
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype reference 'ArenaHitPulse'",
+                "line": 41,
+                "column": 52
+              }
+            ]
+          },
+          {
+            "kind": "behavior",
+            "name": "HealthBehavior",
+            "path": "content/behaviors/HealthBehavior.chibi",
+            "errors": 10,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown event 'Died'",
+                "line": 20,
+                "column": 8
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown event declaration",
+                "line": 47,
+                "column": 30
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown argument 'Amount'",
+                "line": 47,
+                "column": 53
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Too many arguments",
+                "line": 47,
+                "column": 53
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown argument 'Source'",
+                "line": 47,
+                "column": 142
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Too many arguments",
+                "line": 47,
+                "column": 142
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown event declaration",
+                "line": 49,
+                "column": 34
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown argument 'Source'",
+                "line": 49,
+                "column": 54
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Too many arguments",
+                "line": 49,
+                "column": 54
+              },
+              {
+                "severity": "error",
+                "rule": 0,
+                "rule_name": "SOURCE",
+                "message": "Unknown event declaration",
+                "line": 63,
+                "column": 28
+              }
+            ]
+          },
+          {
+            "kind": "library",
+            "name": "WeaponActions",
+            "path": "content/libraries/WeaponActions.chibi",
+            "errors": 1,
+            "warnings": 0,
+            "diagnostics": [
+              {
+                "severity": "error",
+                "rule_name": "CATALOG",
+                "message": "Unknown prototype reference 'Projectile'",
+                "line": 10,
+                "column": 128
+              }
+            ]
+          }
+        ],
+        "valid": false,
+        "assets": 13,
+        "errors": 14,
+        "warnings": 0
+      },
+      "error": {
+        "code": "validation_failed",
+        "message": "project validation failed"
+      },
+      "ok": false
+    }
+  },
+  {
+    "root": "test/fixtures/material-contracts",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":7,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 7,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/scene3d",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":6,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 6,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/sprites",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":8,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 8,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/studio",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":8,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\n",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 8,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/studio-workspace",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":14,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\n",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 14,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/fixtures/terrain-lab",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":16,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Inter' [bold] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.\nRmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.\nRmlUi info: Loaded font face 'Geist' [bold] from 'memory'.\nRmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.\nRmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.\nRmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.\n",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 16,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/stories/Controls",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":4,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 4,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/stories/Counter",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":4,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 4,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/stories/Follow",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":6,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 6,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/stories/Motion",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":4,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 4,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  },
+  {
+    "root": "test/stories/Results",
+    "status": 0,
+    "stdout": "{\"contract\":1,\"operation\":\"validate_project\",\"result\":{\"project\":[],\"problems\":[],\"valid\":true,\"assets\":4,\"errors\":0,\"warnings\":0},\"ok\":true}\n",
+    "stderr": "",
+    "result": {
+      "contract": 1,
+      "operation": "validate_project",
+      "result": {
+        "project": [],
+        "problems": [],
+        "valid": true,
+        "assets": 4,
+        "errors": 0,
+        "warnings": 0
+      },
+      "ok": true
+    }
+  }
+]

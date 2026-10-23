@@ -1,0 +1,142 @@
+child_exit_incomplete_studio_acceptance: Studio graph visibility accepted: frames=10
+
+child_exit_incomplete_studio_acceptance: Studio source edit accepted: frames=4 edits=1 undo=1 redo=1
+
+child_exit_incomplete_studio_acceptance: Studio graph visibility accepted: frames=9
+
+child_exit_incomplete_studio_acceptance: prefix Studio graph visibility accepted: frames=10
+
+child_exit_incomplete_studio_acceptance: Studio scene move accepted: frames=2
+
+child_exit_incomplete_studio_acceptance: Studio outliner move accepted: frames=19
+
+child_exit_incomplete_studio_acceptance: Studio outliner move accepted: frames=21
+
+child_exit_incomplete_studio_acceptance: Studio outliner move accepted: frames=19
+
+child_exit_incomplete_studio_acceptance: Studio graph visibility accepted: frames=10
+Studio graph visibility accepted: frames=10
+
+child_exit_UI_initialization_failure: Studio graph visibility accepted: frames=10
+Studio UI:
+
+child_exit_UI_initialization_failure: Studio graph visibility accepted: frames=10
+runtime frame failed
+
+child_exit_UI_initialization_failure: Studio graph visibility accepted: frames=10
+Could not initialize
+
+child_exit_incomplete_studio_acceptance: Studio graph pointer accepted: frames=19
+
+child_exit_incomplete_studio_acceptance: Studio asset pointer accepted: frames=20
+
+child_exit_incomplete_studio_acceptance: Studio debugger source history accepted: frames=47
+
+child_exit_incomplete_studio_acceptance: Studio 3D camera accepted: frames=30
+
+child_exit_incomplete_studio_acceptance: 
+child_exit_incomplete_studio_acceptance: Studio 3D camera accepted: frames=26
+
+child_exit_incomplete_studio_acceptance: Studio 3D camera accepted: frames=29
+
+child_exit_incomplete_studio_acceptance: prefix Studio 3D camera accepted: frames=30
+
+child_exit_incomplete_studio_acceptance: Studio 3D camera accepted: frames=30
+Studio 3D camera accepted: frames=30
+
+child_exit_UI_initialization_failure: Studio 3D camera accepted: frames=30
+Studio UI: failed
+
+child_exit_UI_initialization_failure: Studio 3D camera accepted: frames=30
+runtime frame failed
+
+child_exit_UI_initialization_failure: Studio 3D camera accepted: frames=30
+Could not initialize
+
+child_exit_incomplete_studio_acceptance: Studio graph pointer accepted: frames=19
+
+child_exit_incomplete_studio_acceptance: Studio 3D gizmo accepted: frames=42
+
+child_exit_incomplete_studio_acceptance: Studio 3D gizmo accepted: frames=38
+
+child_exit_incomplete_studio_acceptance: Studio 3D gizmo accepted: frames=41
+
+child_exit_incomplete_studio_acceptance: prefix Studio 3D gizmo accepted: frames=42
+
+child_exit_incomplete_studio_acceptance: Studio 3D gizmo accepted: frames=42
+Studio 3D gizmo accepted: frames=42
+
+child_exit_UI_initialization_failure: Studio 3D gizmo accepted: frames=42
+runtime frame failed
+
+child_exit_incomplete_studio_acceptance: Studio 3D collider handles accepted: frames=26
+
+child_exit_incomplete_studio_acceptance: 
+child_exit_incomplete_studio_acceptance: Studio 3D collider handles accepted: frames=18
+
+child_exit_incomplete_studio_acceptance: Studio 3D collider handles accepted: frames=25
+
+child_exit_incomplete_studio_acceptance: prefix Studio 3D collider handles accepted: frames=26
+
+child_exit_incomplete_studio_acceptance: Studio 3D collider handles accepted: frames=26
+Studio 3D collider handles accepted: frames=26
+
+child_exit_UI_initialization_failure: Studio 3D collider handles accepted: frames=26
+Studio UI: failed
+
+child_exit_UI_initialization_failure: Studio 3D collider handles accepted: frames=26
+runtime frame failed
+
+studio_acceptance_resource_bounds_invalid
+studio_acceptance_resource_bounds_invalid
+studio_startup_resource_generation_changed
+studio_startup_resource_bounds_changed
+studio_startup_resource_bounds_changed
+studio_acceptance_source_size_changed
+studio_acceptance_source_records_changed
+studio_acceptance_source_records_changed
+studio_acceptance_source_changed
+studio_acceptance_source_size_changed
+studio_acceptance_source_size_changed
+benchmark trial 1/3
+benchmark trial 1 wall=0.006958 s exit=7
+benchmark stopped with status 7
+Usage: /Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
+The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
+Usage: /Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
+The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
+Usage: /Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
+The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
+Usage: /Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
+The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
+Usage: /Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
+The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
+benchmark trial 1/3
+benchmark trial 1 wall=1.001576 s exit=143
+benchmark stopped with status 124
+Test command wall time: 0.132s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.059s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.110s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.131s; includes in-test fixture setup; external configuration/build excluded.
+test cleanup unavailable: no usable proc children reader or ps (fixture: discovery unavailable); no test started
+test cleanup unavailable: no usable proc children reader or ps (Command '['/Users/cwaldner/Personal/chibi/.worktrees/query-iterators/chibi/build-release/test/tools/policy_worker', 'policy-ps', '/tmp/chibi-policy-6MbhyG', '30']' timed out after 5 seconds); no test started
+Running: material_cpu_routes_reach_exact_dispatcher (OK) (0.011183 secs)
+Running: project_group_keeps_all_project_commands_out_of_native (OK) (0.018539 secs)
+Running: group_selectors_are_unique_and_controller_users_are_projects (OK) (0.001200 secs)
+Running: studio_acceptance_requires_exact_completion (OK) (0.033919 secs)
+Running: studio_camera_requires_thirty_clean_frames (OK) (0.017098 secs)
+Running: studio_gizmo_requires_forty_two_clean_frames (OK) (0.009043 secs)
+Running: studio_collider_requires_twenty_six_clean_frames (OK) (0.012339 secs)
+Running: studio_resources_require_recorded_generation (OK) (0.009488 secs)
+Running: studio_acceptance_source_records_match_files (OK) (0.013703 secs)
+Running: benchmark_runner_timeout_is_optional (OK) (0.008574 secs)
+Running: benchmark_runner_explicit_timeout_cleans_descendants (OK) (0.009596 secs)
+Running: exit_sequence_and_optional_timeout (OK) (0.029715 secs)
+Running: descendant_cleanup (OK) (0.020683 secs)
+Running: portable_nested_cleanup_preserves_sibling (OK) (0.017277 secs)
+Running: unavailable_discovery_refuses_before_launch (OK) (0.001234 secs)
+Running: slow_process_inspection_still_launches_work (OK) (0.011931 secs)
+Running: stuck_process_inspection_refuses_work_and_reaps_probe (OK) (0.040373 secs)
+===============================================================
+Summary: Passed: 17 Failed: 0 Total: 17 Suites: 0 Asserts: 173
+Test command wall time: 24.075s; includes in-test fixture setup; external configuration/build excluded.

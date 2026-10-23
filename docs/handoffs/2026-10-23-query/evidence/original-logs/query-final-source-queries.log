@@ -1,0 +1,22 @@
+stage one query Apply load: handler event declaration is unavailable or incompatible
+(FAILED: test/language/package_compiler_chibi.c (4891): passed)
+stage one query Accumulate load: handler event declaration is unavailable or incompatible
+(FAILED: test/language/package_compiler_chibi.c (4931): passed)
+stage one query Empty load: handler event declaration is unavailable or incompatible
+(FAILED: test/language/package_compiler_chibi.c (4959): passed)
+stage one query Targets load: handler event declaration is unavailable or incompatible
+(FAILED: test/language/package_compiler_chibi.c (5012): passed)
+Running: package_compiler_query_rows_capture_and_restart (OK) (6.311404 secs)
+Running: package_compiler_query_nested_return_and_empty_iteration (OK) (6.015567 secs)
+Running: package_compiler_query_header_constructs_captured_description (OK) (6.271377 secs)
+Running: package_compiler_system_query_shares_snapshot_and_implicit_dt 
+Running: package_compiler_system_keeps_state_and_calls_pure_header_helper 
+Running: package_compiler_empty_system_runs_only_attached_owner 
+Running: package_compiler_query_optional_guards_and_inferred_values (OK) (7.388327 secs)
+Running: package_compiler_query_generators_bind_target_components 
+Running: package_compiler_query_rejects_hidden_mutation_and_old_headers (OK) (6.026996 secs)
+Running: package_compiler_query_values_are_readonly (OK) (5.821393 secs)
+Running: package_compiler_query_captures_lexical_bindings (OK) (5.816494 secs)
+===============================================================
+Summary: Passed: 7 Failed: 4 Total: 11 Suites: 0 Asserts: 54984
+Test command wall time: 72.344s; includes in-test fixture setup; external configuration/build excluded.

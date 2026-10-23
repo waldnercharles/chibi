@@ -1,0 +1,45 @@
+diff --git a/docs/design-notes.md b/docs/design-notes.md
+index 279aac1cb..b90440627 100644
+--- a/docs/design-notes.md
++++ b/docs/design-notes.md
+@@ -50,6 +50,40 @@ targets.
+   first argument. `append` adds an item and `extend` adds an array's items;
+   project version 32 removed `array_add` and the concatenating `append`.
+ 
++## Decisions (owner, 2026-10-22)
++
++- **Flat system query bindings.** Use one flat binding list for root
++  components, relationship generators and components from related entities.
++  This is the selected design direction, not implemented syntax:
++
++  ```chibi
++  DamageTargets :: system(
++      damage: Damage,
++      target: entity in self.Targets,
++      health: Health from target,
++  ) where health.value > 0 {
++      health.value -= damage.amount
++  }
++  ```
++
++  `in` generates matching rows; `from` binds a component on the named source.
++  The spelling of inferred generator declarations remains open. The owner
++  selected the flat form over the grouped alternative below; ad hoc query
++  syntax and comprehension extensions are still proposals.
++- **Grouped bindings are a future exploration.** Consider grouping several
++  component bindings under their source entity when repetition becomes a
++  demonstrated problem, for example:
++
++  ```chibi
++  target: entity in self.Targets {
++      health: Health,
++      armor: Armor?,
++  }
++  ```
++
++  This sketch is deferred. Its binding scope, interaction with generators,
++  and distinction from an executable block need a separate design decision.
++
+ The remaining entries are proposals, except "Strings carry their length",
+ which records how the decision above is carried out.
+ 

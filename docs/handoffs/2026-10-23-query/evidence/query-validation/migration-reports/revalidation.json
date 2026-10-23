@@ -1,0 +1,54 @@
+[
+  {
+    "root": "test/fixtures/declared-components",
+    "path": "content/systems/Recharge.chibi",
+    "status": 0,
+    "ok": true,
+    "diagnostics": [],
+    "error": null
+  },
+  {
+    "root": "test/fixtures/declared-components",
+    "status": 0,
+    "ok": true,
+    "result": {
+      "project": [],
+      "problems": [],
+      "valid": true,
+      "assets": 5,
+      "errors": 0,
+      "warnings": 0
+    },
+    "error": null
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "path": "content/systems/Cool.chibi",
+    "status": 0,
+    "ok": true,
+    "diagnostics": [],
+    "error": null
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "path": "content/systems/Drift.chibi",
+    "status": 0,
+    "ok": true,
+    "diagnostics": [],
+    "error": null
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "status": 0,
+    "ok": true,
+    "result": {
+      "project": [],
+      "problems": [],
+      "valid": true,
+      "assets": 93,
+      "errors": 0,
+      "warnings": 0
+    },
+    "error": null
+  }
+]

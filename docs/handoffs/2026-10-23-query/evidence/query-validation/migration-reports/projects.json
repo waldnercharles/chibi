@@ -1,0 +1,262 @@
+[
+  {
+    "root": "test/fixtures",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/behavior-catalog",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/component-presentation",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/courtyard",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/declared-components",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": "formatted content/systems/Recharge.chibi\n"
+    }
+  },
+  {
+    "root": "test/fixtures/environment-authoring",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/feature-coverage",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": "formatted content/systems/Cool.chibi\nformatted content/systems/Drift.chibi\n"
+    }
+  },
+  {
+    "root": "test/fixtures/graph-routing",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/language",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": "formatted content/systems/FreeMotion.chibi\n"
+    }
+  },
+  {
+    "root": "test/fixtures/material-contracts",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/scene3d",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/sprites",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/studio",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/studio-workspace",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/fixtures/terrain-lab",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/stories/Controls",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/stories/Counter",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/stories/Follow",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/stories/Motion",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "test/stories/Results",
+    "--migrate": {
+      "status": 0,
+      "stdout": "Upgraded 1 version step to version 34\n",
+      "stderr": ""
+    },
+    "--format": {
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  }
+]

@@ -45,6 +45,10 @@ targets.
 - **One string type.** Chibi code sees a single `string`, with no `cstring`.
   Native C components keep their NUL-terminated `const char *` fields, and the
   runtime converts at that boundary.
+- **Arrays change through methods.** `code.append(x)` replaces
+  `code = array_add(code, x)`, and every array function is a method on its
+  first argument. `append` adds an item and `extend` adds an array's items;
+  project version 32 removed `array_add` and the concatenating `append`.
 
 The remaining entries are proposals, except "Strings carry their length",
 which records how the decision above is carried out.

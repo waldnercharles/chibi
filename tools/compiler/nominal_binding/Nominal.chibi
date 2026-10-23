@@ -57,7 +57,7 @@ pub Declare :: (environment: binding.Environment, lexical: binding.Context, cont
             column: request.column, document: request.document,
             message: "Records must be declared in a library"
         };
-        diagnostics = array_add(diagnostics, diagnostic);
+        diagnostics.append(diagnostic);
         return Declaration.Skipped(diagnostics);
     }
     initialStorage := UnionStorage;

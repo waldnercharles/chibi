@@ -88,7 +88,7 @@ DashBehavior :: behavior {
                         if contains(Struck_Entities, Other) {
                             return
                         } else {
-                            Struck_Entities = array_add(Struck_Entities, Other)
+                            Struck_Entities = append(Struck_Entities, Other)
                             await send_event<Damage>(Other, self.Dash.damage, self)
                             return
                         }

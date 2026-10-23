@@ -2,7 +2,7 @@ RelationshipProbe :: behavior {
     targets: handle<ecs.entity>[] = []
     on Begin :: () {
         for target in self.Targets {
-            targets = array_add(targets, target)
+            targets = append(targets, target)
         }
         for target in targets {
             if has_pair(self, Targets, target) {
@@ -14,7 +14,7 @@ RelationshipProbe :: behavior {
         waiting: handle<ecs.entity>[] = []
         for target in targets {
             if has_pair(self, Targets, target) {
-                waiting = array_add(waiting, target)
+                waiting = append(waiting, target)
             } else {
                 add_pair(self, Targets, target)
             }

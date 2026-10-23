@@ -144,7 +144,7 @@ ShiftRight: int : 28;
 Reject :: (range: int, message: string) -> Plan {
     diagnostics: Diagnostic[] = [];
     item: Diagnostic = {range: range, message: message};
-    return Plan.Rejected(array_add(diagnostics, item));
+    return Plan.Rejected(append(diagnostics, item));
 }
 ValidIndex :: (index: int, count: int) -> bool {
     return index >= 0 && index < count;
@@ -192,15 +192,15 @@ Emit :: (output: Emitter, item: Instruction, origin: Range, storage: int, kind: 
             if (storage != 0) {
                 item.output = length(slots);
                 slot: Slot = {storage: storage, kind: kind};
-                slots = array_add(slots, slot);
+                slots.append(slot);
             }
             if (item.op == Save) {
                 local := locals[item.target];
                 local.kind = slots[item.left].kind;
                 locals[item.target] = local;
             }
-            origins = array_add(origins, origin);
-            code = array_add(code, item);
+            origins.append(origin);
+            code.append(item);
             return Emitter.Emitted(slots, locals, origins, code);
     }
 }
@@ -226,7 +226,7 @@ AddLocal :: (output: Emitter) -> Emitter {
     switch output {
         case .Emitted(slots, locals, origins, code):
             item: Local = {storage: Boolean, payload: 0, kind: 0};
-            return Emitter.Emitted(slots, array_add(locals, item), origins, code);
+            return Emitter.Emitted(slots, append(locals, item), origins, code);
     }
 }
 Patch :: (output: Emitter, pc: int, target: int) -> Emitter {
@@ -303,8 +303,8 @@ pub Lower :: (request: Request) -> Plan {
                     }
                     earlier += 1;
                 }
-                variable_ids = array_add(variable_ids, identity);
-                defaults = array_add(defaults, literals[variable.literal]);
+                variable_ids.append(identity);
+                defaults.append(literals[variable.literal]);
                 index += 1;
             }
             symbol_variables: int[] = [];
@@ -329,7 +329,7 @@ pub Lower :: (request: Request) -> Plan {
                 if (types[symbol.type].storage != defaults[found].storage) {
                     return Reject(request_range, "scalar lowering state signature differs from its type");
                 }
-                symbol_variables = array_add(symbol_variables, found);
+                symbol_variables.append(found);
                 index += 1;
             }
             // Validate every raw row, including rows unreachable from the results.
@@ -412,7 +412,7 @@ pub Lower :: (request: Request) -> Plan {
                     return Reject(request_range, "scalar lowering admits identity result conversions only");
                 }
                 header: Literal = {storage: types[result.type].storage, payload: 0};
-                headers = array_add(headers, header);
+                headers.append(header);
                 index += 1;
             }
             slots: Slot[] = [];
@@ -423,7 +423,7 @@ pub Lower :: (request: Request) -> Plan {
             frames: Frame[] = [];
             index = 0;
             while (index < 257) {
-                frames = array_add(frames, NewFrame(-1));
+                frames.append(NewFrame(-1));
                 index += 1;
             }
             visits: int = 0;

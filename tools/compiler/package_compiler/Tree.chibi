@@ -20,7 +20,7 @@ Members :: (forest: snapshot.SnapshotNode[], parent: int) -> int[] {
     found: int[] = [];
     member := FirstMember(forest, parent);
     while (member >= 0) {
-        found = array_add(found, member);
+        found.append(member);
         member = NextMember(forest, member);
     }
     return found;

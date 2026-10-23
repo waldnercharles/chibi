@@ -627,9 +627,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         if (!value) {
             continue;
         }
-        size_t value_size = strnlen(value, BUILD_TEXT_LIMIT + 1);
+        size_t value_size = strnlen(value, BUILD_ENVIRONMENT_LIMIT + 1);
         size_t size = strlen(environment_names[i]) + value_size + 2;
-        if (size > BUILD_TEXT_LIMIT - environment_bytes) {
+        if (size > BUILD_ENVIRONMENT_LIMIT - environment_bytes) {
             environment_valid = false;
             break;
         }

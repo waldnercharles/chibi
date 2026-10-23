@@ -238,13 +238,13 @@ Scores :: behavior {
 
     on Begin :: () {
         points: int[] = [10, 20, 5]
-        points = array_add(points, 15)
+        points.append(15)
         print_string(format_text("Score: {}", TotalScore(points)))
     }
 }
 ```
 
-This prints `Score: 50`. `array_add` returns the array with the appended value.
+This prints `Score: 50`. `points.append(15)` adds 15 to the end of `points`.
 
 ## Change HUD text
 

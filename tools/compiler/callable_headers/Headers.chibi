@@ -114,12 +114,12 @@ Refresh :: (environment: Environment) -> Environment {
                                         row: binding.Symbol = {name: symbol.name, kind: symbol.kind, scope: symbol.scope,
                                                                id_slot: symbol.id_slot, start: symbol.start, end: symbol.end, line: symbol.line,
                                                                column: symbol.column, document: symbol.document};
-                                        lexical_symbols = array_add(lexical_symbols, row);
-                                        symbol_types = array_add(symbol_types, symbol.type_index);
+                                        lexical_symbols.append(row);
+                                        symbol_types.append(symbol.type_index);
                                     }
                                     for (function in functions) {
                                         row: binding.Function = {symbol: function.symbol, scope: function.scope};
-                                        lexical_functions = array_add(lexical_functions, row);
+                                        lexical_functions.append(row);
                                     }
                                     updated_lexical := binding.Environment.Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys);
                                     updated_names = named.Environment.Tables(updated_lexical, types, ids, merged, own, native,
@@ -133,14 +133,14 @@ Refresh :: (environment: Environment) -> Environment {
                             constructor_functions: constructors.Function[] = [];
                             for (symbol in symbols) {
                                 slot := length(ids);
-                                ids = array_add(ids, named.IDAt(lexical_ids, symbol.id_slot));
+                                ids.append(named.IDAt(lexical_ids, symbol.id_slot));
                                 row: constructors.Symbol = {id_slot: slot};
-                                constructor_symbols = array_add(constructor_symbols, row);
+                                constructor_symbols.append(row);
                             }
                             for (function in functions) {
                                 row: constructors.Function = {symbol: function.symbol, result_start: function.result_start,
                                                               result_count: function.result_count};
-                                constructor_functions = array_add(constructor_functions, row);
+                                constructor_functions.append(row);
                             }
                             updated_constructors := constructors.Environment.Tables(types, ids, definitions, variants, capabilities,
                                                                                     constructor_functions, constructor_symbols, results);
@@ -158,10 +158,10 @@ Start :: (environment: Environment) -> Work {
     switch environment {
         case .Tables(signature, symbols, functions, parameters, results, generics):
             for (symbol in symbols) {
-                masks = array_add(masks, int(0));
+                masks.append(int(0));
             }
             for (function in functions) {
-                dirty = array_add(dirty, false);
+                dirty.append(false);
             }
             function_start = length(functions);
             switch signature {
@@ -186,7 +186,7 @@ Start :: (environment: Environment) -> Work {
 Diagnostic :: (work: Work, diagnostic: syntax.Diagnostic) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, source_diagnostics, uses, publications):
-            diagnostics := array_add(source_diagnostics, diagnostic);
+            diagnostics := append(source_diagnostics, diagnostic);
             return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
     }
 }
@@ -218,13 +218,13 @@ Annotation :: (work: Work, tree: reader.Tree, node: int, context: Context, signa
                             all_uses := old_uses;
                             all_publications := old_publications;
                             for (item in diagnostics) {
-                                all_diagnostics = array_add(all_diagnostics, item);
+                                all_diagnostics.append(item);
                             }
                             for (item in uses) {
-                                all_uses = array_add(all_uses, item);
+                                all_uses.append(item);
                             }
                             for (item in publications) {
-                                all_publications = array_add(all_publications, item);
+                                all_publications.append(item);
                             }
                             updated := Environment.Tables(updated_signature, symbols, functions, parameters, results, generics);
                             next := Work.State(updated, masks, dirty, scope_start, function_start, initializers, bodies,
@@ -259,12 +259,12 @@ Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
                                         case .Appended(symbol_id, errors):
                                             id = symbol_id;
                                             for (error in errors) {
-                                                diagnostics = array_add(diagnostics, error);
+                                                diagnostics.append(error);
                                             }
                                         case .Existing(index, errors):
                                             existing = index;
                                             for (error in errors) {
-                                                diagnostics = array_add(diagnostics, error);
+                                                diagnostics.append(error);
                                             }
                                     }
                                     if (existing >= 0) {
@@ -276,7 +276,7 @@ Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
                                             switch lexical {
                                                 case .Tables(scopes, old_symbols, lexical_functions, source_ids, keys):
                                                     slot := length(source_ids);
-                                                    lexical_ids := array_add(source_ids, id);
+                                                    lexical_ids := append(source_ids, id);
                                                     updated_lexical := binding.Environment.Tables(scopes, old_symbols, lexical_functions, lexical_ids, keys);
                                                     updated_names := named.Environment.Tables(updated_lexical, new_types, new_ids, merged, own, native,
                                                                                               symbol_types, imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
@@ -284,8 +284,8 @@ Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
                                                                    initializer: -1, function: -1, writable: writable, outcome: false, type_index: type_index,
                                                                    id_slot: slot, capability_slot: -1, start: request.start, end: request.end,
                                                                    line: request.line, column: request.column, document: request.document};
-                                                    symbols := array_add(source_symbols, row);
-                                                    masks := array_add(source_masks, int(64));
+                                                    symbols := append(source_symbols, row);
+                                                    masks := append(source_masks, int(64));
                                                     updated := Environment.Tables(reader.Environment.Tables(updated_names, constructor_tables, pointer_size),
                                                                                   symbols, functions, parameters, results, generics);
                                                     return Admission.Declared(Work.State(updated, masks, dirty, scope_start, function_start,
@@ -433,28 +433,28 @@ AddMember :: (work: Work, function: int, symbol: int, kind: int) -> Work {
                     index: int = 0;
                     while (index < count) {
                         if (kind == 0) {
-                            parameters = array_add(parameters, source_parameters[start + index]);
+                            parameters.append(source_parameters[start + index]);
                         }
                         if (kind == 1) {
-                            results = array_add(results, source_results[start + index]);
+                            results.append(source_results[start + index]);
                         }
                         if (kind == 2) {
-                            generics = array_add(generics, source_generics[start + index]);
+                            generics.append(source_generics[start + index]);
                         }
                         index += 1;
                     }
                     if (kind == 0) {
-                        parameters = array_add(parameters, symbol);
+                        parameters.append(symbol);
                         row.parameter_start = new_start;
                         row.parameter_count = count + 1;
                     }
                     if (kind == 1) {
-                        results = array_add(results, symbol);
+                        results.append(symbol);
                         row.result_start = new_start;
                         row.result_count = count + 1;
                     }
                     if (kind == 2) {
-                        generics = array_add(generics, symbol);
+                        generics.append(symbol);
                         row.generic_start = new_start;
                         row.generic_count = count + 1;
                     }
@@ -467,7 +467,7 @@ AddInitializer :: (work: Work, symbol: int, document: int, node: int) -> Work {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, source_initializers, bodies, diagnostics, uses, publications):
             row: Reference = {index: symbol, document: document, node: node};
-            initializers := array_add(source_initializers, row);
+            initializers := append(source_initializers, row);
             return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
     }
 }
@@ -569,8 +569,8 @@ NewFunction :: (work: Work, tree: reader.Tree, node: int, context: Context, kind
                                      depth_limit: depth, pure: Token(tree, node, "pure"), inferred: false, entry_name: "", has_entry: false,
                                      start: request.start, end: request.end, line: request.line, column: request.column, document: request.document,
                                      parameter_start: 0, parameter_count: 0, result_start: 0, result_count: 0, generic_start: 0, generic_count: 0};
-                    functions := array_add(source_functions, row);
-                    dirty := array_add(source_dirty, true);
+                    functions := append(source_functions, row);
+                    dirty := append(source_dirty, true);
                     updated := Environment.Tables(signature, symbols, functions, parameters, results, generics);
                     return Admission.Declared(Work.State(updated, masks, dirty, scope_start, function_start,
                                                          initializers, bodies, diagnostics, uses, publications), length(functions) - 1);
@@ -592,7 +592,7 @@ NewScope :: (work: Work, tree: reader.Tree, node: int, context: Context) -> Admi
                                             request := reader.Request(tree, node, context.scope, context.document, "");
                                             row: binding.Scope = {parent: context.scope, function: context.function, start: request.start,
                                                                   end: request.end, line: request.line, column: request.column, document: request.document};
-                                            scopes := array_add(source_scopes, row);
+                                            scopes := append(source_scopes, row);
                                             updated_lexical := binding.Environment.Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys);
                                             updated_names := named.Environment.Tables(updated_lexical, types, ids, merged, own, native, symbol_types,
                                                                                       imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
@@ -659,7 +659,7 @@ Finish :: (work: Work, symbol: int, function: int) -> Header {
             while (index < length(masks)) {
                 if (masks[index] != 0) {
                     row: Change = {index: index, fields: masks[index]};
-                    changes = array_add(changes, row);
+                    changes.append(row);
                 }
                 index += 1;
             }
@@ -667,7 +667,7 @@ Finish :: (work: Work, symbol: int, function: int) -> Header {
             while (index < length(dirty)) {
                 if (dirty[index]) {
                     row: FunctionChange = {index: index, append: index >= function_start};
-                    function_changes = array_add(function_changes, row);
+                    function_changes.append(row);
                 }
                 index += 1;
             }
@@ -782,7 +782,7 @@ pub Register :: (environment: Environment, tree: reader.Tree, node: int, context
     switch work {
         case .State(current, masks, dirty, scope_start, function_start, initializers, source_bodies, diagnostics, uses, publications):
             pending: Reference = {index: function_index, document: active.document, node: body};
-            bodies := array_add(source_bodies, pending);
+            bodies := append(source_bodies, pending);
             work = Work.State(current, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
     }
     if (body >= 0) {

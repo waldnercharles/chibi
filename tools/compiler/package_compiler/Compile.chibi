@@ -149,7 +149,6 @@ pub Port :: struct {
     name: string;
     storage: int;
     container: int;
-    c_string: bool;
 }
 AnyPort: int : -2;
 UnsupportedPort: int : -1;
@@ -164,8 +163,6 @@ TypeDecl :: struct {
     name: string;
     type_name: string;
     package: int;
-    // The source declaration, or -1 for a native or synthesized type.
-    node: int;
     kind: int;
     first: int;
     count: int;
@@ -191,7 +188,6 @@ TypeMember :: struct {
     record: int;
     offset: int;
     writable: bool;
-    c_string: bool;
     constant: bool;
     read: int;
     read_key: string;
@@ -531,7 +527,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         }
         id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, TypeTag(known, key.storage, -1),
                                                         TypeTag(known, value.storage, value.record)));
-        declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, node: -1, kind: MapDecl,
+        declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, kind: MapDecl,
                               first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
                               value_record: value.record};
@@ -623,7 +619,6 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
-                                      node: member,
                                       kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1,
                                       storage: 0,
                                       id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
@@ -648,7 +643,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                 return Declarations.Failed(Diagnose(forest, variant, file,
                                                                     format_text("Duplicate union alternative '{}'", variant_name)));
                             }
-                            alternative: TypeDecl = {name: variant_name, type_name: "", package: package, node: member,
+                            alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
                                                      storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
                                                      value_container: 0, value_record: -1};
@@ -684,7 +679,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
-                                             writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+                                             writable: true, constant: false, read: -1, read_key: ""};
                         members = array_add(members, field);
                         size += width;
                         if (width > alignment) {
@@ -722,18 +717,13 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         alternative.first = length(members);
                         parameter := FirstMember(forest, Field(forest, variant, "parameters"));
                         while (parameter >= 0) {
-                            hidden := PrivateType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
-                            if (hidden >= 0) {
-                                return Declarations.Failed(Diagnose(forest, hidden, file,
-                                                                    PrivateMessage(Text(forest, text, hidden))));
-                            }
                             payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
                             if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
-                                                 writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+                                                 writable: true, constant: false, read: -1, read_key: ""};
                             members = array_add(members, field);
                             parameter = NextMember(forest, parameter);
                         }
@@ -784,11 +774,6 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 storage := IntStorage;
                 declared := Field(forest, member, "type");
                 if (declared >= 0) {
-                    hidden := PrivateType(forest, text, types, aliases, package, declared);
-                    if (hidden >= 0) {
-                        return Declarations.Failed(Diagnose(forest, hidden, file,
-                                                            PrivateMessage(Text(forest, text, hidden))));
-                    }
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
                     storage = constant_type.storage;
                     if (!Integer(storage) || constant_type.container != 0) {
@@ -852,8 +837,8 @@ Folding :: union {
 }
 // The bits of a constant integer expression of type `storage`, as stage zero
 // folds it: literals, the package's constants and an import's, parentheses
-// and the unary and binary integer operators. Arithmetic intermediates must
-// fit the type; shifts discard the bits outside it. `Waiting` when a
+// and the unary and binary integer operators. Every intermediate value must
+// fit the type, so stage zero's wrapping never shows; `Waiting` when a
 // constant it names is not folded yet. A uint64 constant is a literal.
 FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                  package: int, node: int, storage: int) -> Folding {
@@ -879,9 +864,6 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
     }
     named := ConstantOf(forest, text, constants, aliases, package, node);
     if (named >= 0) {
-        if (constants[named].package != package && PrivateDeclaration(forest, forest[constants[named].node].parent)) {
-            return Folding.Failed(Diagnose(forest, node, file, PrivateMessage(Text(forest, text, node))));
-        }
         if (!constants[named].folded) {
             return Folding.Waiting;
         }
@@ -960,19 +942,12 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
         if (right < 0 || right >= width) {
             return Folding.Failed(Diagnose(forest, node, file, "Constant shift count is outside the type"));
         }
-        mask := ~uint64(0) >> uint64(64 - width);
-        bits := uint64(wrap: left) & mask;
         if (operator == "<<") {
-            bits = (bits << uint64(right)) & mask;
-        } else if (Signed(storage)) {
-            bits = uint64(wrap: left >> right) & mask;
+            result = left << right;
+            exact = right == 0 || (result >> right) == left;
         } else {
-            bits = bits >> uint64(right);
+            result = left >> right;
         }
-        if (Signed(storage) && (bits & (uint64(1) << uint64(width - 1))) != 0) {
-            bits = bits | ~mask;
-        }
-        return Folding.Folded(bits);
     } else {
         return Folding.Failed(Diagnose(forest, node, file,
                                        format_text("constant operator '{}' is not supported yet", operator)));
@@ -1019,9 +994,9 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
         return Default.Read(0, "");
     }
     if (declared.storage == TextStorage && Is(forest, node, "string")) {
-        decoded := compiler_json_value_string(Text(forest, text, node));
-        if (!decoded.valid) {
-            return Default.Failed(Diagnose(forest, node, file, "Invalid string literal"));
+        decoded := compiler_json_string(Text(forest, text, node));
+        if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+            return Default.Failed(Diagnose(forest, node, file, "Invalid string or embedded NUL"));
         }
         return Default.Read(0, decoded.value);
     }
@@ -1035,10 +1010,6 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
         type_node := Field(forest, parameter, "type");
-        hidden := PrivateType(forest, text, types, aliases, package, type_node);
-        if (hidden >= 0) {
-            return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
-        }
         declared := ReadReferencedType(forest, text, types, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
@@ -1084,10 +1055,6 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             return Signature.Failed(Diagnose(forest, results, file, "named results need at least one result"));
         }
         while (named >= 0) {
-            hidden := PrivateType(forest, text, types, aliases, package, Field(forest, named, "type"));
-            if (hidden >= 0) {
-                return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
-            }
             declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
             if (declared.storage == 0 || declared.storage == TextStorage ||
                 Pointer(declared.storage, declared.container)) {
@@ -1101,10 +1068,6 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             named = NextMember(forest, named);
         }
     } else if (results >= 0) {
-        hidden := PrivateType(forest, text, types, aliases, package, results);
-        if (hidden >= 0) {
-            return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
-        }
         result = ReadType(forest, text, types, aliases, package, results);
         if (result.storage == 0) {
             return Signature.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
@@ -1191,7 +1154,7 @@ HashText :: (hash: uint64, text: string) -> uint64 {
     return HashBytes(out, 0, 1);
 }
 // The runtime's layout hash of a record: its size and field count, then each
-// field's name, offset, size, storage, string descriptor marker and absent type name.
+// field's name, offset, size, storage and (absent) type name.
 LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
     hash: uint64 = 1469598103934665603;
     hash = HashBytes(hash, uint64(record.size), target.pointer_size);
@@ -1203,9 +1166,6 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64
         hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
         hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
         hash = HashBytes(hash, uint64(field.storage), 4);
-        if (field.storage == TextStorage) {
-            hash = HashBytes(hash, 1, 1);
-        }
         hash = HashText(hash, "");
         at += 1;
     }

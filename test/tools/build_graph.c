@@ -23,9 +23,10 @@ static char host_path[4096];
 static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
     clone[GRAPH_PATH], log_path[GRAPH_PATH];
 /* The profile root CMakeLists.txt read from its cache, as graph options. */
-static char compiler[GRAPH_PATH], compiler_id[64], build_type[64],
-    architecture[64], sysroot[GRAPH_PATH], sanitizers[128], debug_dir[GRAPH_PATH],
-    archiver[GRAPH_PATH], ranlib[GRAPH_PATH], third_party[GRAPH_PATH];
+static char compiler[GRAPH_PATH], cxx_compiler[GRAPH_PATH], compiler_id[64],
+    build_type[64], architecture[64], sysroot[GRAPH_PATH], sanitizers[128],
+    debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH],
+    third_party[GRAPH_PATH];
 static bool warnings;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
@@ -69,7 +70,8 @@ static void compiler_value(const char *text, const char *name, char *out, size_t
     memcpy(out, at, count);
     out[count] = 0;
 }
-static char *compiler_file()
+/* The text of CMake's CMakeLANGCompiler.cmake for a language, C or CXX. */
+static char *compiler_file(const char *language)
 {
     char directory[GRAPH_PATH];
     join(directory, reference, "CMakeFiles");
@@ -81,9 +83,10 @@ static char *compiler_file()
         snprintf(
             file,
             sizeof file,
-            "%s/%s/CMakeCCompiler.cmake",
+            "%s/%s/CMake%sCompiler.cmake",
             directory,
-            entry->d_name
+            entry->d_name,
+            language
         );
         if (entry->d_name[0] != '.' && !access(file, R_OK)) {
             text = tool_read(file);
@@ -117,8 +120,11 @@ static void read_profile()
     join(path, reference, "CMakeCache.txt");
     char *cache = tool_read(path);
     assert(cache);
-    char *file = compiler_file();
+    char *file = compiler_file("C");
     compiler_value(file, "CMAKE_C_COMPILER", compiler, sizeof compiler);
+    char *cxx_file = compiler_file("CXX");
+    compiler_value(cxx_file, "CMAKE_CXX_COMPILER", cxx_compiler, sizeof cxx_compiler);
+    free(cxx_file);
     compiler_value(file, "CMAKE_C_COMPILER_ID", compiler_id, sizeof compiler_id);
     cache_value(cache, "CMAKE_BUILD_TYPE", build_type, sizeof build_type);
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
@@ -214,31 +220,15 @@ static int run_graph(
 static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
     const char *const options[] = {
-        "--compiler",
-        compiler,
-        "--compiler-id",
-        compiler_id,
-        "--build-type",
-        build_type,
-        "--warnings",
-        warn ? "on" : "off",
-        "--archiver",
-        archiver,
-        "--ranlib",
-        ranlib,
-        "--architecture",
-        architecture,
-        "--sysroot",
-        sysroot,
-        "--sanitizers",
-        sanitizers,
-        "--debug-compilation-dir",
-        debug_dir,
-        "--launcher",
-        "",
-        "--third-party",
-        third_party,
-        NULL,
+        "--compiler",        compiler,        "--cxx-compiler",
+        cxx_compiler,        "--compiler-id", compiler_id,
+        "--build-type",      build_type,      "--warnings",
+        warn ? "on" : "off", "--archiver",    archiver,
+        "--ranlib",          ranlib,          "--architecture",
+        architecture,        "--sysroot",     sysroot,
+        "--sanitizers",      sanitizers,      "--debug-compilation-dir",
+        debug_dir,           "--launcher",    "",
+        "--third-party",     third_party,     NULL,
     };
     return run_graph(root, build_dir, options, extra);
 }
@@ -255,8 +245,10 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
         debug_dir,   "--warnings", warnings ? "on" : "off",
         NULL
     };
+    /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
-    assert(!setenv("CC", compiler, 1));
+    char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
+    assert(!setenv("CC", compiler, 1) && !unsetenv("CXX"));
     int compiled = run_graph(root, build_dir, options, extra);
     if (saved) {
         assert(!setenv("CC", saved, 1));
@@ -264,17 +256,51 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
         assert(!unsetenv("CC"));
     }
     free(saved);
+    if (saved_cxx) {
+        assert(!setenv("CXX", saved_cxx, 1));
+    }
+    free(saved_cxx);
     return compiled;
 }
 static const char *const support_only[] = { "--target", "chibi_support", NULL };
 
+/* The next word of a command line as CMake's Unix escaping writes it: double
+ * quotes group, and a backslash takes the next byte literally. Writes the word
+ * over the text in place and returns it, or NULL at the end. */
+static char *shell_word(char **cursor)
+{
+    char *in = *cursor;
+    while (*in == ' ') {
+        in++;
+    }
+    if (!*in) {
+        return NULL;
+    }
+    char *word = in, *out = in;
+    bool quoted = false;
+    for (; *in && (quoted || *in != ' '); in++) {
+        if (*in == '\\' && in[1]) {
+            *out++ = *++in;
+        } else if (*in == '"') {
+            quoted = !quoted;
+        } else {
+            *out++ = *in;
+        }
+    }
+    *cursor = *in ? in + 1 : in;
+    *out = 0;
+    return word;
+}
+
 /* Whether the graph's arguments match CMake's command, except for -o's value,
- * with the graph's build directory standing for CMake's. */
+ * with the graph's build directory standing for CMake's. CMake writes the
+ * command for the shell, so `-DName="two words"` is one argument. */
 static bool same_command(yyjson_val *ours, char *theirs)
 {
     size_t built_length = strlen(built), index = 0;
     const char *previous = "";
-    for (char *token = strtok(theirs, " "); token; token = strtok(NULL, " "), index++) {
+    char *cursor = theirs;
+    for (char *token; (token = shell_word(&cursor)); index++) {
         const char *argument = yyjson_get_str(yyjson_arr_get(ours, index));
         if (!argument) {
             return false;
@@ -285,10 +311,6 @@ static bool same_command(yyjson_val *ours, char *theirs)
             snprintf(expected, sizeof expected, "%.*s%s%s", (int)(at - argument), argument, reference, at + built_length);
         } else {
             snprintf(expected, sizeof expected, "%s", argument);
-        }
-        /* CMake's command escapes quotes for the shell. */
-        for (char *quote; (quote = strstr(token, "\\\""));) {
-            memmove(quote, quote + 1, strlen(quote));
         }
         if (strcmp(previous, "-o") && strcmp(expected, token)) {
             fprintf(stderr, "graph argument %zu: %s, CMake: %s\n", index, expected, token);
@@ -358,7 +380,11 @@ TEST_CASE(commands_match_cmake)
             } else {
                 snprintf(expected_file, sizeof expected_file, "%s", source);
             }
-            if (strcmp(expected_file, file)) {
+            /* A source two targets compile is compared with its own target's. */
+            const char *objects = strstr(yyjson_get_str(yyjson_obj_get(mine, "output")), "/objects/");
+            char owner[128];
+            snprintf(owner, sizeof owner, "/%.*s.dir/", (int)strcspn(objects + 9, "/"), objects + 9);
+            if (strcmp(expected_file, file) || !strstr(command, owner)) {
                 continue;
             }
             char *copy = strdup(command);
@@ -486,6 +512,35 @@ TEST_CASE(support_archive_links)
     return true;
 }
 
+/* An executable publishes no headers, so building one leaves every header
+ * its libraries staged in place. A compiler that always fails stops the run
+ * after staging. */
+TEST_CASE(executables_stage_no_headers)
+{
+    char build_dir[GRAPH_PATH], header[GRAPH_PATH];
+    join(build_dir, suite, "launcher");
+    /* The configured profile, so the run stages from the archive CMake
+     * unpacked; Option takes the first --compiler. */
+    const char *const failing[] = { "--compiler",
+                                    "/usr/bin/false",
+                                    "--compiler-id",
+                                    compiler_id,
+                                    "--sanitizers",
+                                    sanitizers,
+                                    "--third-party",
+                                    third_party,
+                                    "--archiver",
+                                    archiver,
+                                    "--ranlib",
+                                    ranlib,
+                                    NULL };
+    const char *const launcher_only[] = { "--target", "chibi", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, launcher_only) == -1);
+    join(header, build_dir, "sdk/public/support/support/arena.h");
+    REQUIRE(!access(header, R_OK));
+    return true;
+}
+
 /* A variable of the `build NAME:` statement in CMake's build.ninja, as an
  * owned copy the caller splits into tokens. */
 static char *ninja_variable(const char *ninja, const char *name, const char *variable)
@@ -515,6 +570,104 @@ static const char *base(const char *path)
     return slash ? slash + 1 : path;
 }
 
+/* Whether a link command of the graph's equals CMake's build.ninja statement
+ * for the executable at path: the compiler, FLAGS, LINK_FLAGS, the objects, -o
+ * and the output, then LINK_LIBRARIES, apart from where objects, the output
+ * and archives sit. */
+static bool archive(const char *path)
+{
+    size_t size = strlen(path);
+    return size > 2 && !strcmp(path + size - 2, ".a");
+}
+static bool same_link(const char *ninja, const char *path, char *const *ours, int ours_count)
+{
+    char *flags = ninja_variable(ninja, path, "FLAGS"),
+         *link_flags = ninja_variable(ninja, path, "LINK_FLAGS"),
+         *libraries = ninja_variable(ninja, path, "LINK_LIBRARIES"),
+         *theirs[GRAPH_TOKENS];
+    int count = 0;
+    theirs[count++] = compiler;
+    count = split_into(flags, theirs, count);
+    count = split_into(link_flags, theirs, count);
+    int objects = count;
+    char head[GRAPH_PATH];
+    snprintf(head, sizeof head, "\nbuild %s: ", path);
+    const char *statement = strstr(ninja, head);
+    assert(statement);
+    char *line = strndup(statement + 1, strcspn(statement + 1, "\n"));
+    for (char *token = strtok(line, " "); token && strcmp(token, "|");
+         token = strtok(NULL, " ")) {
+        if (strstr(token, ".o")) {
+            assert(count < GRAPH_TOKENS);
+            theirs[count++] = token;
+        }
+    }
+    int objects_end = count;
+    theirs[count++] = "-o";
+    theirs[count++] = (char *)path;
+    count = split_into(libraries, theirs, count);
+    bool same = ours_count == count;
+    for (int i = 0; same && i < count; i++) {
+        bool placed = (i >= objects && i < objects_end) ||
+                      (i && !strcmp(theirs[i - 1], "-o")) || archive(theirs[i]);
+        same = placed ? !strcmp(base(ours[i]), base(theirs[i]))
+                      : !strcmp(ours[i], theirs[i]);
+        if (!same) {
+            fprintf(stderr, "graph link argument %d of %s: %s, CMake: %s\n", i, path, ours[i], theirs[i]);
+        }
+    }
+    if (ours_count != count) {
+        fprintf(stderr, "graph link of %s has %d arguments, CMake's %d\n", path, ours_count, count);
+    }
+    free(line);
+    free(flags);
+    free(link_flags);
+    free(libraries);
+    return same;
+}
+
+/* Every link command the graph writes, from the profile it finds, equals
+ * CMake's for the same executable. Runs after commands_match_cmake, which
+ * writes them. */
+TEST_CASE(links_match_cmake)
+{
+    char path[GRAPH_PATH];
+    join(path, reference, "build.ninja");
+    char *ninja = tool_read(path);
+    join(path, built, "link_commands.json");
+    yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
+    REQUIRE(ninja && doc);
+    int matched = 0;
+    yyjson_val *entry;
+    yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
+    while ((entry = yyjson_arr_iter_next(&iter))) {
+        const char *name = base(yyjson_get_str(yyjson_obj_get(entry, "output")));
+        char cmake_path[GRAPH_PATH];
+        snprintf(cmake_path, sizeof cmake_path, "%s%s", strcmp(name, "reflect") ? "sdk/" : "", name);
+        yyjson_val *arguments = yyjson_obj_get(entry, "arguments");
+        char *ours[GRAPH_TOKENS];
+        int count = 0;
+        yyjson_val *argument;
+        yyjson_arr_iter arguments_iter = yyjson_arr_iter_with(arguments);
+        while ((argument = yyjson_arr_iter_next(&arguments_iter))) {
+            assert(count < GRAPH_TOKENS);
+            ours[count++] = (char *)yyjson_get_str(argument);
+        }
+        matched += same_link(ninja, cmake_path, ours, count);
+    }
+    fprintf(
+        stderr,
+        "graph links: %d of %zu match CMake's\n",
+        matched,
+        yyjson_arr_size(yyjson_doc_get_root(doc))
+    );
+    /* reflect, the build host, the compiler host and the launcher. */
+    REQUIRE(matched == 4 && yyjson_arr_size(yyjson_doc_get_root(doc)) == 4);
+    yyjson_doc_free(doc);
+    free(ninja);
+    return true;
+}
+
 /* The graph links reflect with CMake's command, and the program it links
  * writes the same reflected sources. */
 TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
@@ -534,30 +687,9 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
                                          NULL };
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, reflect_only) > 0);
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, reflect_only) == 0);
-    /* The link: CMake's FLAGS, LINK_FLAGS, objects, -o and LINK_LIBRARIES. */
     join(path, reference, "build.ninja");
     char *ninja = tool_read(path);
     REQUIRE(ninja);
-    char *flags = ninja_variable(ninja, "reflect", "FLAGS"),
-         *link_flags = ninja_variable(ninja, "reflect", "LINK_FLAGS"),
-         *libraries = ninja_variable(ninja, "reflect", "LINK_LIBRARIES"),
-         *theirs[GRAPH_TOKENS];
-    int count = 0;
-    theirs[count++] = compiler;
-    count = split_into(flags, theirs, count);
-    count = split_into(link_flags, theirs, count);
-    int objects = count;
-    char *statement = strstr(ninja, "\nbuild reflect: ");
-    char *line = strndup(statement + 1, strcspn(statement + 1, "\n"));
-    for (char *token = strtok(line, " "); token && strcmp(token, "|");
-         token = strtok(NULL, " ")) {
-        if (strstr(token, ".o")) {
-            theirs[count++] = token;
-        }
-    }
-    theirs[count++] = "-o";
-    theirs[count++] = "reflect";
-    count = split_into(libraries, theirs, count);
     join(path, build_dir, "reflect.chibi-record");
     char *record = tool_read(path);
     REQUIRE(record);
@@ -567,24 +699,9 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
     for (char *token = strtok(record, "\n"); token; token = strtok(NULL, "\n")) {
         ours[ours_count++] = token;
     }
-    bool same = ours_count == count;
-    for (int i = 0; same && i < count; i++) {
-        /* Objects, the output and archives sit in other directories. */
-        bool placed = (i >= objects && i < objects + 7) ||
-                      (i && !strcmp(theirs[i - 1], "-o")) || strstr(theirs[i], ".a");
-        same = placed ? !strcmp(base(ours[i]), base(theirs[i]))
-                      : !strcmp(ours[i], theirs[i]);
-        if (!same) {
-            fprintf(stderr, "graph link argument %d: %s, CMake: %s\n", i, ours[i], theirs[i]);
-        }
-    }
+    REQUIRE(same_link(ninja, "reflect", ours, ours_count));
     free(record);
-    free(line);
-    free(flags);
-    free(link_flags);
-    free(libraries);
     free(ninja);
-    REQUIRE(same);
     /* Run as CMake runs it, with the math headers the graph staged from the
      * third-party archive. */
     char program[GRAPH_PATH], types[GRAPH_PATH], runtime[GRAPH_PATH],
@@ -627,18 +744,22 @@ TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources)
 }
 
 /* The graph compiles a third-party archive's sources and stages its headers:
- * SLJIT and the Cute math headers that chibi_vector_capabilities includes as
- * system headers. A second run compiles nothing, and a run whose archive is
- * not unpacked says so before it compiles. */
+ * SLJIT, enkiTS's C++ scheduler and the Cute math headers that
+ * chibi_vector_capabilities includes as system headers, with the task pool's
+ * shared private/physics headers. A second run compiles nothing, and a run
+ * whose archive is not unpacked or that has no C++ compiler says so before it
+ * compiles. */
 TEST_CASE(archive_sources_compile_and_stage)
 {
     char build_dir[GRAPH_PATH], path[GRAPH_PATH], theirs[GRAPH_PATH];
     join(build_dir, suite, "archive");
-    const char *const archive_targets[] = { "--target",
-                                            "chibi_execution_sljit",
-                                            "--target",
-                                            "chibi_vector_capabilities",
-                                            NULL };
+    const char *const archive_targets[] = {
+        "--target", "chibi_execution_sljit",
+        "--target", "chibi_vector_capabilities",
+        "--target", "chibi_task_scheduler",
+        "--target", "chibi_task_pool_runtime",
+        NULL
+    };
     char missing[GRAPH_PATH];
     join(missing, suite, "no archive");
     const char *const unpacked[] = { "--third-party", missing, NULL };
@@ -646,20 +767,34 @@ TEST_CASE(archive_sources_compile_and_stage)
     char *log = tool_read(log_path);
     REQUIRE(log && strstr(log, "the third-party archive is not unpacked"));
     free(log);
+    /* C++ sources need a C++ compiler. */
+    const char *const no_cxx[] = { "--cxx-compiler", "none", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, no_cxx, archive_targets) == -1);
+    log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "no C++ compiler was found"));
+    free(log);
     join(path, build_dir, "objects");
     REQUIRE(access(path, F_OK));
-    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 3);
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 6);
     REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, archive_targets) == 0);
     join(path, build_dir, "objects/chibi_execution_sljit/third-party/source/sljit/sljit_src/sljitLir.c.o");
     REQUIRE(!access(path, R_OK));
     join(path, build_dir, "lib/libchibi_execution_sljit.a");
     REQUIRE(!access(path, R_OK));
-    join(path, build_dir, "sdk/public/math/cute_math.h");
-    join(theirs, reference, "sdk/public/math/cute_math.h");
-    char *mine = tool_read(path), *cmake = tool_read(theirs);
-    REQUIRE(mine && cmake && !strcmp(mine, cmake));
-    free(mine);
-    free(cmake);
+    join(path, build_dir, "objects/chibi_task_scheduler/third-party/source/enkits/src/TaskScheduler.cpp.o");
+    REQUIRE(!access(path, R_OK));
+    /* The math headers and the private/physics directory the task pool shares
+     * with physics are staged as CMake stages them. */
+    const char *const staged[] = { "sdk/public/math/cute_math.h",
+                                   "sdk/private/physics/diagnostics/tracy.h" };
+    for (int i = 0; i < 2; i++) {
+        join(path, build_dir, staged[i]);
+        join(theirs, reference, staged[i]);
+        char *mine = tool_read(path), *cmake = tool_read(theirs);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake));
+        free(mine);
+        free(cmake);
+    }
     return true;
 }
 
@@ -710,6 +845,53 @@ TEST_CASE(native_types_generate_as_cmake)
     return true;
 }
 
+/* A library whose private headers a step rewrites, as sdk/images.cmake gives
+ * Cute's codecs private symbols: the rewritten headers equal CMake's, staging
+ * keeps them, an unchanged run compiles nothing and leaves their stamps, and
+ * a missing input fails the build. */
+TEST_CASE(rewritten_codec_headers_match_cmake)
+{
+    char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH];
+    join(build_dir, suite, "codecs");
+    const char *const codecs_only[] = { "--target", "chibi_image_preparation", NULL };
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, codecs_only) == 1);
+    const char *const headers[] = {
+        "sdk/private/image_preparation/vendor/image_png.h",
+        "sdk/private/image_preparation/vendor/image_jpg.h"
+    };
+    struct stat before[2], after;
+    for (int i = 0; i < 2; i++) {
+        join(ours, build_dir, headers[i]);
+        join(theirs, reference, headers[i]);
+        char *mine = tool_read(ours), *cmake = tool_read(theirs);
+        REQUIRE(mine && cmake && !strcmp(mine, cmake) && !stat(ours, &before[i]));
+        free(mine);
+        free(cmake);
+    }
+    REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, codecs_only) == 0);
+    for (int i = 0; i < 2; i++) {
+        join(ours, build_dir, headers[i]);
+        REQUIRE(
+            !stat(ours, &after) && after.st_ino == before[i].st_ino &&
+            after.st_mtime == before[i].st_mtime
+        );
+    }
+    /* An archive without the codecs fails the build and leaves the headers. */
+    char archive[GRAPH_PATH], marker[GRAPH_PATH];
+    join(archive, suite, "codec-less archive");
+    assert(!mkdir(archive, 0700));
+    join(marker, archive, "third-party.cmake");
+    tool_write(marker, "# no codecs\n");
+    const char *const options[] = { "--third-party", archive, NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, codecs_only) == -1);
+    char *text = tool_read(log_path);
+    REQUIRE(text && strstr(text, "staging chibi_image_preparation's headers failed"));
+    free(text);
+    join(ours, build_dir, headers[0]);
+    REQUIRE(!stat(ours, &after) && after.st_ino == before[0].st_ino);
+    return true;
+}
+
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -753,8 +935,17 @@ static void set_up(const char *host)
 void test_build_graph(const char *host)
 {
     set_up(host);
-    make_clone();
     RUN_TEST_CASE(commands_match_cmake);
+    RUN_TEST_CASE(links_match_cmake);
+    RUN_TEST_CASE(executables_stage_no_headers);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: about ten graph runs over a copied root. */
+void test_build_graph_support(const char *host)
+{
+    set_up(host);
+    make_clone();
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
     RUN_TEST_CASE(support_archive_links);
@@ -769,12 +960,20 @@ void test_build_graph_reflect(const char *host)
     tool_remove_tree(suite);
 }
 
-/* A separate route: SLJIT's compile with sanitizers and reflect's run take
+/* A separate route: SLJIT's and enkiTS's compiles with sanitizers take
  * seconds. */
 void test_build_graph_archive(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(archive_sources_compile_and_stage);
+    tool_remove_tree(suite);
+}
+
+/* A separate route: reflect's run and the codec compile take seconds. */
+void test_build_graph_generated(const char *host)
+{
+    set_up(host);
     RUN_TEST_CASE(native_types_generate_as_cmake);
+    RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     tool_remove_tree(suite);
 }

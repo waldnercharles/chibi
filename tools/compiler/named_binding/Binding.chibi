@@ -377,7 +377,7 @@ BindName :: (environment: Environment, request: Request, name: string,
                         column: request.column, document: request.document,
                         message: strings.Slice(format_text("{} type '{}'", message_prefix, name), 0, 191)
                     };
-                    diagnostics = array_add(diagnostics, diagnostic);
+                    diagnostics.append(diagnostic);
                 }
             }
             if (name == "entity" && entity_id != 0) {

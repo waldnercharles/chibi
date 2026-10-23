@@ -222,12 +222,24 @@ int pin_array_reserve_owned(arena *a, pin_array *array, int count)
     }
     int capacity = array->capacity ? array->capacity * 2 : 8;
     capacity = capacity < count ? count : capacity;
-    pin_value *items = arena_alloc(a, (size_t)capacity * sizeof *items);
-    if (array->count) {
-        memcpy(items, array->items, (size_t)array->count * sizeof *items);
+    size_t width = array->stride ? array->stride : sizeof(pin_value);
+    if ((size_t)capacity > SIZE_MAX / width) {
+        return -1;
     }
-    memset(items + array->count, 0, (size_t)(capacity - array->count) * sizeof *items);
-    array->items = items;
+    char *items = arena_alloc(a, (size_t)capacity * width);
+    if (array->count) {
+        memcpy(
+            items,
+            array->stride ? array->data : (void *)array->items,
+            (size_t)array->count * width
+        );
+    }
+    memset(items + (size_t)count * width, 0, (size_t)(capacity - count) * width);
+    if (array->stride) {
+        array->data = items;
+    } else {
+        array->items = (pin_value *)items;
+    }
     array->capacity = capacity;
     return 0;
 }

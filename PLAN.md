@@ -685,12 +685,43 @@ records and ran out of the host's 32 MB of never-freed values; records now
 keep each path and stamp on separate lines, and it takes 7 s. That leaves
 about twice the headroom; the next slices about double the sources, so a
 host-side stamp check or freeable build values must come with them.
-Next: C++ (enkiTS's task scheduler, which the task pool and 24 libraries over
-it wait on); private header directories shared by several libraries
-(`private/physics`, `private/graph`, the language's); the image codecs
-generated from Cute's headers; the platform and engine libraries over Cute;
-then moving profile selection from `Build.chibi`'s CMake arguments into the
-graph.
+Slice 13, 2026-10-21: C++ and shared private headers. The graph compiles
+`.cpp` sources with the profile's C++ compiler (`CXX`, or the driver beside
+the C compiler) and the target's C++ standard, and stages `private/NAME`
+directories several libraries share. It owns enkiTS's task scheduler and the
+twelve libraries it unblocks (task pool, material, physics, physics3d,
+visibility, graph model, authoring and compilation, Studio catalog and graph,
+engine and the default native catalog): 92 libraries and 484 compile
+commands, equal to CMake's. The host's value storage rose to 256 MB for
+up-to-date builds of graphs this size.
+Slice 14, 2026-10-21: rewritten codecs and the language. The graph writes
+Cute's codec headers with private symbols through a new `build.replace`
+native (`core:strings.ReplaceAll` took 11 s), stages the language's private
+headers below `sdk/language/private`, and owns image preparation, the
+language, compiler, authoring, asset and model authoring, shader
+preparation, source catalog and presentation, graph catalog and player
+libraries: 103 libraries and 579 compile commands, equal to CMake's. A text
+value now holds 16 MB, since `compile_commands.json` passed 1 MB; a step's
+own output stays at 1 MB.
+Slice 15, 2026-10-21: the desktop libraries. The graph compiles each
+source as its language: C, C++ with the target's C++ standard (C++17 for the
+UI host over RmlUi), or Objective-C (`-x objective-c`, CMake's `gnu2x`, and
+no debug directory, which root CMakeLists.txt adds before Objective-C is
+enabled). Export names that differ from a target's name are tables, and the
+Vorbis decoder is rewritten like Cute's codecs. It owns the platform, model
+import, UI host, renderer and project compilation, format and preparation
+libraries: 110 libraries and 692 compile commands, equal to CMake's when
+split as the shell splits them. `build-graph` now compares commands alone,
+and `build-graph-support` holds the rebuild cases.
+Slice 16, 2026-10-21: executables. The graph links the build host, the
+compiler host and the `chibi` launcher beside `reflect`, with object
+libraries, per-executable link options and link libraries in CMake's order,
+and writes `link_commands.json`, whose four commands `build-graph` compares
+with `build.ninja`: 116 targets and 711 compile commands, equal to CMake's.
+Next: the C++-linked executables (the players, `chibi-compile`, `chibi_ctl`),
+which link the desktop archive's libraries and frameworks; the testing
+libraries and test drivers; then moving profile selection from
+`Build.chibi`'s CMake arguments into the graph.
 
 Move product profiles, generated prerequisites, native/cross compilation,
 include/link ownership, install layouts, vendored dependency builds, and artifact
@@ -1302,6 +1333,24 @@ compiler's own run:
 - The descriptor cutover resolves repeated source-length scans in
   `Text(forest, text, node)`. Slice still copies its selected bytes; shared
   backing remains a separate ownership optimization.
+
+Later on 2026-10-21, `EmitBody` was split (#622), loops read unchanging arrays
+in place (#627), and arrays change through methods (#628, #630). Recovering the
+compiler from the bootstrap artifact, the self-hosted compiler's own run, took
+about 4.4 s of CPU. Two runtime and emitter changes followed:
+- Owned scalar arrays stay packed while they change in place (#635), so the
+  prepared writer's byte arrays cost a byte per byte rather than a
+  `pin_value`. This brought recovery to 3.6 s.
+- A returned variant is now a fresh value, and is built by `union_move`, which
+  keeps the payload values held in the call's storage (this PR). This brought
+  recovery to about 3.3 s, or 57 billion instructions.
+
+What remains, in that run's samples:
+- The call-result copy into the caller is about 12%.
+- Record and array constructors are about 16%. Their per-field layout checks
+  are about a third of that.
+- Resetting each call's data is about 10%.
+- The JIT's own snapshots are about 5%.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

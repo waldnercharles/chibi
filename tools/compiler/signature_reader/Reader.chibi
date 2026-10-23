@@ -96,7 +96,7 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
         return Decoded.Name(raw, diagnostics);
     }
     decoded := compiler_json_string(raw);
-    if (!decoded.valid || strings.IndexByte(decoded.value, 0) >= 0) {
+    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
         diagnostics = array_add(diagnostics, Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
         return Decoded.Name("", diagnostics);
     }

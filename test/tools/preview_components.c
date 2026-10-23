@@ -195,6 +195,75 @@ TEST_CASE(scene_entry_preserves_lookup_errors_when_enumeration_fails)
     return true;
 }
 
+TEST_CASE(scene_preparation_reuses_names_for_includes_and_children)
+{
+    char root[256];
+    REQUIRE(registration_project(root, sizeof root));
+    registration_prototype("DifferentBaseFile", "Base", ", data.Field.Named(\"identity\", data.Value.Text(\"counted-base\"))");
+    registration_prototype("DifferentLeafFile", "Leaf", ", data.Field.Named(\"identity\", data.Value.Text(\"counted-leaf\"))");
+    registration_scene(NULL);
+    const char *identity = ", data.Field.Named(\"identity\", "
+                           "data.Value.Text(\"counted-parent\"))";
+    uint64_t extra[3];
+    for (int i = 0; i < 3; i++) {
+        if (i) {
+            char file[32], fields[128];
+            snprintf(file, sizeof file, "Filler%d", i);
+            snprintf(fields, sizeof fields, ", data.Field.Named(\"identity\", data.Value.Text(\"counted-filler-%d\"))", i);
+            registration_prototype(file, file, fields);
+        }
+        registration_prototype("DifferentParentFile", "Parent", identity);
+        uint64_t before = asset_source_cache_stats().evaluations;
+        REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+        uint64_t after = asset_source_cache_stats().evaluations;
+        REQUIRE(after >= before);
+        uint64_t plain = after - before;
+        chibi_preview_free(run);
+        run = NULL;
+        registration_prototype(
+            "DifferentParentFile",
+            "Parent",
+            ", data.Field.Named(\"identity\", "
+            "data.Value.Text(\"counted-parent\"))"
+            ", data.Field.Named(\"includes\", "
+            "data.List([data.Value.Text(\"Base\")]))"
+            ", data.Field.Named(\"children\", data.List(["
+            "data.Object([data.Field.Named(\"name\", "
+            "data.Value.Text(\"base-child\")),"
+            "data.Field.Named(\"prototype\", data.Value.Text(\"Base\"))]),"
+            "data.Object([data.Field.Named(\"name\", "
+            "data.Value.Text(\"leaf-child\")),"
+            "data.Field.Named(\"prototype\", data.Value.Text(\"Leaf\"))])]))"
+        );
+        before = asset_source_cache_stats().evaluations;
+        REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+        after = asset_source_cache_stats().evaluations;
+        REQUIRE(after >= before && after - before >= plain);
+        extra[i] = after - before - plain;
+        REQUIRE(prototype_preview_entity_count(chibi_preview_runtime(run)) == 0);
+        chibi_preview_free(run);
+        run = NULL;
+    }
+    printf(
+        "Scene include/child extra Build evaluations: %llu, %llu, %llu\n",
+        (unsigned long long)extra[0],
+        (unsigned long long)extra[1],
+        (unsigned long long)extra[2]
+    );
+    registration_prototype(
+        "ZZInvalid",
+        "Invalid",
+        ", data.Field.Named(\"components\", data.Object(["
+        "data.Field.Named(\"MissingComponent\", data.Object([]))]))"
+    );
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_VALIDATION_ERROR);
+    REQUIRE(!run);
+    registration_prototype("ZZInvalid", "Invalid", "");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+    REQUIRE(extra[0] == 3 && extra[1] == 3 && extra[2] == 3);
+    return true;
+}
+
 TEST_CASE(prototype_registration_evaluates_a_linear_number_of_sources)
 {
     char root[256];
@@ -241,6 +310,47 @@ static bool preview_position(float x, float y)
                                         )
                                       : NULL;
     return position && position->x == x && position->y == y;
+}
+
+TEST_CASE(scene_follow_and_override_clone_resolve_after_preparation)
+{
+    char root[256], behaviors[256];
+    REQUIRE(registration_project(root, sizeof root));
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    REQUIRE(!mkdir(behaviors, 0700));
+    write_asset("game/content/behaviors/Switcher.chibi", "Switcher :: behavior { on Tick :: () { load_scene(\"Next\") } }\n");
+    registration_prototype("RootFile", "Root", ", data.Field.Named(\"behaviors\", data.List([data.Value.Text(\"Switcher\")]))");
+    registration_prototype("TargetFile", "Target", "");
+    registration_prototype("BaseFile", "Base", "");
+    registration_scene("Root");
+    write_asset(
+        "game/content/scenes/Next.chibi",
+        "package asset\nimport data \"game:assets\"\n"
+        "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+        "data.Field.Named(\"version\", data.Value.UInt(1)),"
+        "data.Field.Named(\"name\", data.Value.Text(\"Next\")),"
+        "data.Field.Named(\"entities\", data.List([data.Object(["
+        "data.Field.Named(\"name\", data.Value.Text(\"Probe\")),"
+        "data.Field.Named(\"prototype\", data.Value.Text(\"Target\")),"
+        "data.Field.Named(\"components\", data.Object([]))])]))])) }\n"
+    );
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+    REQUIRE(chibi_preview_loads(run) == 0);
+    /* Base was not an include during preparation. Following the new scene
+     * must resolve its first use after the request-local phase has ended. */
+    registration_prototype(
+        "BaseFile",
+        "Base",
+        ", data.Field.Named(\"components\", data.Object(["
+        "data.Field.Named(\"Transform\", data.Object(["
+        "data.Field.Named(\"x\", data.Value.Real(9.0)),"
+        "data.Field.Named(\"y\", data.Value.Real(3.0))]))]))"
+    );
+    registration_prototype("TargetFile", "Target", ", data.Field.Named(\"includes\", data.List([data.Value.Text(\"Base\")]))");
+    REQUIRE(chibi_preview_step(run, error, sizeof error) == CHIBI_AUTOMATION_OK);
+    REQUIRE(chibi_preview_loads(run) == 1);
+    REQUIRE(preview_position(9, 3));
+    return true;
 }
 
 TEST_CASE(prototype_registration_preserves_declarations_validation_and_fresh_sources)
@@ -518,5 +628,7 @@ void test_preview_components()
     RUN_TEST_CASE(scene_entry_preserves_invalid_shape_filename_fallback_conflicts);
     RUN_TEST_CASE(scene_entry_preserves_lookup_errors_when_enumeration_fails);
     RUN_TEST_CASE(scene_entry_reuses_validated_names_without_evaluating_unrelated_prototypes);
+    RUN_TEST_CASE(scene_preparation_reuses_names_for_includes_and_children);
+    RUN_TEST_CASE(scene_follow_and_override_clone_resolve_after_preparation);
     pu_clear_setup();
 }

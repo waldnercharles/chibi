@@ -1887,7 +1887,19 @@ static int load_named_asset(
 typedef struct
 {
     const char *root;
+    asset_entry *entries;
+    authoring_sources *sources;
+} prototype_preparation;
+
+static const char *prepared_prototype_source(const prototype_preparation *, const char *, uint64_t *);
+
+typedef struct
+{
+    const char *root;
     char **names, **texts;
+    /* Borrowed only while initial scene preparation is on this same stack.
+     * Registries keep this includes object, never the preparation itself. */
+    const prototype_preparation *preparation;
 } prototype_includes;
 
 static const char *include_prototype(const char *name, void *user)
@@ -1901,8 +1913,15 @@ static const char *include_prototype(const char *name, void *user)
     asset_ref ref;
     char *text = NULL, error[256];
     const asset_family *family = family_by_kind("prototype");
-    if (load_named_asset(includes->root, family, name, &ref, &text, NULL, NULL, error, sizeof error) !=
-        CHIBI_AUTOMATION_OK) {
+    if (includes->preparation) {
+        assert(!strcmp(includes->root, includes->preparation->root));
+        uint64_t hash;
+        const char *prepared = prepared_prototype_source(includes->preparation, name, &hash);
+        text = prepared ? xstrdup(prepared) : NULL;
+    }
+    if (!text &&
+        load_named_asset(includes->root, family, name, &ref, &text, NULL, NULL, error, sizeof error) !=
+            CHIBI_AUTOMATION_OK) {
         free(text);
         return NULL;
     }
@@ -1921,6 +1940,7 @@ static prototype_registry registry_with_includes(prototype_includes *includes)
 
 static void prototype_includes_free(prototype_includes *includes)
 {
+    assert(!includes->preparation);
     for (int i = 0; i < acount(includes->texts); i++) {
         free(includes->names[i]);
         free(includes->texts[i]);
@@ -7698,13 +7718,14 @@ static const char *prepared_prototype_entry(
  * Raw declaration names alone do not certify prototype shape. Check the whole
  * current namespace so an added or edited file cannot hide another declaration. */
 static const char *prepared_prototype_source(
-    const char *root,
-    const asset_entry *entries,
-    const authoring_sources *sources,
+    const prototype_preparation *preparation,
     const char *name,
     uint64_t *hash
 )
 {
+    const char *root = preparation->root;
+    const asset_entry *entries = preparation->entries;
+    const authoring_sources *sources = preparation->sources;
     const asset_family *family = family_by_kind("prototype");
     char error[256];
     if (verify_asset_directory(root, family, error, sizeof error) != 1) {
@@ -7776,19 +7797,15 @@ static const char *prepared_prototype_source(
 
 /* Consumes entries even on failure, as part of the context's runtime snapshot. */
 static int register_scenario_prototype_entries(
-    const char *root,
     scenario_context *context,
-    asset_entry *entries,
+    prototype_preparation *preparation,
     char *error,
     size_t error_size
 )
 {
+    const char *root = preparation->root;
+    asset_entry *entries = preparation->entries;
     int status = CHIBI_AUTOMATION_OK;
-    /* Shared preparation has already evaluated these declarations. Keep its
-     * generation alive only for this registration, not across preview edits. */
-    authoring_sources *sources = authoring_sources_retain(
-        preview_sources_applied(prototype_preview_live(context->preview))
-    );
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
         const char *kind = entries[i].family->kind;
         if (!strcmp(kind, "field") || !strcmp(kind, "system")) {
@@ -7799,8 +7816,7 @@ static int register_scenario_prototype_entries(
         }
         char *owned = NULL;
         uint64_t hash = entries[i].hash;
-        const char *
-            text = prepared_prototype_source(root, entries, sources, entries[i].name, &hash);
+        const char *text = prepared_prototype_source(preparation, entries[i].name, &hash);
         if (!text) {
             asset_ref ref;
             status = load_named_asset(
@@ -7845,8 +7861,8 @@ static int register_scenario_prototype_entries(
         }
         prototype_free(prototype);
     }
-    authoring_sources_free(sources);
     context->runtime_assets = entries;
+    preparation->entries = NULL;
     context->runtime_hash = UINT64_C(14695981039346656037);
     for (int i = 0; i < acount(entries); i++) {
         if (!scenario_runtime_asset(context, &entries[i])) {
@@ -7870,11 +7886,20 @@ static int register_scenario_prototype_entries(
 
 static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
 {
-    asset_entry *entries = NULL;
-    int status = enumerate_assets(root, &entries, error, error_size);
-    return status == CHIBI_AUTOMATION_OK
-             ? register_scenario_prototype_entries(root, context, entries, error, error_size)
-             : status;
+    prototype_preparation preparation = { .root = root };
+    int status = enumerate_assets(root, &preparation.entries, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
+    }
+    preparation.sources = authoring_sources_retain(
+        preview_sources_applied(prototype_preview_live(context->preview))
+    );
+    /* Prototype-first targets and their registration callbacks stay ordinary. */
+    assert(!context->includes.preparation);
+    status = register_scenario_prototype_entries(context, &preparation, error, error_size);
+    authoring_sources_free(preparation.sources);
+    assert(!preparation.entries);
+    return status;
 }
 
 static int prepare_scenario(
@@ -7960,7 +7985,7 @@ static int prepare_scenario(
 static int enter_scenario_scene(
     scenario_context *context,
     const char *json,
-    const asset_entry *entries,
+    const prototype_preparation *preparation,
     char *error,
     size_t error_size
 )
@@ -7981,19 +8006,12 @@ static int enter_scenario_scene(
         asset_ref prototype_ref = { 0 };
         char *owned = NULL;
         uint64_t prototype_hash = 0;
-        authoring_sources *sources = entries
-                                       ? authoring_sources_retain(preview_sources_applied(
-                                             prototype_preview_live(context->preview)
-                                         ))
-                                       : NULL;
-        const char *prototype_json = entries ? prepared_prototype_source(
-                                                   context->root,
-                                                   entries,
-                                                   sources,
-                                                   entity->prototype,
-                                                   &prototype_hash
-                                               )
-                                             : NULL;
+        const char *prototype_json = preparation ? prepared_prototype_source(
+                                                       preparation,
+                                                       entity->prototype,
+                                                       &prototype_hash
+                                                   )
+                                                 : NULL;
         int status = CHIBI_AUTOMATION_OK;
         if (!prototype_json) {
             status = load_named_asset(
@@ -8011,12 +8029,10 @@ static int enter_scenario_scene(
         }
         if (status != CHIBI_AUTOMATION_OK) {
             free(owned);
-            authoring_sources_free(sources);
             return status;
         }
         char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
         free(owned);
-        authoring_sources_free(sources);
         prototype *prototype = scenario_json
                                  ? prototype_load(scenario_json, &context->registry, error, error_size)
                                  : NULL;
@@ -8068,6 +8084,42 @@ static int enter_scenario_scene(
         }
     }
     return CHIBI_AUTOMATION_OK;
+}
+
+/* One synchronous owner for the index and source generation. Registry copies
+ * retain the stable includes object, whose slot is cleared before any return,
+ * launch, clone or scene-follow can outlive these preparation resources. */
+static int prepare_initial_scene(
+    const char *root,
+    scenario_context *context,
+    const char *json,
+    char *error,
+    size_t error_size
+)
+{
+    assert(!context->includes.preparation);
+    prototype_preparation preparation = { .root = root };
+    char reason[256];
+    int status = enumerate_assets(root, &preparation.entries, reason, sizeof reason);
+    if (status != CHIBI_AUTOMATION_OK) {
+        /* Preserve ordinary lookup's diagnostic before a failed enumeration. */
+        status = enter_scenario_scene(context, json, NULL, error, error_size);
+        return status == CHIBI_AUTOMATION_OK
+                 ? register_scenario_prototypes(root, context, error, error_size)
+                 : status;
+    }
+    preparation.sources = authoring_sources_retain(
+        preview_sources_applied(prototype_preview_live(context->preview))
+    );
+    context->includes.preparation = &preparation;
+    status = enter_scenario_scene(context, json, &preparation, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = register_scenario_prototype_entries(context, &preparation, error, error_size);
+    }
+    context->includes.preparation = NULL;
+    authoring_sources_free(preparation.sources);
+    free_asset_entries(preparation.entries);
+    return status;
 }
 
 /* Load Scene can start any scene in the project, as in the player. */
@@ -8127,27 +8179,10 @@ static int prepare_scene_scenario(
     if (status == CHIBI_AUTOMATION_OK) {
         status = register_shared_assets(root, context->preview, error, error_size);
     }
-    asset_entry *entries = NULL;
-    bool enumerated = false;
     if (status == CHIBI_AUTOMATION_OK) {
-        /* Share validated lookup names with registration. If enumeration fails,
-         * keep ordinary scene lookup's diagnostic precedence, then retry the
-         * original registration path only if entering the scene succeeds. */
-        char reason[256];
-        enumerated = enumerate_assets(root, &entries, reason, sizeof reason) ==
-                     CHIBI_AUTOMATION_OK;
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = enter_scenario_scene(context, scene_json, entries, error, error_size);
+        status = prepare_initial_scene(root, context, scene_json, error, error_size);
     }
     free(scene_json);
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = enumerated
-                   ? register_scenario_prototype_entries(root, context, entries, error, error_size)
-                   : register_scenario_prototypes(root, context, error, error_size);
-        entries = NULL;
-    }
-    free_asset_entries(entries);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;

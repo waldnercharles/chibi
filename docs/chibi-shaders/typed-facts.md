@@ -74,9 +74,36 @@ IR node separately from auxiliary-node provenance. An immutable alias can bind
 an existing node. Neither graph layout nor prepared executable code defines
 shader semantics.
 
-The exact Chibi record/API names and transport envelope remain to be agreed.
-Prefer a private compile-analysis result with owned arrays and source diagnostics
-over widening stable public Compile arguments or changing ABI20. The compiler
-owner exports facts; the shader owner implements the domain pass and existing IR
-adapter. A native transport bridge may copy validated values and invoke the
-authored pass; it must not resolve source semantics.
+## Source-only schema checkpoint
+
+`tools/compiler/compiler_facts/Facts.chibi` now defines the flat owned row/result
+schema in the shader worktree. Its producer and Analyze entry are not
+implemented. The compiler owner assigned this new file and independent consumer
+source preparation to the shader lane; package compiler hooks, nested records,
+bootstrap and source inventories remain in the compiler lane. The schema is
+agreed by the compiler owner for the initial flat Float3/imported-helper/two-call/
+alias/add-multiply/exact-constant slice. This declaration/consumer agreement does
+not implement or authorize compiler hooks, resources or nested records.
+
+Function rows distinguish source/native callees in one table and preserve the
+rich catalog's native kind, actual intrinsic and direct admission. A call's
+callee index therefore has one meaning. Direct admission does not imply domain
+purity. Parameter spans reference Binding rows; Argument.parameter and .field
+reference their destination rows separately from actual source evaluation
+order. Omitted defaults follow supplied arguments and retain typed constant
+expressions plus call-site and declaration origins.
+
+The initial shared classifications name add/multiply and exact/wrap/clamp
+conversions independently of prepared/shader opcodes. Other ordinary-valid
+operations or callable shapes retain unsupported rows/ranges. Storage/container
+codes still come from the matching compiler target; semantic qualifiers use
+explicit schema categories rather than copied raw runtime flags. These choices
+have compiler-owner source agreement and do not establish a working facts producer.
+
+Keep a private compile-analysis result with owned arrays and source diagnostics
+instead of widening stable public Compile arguments. The compiler owner exports
+facts; the shader owner implements the domain pass and existing IR adapter. A
+native transport bridge may copy validated values and invoke the authored pass;
+it must not resolve source semantics. Real source-material acceptance still
+requires nested Sample/Parameters/Surface records, the typed constructor,
+resource/catalog integration, rendering and CPU source inspection.

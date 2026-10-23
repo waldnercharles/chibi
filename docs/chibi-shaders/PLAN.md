@@ -3,6 +3,22 @@
 Status: CPU source-inspection foundation implemented locally, 2026-10-22. No authoring cutover or
 GPU parity claim is established by this plan.
 
+The current source-map/call-chain/staleness implementation is C, but that was a
+staging choice rather than a demonstrated language requirement. The Chibi-owned
+boundary below fits the already authorized primary-authoring-language goal;
+implementation needs no fresh human permission gate. PR 663 remains draft for
+incomplete boundary, integration and proof work. Native evaluator/resource
+access and the sampled-SDF diagnostic repair remain appropriate C boundaries.
+
+[Chibi-owned boundary proposal](chibi-boundary.md) makes the next design
+checkpoint concrete: authored lowering/provenance/stale policy, a narrow native
+IR/evaluation/resource bridge and a real imported-helper gradient fixture. It
+separates the initial flat-record facts proof from nested-record/render
+acceptance. Progress the authored implementation once the compiler facts and
+typed constructor dependencies are concrete and source-reviewed with their
+owners. Keep one authoritative policy implementation and preserve the native
+evaluator repair.
+
 ## Ownership and checkpoints
 
 Engine checkout: `/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi`.
@@ -172,6 +188,43 @@ holds, source self-build proof on the three pinned platforms, and dirty primary
 work. PRs carry exact tested commits and evidence, not historical test claims.
 
 ## Current checkpoint and next dependency
+
+### Authored source preparation on current main
+
+The unfinished fa1 merge was preserved under
+`.chibi/shader-source/main-integration/preserved-fa1-merge/` and replaced with an
+ordinary clean, uncommitted merge of reviewed main `d0de4a84`. Existing shader
+policy/evaluator/test files remain byte-identical to the prior branch head.
+Earlier tooling failures remain in their original logs; checks on this new
+candidate have not run and earlier successes do not prove it.
+
+New authored source is frozen by Git blob/SHA256 in
+`.chibi/shader-source/d0-authored-source/manifest.json`:
+
+- `tools/compiler/compiler_facts/Facts.chibi` defines the flat owned schema,
+  with compiler-owner semantic source agreement. It has no Analyze producer/hooks. Compiler ownership
+  retains actual facts production and nested-record support.
+- `tools/compiler/shader_source/SourceMap.chibi` implements provenance
+  validation, origin/call-chain/result/node lookup, ordered source equality and
+  nonzero generation/count matching. Failures separate source IDs from IR
+  indices; aggregate field bindings and aliases are explicit. Cycle checking
+  precomputes parent indices and uses iterative visit colors.
+
+Independent source review clarified opaque source-tree anchors and final
+transitive/imported-helper facts invariants; the policy source has been reviewed
+against the existing native contract. Neither module has compilation/runtime
+proof yet. No inventory, bootstrap, pin or prepared resource was generated or
+edited for them. Required current-main checks and the authored behavior focus
+are queued after the coordinator's existing compiler/task/typed resource work.
+
+The policy port's production dependency is its own prepared closure plus SDK
+facade/install/runtime-only consumer proof, not the missing shader facts export.
+Only when that replacement is integrated does C cease to own policy; retain no
+C semantic fallback. The evaluator and independent sampled-SDF repair remain
+native. Real material lowering/rendering still requires facts, nested records
+and the agreed typed SourceMaterial contract.
+
+### Earlier native foundation evidence
 
 Stage 2 is implemented in `src/runtime/shaders/source_debug.[ch]`. It owns source
 documents, origin-only call chains, node values and principal results; validates

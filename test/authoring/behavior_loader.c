@@ -29,12 +29,17 @@ static prototype_preview *preview;
 static prototype *test_prototype;
 static av_value *components;
 
-static void write_behavior(const char *name, const char *text)
+static void write_source(const char *directory, const char *name, const char *text)
 {
     char path[512];
-    snprintf(path, sizeof path, "%s/behaviors/%s.chibi", root, name);
+    snprintf(path, sizeof path, "%s/%s/%s.chibi", root, directory, name);
     FILE *file = fopen(path, "wb");
     assert(file && fputs(text, file) >= 0 && !fclose(file));
+}
+
+static void write_behavior(const char *name, const char *text)
+{
+    write_source("behaviors", name, text);
 }
 
 static void remove_behavior(const char *name)
@@ -53,9 +58,12 @@ static void setup()
 {
     strcpy(root, "/tmp/chibi-loader-XXXXXX");
     assert(mkdtemp(root));
-    char behaviors[512];
-    snprintf(behaviors, sizeof behaviors, "%s/behaviors", root);
-    assert(!mkdir(behaviors, 0700));
+    const char *directories[] = { "behaviors", "relationships", "systems" };
+    for (int i = 0; i < 3; i++) {
+        char path[512];
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        assert(!mkdir(path, 0700));
+    }
 }
 
 static void cleanup()
@@ -80,6 +88,14 @@ static void cleanup()
     snprintf(path, sizeof path, "%s/skies", root);
     rmdir(path);
     snprintf(path, sizeof path, "%s/behaviors", root);
+    rmdir(path);
+    snprintf(path, sizeof path, "%s/relationships/Targets.chibi", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/relationships", root);
+    rmdir(path);
+    snprintf(path, sizeof path, "%s/systems/MoveTargets.chibi", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/systems", root);
     rmdir(path);
     rmdir(root);
 }
@@ -140,6 +156,75 @@ TEST_CASE(sources_load_into_both_worlds_or_neither)
     REQUIRE(strstr(messages, "Could not load graph asset") && strstr(messages, root));
     REQUIRE(strstr(messages, "(source preparation)"));
     REQUIRE(applied(live) == 1 && applied(preview_live) == 1);
+    return true;
+}
+
+TEST_CASE(required_relationship_queries_publish_before_scenes)
+{
+    prototype_registry prototypes = registry();
+    ecs = ecs_world_new();
+    live = preview_world_new(ecs);
+    preview = prototype_preview_new(&prototypes);
+    preview_world *worlds[] = { live, prototype_preview_live(preview) };
+    ecs_component_id targets = ecs_component_marker_id("relationship.Targets");
+    REQUIRE(!ecs_world_relationship(ecs, targets));
+    REQUIRE(!ecs_world_relationship(prototype_preview_world(preview), targets));
+    write_source("relationships", "Targets", "Targets :: relationship { exclusive: true, acyclic: true, on_delete_target: Remove }\n");
+    write_source(
+        "systems",
+        "MoveTargets",
+        "MoveTargets :: system(target: entity in self.Targets, position: "
+        "^Transform from target) {\n"
+        "    position.X += 1\n"
+        "}\n"
+    );
+    char messages[4096];
+    REQUIRE(load(messages, sizeof messages) == 1);
+    for (int i = 0; i < 2; i++) {
+        ecs_world *world = worlds[i]->runtime->ecs;
+        const ecs_relationship_desc *relationship = ecs_world_relationship(world, targets);
+        REQUIRE(relationship);
+        REQUIRE(relationship->traits == (ECS_REL_EXCLUSIVE | ECS_REL_ACYCLIC));
+        REQUIRE(relationship->on_delete_target == ECS_CLEANUP_REMOVE);
+        REQUIRE(applied(worlds[i]) == 1);
+        REQUIRE(source_is_system(worlds[i]->runtime->sources, "MoveTargets"));
+        const char *systems[] = { "MoveTargets" };
+        REQUIRE(!source_select_systems(worlds[i]->runtime->sources, systems, 1));
+        ecs_entity owner = ecs_world_create_entity(world);
+        ecs_entity target = ecs_world_create_entity(world);
+        ecs_entity unrelated = ecs_world_create_entity(world);
+        REQUIRE(!Transform_add(world, target, 0));
+        REQUIRE(!Transform_add(world, unrelated, 0));
+        REQUIRE(!ecs_world_record_add_pair(world, owner, targets, target, 0));
+        REQUIRE(!ecs_world_apply_commands(world));
+        Transform_get(world, target)->x = 2;
+        Transform_get(world, unrelated)->x = 10;
+        int status = source_run_system(worlds[i]->runtime->sources, "MoveTargets", 0, .1);
+        if (status < 0) {
+            fprintf(
+                stderr,
+                "MoveTargets execution: %s\n",
+                source_error(worlds[i]->runtime->sources)
+            );
+        }
+        REQUIRE(status >= 0);
+        REQUIRE(Transform_get_const(world, target)->x == 3);
+        REQUIRE(Transform_get_const(world, unrelated)->x == 10);
+    }
+    /* Reloading the same declaration reuses its world schema. A changed
+     * cleanup policy must refuse publication and keep both generations. */
+    REQUIRE(load(messages, sizeof messages) == 1);
+    const authoring_sources *before[] = { preview_sources_applied(worlds[0]),
+                                          preview_sources_applied(worlds[1]) };
+    write_source("relationships", "Targets", "Targets :: relationship { exclusive: true, acyclic: true, on_delete_target: Delete }\n");
+    REQUIRE(load(messages, sizeof messages) == -1);
+    REQUIRE(strstr(messages, "Relationship Targets schema differs from the world"));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(preview_sources_applied(worlds[i]) == before[i]);
+        REQUIRE(
+            ecs_world_relationship(worlds[i]->runtime->ecs, targets)->on_delete_target == ECS_CLEANUP_REMOVE
+        );
+    }
     return true;
 }
 
@@ -212,6 +297,7 @@ void test_behavior_loader()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(sources_load_into_both_worlds_or_neither);
+    RUN_TEST_CASE(required_relationship_queries_publish_before_scenes);
     RUN_TEST_CASE(scene_launch_prepares_what_overrides_name);
     RUN_TEST_CASE(failed_scene_launch_destroys_entities_before_their_strings);
     pu_clear_setup();

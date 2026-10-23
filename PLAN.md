@@ -1,5 +1,92 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Flat typed query iterators, approved 2026-10-22
+
+Summary: Replace system-only query spellings with one flat typed query
+description, usable by scheduled systems and explicit iteration. Keep the
+existing ECS term planner and system tuple continuation identity.
+
+Context: Native queries already separate plans from cursors. The managed
+pointer dependency is integrated locally; component references must survive
+relocation and suspension through relookup of their original incarnation.
+The original checkout's design-notes edit remains there and will be reconciled
+with the completed implementation documentation.
+
+System impact: A query has an immutable typed description and captured values;
+each iteration owns its cursor. A row evaluator creates read-only component
+values, managed component references, generator identities and pure computed
+values in source order. Guards short-circuit later computations. Scheduled
+systems retain independent continuations per complete root/target tuple.
+
+Changes and ownership:
+- Grammar and authoring formatter: shared flat lists of component parameters,
+  generators, computed bindings and `if` guards; `query(...)` expressions.
+- Native compiler: query and row types, capture analysis, ordered evaluators,
+  read-only value bindings, managed reference access, iterator lowering and
+  implicit body-local `dt` in systems.
+- Runtime: reusable typed descriptors and independent iteration, managed
+  component locations with permanent invalidation on removal, precise tracing and
+  prepared-format validation.
+- Self-hosted compiler: the same system, query, iterator and prepared contracts.
+- Migration: project 33 to 34 rewrites old live component parameters to
+  pointers, merges joins, turns filters into `if` guards and removes system
+  Tick payload headers. Old behavior event handlers retain their contract.
+- Remove replaced `join`, `without`, query-filter `where`, system Tick header
+  and obsolete query-declaration implementations. Grouped bindings remain
+  deferred; no compatibility aliases are introduced.
+
+Verification: Build native drivers and products; cover syntax rejection,
+left-to-right guards, inferred intermediates, value/reference behavior,
+independent/nested/repeated iteration and cleanup, capture lifetime, pointer
+identity/removal/re-add/world teardown, continuation identity, migration
+idempotence/refusal and native/self-hosted parity on VM/JIT. Run relevant
+authoring/project checks, the five required Make groups, compiler bootstrap
+recovery and formatting on the final candidate. Report any unexecuted coverage.
+
+Status: implementation and focused Release checks pass. Independent compiler,
+runtime, schema and migration reviews found defects that are now fixed and
+covered by regressions. Required broad groups and matching query bootstrap /
+recovery remain pending; the local candidate is not ready to merge.
+
+Focused verification on 2026-10-22 (bytecode and compiled backend where selected):
+- Authored query compiler: 11/11 cases, 65,210 assertions, 186.327 seconds.
+- Query values: 15/15 cases, 1,458 assertions, 0.649 seconds; includes scheduled
+  row-header collection during suspension and nested native array captures.
+- Runtime execution: 55/55 cases, 4,760 assertions, 0.414 seconds; includes
+  native schema retirement and forged nested collection identity rejection.
+- Authored effects: 4/4 cases, 83,656 assertions, 0.761 seconds.
+- Query migration: 8/8 cases, 114 assertions, 0.587 seconds.
+- Source systems: 11/11 cases, 334 assertions, 1.137 seconds.
+- Preview source publication: 4/4 cases, 55 assertions, 1.134 seconds.
+- Process runner: 17/17 cases, 173 assertions, 24.075 seconds. The coordinated
+  isolated inspection patch preserves cleanup and failure-before-launch rules.
+- `make check-format`: passes, 76.0 seconds. Source package preparation,
+  canonical formatting and `git diff --check` also pass.
+
+Times above are measured test commands, excluding builds; the last incremental
+Release graph build took 6.3 seconds. Logs are retained under the ignored
+`.chibi/query-validation/` directory. Earlier broad-group failures were repaired,
+but their required rerun and bootstrap work are queued behind the coordinated
+workspace validation jobs. No unrun group is reported as passing.
+
+Integration boundary: this worktree's prepared ABI 22 is local to the query
+candidate. The concurrent value/CoW candidate also uses the number 22 with a
+different intrinsic registry and value layout; they are not compatible builds.
+Reconcile that registry, shared value schema and the resulting bootstrap before
+combining either candidate with the ABI 20 cutover.
+The coordinated intrinsic reservation is 46-50 for existing pointer operations,
+51-61 for collection operations and 80-95 for query operations; 62-79 remain
+unallocated. This candidate uses query operations 80-88.
+The owner selected invalid-target failure for removed components:
+removing a component, entity or world permanently invalidates its original cell;
+replacement never redirects an existing pointer. This replaces the earlier
+detached-final-value implementation and passes the focused lifetime checks here.
+The current runtime reports that failure and stops the affected activation.
+Authored recovery requires typed values/results; its checked access API remains
+undecided with the pointer owner. The owner has ruled out try/catch permanently.
+This query candidate adds no recovery API and does not establish authored recovery.
+No merge, push or installed SDK update has occurred here.
+
 ## Coordinated behavior-state support, 2026-10-22
 
 The local setup chat owns authored behavior state for bool, entity and string,

@@ -12,6 +12,7 @@ typedef struct pin_pointer
     const void *path;
     arena *storage;
     size_t offset;
+    struct ecs_component_cell *component;
 } pin_pointer;
 
 /* Derived descriptors identify locations, so repeated projections of the same
@@ -32,7 +33,7 @@ static inline bool pin_pointer_equal(const pin_pointer *a, const pin_pointer *b)
         right += b->offset;
         b = b->base;
     }
-    return a == b && left == right;
+    return (a == b || (a->component && a->component == b->component)) && left == right;
 }
 
 #endif

@@ -50,6 +50,46 @@ targets.
   first argument. `append` adds an item and `extend` adds an array's items;
   project version 32 removed `array_add` and the concatenating `append`.
 
+## Decisions (owner, 2026-10-22)
+
+- **Flat system query bindings.** Use one flat binding list for root
+  components, relationship generators and components from related entities.
+  The implementation uses the shared description for systems and query iterators:
+
+  ```chibi
+  DamageTargets :: system(
+      damage: Damage,
+      target: entity in self.Targets,
+      health: ^Health from target,
+      if health.value > 0,
+  ) {
+      health.value -= damage.amount
+  }
+  ```
+
+  `in` generates matching rows; `from` binds a component on the named source.
+  Generator types may be written or inferred with `target in self.Targets`.
+  Component values are read-only snapshots; `^T` bindings access the component.
+  Pure `:=` intermediates and `if` guards evaluate from left to right.
+  `query(...)` is an iterable description; each loop owns its cursor.
+  Systems have implicit body-local `dt` and retain per-tuple continuations.
+  This supersedes system Tick payload headers and the separate `join`,
+  `without` and runtime `where` query clauses. Behavior handlers still name
+  their event payloads. Grouped source bindings remain deferred.
+- **Grouped bindings are a future exploration.** Consider grouping several
+  component bindings under their source entity when repetition becomes a
+  demonstrated problem, for example:
+
+  ```chibi
+  target: entity in self.Targets {
+      health: Health,
+      armor: Armor?,
+  }
+  ```
+
+  This sketch is deferred. Its binding scope, interaction with generators,
+  and distinction from an executable block need a separate design decision.
+
 The remaining entries are proposals, except "Strings carry their length",
 which records how the decision above is carried out.
 
@@ -213,6 +253,10 @@ positional list, the `as` alias and `event.dt` no longer parse or analyze.
 Project version 31 removed the globals `dt`, `delta` and `delta_time()`
 (owner decision, 2026-10-20): a handler or system lists `dt`, and a function
 that needs the step takes it as a parameter.
+
+The system part is superseded by the 2026-10-22 flat-query decision above:
+systems receive a read-only body-local `dt` implicitly. Behavior handlers
+continue to list payload fields, and helpers still take the step explicitly.
 
 - Godot passes `delta` to `_process`.
 - Unity reads a global, `Time.deltaTime`.

@@ -451,7 +451,11 @@ TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_cha
                                      .type_count = 1,
                                      .relationships = &relationship,
                                      .relationship_count = 1 };
-    syntax = script_parse("Rows :: system(h: Health) join target in self.Targets { visits: retain int = 0; visits += 1 }");
+    syntax = script_parse(
+        "Rows :: system(h: ^Health , target in self.Targets) { visits: retain "
+        "int = 0; visits += 1 "
+        "}"
+    );
     analysis = script_analyze(syntax, &catalog);
     for (int i = 0; i < analysis->diagnostic_count; i++) {
         fprintf(stderr, "asset query: %s\n", analysis->diagnostics[i].message);

@@ -45,6 +45,8 @@ bool pin_record_valid(const pin_record *);
 /* Whether each nested field still names a plain catalog type of the size the
  * record laid out. The project catalog can change after a record is created. */
 bool pin_record_current(const pin_record *);
+/* A retained native child closure validates the original authored layout. */
+bool pin_value_record_current(const pin_value *);
 bool pin_record_same(const pin_record *, const pin_record *);
 /* Authored values resolve their carried layout; native values retain catalog
  * lookup. A conflicting carried/name identity never falls back to the catalog. */

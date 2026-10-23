@@ -43,6 +43,8 @@ pub GameType :: struct {
     component: uint64;
     first: int;
     count: int;
+    relationship: bool;
+    traits: int;
 }
 // A game type's field: of the type types[record] when that is not -1; a
 // constant whose value is its name; read by natives[read] when that is not
@@ -195,11 +197,27 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         if (!linked.required) {
             kind = NamespaceDecl;
         }
+        if (linked.relationship) {
+            kind = RelationshipDecl;
+        }
         row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, node: -1, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
-                         key: 0, value_storage: 0, value_container: 0, value_record: -1};
+                         key: linked.traits, value_storage: 0, value_container: 0, value_record: -1};
         declared.append(row);
+    }
+    // Optional query snapshots keep their underlying nominal component type
+    // and layout, while semantic lookup remembers that a guard is required.
+    index: int = 0;
+    while (index < length(types)) {
+        if (declared[index].kind == NativeDecl && declared[index].component != 0) {
+            optional := declared[index];
+            optional.kind = OptionalComponentDecl;
+            optional.parent = index;
+            optional.name = format_text("{}?", optional.name);
+            declared.append(optional);
+        }
+        index += 1;
     }
     return declared;
 }
@@ -446,6 +464,12 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
     }
     return Default.Failed(Diagnose(forest, value, 0, "state default needs a literal of its declared type"));
 }
+// A system's body reads its step from the execution context, including empty
+// headers. Helpers receive it explicitly; it is not a mutable local.
+SystemStepName :: (target: Target, storage: int) -> Name {
+    return {name: "dt", place: SystemStepPlace, index: target.delta_seconds_offset,
+            storage: storage, container: 0, record: -1, writable: false, node: -1};
+}
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
 // from it. The target, natives, events, types, entity, operators, globals and
@@ -477,18 +501,41 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             root = top;
     }
     declaration := FirstMember(forest, root);
-    if (!Is(forest, declaration, "behavior") || NextMember(forest, declaration) >= 0) {
-        return InputFailure(0, "a behavior asset needs one behavior declaration");
+    is_system := Is(forest, declaration, "system");
+    if ((!Is(forest, declaration, "behavior") && !is_system) || NextMember(forest, declaration) >= 0) {
+        return InputFailure(0, "an executable asset needs one behavior or system declaration");
     }
     declared_types := NativeTypes(types);
     members := NativeFields(type_fields);
     no_names: Name[] = [];
+    declared_types = DeclarePointers(forest, source, declared_types, no_names, 0, declaration);
+    has_queries := is_system && length(Members(forest, Field(forest, declaration, "parameters"))) > 0;
+    for (candidate in forest) {
+        if (candidate.kind == "query_expression") {
+            has_queries = true;
+            break;
+        }
+    }
+    if (has_queries) {
+        declared_types = QueryPointers(declared_types, members);
+    }
     solid := SolidOffsets(source);
     kept_states: StateDecl[] = [];
     callables: Callable[] = [];
     params: Param[] = [];
     handled: int[] = [];
     member := FirstMember(forest, Field(forest, declaration, "body"));
+    if (is_system) {
+        tick := FindEvent(game_events, "Tick");
+        if (tick < 0 || game_events[tick].count != 1 || event_fields[game_events[tick].first].name != "dt") {
+            return InputFailure(0, "systems require Tick(dt) in the target event catalog");
+        }
+        callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: 0,
+                              document: 0, node: declaration, first: 0, count: 0, result: 0,
+                              result_container: 0, result_record: -1, results: 0};
+        callables.append(callable);
+        handled.append(tick);
+    }
     while (member >= 0) {
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
@@ -549,7 +596,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                     callables.append(procedure);
                     handled.append(int(-1));
             }
-        } else {
+        } else if (!is_system) {
             return Result.Rejected(Diagnose(forest, member, 0, "unsupported behavior member"));
         }
         member = NextMember(forest, member);
@@ -561,10 +608,26 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
+    query_specs: QuerySpec[] = [];
+    query_names := BehaviorNames(kept_states, globals);
+    if (is_system) {
+        query_names.append(SystemStepName(target, event_fields[game_events[FindEvent(game_events, "Tick")].first].storage));
+    }
+    switch CollectQueries(forest, source, identity, declared_types, members, callables, params, natives, ports,
+                          query_names, entity, target, ops) {
+        case .Failed(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Collected(query_types, query_members, query_callables, query_params, descriptions):
+            declared_types = query_types;
+            members = query_members;
+            callables = query_callables;
+            params = query_params;
+            query_specs = descriptions;
+    }
     return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
-                                  make_fields));
+                                  make_fields), query_specs);
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that

@@ -5,6 +5,8 @@ import strings "core:strings"
 // Install the graph-built private compiler tools into a fresh prefix. This is
 // the compiler-tools part of SDK packaging, without public libraries/headers.
 //   CompilerTools -- --build ABS --output ABS --third-party ABS
+//   ProjectTools -- --build ABS --output ABS --third-party ABS
+//       --policy-source ABS --assembly ABS --compiler-backend sljit|bytecode
 // The dependency archive must be the one both executable link records name.
 // Publication refuses existing prefixes; a failed preparation removes only the
 // sibling stage this invocation reserved. No compiler/bootstrap bytes change.
@@ -200,7 +202,7 @@ Verify :: () -> int {
     }
     return 0;
 }
-Prepare :: (stage: string, entries: string[]) -> bool {
+PrepareInputs :: (stage: string, entries: string[]) -> bool {
     for (item in entries) {
         if (!CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
             build.report(Join(["sdk: cannot copy ", build.after(item, "=")]));
@@ -220,9 +222,258 @@ Prepare :: (stage: string, entries: string[]) -> bool {
         build.report("sdk: staged build host failed capability verification");
         return false;
     }
-    return build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", Inventory(stage, "")]));
+    return true;
 }
-CompilerTools :: () -> int {
+Prepare :: (stage: string, entries: string[]) -> bool {
+    return PrepareInputs(stage, entries) &&
+           build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", Inventory(stage, "")]));
+}
+PolicyOutputs :: () -> string[] {
+    return ["share/chibi/tools/toolchain/Project.chibi",
+            "share/chibi/tools/toolchain/Project.chibip",
+            "share/chibi/project-host.tsv", "share/chibi/project-prepare.tsv"];
+}
+PolicyHas :: (values: string[], value: string) -> bool {
+    for (item in values) {
+        if (item == value) {
+            return true;
+        }
+    }
+    return false;
+}
+PolicyHash :: (value: string) -> bool {
+    if (strings.ByteLength(value) != 64) {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
+            return false;
+        }
+    }
+    return true;
+}
+// Both digests use the actual producer inventory order. The final inventory
+// excludes itself; only the four declared outputs are absent from input rows.
+PolicyInventory :: (stage: string, inputs: bool) -> string {
+    text := "";
+    outputs := PolicyOutputs();
+    for (line in build.lines(Inventory(stage, ""))) {
+        path := build.before(line, "\t");
+        if (line != "" && path != "share/chibi/compiler-tools.tsv" &&
+            (!inputs || !PolicyHas(outputs, path))) {
+            text = Join([text, line, "\n"]);
+        }
+    }
+    return text;
+}
+PolicyExport :: (stage: string, source: string, entry: string, artifact: string) -> bool {
+    host := Join([stage, "/libexec/chibi/chibi-build-host"]);
+    return build.run([host, "--root", stage, "--source", source,
+                      "--core", Join([stage, "/share/chibi/core"]),
+                      "--compiler", Join([stage, "/share/chibi/compiler"]),
+                      "--compiler-core", Join([stage, "/share/chibi/core"]),
+                      "--entry", entry, "--timeout-ms", "120000",
+                      "--output-artifact", artifact]) == 0 &&
+           build.file_kind(artifact) == "file" && PolicyHash(build.hash_file(artifact));
+}
+PolicyHostCommand :: (host: string, root: string, artifact: string, entry: string) -> string[] {
+    return ["/usr/bin/env", "PATH=", "CC=/usr/bin/false", "CXX=/usr/bin/false",
+            host, "--root", root, "--artifact", artifact, "--entry", entry,
+            "--timeout-ms", "120000"];
+}
+PolicyRun :: (host: string, root: string, artifact: string, entry: string, arguments: string[]) -> int {
+    return build.run(build.concat(PolicyHostCommand(host, root, artifact, entry),
+                                  build.concat(["--"], arguments)));
+}
+PolicyFrame :: (route: string, availability: string, identity: string, diagnostic: string) -> string {
+    encoded := "null";
+    if (identity != "") {
+        encoded = Join(["\"", identity, "\""]);
+    }
+    roles := "[\"build-host\",\"assembly\"]";
+    if (route == "selfhost") {
+        roles = "[\"build-host\",\"compiler-host\",\"assembly\"]";
+    }
+    return Join(["CHIBI-INSPECT/1 {\"route\":\"", route, "\",\"availability\":\"", availability,
+                 "\",\"identity\":", encoded, ",\"diagnostic\":\"", diagnostic,
+                 "\",\"roles\":", roles, "}\n"]);
+}
+PolicyDispatch :: (host: string, root: string, artifact: string) -> bool {
+    if (PolicyRun(host, root, artifact, "Inspect", []) != 2 || build.last_stdout() != "" ||
+        build.last_stderr() != PolicyFrame("native", "unavailable", "", "invalid-arguments")) {
+        return false;
+    }
+    return PolicyRun(host, root, artifact, "Compile", []) == 2 &&
+           build.last_stdout() == "" && build.last_stderr() == "project: invalid arguments\n";
+}
+// The copied host's supported executable-relative discovery paths all remain
+// below this private prefix. None contains compiler/core or policy source.
+PolicyProof :: (stage: string) -> bool {
+    proof := Join([stage, "/.project-proof"]);
+    prefix := Join([proof, "/prefix"]);
+    binary_dir := Join([prefix, "/libexec/chibi"]);
+    host := Join([binary_dir, "/chibi-build-host"]);
+    work := Join([proof, "/work"]);
+    payload := Join([proof, "/payload"]);
+    artifact := Join([payload, "/Project.chibip"]);
+    probe := Join([payload, "/SDK.chibip"]);
+    actual_host := Join([stage, "/libexec/chibi/chibi-build-host"]);
+    actual_artifact := Join([stage, "/", PolicyOutputs()[1]]);
+    if (!build.reserve_directory(proof) || !build.make_directory(binary_dir) ||
+        !build.make_directory(work) || !build.make_directory(payload) ||
+        !build.copy_file(actual_host, host) || !build.copy_file(actual_artifact, artifact) ||
+        build.hash_file(host) != build.hash_file(actual_host) ||
+        build.hash_file(artifact) != build.hash_file(actual_artifact) ||
+        !PolicyExport(stage, Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]), "Verify", probe)) {
+        return false;
+    }
+    for (folder in [Join([prefix, "/libexec/share/chibi"]), Join([prefix, "/share/chibi"]),
+                    Join([binary_dir, "/share/chibi"])]) {
+        for (name in ["compiler", "core"]) {
+            if (build.file_kind(Join([folder, "/", name])) != "") {
+                return false;
+            }
+        }
+    }
+    if (!PolicyDispatch(host, work, artifact)) {
+        return false;
+    }
+    forbidden := build.concat(PolicyHostCommand(host, work, artifact, "Inspect"),
+                               ["--core", Join([proof, "/absent-core"])]);
+    if (build.run(forbidden) != 1 || build.last_stdout() != "" ||
+        !strings.HasPrefix(build.last_stderr(), "usage: chibi-build-host")) {
+        return false;
+    }
+    if (PolicyRun(host, work, probe, "Verify", []) != 0 ||
+        build.last_stdout() != "" || build.last_stderr() != "" ||
+        length(build.list_directory(work)) != 0 ||
+        build.hash_file(host) != build.hash_file(actual_host) ||
+        build.hash_file(artifact) != build.hash_file(actual_artifact)) {
+        return false;
+    }
+    return RemoveTree(proof);
+}
+PolicyValues :: (stage: string, arguments: string[], inputs: string) -> string[] {
+    outputs := PolicyOutputs();
+    return ["policy-source", outputs[0], "policy-artifact", outputs[1],
+            "host-witness", outputs[2], "compiler", "share/chibi/compiler",
+            "core", "share/chibi/core", "bootstrap", "share/chibi/compiler/bootstrap",
+            "source-sha256", build.hash_file(Join([stage, "/", outputs[0]])),
+            "artifact-sha256", build.hash_file(Join([stage, "/", outputs[1]])),
+            "build-host-sha256", build.hash_file(Join([stage, "/libexec/chibi/chibi-build-host"])),
+            "compiler-host-sha256", build.hash_file(Join([stage, "/libexec/chibi/chibi-compiler-host"])),
+            "assembly-sha256", build.hash_file(Option(arguments, "--assembly")),
+            "inputs-sha256", build.hash_text(inputs), "inspect-entry", "Inspect",
+            "compile-entry", "Compile", "platform", build.platform(),
+            "compiler-backend", Option(arguments, "--compiler-backend")];
+}
+PolicyStable :: (stage: string, arguments: string[], values: string[]) -> bool {
+    for (key in ["source-sha256", "artifact-sha256", "build-host-sha256",
+                 "compiler-host-sha256", "assembly-sha256", "inputs-sha256"]) {
+        if (!PolicyHash(Option(values, key))) {
+            return false;
+        }
+    }
+    return build.join(PolicyValues(stage, arguments, PolicyInventory(stage, true)), "\n") ==
+               build.join(values, "\n") &&
+           build.hash_file(Option(arguments, "--policy-source")) == Option(values, "source-sha256") &&
+           build.find_executable(Option(arguments, "--assembly")) != "" &&
+           build.find_executable(Join([stage, "/libexec/chibi/chibi-build-host"])) != "" &&
+           build.find_executable(Join([stage, "/libexec/chibi/chibi-compiler-host"])) != "";
+}
+PolicyWitness :: (values: string[]) -> string {
+    text := "CHIBI-PROJECT-HOST/1\n";
+    for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256",
+                 "compiler-host-sha256", "assembly-sha256", "inspect-entry", "compile-entry",
+                 "platform", "compiler-backend"]) {
+        text = Join([text, key, "\t", Option(values, key), "\n"]);
+    }
+    return Join([text, "prepared-load\tpassed\nprepared-without-source\tpassed\n",
+                 "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\n"]);
+}
+PolicyReceiptText :: (values: string[], entries: string[]) -> string {
+    text := "CHIBI-PROJECT-PREPARE/1\n";
+    index: int = 0;
+    while (index + 1 < length(values)) {
+        text = Join([text, values[index], "\t", values[index + 1], "\n"]);
+        index += 2;
+    }
+    for (item in entries) {
+        text = Join([text, "ownership\t", build.file_kind(build.after(item, "=")),
+                     "\t", build.before(item, "="), "\n"]);
+    }
+    outputs := PolicyOutputs();
+    // The source is already an Entry. Generated products own individual files;
+    // bootstrap remains inside the compiler Entry's directory ownership.
+    for (index in 1..<length(outputs)) {
+        text = Join([text, "ownership\tfile\t", outputs[index], "\n"]);
+    }
+    for (output in outputs) {
+        text = Join([text, "output\tfile\t", output, "\n"]);
+    }
+    return text;
+}
+PolicyInspect :: (stage: string, arguments: string[], selfhost: bool) -> bool {
+    route := "native";
+    options := ["--route", route, "--target", "native", "--sdk-root", stage,
+                "--inventory", "share/chibi/compiler-tools.tsv", "--receipt", PolicyOutputs()[3],
+                "--build-host", Join([stage, "/libexec/chibi/chibi-build-host"]),
+                "--assembly", Option(arguments, "--assembly"), "--invocation-entry", "Inspect"];
+    expected_status: int = 0;
+    availability := "ready";
+    diagnostic := "ready";
+    if (selfhost) {
+        route = "selfhost";
+        options[1] = route;
+        cache := Join([stage, ".project-cache"]);
+        if (build.file_kind(cache) != "") {
+            return false;
+        }
+        options = build.concat(options, ["--compiler-host", Join([stage, "/libexec/chibi/chibi-compiler-host"]),
+                                          "--cache", cache]);
+        expected_status = 1;
+        availability = "needs-recovery";
+        diagnostic = "recovery-required";
+    }
+    status := PolicyRun(Join([stage, "/libexec/chibi/chibi-build-host"]), stage,
+                        Join([stage, "/", PolicyOutputs()[1]]), "Inspect", options);
+    result := build.last_stderr();
+    identity := build.before(build.after(result, "\"identity\":\""), "\"");
+    return status == expected_status && build.last_stdout() == "" && PolicyHash(identity) &&
+           result == PolicyFrame(route, availability, identity, diagnostic) &&
+           (!selfhost || build.file_kind(Join([stage, ".project-cache"])) == "");
+}
+PrepareProject :: (stage: string, entries: string[], arguments: string[]) -> bool {
+    if (!PrepareInputs(stage, entries)) {
+        return false;
+    }
+    outputs := PolicyOutputs();
+    if (!PolicyExport(stage, Join([stage, "/", outputs[0]]), "Inspect", Join([stage, "/", outputs[1]]))) {
+        build.report("sdk: cannot export prepared project policy");
+        return false;
+    }
+    inputs := PolicyInventory(stage, true);
+    values := PolicyValues(stage, arguments, inputs);
+    if (!PolicyStable(stage, arguments, values) || !PolicyProof(stage) ||
+        !PolicyStable(stage, arguments, values)) {
+        build.report("sdk: prepared project host capability witness failed");
+        return false;
+    }
+    if (!build.write_file(Join([stage, "/", outputs[2]]), PolicyWitness(values)) ||
+        !build.write_file(Join([stage, "/", outputs[3]]), PolicyReceiptText(values, entries))) {
+        return false;
+    }
+    inventory := Join(["1\n", PolicyInventory(stage, false)]);
+    if (!build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), inventory) ||
+        !PolicyInspect(stage, arguments, false) || !PolicyInspect(stage, arguments, true) ||
+        !PolicyStable(stage, arguments, values) ||
+        inventory != Join(["1\n", PolicyInventory(stage, false)])) {
+        build.report("sdk: prepared project readiness or final inventory verification failed");
+        return false;
+    }
+    return true;
+}
+InstallCompilerTools :: (project: bool) -> int {
     arguments := build.arguments();
     build_dir := Option(arguments, "--build");
     output := Option(arguments, "--output");
@@ -249,6 +500,19 @@ CompilerTools :: () -> int {
         return 2;
     }
     entries := Entries(root, build_dir, third_party);
+    if (project) {
+        source := Option(arguments, "--policy-source");
+        assembly := Option(arguments, "--assembly");
+        backend := Option(arguments, "--compiler-backend");
+        if (!strings.HasPrefix(source, "/") || build.file_kind(source) != "file" ||
+            !strings.HasPrefix(assembly, "/") || build.find_executable(assembly) == "" ||
+            (backend != "sljit" && backend != "bytecode") ||
+            (build.platform() != "Darwin" && build.platform() != "Linux")) {
+            build.report("sdk: ProjectTools requires absolute --policy-source and executable --assembly, --compiler-backend sljit|bytecode, and Darwin or Linux");
+            return 2;
+        }
+        entries = build.concat(entries, [Join(["share/chibi/tools/toolchain/Project.chibi=", source])]);
+    }
     for (item in entries) {
         source := build.after(item, "=");
         if (build.file_kind(source) == "directory" &&
@@ -292,7 +556,13 @@ CompilerTools :: () -> int {
         build.report("sdk: cannot reserve staging directory; existing staging is preserved");
         return 1;
     }
-    if (!Prepare(stage, entries) || !build.publish_directory(stage, output)) {
+    prepared := false;
+    if (project) {
+        prepared = PrepareProject(stage, entries, arguments);
+    } else {
+        prepared = Prepare(stage, entries);
+    }
+    if (!prepared || !build.publish_directory(stage, output)) {
         if (!RemoveTree(stage)) {
             build.report(Join(["sdk: incomplete staging directory retained at ", stage]));
         }
@@ -301,4 +571,12 @@ CompilerTools :: () -> int {
     }
     build.report(Join(["sdk: installed compiler tools at ", output]));
     return 0;
+}
+CompilerTools :: () -> int {
+    return InstallCompilerTools(false);
+}
+// Opt-in preparation. The policy and actual native assembly role are supplied
+// explicitly; protocol 8 alone does not establish the prepared host interface.
+ProjectTools :: () -> int {
+    return InstallCompilerTools(true);
 }

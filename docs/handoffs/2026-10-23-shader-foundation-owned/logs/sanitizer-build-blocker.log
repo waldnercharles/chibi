@@ -1,0 +1,4 @@
+Combined AddressSanitizer+UndefinedBehaviorSanitizer normal make test-build: failed during reflect generation, before the runtime driver tests.
+==964==LeakSanitizer has encountered a fatal error.
+==964==HINT: LeakSanitizer does not work under ptrace (strace, gdb, etc)
+No leak-check setting was disabled. The bounded combined-sanitizer dispatcher also failed at LeakSanitizer startup/exit. An outside-tracing execution attempt failed before test execution.

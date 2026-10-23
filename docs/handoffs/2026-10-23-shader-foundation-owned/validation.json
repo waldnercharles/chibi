@@ -1,0 +1,229 @@
+{
+  "status": "WIP native foundation validation checkpoint; no authored implementation or merge readiness",
+  "source_commit": "1c1599fa1ca2405e0ee1d6a57dc7a9146db3b252",
+  "source_tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+  "main_base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "source_changes_after_handoff": false,
+  "source_was_clean_during_checks": true,
+  "platform": "Linux x86_64",
+  "compiler": "Debian clang 19.1.7",
+  "cmake": "3.31.6",
+  "ninja": "1.12.1",
+  "format": "clang-format 22.1.5; full make check-format passed",
+  "native_configuration": "Debug, sanitizers OFF; freshly built exact-source SDK and full drivers, not the preexisting SDK",
+  "projects_configuration": "fresh Release chibi_ctl, chibi, chibi-compile from the same source",
+  "gate_families": [
+    {
+      "name": "native-group",
+      "summaries": 76,
+      "passed_cases": 647,
+      "failed_cases": 0,
+      "assertions": 237362,
+      "log_sha256": "111fa5b9b03b4fe68317623e19ddeb434af514468a61ec977b15c5689db510ad",
+      "log_bytes": 90102
+    },
+    {
+      "name": "materials-group",
+      "summaries": 9,
+      "passed_cases": 110,
+      "failed_cases": 0,
+      "assertions": 270494,
+      "log_sha256": "fd5a505fd058c1269a81cf46ea8900a108a04ac635f2d6644f2dba3b92a29553",
+      "log_bytes": 9427
+    },
+    {
+      "name": "language-group",
+      "summaries": 33,
+      "passed_cases": 583,
+      "failed_cases": 0,
+      "assertions": 1021839,
+      "log_sha256": "42822f0b78f50891491bc1f82eacec2e05898d0cc127bb9e39b67f0f933f783f",
+      "log_bytes": 190611
+    },
+    {
+      "name": "projects-group",
+      "summaries": 14,
+      "passed_cases": 106,
+      "failed_cases": 0,
+      "assertions": 11933,
+      "log_sha256": "ec8a47b82a5313ffc112859a406d64c9f1c0d640ea93fce37b69ddfa0279ebcf",
+      "log_bytes": 140646
+    },
+    {
+      "name": "standalone-tools",
+      "passed_cases": 163,
+      "failed_cases": 0,
+      "assertions": 28910,
+      "seconds": 44.272
+    }
+  ],
+  "total_cases": 1609,
+  "total_assertions": 1570538,
+  "commands": [
+    {
+      "name": "source-debug-full-driver",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "$TASK_SCRATCH/debug/test/tools/test_tools",
+        "--shader-source-debug"
+      ],
+      "returncode": 0,
+      "seconds": 0.138,
+      "log": "source-debug-full-driver.log",
+      "sha256": "db80d0be53fa8df0e96290ca976f9d3adbca9da6f4e88c5a3baeba41540f154b"
+    },
+    {
+      "name": "bake-full-driver",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "$TASK_SCRATCH/debug/test/tools/test_tools",
+        "--shader-bake"
+      ],
+      "returncode": 0,
+      "seconds": 0.109,
+      "log": "bake-full-driver.log",
+      "sha256": "40b4feb998ec0fa8195ee460b03dc31a7d1c4be602fd588c598f12363c3616c2"
+    },
+    {
+      "name": "native-group",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "group",
+        "native"
+      ],
+      "returncode": 0,
+      "seconds": 7.46,
+      "log": "native-group.log",
+      "sha256": "111fa5b9b03b4fe68317623e19ddeb434af514468a61ec977b15c5689db510ad"
+    },
+    {
+      "name": "materials-group",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "group",
+        "materials"
+      ],
+      "returncode": 0,
+      "seconds": 10.8,
+      "log": "materials-group.log",
+      "sha256": "fd5a505fd058c1269a81cf46ea8900a108a04ac635f2d6644f2dba3b92a29553"
+    },
+    {
+      "name": "language-group",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "group",
+        "language"
+      ],
+      "returncode": 0,
+      "seconds": 7.332,
+      "log": "language-group.log",
+      "sha256": "42822f0b78f50891491bc1f82eacec2e05898d0cc127bb9e39b67f0f933f783f"
+    },
+    {
+      "name": "projects-group",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "group",
+        "projects"
+      ],
+      "returncode": 0,
+      "seconds": 24.207,
+      "log": "projects-group.log",
+      "sha256": "ec8a47b82a5313ffc112859a406d64c9f1c0d640ea93fce37b69ddfa0279ebcf"
+    }
+  ],
+  "focused_ubsan_only": {
+    "passed_cases": 21,
+    "assertions": 485,
+    "undefined_sanitizer": true,
+    "address_sanitizer": false,
+    "leak_coverage": false
+  },
+  "combined_asan_ubsan": "BLOCKED: reflect generator and standalone dispatcher hit LeakSanitizer ptrace fatal; not a sanitizer pass",
+  "handoff_verification": {
+    "native_branch_head": "1f82a73a7e0f76002e4fe9c9021176da24c090e4",
+    "native_source_tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+    "native_handoff_tree": "f1f5d0fe7e1d48f6b5abacd0b76aa7df1086f76b",
+    "native_active_entries": 17,
+    "native_receipt_entries": 36,
+    "authored_branch_head": "6dc3219759f5aac491b1bc94231de63d75845e0c",
+    "authored_source_tree": "b9492169c5aaa89409e242860c2bac9085c0d025",
+    "authored_handoff_tree": "efc3b4d4e6ad9a8bab1d6f99b5e66f23792dbaa0",
+    "authored_active_entries": 7,
+    "authored_receipt_entries": 7,
+    "verification": "All listed Git blobs, SHA256 digests and byte counts match; all four complete trees reconstructed and match. Authored files kept separate, not active here."
+  },
+  "third_party": {
+    "release_sha256": "1ef571b800ac45d9a0f7adce338ae6ed153f2f460883dbb2a595509a9c1648d7",
+    "release_bytes": 22021970,
+    "address_undefined_sha256": "1fb63d728222d3d0c0dfc48947956a4c601062cad0e898a69601720fe42c7a29",
+    "address_undefined_bytes": 69594745,
+    "release_tag": "third-party-2026-10-22.2"
+  },
+  "remaining": [
+    "Combined ASan/UBSan with functioning LeakSanitizer",
+    "Other platforms and hardware GPU/Studio checks",
+    "Compiler Analyze producer and ordinary nested semantics",
+    "Authored Facts and SourceMap compilation, execution and prepared-service wiring",
+    "Facts-driven lowering, typed finalization, real authored material rendering and same-generation CPU/GPU inspection",
+    "Existing PR663 draft and all technical/merge/release/default/ABI/deployment holds"
+  ],
+  "logs": {
+    "bake-full-driver.log": {
+      "sha256": "40b4feb998ec0fa8195ee460b03dc31a7d1c4be602fd588c598f12363c3616c2",
+      "bytes": 805
+    },
+    "bake-ubsan.log": {
+      "sha256": "d45ed188c2c12cb0b93d5e8f9d8e65b2b7bf99bf77d985910cad1738d78f8798",
+      "bytes": 805
+    },
+    "check-format.log": {
+      "sha256": "2add8a91349885ad74fafc26686a49e7b711356f13710ed5cb13a3eb2c815222",
+      "bytes": 174
+    },
+    "language-group.log": {
+      "sha256": "42822f0b78f50891491bc1f82eacec2e05898d0cc127bb9e39b67f0f933f783f",
+      "bytes": 190611
+    },
+    "materials-group.log": {
+      "sha256": "fd5a505fd058c1269a81cf46ea8900a108a04ac635f2d6644f2dba3b92a29553",
+      "bytes": 9427
+    },
+    "native-group.log": {
+      "sha256": "111fa5b9b03b4fe68317623e19ddeb434af514468a61ec977b15c5689db510ad",
+      "bytes": 90102
+    },
+    "projects-group.log": {
+      "sha256": "ec8a47b82a5313ffc112859a406d64c9f1c0d640ea93fce37b69ddfa0279ebcf",
+      "bytes": 140646
+    },
+    "sanitizer-build-blocker.log": {
+      "sha256": "9cc9a4618bf10808138496bbd4385ae6b976647f70bfc21d2a54555cff667926",
+      "bytes": 457
+    },
+    "source-debug-full-driver.log": {
+      "sha256": "db80d0be53fa8df0e96290ca976f9d3adbca9da6f4e88c5a3baeba41540f154b",
+      "bytes": 1330
+    },
+    "source-debug-ubsan.log": {
+      "sha256": "18af45abea0186107e8f4cb63d72e84878ac2789da240ceb6dc62c81038f7fdb",
+      "bytes": 1330
+    },
+    "standalone-tools-check-ninja.log": {
+      "sha256": "1808a7c0181971b4fef9474990bc04863bc1154729a5d781427c3f5cb713d9b3",
+      "bytes": 151109,
+      "normalization": "trailing line whitespace only",
+      "original_sha256": "b2c1c80d30d51951341cc013b5a424033fffa28f2d819ea0b6c5492d7dd37f1d",
+      "original_bytes": 151112
+    }
+  }
+}

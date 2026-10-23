@@ -1,0 +1,11 @@
+Running: constant_channels_preserve_linear_hdr_and_height (OK) (0.000021 secs)
+Running: pixel_centers_orientation_and_slices_match (OK) (0.000014 secs)
+Running: parameters_and_graph_are_owned (OK) (0.000007 secs)
+Running: invalid_grid_and_budget_are_rejected (OK) (0.000004 secs)
+Running: failed_job_preserves_previous_result (OK) (0.000007 secs)
+Running: images_resolve_owned_keys_and_failure_is_private (OK) (0.000016 secs)
+Running: bump_samples_reuse_derivative_workspace (OK) (0.000045 secs)
+Running: nested_triplanar_bump_matches_allocating_evaluator (OK) (0.000282 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 320
+Test command wall time: 0.057s; includes in-test fixture setup; external configuration/build excluded.

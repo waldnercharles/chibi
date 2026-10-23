@@ -4,6 +4,7 @@
 #include "execution/intrinsics.h"
 #include "execution/log.h"
 #include "execution/module_effects.h"
+#include "execution/preparation_budget.h"
 #include "execution/prepared_internal.h"
 #include "execution/scalar.h"
 #include "execution/service.h"
@@ -1835,16 +1836,125 @@ TEST_CASE(execution_prepared_identity_includes_instruction_schema)
     return true;
 }
 
+/* Real builder-owned banks exercise word boundaries without forged counts. */
+TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
+{
+    const int sizes[] = { 0, 1, 63, 64, 65 };
+    for (int pause = 0; pause < 2; pause++) {
+        for (int si = 0; si < 5; si++) {
+            for (int li = 0; li < 5; li++) {
+                cleanup();
+                builder = behavior_function_builder_new();
+                size_t slots = sizes[si], locals = sizes[li], count = pause + 1;
+                for (size_t i = 0; i < slots; i++) {
+                    slot(PIN_I32);
+                }
+                for (size_t i = 0; i < locals; i++) {
+                    behavior_function_builder_local(builder, (pin_value){ .type = PIN_I32 });
+                }
+                if (pause) {
+                    emit((behavior_function_instruction){ .op = BF_SUSPEND });
+                }
+                emit((behavior_function_instruction){ .op = BF_END });
+                const behavior_function *draft = behavior_function_builder_definition(builder);
+                REQUIRE((size_t)acount(draft->slots) == slots);
+                REQUIRE((size_t)acount(draft->locals) == locals);
+                REQUIRE((size_t)acount(draft->instructions) == count);
+                size_t defined = (count + 1) * (slots / 64 + 1) * sizeof(uint64_t);
+                size_t live = (count + 1) * ((slots + locals + 63) / 64 + 1) *
+                              sizeof(uint64_t);
+                /* Keep all other conservative terms, including phases this
+                 * host-free fixture does not need, separate from the matrices. */
+                size_t fixed = 2 * (sizeof(dyna_hdr) +
+                                    16 * sizeof(behavior_function_instruction)) +
+                               (count + 1) * sizeof(int) +
+                               count * (2 * sizeof(bool) + 3 * sizeof(int)) +
+                               slots * sizeof(int) +
+                               count * (sizeof(int) + 2 * sizeof(bool)) +
+                               (slots + 1) * (2 * sizeof(int) + 3 * sizeof(bool)) +
+                               sizeof(int) + sizeof(bool) +
+                               (slots + 1) * (3 * sizeof(max_align_t) + sizeof(int)) +
+                               (count + 1) * sizeof(bool) +
+                               (slots + 1) * 2 * sizeof(int) +
+                               (locals + 1) * sizeof(bool) +
+                               (slots + 1) *
+                                   (2 * sizeof(int) + 2 * sizeof(max_align_t)) +
+                               sizeof(bool);
+                if (pause) {
+                    fixed += sizeof(dyna_hdr) +
+                             16 * sizeof(behavior_function_suspension);
+                }
+                size_t expected = fixed + (defined > live ? defined : live);
+                REQUIRE(behavior_function_preparation_bytes(draft) == expected);
+                REQUIRE(expected < fixed + defined + live);
+            }
+        }
+    }
+    cleanup();
+    builder = behavior_function_builder_new();
+    behavior_function *draft = (behavior_function *)
+        behavior_function_builder_definition(builder);
+    node_access invalid = { .read_count = -1 };
+    apush(draft->host_calls, ((behavior_function_host_call){ .access = &invalid }));
+    draft->batchable = true;
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL });
+    emit((behavior_function_instruction){ .op = BF_END });
+    /* Malformed descriptors still propagate SIZE_MAX. This does not claim
+     * machine-size arithmetic overflow coverage from tiny real banks. */
+    REQUIRE(behavior_function_preparation_bytes(draft) == SIZE_MAX);
+    return true;
+}
+
+TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots)
+{
+    builder = behavior_function_builder_new();
+    pin_value shape = { .type = PIN_TASK, .container = PIN_CONTAINER_ARRAY },
+              result = { .type = BF_POINTER_TYPE };
+    behavior_function_builder_signature(builder, &shape, 1, &result, 1, NULL, 0);
+    int input = address_slot();
+    REQUIRE(behavior_function_builder_kind(builder, BEHAVIOR_BANK_RESULT, 0, BEHAVIOR_ADDRESS));
+    behavior_function_builder_root(builder, BEHAVIOR_BANK_SLOT, input, shape);
+    emit((behavior_function_instruction){ .op = BF_ARRAY,
+                                          .type = BF_POINTER_TYPE,
+                                          .target = BF_ARGUMENT,
+                                          .output = input,
+                                          .value = shape });
+    emit((behavior_function_instruction){ .op = BF_SUSPEND });
+    emit((behavior_function_instruction){ .op = BF_RESULT,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = input });
+    emit((behavior_function_instruction){ .op = BF_END });
+    behavior_function *draft = (behavior_function *)
+        behavior_function_builder_definition(builder);
+    /* Permit the copied live-value index, but not the subsequent root. The
+     * decoder uses this same bounded arena path; no allocator is mocked. */
+    arena_init(&draft->owned, 4096);
+    arena_alloc(&draft->owned, 4096 - _Alignof(max_align_t));
+    size_t budget = arena_storage_bytes(&draft->owned);
+    char error[192];
+    REQUIRE(!behavior_function_prepare_definition(draft, budget, error, sizeof error));
+    REQUIRE(!strcmp(error, "suspension live sets exceed preparation budget"));
+    REQUIRE(acount(draft->suspensions) == 1);
+    const behavior_function_suspension *saved = &draft->suspensions[0];
+    REQUIRE(saved->value_count == 1 && saved->root_count == 1);
+    REQUIRE(
+        saved->values && !saved->roots && arena_contains(&draft->owned, saved->values)
+    );
+    REQUIRE(arena_storage_bytes(&draft->owned) == budget && !draft->frozen);
+    cleanup(); /* The partially prepared definition still has one owner. */
+    return true;
+}
+
 TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
 {
-    /* A wide chain followed by many pauses keeps one value live. Reserving a
-     * full live-value vector per pause needed about 4.2 MiB here. */
+    /* A wide chain followed by many pauses keeps one value live. This allowance
+     * rejects summing the sequential matrices, but admits their larger phase. */
     enum
     {
         WIDE_SLOTS = 1024,
         WIDE_PAUSES = 512
     };
-    const size_t budget = 2 * 1024 * 1024;
+    const size_t budget = 1408 * 1024;
     pin_value number = { .type = PIN_I32 };
     builder = behavior_function_builder_new();
     behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
@@ -1890,7 +2000,18 @@ TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
     behavior_function_builder_free(builder);
     builder = NULL;
     for (int backend = 0; backend < 2; backend++) {
-        size_t remaining = budget;
+        size_t remaining = 1;
+        prepared_module = execution_prepared_read_budget(
+            prepared_bytes,
+            length,
+            NULL,
+            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        REQUIRE(!prepared_module && error[0] && remaining == 1);
+        remaining = budget;
         prepared_module = execution_prepared_read_budget(
             prepared_bytes,
             length,
@@ -2188,6 +2309,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage);
     RUN_TEST_CASE(execution_unary_numeric_operands_ignore_unrelated_address_slot);
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
+    RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
+    RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
     pu_clear_setup();

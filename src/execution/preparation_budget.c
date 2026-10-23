@@ -77,16 +77,17 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     /* Verification: provenance headers; defined_operands matrix+row,
      * reached/queued/queue; checked_control incoming+queue. */
     size_t words = slots / 64 + 1;
-    size_t scratch = product(count + 1, product(words, sizeof(uint64_t)));
-    scratch = sum(scratch, product(count, 2 * sizeof(bool) + 3 * sizeof(int)));
+    size_t defined = product(count + 1, product(words, sizeof(uint64_t)));
+    size_t scratch = product(count, 2 * sizeof(bool) + 3 * sizeof(int));
     scratch = sum(scratch, product(slots, sizeof(int)));
     if (acount(f->value_roots)) {
         scratch = sum(scratch, product(values + 1, sizeof(bool)));
     }
-    /* Suspension liveness uses a separate matrix+row. Summing phases is a
-     * conservative peak bound; none of these counts comes from file size. */
+    /* Defined-operands verification frees its matrix+row before suspension
+     * liveness begins. Reserve their larger phase, preserving overflow. */
     words = (values + 63) / 64 + 1;
-    scratch = sum(scratch, product(count + 1, product(words, sizeof(uint64_t))));
+    size_t live = product(count + 1, product(words, sizeof(uint64_t)));
+    scratch = sum(scratch, defined > live ? defined : live);
     /* runtime_code + reuse_reads simultaneously own live/keep/saved,
      * parents/slots/banks/unused/pinned/scratch/writes. */
     scratch = sum(scratch, product(count, sizeof(int) + 2 * sizeof(bool)));

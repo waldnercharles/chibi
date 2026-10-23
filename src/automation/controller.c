@@ -7658,7 +7658,7 @@ static bool source_file_matches(const char *path, const char *text, size_t bytes
     return fclose(file) == 0 && same;
 }
 
-static const char *prepared_prototype_source(
+static const char *prepared_prototype_entry(
     const char *root,
     const asset_entry *entry,
     const source_catalog_definition *definitions,
@@ -7694,20 +7694,101 @@ static const char *prepared_prototype_source(
     return text;
 }
 
-static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
+/* Entries carry asset_name's validated names, including its filename fallback.
+ * Raw declaration names alone do not certify prototype shape. Check the whole
+ * current namespace so an added or edited file cannot hide another declaration. */
+static const char *prepared_prototype_source(
+    const char *root,
+    const asset_entry *entries,
+    const authoring_sources *sources,
+    const char *name,
+    uint64_t *hash
+)
 {
-    asset_entry *entries = NULL;
-    int status = enumerate_assets(root, &entries, error, error_size);
-    if (status != CHIBI_AUTOMATION_OK) {
-        return status;
+    const asset_family *family = family_by_kind("prototype");
+    char error[256];
+    if (verify_asset_directory(root, family, error, sizeof error) != 1) {
+        return NULL;
     }
+    const char *content = chibi_automation_content(root);
+    size_t size = strlen(content) + strlen(family->folder) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", content, family->folder);
+    DIR *directory = opendir(path);
+    free(path);
+    if (!directory) {
+        return NULL;
+    }
+    const source_catalog_definition *definitions = authoring_sources_definitions(sources);
+    int definition_count = authoring_sources_definition_count(sources);
+    int expected = 0, seen = 0, matches = 0;
+    for (int i = 0; i < acount(entries); i++) {
+        expected += entries[i].family == family;
+    }
+    const char *text = NULL;
+    bool complete = true;
+    for (;;) {
+        errno = 0;
+        struct dirent *file = readdir(directory);
+        if (!file) {
+            complete = !errno;
+            break;
+        }
+        asset_ref bounds;
+        if (!valid_asset_filename(family, file->d_name) ||
+            strlen(file->d_name) >= sizeof bounds.filename) {
+            continue;
+        }
+        size = strlen(content) + strlen(family->folder) + strlen(file->d_name) + 3;
+        path = xmalloc(size);
+        snprintf(path, size, "%s/%s/%s", content, family->folder, file->d_name);
+        struct stat info;
+        bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
+        free(path);
+        if (!regular) {
+            continue;
+        }
+        const asset_entry *entry = NULL;
+        for (int i = 0; i < acount(entries); i++) {
+            if (entries[i].family == family &&
+                !strcmp(entries[i].filename, file->d_name)) {
+                entry = &entries[i];
+                break;
+            }
+        }
+        const char *source = entry
+                               ? prepared_prototype_entry(root, entry, definitions, definition_count)
+                               : NULL;
+        if (!source) {
+            complete = false;
+            break;
+        }
+        seen++;
+        if (!strcmp(entry->name, name)) {
+            matches++;
+            text = source;
+            *hash = entry->hash;
+        }
+    }
+    complete = closedir(directory) == 0 && complete;
+    return complete && seen == expected && matches == 1 ? text : NULL;
+}
+
+/* Consumes entries even on failure, as part of the context's runtime snapshot. */
+static int register_scenario_prototype_entries(
+    const char *root,
+    scenario_context *context,
+    asset_entry *entries,
+    char *error,
+    size_t error_size
+)
+{
+    int status = CHIBI_AUTOMATION_OK;
     /* Shared preparation has already evaluated these declarations. Keep its
      * generation alive only for this registration, not across preview edits. */
     authoring_sources *sources = authoring_sources_retain(
         preview_sources_applied(prototype_preview_live(context->preview))
     );
-    const source_catalog_definition *definitions = authoring_sources_definitions(sources);
-    int definition_count = authoring_sources_definition_count(sources);
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
         const char *kind = entries[i].family->kind;
         if (!strcmp(kind, "field") || !strcmp(kind, "system")) {
@@ -7716,19 +7797,10 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         if (strcmp(entries[i].family->kind, "prototype")) {
             continue;
         }
-        bool unique = true;
-        for (int j = 0; j < acount(entries); j++) {
-            if (j != i && entries[j].family == entries[i].family &&
-                !strcmp(entries[j].name, entries[i].name)) {
-                unique = false;
-                break;
-            }
-        }
-        const char *text = unique
-                             ? prepared_prototype_source(root, &entries[i], definitions, definition_count)
-                             : NULL;
         char *owned = NULL;
         uint64_t hash = entries[i].hash;
+        const char *
+            text = prepared_prototype_source(root, entries, sources, entries[i].name, &hash);
         if (!text) {
             asset_ref ref;
             status = load_named_asset(
@@ -7794,6 +7866,15 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         catalog_hash_text(&context->runtime_hash, hash);
     }
     return status;
+}
+
+static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
+{
+    asset_entry *entries = NULL;
+    int status = enumerate_assets(root, &entries, error, error_size);
+    return status == CHIBI_AUTOMATION_OK
+             ? register_scenario_prototype_entries(root, context, entries, error, error_size)
+             : status;
 }
 
 static int prepare_scenario(
@@ -7876,7 +7957,13 @@ static int prepare_scenario(
 
 /* Reads a scene document, applies its physics settings and readies the
  * entities it starts with. */
-static int enter_scenario_scene(scenario_context *context, const char *json, char *error, size_t error_size)
+static int enter_scenario_scene(
+    scenario_context *context,
+    const char *json,
+    const asset_entry *entries,
+    char *error,
+    size_t error_size
+)
 {
     context->scene = scene_document_load(json, error, error_size);
     if (!context->scene) {
@@ -7892,29 +7979,48 @@ static int enter_scenario_scene(scenario_context *context, const char *json, cha
     for (int i = 0; i < acount(context->scene->entities); i++) {
         scene_entity *entity = &context->scene->entities[i];
         asset_ref prototype_ref = { 0 };
-        char *prototype_json = NULL;
+        char *owned = NULL;
         uint64_t prototype_hash = 0;
-        int status = load_named_asset(
-            context->root,
-            family_by_kind("prototype"),
-            entity->prototype,
-            &prototype_ref,
-            &prototype_json,
-            NULL,
-            &prototype_hash,
-            error,
-            error_size
-        );
+        authoring_sources *sources = entries
+                                       ? authoring_sources_retain(preview_sources_applied(
+                                             prototype_preview_live(context->preview)
+                                         ))
+                                       : NULL;
+        const char *prototype_json = entries ? prepared_prototype_source(
+                                                   context->root,
+                                                   entries,
+                                                   sources,
+                                                   entity->prototype,
+                                                   &prototype_hash
+                                               )
+                                             : NULL;
+        int status = CHIBI_AUTOMATION_OK;
+        if (!prototype_json) {
+            status = load_named_asset(
+                context->root,
+                family_by_kind("prototype"),
+                entity->prototype,
+                &prototype_ref,
+                &owned,
+                NULL,
+                &prototype_hash,
+                error,
+                error_size
+            );
+            prototype_json = owned;
+        }
         if (status != CHIBI_AUTOMATION_OK) {
-            free(prototype_json);
+            free(owned);
+            authoring_sources_free(sources);
             return status;
         }
         char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
+        free(owned);
+        authoring_sources_free(sources);
         prototype *prototype = scenario_json
                                  ? prototype_load(scenario_json, &context->registry, error, error_size)
                                  : NULL;
         free(scenario_json);
-        free(prototype_json);
         if (!prototype) {
             return CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
@@ -8021,13 +8127,27 @@ static int prepare_scene_scenario(
     if (status == CHIBI_AUTOMATION_OK) {
         status = register_shared_assets(root, context->preview, error, error_size);
     }
+    asset_entry *entries = NULL;
+    bool enumerated = false;
     if (status == CHIBI_AUTOMATION_OK) {
-        status = enter_scenario_scene(context, scene_json, error, error_size);
+        /* Share validated lookup names with registration. If enumeration fails,
+         * keep ordinary scene lookup's diagnostic precedence, then retry the
+         * original registration path only if entering the scene succeeds. */
+        char reason[256];
+        enumerated = enumerate_assets(root, &entries, reason, sizeof reason) ==
+                     CHIBI_AUTOMATION_OK;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = enter_scenario_scene(context, scene_json, entries, error, error_size);
     }
     free(scene_json);
     if (status == CHIBI_AUTOMATION_OK) {
-        status = register_scenario_prototypes(root, context, error, error_size);
+        status = enumerated
+                   ? register_scenario_prototype_entries(root, context, entries, error, error_size)
+                   : register_scenario_prototypes(root, context, error, error_size);
+        entries = NULL;
     }
+    free_asset_entries(entries);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;
@@ -8296,7 +8416,7 @@ static int follow_scenario_scene(scenario_context *context, char *error, size_t 
         scene_flow_enter(scenario_scenes(context), next);
         prototype_preview_end_scene(context->preview);
         clear_scenario_scene(context);
-        status = enter_scenario_scene(context, json, reason, sizeof reason);
+        status = enter_scenario_scene(context, json, NULL, reason, sizeof reason);
     }
     if (status == CHIBI_AUTOMATION_OK && prototype_preview_start_scene(
                                              context->preview,

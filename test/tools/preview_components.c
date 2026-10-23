@@ -91,6 +91,110 @@ static int registration_preview(const char *root, const char *kind, const char *
     return chibi_automation_preview(root, request, &run, error, sizeof error);
 }
 
+static void registration_scene(const char *prototype)
+{
+    char entities[512] = "", text[2048];
+    if (prototype) {
+        snprintf(
+            entities,
+            sizeof entities,
+            "data.Object([data.Field.Named(\"name\", "
+            "data.Value.Text(\"Probe\")),"
+            "data.Field.Named(\"prototype\", data.Value.Text(\"%s\"))])",
+            prototype
+        );
+    }
+    snprintf(
+        text,
+        sizeof text,
+        "package asset\nimport data \"game:assets\"\n"
+        "pub Build :: () -> byte[] { return data.Encode(data.Object(["
+        "data.Field.Named(\"version\", data.Value.UInt(1)),"
+        "data.Field.Named(\"name\", data.Value.Text(\"Start\")),"
+        "data.Field.Named(\"entities\", data.List([%s]))])) }\n",
+        entities
+    );
+    write_asset("game/content/scenes/Start.chibi", text);
+}
+
+TEST_CASE(scene_entry_reuses_validated_names_without_evaluating_unrelated_prototypes)
+{
+    char root[256];
+    REQUIRE(registration_project(root, sizeof root));
+    uint64_t extra[3];
+    for (int i = 0; i < 3; i++) {
+        char file[32], name[32], fields[128];
+        snprintf(file, sizeof file, "File%d", i);
+        snprintf(name, sizeof name, "Declared%d", i);
+        snprintf(fields, sizeof fields, ", data.Field.Named(\"identity\", data.Value.Text(\"counted-%d\"))", i);
+        registration_prototype(file, name, fields);
+        registration_scene(NULL);
+        uint64_t before = asset_source_cache_stats().evaluations;
+        REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+        uint64_t empty = asset_source_cache_stats().evaluations - before;
+        chibi_preview_free(run);
+        run = NULL;
+        registration_scene("Declared0");
+        before = asset_source_cache_stats().evaluations;
+        REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+        uint64_t populated = asset_source_cache_stats().evaluations - before;
+        REQUIRE(prototype_preview_entity_count(chibi_preview_runtime(run)) == 1);
+        REQUIRE(populated >= empty);
+        extra[i] = populated - empty;
+        chibi_preview_free(run);
+        run = NULL;
+    }
+    printf(
+        "Scene entry extra Build evaluations: %llu, %llu, %llu\n",
+        (unsigned long long)extra[0],
+        (unsigned long long)extra[1],
+        (unsigned long long)extra[2]
+    );
+    REQUIRE(extra[0] == 2 && extra[1] == 2 && extra[2] == 2);
+    return true;
+}
+
+TEST_CASE(scene_entry_preserves_invalid_shape_filename_fallback_conflicts)
+{
+    char root[256];
+    REQUIRE(registration_project(root, sizeof root));
+    registration_prototype("Good", "Wanted", "");
+    /* Generic declaration discovery accepts Other, but prototype name lookup
+     * rejects its shape and falls back to the filename Wanted. */
+    registration_prototype("Wanted", "Other", ", data.Field.Named(\"includes\", data.Value.Int(1))");
+    registration_scene("Wanted");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_CONFLICT);
+    REQUIRE(!run);
+    REQUIRE(strstr(error, "both declare the prototype 'Wanted'"));
+    REQUIRE(strstr(error, "Good.chibi") && strstr(error, "Wanted.chibi"));
+    return true;
+}
+
+TEST_CASE(scene_entry_preserves_lookup_errors_when_enumeration_fails)
+{
+    char root[256], scenarios[256], unreadable[256];
+    REQUIRE(registration_project(root, sizeof root));
+    registration_prototype("Good", "Available", "");
+    registration_prototype("Wanted", "Other", ", data.Field.Named(\"includes\", data.Value.Int(1))");
+    snprintf(scenarios, sizeof scenarios, "%s/content/scenarios", root);
+    REQUIRE(!mkdir(scenarios, 0700));
+    snprintf(unreadable, sizeof unreadable, "%s/Unreadable.chibi", scenarios);
+    tool_write(unreadable, "unreadable unrelated asset");
+    REQUIRE(!chmod(unreadable, 0));
+    /* The generic declaration exists, but effective prototype naming rejects
+     * its shape. Shared source preparation therefore reaches scene lookup. */
+    registration_scene("Other");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_NOT_FOUND);
+    REQUIRE(!run);
+    REQUIRE(strstr(error, "no prototype is named 'Other'"));
+    registration_scene("Available");
+    REQUIRE(registration_preview(root, "scene", "Start") != CHIBI_AUTOMATION_OK);
+    REQUIRE(!run);
+    REQUIRE(strstr(error, "Unreadable.chibi"));
+    REQUIRE(!chmod(unreadable, 0600));
+    return true;
+}
+
 TEST_CASE(prototype_registration_evaluates_a_linear_number_of_sources)
 {
     char root[256];
@@ -177,6 +281,11 @@ TEST_CASE(prototype_registration_preserves_declarations_validation_and_fresh_sou
         "data.Field.Named(\"y\", data.Value.Real(3.0))]))]))"
     );
     REQUIRE(registration_preview(root, "prototype", "Child") == CHIBI_AUTOMATION_OK);
+    REQUIRE(preview_position(9, 3));
+    chibi_preview_free(run);
+    run = NULL;
+    registration_scene("Child");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
     REQUIRE(preview_position(9, 3));
     chibi_preview_free(run);
     run = NULL;
@@ -406,5 +515,8 @@ void test_preview_components()
     RUN_TEST_CASE(empty_scene_launch_accepts_zero_entities_and_rejects_invalid_arrays);
     RUN_TEST_CASE(prototype_registration_evaluates_a_linear_number_of_sources);
     RUN_TEST_CASE(prototype_registration_preserves_declarations_validation_and_fresh_sources);
+    RUN_TEST_CASE(scene_entry_preserves_invalid_shape_filename_fallback_conflicts);
+    RUN_TEST_CASE(scene_entry_preserves_lookup_errors_when_enumeration_fails);
+    RUN_TEST_CASE(scene_entry_reuses_validated_names_without_evaluating_unrelated_prototypes);
     pu_clear_setup();
 }

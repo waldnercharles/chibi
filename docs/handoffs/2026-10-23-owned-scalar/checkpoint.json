@@ -1,0 +1,54 @@
+{
+  "leaf_sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
+  "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+  "seed_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+  "artifacts": {
+    "probe": "c17efd827fa204df9c44233e5ea698dbca771b23ee0babb90f9222875076ba32",
+    "consumer": "b80d4aaeac8dab1642459def289415153292ab93e3fe926a406c5caef65e201f"
+  },
+  "cases": [
+    {
+      "producer": "bytecode",
+      "consumer": "bytecode",
+      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+      "envelope_passed_unchanged": true,
+      "producer_process_exited_before_consumer": true,
+      "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
+      "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+    },
+    {
+      "producer": "bytecode",
+      "consumer": "sljit",
+      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+      "envelope_passed_unchanged": true,
+      "producer_process_exited_before_consumer": true,
+      "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
+      "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+    },
+    {
+      "producer": "sljit",
+      "consumer": "bytecode",
+      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+      "envelope_passed_unchanged": true,
+      "producer_process_exited_before_consumer": true,
+      "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
+      "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+    },
+    {
+      "producer": "sljit",
+      "consumer": "sljit",
+      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+      "envelope_passed_unchanged": true,
+      "producer_process_exited_before_consumer": true,
+      "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
+      "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+    }
+  ],
+  "status": "WIP: synthetic transport capability only; semantic producer not included",
+  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "source_sha256": {
+    "tools/compiler/scalar_facts/Facts.chibi": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
+    "test/scalar_facts/probe/Probe.chibi": "2fb8ad2b5e553aaf484b4a83cdc1feb8938372224e9869ec7885ed70f66eec87",
+    "test/scalar_facts/consumer/Read.chibi": "b15b5774880045795e414db8981dc0c41eb737dcc47b88e1267e3f49f7ef3f8d"
+  }
+}

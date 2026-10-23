@@ -1,0 +1,45 @@
+package scalar_facts
+
+// Internal opt-in proof for one ordinary () -> int function whose entire body
+// is one effect-free integer-literal return. This is not a general IR.
+//
+// accepted certifies the complete signature, body and result relation, including
+// known zero effects. A rejected value carries only its source and diagnostic;
+// it must never be emitted. No compiler-private identity crosses this boundary.
+//
+// All ranges are half-open source-byte offsets into text; lines and columns are
+// one-based source-byte positions. key is the shared source snapshot's document
+// key. Every range belongs to that same document, not to a compiler table.
+//
+// The record is flat because the current compiler supports scalar record fields.
+// Strings belong to the invocation's value graph. Retaining this record after
+// invocation teardown requires an owned host snapshot, not a shallow value copy.
+pub NullaryPureInt32Return :: struct {
+    accepted: bool;
+    value: int;
+    name: string;
+    path: string;
+    key: string;
+    text: string;
+    declaration_start: int;
+    declaration_end: int;
+    declaration_line: int;
+    declaration_column: int;
+    body_start: int;
+    body_end: int;
+    body_line: int;
+    body_column: int;
+    return_start: int;
+    return_end: int;
+    return_line: int;
+    return_column: int;
+    expression_start: int;
+    expression_end: int;
+    expression_line: int;
+    expression_column: int;
+    diagnostic_start: int;
+    diagnostic_end: int;
+    diagnostic_line: int;
+    diagnostic_column: int;
+    diagnostic_message: string;
+}

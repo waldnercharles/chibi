@@ -1,5 +1,9 @@
 {
   "files": {
+    ".gitattributes": {
+      "bytes": 8,
+      "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+    },
     "README.md": {
       "bytes": 5213,
       "sha256": "19ee0d85f0411044f1245f1714a1c29b3f14a06149621cd787364d22d715b1f7"
@@ -120,6 +124,10 @@
       "bytes": 183,
       "sha256": "926d169b56e58a2d7ce3d485d3e967da450702cfd786b9acc5d689f000eb31fe"
     },
+    "portable-original/.chibi/asset-compiler-generated/manifest.json": {
+      "bytes": 14142,
+      "sha256": "a517ccb485efc8e4d394c3c6dfefaa84adaf3355470909065c5981d1833414cc"
+    },
     "portable-original/.chibi/asset-compiler-generated/sources.sha256": {
       "bytes": 3679,
       "sha256": "787668ece3f19c8c77694c9d4e0a016d4a4effd561b5f4fd72bb0844e6558591"
@@ -136,6 +144,10 @@
       "bytes": 201,
       "sha256": "992098a739a97629635973b5900b0bc75f7a136649265cfc26c40e3e14ba730d"
     },
+    "portable-original/.chibi/asset-compiler-native-final/manifest.json": {
+      "bytes": 14142,
+      "sha256": "5fce9c11c27ac11e637affa032368be3c02553d389e78b54bfac586fe62a35ce"
+    },
     "portable-original/.chibi/asset-compiler-native-final/sources.sha256": {
       "bytes": 3679,
       "sha256": "7c9250188a958b84a7cd425f7827fdf90bbdf413c9eb1232b8690831a5f1afda"
@@ -151,6 +163,10 @@
     "portable-original/.chibi/asset-compiler-wasm-final.log": {
       "bytes": 270,
       "sha256": "597be4c3525a5beeb8216f7874e96a5eeade488761522a8ade9403104c5c244f"
+    },
+    "portable-original/.chibi/asset-compiler-wasm-final/manifest.json": {
+      "bytes": 14143,
+      "sha256": "f0e1c6b49aeae7e602ded4a2cd6cd2a628ae60a506eca9b9b9f178744e63c593"
     },
     "portable-original/.chibi/asset-compiler-wasm-final/sources.sha256": {
       "bytes": 3679,
@@ -1259,6 +1275,10 @@
     "portable-original/.chibi/asset-main-integration/separation/checkpoint/test/authoring/asset_source.c": {
       "bytes": 35185,
       "sha256": "657679beb4b878cd532afa30223af49b149d7e422cea2994e3aa36cebe8771ad"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/manifest.json": {
+      "bytes": 867,
+      "sha256": "4caf949f42371eb3440cc3501eed73f925e2c233d2b5d3ba89b23f8a765b1ad3"
     },
     "portable-original/.chibi/asset-main-integration/separation/replay/src/authoring/asset_compiler_host.c": {
       "bytes": 45560,

@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "authoring/asset_compiler_host.h"
 #include "authoring/prototype_preview.h"
 #include "automation/controller.h"
 #include "runtime/declared_components.h"
@@ -44,6 +45,170 @@ static void write_asset(const char *name, const char *text)
     int size = snprintf(path, sizeof path, "%s/%s", directory, name);
     assert(size > 0 && size < (int)sizeof path);
     tool_write(path, text);
+}
+
+static bool registration_project(char *root, size_t size)
+{
+    strcpy(directory, "/tmp/chibi-preview-components-XXXXXX");
+    if (!mkdtemp(directory)) {
+        return false;
+    }
+    owns_directory = true;
+    snprintf(root, size, "%s/game", directory);
+    if (chibi_project_create(root, "Prototype registration", error, sizeof error)) {
+        return false;
+    }
+    char path[256];
+    snprintf(path, sizeof path, "%s/content/prototypes", root);
+    return mkdir(path, 0700) == 0;
+}
+
+static void registration_prototype(const char *file, const char *name, const char *fields)
+{
+    char path[256], text[4096];
+    snprintf(path, sizeof path, "game/content/prototypes/%s.chibi", file);
+    snprintf(
+        text,
+        sizeof text,
+        "package asset\n"
+        "import data \"game:assets\"\n"
+        "pub Build :: () -> byte[] {\n"
+        "    return data.Encode(data.Object([\n"
+        "        data.Field.Named(\"name\", data.Value.Text(\"%s\"))%s\n"
+        "    ]))\n"
+        "}\n",
+        name,
+        fields
+    );
+    write_asset(path, text);
+}
+
+static int registration_preview(const char *root, const char *kind, const char *name)
+{
+    char request[256];
+    snprintf(request, sizeof request, "{\"kind\":\"%s\",\"name\":\"%s\",\"frames\":0}", kind, name);
+    error[0] = 0;
+    return chibi_automation_preview(root, request, &run, error, sizeof error);
+}
+
+TEST_CASE(prototype_registration_evaluates_a_linear_number_of_sources)
+{
+    char root[256];
+    REQUIRE(registration_project(root, sizeof root));
+    uint64_t evaluations[3];
+    for (int i = 0; i < 3; i++) {
+        char file[32], name[32], fields[128];
+        snprintf(file, sizeof file, "File%d", i);
+        snprintf(name, sizeof name, "Declared%d", i);
+        snprintf(fields, sizeof fields, ", data.Field.Named(\"identity\", data.Value.Text(\"counted-%d\"))", i);
+        registration_prototype(file, name, fields);
+        uint64_t before = asset_source_cache_stats().evaluations;
+        REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_OK);
+        uint64_t after = asset_source_cache_stats().evaluations;
+        REQUIRE(after >= before);
+        evaluations[i] = after - before;
+        REQUIRE(prototype_preview_entity_count(chibi_preview_runtime(run)) == 0);
+        chibi_preview_free(run);
+        run = NULL;
+    }
+    printf(
+        "Prototype registration Build evaluations: %llu, %llu, %llu\n",
+        (unsigned long long)evaluations[0],
+        (unsigned long long)evaluations[1],
+        (unsigned long long)evaluations[2]
+    );
+    REQUIRE(evaluations[1] > evaluations[0] && evaluations[2] > evaluations[1]);
+    REQUIRE(evaluations[2] - evaluations[1] == evaluations[1] - evaluations[0]);
+    return true;
+}
+
+static bool preview_position(float x, float y)
+{
+    prototype_preview *preview = chibi_preview_runtime(run);
+    if (prototype_preview_entity_count(preview) != 1) {
+        return false;
+    }
+    const ecs_component_desc *transform = ecs_component_catalog_find(project_components(), "Transform");
+    ecs_entity entity = prototype_preview_entity_at(preview, 0);
+    const CF_V2 *position = transform ? ecs_component_data(
+                                            prototype_preview_world(preview),
+                                            entity,
+                                            transform->id
+                                        )
+                                      : NULL;
+    return position && position->x == x && position->y == y;
+}
+
+TEST_CASE(prototype_registration_preserves_declarations_validation_and_fresh_sources)
+{
+    char root[256];
+    REQUIRE(registration_project(root, sizeof root));
+    registration_prototype(
+        "DifferentBaseFile",
+        "Base",
+        ", data.Field.Named(\"identity\", data.Value.Text(\"authored-base\"))"
+        ", data.Field.Named(\"components\", data.Object(["
+        "data.Field.Named(\"Transform\", data.Object(["
+        "data.Field.Named(\"x\", data.Value.Real(2.0)),"
+        "data.Field.Named(\"y\", data.Value.Real(3.0))]))]))"
+    );
+    registration_prototype("DifferentChildFile", "Child", ", data.Field.Named(\"includes\", data.List([data.Value.Text(\"Base\")]))");
+    REQUIRE(registration_preview(root, "prototype", "Base") == CHIBI_AUTOMATION_OK);
+    REQUIRE(preview_position(2, 3));
+    prototype_preview *preview = chibi_preview_runtime(run);
+    REQUIRE(ecs_component_has(
+        prototype_preview_world(preview),
+        prototype_preview_entity_at(preview, 0),
+        ecs_component_marker_id("authored-base")
+    ));
+    chibi_preview_free(run);
+    run = NULL;
+    REQUIRE(registration_preview(root, "prototype", "Child") == CHIBI_AUTOMATION_OK);
+    REQUIRE(preview_position(2, 3));
+    chibi_preview_free(run);
+    run = NULL;
+    registration_prototype(
+        "DifferentBaseFile",
+        "Base",
+        ", data.Field.Named(\"identity\", data.Value.Text(\"authored-base\"))"
+        ", data.Field.Named(\"components\", data.Object(["
+        "data.Field.Named(\"Transform\", data.Object(["
+        "data.Field.Named(\"x\", data.Value.Real(9.0)),"
+        "data.Field.Named(\"y\", data.Value.Real(3.0))]))]))"
+    );
+    REQUIRE(registration_preview(root, "prototype", "Child") == CHIBI_AUTOMATION_OK);
+    REQUIRE(preview_position(9, 3));
+    chibi_preview_free(run);
+    run = NULL;
+
+    registration_prototype("Base", "Base", "");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_VALIDATION_ERROR);
+    REQUIRE(!run);
+    char duplicate[256];
+    snprintf(duplicate, sizeof duplicate, "%s/content/prototypes/Base.chibi", root);
+    REQUIRE(!unlink(duplicate));
+
+    write_asset("game/content/prototypes/Unused.chibi", "package asset\npub Build :: () -> byte[] {\n");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_VALIDATION_ERROR);
+    REQUIRE(!run);
+    registration_prototype(
+        "Unused",
+        "Unused",
+        ", data.Field.Named(\"components\", data.Object(["
+        "data.Field.Named(\"MissingComponent\", data.Object([]))]))"
+    );
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_VALIDATION_ERROR);
+    REQUIRE(!run);
+    /* Isolate the direct name cap from an include resolver's error context. */
+    registration_prototype("DifferentChildFile", "Child", "");
+    char oversized[PROTOTYPE_NAME_MAX + 2];
+    memset(oversized, 'N', sizeof oversized - 1);
+    oversized[sizeof oversized - 1] = 0;
+    registration_prototype("Unused", oversized, "");
+    REQUIRE(registration_preview(root, "scene", "Start") == CHIBI_AUTOMATION_VALIDATION_ERROR);
+    REQUIRE(!run);
+    REQUIRE(strstr(error, "longer than 1024 bytes"));
+    return true;
 }
 
 TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
@@ -239,5 +404,7 @@ void test_preview_components()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(preview_owns_project_components_until_its_world_is_freed);
     RUN_TEST_CASE(empty_scene_launch_accepts_zero_entities_and_rejects_invalid_arrays);
+    RUN_TEST_CASE(prototype_registration_evaluates_a_linear_number_of_sources);
+    RUN_TEST_CASE(prototype_registration_preserves_declarations_validation_and_fresh_sources);
     pu_clear_setup();
 }

@@ -7637,6 +7637,63 @@ static bool scenario_runtime_asset(const scenario_context *context, const asset_
            (context->scene_target && !strcmp(kind, "scene"));
 }
 
+/* Hashes identify runtime revisions, not exact source equality. Bound this
+ * comparison by the prepared text, and retain the ordinary loader on a race. */
+static bool source_file_matches(const char *path, const char *text, size_t bytes)
+{
+    struct stat info;
+    if (lstat(path, &info) || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        (uintmax_t)info.st_size != bytes) {
+        return false;
+    }
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return false;
+    }
+    bool same = true;
+    for (size_t i = 0; same && i < bytes; i++) {
+        same = fgetc(file) == (unsigned char)text[i];
+    }
+    same = same && fgetc(file) == EOF && !ferror(file);
+    return fclose(file) == 0 && same;
+}
+
+static const char *prepared_prototype_source(
+    const char *root,
+    const asset_entry *entry,
+    const source_catalog_definition *definitions,
+    int count
+)
+{
+    asset_ref bounds;
+    char error[256];
+    if (strlen(entry->name) >= sizeof bounds.name ||
+        strlen(entry->filename) >= sizeof bounds.filename ||
+        strlen(entry->relative) >= sizeof bounds.relative ||
+        verify_asset_directory(root, entry->family, error, sizeof error) != 1) {
+        return NULL;
+    }
+    char *path = content_path(root, entry->relative);
+    const char *text = NULL;
+    for (int i = 0; i < count; i++) {
+        const source_catalog_definition *definition = &definitions[i];
+        if (definition->kind != SCRIPT_CAPABILITY_PROTOTYPE || definition->field ||
+            definition->relationship || strcmp(definition->path, path) ||
+            strcmp(definition->name, entry->name)) {
+            continue;
+        }
+        size_t bytes = strlen(definition->text);
+        if (bytes == entry->bytes &&
+            automation_content_hash(definition->text, bytes) == entry->hash &&
+            source_file_matches(path, definition->text, bytes)) {
+            text = definition->text;
+        }
+        break;
+    }
+    free(path);
+    return text;
+}
+
 static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
 {
     asset_entry *entries = NULL;
@@ -7644,6 +7701,13 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
     if (status != CHIBI_AUTOMATION_OK) {
         return status;
     }
+    /* Shared preparation has already evaluated these declarations. Keep its
+     * generation alive only for this registration, not across preview edits. */
+    authoring_sources *sources = authoring_sources_retain(
+        preview_sources_applied(prototype_preview_live(context->preview))
+    );
+    const source_catalog_definition *definitions = authoring_sources_definitions(sources);
+    int definition_count = authoring_sources_definition_count(sources);
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
         const char *kind = entries[i].family->kind;
         if (!strcmp(kind, "field") || !strcmp(kind, "system")) {
@@ -7652,16 +7716,40 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         if (strcmp(entries[i].family->kind, "prototype")) {
             continue;
         }
-        char *json = NULL;
-        asset_ref ref;
-        uint64_t hash;
-        status = load_named_asset(root, entries[i].family, entries[i].name, &ref, &json, NULL, &hash, error, error_size);
-        if (status != CHIBI_AUTOMATION_OK) {
-            free(json);
-            break;
+        bool unique = true;
+        for (int j = 0; j < acount(entries); j++) {
+            if (j != i && entries[j].family == entries[i].family &&
+                !strcmp(entries[j].name, entries[i].name)) {
+                unique = false;
+                break;
+            }
         }
-        char *normalized = scenario_prototype_text(json, hash);
-        free(json);
+        const char *text = unique
+                             ? prepared_prototype_source(root, &entries[i], definitions, definition_count)
+                             : NULL;
+        char *owned = NULL;
+        uint64_t hash = entries[i].hash;
+        if (!text) {
+            asset_ref ref;
+            status = load_named_asset(
+                root,
+                entries[i].family,
+                entries[i].name,
+                &ref,
+                &owned,
+                NULL,
+                &hash,
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                free(owned);
+                break;
+            }
+            text = owned;
+        }
+        char *normalized = scenario_prototype_text(text, hash);
+        free(owned);
         prototype *prototype = normalized
                                  ? prototype_load(normalized, &context->registry, error, error_size)
                                  : NULL;
@@ -7685,6 +7773,7 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         }
         prototype_free(prototype);
     }
+    authoring_sources_free(sources);
     context->runtime_assets = entries;
     context->runtime_hash = UINT64_C(14695981039346656037);
     for (int i = 0; i < acount(entries); i++) {

@@ -4,7 +4,8 @@ import tokenizer "project:source_tokenizer"
 import syntax "project:syntax_diagnostics"
 
 // This first authored slice accepts package headers, imports and untyped
-// literal constants. It is deliberately not the compiler's selected parser.
+// literal constants and ordinary functions with one atom-returning body.
+// It is deliberately not the compiler's selected parser.
 // Successful facts have the same preorder/link/byte contract as compiler_syntax.
 // Rejection is atomic: an incomplete or unsupported tree is never published.
 pub Result :: union {
@@ -25,6 +26,24 @@ ConstantValue: int : 9;
 LiteralWord: int : 10;
 End: int : 11;
 PublicName: int : 12;
+ParametersOpen: int : 13;
+ParameterStart: int : 14;
+ParameterName: int : 15;
+ParameterColon: int : 16;
+ParameterType: int : 17;
+TypeName: int : 18;
+TypeWord: int : 19;
+ParameterEnd: int : 20;
+ResultArrow: int : 21;
+ResultType: int : 22;
+BodyStart: int : 23;
+BodyOpen: int : 24;
+ReturnStart: int : 25;
+ReturnWord: int : 26;
+ReturnValue: int : 27;
+ReturnEnd: int : 28;
+BodyClose: int : 29;
+FunctionEnd: int : 30;
 
 Reject :: (code: string, message: string, start: int, end: int, row: int, column: int) -> Result {
     diagnostic: syntax.Diagnostic = {start: start, end: end, line: row + 1,
@@ -39,13 +58,17 @@ Name :: (kind: string) -> bool {
         kind == "component" || kind == "not" || kind == "join" || kind == "unordered";
 }
 
-// A contextual `import` can instead be a constant's name.
-IsImport :: (tokens: int[], names: string[], from: int) -> bool {
+// Trivia lookahead is used only to disambiguate a contextual import name,
+// a function's optional semicolon, and a return immediately before `}`.
+NextKind :: (tokens: int[], names: string[], from: int) -> string {
     index := from;
     while (index < length(tokens) && names[tokens[index]] == "Comment") {
         index += 1;
     }
-    return index >= length(tokens) || names[tokens[index]] != "::";
+    if (index < length(tokens)) {
+        return names[tokens[index]];
+    }
+    return "EOF";
 }
 
 Assemble :: (count: int, kinds: string[], starts: int[], ends: int[], rows: int[],
@@ -104,6 +127,15 @@ pub Parse :: (text: string) -> Result {
             phase := Header;
             statement: int = 0;
             literal: int = -1;
+            after_literal := End;
+            parameters: int = -1;
+            parameter: int = -1;
+            type_node: int = -1;
+            type_name: int = -1;
+            after_type := ParameterEnd;
+            body: int = -1;
+            returned: int = -1;
+            value_end: int = -1;
             index: int = 0;
             while (index < length(tokens)) {
                 token := names[tokens[index]];
@@ -112,8 +144,8 @@ pub Parse :: (text: string) -> Result {
                 row := token_rows[index];
                 column := token_columns[index];
                 if (token == "EOF") {
-                    if (phase != Top) {
-                        return Reject("syntax", "Incomplete package, import or constant declaration",
+                    if (phase != Top && phase != FunctionEnd) {
+                        return Reject("syntax", "Incomplete declaration",
                                       start, end, row, column);
                     }
                     nodes := Assemble(length(kinds), kinds, starts, ends, rows, columns,
@@ -121,9 +153,42 @@ pub Parse :: (text: string) -> Result {
                     return Result.Parsed(nodes, fields, named, extra, 0);
                 }
 
+                // A contextual result name such as `not` can make the
+                // lexical brace heuristic treat this known body as a value.
+                // Its synthetic post-body terminator is not in the grammar.
+                if (phase == FunctionEnd && token == ";" && start == end) {
+                    index += 1;
+                    continue;
+                }
+                // In that same lexical context the implicit return end can
+                // be absent. The bounded grammar still ends before `}` and
+                // before comments that precede it, exactly as the raw scanner.
+                if (phase == ReturnEnd && (token == "}" ||
+                    (token == "Comment" && NextKind(tokens, names, index + 1) == "}"))) {
+                    ends[returned] = start;
+                    phase = BodyClose;
+                    continue;
+                }
+                if (phase == FunctionEnd && token != ";" && token != "Comment") {
+                    statement = 0;
+                    phase = Top;
+                    continue;
+                }
                 kind := token;
                 field := "";
                 parent := statement;
+                if (phase == ParameterStart || phase == ParameterEnd) {
+                    parent = parameters;
+                } else if (phase == ParameterColon || phase == ParameterType) {
+                    parent = parameter;
+                } else if (phase == ReturnStart || phase == BodyClose) {
+                    parent = body;
+                } else if (phase == ReturnValue || phase == ReturnEnd) {
+                    parent = returned;
+                } else if (phase == FunctionEnd && token == "Comment" &&
+                           NextKind(tokens, names, index + 1) != ";") {
+                    parent = 0;
+                }
                 is_named := false;
                 is_extra := false;
                 consume := true;
@@ -146,14 +211,14 @@ pub Parse :: (text: string) -> Result {
                         kind = "package_header";
                         field = "package";
                         phase = PackageWord;
-                    } else if (token == "import" && IsImport(tokens, names, index + 1)) {
+                    } else if (token == "import" && NextKind(tokens, names, index + 1) != "::") {
                         kind = "import_declaration";
                         phase = ImportWord;
                     } else if (Name(token) || token == "pub") {
                         kind = "constant_declaration";
                         phase = ConstantName;
                     } else {
-                        return Reject("unsupported", "Authored parser supports imports and literal constants only",
+                        return Reject("unsupported", "Expected import, literal constant or ordinary function",
                                       start, end, row, column);
                     }
                 } else if (phase == PackageWord) {
@@ -193,7 +258,7 @@ pub Parse :: (text: string) -> Result {
                         is_named = true;
                         phase = ConstantMarker;
                     } else {
-                        return Reject("syntax", "Expected constant name", start, end, row, column);
+                        return Reject("syntax", "Expected declaration name", start, end, row, column);
                     }
                 } else if (phase == PublicName) {
                     if (!Name(token)) {
@@ -205,15 +270,32 @@ pub Parse :: (text: string) -> Result {
                     phase = ConstantMarker;
                 } else if (phase == ConstantMarker) {
                     if (token != "::") {
-                        return Reject("unsupported", "Authored parser requires an untyped literal constant",
+                        return Reject("unsupported", "Authored parser requires an untyped constant or ordinary function",
                                       start, end, row, column);
                     }
                     phase = ConstantValue;
-                } else if (phase == ConstantValue) {
+                } else if (phase == ConstantValue && token == "(") {
+                    // The common name/:: prefix is now known to be a function.
+                    // Its tree is still private until the whole source parses.
+                    kinds[statement] = "function_declaration";
+                    kind = "parameter_list";
+                    field = "parameters";
+                    is_named = true;
+                    consume = false;
+                    parameters = length(kinds);
+                    phase = ParametersOpen;
+                } else if (phase == ConstantValue || phase == ReturnValue) {
+                    after_literal = End;
+                    if (phase == ReturnValue) {
+                        after_literal = ReturnEnd;
+                        value_end = end;
+                    }
                     field = "value";
                     is_named = true;
-                    phase = End;
-                    if (token == "Integer" || token == "Float") {
+                    phase = after_literal;
+                    if (after_literal == ReturnEnd && Name(token)) {
+                        kind = "identifier";
+                    } else if (token == "Integer" || token == "Float") {
                         kind = "number";
                     } else if (token == "String") {
                         kind = "string";
@@ -233,7 +315,143 @@ pub Parse :: (text: string) -> Result {
                     }
                 } else if (phase == LiteralWord) {
                     parent = literal;
-                    phase = End;
+                    phase = after_literal;
+                } else if (phase == ParametersOpen) {
+                    parent = parameters;
+                    phase = ParameterStart;
+                } else if (phase == ParameterStart) {
+                    if (token == ")") {
+                        ends[parameters] = end;
+                        phase = ResultArrow;
+                    } else if (Name(token) && text_slice(text, start, end - start) != "self") {
+                        kind = "parameter";
+                        is_named = true;
+                        consume = false;
+                        parameter = length(kinds);
+                        phase = ParameterName;
+                    } else {
+                        return Reject("unsupported", "Expected an ordinary typed parameter or closing parenthesis",
+                                      start, end, row, column);
+                    }
+                } else if (phase == ParameterName) {
+                    parent = parameter;
+                    kind = "identifier";
+                    field = "name";
+                    is_named = true;
+                    phase = ParameterColon;
+                } else if (phase == ParameterColon) {
+                    if (token != ":") {
+                        return Reject("unsupported", "Function parameters require an explicit simple type",
+                                      start, end, row, column);
+                    }
+                    phase = ParameterType;
+                } else if (phase == ParameterType || phase == ResultType) {
+                    if (!Name(token) || text_slice(text, start, end - start) == "self") {
+                        return Reject("unsupported", "Expected one unqualified type name", start, end, row, column);
+                    }
+                    field = "type";
+                    after_type = ParameterEnd;
+                    if (phase == ResultType) {
+                        field = "results";
+                        after_type = BodyStart;
+                    }
+                    kind = "type";
+                    is_named = true;
+                    consume = false;
+                    type_node = length(kinds);
+                    phase = TypeName;
+                } else if (phase == TypeName) {
+                    parent = type_node;
+                    kind = "type_name";
+                    field = "name";
+                    is_named = true;
+                    consume = false;
+                    type_name = length(kinds);
+                    phase = TypeWord;
+                } else if (phase == TypeWord) {
+                    parent = type_name;
+                    kind = "identifier";
+                    is_named = true;
+                    if (after_type == ParameterEnd) {
+                        ends[parameter] = end;
+                    }
+                    phase = after_type;
+                } else if (phase == ParameterEnd) {
+                    if (token == ",") {
+                        phase = ParameterStart;
+                    } else if (token == ")") {
+                        ends[parameters] = end;
+                        phase = ResultArrow;
+                    } else {
+                        return Reject("unsupported", "Expected comma or closing parenthesis after simple parameter type",
+                                      start, end, row, column);
+                    }
+                } else if (phase == ResultArrow) {
+                    if (token != "->") {
+                        return Reject("unsupported", "Function requires one explicit simple result type",
+                                      start, end, row, column);
+                    }
+                    phase = ResultType;
+                } else if (phase == BodyStart) {
+                    if (token != "{") {
+                        return Reject("unsupported", "Expected body after simple result type", start, end, row, column);
+                    }
+                    kind = "callable_body";
+                    field = "body";
+                    is_named = true;
+                    consume = false;
+                    body = length(kinds);
+                    phase = BodyOpen;
+                } else if (phase == BodyOpen) {
+                    parent = body;
+                    phase = ReturnStart;
+                } else if (phase == ReturnStart) {
+                    if (token != "return") {
+                        return Reject("unsupported", "Function body requires one valued return", start, end, row, column);
+                    }
+                    kind = "return_statement";
+                    is_named = true;
+                    consume = false;
+                    returned = length(kinds);
+                    phase = ReturnWord;
+                } else if (phase == ReturnWord) {
+                    parent = returned;
+                    phase = ReturnValue;
+                } else if (phase == ReturnEnd) {
+                    if (token != ";") {
+                        return Reject("unsupported", "Return supports one literal or identifier only",
+                                      start, end, row, column);
+                    }
+                    if (start != end) {
+                        // A real semicolon after a line break would follow an
+                        // automatic return end; it is not an empty statement.
+                        at := value_end;
+                        while (at < start) {
+                            if (bytes[at] == 10 || bytes[at] == 13) {
+                                return Reject("unsupported", "Explicit return terminator follows a line break",
+                                              start, end, row, column);
+                            }
+                            at += 1;
+                        }
+                    }
+                    ends[returned] = end;
+                    phase = BodyClose;
+                    if (start == end) {
+                        index += 1;
+                        continue;
+                    }
+                } else if (phase == BodyClose) {
+                    if (token != "}") {
+                        return Reject("unsupported", "Only one return statement is supported in a function body",
+                                      start, end, row, column);
+                    }
+                    ends[body] = end;
+                    ends[statement] = end;
+                    phase = FunctionEnd;
+                } else if (phase == FunctionEnd) {
+                    ends[statement] = end;
+                    phase = Top;
+                    ending = true;
                 } else if (phase == End) {
                     if (token != ";") {
                         return Reject("unsupported", "Expected terminator; compound expressions are not supported yet",

@@ -90,7 +90,7 @@ pub CheckRejected :: () -> int {
     if (!Rejection("package sample\nimport x", "syntax", 23, 2, 9)) { return 3; }
     if (!Rejection("package sample\nA ::", "syntax", 19, 2, 5)) { return 4; }
     if (!Rejection("package sample\npub pub A :: 1", "syntax", 19, 2, 5)) { return 5; }
-    if (!Rejection("package sample\nF :: () {}", "unsupported", 20, 2, 6)) { return 6; }
+    if (!Rejection("package sample\nF :: () {}", "unsupported", 23, 2, 9)) { return 6; }
     if (!Rejection("package sample\nA :: 1 + 2", "unsupported", 22, 2, 8)) { return 7; }
     if (!Rejection("package sample\nA: int : 1", "unsupported", 16, 2, 2)) { return 8; }
     if (!Rejection("package sample\nA :: \"oops", "lexical", 20, 2, 6)) { return 9; }
@@ -123,6 +123,130 @@ pub CheckPrefixes :: () -> int {
     return 0;
 }
 
+// This slice constructs ordinary function syntax, not type or name semantics.
+pub FunctionCases :: () -> string[] {
+    cases: string[] = [
+        "package p\nF :: () -> int { return 42; }",
+        "package p\npub F :: (x: int, flag: bool,) -> int { return x } ;",
+        "package p\nF :: /*a*/ (/*b*/ x /*c*/ : /*d*/ int /*e*/, /*f*/ y: bool /*g*/) /*h*/ -> /*i*/ int /*j*/ { /*k*/ return /*l*/ true /*m*/; /*n*/ } /*o*/ ; /*p*/",
+        "package p\nF :: () -> int { return 1 }\nG :: () -> int { return 2; }",
+        "package p\nF :: () -> int\n{ return 1; }",
+        "package p\nF :: () -> int /*line\nbreak*/ { return 1; }",
+        "package p\nF :: () -> int { return 1 /*end\n*/ }\n",
+        "package p\nF :: () -> int { return 1; } /*outside*/\nG :: () -> int { return 2; }",
+        "package p\nF :: () -> int { return 1; } /*inside*/\n; /*outside*/",
+        "package p\r\n// café\r\npub Read :: () -> string { return \"é雪\"\r\n}\r\n",
+        "package p\nA :: () -> bool { return true; } B :: () -> bool { return false }",
+        "package p\nA :: () -> Thing { return nil; } B :: () -> Thing { return null }",
+        "package p\nA :: () -> float { return 1.25; } B :: () -> int { return 0x2f }",
+        "package p\nself :: () -> int { return self; }",
+        "package p\nF :: () -> not { return not /*tail*/ } /*outside*/",
+        "package p\nF :: () -> not { return 1; } /*inside*/ ;",
+        "package p\nA :: 7; import s \"core:strings\"; pub F :: (x: int) -> int { return A; } B :: true;"
+    ];
+    for (name in ["package", "import", "struct", "from", "split", "component", "not", "join", "unordered"]) {
+        cases.append(format_text("package p\npub {} :: ({}: {}) -> {} {{ return {} }}", name, name, name, name, name));
+    }
+    return cases;
+}
+
+pub CheckFunctions :: () -> int {
+    cases := FunctionCases();
+    index: int = 0;
+    while (index < length(cases)) {
+        if (Parity(cases[index]) != 0) { return index + 1; }
+        index += 1;
+    }
+    return 0;
+}
+
+pub FunctionRejections :: () -> string[] {
+    return [
+        "package p\nF :: () { return 1; }",
+        "package p\nF :: () -> int {}",
+        "package p\nF :: () -> int { return; }",
+        "package p\nF :: () -> int => { return 1; }",
+        "package p\nF :: (x) -> int { return x; }",
+        "package p\nF :: (x: int = 1) -> int { return x; }",
+        "package p\nF :: ($x: int) -> int { return x; }",
+        "package p\nF :: (x: int from source) -> int { return x; }",
+        "package p\nF :: (x: ref int) -> int { return x; }",
+        "package p\nF :: (x: int[]) -> int { return x; }",
+        "package p\nF :: () -> lib.Int { return 1; }",
+        "package p\nF :: () -> Box<int> { return 1; }",
+        "package p\nF :: () -> int? { return 1; }",
+        "package p\nF :: () -> int | bool { return 1; }",
+        "package p\nF :: () -> (x: int) { return 1; }",
+        "package p\nF :: () -> int { return 1 + 2; }",
+        "package p\nF :: () -> int { return -1; }",
+        "package p\nF :: () -> int { return G(); }",
+        "package p\nF :: () -> int { return 1; return 2; }",
+        "package p\nF :: () -> int { x := 1; return x; }",
+        "package p\n@test F :: () -> int { return 1; }",
+        "package p\nF :: () -> int; { return 1; }",
+        "package p\nF :: () -> self { return 1; }",
+        "package p\nF :: (self: int) -> int { return 1; }",
+        "package p\nF :: () -> not { return 1\n; }",
+        "package p\nF :: () -> not { return 1 /*line\nbreak*/; }",
+        "package p\nF :: () -> int { return 1; }; ;",
+        "package p\nF :: () -> int { return 1; } junk",
+        "package p\nF :: (x: int,) -> int { return x;",
+        "package p\nF :: () -> int { return 1; } /*tail"
+    ];
+}
+
+// Rejections expose a byte position even after multibyte text; never a tree.
+Position :: (text: string, start: int, end: int, line: int, column: int) -> bool {
+    bytes := text_bytes(text);
+    if (start < 0 || end < start || end > length(bytes)) { return false; }
+    row: int = 1;
+    begin: int = 0;
+    at: int = 0;
+    while (at < start) {
+        if (bytes[at] == 10) { row += 1; begin = at + 1; }
+        at += 1;
+    }
+    return line == row && column == start - begin + 1;
+}
+
+pub CheckFunctionRejected :: () -> int {
+    cases := FunctionRejections();
+    index: int = 0;
+    while (index < length(cases)) {
+        switch parser.Parse(cases[index]) {
+            case .Parsed(nodes, fields, named, extra, root):
+                return index + 1;
+            case .Rejected(code, diagnostic):
+                if ((code != "unsupported" && code != "syntax" && code != "lexical") ||
+                    diagnostic.message == "" || !Position(cases[index], diagnostic.start, diagnostic.end,
+                                                         diagnostic.line, diagnostic.column)) {
+                    return index + 1;
+                }
+        }
+        index += 1;
+    }
+    return 0;
+}
+
+pub CheckFunctionPrefixes :: () -> int {
+    text := "// é\npackage p\npub import :: (not: bool, x: int,) -> not { return not /*雪*/ };\n";
+    count := text_byte_length(text);
+    end: int = 0;
+    while (end <= count) {
+        prefix := text_slice(text, 0, end);
+        switch parser.Parse(prefix) {
+            case .Parsed(nodes, fields, named, extra, root):
+                if (Parity(prefix) != 0) { return end + 1; }
+            case .Rejected(code, diagnostic):
+                if (!Position(prefix, diagnostic.start, diagnostic.end, diagnostic.line, diagnostic.column)) {
+                    return end + 1;
+                }
+        }
+        end += 1;
+    }
+    return 0;
+}
+
 pub Check :: () -> int {
     accepted := CheckAccepted();
     if (accepted != 0) {
@@ -136,5 +260,11 @@ pub Check :: () -> int {
     if (prefixes != 0) {
         return 200 + prefixes;
     }
+    functions := CheckFunctions();
+    if (functions != 0) { return 400 + functions; }
+    unsupported := CheckFunctionRejected();
+    if (unsupported != 0) { return 500 + unsupported; }
+    truncated := CheckFunctionPrefixes();
+    if (truncated != 0) { return 600 + truncated; }
     return 0;
 }

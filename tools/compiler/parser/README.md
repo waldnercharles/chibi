@@ -1,4 +1,4 @@
-# Authored parser: first parity slice
+# Authored parser: bounded parity slices
 
 `Parser.chibi` owns syntax construction in Chibi. It reuses the public
 `source_tokenizer.Tokenize` / `KindNames` APIs and the existing
@@ -11,9 +11,13 @@ No prepared ABI, project format, native binding, bootstrap, or asset is changed.
 
 ## Accepted subset
 
-- A required package header and zero or more imports and literal constants.
+- A required package header and zero or more imports, literal constants and bounded ordinary functions.
 - Import aliases, contextual names, optional `pub` on constants.
 - Untyped constants with a single number, string, boolean, or nil/null literal.
+- Ordinary functions with empty or explicitly typed parameters, one explicit
+  unqualified result type, and exactly one return of a literal or identifier.
+  Optional `pub`, trailing parameter comma and final declaration semicolon are
+  accepted; type/name resolution is deliberately not performed.
 - Explicit semicolons and tokenizer-produced automatic terminators.
 - Comments retained as named extra nodes, including comments within declarations.
 - Source offsets and zero-based rows/columns counted in bytes, including UTF-8
@@ -37,11 +41,42 @@ parser accepts before semantic validation. No recovery/error-node parity or
 full-language acceptance is claimed.
 
 The remaining grammar includes typed constants, unary/compound expressions,
-functions, records/unions, behavior/system/component/prototype declarations,
-statements, generics and malformed-tree recovery. The existing tokenizer also
+function bodies beyond a single atom return, records/unions,
+behavior/system/component/prototype declarations, generics and malformed-tree recovery. The existing tokenizer also
 has documented parser-facing seams (context-dependent operator splitting and
 brace/terminator handling); extending grammar must test those seams rather
 than silently assuming lexical tokens are a parse tree.
+
+## Ordinary function boundary
+
+```text
+[pub] name :: ([name : type (, name : type)* [,]]) -> type
+{ return atom terminator } [;]
+```
+
+Here `type` is one unqualified ordinary/contextual name and `atom` is one
+identifier, number, string, boolean or nil/null literal. No arrow, an empty
+body, a bare return, `=>`, attributes, parameter defaults/comptime/source
+clauses, traits, measured/qualified/container/generic/union types, named/multiple
+results, unary/compound expressions, calls and additional statements reject
+atomically. The lexical identifier `self` is not accepted as an ordinary
+parameter name or lone type: the raw grammar treats it specially there. A
+function named `self` or return value `self` retains the raw identifier facts.
+
+A return can end explicitly or automatically, including immediately before
+`}` on the same line. A real semicolon between result type and body rejects;
+newlines/comments before the body are trivia. The tokenizer's coarse brace
+heuristic treats a body after contextual result type `not` as a literal. The
+parser repairs only the known return/body boundary: missing implicit return
+ends before `}` and its preceding comments, and a synthetic post-body terminator
+is discarded. Real semicolons are never discarded. A real return semicolon
+after a line break rejects rather than accepting an empty statement.
+This is private bounded syntax handling, not a token rewriting layer or API.
+
+Comments after a simple parameter type belong to its parameter list, and after
+a result type to the function. Comments after a body belong to the function
+only when its optional declaration semicolon follows; otherwise they are file
+siblings. These distinctions are part of the complete fact comparison.
 
 ## Concrete test consumer and temporary APIs
 
@@ -52,7 +87,11 @@ line/column positions. All 66 byte prefixes of a fixed 65-byte source check
 fail-closed diagnostics or full accepted-fact parity, including UTF-8 truncation.
 `CheckAccepted` and `CheckRejected` return zero on success and a one-based failing
 case otherwise; `Parity(text)` returns the first mismatch class/node offset.
-`Check` combines the sets (negative failures add 100; prefix failures add 200). These pure entry points
+`Check` combines the foundation sets (negative failures add 100; prefix failures
+add 200). `FunctionCases` adds 26 accepted cases, `FunctionRejections` adds 30
+unsupported/malformed cases, and `CheckFunctionPrefixes` checks every byte
+prefix of a UTF-8 function with contextual names and a trailing comment.
+Their failures add 400, 500 and 600 respectively. These pure entry points
 run through the existing compiler-host; they do not need an assertion native.
 
 The fixture needs these project packages: `authored_parser`, `parser`,
@@ -69,7 +108,18 @@ the existing node type once, rather than introducing a second public tree.
 Consolidate a builder only when another real syntax producer needs it or the
 record/container representation changes. Do not grow a generic parser framework.
 
-## Checkpoint evidence
+## Function-slice WIP evidence
+
+The first bounded function checkpoint compiles six authored sources using the
+unchanged `fa1b7b2` compiler seed
+`41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e`
+and the host below. `Check` returns `[0]` on both bytecode and SLJIT, with 254,679
+selected-backend calls and zero fallback/overflow. The fixture SHA256 is
+`241be56e0718e0f3460f99f6b0aad52a1a45c645823920def909d7fa28c59892`.
+Independent full-fact/property review and additional negative controls remain
+pending; this is an early WIP source checkpoint, not a production parser switch.
+
+## Historical foundation checkpoint evidence
 
 On Linux x64, the pure fixture compiles through the unchanged checked-in
 compiler and checksum-pinned compiler host. The final source hashes are:

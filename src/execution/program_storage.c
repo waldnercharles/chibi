@@ -1,9 +1,69 @@
 #include "execution/program_internal.h"
 #include "execution/scalar.h"
+#include "execution/status.h"
 #include "support/array.h"
+#include "support/xalloc.h"
+#include "types/array.h"
 #include "types/trace.h"
+#include "types/union.h"
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Defaults are templates. Capture the complete bank before promotion so each
+ * materialization gets fresh arrays while aliases within the bank stay shared. */
+int program_materialize_defaults(
+    execution_program *program,
+    arena *storage,
+    pin_value *out,
+    const pin_value *defaults,
+    int count
+)
+{
+    if (count < 0 || (count && (!out || !defaults)) ||
+        (size_t)count > (SIZE_MAX - sizeof(pin_union)) / sizeof(pin_value)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (!count) {
+        return FLOW_OK;
+    }
+    pin_union *bank = xmalloc(sizeof *bank + (size_t)count * sizeof *defaults);
+    bank->tag = 1;
+    bank->count = count;
+    memcpy(bank->values, defaults, (size_t)count * sizeof *defaults);
+    arena captured = { 0 };
+    pin_value source = { .type = PIN_UNION, .ptr = bank }, copy;
+    int status = pin_value_capture_to_arena(&captured, &copy, &source);
+    free(bank);
+    pin_value *staged = NULL;
+    if (!status) {
+        pin_union *values = copy.ptr;
+        behavior_function_context imported = {
+            .managed_heap = program->owner_program->managed,
+            .arguments = values->values,
+            .argument_count = count,
+        };
+        status = behavior_function_import_arguments(&imported) ? FLOW_ERR_ARGUMENT
+                                                               : FLOW_OK;
+        if (!status) {
+            staged = xmalloc((size_t)count * sizeof *staged);
+            for (int i = 0; i < count && !status; i++) {
+                status = pin_value_snapshot_to_arena(
+                    storage,
+                    &staged[i],
+                    &imported.arguments[i]
+                );
+            }
+        }
+    }
+    if (!status) {
+        memcpy(out, staged, (size_t)count * sizeof *out);
+    }
+    free(staged);
+    arena_free(&captured);
+    return status ? FLOW_ERR_ARGUMENT : FLOW_OK;
+}
 
 /* Collect once the payload allocated since the last collection outgrows what
  * it kept, so many live tasks don't each trace every task on every run. */

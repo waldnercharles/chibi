@@ -201,17 +201,31 @@ execution_activation *program_activation_new(
     pin_value *args = arena_alloc(&a->storage, (size_t)(declared + 1) * sizeof *args);
     for (int i = 0; i < declared; i++) {
         const pin_value *value = i < count ? &arguments[i] : &defaults[i];
-        if (!program_same_type(defaults[i], *value) ||
-            pin_value_snapshot_to_arena(&a->payload, &args[i], value)) {
+        if (!program_same_type(defaults[i], *value)) {
+            discard(a);
+            return NULL;
+        }
+        args[i] = *value;
+    }
+    /* Import the original bank together before per-slot snapshots can split
+     * aliases of the same borrowed C array across formal parameters. */
+    behavior_function_context imported = { .managed_heap = p->owner_program->managed,
+                                           .arguments = args,
+                                           .argument_count = declared };
+    if (behavior_function_import_arguments(&imported)) {
+        discard(a);
+        return NULL;
+    }
+    for (int i = 0; i < declared; i++) {
+        if (pin_value_snapshot_to_arena(&a->payload, &args[i], &imported.arguments[i])) {
             discard(a);
             return NULL;
         }
     }
     pin_value *results = arena_alloc(&a->storage, (size_t)(result_count + 1) * sizeof *results);
-    for (int i = 0; i < result_count; i++) {
-        int status = pin_value_snapshot_to_arena(&a->payload, &results[i], &result_defaults[i]);
-        assert(!status);
-        (void)status;
+    if (program_materialize_defaults(p, &a->payload, results, result_defaults, result_count)) {
+        discard(a);
+        return NULL;
     }
     behavior_function_prepare_results(function, results, &a->storage);
     bool resumable = behavior_function_resumable(function);

@@ -5,7 +5,6 @@
 #include "execution/function.h"
 #include "execution/map_intrinsics.h"
 #include "execution/scalar.h"
-#include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -94,7 +93,7 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
     if (!type || result.type != PIN_STRUCT || !(count & 1)) {
         return "Unknown language constructor layout";
     }
-    if (result.record) {
+    if (result.record && !result.record->native) {
         if (!result.ptr && (count - 1) / 2 != type->field_count) {
             return "Authored record requires every initialized field";
         }
@@ -125,15 +124,18 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
             return "Cannot retain struct base";
         }
     } else {
-        if (result.record) {
-            result.record = pin_record_snapshot(storage, result.record);
-            result.type_name = result.record->type.name;
-            type = &result.record->type;
+        result.record = result.record ? pin_record_snapshot(storage, result.record)
+                                      : pin_record_from_type(storage, type);
+        if (!result.record) {
+            return "Cannot retain constructor layout";
         }
+        result.type_name = result.record->type.name;
+        type = &result.record->type;
         result.ptr = arena_alloc(storage, type->size);
         memset(result.ptr, 0, type->size);
         pin_arena_trace_struct(storage, result.ptr, type);
     }
+    type = pin_value_type(&result);
     for (int i = 1; i + 1 < count; i += 2) {
         size_t offset = (size_t)args[i].u64;
         pin_value value;
@@ -452,6 +454,7 @@ static const char *sequence_clone(arena *storage, const pin_value *args, int cou
     *out = array_header(copy, PIN_CONTAINER_ARRAY);
     return NULL;
 }
+static bool same_storage(pin_value a, pin_value b);
 static const char *sequence_get(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 2);
@@ -475,6 +478,9 @@ static const char *sequence_get(arena *storage, const pin_value *args, int count
         return "Array index out of range";
     }
     pin_value item = pin_array_get(array, index);
+    if (!same_storage(*out, item)) {
+        return "Array element does not match result type";
+    }
     return pin_value_snapshot_to_arena(storage, out, &item)
              ? "Cannot retain array element"
              : NULL;
@@ -589,31 +595,90 @@ static const char *array_mutate(arena *storage, const pin_value *args, int count
         }
         return NULL;
     }
-    pin_value result;
-    switch (operation) {
-        case EXECUTION_ARRAY_INSERT:
-            if (array->count == INT_MAX) {
+    if (operation == EXECUTION_ARRAY_INSERT) {
+        if (array->count == INT_MAX) {
+            return "Array exceeds its length limit";
+        }
+        int index = inputs[1].i < 0            ? 0
+                  : inputs[1].i > array->count ? array->count
+                                               : inputs[1].i;
+        /* Retain before shifting: the supplied item may be one of these rows. */
+        pin_array *held = pin_array_snapshot_like(owner, array, 1);
+        if (!held || pin_array_snapshot_set(owner, held, 0, &inputs[2])) {
+            return "Cannot retain inserted array item";
+        }
+        pin_value item = pin_array_get(held, 0);
+        if (pin_array_reserve_owned(owner, array, array->count + 1)) {
+            return "Array exceeds its length limit";
+        }
+        if (array->stride) {
+            memmove(
+                (char *)array->data + (size_t)(index + 1) * array->stride,
+                (char *)array->data + (size_t)index * array->stride,
+                (size_t)(array->count - index) * array->stride
+            );
+        } else {
+            memmove(
+                array->items + index + 1,
+                array->items + index,
+                (size_t)(array->count - index) * sizeof *array->items
+            );
+        }
+        array->count++;
+        int error = pin_array_set(array, index, &item);
+        assert(!error);
+        (void)error;
+    } else if (operation == EXECUTION_ARRAY_REMOVE_INDEX || operation == EXECUTION_ARRAY_REMOVE_ITEM) {
+        int index = operation == EXECUTION_ARRAY_REMOVE_INDEX
+                      ? inputs[1].i
+                      : pin_array_find(array, &inputs[1]);
+        if (index < 0 || index >= array->count) {
+            return NULL;
+        }
+        if (array->stride) {
+            memmove(
+                (char *)array->data + (size_t)index * array->stride,
+                (char *)array->data + (size_t)(index + 1) * array->stride,
+                (size_t)(array->count - index - 1) * array->stride
+            );
+        } else {
+            memmove(
+                array->items + index,
+                array->items + index + 1,
+                (size_t)(array->count - index - 1) * sizeof *array->items
+            );
+        }
+        array->count--;
+    } else if (operation == EXECUTION_ARRAY_RESIZE) {
+        int size = inputs[1].i < 0 ? 0 : inputs[1].i;
+        if (size > array->count) {
+            if (array->record && !array->record->native) {
+                return "Cannot grow an authored record array without "
+                       "initialized rows";
+            }
+            if (pin_array_reserve_owned(owner, array, size)) {
                 return "Array exceeds its length limit";
             }
-            result = native_array_insert(inputs, count - 1, owner);
-            break;
-        case EXECUTION_ARRAY_REMOVE_INDEX:
-            result = native_array_remove_index(inputs, count - 1, owner);
-            break;
-        case EXECUTION_ARRAY_REMOVE_ITEM:
-            result = native_array_remove_item(inputs, count - 1, owner);
-            break;
-        case EXECUTION_ARRAY_RESIZE:
-            result = native_array_resize(inputs, count - 1, owner);
-            break;
-        default: return "Unknown array mutation";
+            if (array->stride) {
+                memset(
+                    (char *)array->data + (size_t)array->count * array->stride,
+                    0,
+                    (size_t)(size - array->count) * array->stride
+                );
+            } else {
+                for (int i = array->count; i < size; i++) {
+                    array->items[i] = (pin_value){ .type = array->element_type,
+                                                   .type_name = array->type_name,
+                                                   .record = array->record };
+                }
+            }
+        }
+        array->count = size;
+    } else {
+        return "Unknown array mutation";
     }
-    if (result.type == PIN_FLOW || !result.ptr) {
-        return "Cannot apply array mutation";
-    }
-    *array = *(pin_array *)result.ptr;
-    array->storage = owner;
-    pin_arena_trace_array(owner, array);
+    array->buckets = NULL;
+    array->bucket_mask = 0;
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return NULL;
 }
@@ -624,7 +689,7 @@ const node_host_call EXECUTION_sequence_view_call = { .value = sequence_view };
 const node_host_call EXECUTION_sequence_clone_call = { .value = sequence_clone };
 /* Reads mutable sequence storage and creates distinct array objects. No pure
  * reuse or unproven parallel access is valid for this shared dispatch. */
-static const node_access sequence_read_access = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access EXECUTION_sequence_read_access = { .flags = NODE_EFFECT_WORLD_READ };
 const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK };
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
@@ -1082,15 +1147,16 @@ static int snapshot_reference_root(
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
     pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
-    size_t name_size = strlen(layout->name) + 1;
-    char *name = arena_alloc(storage, name_size);
-    memcpy(name, layout->name, name_size);
-    pin_copy_record(PIN_COPY_NOMINAL, name_size);
-    out->type_name = name;
-    out->ptr = arena_alloc(storage, layout->size);
-    memcpy(out->ptr, source->ptr, layout->size);
-    pin_copy_record(PIN_COPY_RECORD, layout->size);
-    return pin_struct_snapshot_fields(storage, layout, out->ptr);
+    out->record = pin_record_from_type(storage, layout);
+    if (!out->record) {
+        return -1;
+    }
+    out->type_name = out->record->type.name;
+    const type_desc *owned = &out->record->type;
+    out->ptr = arena_alloc(storage, owned->size);
+    memcpy(out->ptr, source->ptr, owned->size);
+    pin_copy_record(PIN_COPY_RECORD, owned->size);
+    return pin_struct_snapshot_fields(storage, owned, out->ptr);
 }
 /* Whether two headers describe the same storage: the same type and
  * container and, for records and unions, the same declaration. Names of
@@ -1105,7 +1171,7 @@ static bool same_storage(pin_value a, pin_value b)
         return true;
     }
     if (a.record || b.record) {
-        return pin_record_same(a.record, b.record);
+        return pin_value_layout_same(&a, &b);
     }
     if (!a.type_name || !b.type_name) {
         return a.type == PIN_UNION && !a.type_name && !b.type_name;
@@ -2108,7 +2174,8 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
         case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
-        case EXECUTION_INTRINSIC_SEQUENCE_CLONE: return &sequence_read_access;
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+            return &EXECUTION_sequence_read_access;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:

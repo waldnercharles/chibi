@@ -137,7 +137,8 @@ extern const node_host_call EXECUTION_query_source_call;
 extern const node_host_call EXECUTION_query_target_call;
 extern const node_access EXECUTION_component_read_access,
     EXECUTION_component_membership_access;
-extern const node_access EXECUTION_assignment_access, EXECUTION_value_access;
+extern const node_access EXECUTION_assignment_access, EXECUTION_value_access,
+    EXECUTION_sequence_read_access;
 size_t execution_value_size(pin_value);
 const node_host_call *execution_intrinsic_call(execution_intrinsic);
 uint64_t execution_intrinsic_id(const node_host_call *);

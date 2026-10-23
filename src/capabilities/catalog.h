@@ -182,7 +182,7 @@ typedef struct
     int completion_outcome;
     unsigned effects;
     uint64_t receiver;
-    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
+    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender, language_values;
 } script_catalog_capability;
 typedef struct
 {

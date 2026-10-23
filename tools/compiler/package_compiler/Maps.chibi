@@ -72,7 +72,7 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
         if (!SameType(types[map].key, 0, -1, key)) {
             return Fail(forest, Field(forest, pair, "key"), document, "Map key type does not match");
         }
-        if (!SameType(types[map].value_storage, types[map].value_container, types[map].value_record, value)) {
+        if (!Accepts(types, types[map].value_storage, types[map].value_container, types[map].value_record, value)) {
             return Fail(forest, Field(forest, pair, "value"), document, "map value differs from the map's type");
         }
         for (part in [key, value]) {
@@ -100,8 +100,14 @@ KeyPhase: int : 2;
 // Whether a map's value type has a zero that a missing key reads, as stage
 // zero's has: a number, bool or string. A record without field defaults
 // has none, so reading its missing key fails.
-HasZero :: (storage: int) -> bool {
-    return storage != StructStorage && storage != UnionStorage;
+HasZero :: (types: TypeDecl[], value: ValueType) -> bool {
+    if (value.container == ViewContainer) { return false; }
+    if (value.container != 0) { return true; }
+    if (value.record >= 0 && types[value.record].kind == OptionalDecl) { return true; }
+    if (value.storage == PointerStorage) {
+        return value.record >= 0 && types[value.record].key != 0;
+    }
+    return value.storage != StructStorage && value.storage != UnionStorage;
 }
 // `m[k]`: stage zero's map get, which reads the value type's zero for a
 // missing key when it has one, an expression of its own at the index.
@@ -118,7 +124,7 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     slots: Slot[] = [address, address];
     code := extend(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(key.storage, 0, target), key.slot, at.cell + 1, ops, target, at.slot + 1, node));
-    if (item.container != 0 || HasZero(item.storage)) {
+    if (HasZero(types, item)) {
         code.append(ExpressionCode(ops, node));
         zero: Slot = {storage: SlotStorage(item.storage, item.container, target), kind: SlotKind(item.storage, item.container)};
         slots.append(zero);
@@ -255,7 +261,7 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     arguments: Value[] = [values[top - 1]];
     if (store) {
         arguments = [values[top - 2], values[top - 1]];
-        if (!SameType(map.value_storage, map.value_container, map.value_record, values[top - 1])) {
+        if (!Accepts(types, map.value_storage, map.value_container, map.value_record, values[top - 1])) {
             return Fail(forest, item.node, document, "map value differs from the map's type");
         }
     }

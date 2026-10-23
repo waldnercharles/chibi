@@ -114,6 +114,7 @@ static bool prepare(
             valid = fail(error, size, binding->canonical_name, "Only callable definitions bind native implementations");
             break;
         }
+        definitions[found].language_values = b->call && b->call->language_values;
         definitions[found].effects |= effects(b, definitions[found].pure);
     }
     if (valid) {

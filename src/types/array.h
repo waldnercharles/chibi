@@ -37,11 +37,15 @@ bool pin_array_view_valid(const pin_array *);
 bool pin_array_valid(const pin_array *);
 /* Tag a newly constructed, fully owned array graph in a managed heap. Every
  * untagged nested array must already be owned by managed; existing managed
- * children retain their identity. This is not an import of borrowed storage. */
-void pin_array_manage(arena *managed, pin_array *);
+ * children retain their identity. This is not an import of borrowed storage.
+ * Failure leaves the unpublished constructor graph for its arena to reclaim. */
+int pin_array_manage(arena *managed, pin_array *);
 /* Assignment preserves managed object/view identity; borrowed graphs are
  * promoted once with cycles and repeated array identities preserved. */
 int pin_value_array_promote(arena *managed, pin_value *out, const pin_value *);
+/* One import graph for an argument bank: repeated borrowed source objects
+ * become one shared object across parameters. Failure leaves out unchanged. */
+int pin_values_array_promote(arena *managed, pin_value *out, const pin_value *source, int count);
 /* Copy only the outer array. Nested arrays use ordinary shared assignment. */
 pin_array *pin_array_outer_clone(arena *managed, const pin_array *);
 pin_array *pin_array_window_copy(arena *managed, const pin_array *, int start, int count);

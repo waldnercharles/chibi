@@ -223,7 +223,7 @@ EligibleUnion :: (environment: Environment, tree: reader.Tree, node: int, scope:
 // an earlier declaration. Tagged child payload spans remain raw catalog facts.
 Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
-        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics, element_type, element_collection):
+        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics, element_type, element_collection, collection_container, key_type, key_collection):
             if (!publish) {
                 return environment;
             }

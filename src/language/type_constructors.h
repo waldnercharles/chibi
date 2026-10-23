@@ -29,7 +29,7 @@ typedef struct
     uint64_t id;
     const char *name;
     script_type definition_type;
-    script_type element_type; /* Complete pointee metadata, including collection identity. */
+    script_type element_type; /* Complete element/pointee metadata, including collection identity. */
     size_t size;
     bool internal;
     const script_constructor_variant *variants;
@@ -38,6 +38,8 @@ typedef struct
     int field_count;
     script_diagnostic diagnostics[1];
     int diagnostic_count;
+    pin_container collection_container;
+    script_type key_type;
 } script_constructor_plan;
 
 /* Raw borrowed catalogs/functions have valid counts, indices and type metadata.
@@ -72,6 +74,14 @@ script_catalog_type script_constructor_collection(
     pin_container,
     script_type key,
     script_type value,
+    size_t pointer_size
+);
+script_constructor_plan script_constructor_collection_plan(
+    arena *,
+    const script_constructor_facts *,
+    pin_container,
+    script_type key,
+    script_type element,
     size_t pointer_size
 );
 /* A pointer's nominal identity includes the complete pointee type tag. */

@@ -2382,7 +2382,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = SequenceStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression" &&
                    ArrayMutation(forest, text, names, natives, ports, callable.package, item.node) > 0) {
-            step = MutationStep(forest, text, document, types, values, value_top, item,
+            step = MutationStep(forest, text, document, types, members, values, value_top, item,
                                 ArrayMutation(forest, text, names, natives, ports, callable.package, item.node),
                                 ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
@@ -2603,12 +2603,47 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code.append(Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
+    if (callable.result_container == ViewContainer && ReachesBodyEnd(code, ops)) {
+        return Body.Failed(Diagnose(forest, callable.node, document,
+                                    "view result requires an initialized value on every return path"));
+    }
     if (!ops.debug) {
         code = WithoutDebug(ops, code);
         points = [];
     }
     return NumberPoints(forest, solid, undeclared, meaning, document_hash, declaration, ops, slots, locals, cells,
                         code, calls, hosts, roots, points, watches);
+}
+
+// Follow both sides of each branch. A metadata-only view result header is
+// never a live value, so a successful return must publish a value before END.
+ReachesBodyEnd :: (code: Code[], ops: Ops) -> bool {
+    visited := resize([false], length(code));
+    pending: int[] = [int(0)];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        if (at >= 0 && at < length(code) && !visited[at]) {
+            visited[at] = true;
+            instruction := code[at];
+            if (instruction.op == ops.end) { return true; }
+            successors: int[] = [];
+            if (instruction.op == ops.jump) {
+                successors = [instruction.target];
+            } else if (instruction.op == ops.branch_if) {
+                successors = [instruction.target, at + 1];
+            } else if (instruction.op != ops.finish) {
+                successors = [at + 1];
+            }
+            for (successor in successors) {
+                if (top < length(pending)) { pending[top] = successor; }
+                else { pending.append(successor); }
+                top += 1;
+            }
+        }
+    }
+    return false;
 }
 
 // A body's tables, with the points and watches the steps placed, each at its

@@ -397,30 +397,45 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // array of one; storage 0 for any other.
 ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
              node: int) -> ValueType {
-    if (Field(forest, node, "trait") >= 0 && Text(forest, text, Field(forest, node, "trait")) != "view") {
+    if (HasTypeTrait(forest, text, node, "ref")) {
         return {storage: 0, container: 0, record: -1};
     }
     return ReadReferencedType(forest, text, types, names, package, node);
 }
-// Whether the type `node` is `ref T`: its only trait is `ref`.
-Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    traits: int = 0;
+// Traits are independent flags. Native signatures accept either order and
+// repeated occurrences of ref/view, so look at every trait child.
+HasTypeTrait :: (forest: snapshot.SnapshotNode[], text: string, node: int, trait: string) -> bool {
+    if (node < 0) { return false; }
     child := forest[node].first_child;
     while (child >= 0) {
-        if (forest[child].field == "trait") {
-            traits += 1;
+        if (forest[child].field == "trait" && Text(forest, text, child) == trait) {
+            return true;
         }
         child = forest[child].next_sibling;
     }
-    return traits == 1 && Text(forest, text, Field(forest, node, "trait")) == "ref";
+    return false;
+}
+SequenceTypeTraits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    if (node < 0) { return false; }
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == "trait") {
+            trait := Text(forest, text, child);
+            if (trait != "ref" && trait != "view") { return false; }
+        }
+        child = forest[child].next_sibling;
+    }
+    return true;
+}
+Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    return SequenceTypeTraits(forest, text, node) && HasTypeTrait(forest, text, node, "ref");
 }
 // The type `node` names, as ReadType reads it, or the T of `ref T`.
 ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
                        node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    view := Text(forest, text, Field(forest, node, "trait")) == "view";
-    if (!Is(forest, node, "type") ||
-        (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node) && !view) ||
+    view := HasTypeTrait(forest, text, node, "view");
+    if (!Is(forest, node, "type") || !SequenceTypeTraits(forest, text, node) ||
         Field(forest, node, "arguments") >= 0) {
         return none;
     }
@@ -571,7 +586,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, OptionalTag(known, key),
                                                         OptionalTag(known, value)));
         declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, node: -1, kind: MapDecl,
-                              first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
+                              first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage, id: id, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
                               value_record: value.record};
         known.append(declared);
@@ -1102,6 +1117,9 @@ Default :: union {
 // A parameter's default, as the literal stage zero folds it to: an integer of
 // the parameter's type, a bool or a string.
 LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int, declared: ValueType) -> Default {
+    if (declared.container == ViewContainer) {
+        return Default.Failed(Diagnose(forest, node, file, "view requires an initialized value"));
+    }
     if (declared.container != 0) {
         return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
     }
@@ -1170,6 +1188,10 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                         node: Field(forest, parameter, "name")};
         if (default_value >= 0 && declared.storage == PointerStorage && declared.container == 0 &&
             declared.record >= 0 && types[declared.record].key != 0 && Is(forest, default_value, "nil")) {
+            param.has_default = true;
+        } else if (default_value >= 0 && OptionalElement(types, Typed(-1, declared.storage, declared.container,
+                                                                    declared.record)).storage != 0 &&
+                   Is(forest, default_value, "nil")) {
             param.has_default = true;
         } else if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {

@@ -417,6 +417,9 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             if (call->action) {
                 ctx->error_message = behavior_function_host_action(ctx, i->target, i->node_id);
+                if (!ctx->error_message) {
+                    ctx->error_message = behavior_function_host_results(ctx, i->target);
+                }
                 if (ctx->error_message) {
                     result = fail(ctx, i, steps, parents, i->left);
                     goto done;
@@ -431,6 +434,9 @@ int execution_machine_step(execution_machine *m, int pc)
                     ctx->data->values + spec->first,
                     ctx->data->values + spec->result_first
                 );
+                if (!ctx->error_message) {
+                    ctx->error_message = behavior_function_host_results(ctx, i->target);
+                }
                 if (ctx->error_message) {
                     result = fail(ctx, i, steps, parents, i->left);
                     goto done;
@@ -446,6 +452,9 @@ int execution_machine_step(execution_machine *m, int pc)
                                          ctx->data->values + spec->first,
                                          ctx->data->values + spec->result_first
                                      );
+            if (!ctx->error_message) {
+                ctx->error_message = behavior_function_host_results(ctx, i->target);
+            }
             if (ctx->error_message) {
                 result = fail(ctx, i, steps, parents, i->left);
                 goto done;

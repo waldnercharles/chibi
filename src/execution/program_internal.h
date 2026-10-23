@@ -291,6 +291,13 @@ bool program_capture_reference(
     const execution_module_capture *,
     pin_value *
 );
+int program_materialize_defaults(
+    execution_program *,
+    arena *,
+    pin_value *out,
+    const pin_value *defaults,
+    int count
+);
 void program_collect_payloads(execution_program *, execution_activation *extra);
 static inline bool program_wait_due(const command_wait *wait, double now)
 {

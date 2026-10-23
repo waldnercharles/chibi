@@ -583,6 +583,8 @@ static void trace_context(
             }
         }
     }
+    /* Imported argument banks may themselves live in the managed heap. */
+    mark(user, ctx->arguments);
     trace_values(ctx->arguments, f->argument_kinds, ctx->argument_count, mark, user);
     trace_values(ctx->results, f->result_kinds, f->result_count, mark, user);
     trace_values(ctx->variables, NULL, f->variable_count, mark, user);

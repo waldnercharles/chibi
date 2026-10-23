@@ -368,7 +368,7 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
 {
     REQUIRE(value->type == PIN_UNION && value->ptr);
     const pin_union *data = value->ptr;
-    REQUIRE(data->tag == tag && data->count == 13);
+    REQUIRE(data->tag == tag && data->count == 16);
     const pin_value *v = data->values;
     REQUIRE(
         type_value(&v[0], value_tag, expected->type) && v[1].type == PIN_BOOL &&

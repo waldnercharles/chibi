@@ -73,6 +73,7 @@ typedef struct
 } behavior_query_binding;
 typedef struct
 {
+    uint64_t capability_abi;
     node_host_call_fn invoke;
     node_value_call_fn value;
     node_context_call_fn context;
@@ -410,6 +411,7 @@ void behavior_function_rebind_services(
 /* Reject managed pointer payloads before an unregistered native owner can
  * observe them. Canonical runtime intrinsics retain their explicit contract. */
 const char *behavior_function_host_arguments(behavior_function_context *, int target);
+const char *behavior_function_host_results(behavior_function_context *, int target);
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
@@ -532,6 +534,9 @@ void behavior_function_prepare_results(
 /* Language arrays require an initialized caller-owned managed heap, shared by
  * the complete invocation family. Managed objects keep identity across copies. */
 pin_array *behavior_function_copy_array(behavior_function_context *, const pin_array *);
+/* Imports borrowed array arguments once, preserving aliases across the bank.
+ * The supplied argument slots are not modified; only context's bank changes. */
+const char *behavior_function_import_arguments(behavior_function_context *);
 /* Shared value-call dispatch for interpreter, JIT and exported C entries. */
 const char *behavior_function_value_call(behavior_function_context *, int host_call);
 void behavior_function_bind_storage(behavior_function_context *context, arena *storage);

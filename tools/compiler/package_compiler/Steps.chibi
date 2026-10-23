@@ -247,6 +247,25 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     return Fail(forest, declared, document, "local type is not supported yet");
                 }
                 if (value < 0) {
+                    if (resolved.container == ViewContainer) {
+                        return Fail(forest, item.node, document, "view local requires an initial value");
+                    }
+                    if (OptionalElement(types, Typed(-1, resolved.storage, resolved.container, resolved.record)).storage != 0) {
+                        name_node := Field(forest, item.node, "name");
+                        name := Text(forest, text, name_node);
+                        if (Declared(names, scope, name)) {
+                            return Fail(forest, name_node, document, format_text("Duplicate declaration '{}'", name));
+                        }
+                        slots.append(ValueLocal(UnionStorage));
+                        locals.append(ValueLocal(UnionStorage));
+                        code.append(ConstantCode(ops, UnionStorage, 0, at.slot, node));
+                        code.append(Instruction(ops.save, UnionStorage, 0, at.slot, 0, at.local, node));
+                        code.append(SymbolCode(ops, name_node, node));
+                        bound.append({name: name, place: LocalPlace, index: at.local, storage: UnionStorage,
+                                      container: 0, record: resolved.record, writable: true, node: name_node});
+                        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                            0, NoValue(), NoValue(), marks);
+                    }
                     if (resolved.storage != PointerStorage || resolved.container != 0 || resolved.record < 0 ||
                         types[resolved.record].key == 0) {
                         return Fail(forest, item.node, document, "non-null pointer local requires an initial value");
@@ -853,6 +872,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (kind == "nil" && item.container == ViewContainer) {
+        return Fail(forest, item.node, document, "view requires an initialized value");
+    }
     if (kind == "nil" && item.storage == PointerStorage) {
         if (item.storage != PointerStorage || item.container != 0 || item.record < 0 || types[item.record].key == 0) {
             return Fail(forest, item.node, document, "nil requires a nullable pointer type");
@@ -1943,9 +1965,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
     }
     if (linked && natives[chosen].name == "resize" && length(arguments) > 0) {
-        element := arguments[0];
-        if (NeedsPointerValue(types, members, element.storage, 0, element.record)) {
-            return Fail(forest, item.node, document, "resize cannot create missing non-null pointer values");
+        source := arguments[0];
+        element := SequenceElement(types, {storage: source.storage, container: source.container, record: source.record});
+        if (NeedsPointerValue(types, members, element.storage, element.container, element.record)) {
+            return Fail(forest, item.node, document, "resize cannot create missing initialized values");
         }
     }
     total := length(arguments);

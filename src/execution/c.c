@@ -307,6 +307,12 @@ static void activation_values(
         }
     }
 }
+static void host_results(FILE *out, const behavior_function_instruction *i)
+{
+    fprintf(out, "{c->error_message=behavior_function_host_results(c,%d);if(c->error_message){", i->target);
+    failure(out, i, i->left);
+    fputs("}}\n", out);
+}
 static void body(const behavior_function *f, FILE *out, char prefix, bool inspected)
 {
     behavior_function runtime;
@@ -567,6 +573,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 if (spec->call->context) {
@@ -584,6 +591,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 if (spec->call->value) {
@@ -620,6 +628,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 fprintf(
@@ -634,6 +643,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 failure(out, i, i->left);
                 fputs("}}\n", out);
+                host_results(out, i);
                 break;
             }
             case BF_COMMAND_SERVICE:
@@ -1272,7 +1282,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
     fprintf(
         out,
         "#include \"execution/scalar.h\"\n#include "
-        "\"execution/function.h\"\n#include \"types/pointer.h\"\n#include "
+        "\"execution/function.h\"\n#include \"execution/status.h\"\n#include "
+        "\"types/pointer.h\"\n#include "
         "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
         "\"execution/component_write.h\"\n#include "
         "<math.h>\n#include "
@@ -1285,6 +1296,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "_callee_%d", index);
     }
     fputs("(behavior_function_context *c) {\n", out);
+    fputs("c->error_message=behavior_function_import_arguments(c);if(c->error_message)return FLOW_ERR_ARGUMENT;\n", out);
     if (f->fast) {
         fprintf(
             out,

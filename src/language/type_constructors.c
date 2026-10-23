@@ -63,6 +63,31 @@ script_catalog_type script_constructor_collection(
                                   .key_type = key,
                                   .element_type = value };
 }
+script_constructor_plan script_constructor_collection_plan(
+    arena *storage,
+    const script_constructor_facts *facts,
+    pin_container container,
+    script_type key,
+    script_type element,
+    size_t pointer_size
+)
+{
+    script_catalog_type definition = script_constructor_collection(storage, container, key, element, pointer_size);
+    script_constructor_plan plan = { .type = definition.type };
+    if (script_catalog_type_by_id(facts->catalog, definition.id)) {
+        return plan;
+    }
+    plan.publish = true;
+    plan.id = definition.id;
+    plan.name = definition.name;
+    plan.definition_type = definition.type;
+    plan.element_type = definition.element_type;
+    plan.collection_container = definition.container;
+    plan.key_type = definition.key_type;
+    plan.size = definition.size;
+    plan.internal = true;
+    return plan;
+}
 script_catalog_type script_constructor_pointer(arena *storage, script_type pointee, size_t pointer_size)
 {
     char identity[32];
@@ -289,6 +314,8 @@ bool script_constructor_materialize(
                                  .name = plan->name,
                                  .type = plan->definition_type,
                                  .element_type = plan->element_type,
+                                 .container = plan->collection_container,
+                                 .key_type = plan->key_type,
                                  .size = plan->size,
                                  .internal = plan->internal,
                                  .variants = variants,

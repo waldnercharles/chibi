@@ -239,9 +239,11 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
     for (int i = 0; i < acount(f->results); i++) {
         int symbol = f->results[i];
         const script_symbol *result = &a->out->symbols[symbol];
-        if ((result->type.storage != PIN_UNION && result->type.storage != PIN_POINTER) ||
-            result->type.container != PIN_CONTAINER_SINGLE ||
-            (result->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        bool required = result->type.container == PIN_CONTAINER_VIEW ||
+                        ((result->type.storage == PIN_UNION ||
+                          result->type.storage == PIN_POINTER) &&
+                         result->type.container == PIN_CONTAINER_SINGLE);
+        if (!required || (result->type.flags & SCRIPT_TYPE_OPTIONAL)) {
             continue;
         }
         bool falls, valid = true;
@@ -258,7 +260,9 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
                 a,
                 body,
                 "%s result '%s' requires a value on every return path",
-                result->type.storage == PIN_POINTER ? "Pointer" : "Union",
+                result->type.container == PIN_CONTAINER_VIEW ? "View"
+                : result->type.storage == PIN_POINTER        ? "Pointer"
+                                                             : "Union",
                 result->name
             );
         }
@@ -1158,6 +1162,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.effects = script_analyzer_expr_effects(a, result.expression) |
                          script_analyzer_expr_effects(a, result.second) |
                          a->out->statements[result.body].effects;
+        script_type source_type = script_analyzer_expr_type(a, result.expression);
+        if (source_type.container == PIN_CONTAINER_ARRAY ||
+            source_type.container == PIN_CONTAINER_VIEW) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
         a->scope = old_scope;
         return script_analyzer_statement_add(a, result);
     }

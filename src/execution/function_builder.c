@@ -516,7 +516,7 @@ static bool scalar_type(pin_type type)
 static bool same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
-           pin_record_same(a.record, b.record) &&
+           pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -535,7 +535,7 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
         return false;
     }
     if (type->alias_of) {
-        const type_desc *alias = type_catalog_find(type->alias_of);
+        const type_desc *alias = type_alias_type(type, (type_resolver){ 0 });
         return alias && reflected_scalar_field(alias, offset, value, depth + 1);
     }
     for (int i = 0; i < type->field_count; i++) {
@@ -547,7 +547,7 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
         }
         if (field->type == PIN_STRUCT && field->type_name && offset >= field->offset &&
             fits(offset - field->offset, behavior_scalar_size(value), field->size)) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (nested &&
                 reflected_scalar_field(nested, offset - field->offset, value, depth + 1)) {
                 return true;
@@ -749,7 +749,11 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_STORE_HEADER:
         case BF_STORE_TYPE_NAME:
             CHECK(index_valid(i->target, f->variable_count), "invalid variable header destination");
-            CHECK(!f->variable_defaults[i->target].record, "native header opcode cannot replace an authored record");
+            CHECK(
+                !f->variable_defaults[i->target].record ||
+                    f->variable_defaults[i->target].record->native,
+                "native header opcode cannot replace an authored record"
+            );
             CHECK(SLOT(i->left, BF_POINTER_TYPE), "invalid header name type");
             CHECK(
                 i->op != BF_STORE_HEADER ||
@@ -764,7 +768,8 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_RESULT_ARRAY:
             CHECK(index_valid(i->target, f->result_count), "invalid result header destination");
             CHECK(
-                i->op == BF_RESULT_PRESENT || !f->result_defaults[i->target].record,
+                i->op == BF_RESULT_PRESENT || !f->result_defaults[i->target].record ||
+                    f->result_defaults[i->target].record->native,
                 "native result opcode cannot replace an authored record"
             );
             CHECK(SLOT(i->left, i->op == BF_RESULT_PRESENT ? PIN_BOOL : BF_POINTER_TYPE), "invalid result header source");
@@ -1067,8 +1072,11 @@ static const char *verify_instruction(const behavior_function *f, int pc)
 }
 static bool value_type_valid(pin_value value)
 {
-    if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_MAP ||
+    if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_VIEW ||
         (!scalar_type(value.type) && value.type != PIN_STRUCT && value.type != PIN_UNION)) {
+        return false;
+    }
+    if (value.container == PIN_CONTAINER_VIEW && value.ptr) {
         return false;
     }
     if (value.record && (value.type != PIN_STRUCT || !pin_record_valid(value.record))) {
@@ -1077,7 +1085,8 @@ static bool value_type_valid(pin_value value)
     /* Nested collections carry each element's complete header, including its
      * record layout. The outer descriptor is not itself a scalar record. */
     if (!value.record &&
-        (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_SET) &&
+        (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_SET ||
+         value.container == PIN_CONTAINER_VIEW) &&
         value.type_name && !strncmp(value.type_name, "__collection_", 13)) {
         return true;
     }
@@ -1087,6 +1096,16 @@ static bool map_bank(pin_value value)
 {
     return value.type == PIN_UNION && value.container == PIN_CONTAINER_MAP &&
            !value.record && value.type_name;
+}
+static bool array_bank(pin_value value)
+{
+    return (value.container == PIN_CONTAINER_ARRAY ||
+            value.container == PIN_CONTAINER_VIEW) &&
+           value_type_valid(value);
+}
+static bool sequence_bank(pin_value value)
+{
+    return scalar_bank(value, PIN_STR) || array_bank(value);
 }
 /* Intrinsic callbacks consume physical value banks, not authored signatures.
  * Validate their ABI before a producer or decoded definition can execute them. */
@@ -1102,6 +1121,54 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
     switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+            return count == 4 && sequence_bank(values[0].initial) &&
+                   INPUT(1, PIN_I32) && INPUT(2, PIN_I32) &&
+                   INPUT(3, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE: {
+            if (count != 1 || !sequence_bank(values[0].initial)) {
+                return false;
+            }
+            pin_value source = values[0].initial;
+            if (source.container != PIN_CONTAINER_SINGLE) {
+                source.container = PIN_CONTAINER_ARRAY;
+            }
+            return same_type(source, output);
+        }
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+            return count == 1 && sequence_bank(values[0].initial) && OUTPUT(PIN_I32);
+        case EXECUTION_INTRINSIC_SEQUENCE_GET: {
+            if (count != 2 || !sequence_bank(values[0].initial) ||
+                !INPUT(1, PIN_I32) || !value_type_valid(output)) {
+                return false;
+            }
+            pin_value source = values[0].initial;
+            if (source.container == PIN_CONTAINER_SINGLE) {
+                return OUTPUT(PIN_I32);
+            }
+            if (source.type_name && !strncmp(source.type_name, "__collection_", 13)) {
+                /* Nested/optional elements have complete dynamic headers;
+                 * the collection descriptor supplies their physical storage. */
+                return output.type == source.type;
+            }
+            source.container = PIN_CONTAINER_SINGLE;
+            return same_type(source, output);
+        }
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE:
+            if (count < 2 || count > 4 || !array_bank(values[0].initial) ||
+                !INPUT(1, PIN_I32) || !OUTPUT(PIN_BOOL) ||
+                (count == 4 && !INPUT(2, PIN_I32))) {
+                return false;
+            }
+            for (int i = 2; i < count; i++) {
+                if (!value_type_valid(values[i].initial)) {
+                    return false;
+                }
+            }
+            /* The operation is an evaluated int. The callback checks its
+             * operation-specific arity before consuming any argument. */
+            return true;
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return count == 1 && INPUT(0, PIN_STR) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1189,6 +1256,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return !values[3].initial.b || OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_CONSTRUCT:
             if (count < 1 || output.container == PIN_CONTAINER_MAP ||
+                output.container == PIN_CONTAINER_VIEW ||
                 !same_type(values[0].initial, output)) {
                 return false;
             }
@@ -1664,6 +1732,23 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
     int count = host->result_first - host->first;
     const behavior_function_data_value *values = f->data_values + host->first;
     behavior_value_kind result = f->data_values[host->result_first].kind;
+    switch (id) {
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE:
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+            /* These banks hold complete typed values. Raw addresses, logical
+             * references and cursors cannot masquerade as sequence payloads. */
+            for (int i = 0; i < count; i++) {
+                if (values[i].kind != BEHAVIOR_VALUE) {
+                    return false;
+                }
+            }
+            return result == BEHAVIOR_VALUE;
+        default: break;
+    }
     for (int i = 0; i < count; i++) {
         behavior_value_kind expected = BEHAVIOR_VALUE;
         if (i == 0) {

@@ -660,7 +660,7 @@ static void record_defaults(analyzer *a, TSNode node, script_expression *result)
             continue;
         }
         pin_value owned = { 0 };
-        if (pin_value_snapshot_to_arena(&a->out->constants, &owned, &field->default_value)) {
+        if (pin_value_capture_to_arena(&a->out->constants, &owned, &field->default_value)) {
             script_analyzer_diagnostic(
                 a,
                 node,
@@ -712,6 +712,9 @@ static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
  * of its field defaults, or zero. */
 static int zero_value(analyzer *a, TSNode node, script_type type)
 {
+    if (type.container == PIN_CONTAINER_VIEW && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        script_analyzer_diagnostic(a, node, "A nonoptional view requires an initializer");
+    }
     if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE &&
         !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
         script_analyzer_diagnostic(a, node, "A non-null pointer requires an initializer");
@@ -749,7 +752,8 @@ static int absent_value(analyzer *a, TSNode node, script_type type)
                                  .right = -1 }
         );
     }
-    if ((type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) ||
+    if (type.container == PIN_CONTAINER_VIEW ||
+        (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) ||
         type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
                       SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED) ||
         (type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE)) {
@@ -1421,6 +1425,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.effects = script_analyzer_expr_effects(a, result.left) |
                          script_analyzer_expr_effects(a, result.right);
+        if (collection_type.container == PIN_CONTAINER_ARRAY ||
+            collection_type.container == PIN_CONTAINER_VIEW) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
         result.writable = collection_type.container == PIN_CONTAINER_ARRAY ||
                           collection_type.container == PIN_CONTAINER_VIEW ||
                           a->out->expressions[result.left].writable;
@@ -1469,7 +1477,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                               (element.flags & SCRIPT_TYPE_OPTIONAL)
                         ? script_analyzer_collection_type(a, PIN_CONTAINER_ARRAY, (script_type){ 0 }, element)
                         : element;
-        result.type.container = expected.container == PIN_CONTAINER_SINGLE
+        result.type.container = (expected.container == PIN_CONTAINER_SINGLE ||
+                                 expected.container == PIN_CONTAINER_VIEW)
                                   ? PIN_CONTAINER_ARRAY
                                   : expected.container;
         return script_analyzer_expr_add(a, result);

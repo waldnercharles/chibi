@@ -1247,6 +1247,9 @@ bool script_analyzer_array_changer(const script_catalog_capability *function)
 }
 static bool requires_pointer_value(const script_catalog *catalog, script_type type, int depth)
 {
+    if (type.container == PIN_CONTAINER_VIEW) {
+        return !(type.flags & SCRIPT_TYPE_OPTIONAL);
+    }
     if (type.container != PIN_CONTAINER_SINGLE || depth >= SCRIPT_MAX_DEPTH) {
         return false;
     }
@@ -1273,7 +1276,7 @@ int script_analyzer_sequence(analyzer *a, TSNode node, TSNode object, TSNode bou
                                  .member = operation };
     result.left = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
     for (int depth = 0;
-         depth < SCRIPT_MAX_DEPTH &&
+         script_analyzer_is(node, "call_expression") && depth < SCRIPT_MAX_DEPTH &&
          script_analyzer_expr_type(a, result.left).storage == PIN_POINTER &&
          script_analyzer_expr_type(a, result.left).container == PIN_CONTAINER_SINGLE;
          depth++) {
@@ -1298,6 +1301,9 @@ int script_analyzer_sequence(analyzer *a, TSNode node, TSNode object, TSNode bou
                                   : PIN_CONTAINER_ARRAY;
     }
     result.effects = script_analyzer_expr_effects(a, result.left);
+    if (array) {
+        result.effects |= SCRIPT_EFFECT_READ;
+    }
     if (operation == SCRIPT_SEQUENCE_LENGTH) {
         result.type = (script_type){ .storage = PIN_I32 };
     }
@@ -1898,7 +1904,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
         if (!seen[i] && capability && capability->parameters[i].has_default) {
             pin_value value = { 0 };
-            if (pin_value_snapshot_to_arena(
+            if (pin_value_capture_to_arena(
                     &a->out->constants,
                     &value,
                     &capability->parameters[i].default_value
@@ -1948,7 +1954,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             script_type element = script_catalog_element_type(a->catalog, array);
             if (array.container == PIN_CONTAINER_ARRAY &&
                 requires_pointer_value(a->catalog, element, 0)) {
-                script_analyzer_diagnostic(a, node, "Resizing this array requires an explicit non-null element value");
+                script_analyzer_diagnostic(a, node, "Resizing this array requires an explicit initialized element value");
             }
         }
     }

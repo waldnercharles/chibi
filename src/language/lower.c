@@ -1666,7 +1666,7 @@ static int array_constant(lower *l, const script_expression *e)
     pin_array *items = pin_array_snapshot_allocate(&l->module->storage, e->type.storage, NULL, e->argument_count);
     for (int i = 0; i < e->argument_count; i++) {
         const pin_value *item = &l->a->expressions[e->arguments[i].value].constant;
-        int result = pin_value_snapshot_to_arena(&l->module->storage, &items->items[i], item);
+        int result = pin_value_capture_to_arena(&l->module->storage, &items->items[i], item);
         assert(result == 0);
         (void)result;
     }
@@ -1682,7 +1682,7 @@ static int array_constant(lower *l, const script_expression *e)
     return primitive(
         l,
         &EXECUTION_sequence_clone_call,
-        &EXECUTION_value_access,
+        &EXECUTION_sequence_read_access,
         &value,
         &literal,
         1,
@@ -2956,7 +2956,7 @@ static int flow_loop(lower *l, const script_expression *e, const script_catalog_
         array = primitive(
             l,
             &EXECUTION_sequence_clone_call,
-            &EXECUTION_value_access,
+            &EXECUTION_sequence_read_access,
             &header,
             &array,
             1,
@@ -4221,7 +4221,7 @@ static int sequence_count(lower *l, int array, script_type sequence, script_rang
     return primitive(
         l,
         &EXECUTION_sequence_length_call,
-        &EXECUTION_value_access,
+        &EXECUTION_sequence_read_access,
         &header,
         &array,
         1,
@@ -4234,7 +4234,16 @@ static int sequence_item(lower *l, int array, int index, script_type sequence, s
     pin_value headers[] = { initial(l, sequence), { .type = PIN_I32 } };
     int slots[] = { array, index };
     if (sequence.container == PIN_CONTAINER_VIEW) {
-        return primitive(l, &EXECUTION_sequence_get_call, &EXECUTION_value_access, headers, slots, 2, item, range);
+        return primitive(
+            l,
+            &EXECUTION_sequence_get_call,
+            &EXECUTION_sequence_read_access,
+            headers,
+            slots,
+            2,
+            item,
+            range
+        );
     }
     emit(l, (behavior_function_instruction){ .op = BF_ASSERT, .left = array, .target = BEHAVIOR_FUNCTION_ARGUMENT }, range);
     int stride = value_op(
@@ -4245,15 +4254,25 @@ static int sequence_item(lower *l, int array, int index, script_type sequence, s
                                          .offset = offsetof(pin_array, stride) },
         range
     );
+    int zero = constant(l, (pin_value){ .type = BF_POINTER_TYPE }, range);
+    int packed_storage = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_NE, .type = BF_POINTER_TYPE, .left = stride, .right = zero },
+        range
+    );
     int packed = emit(
         l,
-        (behavior_function_instruction){ .op = BF_BRANCH, .left = stride, .target = -1 },
+        (behavior_function_instruction){ .op = BF_BRANCH,
+                                         .left = packed_storage,
+                                         .target = -1 },
         range
     );
     int copied = primitive(
         l,
         &EXECUTION_sequence_get_call,
-        &EXECUTION_value_access,
+        &EXECUTION_sequence_read_access,
         headers,
         slots,
         2,
@@ -4715,7 +4734,7 @@ static int expression_value(lower *l, int index)
                 : clone ? &EXECUTION_sequence_clone_call
                 : e->member == SCRIPT_SEQUENCE_VIEW ? &EXECUTION_sequence_view_call
                                                     : &EXECUTION_sequence_slice_call,
-                &EXECUTION_value_access,
+                &EXECUTION_sequence_read_access,
                 headers,
                 slots,
                 clone || length ? 1 : 4,
@@ -6424,7 +6443,7 @@ static void statement(lower *l, int index)
                 array = primitive(
                     l,
                     &EXECUTION_sequence_clone_call,
-                    &EXECUTION_value_access,
+                    &EXECUTION_sequence_read_access,
                     &header,
                     &original,
                     1,
@@ -6866,6 +6885,13 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
             dependency_expressions(l, e->left, visited, out);
             dependency_expressions(l, e->right, visited, out);
             return;
+        case SCRIPT_EXPR_SEQUENCE:
+            dependency_expressions(l, e->left, visited, out);
+            dependency_expressions(l, e->right, visited, out);
+            for (int i = 0; i < e->argument_count; i++) {
+                dependency_expressions(l, e->arguments[i].value, visited, out);
+            }
+            return;
         case SCRIPT_EXPR_CALL:
             if ((e->effects & (SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)) &&
                 !(e->type.flags & SCRIPT_TYPE_RESULTS)) {
@@ -7033,6 +7059,14 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
                     symbol->source_relationship != 0 || symbol->source_variable != 0
                 );
             }
+        }
+        return;
+    }
+    if (e->kind == SCRIPT_EXPR_SEQUENCE) {
+        binding_fields(l, binding, e->left, visited);
+        binding_fields(l, binding, e->right, visited);
+        for (int i = 0; i < e->argument_count; i++) {
+            binding_fields(l, binding, e->arguments[i].value, visited);
         }
         return;
     }
@@ -7339,7 +7373,7 @@ static void lower_function(lower *l, int index)
                         : l->a->symbols[i].type
                 );
                 pin_value owned;
-                if (pin_value_snapshot_to_arena(&l->module->storage, &owned, &type)) {
+                if (pin_value_capture_to_arena(&l->module->storage, &owned, &type)) {
                     error(l, f->range, "Cannot retain closure capture type");
                     owned = type;
                 }
@@ -7959,7 +7993,7 @@ static execution_module_plan *lower_analysis(
             }
         }
         pin_value retained;
-        if (pin_value_snapshot_to_arena(&m->storage, &retained, &value)) {
+        if (pin_value_capture_to_arena(&m->storage, &retained, &value)) {
             error(&l, s->declaration, "State default cannot be retained by the module");
             retained = (pin_value){ .type = value.type };
         }
@@ -8044,7 +8078,7 @@ static execution_module_plan *lower_analysis(
             if ((value.type == PIN_STRUCT || value.container != PIN_CONTAINER_SINGLE) &&
                 !(initializer->results[j].flags & SCRIPT_TYPE_OPTIONAL)) {
                 failure = EXECUTION_construct_call.value(&m->storage, &value, 1, &retained);
-            } else if (pin_value_snapshot_to_arena(&m->storage, &retained, &value)) {
+            } else if (pin_value_capture_to_arena(&m->storage, &retained, &value)) {
                 failure = "Cannot retain action output default";
             }
             if (failure) {
@@ -8192,7 +8226,7 @@ static execution_module_plan *lower_analysis(
         out.component = component_type ? component_type->component_id : 0;
         out.layout = component_type ? component_type->layout : 0;
         pin_value target_type = initial(&l, target->type);
-        if (pin_value_snapshot_to_arena(&m->storage, &out.target_type, &target_type)) {
+        if (pin_value_capture_to_arena(&m->storage, &out.target_type, &target_type)) {
             error(&l, b->range, "Cannot retain binding target layout");
         }
         out.reads = xmalloc((size_t)(b->read_count + 1) * sizeof *out.reads);

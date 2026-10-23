@@ -2,7 +2,6 @@
 
 #include "types/array.h"
 #include "types/array_internal.h"
-#include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
 
@@ -54,7 +53,7 @@ static bool snapshot_type_valid(const type_desc *type)
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (!nested || nested->size != field->size || !snapshot_type_valid(nested)) {
                 return false;
             }
@@ -76,6 +75,12 @@ static bool snapshot_value_valid(const pin_value *value)
     }
     if (value->container >= PIN_CONTAINER_ARRAY && value->ptr) {
         const pin_array *array = value->ptr;
+        if (pin_array_owner(array)->storage) {
+            return true;
+        }
+        if (!pin_array_view_valid(array)) {
+            return false;
+        }
         for (int i = 0; i < array->count; i++) {
             pin_value item = pin_array_get(array, i);
             if (!snapshot_value_valid(&item)) {
@@ -209,7 +214,7 @@ pin_value native_array_extend(const pin_value *inputs, int count, arena *a)
     (void)count;
     const pin_array *left = array_arg(inputs, 0);
     const pin_array *right = array_arg(inputs, 1);
-    if (!left || !right || !pin_record_same(left->record, right->record)) {
+    if (!left || !right || !pin_value_layout_same(&inputs[0], &inputs[1])) {
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     int total = left->count + right->count;
@@ -359,11 +364,12 @@ pin_value native_array_resize(const pin_value *inputs, int count, arena *a)
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     int size = inputs[1].i < 0 ? 0 : inputs[1].i;
-    if (source->record && size > source->count) {
+    if (source->record && !source->record->native && size > source->count) {
         return (pin_value){ .type = PIN_FLOW };
     }
     pin_array
-        *array = source->element_type == PIN_STRUCT && size > source->count
+        *array = source->element_type == PIN_STRUCT && !source->record &&
+                         size > source->count
                    ? pin_array_snapshot_allocate(a, source->element_type, source->type_name, size)
                    : pin_array_snapshot_like(a, source, size);
     if (!array) {
@@ -374,7 +380,12 @@ pin_value native_array_resize(const pin_value *inputs, int count, arena *a)
         return (pin_value){ .type = PIN_FLOW };
     }
     for (int i = retained; i < size; i++) {
-        pin_value value = { .type = source->element_type, .type_name = array->type_name };
+        if (array->stride && array->record && array->record->native) {
+            continue;
+        }
+        pin_value value = { .type = source->element_type,
+                            .type_name = array->type_name,
+                            .record = array->record };
         if (pin_array_set(array, i, &value)) {
             return (pin_value){ .type = PIN_FLOW };
         }
@@ -407,7 +418,7 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
 static const char *resize_error(const pin_value *inputs)
 {
     pin_array source = array_or_empty(inputs, 0);
-    return source.record && inputs[1].i > source.count
+    return source.record && !source.record->native && inputs[1].i > source.count
              ? "Cannot grow an authored record array without initialized rows"
              : NULL;
 }
@@ -443,12 +454,12 @@ static const char *resize_error(const pin_value *inputs)
                  : NULL;                                                                                        \
     }                                                                                                           \
     const node_host_call NATIVE_ARRAY_##KERNEL##_HOST = { .value = KERNEL##_owned,                              \
-                                                          .variadic = VARIADIC };                               \
+                                                          .variadic = VARIADIC, .language_values = true };                               \
     const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = { .value = KERNEL##_snapshot,                           \
-                                                          .variadic = VARIADIC };
+                                                          .variadic = VARIADIC, .language_values = true };
 #define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                      \
-    const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call }; \
-    const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call };
+    const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call, .language_values = true }; \
+    const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call, .language_values = true };
 NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
 #undef ADD
 #undef CALL

@@ -1,3 +1,9 @@
+> Current sequence decision (2026-10-22): ordinary arrays/maps/builders are
+> independent values with copy-on-write; explicit pointers share mutable access.
+> This supersedes the earlier shared-array draft below. See
+> [the revised sequence plan](docs/value-sequences.md). Mutable views await a
+> separate decision; the draft source is preserved and unpublished.
+
 # Chibi toolchain consolidation and self-hosting
 
 ## How to execute this plan

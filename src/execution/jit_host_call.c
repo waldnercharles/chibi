@@ -145,6 +145,23 @@ bool behavior_jit_host_call(
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
         sljit_set_label(ok, label);
     }
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+    sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_host_results);
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_R0,
+        0
+    );
+    struct sljit_jump *results_ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    behavior_jit_failure(m, i, i->left);
+    struct sljit_label *results_label = sljit_emit_label(c);
+    if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
+        sljit_set_label(results_ok, results_label);
+    }
     return true;
 }
 #endif

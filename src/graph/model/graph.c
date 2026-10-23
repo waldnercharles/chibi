@@ -849,7 +849,7 @@ int graph_set_pin_container(graph *g, node *n, int output, int index, pin_contai
     pin_spec *p = output ? n->output_pins : n->input_pins;
     int count = output ? n->output_count : n->input_count;
     if (index < 0 || index >= count || container < PIN_CONTAINER_SINGLE ||
-        container > PIN_CONTAINER_MAP) {
+        container > PIN_CONTAINER_VIEW) {
         return -1;
     }
     if (p[index].container == container) {

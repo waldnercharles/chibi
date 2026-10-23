@@ -50,7 +50,8 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         actual->context != canonical->context || actual->action != canonical->action ||
         actual->optional_service != canonical->optional_service ||
         actual->variadic != canonical->variadic ||
-        actual->reusable != canonical->reusable) {
+        actual->reusable != canonical->reusable ||
+        actual->language_values != canonical->language_values) {
         return 0;
     }
     int count = host->result_first - host->first;

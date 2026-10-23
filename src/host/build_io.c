@@ -21,7 +21,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define BUILD_FILE_LIMIT (1024 * 1024)
+/* A file read or written whole is one build text value. */
+#define BUILD_FILE_LIMIT BUILD_TEXT_LIMIT
 #define BUILD_EMBED_LIMIT (64 * 1024 * 1024)
 #define BUILD_IO_CHUNK 4096
 #define BUILD_IO_COPY_CHUNK 65536
@@ -98,13 +99,11 @@ bool build_io_read(
     double deadline,
     const volatile sig_atomic_t *cancelled,
     char **out,
-    size_t *length,
     const char **error
 )
 {
     assert(out && error);
     *out = NULL;
-    *length = 0;
     *error = io_ready(deadline, cancelled);
     if (*error) {
         return false;
@@ -125,7 +124,7 @@ bool build_io_read(
     if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size < 0 ||
         info.st_size > BUILD_FILE_LIMIT) {
         close(fd);
-        *error = "build file must be regular data of at most 1 MiB";
+        *error = "build file must be regular text of at most 16 MiB";
         return false;
     }
     char *text = xmalloc(BUILD_FILE_LIMIT + 1);
@@ -148,9 +147,13 @@ bool build_io_read(
         if (!count) {
             break;
         }
+        if (memchr(text + size, 0, (size_t)count)) {
+            *error = "build file contains NUL bytes";
+            break;
+        }
         size += (size_t)count;
         if (size > BUILD_FILE_LIMIT) {
-            *error = "build file exceeds 1 MiB";
+            *error = "build file exceeds 16 MiB";
             break;
         }
     }
@@ -163,7 +166,6 @@ bool build_io_read(
     }
     text[size] = 0;
     *out = text;
-    *length = size;
     return true;
 }
 
@@ -236,12 +238,12 @@ bool build_io_write(
     const char *root,
     const char *path,
     const char *text,
-    size_t size,
     double deadline,
     const volatile sig_atomic_t *cancelled
 )
 {
     assert(text);
+    size_t size = strnlen(text, BUILD_FILE_LIMIT + 1);
     if (size > BUILD_FILE_LIMIT || io_ready(deadline, cancelled)) {
         return false;
     }

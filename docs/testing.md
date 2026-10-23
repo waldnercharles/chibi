@@ -141,45 +141,6 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
-The length-carrying string migration adds independently reviewed, fixed CPU
-workloads under the existing 60-second deadline per selector. This is admission
-for the first measurement; it does not record a pass.
-
-- `language-record-values`: thirteen cases, including eight fixed UTF-8 vectors,
-  eight indexed string keys, and ownership/native-boundary checks. One tiny
-  nested-record case checks local type resolution, a conflicting global shape,
-  atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
-  it adds no loops or child processes.
-- `language-execution`: twenty-eight cases. The added five-instruction function
-  runs eight times across two backends with a 100-instruction budget; four
-  iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
-  checks read ownership and rejection before reference/constructor publication.
-- `language-package-core`: seven cases and 386 calls, retaining the existing
-  10,000-instruction per-call budget.
-- `language-record-document`: five cases, adding three tiny JSON roundtrips,
-  four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
-  budget failure, metadata rejection and invalid field markers. A native-field
-  size check uses an 81-byte stack string and a nearly exhausted logical budget
-  with a hash sink; it allocates no large output buffer.
-- `build-process`: thirty-four cases. The new helper case adds five operations
-  on at most seven bytes and no processes. Existing invocation and child limits
-  remain unchanged; binary-output and file assertions replace text rejection.
-- `ecs-strings`: three cases, each with one entity, at most two components and
-  fixed short strings. Rejected writes preserve payloads, versions and intern
-  statistics; successful writes retain bytes after the original storage changes.
-- `language-program` and its `language-query-program` subset add one descriptor
-  observer case: one entity, two tiny bytecode functions and two program steps
-  with a 1,000-instruction budget to check a three-byte payload.
-- `c-export-alias`: the existing second compiler child includes one additional
-  ten-instruction string function, two samples and four VM/generated-C calls
-  with budget 64. A fixed 4 KiB stack disturbance checks returned descriptor
-  lifetime. The two compiler children, 10-second child deadlines and second
-  child's 64 KiB source cap remain unchanged.
-
-These extensions add no rendering, GPU or network work and no additional child
-process launches. They do not enable a quarantined aggregate.
-
 The compiled-runtime rollout passed native, language, tooling, materials and
 project groups under their shared 60-second deadlines. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine
@@ -272,20 +233,6 @@ all eight signed and unsigned widths, and optional context-aware logging. Native
 to these small functions; there are no files, processes, frames or GPU work.
 Debug Clang 23.1.1 with ASan/UBSan passed 10 cases and 726 assertions in 0.577
 seconds on 2026-10-07, including actual VM and SLJIT execution.
-
-The 2026-10-21 shift-contract regression adds sixteen tiny functions (eight
-integer types, two directions), each run on VM and the compiled backend with
-three invalid counts: width, width plus one, and all bits set. These 96 calls
-check DATA failure and source metadata. Existing valid-shift cases cover zero,
-one and width minus one, sign extension and discarded bits. This bounded
-extension was independently reviewed before execution; the shared deadline
-and no-IO/no-process constraints are unchanged.
-
-The same dispatcher adds six two-frame, ten-instruction definitions to check
-the optimizer's treatment of failing shifts. Twenty invocations, each capped at
-100 instructions, cover both directions, variable counts and valid/invalid
-constant counts on both backends. An unused invalid shift must still fail and
-preserve a prior persistent write; a valid shift reaches the subsequent write.
 
 `python3 tools/test_policy.py tool language-program` selects twelve independently
 reviewed source/runtime cases on VM and SLJIT. Besides typed events, systems,
@@ -1080,14 +1027,6 @@ The language follow-up admits these focused C checks under the same supervisor:
   columns. These coexist with the two query-variable definitions and sixteen
   query calls below, sharing the same compiler child and source-size bound.
   The combined generated source requires independent admission before execution.
-  The 2026-10-21 checked-shift extension is a second pico case in the same
-  dispatcher. It adds eight nine-instruction functions (eight integer types,
-  a direction argument), with six counts per direction and 192 paired
-  VM/generated-C calls. It checks valid values and invalid-count DATA metadata.
-  Its source is capped at 64 KiB; the original case retains its 128 KiB bound.
-  Each case has one compiler child with the existing 10-second limit, and both
-  share the selector's 60-second deadline. Cleanup runs between cases. The
-  combined workload requires independent review before execution.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -1208,7 +1147,7 @@ make test-list
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | The admitted native language aggregate under one shared deadline; standalone selectors are listed separately by `make test-list`. |
-| `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
+| `test-bootstrap` | Stage one compiles the compiler and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; see `docs/package-compiler.md`. |
 | `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -1328,7 +1267,7 @@ identifiers, basename extraction, the byte procedures ported from Odin's
 counting, case, trimming, cutting, repetition, splitting, joining, replacement
 and partition), generic native arrays, binding-generation invalidation and
 retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
-and 18 imports, with at most 36 package visits before reuse and 386 direct
+and 18 imports, with at most 36 package visits before reuse and 378 direct
 calls, each with a 10,000-instruction budget. At most three owners and
 three-element arrays are live; core source is below 16 KiB and the app below
 4 KiB. There is no filesystem, process, service or GPU work. Installed consumers
@@ -1529,7 +1468,7 @@ first run, build separately and use one shared 60-second ceiling outside the
 language aggregate.
 
 `python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
-scalar folding using 91 fixed requests and 182 authored calls across bytecode and
+scalar folding using 70 fixed requests and 140 authored calls across bytecode and
 SLJIT. Three pico cases prepare the four actual compiler packages once per
 backend (eight source parses, each below 64 KiB). Each call permits two million
 instructions and contains at most seven expressions, one symbol and no aggregate
@@ -1538,8 +1477,7 @@ evaluator; the authored implementation uses separate proof and evaluation
 budgets, preserving the production limit of 65,536 for each.
 
 The corpus covers all thirteen physical scalar variants, exact floating-point
-bits, numeric conversions, integer wrap and division failures, checked shift
-counts and discarded shift bits at fixed operand widths,
+bits, numeric conversions, integer wrap and division failures, masked shifts,
 result storage and float rounding, string presence, symbols, promotion and
 Boolean short-circuiting after full admissibility. Inputs retire before result
 inspection. Explicit arena checks verify detached union and string ownership;
@@ -2228,24 +2166,33 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`python3 tools/test_policy.py tool build-graph` runs four C cases for the Chibi
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against the CMake
 build that configured the tests. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler file. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` (and the debug directory,
-which depends on where a build is), the graph finds the rest of its profile
-on the machine and writes the compile commands of every target it owns, including
-the third-party archive's sources and include directories and the options of
-single sources, and each of the 363
-must equal `compile_commands.json`'s for the same source, apart from the
-object path and with the temporary build directory standing for CMake's. In a
-copy of the sources, about ten runs that build only `chibi_support` then check
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of the 711 must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each of the four link commands it writes in `link_commands.json` to
+equal its executable's `build.ninja` statement, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 12 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or
 the flags or deleting an object recompiles exactly what depends on it, that a
 staged header nothing publishes is removed, and that a source that fails to
 compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about fifteen C files with the profile's sanitizers,
-about 32 s at a load average of 8.
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
 
 `python3 tools/test_policy.py tool build-graph-reflect` builds and links
 `reflect` from the graph (27 C files with the profile's sanitizers), requires
@@ -2256,17 +2203,26 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT from the
-third-party archive CMake configured with, and `chibi_vector_capabilities`
-over the archive's Cute math headers, which the graph stages: three C files
-with the profile's sanitizers. A second run compiles nothing, the object sits
-below `objects/chibi_execution_sljit/third-party/`, and the staged
-`cute_math.h` equals CMake's; a run naming an archive that is not unpacked
-fails before compiling and says so. A second case builds `chibi_native_types`
-with the configured build's `reflect` (`--reflect`): the graph stages the math
-headers, runs reflect as CMake does and compiles the one source; both written
-sources equal CMake's byte for byte, and an unchanged run neither reruns
-reflect nor compiles. About 23 s at a load average of 10.
+`python3 tools/test_policy.py tool build-graph-archive` builds SLJIT and
+enkiTS's C++ scheduler from the third-party archive CMake configured with,
+`chibi_vector_capabilities` over the archive's Cute math headers, which the
+graph stages, and the task pool: four C and two C++ files with the profile's
+sanitizers. A second run compiles nothing, the objects sit below
+`objects/TARGET/third-party/`, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or with C++ sources and no C++ compiler, fails before compiling and
+says so. About 32 s at a load average of 10.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. About 19 s at a load
+average of 12.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover

@@ -1,0 +1,6 @@
+{
+  "scratch": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition",
+  "patch_sha256": "64e32c656c7ada9c303099bb8b6aa5f6508b5651475889985c4f444ff31cbf3f",
+  "manifest_sha256": "9525b611d8ea75ed5affe358738b004bcc0efd0cc33b00934794978d4bed659d",
+  "root_review_hold": "Fresh-only build-cache behavior rejected; legitimate known legacy copies must remain inert, with filtered admission and fresh-stage copying."
+}

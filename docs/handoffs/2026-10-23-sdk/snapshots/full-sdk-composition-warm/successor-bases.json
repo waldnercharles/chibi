@@ -1,0 +1,18 @@
+{
+  "sdk/CMakeLists.txt": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/sdk/CMakeLists.txt",
+    "sha256": "a5825bbdbf42baa80e3a2a9d7c5a38127038b54de53c5b5bf30fc7f20679fc8f"
+  },
+  "test/tools/build_sdk.c": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm/before/test/tools/build_sdk.c",
+    "sha256": "97709571a0d252504f6e1a6cc6dc6c627e0fa455c94fe9578f9eb65aa0000c84"
+  },
+  "tools/graph/engine/Engine.chibi": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/tools/graph/engine/Engine.chibi",
+    "sha256": "b23090862364e548dfd4060e408ee9ee8faf5503df8210f23bf398f1f431ecf2"
+  },
+  "tools/toolchain/SDK.chibi": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/tools/toolchain/SDK.chibi",
+    "sha256": "9959648e13de40898644d0f46c1b9233ba91ff3253fdacd7bd08e54885d84108"
+  }
+}

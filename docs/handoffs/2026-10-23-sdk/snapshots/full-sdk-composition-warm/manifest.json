@@ -1,0 +1,138 @@
+{
+  "date": "2026-10-23",
+  "status": "Source-only successor, independent source reviews clear, exact root review pending. No code executed/imported/committed/published. Mixed source bases, not an eligible combined tree.",
+  "files": {
+    "sdk/CMakeLists.txt": {
+      "sha256": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1",
+      "bytes": 49188,
+      "baseline": {
+        "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+        "source_path": "sdk/CMakeLists.txt",
+        "sha256": "198d0c945b60ca668da5f62db526f16dbdce314cae88f2ec2b4fed0cccd4763f"
+      }
+    },
+    "test/tools/build_sdk.c": {
+      "sha256": "6820476e16e84083558dffa430a1e3881f622d7c25d61e5e345bd40810684dfd",
+      "bytes": 66355,
+      "baseline": {
+        "source": "frozen Project SDK tree47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+        "sha256": "97709571a0d252504f6e1a6cc6dc6c627e0fa455c94fe9578f9eb65aa0000c84"
+      }
+    },
+    "tools/compiler/NativeBuildFiles.txt": {
+      "sha256": "4c66da9b67e0383a927f895146d0f56ca1463e69db71a083785200b6df0c2727",
+      "bytes": 232,
+      "baseline": {
+        "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+        "source_path": "tools/compiler/NativeBuildFiles.txt",
+        "absent": true
+      }
+    },
+    "tools/graph/engine/Engine.chibi": {
+      "sha256": "7d36033e27dc696a200bf6a68fbf0312881b3db6a8831c25548a3e559d84e5aa",
+      "bytes": 42460,
+      "baseline": {
+        "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+        "source_path": "tools/graph/engine/Engine.chibi",
+        "sha256": "27a2c23e90d3447bdfbfddc0c0d52a528552a0dff10ae15886ed87e4b3cdcb11"
+      }
+    },
+    "tools/package_sdk.py": {
+      "sha256": "5db638c8a496318635c59fed7e852d2daf6cab4b58e52807c7a31594a7374725",
+      "bytes": 48302,
+      "baseline": {
+        "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+        "source_path": "tools/package_sdk.py",
+        "sha256": "e2bed0eb3ed911e0cc4c878e1cb6d6074a348bcf3c21e7afe3b9895e3737cb71"
+      }
+    },
+    "tools/toolchain/SDK.chibi": {
+      "sha256": "d66e0de1e0d84579d250bad9a83bb482c3472bc00cd1cd448028262b4fb4a3b7",
+      "bytes": 37278,
+      "baseline": {
+        "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/tools/toolchain/SDK.chibi",
+        "sha256": "44d8af265c43d5e001ad3955118c69bdb3744076a2349757ca41cbac09f6bcdc"
+      }
+    }
+  },
+  "patch_sha256": "7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a",
+  "minimal_successor_patch_sha256": "2442c3553d1d7260ad7cc73666e8f714bd804ce68a7c4c6dab022652d99abd2b",
+  "minimal_successor_bases": {
+    "sdk/CMakeLists.txt": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/sdk/CMakeLists.txt",
+      "sha256": "a5825bbdbf42baa80e3a2a9d7c5a38127038b54de53c5b5bf30fc7f20679fc8f"
+    },
+    "test/tools/build_sdk.c": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm/before/test/tools/build_sdk.c",
+      "sha256": "97709571a0d252504f6e1a6cc6dc6c627e0fa455c94fe9578f9eb65aa0000c84"
+    },
+    "tools/graph/engine/Engine.chibi": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/tools/graph/engine/Engine.chibi",
+      "sha256": "b23090862364e548dfd4060e408ee9ee8faf5503df8210f23bf398f1f431ecf2"
+    },
+    "tools/toolchain/SDK.chibi": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition/after/tools/toolchain/SDK.chibi",
+      "sha256": "9959648e13de40898644d0f46c1b9233ba91ff3253fdacd7bd08e54885d84108"
+    }
+  },
+  "predecessor": {
+    "scratch": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition",
+    "patch_sha256": "64e32c656c7ada9c303099bb8b6aa5f6508b5651475889985c4f444ff31cbf3f",
+    "manifest_sha256": "9525b611d8ea75ed5affe358738b004bcc0efd0cc33b00934794978d4bed659d",
+    "root_review_hold": "Fresh-only build-cache behavior rejected; legitimate known legacy copies must remain inert, with filtered admission and fresh-stage copying."
+  },
+  "composition_source_checks": {
+    "project_helpers_cases_byte_identical": true,
+    "project_helpers_cases_sha256": "1a31c2738c1eba2aabc3ec80f2f73cb637027784b44b9f6541999c25a91ef761",
+    "all_case_dispatch_gating_byte_identical": true,
+    "typed_semantic_compile_command_oracle_byte_identical": true,
+    "typed_oracle_sha256": "cf7c47749b034b66c85d0433f5217320fd07ba92ff1bead20e61990fa20cae71",
+    "ckdl_absent_from_composed_sdk_fixture": true,
+    "validation": "source comparison only; no test execution"
+  },
+  "contract_sha256": "61116d9a663df705c6915d893994f441ec3798743a4ff95b43ae1e3bf28b39bb",
+  "coverage_sha256": "102cf160a02e32962b0ffa84f3827b4f98be30529c2de71b09899412d116a620",
+  "compiler_payload_receipt_sha256": "4411b93bcbd99ac81900bf1f6a16b0b4058de975d93d06a99350c3428ff749a6",
+  "preserved": {
+    "project_sdk_index_tree": "47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+    "typed_working_source_matches_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "predecessor_patch_and_manifest_unchanged": true
+  },
+  "api": {
+    "packager_opt_in": "--project-policy-source ABS",
+    "prepare_entry": "PrepareInstalledProject",
+    "verify_entry": "VerifyInstalledProject",
+    "common_raw_keys": [
+      "--prefix",
+      "--build-host",
+      "--compiler-host",
+      "--assembly",
+      "--compiler-backend"
+    ],
+    "prepare_extra_key": "--policy-source",
+    "cold_cache": "absent STAGE.project-cache sibling under owned temporary parent"
+  },
+  "warm_semantics": "Exact four native build leaves remain opaque, inert and untouched in warm cache. Future copies skip them before stat/read/hash. SDK admission filters source/cache, selected-file stage copy followed by strict unfiltered actual-stage verification. Nonexcluded aliases/extra/missing/changed selected files reject; no cleanup deletion or fresh-build requirement.",
+  "coverage_source": "Existing8normalcases extended; all3optinProjectcases and allcase dispatch/gates byte-identical. Private warm regular4+excluded leaf alias, missing/changed/unrelated semantic inputs, private parent-alias source preservation. Typed acb semantic oracle byte-identical; typed noCKDL four-line composition preserved.",
+  "reviews": [
+    "Independent production/lifecycle/inventory review clear",
+    "Independent semantic cache/copy/admission review clear",
+    "Independent C fixture/ownership/alias review clear"
+  ],
+  "checks": [
+    "Python AST source parse only",
+    "Full patch applies to exact ignored mixed baselines",
+    "Minimal successor delta applies to preserved predecessor plus frozen47bbe C",
+    "No whitespace diagnostics",
+    "C clang-format22.1.8 dry-run reported passing at exact C hash",
+    "Per-file/source-composition identities verified"
+  ],
+  "pending": [
+    "Root review of exact successor",
+    "Corrected reviewed Project artifact/resources.json pair-publication source/hash",
+    "Eligible combined compiler+typed+prepared-host source candidate",
+    "Actual ordinary warm CMake/Graph rebuild and fresh installed/relocated bootstrap, prepared host/capability/readiness proofs",
+    "Actual C SDK cases, full SDK identity/byte preservation and native asset consumers",
+    "Required repository validation before commit/adoption"
+  ]
+}

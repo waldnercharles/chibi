@@ -1,0 +1,540 @@
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -635,11 +635,13 @@
+     # Raw C facades remain native build inputs. The semantic host payload
+     # shares its exclusions with graph resource copying and SDK admission.
+     file(STRINGS "${CHIBI_SDK_ROOT}/tools/compiler/NativeBuildFiles.txt" compiler_native_inputs)
++    foreach(source IN LISTS compiler_native_inputs)
++        list(REMOVE_ITEM build_compiler_inputs "${source}")
++    endforeach()
+     file(REAL_PATH "${CMAKE_BINARY_DIR}" compiler_build_root)
+-    # Validate every existing destination parent before any resource copy.
+-    # Legacy native-only copies require a fresh build output; never delete
+-    # through a warm tree that may alias a source directory.
+-    foreach(source IN LISTS build_compiler_inputs compiler_native_inputs)
++    # Validate only selected destinations before copying. Known legacy native
++    # leaves are inert cache data: never inspect, overwrite or delete them.
++    foreach(source IN LISTS build_compiler_inputs)
+         get_filename_component(directory "share/chibi/compiler/${source}" DIRECTORY)
+         string(REPLACE "/" ";" components "${directory}")
+         set(parent "${compiler_build_root}")
+@@ -652,13 +654,6 @@
+         set(destination "${compiler_build_root}/share/chibi/compiler/${source}")
+         if(IS_SYMLINK "${destination}" OR IS_DIRECTORY "${destination}")
+             message(FATAL_ERROR "Compiler payload destination is aliased or not a file: ${destination}")
+-        endif()
+-    endforeach()
+-    foreach(source IN LISTS compiler_native_inputs)
+-        list(REMOVE_ITEM build_compiler_inputs "${source}")
+-        set(stale "${compiler_build_root}/share/chibi/compiler/${source}")
+-        if(EXISTS "${stale}" OR IS_SYMLINK "${stale}")
+-            message(FATAL_ERROR "Native-only compiler resources require a fresh build output: ${stale}")
+         endif()
+     endforeach()
+     foreach(source IN LISTS build_compiler_inputs)
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -31,6 +31,13 @@
+ static char suite[SDK_PATH], log_path[SDK_PATH];
+ static char project_source[SDK_PATH], project_assembly[SDK_PATH];
+ 
++static const char *native_build_files[] = {
++    "asset_compiler/bootstrap/native64/asset_compiler_blob.inc",
++    "asset_compiler/bootstrap/native64/asset_compiler_packaged.c",
++    "asset_compiler/bootstrap/wasm32/asset_compiler_blob.inc",
++    "asset_compiler/bootstrap/wasm32/asset_compiler_packaged.c",
++};
++
+ static void join(char out[SDK_PATH], const char *base, const char *name)
+ {
+     int size = snprintf(out, SDK_PATH, "%s/%s", base, name);
+@@ -117,6 +124,67 @@
+     }
+     assert(!closedir(directory));
+     return same;
++}
++
++/* Native build leaves may remain in a warm cache, but every other regular
++ * file belongs to the semantic payload. Reject directory aliases. */
++static int semantic_files(const char *path, const char *relative, const char *other)
++{
++    for (size_t i = 0; i < sizeof native_build_files / sizeof *native_build_files; i++) {
++        if (!strcmp(relative, native_build_files[i])) {
++            return 0;
++        }
++    }
++    struct stat info;
++    if (lstat(path, &info)) {
++        return -1;
++    }
++    if (S_ISREG(info.st_mode)) {
++        char peer[SDK_PATH];
++        join(peer, other, relative);
++        struct stat peer_info;
++        return !lstat(peer, &peer_info) && S_ISREG(peer_info.st_mode) &&
++                       info.st_size == peer_info.st_size && same_file(path, peer)
++                 ? 1
++                 : -1;
++    }
++    if (!S_ISDIR(info.st_mode)) {
++        return -1;
++    }
++    DIR *directory = opendir(path);
++    assert(directory);
++    int count = 0;
++    for (struct dirent *entry; count >= 0 && (entry = readdir(directory));) {
++        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
++            continue;
++        }
++        char child[SDK_PATH], name[SDK_PATH];
++        join(child, path, entry->d_name);
++        if (*relative) {
++            join(name, relative, entry->d_name);
++        } else {
++            strcpy(name, entry->d_name);
++        }
++        int below = semantic_files(child, name, other);
++        count = below < 0 ? -1 : count + below;
++    }
++    assert(!closedir(directory));
++    return count;
++}
++
++static bool compiler_payload_matches(const char *prefix, const char *build)
++{
++    char ours[SDK_PATH], source[SDK_PATH];
++    join(ours, prefix, "share/chibi/compiler");
++    join(source, build, "share/chibi/compiler");
++    int expected = semantic_files(source, "", ours);
++    REQUIRE(expected > 0 && semantic_files(ours, "", source) == expected);
++    for (size_t i = 0; i < sizeof native_build_files / sizeof *native_build_files; i++) {
++        char path[SDK_PATH];
++        join(path, ours, native_build_files[i]);
++        REQUIRE(!exists(path));
++    }
++    return true;
+ }
+ 
+ static bool file_digest(const char *path, char digest[65])
+@@ -302,18 +370,37 @@
+     return !tool_run_within(argv, suite, log_path, SDK_RUN_SECONDS);
+ }
+ 
++static bool clone_graph(char clone[SDK_PATH], const char *name)
++{
++    char path[SDK_PATH];
++    join(clone, suite, name);
++    REQUIRE(!mkdir(clone, 0700));
++    static const char *directories[] = { "sdk", "share", "share/chibi" };
++    for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
++        join(path, clone, directories[i]);
++        REQUIRE(!mkdir(path, 0700));
++    }
++    static const char *inputs[] = {
++        "sdk/chibi-build-host",    "sdk/chibi-build-host.chibi-record",
++        "sdk/chibi-compiler-host", "sdk/chibi-compiler-host.chibi-record",
++        "share/chibi/compiler",    "share/chibi/core",
++    };
++    for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
++        char source[SDK_PATH];
++        join(source, build_path, inputs[i]);
++        join(path, clone, inputs[i]);
++        REQUIRE(clone_file(source, path));
++    }
++    return true;
++}
++
+ static bool distribution_source(char root[SDK_PATH])
+ {
+     join(root, suite, "containment source");
+     REQUIRE(!mkdir(root, 0700));
+     static const char *directories[] = {
+-        "tools",
+-        "packages",
+-        "tools/toolchain",
+-        "third_party",
+-        "third_party/fmt",
+-        "third_party/yyjson",
+-        "third_party/ckdl",
++        "tools",       "packages",        "tools/toolchain",
++        "third_party", "third_party/fmt", "third_party/yyjson",
+         "docs",
+     };
+     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
+@@ -321,16 +408,13 @@
+         join(path, root, directories[i]);
+         REQUIRE(!mkdir(path, 0700));
+     }
+-    static const char *resources[][2] = {
+-        { "share/chibi/compiler", "tools/compiler" },
+-        { "share/chibi/core", "packages/core" },
+-    };
+-    for (size_t i = 0; i < sizeof resources / sizeof *resources; i++) {
+-        char from[SDK_PATH], to[SDK_PATH];
+-        join(from, build_path, resources[i][0]);
+-        join(to, root, resources[i][1]);
+-        REQUIRE(clone_file(from, to));
+-    }
++    char from[SDK_PATH], to[SDK_PATH];
++    join(from, CHIBI_SOURCE_ROOT, "tools/compiler");
++    join(to, root, "tools/compiler");
++    REQUIRE(clone_file(from, to));
++    join(from, build_path, "share/chibi/core");
++    join(to, root, "packages/core");
++    REQUIRE(clone_file(from, to));
+     static const char *inputs[] = {
+         "tools/graph",
+         "tools/toolchain/Build.chibi",
+@@ -346,10 +430,8 @@
+         "third_party/fmt/LICENSE",
+         "third_party/fmt/README.md",
+         "third_party/yyjson/LICENSE",
+-        "third_party/ckdl/COPYING",
+     };
+     for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
+-        char from[SDK_PATH], to[SDK_PATH];
+         join(from, CHIBI_SOURCE_ROOT, inputs[i]);
+         join(to, root, inputs[i]);
+         REQUIRE(clone_file(from, to));
+@@ -547,6 +629,21 @@
+     return true;
+ }
+ 
++static bool stale_payload_refused(const char *build, const char *name)
++{
++    char output[SDK_PATH], stage[SDK_PATH];
++    join(output, suite, name);
++    int size = snprintf(stage, sizeof stage, "%s.chibi-stage", output);
++    REQUIRE(size > 0 && size < (int)sizeof stage);
++    REQUIRE(install(build, output) == 1);
++    char *log = tool_read(log_path);
++    bool stale = log &&
++                 strstr(log, "sdk: graph compiler/core resources are missing or stale");
++    free(log);
++    REQUIRE(stale && !exists(output) && !exists(stage));
++    return true;
++}
++
+ TEST_CASE(missing_graph_outputs_fail_before_creating_staging)
+ {
+     char empty[SDK_PATH], output[SDK_PATH], stage[SDK_PATH];
+@@ -557,6 +654,49 @@
+     REQUIRE(install(empty, output) == 1);
+     REQUIRE(!exists(output) && !exists(stage));
+     REQUIRE(entries(empty) == 0);
++
++    char clone[SDK_PATH], path[SDK_PATH], backup[SDK_PATH];
++    REQUIRE(clone_graph(clone, "stale semantic compiler"));
++    join(path, clone, "share/chibi/compiler/package_compiler/Compile.chibi");
++    join(backup, suite, "compiler source backup");
++    REQUIRE(!rename(path, backup));
++    REQUIRE(stale_payload_refused(clone, "missing semantic output"));
++    tool_write(path, "package changed_sdk_test\n");
++    REQUIRE(stale_payload_refused(clone, "changed semantic output"));
++    REQUIRE(!unlink(path) && !rename(backup, path));
++
++    /* Only the four declared leaves are inert, including among C inputs. */
++    join(path, clone, "share/chibi/compiler/asset_compiler/bootstrap/native64/unrelated-native-input.c");
++    tool_write(path, "int unrelated_native_input;\n");
++    REQUIRE(stale_payload_refused(clone, "unrelated semantic output"));
++    REQUIRE(!unlink(path));
++
++    char source[SDK_PATH], snapshot[SDK_PATH], target[SDK_PATH], raw[SDK_PATH];
++    join(raw, CHIBI_SOURCE_ROOT, "tools/compiler");
++    join(source, suite, "protected compiler source");
++    REQUIRE(clone_file(raw, source));
++    join(snapshot, suite, "raw compiler witness");
++    REQUIRE(clone_file(source, snapshot));
++    join(target, source, "asset_compiler/bootstrap");
++    struct stat before, after, root_before, root_after, link_before, link_after;
++    REQUIRE(!lstat(source, &root_before) && S_ISDIR(root_before.st_mode));
++    REQUIRE(!lstat(target, &before) && S_ISDIR(before.st_mode));
++    join(path, clone, "share/chibi/compiler/asset_compiler/bootstrap");
++    tool_remove_tree(path);
++    REQUIRE(!symlink(target, path) && !lstat(path, &link_before));
++    REQUIRE(stale_payload_refused(clone, "parent alias output"));
++    char link[SDK_PATH];
++    ssize_t length = readlink(path, link, sizeof link - 1);
++    REQUIRE(length > 0);
++    link[length] = 0;
++    REQUIRE(
++        !strcmp(link, target) && !lstat(path, &link_after) &&
++        S_ISLNK(link_after.st_mode) && link_before.st_dev == link_after.st_dev &&
++        link_before.st_ino == link_after.st_ino && !lstat(target, &after) &&
++        before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
++        !lstat(source, &root_after) && root_before.st_dev == root_after.st_dev &&
++        root_before.st_ino == root_after.st_ino && same_tree(source, snapshot)
++    );
+     return true;
+ }
+ 
+@@ -591,30 +731,6 @@
+     bool retained = text && !strcmp(text, "retain someone else's staging directory\n");
+     free(text);
+     REQUIRE(retained && entries(stage) == 1 && !exists(output));
+-    return true;
+-}
+-
+-static bool clone_graph(char clone[SDK_PATH], const char *name)
+-{
+-    char path[SDK_PATH];
+-    join(clone, suite, name);
+-    REQUIRE(!mkdir(clone, 0700));
+-    static const char *directories[] = { "sdk", "share", "share/chibi" };
+-    for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
+-        join(path, clone, directories[i]);
+-        REQUIRE(!mkdir(path, 0700));
+-    }
+-    static const char *inputs[] = {
+-        "sdk/chibi-build-host",    "sdk/chibi-build-host.chibi-record",
+-        "sdk/chibi-compiler-host", "sdk/chibi-compiler-host.chibi-record",
+-        "share/chibi/compiler",    "share/chibi/core",
+-    };
+-    for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
+-        char source[SDK_PATH];
+-        join(source, build_path, inputs[i]);
+-        join(path, clone, inputs[i]);
+-        REQUIRE(clone_file(source, path));
+-    }
+     return true;
+ }
+ 
+@@ -780,14 +896,70 @@
+     return status;
+ }
+ 
++static bool excluded_alias_is_inert(const char *build)
++{
++    char leaf[SDK_PATH], target[SDK_PATH], output[SDK_PATH], stage[SDK_PATH];
++    char compiler[SDK_PATH];
++    join(compiler, build, "share/chibi/compiler");
++    join(leaf, compiler, native_build_files[0]);
++    REQUIRE(!unlink(leaf));
++    join(target, suite, "excluded leaf target");
++    tool_write(target, "retain the excluded leaf target\n");
++    char digest[65], after_digest[65];
++    struct stat target_before, target_after, link_before, link_after;
++    REQUIRE(file_digest(target, digest) && !lstat(target, &target_before));
++    REQUIRE(!symlink(target, leaf) && !lstat(leaf, &link_before));
++    join(output, suite, "excluded leaf alias output");
++    join(stage, suite, "excluded leaf alias output.chibi-stage");
++    REQUIRE(!install(build, output) && !exists(stage));
++    REQUIRE(compiler_payload_matches(output, build) && manifest_matches(output));
++    char link[SDK_PATH];
++    ssize_t length = readlink(leaf, link, sizeof link - 1);
++    REQUIRE(length > 0);
++    link[length] = 0;
++    REQUIRE(
++        !strcmp(link, target) && !lstat(leaf, &link_after) &&
++        S_ISLNK(link_after.st_mode) && link_before.st_dev == link_after.st_dev &&
++        link_before.st_ino == link_after.st_ino && !lstat(target, &target_after) &&
++        target_before.st_dev == target_after.st_dev &&
++        target_before.st_ino == target_after.st_ino &&
++        file_digest(target, after_digest) && !strcmp(digest, after_digest)
++    );
++    return true;
++}
++
+ TEST_CASE(compiler_tools_package_and_run_after_relocation)
+ {
+-    char original[SDK_PATH], relocated[SDK_PATH], stage[SDK_PATH];
++    char original[SDK_PATH], relocated[SDK_PATH], stage[SDK_PATH], warm[SDK_PATH];
++    REQUIRE(clone_graph(warm, "warm compiler build"));
++    char warm_compiler[SDK_PATH];
++    join(warm_compiler, warm, "share/chibi/compiler");
++    char legacy_hashes[sizeof native_build_files / sizeof *native_build_files][65];
++    for (size_t i = 0; i < sizeof native_build_files / sizeof *native_build_files; i++) {
++        char path[SDK_PATH], text[128];
++        join(path, warm_compiler, native_build_files[i]);
++        if (exists(path)) {
++            REQUIRE(!unlink(path));
++        }
++        int size = snprintf(text, sizeof text, "inert warm native build input %zu\n", i);
++        REQUIRE(size > 0 && size < (int)sizeof text);
++        tool_write(path, text);
++        REQUIRE(file_digest(path, legacy_hashes[i]));
++    }
+     join(original, suite, "compiler tools");
+     join(relocated, suite, "relocated compiler tools");
+     join(stage, suite, "compiler tools.chibi-stage");
+-    REQUIRE(!install(build_path, original));
++    REQUIRE(!install(warm, original));
+     REQUIRE(exists(original) && !exists(stage));
++    for (size_t i = 0; i < sizeof native_build_files / sizeof *native_build_files; i++) {
++        char path[SDK_PATH], digest[65];
++        struct stat info;
++        join(path, warm_compiler, native_build_files[i]);
++        REQUIRE(
++            !lstat(path, &info) && S_ISREG(info.st_mode) &&
++            file_digest(path, digest) && !strcmp(digest, legacy_hashes[i])
++        );
++    }
+     static const char *hosts[] = { "chibi-build-host", "chibi-compiler-host" };
+     for (size_t i = 0; i < sizeof hosts / sizeof *hosts; i++) {
+         char installed[SDK_PATH], built[SDK_PATH], executable[SDK_PATH];
+@@ -797,7 +969,7 @@
+         join(executable, original, installed);
+         REQUIRE(!access(executable, X_OK));
+     }
+-    REQUIRE(copied(original, "share/chibi/compiler", build_path, "share/chibi/compiler"));
++    REQUIRE(compiler_payload_matches(original, warm));
+     REQUIRE(copied(original, "share/chibi/core", build_path, "share/chibi/core"));
+     REQUIRE(copied(original, "share/chibi/graph", CHIBI_SOURCE_ROOT, "tools/graph"));
+     static const char *programs[] = { "Build.chibi", "Graph.chibi", "SDK.chibi", "StageOne.chibi" };
+@@ -826,7 +998,6 @@
+         "fmt/LICENSE",
+         "fmt/README.md",
+         "yyjson/LICENSE",
+-        "ckdl/COPYING",
+     };
+     for (size_t i = 0; i < sizeof dependencies / sizeof *dependencies; i++) {
+         char installed[SDK_PATH], source[SDK_PATH];
+@@ -844,6 +1015,8 @@
+     REQUIRE(!rename(original, relocated));
+     REQUIRE(!exists(original) && receipts_match(relocated));
+     REQUIRE(manifest_matches(relocated));
++    REQUIRE(compiler_payload_matches(relocated, warm));
++    REQUIRE(excluded_alias_is_inert(warm));
+ 
+     char consumer[SDK_PATH], program[SDK_PATH], host[SDK_PATH], core[SDK_PATH];
+     join(consumer, suite, "unrelated consumer");
+@@ -950,9 +1123,26 @@
+     join(program, graph_build, "compile_commands.json");
+     yyjson_doc *doc = yyjson_read_file(program, 0, NULL, NULL);
+     REQUIRE(doc);
+-    bool listed = yyjson_arr_size(yyjson_doc_get_root(doc)) == 5;
++    yyjson_val *commands_root = yyjson_doc_get_root(doc);
++    bool listed = yyjson_arr_size(commands_root) > 0, file_io = false;
++    size_t command_index, command_count;
++    yyjson_val *command;
++    yyjson_arr_foreach(commands_root, command_index, command_count, command)
++    {
++        const char *directory = yyjson_get_str(yyjson_obj_get(command, "directory"));
++        const char *file = yyjson_get_str(yyjson_obj_get(command, "file"));
++        const char *compiler = yyjson_get_str(
++            yyjson_arr_get(yyjson_obj_get(command, "arguments"), 0)
++        );
++        static const char prefix[] = CHIBI_SOURCE_ROOT "/src/support/";
++        listed = listed && directory && !strcmp(directory, CHIBI_SOURCE_ROOT) &&
++                 file && !strncmp(file, prefix, sizeof prefix - 1) &&
++                 compiler && !strcmp(compiler, "/usr/bin/false");
++        file_io |= file && !strcmp(file, CHIBI_SOURCE_ROOT "/src/support/file_io.c");
++    }
++    printf("SDK relocated graph: %zu support source commands\n", yyjson_arr_size(commands_root));
+     yyjson_doc_free(doc);
+-    REQUIRE(listed);
++    REQUIRE(listed && file_io);
+     /* An explicit profile must reject an omitted archiver even when PATH
+      * contains a usable ar. No machine default may enter this profile. */
+     char tools[SDK_PATH], fake_ar[SDK_PATH], missing_build[SDK_PATH];
+--- a/tools/graph/engine/Engine.chibi
++++ b/tools/graph/engine/Engine.chibi
+@@ -529,15 +529,8 @@
+         return false;
+     }
+     excluded := build.lines(build.read_file(policy));
+-    // Do not delete through an old payload. A fresh output is required when
+-    // former native-only copies remain, including linked or special entries.
+-    for (relative in excluded) {
+-        if (relative == "") { continue; }
+-        if (build.file_kind(Join([to, "/", relative])) != "") {
+-            build.report("graph: native-only compiler resources require a fresh build output");
+-            return false;
+-        }
+-    }
++    // Excluded leaves are inert warm cache data. CopyCompilerFiles skips
++    // them before examining either source or destination, without deletion.
+     return CopyCompilerFiles(from, to, "", excluded);
+ }
+ Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
+--- a/tools/toolchain/SDK.chibi
++++ b/tools/toolchain/SDK.chibi
+@@ -147,11 +147,14 @@
+     }
+     return files;
+ }
+-SameCompilerPayload :: (source: string, staged: string) -> bool {
++SameCompilerPayload :: (source: string, staged: string, cache: bool) -> bool {
+     policy := Join([source, "/NativeBuildFiles.txt"]);
+     if (build.file_kind(policy) != "file") { return false; }
+-    expected := CompilerFiles(source, "", build.lines(build.read_file(policy)));
+-    actual := CompilerFiles(staged, "", []);
++    excluded := build.lines(build.read_file(policy));
++    expected := CompilerFiles(source, "", excluded);
++    actual_excluded: string[] = [];
++    if (cache) { actual_excluded = excluded; }
++    actual := CompilerFiles(staged, "", actual_excluded);
+     if (length(expected) == 0 || build.join(expected, "\n") != build.join(actual, "\n")) {
+         return false;
+     }
+@@ -159,6 +162,32 @@
+         if (relative == "" || !SameTree(Join([source, "/", relative]), Join([staged, "/", relative]))) {
+             return false;
+         }
++    }
++    return true;
++}
++// Only the declared native leaves are ignored in a warm build cache. A
++// package stage is fresh and receives selected regular files, never the whole
++// admitted cache directory, so inert cached native data cannot be reinstalled.
++CopyCompilerPayload :: (source: string, destination: string) -> bool {
++    original := Join([build.root(), "/tools/compiler"]);
++    if (build.file_kind(destination) != "" || !SameCompilerPayload(original, source, true)) {
++        return false;
++    }
++    excluded := build.lines(build.read_file(Join([original, "/NativeBuildFiles.txt"])));
++    for (relative in CompilerFiles(source, "", excluded)) {
++        if (relative == "" || !CopyTree(Join([source, "/", relative]),
++                                        Join([destination, "/", relative]))) {
++            return false;
++        }
++    }
++    return SameCompilerPayload(original, destination, false);
++}
++CompilerCache :: (build_dir: string) -> bool {
++    path := build.resolve_path(build_dir);
++    if (path == "" || build.file_kind(path) != "directory") { return false; }
++    for (name in ["share", "chibi", "compiler"]) {
++        path = Join([path, "/", name]);
++        if (build.file_kind(path) != "directory") { return false; }
+     }
+     return true;
+ }
+@@ -212,7 +241,6 @@
+         Join(["share/chibi/licenses/fmt/LICENSE=", root, "/third_party/fmt/LICENSE"]),
+         Join(["share/chibi/licenses/fmt/README.md=", root, "/third_party/fmt/README.md"]),
+         Join(["share/chibi/licenses/yyjson/LICENSE=", root, "/third_party/yyjson/LICENSE"]),
+-        Join(["share/chibi/licenses/ckdl/COPYING=", root, "/third_party/ckdl/COPYING"]),
+         Join(["share/chibi/licenses/vendor/tree_sitter/LICENSE=", third_party, "/share/chibi/licenses/vendor/tree_sitter/LICENSE"]),
+         Join(["share/chibi/licenses/vendor/sljit/LICENSE=", third_party, "/share/chibi/licenses/vendor/sljit/LICENSE"])
+     ];
+@@ -236,8 +264,17 @@
+ }
+ PrepareInputs :: (stage: string, entries: string[]) -> bool {
+     for (item in entries) {
+-        if (!CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
+-            build.report(Join(["sdk: cannot copy ", build.after(item, "=")]));
++        source := build.after(item, "=");
++        relative := build.before(item, "=");
++        destination := Join([stage, "/", relative]);
++        copied := false;
++        if (relative == "share/chibi/compiler") {
++            copied = CopyCompilerPayload(source, destination);
++        } else {
++            copied = CopyTree(source, destination);
++        }
++        if (!copied) {
++            build.report(Join(["sdk: cannot copy ", source]));
+             return false;
+         }
+     }
+@@ -556,7 +593,8 @@
+             return 2;
+         }
+     }
+-    if (!SameCompilerPayload(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
++    if (!CompilerCache(build_dir) ||
++        !SameCompilerPayload(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"]), true) ||
+         !SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+         build.report("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
+         return 1;

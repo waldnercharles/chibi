@@ -1,0 +1,9 @@
+{
+  "project_helpers_cases_byte_identical": true,
+  "project_helpers_cases_sha256": "1a31c2738c1eba2aabc3ec80f2f73cb637027784b44b9f6541999c25a91ef761",
+  "all_case_dispatch_gating_byte_identical": true,
+  "typed_semantic_compile_command_oracle_byte_identical": true,
+  "typed_oracle_sha256": "cf7c47749b034b66c85d0433f5217320fd07ba92ff1bead20e61990fa20cae71",
+  "ckdl_absent_from_composed_sdk_fixture": true,
+  "validation": "source comparison only; no test execution"
+}

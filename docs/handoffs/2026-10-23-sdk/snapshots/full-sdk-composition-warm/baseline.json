@@ -1,0 +1,30 @@
+{
+  "tools/toolchain/SDK.chibi": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/tools/toolchain/SDK.chibi",
+    "sha256": "44d8af265c43d5e001ad3955118c69bdb3744076a2349757ca41cbac09f6bcdc"
+  },
+  "tools/package_sdk.py": {
+    "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "source_path": "tools/package_sdk.py",
+    "sha256": "e2bed0eb3ed911e0cc4c878e1cb6d6074a348bcf3c21e7afe3b9895e3737cb71"
+  },
+  "sdk/CMakeLists.txt": {
+    "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "source_path": "sdk/CMakeLists.txt",
+    "sha256": "198d0c945b60ca668da5f62db526f16dbdce314cae88f2ec2b4fed0cccd4763f"
+  },
+  "tools/graph/engine/Engine.chibi": {
+    "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "source_path": "tools/graph/engine/Engine.chibi",
+    "sha256": "27a2c23e90d3447bdfbfddc0c0d52a528552a0dff10ae15886ed87e4b3cdcb11"
+  },
+  "tools/compiler/NativeBuildFiles.txt": {
+    "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "source_path": "tools/compiler/NativeBuildFiles.txt",
+    "absent": true
+  },
+  "test/tools/build_sdk.c": {
+    "source": "frozen Project SDK tree47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+    "sha256": "97709571a0d252504f6e1a6cc6dc6c627e0fa455c94fe9578f9eb65aa0000c84"
+  }
+}

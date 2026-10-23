@@ -76,7 +76,7 @@ endif()
 
 option(CHIBI_INSTALLED_SDK "Link tooling contract checks against an installed SDK" OFF)
 if(CHIBI_INSTALLED_SDK)
-    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document asset_documents)
+    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document asset_documents source_catalog)
 elseif(NOT TARGET Chibi::types)
     # Common project fixtures read/write compiled asset documents even when
     # the selected runtime checks do not exercise compiler-specific cases.
@@ -129,7 +129,7 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document
-    Chibi::asset_documents)
+    Chibi::asset_documents Chibi::source_catalog)
 if(TARGET chibi_build_host)
     target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)
     target_link_libraries(test_tools PRIVATE chibi_build_host)

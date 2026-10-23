@@ -1,0 +1,27 @@
+--- a/src/types/value_wire.c
++++ b/src/types/value_wire.c
+@@ -14,6 +14,9 @@
+ #include <assert.h>
+ #include <limits.h>
+ #include <string.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <execinfo.h>
+ 
+ static void fail(execution_wire *w, const char *error)
+ {
+@@ -817,6 +820,14 @@
+         return false;
+     }
+     if (w->owned_bytes > owned_limit(w) || bytes > owned_limit(w) - w->owned_bytes) {
++        if (getenv("CHIBI_STORAGE_DIAG")) {
++            fprintf(stderr, "STORAGE_DIAG_V3_RESERVE request=%zu owned=%zu limit=%zu charged=%zu remaining=%zu offset=%zu size=%zu\n",
++                bytes, w->owned_bytes, owned_limit(w), w->storage_charged,
++                w->storage_budget ? *w->storage_budget : 0, w->offset, w->size);
++            void *trace[16];
++            int count = backtrace(trace, 16);
++            backtrace_symbols_fd(trace, count, 2);
++        }
+         w->error = "Prepared shader decoded storage limit";
+         return false;
+     }

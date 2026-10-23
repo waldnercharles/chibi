@@ -1,0 +1,28 @@
+[
+  {
+    "source_evidence": "storage-profile/counters",
+    "tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+    "host_sha256": "c873cf702101f387465c05a17b52a02cac0fc18504afaa2f2ae6dbc1fac6c567",
+    "bootstrap_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+    "lines": [
+      "STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=309 request=188248625 services=4803 owned=33482773 charged=37978909 remaining=216511230",
+      "STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=221769838 charged=226265974 remaining=28224165 work=202919341 error=",
+      "STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=366 request=212975283 services=5593 owned=38838089 charged=43860704 remaining=210629435",
+      "STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=38838089 charged=43860704 remaining=210629435 work=231747812 error=Prepared aggregate storage budget exceeded"
+    ],
+    "scope": "Historical macOS process with different source tree and host; not controlled against current Linux result."
+  },
+  {
+    "source_evidence": "debug-prefix-refactor/measure-v2",
+    "tree": "bd1414dfc0409a27615af086ee842ce863727f96",
+    "host_sha256": "c873cf702101f387465c05a17b52a02cac0fc18504afaa2f2ae6dbc1fac6c567",
+    "bootstrap_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+    "lines": [
+      "STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=309 request=188248625 services=4803 owned=33482773 charged=37978909 remaining=216511230",
+      "STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=221769838 charged=226265974 remaining=28224165 work=202919341 error=",
+      "STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=367 request=210384750 services=5608 owned=38897712 charged=43996082 remaining=210494057",
+      "STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=249327342 charged=254425712 remaining=64427 work=232269185 error="
+    ],
+    "scope": "Historical macOS process with different source tree and host; not controlled against current Linux result."
+  }
+]

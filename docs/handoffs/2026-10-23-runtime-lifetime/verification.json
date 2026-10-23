@@ -1,0 +1,268 @@
+{
+  "handoff": "0b1492796941d6bd4159dc8b920f7ca8fe35c2c9",
+  "source_commit": "aec822eb5d98cbdf987f81766e33cf02e2b33308",
+  "source_tree": "1a59410022d128108e7744cf2b5641047a44d713",
+  "source32": [
+    {
+      "path": "PLAN.md",
+      "sha256": "30db57790b8b4fa51ace8d9b582a7c9340fb3cddbd24a3306374ceba4534600e"
+    },
+    {
+      "path": "docs/package-compiler.md",
+      "sha256": "38523488979f5dd9435b20a0ebd82fb8e311be0994895e3f819a766d7b6a91d1"
+    },
+    {
+      "path": "docs/self-hosting-build.md",
+      "sha256": "bc7d66c991a21373bf12e8c3a900da935ba7f8638b07e61d95ef00fd35c3d192"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "933e8e92dd034f88d18a921aec88014e828eb942367f1ff292ad85a0c4907a2a"
+    },
+    {
+      "path": "src/authoring/native_graph_prepare.c",
+      "sha256": "f4e01ea1a4ab3b2866d6cfc21dd90d7d310e3c59419c90e5c735886ffed83241"
+    },
+    {
+      "path": "src/authoring/native_graph_prepare.h",
+      "sha256": "40a49d10084123339e5b1150e1c03e482628a393ed79aaf5d1eb871d3629d54b"
+    },
+    {
+      "path": "src/authoring/project_prepare.c",
+      "sha256": "a35ec858c569c2562120bcbdb801d4171ce1646fd7e7f6b7e99032f77fe92045"
+    },
+    {
+      "path": "src/authoring/project_prepare.h",
+      "sha256": "8fd5719edc7be2399640b4fee0b2191c187bb4e71ee574cd98eac6de0af6f683"
+    },
+    {
+      "path": "src/authoring/source_graph_library.c",
+      "sha256": "897d24cd7f6ac67191409c8e089e2eb46e3cd442cc02e6193a0b45050f058365"
+    },
+    {
+      "path": "src/authoring/source_graph_library.h",
+      "sha256": "9b20b0f13d77f08d8408bc07eeb5ec6fea8560250df71aa973a79a5318025ba4"
+    },
+    {
+      "path": "src/host/compile_main.c",
+      "sha256": "c472912fa136f3d42a69b0e907c49a7140801e0080ac8582b759520249fd3aee"
+    },
+    {
+      "path": "src/toolchain/compiler_target.c",
+      "sha256": "8b2d14611567f15b42c0cce47891f0469667b8fdf177a02a5a982255e8320430"
+    },
+    {
+      "path": "src/toolchain/compiler_target.h",
+      "sha256": "765514a313dbecd487f4b0ea074b8dc4398dd044abefbc7961853bd4d0e2ae6a"
+    },
+    {
+      "path": "test/language/main.c",
+      "sha256": "96533eee21ae59fbd8c4e63bb453ad75a7128929fc8cc32c9f66737c3066d2b6"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "52109159cabee65a5f7eeb702481ec07bac596374359399f4719143d75eadff1"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.h",
+      "sha256": "e7540062596329ec8b438c1669999daf2fbde790a2a4f81747507887149461d3"
+    },
+    {
+      "path": "test/runtime/fields.c",
+      "sha256": "dc2777296594cf4cd65f897a53224497a5b6f848334842ee820b41a5d9e8ec97"
+    },
+    {
+      "path": "test/tools/environment_authoring.c",
+      "sha256": "41d09e0a14988c9c60bb10806c7e045474d8c101c7729b55620e509c2b71f4e9"
+    },
+    {
+      "path": "test/tools/game_equivalence.c",
+      "sha256": "e1041c556a2cebf215228320ee4bb97a2bedda61bdb44dfbf71c665b2d110e5b"
+    },
+    {
+      "path": "test/tools/main.c",
+      "sha256": "66f0514d4a6613fa90424d09142df08f5e793e7508bbb21840aded60c71c9fe9"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Behavior.chibi",
+      "sha256": "bf1fc927fc873a13d9880046a002f646b2af2e4494c65cc8778e5b1ba87f592d"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "sha256": "9f428286509eee9915ef41bde7648ab86ea86fccf0214fe3e212ba181dad32c0"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "sha256": "d8f2e0e8698de16da6369cc78ae05e1a6e29aea14287dd65474f7f086cacbaae"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Maps.chibi",
+      "sha256": "efb325def0f456ad9801a8fa68c7989f45804e3daa77b582cd4bccf3aaa6a88d"
+    },
+    {
+      "path": "tools/compiler/package_compiler/References.chibi",
+      "sha256": "182d47aefbb51e7ae97e7a373b18010c4606a2d2b331c3c0cfd27b7953302bde"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "sha256": "fb8bef6bc05fbdb3ee137b7576d7d97d2acf2861138b79267943c9c8bda08813"
+    },
+    {
+      "path": "tools/test_policy.py",
+      "sha256": "4bebe356da247dab8903bc856ca35d488e4c3466b15770771a84a2f9422f88f7"
+    },
+    {
+      "path": "tools/toolchain/StageOne.chibi",
+      "sha256": "1a2e43dc6cede3b9eb9140f35e8f4b305f42e347d59a9cea51dcff39e1d2dd29"
+    },
+    {
+      "path": "src/host/build_host.c",
+      "sha256": "4aff77146002466bcb69c83d920e8760830e346e01d13fb5e4e5fd74a5966a81"
+    },
+    {
+      "path": "src/host/build_host.h",
+      "sha256": "a807397748e6c7c678899b036c4f6750585defc9e0b37aefbe88627c17380083"
+    },
+    {
+      "path": "src/host/build_main.c",
+      "sha256": "e5c9178d21511693110367455ba47c589465ab6e94fb539bdbdc0462bb2c62af"
+    },
+    {
+      "path": "test/tools/build_process.c",
+      "sha256": "c1f18ee4d830bad379d3c8a099e88b304cf77bfc0deaa76c6cb41cc28f3a9ae6"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "evidence/debug-prefix-refactor/full-candidate/manifest.json",
+      "sha256": "c59f63abf1abf21aeef9054219ec50f8a3ba33bec65920b9cf7413f55fbc44fe"
+    },
+    {
+      "path": "evidence/debug-prefix-refactor/measure-v2/profile.json",
+      "sha256": "a2fbc010c3eaf170bba65bc4dea851aa1230ae08e1c91e98105545bcfe853b06"
+    },
+    {
+      "path": "evidence/debug-prefix-refactor/measure-v2/profile.log",
+      "sha256": "b1d8edf95d4e12042e0ffcc5da3a7607b32a4ee44da3935010a3694ec96316e0"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/full-candidate/manifest.json",
+      "sha256": "f618c0e782e06b1b5ac7c1bf77f08246f08d3c778a9a93f6265af1914cb31d5c"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/launch-cancel-review.json",
+      "sha256": "9a35501376b14e7197966516de67902c65ddd329c4cd7c31a20aa09d2fe2ef89"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/manifest.json",
+      "sha256": "19630d8446a698b996473729ea61c0cadf2a62eacd67459abe333e91bc1b0848"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/measure-v3/run_profile.py",
+      "sha256": "bb057adf6e87264d371a6fee87bea60b4b6f376a83281aa1ae65465ee33c2288"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/ordinary-host/run_build.py",
+      "sha256": "5edd1edb062107fcf907bf78895616c5128f96bf98fd893868af33a1be92753a"
+    },
+    {
+      "path": "evidence/debug-watch-refactor/review.json",
+      "sha256": "53ca5719f95c87cd97edd3ad7d889f52fb473b79fffa7b174c21861a9b7f759b"
+    },
+    {
+      "path": "evidence/future-acceptance/libraries.manifest.json",
+      "sha256": "1fd1ffa099992dbed6c2ec19c79e83574dd83d93e7d278e0653bf88f240c35c7"
+    },
+    {
+      "path": "evidence/future-acceptance/libraries.md",
+      "sha256": "f849c1ca177f70cebe50b2d2c21a81e537c1e1f3c115a66d6f3a17d376cfc60d"
+    },
+    {
+      "path": "evidence/future-acceptance/systems.md",
+      "sha256": "e36513f89f4042f2e63a136f645cd7afb2ac139adec82bba5e559175504947d3"
+    },
+    {
+      "path": "evidence/future-acceptance/systems.query-clarifications.json",
+      "sha256": "4bb27dbb8afa82293768e7b7ba83117202dc23a4102adfeb532f55c07aa430ae"
+    },
+    {
+      "path": "evidence/manifest.json",
+      "sha256": "01f6c8224e7d244fea14430c43516c245b7cf0bc543c63637b5df0898218c490"
+    },
+    {
+      "path": "evidence/storage-profile/counters/manifest.json",
+      "sha256": "1737d69aa3f4a71c1e2ad8cc9b3b3420f685ff2ab81ba4720b4759dc36692013"
+    },
+    {
+      "path": "evidence/storage-profile/counters/native-build.json",
+      "sha256": "489dc247a7f0fd2e1772fbacc0f20c1dff3649e7921834d3e4c4fefc3375de47"
+    },
+    {
+      "path": "evidence/storage-profile/counters/native-build.log",
+      "sha256": "75e11a7a15f3425b795bf858041a5394388c1a1113f55f596f7c1febb46aef10"
+    },
+    {
+      "path": "evidence/storage-profile/counters/profile.json",
+      "sha256": "803e9cc08786b6b26e97832e31c96042e10027c67459ccbc820f587c6635c8b0"
+    },
+    {
+      "path": "evidence/storage-profile/counters/profile.log",
+      "sha256": "d423bb7808f987f92beccf3e0e4b996d029fef6fd38291f7093f90e0152cb8a2"
+    },
+    {
+      "path": "evidence/storage-profile/counters/summary.json",
+      "sha256": "6e75864021a73388091bd150c0d52b12369f876ca413853fc396c27ebc6b4aa7"
+    },
+    {
+      "path": "recovery/v3-to-v1.patch",
+      "sha256": "b68e1558c44429b3281ba6773acf7d9624242c11227d8e8372fb36211e628bba"
+    },
+    {
+      "path": "recovery/v3-to-v2.patch",
+      "sha256": "9f41d768cc12107af12674e87a9b9622b0260a234a114538e6174816cfabdafa"
+    },
+    {
+      "path": "diagnostics/instrumentation.patch",
+      "sha256": "8b21f2202552614912a5c56ac5605bafb5bbcb0dc724bfea45dec0981c7dd794"
+    }
+  ],
+  "runtime_manifest_sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+  "runtime": {
+    "format": 1,
+    "repository": "waldnercharles/chibi",
+    "tag": "compiler-runtime-2026-10-22.2",
+    "source_revision": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "source_tree": "94ebca0fd1fb18e9463aec1cdf8d993ebd368918",
+    "run_url": "https://github.com/waldnercharles/chibi/actions/runs/39883209896",
+    "platforms": {
+      "macos-arm64": {
+        "asset": "chibi-compiler-host-macos-arm64",
+        "bytes": 1150288,
+        "sha256": "4f4b1b8a2cdef37ee1b127c5b4706c79533b0846edf965d3766332d5ac42cc56"
+      },
+      "linux-x64": {
+        "asset": "chibi-compiler-host-linux-x64",
+        "bytes": 1865096,
+        "sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d"
+      },
+      "windows-x64": {
+        "asset": "chibi-compiler-host-windows-x64.exe",
+        "bytes": 1894912,
+        "sha256": "64dd21b85cb893f69e849d0388e75ea9fee834c68c6f09f248a188a9ec33a731"
+      }
+    }
+  },
+  "host": "<pinned-runtime>",
+  "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+  "bootstrap_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+  "instrumentation_original_sources_verified": true,
+  "excluded": [
+    "mixed-base Project draft",
+    "ABI21",
+    "ABI22",
+    "default changes",
+    "new Facts schema"
+  ],
+  "status": "verified before any candidate execution",
+  "raw_evidence_sha256": "4344897cd052cadb15f508ca297779b613b8b133134a84233f2567b78a142099"
+}

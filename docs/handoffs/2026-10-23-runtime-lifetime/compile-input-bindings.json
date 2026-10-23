@@ -1,0 +1,23 @@
+{
+  "sources": {
+    "package_compiler/Compile.chibi": "d8f2e0e8698de16da6369cc78ae05e1a6e29aea14287dd65474f7f086cacbaae",
+    "package_compiler/Body.chibi": "9f428286509eee9915ef41bde7648ab86ea86fccf0214fe3e212ba181dad32c0",
+    "package_compiler/Steps.chibi": "fb8bef6bc05fbdb3ee137b7576d7d97d2acf2861138b79267943c9c8bda08813",
+    "package_compiler/Maps.chibi": "efb325def0f456ad9801a8fa68c7989f45804e3daa77b582cd4bccf3aaa6a88d",
+    "package_compiler/References.chibi": "182d47aefbb51e7ae97e7a373b18010c4606a2d2b331c3c0cfd27b7953302bde",
+    "package_compiler/Tree.chibi": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+    "package_compiler/Number.chibi": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3",
+    "package_compiler/Behavior.chibi": "bf1fc927fc873a13d9880046a002f646b2af2e4494c65cc8778e5b1ba87f592d",
+    "syntax_diagnostics/Diagnostics.chibi": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+    "/sdk/core/strings/Strings.chibi": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471",
+    "source_snapshot/Snapshot.chibi": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f",
+    "compiler_syntax/Syntax.chibi": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+    "package_routes/Routes.chibi": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+    "package_syntax/Extract.chibi": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+    "package_graph/Graph.chibi": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+    "package_paths/Paths.chibi": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+    "lexical_binding/Binding.chibi": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450",
+    "prepared_writer/Writer.chibi": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+  },
+  "input_sha256": "f5bf1964492007844892f340ddb64bf17bf4cbbdb662af7eaa83cdf11fa60912"
+}

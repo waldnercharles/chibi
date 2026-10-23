@@ -1,0 +1,14 @@
+{
+  "source_parent": "0b1492796941d6bd4159dc8b920f7ca8fe35c2c9",
+  "files": {
+    "README.md": "a3d9c44c25ba0ad15c578e309ddf4e35dc5da872f3c960d21f63824da4e3cc39",
+    "compile-input-bindings.json": "948332d4733d14c6a871292d21349489efea69caa71eba221d012a6a9c6e9294",
+    "diagnostics/v3-owned-reserve-diagnostic.patch": "9f3748c78b13fffd5893e6ddad49a2756303998730477037e84657619323d176",
+    "diagnostics/v3-preparation-diagnostic.patch": "2aa39febbb20780e85e60da4989d552b7441c54298bcd8bd3175b3df0bdc5c3c",
+    "historical-context.json": "b78df07a25b60644318d4621f9733006e2e1c670d5f7da0dd5557f3dcf5acef7",
+    "host-build.json": "ccd9c87b036073963e19ee600ffa2911abbf47e2fd663f8fb8acf655a3824395",
+    "preparation-summary.json": "e276021823f42ff9ac296a2764713b2ece9212b980ecdc61b2aa4f9b409e8346",
+    "results.json": "ee32450862d839b8a8b72d00cedf7901fe5f06732907f517da4f5f78b3110058",
+    "verification.json": "ce3146a2ca3c4b0e661034957572109963d8b560b05a925181319f46eff7b5b6"
+  }
+}

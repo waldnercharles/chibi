@@ -1,0 +1,4 @@
+asset_compiler/bootstrap/native64/asset_compiler_blob.inc
+asset_compiler/bootstrap/native64/asset_compiler_packaged.c
+asset_compiler/bootstrap/wasm32/asset_compiler_blob.inc
+asset_compiler/bootstrap/wasm32/asset_compiler_packaged.c

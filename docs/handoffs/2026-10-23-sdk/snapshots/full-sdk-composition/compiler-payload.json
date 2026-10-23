@@ -1,0 +1,361 @@
+{
+  "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "source_only": true,
+  "retained_tracked": [
+    {
+      "path": "analysis_state/State.chibi",
+      "git_blob": "b5b0b8e5ef922db9302bfd34bdc053eeaebc7dda",
+      "bytes": 4105
+    },
+    {
+      "path": "asset_compiler/Cache.chibi",
+      "git_blob": "4f98b64cd4c03de74446e281a2cd4fd0f87dac94",
+      "bytes": 2507
+    },
+    {
+      "path": "asset_compiler/Compile.chibi",
+      "git_blob": "7aef3cb4224277b8d98a61d232a5cf8c230ca836",
+      "bytes": 8001
+    },
+    {
+      "path": "asset_compiler/CompilerSources.txt",
+      "git_blob": "8571dff7f5ede039079c39cf0f094e4012c004b2",
+      "bytes": 537
+    },
+    {
+      "path": "asset_compiler/bootstrap/.gitignore",
+      "git_blob": "7335c457270485ced5b54aa1e52268f828c779c9",
+      "bytes": 140
+    },
+    {
+      "path": "asset_compiler/bootstrap/README.md",
+      "git_blob": "3f96a203736a1c90786945865a77cf67aba55da2",
+      "bytes": 4983
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/asset_compiler.chibip",
+      "git_blob": "f607a212193b76db768777c7830e4c85b2bdba99",
+      "bytes": 14460893
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/inventory-directories.txt",
+      "git_blob": "55709670701ed7ce7e662af3f19468ebe1f3c25c",
+      "bytes": 176
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/inventory.txt",
+      "git_blob": "321685409c8a8ebe35d4d86c1e899e749885ad14",
+      "bytes": 1033
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/manifest.json",
+      "git_blob": "3c4dbd8a6330575b22672b22fc15d4187cf33ed9",
+      "bytes": 16632
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/sources.sha256",
+      "git_blob": "461f8b75d250d46e62cefdf941b933a9abd592da",
+      "bytes": 4005
+    },
+    {
+      "path": "asset_compiler/bootstrap/native64/target.json",
+      "git_blob": "b923e3daffb8a2df263445159436f1dda84ceeb8",
+      "bytes": 11573
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/asset_compiler.chibip",
+      "git_blob": "eaa098d11847ca4ae18ac69e58ef56a340f8523f",
+      "bytes": 14458702
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/inventory-directories.txt",
+      "git_blob": "55709670701ed7ce7e662af3f19468ebe1f3c25c",
+      "bytes": 176
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/inventory.txt",
+      "git_blob": "321685409c8a8ebe35d4d86c1e899e749885ad14",
+      "bytes": 1033
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/manifest.json",
+      "git_blob": "211e7f394d0cfbdecbbb59c8bc7ea44e4138b083",
+      "bytes": 16632
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/sources.sha256",
+      "git_blob": "461f8b75d250d46e62cefdf941b933a9abd592da",
+      "bytes": 4005
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/target.json",
+      "git_blob": "97ba488e965786aa5db2accc2d619031bfce59cc",
+      "bytes": 11573
+    },
+    {
+      "path": "asset_packaging/Packaging.chibi",
+      "git_blob": "c15eac7a1dad02534a4b9ad9245254c6f2b54b18",
+      "bytes": 1999
+    },
+    {
+      "path": "asset_source/Computed.chibi",
+      "git_blob": "30af43946bf43baa1e1d2992b0ec49bdb4c4acfb",
+      "bytes": 11571
+    },
+    {
+      "path": "asset_source/Metadata.chibi",
+      "git_blob": "69f645c5ddde85be54978c92a8708f46ea3fb67f",
+      "bytes": 28155
+    },
+    {
+      "path": "asset_source/Parameters.chibi",
+      "git_blob": "10453f8cc618fbee011f89f973dbcbfe54fba06a",
+      "bytes": 5523
+    },
+    {
+      "path": "asset_source/Reconcile.chibi",
+      "git_blob": "bd14ab791aa72c818ee6414773edaf8c75d8c663",
+      "bytes": 13663
+    },
+    {
+      "path": "asset_source/Validate.chibi",
+      "git_blob": "b135c18b8261f6dac1dcf730e7369150a4bb7bb0",
+      "bytes": 3588
+    },
+    {
+      "path": "asset_source/Write.chibi",
+      "git_blob": "acf66d6060375d1294cd8bc57bdbc1930f6c0109",
+      "bytes": 19157
+    },
+    {
+      "path": "bootstrap/bootstrap.json",
+      "git_blob": "8d79c898cb8acdf970f7fee132b7abc129f0a6e5",
+      "bytes": 24206
+    },
+    {
+      "path": "bootstrap/compiler.chibip",
+      "git_blob": "6b8789ce6f876b11b8ca9953caf23af72393caa8",
+      "bytes": 12099901
+    },
+    {
+      "path": "bounded_compiler/Compile.chibi",
+      "git_blob": "b07a137c9ef106970954766eab52a9df5f1c9120",
+      "bytes": 15580
+    },
+    {
+      "path": "bounded_compiler/Expression.chibi",
+      "git_blob": "8a077ab32d7ac9ca44adee8db40f3a78d713078f",
+      "bytes": 11846
+    },
+    {
+      "path": "bounded_compiler/Prepare.chibi",
+      "git_blob": "144c1e58696dcf4fca0a58a660c2d2b14b0dad60",
+      "bytes": 7911
+    },
+    {
+      "path": "callable_headers/Headers.chibi",
+      "git_blob": "4cbef89f771f46f97d241209c72db183f513d689",
+      "bytes": 45548
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "git_blob": "a0ec4a83aea3bbe6c6e5be57de13acd3d5b7a671",
+      "bytes": 1529
+    },
+    {
+      "path": "constant_admissibility/Proof.chibi",
+      "git_blob": "ac21973f0cc9348e500ff5c1704ae02bfd4a8f7c",
+      "bytes": 5272
+    },
+    {
+      "path": "constant_folding/Fold.chibi",
+      "git_blob": "ad49493c4376c799ef285b647caf56f4b5b49017",
+      "bytes": 9251
+    },
+    {
+      "path": "constant_ir/IR.chibi",
+      "git_blob": "25ca79c965036864edfa90c2906b1925a8b02fcd",
+      "bytes": 1323
+    },
+    {
+      "path": "constant_scalar/Scalar.chibi",
+      "git_blob": "0769b65a10d08e0b67407e02f0fe399fd7bba532",
+      "bytes": 29377
+    },
+    {
+      "path": "effect_analysis/Effects.chibi",
+      "git_blob": "2f69296e5e8e0478c99f8170ccec8bdf1c63c785",
+      "bytes": 29438
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "git_blob": "6f585a92c4df79658a3e65664ce96fabee4967cf",
+      "bytes": 8697
+    },
+    {
+      "path": "named_binding/Binding.chibi",
+      "git_blob": "20a7ec8ffb3591bdd172ef498fe9eaf5e881ed3f",
+      "bytes": 16861
+    },
+    {
+      "path": "nominal_binding/Nominal.chibi",
+      "git_blob": "b72f003aea2b8251d7a921262389983b09bec627",
+      "bytes": 4178
+    },
+    {
+      "path": "package_compiler/Behavior.chibi",
+      "git_blob": "8888db6630430147c791a4d1bb20a88ee70883f7",
+      "bytes": 28183
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "git_blob": "cc038fa30f89c3390ec044faaea43ef0152e9519",
+      "bytes": 122010
+    },
+    {
+      "path": "package_compiler/Bootstrap.chibi",
+      "git_blob": "09eef6b0c5cc3b81387245357dcaf3126c701cf2",
+      "bytes": 393
+    },
+    {
+      "path": "package_compiler/Compile.chibi",
+      "git_blob": "f4b312fbe114f7e63a6e4e7ee7668776a97b5c8e",
+      "bytes": 95609
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "git_blob": "f15fddcdb64f61e0159673fc4f9cb4da5f53a6f1",
+      "bytes": 26455
+    },
+    {
+      "path": "package_compiler/Number.chibi",
+      "git_blob": "44fb71a2708091091f291fa844ac43f2bd309154",
+      "bytes": 15715
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "git_blob": "74c479597becdb6cfe701551b52d443057039df0",
+      "bytes": 25045
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "git_blob": "3f1a3b7942cc2f357db96aedb8bc77ee1b32ccdc",
+      "bytes": 198758
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "git_blob": "b18db11533957689a8226fb336f64059830f3b7f",
+      "bytes": 2578
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "git_blob": "073e591c8f7e3aed3d4ec2c78e2df23c534cd989",
+      "bytes": 13271
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "git_blob": "eef7e766fdbc2ab750b9756fe43c9f4988ff2612",
+      "bytes": 2274
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "git_blob": "67b0b9cbb607b6dde553c0506aabfbd6be9f04c8",
+      "bytes": 7736
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "git_blob": "e52d75aac3395b3e61c540950d9384d628abb0cc",
+      "bytes": 4276
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "git_blob": "f14cfa82f8b945f062fb1dbbf1703bc1b6374eff",
+      "bytes": 26338
+    },
+    {
+      "path": "record_members/Members.chibi",
+      "git_blob": "6b7258358c0516cdae8c2c8bba505621b29c90b6",
+      "bytes": 5658
+    },
+    {
+      "path": "runtime.json",
+      "git_blob": "310b278064aa0b54f3ee1e203f059aae907acb99",
+      "bytes": 883
+    },
+    {
+      "path": "scalar_lowering/Lower.chibi",
+      "git_blob": "f8e50d91dd539939f1a186d1cd3ab39cf8afd933",
+      "bytes": 23733
+    },
+    {
+      "path": "signature_reader/Reader.chibi",
+      "git_blob": "43690d2de548523cfcaa5bcc524c623f247e007d",
+      "bytes": 36202
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "git_blob": "82f629c8e6cd055a1a2f17c6d45eec005e8432a0",
+      "bytes": 15884
+    },
+    {
+      "path": "source_tokenizer/Tokenizer.chibi",
+      "git_blob": "8ddc77cc81ab43fab440b3cd084d2f3e974e061c",
+      "bytes": 27440
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "git_blob": "899aed0d4afe09870ae66eff3dc543462fb40f74",
+      "bytes": 2282
+    },
+    {
+      "path": "type_constructors/Constructors.chibi",
+      "git_blob": "1c6227f6eb1d2f9d17e2fd2ba2e11bf5808501a1",
+      "bytes": 12609
+    },
+    {
+      "path": "type_relations/Relations.chibi",
+      "git_blob": "d535802261a9bc6bde9c8553c7d8fdae257771dd",
+      "bytes": 11127
+    },
+    {
+      "path": "union_members/Members.chibi",
+      "git_blob": "52a70cec9c35563b0e37b531b5a69470c818b834",
+      "bytes": 32644
+    },
+    {
+      "path": "unit_algebra/Units.chibi",
+      "git_blob": "f6ccee18ea7e6a4c01de6c835748819316387b3d",
+      "bytes": 8803
+    },
+    {
+      "path": "unit_analysis/Analysis.chibi",
+      "git_blob": "3ac0d6cc85e21864115a95c9cd5a6febb362205c",
+      "bytes": 36215
+    }
+  ],
+  "omitted_tracked": [
+    {
+      "path": "asset_compiler/bootstrap/native64/asset_compiler_packaged.c",
+      "git_blob": "7ea9b05a425dde5203557ed976e61780f36d99e5",
+      "bytes": 162306
+    },
+    {
+      "path": "asset_compiler/bootstrap/wasm32/asset_compiler_packaged.c",
+      "git_blob": "7ea9b05a425dde5203557ed976e61780f36d99e5",
+      "bytes": 162306
+    }
+  ],
+  "omitted_ignored": {
+    "asset_compiler/bootstrap/native64/asset_compiler_blob.inc": {
+      "bytes": 90380720,
+      "sha256": "446e847333c704c5a9b22dce02aa3981cd863cb5b7cc0c27a9b37fbaf6913de8"
+    },
+    "asset_compiler/bootstrap/wasm32/asset_compiler_blob.inc": {
+      "bytes": 90367026,
+      "sha256": "b2546980e33d93009baf711c948bf27aeef3929c74486accdea02a56b538e006"
+    }
+  },
+  "new_metadata": "NativeBuildFiles.txt",
+  "native_raw_inputs": "preserved; no deletion or resource regeneration",
+  "actual_installed_proof": "not run"
+}

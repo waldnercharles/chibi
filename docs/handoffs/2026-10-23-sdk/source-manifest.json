@@ -1,0 +1,92 @@
+{
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/CONTRACT.md": {
+    "sha256": "2799d42b7cef7758e6955a84e2ad7d1d8ceaa7fb1a29dec75bb1cbe84d8945ff",
+    "bytes": 9710,
+    "original_relative_path": ".chibi/full-sdk-composition/CONTRACT.md",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/PLAN.md": {
+    "sha256": "13af377c42d9db9073d3f1f8cb14387e1f1f72e26e7498732859e2cfe4c9b70a",
+    "bytes": 2357,
+    "original_relative_path": ".chibi/full-sdk-composition/PLAN.md",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/after/sdk/CMakeLists.txt": {
+    "sha256": "a5825bbdbf42baa80e3a2a9d7c5a38127038b54de53c5b5bf30fc7f20679fc8f",
+    "bytes": 49519,
+    "original_relative_path": ".chibi/full-sdk-composition/after/sdk/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/after/tools/compiler/NativeBuildFiles.txt": {
+    "sha256": "4c66da9b67e0383a927f895146d0f56ca1463e69db71a083785200b6df0c2727",
+    "bytes": 232,
+    "original_relative_path": ".chibi/full-sdk-composition/after/tools/compiler/NativeBuildFiles.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/after/tools/graph/engine/Engine.chibi": {
+    "sha256": "b23090862364e548dfd4060e408ee9ee8faf5503df8210f23bf398f1f431ecf2",
+    "bytes": 42741,
+    "original_relative_path": ".chibi/full-sdk-composition/after/tools/graph/engine/Engine.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/after/tools/package_sdk.py": {
+    "sha256": "5db638c8a496318635c59fed7e852d2daf6cab4b58e52807c7a31594a7374725",
+    "bytes": 48302,
+    "original_relative_path": ".chibi/full-sdk-composition/after/tools/package_sdk.py",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/after/tools/toolchain/SDK.chibi": {
+    "sha256": "9959648e13de40898644d0f46c1b9233ba91ff3253fdacd7bd08e54885d84108",
+    "bytes": 35681,
+    "original_relative_path": ".chibi/full-sdk-composition/after/tools/toolchain/SDK.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/baseline.json": {
+    "sha256": "3a9f9cbadded74a57c6a40c0be3ceaea2b7bf157272845b7d5c4724855b74c95",
+    "bytes": 1098,
+    "original_relative_path": ".chibi/full-sdk-composition/baseline.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/before/sdk/CMakeLists.txt": {
+    "sha256": "198d0c945b60ca668da5f62db526f16dbdce314cae88f2ec2b4fed0cccd4763f",
+    "bytes": 47631,
+    "original_relative_path": ".chibi/full-sdk-composition/before/sdk/CMakeLists.txt",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/before/tools/graph/engine/Engine.chibi": {
+    "sha256": "27a2c23e90d3447bdfbfddc0c0d52a528552a0dff10ae15886ed87e4b3cdcb11",
+    "bytes": 40366,
+    "original_relative_path": ".chibi/full-sdk-composition/before/tools/graph/engine/Engine.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/before/tools/package_sdk.py": {
+    "sha256": "e2bed0eb3ed911e0cc4c878e1cb6d6074a348bcf3c21e7afe3b9895e3737cb71",
+    "bytes": 43884,
+    "original_relative_path": ".chibi/full-sdk-composition/before/tools/package_sdk.py",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/before/tools/toolchain/SDK.chibi": {
+    "sha256": "44d8af265c43d5e001ad3955118c69bdb3744076a2349757ca41cbac09f6bcdc",
+    "bytes": 25994,
+    "original_relative_path": ".chibi/full-sdk-composition/before/tools/toolchain/SDK.chibi",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/compiler-payload.json": {
+    "sha256": "4411b93bcbd99ac81900bf1f6a16b0b4058de975d93d06a99350c3428ff749a6",
+    "bytes": 10655,
+    "original_relative_path": ".chibi/full-sdk-composition/compiler-payload.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/manifest.json": {
+    "sha256": "9525b611d8ea75ed5affe358738b004bcc0efd0cc33b00934794978d4bed659d",
+    "bytes": 4082,
+    "original_relative_path": ".chibi/full-sdk-composition/manifest.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/full-sdk-composition/source.patch": {
+    "sha256": "64e32c656c7ada9c303099bb8b6aa5f6508b5651475889985c4f444ff31cbf3f",
+    "bytes": 24567,
+    "original_relative_path": ".chibi/full-sdk-composition/source.patch",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-23",
+  "repository": "https://github.com/waldnercharles/chibi.git",
+  "branch": "codex/wip-sdk-full-fresh-20261023",
+  "kind": "full-fresh",
+  "status": "RECOVERY ONLY: held fresh-cache-only predecessor; incompatible warm-cache behavior rejected",
+  "parent_commit": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "original_repository_base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "source_tree_before_handoff_docs": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "preserved_merge_parents": [],
+  "active_changed_paths": [],
+  "draft_paths_are_unapplied": true,
+  "snapshots": [
+    "full-sdk-composition"
+  ],
+  "source_manifest": "source-manifest.json",
+  "portable_path_rule": "All paths in source-manifest.json are repository relative. Original immutable receipts may retain local absolute provenance; do not use them as cloud filesystem locations. Resolve snapshots here and external inputs by pinned repository commits.",
+  "related_checkpoint_branches": {
+    "policy": "codex/wip-sdk-policy-20261023",
+    "full-fresh": "codex/wip-sdk-full-fresh-20261023",
+    "full-warm": "codex/wip-sdk-full-warm-20261023",
+    "host2-initial": "codex/wip-sdk-host2-initial-20261023",
+    "host2-header": "codex/wip-sdk-host2-header-20261023",
+    "host2-final": "codex/wip-sdk-host2-final-20261023"
+  },
+  "already_created_related_commits": {
+    "policy": "5cafd80f4135492051c70f303692bfcde9b5711f"
+  },
+  "dependencies": {
+    "compiler": {
+      "repository": "https://github.com/waldnercharles/chibi.git",
+      "commit": "0b1492796941d6bd4159dc8b920f7ca8fe35c2c9",
+      "state": "existing verified checkpoint; cloud owns compiler/LLVM"
+    },
+    "project_native941": {
+      "repository": "https://github.com/waldnercharles/chibi.git",
+      "commit": "8f6545bd8221748f3708036607762209a6f4e0ab",
+      "path": "docs/handoffs/2026-10-23-project-policy/draft",
+      "manifest_sha256": "2b69b9426b491f0da95ddb760276f4b7738260cc6269786ec2814006323d162f",
+      "Project_sha256": "522b76cadc40f8e2ccb9ca730f5c336f6cb98286cb2b18681ac101ae5b4129ce",
+      "state": "existing verified checkpoint; source draft only"
+    },
+    "coordinator_reviews": {
+      "repository": "https://github.com/waldnercharles/chibi.git",
+      "commit": "93d1a5d9cf46b1dfdbdb024207d9dbc6e3278ae7",
+      "path": "docs/handoffs/2026-10-23-coordinator/evidence",
+      "state": "existing verified checkpoint; reuse warm/pair/project source review receipts"
+    }
+  },
+  "missing_or_not_eligible": [
+    "typed6ef tree6ef6b76e5c7e83b328e2973cc15c42fc79804043 is an immutable local TREE, not a commit or approved combined tree; exact SDK-relevant before files are in warm and composition snapshots",
+    "source32 tree1a59410022d128108e7744cf2b5641047a44d713 protocol8 prepared host inputs must be reconciled with typed protocol9; compiler/Project checkpoints preserve their owners inputs",
+    "no generated eligible combined compiler/typed/native/warm/SDK source or SDK binary",
+    "installed local SDK and machine-specific build outputs excluded"
+  ],
+  "validation": {
+    "passed_source_checks": [
+      "independent source reviews and final coordinating source reviews as applicable",
+      "historical patch context/whitespace and identity checks",
+      "warm packager Python AST parse",
+      "final C clang-format22.1.8 dry-run"
+    ],
+    "failed_source_controls": [
+      "fresh-only cache policy source review held",
+      "original HOST2 header/missing-row fixture confounded",
+      "header-only intermediate needed formatting; final format fixed"
+    ],
+    "failed_runtime_checks": [],
+    "runtime_failure_statement": "No runtime test result exists for current candidate; no failed assertions observed because execution was held.",
+    "unrun": [
+      "all five required repository groups on exact combined candidate",
+      "actual SDK47bbe/warm/HOST2 compilation and execution",
+      "actual prepared941 capability/witness generation and strict native+selfhost Inspect mutation controls",
+      "native ABI/admission/fault/cancellation cases",
+      "native Terrain artifact/resources sidecar/export parity",
+      "installed and relocated full SDK/platform/Studio consumers"
+    ],
+    "checkpoint_run": "No builds/tests/exports invoked during handoff. Source receipts preserve earlier source-only checks. WIP checkpoint is not merge or release acceptance."
+  },
+  "holds": [
+    "do not apply held fresh-only or superseded fixture drafts",
+    "compose only through an explicitly reviewed eligible source candidate; CMake native3e6c already includes warm2a563 edits",
+    "source review is not runtime proof; no actual HOST2 witness exists",
+    "do not change defaults, merge or publish artifacts based on these WIP checkpoints"
+  ],
+  "next_steps": [
+    "verify remote branch commit and portable source hashes",
+    "fetch separately pinned compiler/Project/coordinator checkpoints; preserve their ownership",
+    "create an explicit compatible combined source candidate and review its dependency map",
+    "run required and focused ABI/native/prepared/installed/relocated/platform checks before adoption"
+  ],
+  "ownership_after_handoff": "Local SDK owner will make no further overlapping implementation changes. Candidate held while cloud confirmation is pending. Original worktree, staged index and draft bytes remain intact."
+}

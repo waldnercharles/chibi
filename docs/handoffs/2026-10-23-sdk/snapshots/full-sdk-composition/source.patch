@@ -1,0 +1,482 @@
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -632,9 +632,41 @@
+     # The host validates and loads this compiler generation at invocation.
+     file(GLOB_RECURSE build_compiler_inputs CONFIGURE_DEPENDS
+         RELATIVE "${CHIBI_SDK_ROOT}/tools/compiler" "${CHIBI_SDK_ROOT}/tools/compiler/*")
++    # Raw C facades remain native build inputs. The semantic host payload
++    # shares its exclusions with graph resource copying and SDK admission.
++    file(STRINGS "${CHIBI_SDK_ROOT}/tools/compiler/NativeBuildFiles.txt" compiler_native_inputs)
++    file(REAL_PATH "${CMAKE_BINARY_DIR}" compiler_build_root)
++    # Validate every existing destination parent before any resource copy.
++    # Legacy native-only copies require a fresh build output; never delete
++    # through a warm tree that may alias a source directory.
++    foreach(source IN LISTS build_compiler_inputs compiler_native_inputs)
++        get_filename_component(directory "share/chibi/compiler/${source}" DIRECTORY)
++        string(REPLACE "/" ";" components "${directory}")
++        set(parent "${compiler_build_root}")
++        foreach(component IN LISTS components)
++            string(APPEND parent "/${component}")
++            if(IS_SYMLINK "${parent}" OR (EXISTS "${parent}" AND NOT IS_DIRECTORY "${parent}"))
++                message(FATAL_ERROR "Compiler payload destination has an invalid parent: ${parent}")
++            endif()
++        endforeach()
++        set(destination "${compiler_build_root}/share/chibi/compiler/${source}")
++        if(IS_SYMLINK "${destination}" OR IS_DIRECTORY "${destination}")
++            message(FATAL_ERROR "Compiler payload destination is aliased or not a file: ${destination}")
++        endif()
++    endforeach()
++    foreach(source IN LISTS compiler_native_inputs)
++        list(REMOVE_ITEM build_compiler_inputs "${source}")
++        set(stale "${compiler_build_root}/share/chibi/compiler/${source}")
++        if(EXISTS "${stale}" OR IS_SYMLINK "${stale}")
++            message(FATAL_ERROR "Native-only compiler resources require a fresh build output: ${stale}")
++        endif()
++    endforeach()
+     foreach(source IN LISTS build_compiler_inputs)
+         configure_file("${CHIBI_SDK_ROOT}/tools/compiler/${source}"
+             "${CMAKE_BINARY_DIR}/share/chibi/compiler/${source}" COPYONLY)
++        get_filename_component(directory "${source}" DIRECTORY)
++        install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/${source}"
++            DESTINATION "share/chibi/compiler/${directory}")
+     endforeach()
+     file(GLOB_RECURSE build_core_inputs CONFIGURE_DEPENDS
+         RELATIVE "${CHIBI_SDK_ROOT}/packages/core" "${CHIBI_SDK_ROOT}/packages/core/*.chibi")
+@@ -642,7 +674,6 @@
+         configure_file("${CHIBI_SDK_ROOT}/packages/core/${source}"
+             "${CMAKE_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
+     endforeach()
+-    install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
+     install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+         FILES_MATCHING PATTERN "*.chibi")
+     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
+--- /dev/null
++++ b/tools/compiler/NativeBuildFiles.txt
+@@ -0,0 +1,4 @@
++asset_compiler/bootstrap/native64/asset_compiler_blob.inc
++asset_compiler/bootstrap/native64/asset_compiler_packaged.c
++asset_compiler/bootstrap/wasm32/asset_compiler_blob.inc
++asset_compiler/bootstrap/wasm32/asset_compiler_packaged.c
+--- a/tools/graph/engine/Engine.chibi
++++ b/tools/graph/engine/Engine.chibi
+@@ -488,8 +488,67 @@
+ }
+ 
+ // Installs a target's resources into the build tree (Resources).
++// The source C facades remain native build inputs; the installed compiler
++// payload excludes only the paths shared with CMake and SDK admission.
++CopyCompilerFiles :: (from: string, to: string, relative: string, excluded: string[]) -> bool {
++    for (path in excluded) {
++        if (path != "" && path == relative) {
++            return true;
++        }
++    }
++    kind := build.file_kind(from);
++    if (kind == "file") {
++        destination := build.file_kind(to);
++        if (destination != "" && destination != "file") { return false; }
++        return CopyChanged(from, to);
++    }
++    if (kind != "directory" ||
++        (build.file_kind(to) != "" && build.file_kind(to) != "directory")) {
++        return false;
++    }
++    for (name in build.list_directory(from)) {
++        child := name;
++        if (relative != "") { child = Join([relative, "/", name]); }
++        if (!CopyCompilerFiles(Join([from, "/", name]), Join([to, "/", name]), child, excluded)) {
++            return false;
++        }
++    }
++    return true;
++}
++CopyCompilerPayload :: (from: string, build_dir: string) -> bool {
++    base := build.resolve_path(build_dir);
++    if (base == "" || build.file_kind(base) != "directory") { return false; }
++    to := base;
++    for (name in ["share", "chibi", "compiler"]) {
++        to = Join([to, "/", name]);
++        kind := build.file_kind(to);
++        if (kind != "" && kind != "directory") { return false; }
++    }
++    policy := Join([from, "/NativeBuildFiles.txt"]);
++    if (build.file_kind(policy) != "file") {
++        return false;
++    }
++    excluded := build.lines(build.read_file(policy));
++    // Do not delete through an old payload. A fresh output is required when
++    // former native-only copies remain, including linked or special entries.
++    for (relative in excluded) {
++        if (relative == "") { continue; }
++        if (build.file_kind(Join([to, "/", relative])) != "") {
++            build.report("graph: native-only compiler resources require a fresh build output");
++            return false;
++        }
++    }
++    return CopyCompilerFiles(from, to, "", excluded);
++}
+ Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
+     for (resource in Resources(target)) {
++        if (build.after(resource, "=") == "tools/compiler") {
++            if (!CopyCompilerPayload(Resolve(source_root, build_dir, third_party, "tools/compiler"),
++                                      build_dir)) {
++                return false;
++            }
++            continue;
++        }
+         if (!CopyChanged(Resolve(source_root, build_dir, third_party, build.after(resource, "=")),
+                          Resolve(source_root, build_dir, third_party, build.before(resource, "=")))) {
+             return false;
+--- a/tools/package_sdk.py
++++ b/tools/package_sdk.py
+@@ -681,13 +681,70 @@
+     return match[1]
+ 
+ 
+-def assemble(build, output, kind):
++PROJECT_PREPARATION_FILES = {
++    'share/chibi/tools/toolchain/SDK.chibi',
++    'share/chibi/tools/toolchain/Project.chibi',
++    'share/chibi/tools/toolchain/Project.chibip',
++    'share/chibi/project-host.tsv',
++    'share/chibi/project-prepare.tsv',
++    'share/chibi/compiler-tools.tsv',
++}
++
++
++def prepare_project_stage(stage, policy, compiled, cache, system):
++    if (system not in ('Darwin', 'Linux') or cache.get('CHIBI_SDK_BUILD_NATIVE') != 'ON'
++            or not policy.is_absolute() or not policy.is_file() or policy.is_symlink()):
++        raise ValueError('Project preparation requires a native Darwin/Linux SDK and an absolute policy source')
++    before = package_files(stage)
++    tools = installed_private_tools(compiled, before, stage)
++    if set(tools) != set(PRIVATE_TOOL_PATHS) or 'chibi-compile' not in compiled['executables']:
++        raise ValueError('Project preparation requires both installed private hosts and native chibi-compile')
++    assembly = 'bin/chibi-compile'
++    evidence = compiled['executables']['chibi-compile']
++    if (assembly not in before or before[assembly]['sha256'] != evidence['sha256']
++            or not os.access(stage / assembly, os.X_OK)):
++        raise ValueError('Project assembly differs from the actual compiled executable')
++    backend = cache.get('CHIBI_ENABLE_SJLIT', 'ON')
++    if backend not in ('ON', 'OFF'):
++        raise ValueError('Project preparation requires a known native compiler backend')
++    backend = 'sljit' if backend == 'ON' else 'bytecode'
++    if PROJECT_PREPARATION_FILES.intersection(before):
++        raise ValueError('Project preparation requires fresh policy outputs and SDK preparation source')
++    sdk_source = stage / 'share/chibi/tools/toolchain/SDK.chibi'
++    with (ROOT / 'tools/toolchain/SDK.chibi').open('rb') as source, sdk_source.open('xb') as destination:
++        shutil.copyfileobj(source, destination)
++    roles = ['--prefix', str(stage), '--build-host', str(stage / tools['chibi-build-host']),
++             '--compiler-host', str(stage / tools['chibi-compiler-host']),
++             '--assembly', str(stage / assembly), '--compiler-backend', backend]
++    command = [str(stage / tools['chibi-build-host']), '--root', str(stage),
++               '--source', str(sdk_source), '--core', str(stage / 'share/chibi/core'),
++               '--compiler', str(stage / 'share/chibi/compiler'),
++               '--compiler-core', str(stage / 'share/chibi/core')]
++    subprocess.run(command + ['--entry', 'PrepareInstalledProject', '--timeout-ms', '300000', '--']
++                   + roles + ['--policy-source', str(policy)], check=True)
++    prepared = package_files(stage)
++    if (any(prepared.get(path) != value for path, value in before.items())
++            or set(prepared).difference(before) != PROJECT_PREPARATION_FILES):
++        raise ValueError('Project preparation changed installed payload or produced unexpected files')
++    subprocess.run(command + ['--entry', 'VerifyInstalledProject', '--timeout-ms', '120000', '--']
++                   + roles, check=True)
++    if package_files(stage) != prepared:
++        raise ValueError('Installed Project verification changed the package payload')
++    return {'artifact': 'share/chibi/tools/toolchain/Project.chibip',
++            'receipt': 'share/chibi/project-prepare.tsv', 'witness': 'share/chibi/project-host.tsv',
++            'inventory': 'share/chibi/compiler-tools.tsv', 'assembly': assembly,
++            'compiler_backend': backend}
++
++
++def assemble(build, output, kind, *, project_policy_source=None):
+     cache = cache_values(build)
+     if Path(cache.get('CMAKE_HOME_DIRECTORY', '')).resolve() != ROOT / 'sdk':
+         raise ValueError('Package from an independently configured sdk/ build, not the Studio build')
+     expected = 'ON' if kind == 'sdk' else 'OFF'
+     if cache.get('CHIBI_SDK_BUILD_COMPILER') != expected:
+         raise ValueError(f'{kind} packaging requires CHIBI_SDK_BUILD_COMPILER={expected}')
++    if project_policy_source and kind != 'sdk':
++        raise ValueError('Project preparation requires a compiler-enabled full SDK')
+     if output == ROOT or output in ROOT.parents or output == build or output in build.parents or build in output.parents:
+         raise ValueError('Package output must be outside the source/build ancestry and build tree')
+     previous_identity = previous_package(output, kind) if output.exists() else None
+@@ -705,6 +762,10 @@
+         docs.mkdir(parents=True, exist_ok=True)
+         shutil.copy2(ROOT / 'sdk/README.md', docs / 'sdk.md')
+         engine = engine_manifest(stage, compiled)
++        project = None
++        if project_policy_source:
++            project = prepare_project_stage(stage, project_policy_source, compiled, cache,
++                                            system.get('CMAKE_SYSTEM_NAME'))
+         files = package_files(stage)
+         archive_installation = installed_archive_owners(compiled, files)
+         for name, evidence in compiled['executables'].items():
+@@ -756,10 +817,14 @@
+                 'native_backend': cache.get('CHIBI_ENABLE_SJLIT', 'ON') == 'ON',
+             },
+         }
++        if project:
++            manifest['project_preparation'] = project
+         manifest['build_id'] = package_identity(manifest)
+         manifest_path = stage / MANIFEST
+         manifest_path.parent.mkdir(parents=True, exist_ok=True)
+         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
++        if package_files(stage) != files:
++            raise ValueError('Installed payload changed before package publication')
+         current_identity = previous_package(output, kind) if output.exists() else None
+         if current_identity != previous_identity:
+             raise ValueError('Existing SDK output changed during packaging')
+@@ -795,12 +860,17 @@
+     parser.add_argument('--output', type=Path, required=True)
+     parser.add_argument('--kind', choices=('sdk', 'runtime'), required=True)
+     parser.add_argument('--archive', type=Path)
++    parser.add_argument('--project-policy-source', type=Path,
++                        help='opt in to prepared Project policy using an absolute source file')
+     args = parser.parse_args()
+     try:
+         output = args.output.resolve()
+         if args.archive and (args.archive.resolve() == output or output in args.archive.resolve().parents):
+             raise ValueError('Archive must be outside the package directory')
+-        manifest = assemble(args.build.resolve(), output, args.kind)
++        policy = args.project_policy_source
++        if policy and not policy.is_absolute():
++            raise ValueError('--project-policy-source must be an absolute file path')
++        manifest = assemble(args.build.resolve(), output, args.kind, project_policy_source=policy)
+         if args.archive:
+             archive_package(output, args.archive.resolve())
+         print(f'Packaged {args.kind} {output} ({manifest["build_id"]})')
+--- a/tools/toolchain/SDK.chibi
++++ b/tools/toolchain/SDK.chibi
+@@ -125,6 +125,38 @@
+     }
+     for (name in build.list_directory(source)) {
+         if (!CopyTree(Join([source, "/", name]), Join([destination, "/", name]))) {
++            return false;
++        }
++    }
++    return true;
++}
++CompilerFiles :: (root: string, relative: string, excluded: string[]) -> string[] {
++    if (relative != "" && PolicyHas(excluded, relative)) {
++        return [];
++    }
++    path := root;
++    if (relative != "") { path = Join([root, "/", relative]); }
++    kind := build.file_kind(path);
++    if (kind == "file") { return [relative]; }
++    if (kind != "directory") { return [""]; }
++    files: string[] = [];
++    for (name in build.list_directory(path)) {
++        child := name;
++        if (relative != "") { child = Join([relative, "/", name]); }
++        files = build.concat(files, CompilerFiles(root, child, excluded));
++    }
++    return files;
++}
++SameCompilerPayload :: (source: string, staged: string) -> bool {
++    policy := Join([source, "/NativeBuildFiles.txt"]);
++    if (build.file_kind(policy) != "file") { return false; }
++    expected := CompilerFiles(source, "", build.lines(build.read_file(policy)));
++    actual := CompilerFiles(staged, "", []);
++    if (length(expected) == 0 || build.join(expected, "\n") != build.join(actual, "\n")) {
++        return false;
++    }
++    for (relative in expected) {
++        if (relative == "" || !SameTree(Join([source, "/", relative]), Join([staged, "/", relative]))) {
+             return false;
+         }
+     }
+@@ -209,6 +241,9 @@
+             return false;
+         }
+     }
++    return VerifyInputs(stage);
++}
++VerifyInputs :: (stage: string) -> bool {
+     compiler := Join([stage, "/share/chibi/compiler"]);
+     if (build.run([Join([stage, "/libexec/chibi/chibi-compiler-host"]),
+                    "--bootstrap", Join([compiler, "/bootstrap"]),
+@@ -521,7 +556,7 @@
+             return 2;
+         }
+     }
+-    if (!SameTree(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
++    if (!SameCompilerPayload(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
+         !SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+         build.report("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
+         return 1;
+@@ -580,3 +615,173 @@
+ ProjectTools :: () -> int {
+     return InstallCompilerTools(true);
+ }
++
++// Full-SDK composition consumes an existing, privately owned installation stage.
++// The packager owns that stage and publication; these entries never replace it.
++// Both entries take paired --prefix, --build-host, --compiler-host, --assembly
++// and --compiler-backend arguments. Preparation also takes --policy-source.
++// All roles name the fixed installed paths below the canonical prefix.
++// The cold inspection cache is the absent PREFIX.project-cache sibling inside
++// the packager's temporary parent. Inspect must leave it absent.
++InstalledEntries :: (stage: string) -> string[] {
++    entries: string[] = [];
++    for (path in ["libexec/chibi/chibi-build-host", "libexec/chibi/chibi-compiler-host",
++                  "bin/chibi-compile", "share/chibi/compiler", "share/chibi/core",
++                  "share/chibi/tools/toolchain/SDK.chibi", PolicyOutputs()[0]]) {
++        entries = build.concat(entries, [Join([path, "=", stage, "/", path])]);
++    }
++    return entries;
++}
++// Entry order and each directory's sorted walk define the producer row order.
++// Unrelated public files and the full package identity never enter this TSV.
++InstalledInventory :: (stage: string, entries: string[], inputs: bool) -> string {
++    text := "";
++    outputs := PolicyOutputs();
++    for (item in entries) {
++        path := build.before(item, "=");
++        if (!inputs || !PolicyHas(outputs, path)) {
++            text = Join([text, Inventory(stage, path)]);
++        }
++    }
++    if (!inputs) {
++        for (index in 1..<length(outputs)) {
++            text = Join([text, Inventory(stage, outputs[index])]);
++        }
++    }
++    return text;
++}
++InstalledArguments :: (arguments: string[], prepare: bool) -> bool {
++    keys := ["--prefix", "--build-host", "--compiler-host", "--assembly", "--compiler-backend"];
++    if (prepare) {
++        keys = build.concat(keys, ["--policy-source"]);
++    }
++    if (length(arguments) != length(keys) * 2) {
++        return false;
++    }
++    seen: string[] = [];
++    for (index in 0..<length(keys)) {
++        key := arguments[index * 2];
++        if (!PolicyHas(keys, key) || PolicyHas(seen, key) || arguments[index * 2 + 1] == "") {
++            return false;
++        }
++        seen = build.concat(seen, [key]);
++    }
++    stage := Option(arguments, "--prefix");
++    backend := Option(arguments, "--compiler-backend");
++    if (!strings.HasPrefix(stage, "/") || CanonicalPath(stage) != stage ||
++        build.file_kind(stage) != "directory" ||
++        (backend != "sljit" && backend != "bytecode") ||
++        (build.platform() != "Darwin" && build.platform() != "Linux")) {
++        return false;
++    }
++    roles := ["--build-host", "libexec/chibi/chibi-build-host",
++              "--compiler-host", "libexec/chibi/chibi-compiler-host",
++              "--assembly", "bin/chibi-compile"];
++    for (index in 0..<3) {
++        path := Join([stage, "/", roles[index * 2 + 1]]);
++        if (Option(arguments, roles[index * 2]) != path || CanonicalPath(path) != path ||
++            build.file_kind(path) != "file" || build.find_executable(path) == "") {
++            return false;
++        }
++    }
++    for (path in ["share/chibi/compiler", "share/chibi/core", "share/chibi/tools/toolchain/SDK.chibi"]) {
++        absolute := Join([stage, "/", path]);
++        if (CanonicalPath(absolute) != absolute || !SameTree(absolute, absolute)) {
++            return false;
++        }
++    }
++    if (build.file_kind(Join([stage, "/share/chibi/compiler"])) != "directory" ||
++        build.file_kind(Join([stage, "/share/chibi/core"])) != "directory" ||
++        build.file_kind(Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"])) != "file") {
++        return false;
++    }
++    native_policy := Join([stage, "/share/chibi/compiler/NativeBuildFiles.txt"]);
++    if (build.file_kind(native_policy) != "file") { return false; }
++    for (relative in build.lines(build.read_file(native_policy))) {
++        if (relative != "" && build.file_kind(Join([stage, "/share/chibi/compiler/", relative])) != "") {
++            return false;
++        }
++    }
++    if (prepare) {
++        source := Option(arguments, "--policy-source");
++        return strings.HasPrefix(source, "/") && build.file_kind(source) == "file";
++    }
++    return true;
++}
++InstalledStable :: (stage: string, arguments: string[], values: string[], entries: string[]) -> bool {
++    for (key in ["source-sha256", "artifact-sha256", "build-host-sha256",
++                 "compiler-host-sha256", "assembly-sha256", "inputs-sha256"]) {
++        if (!PolicyHash(Option(values, key))) {
++            return false;
++        }
++    }
++    return build.join(PolicyValues(stage, arguments, InstalledInventory(stage, entries, true)), "\n") ==
++               build.join(values, "\n") &&
++           build.hash_file(Option(arguments, "--policy-source")) == Option(values, "source-sha256");
++}
++InstalledVerified :: (stage: string, arguments: string[], entries: string[]) -> bool {
++    values := PolicyValues(stage, arguments, InstalledInventory(stage, entries, true));
++    inventory := Join(["1\n", InstalledInventory(stage, entries, false)]);
++    outputs := PolicyOutputs();
++    witness := PolicyWitness(values);
++    receipt := PolicyReceiptText(values, entries);
++    return InstalledStable(stage, arguments, values, entries) &&
++           build.read_file(Join([stage, "/", outputs[2]])) == witness &&
++           build.read_file(Join([stage, "/", outputs[3]])) == receipt &&
++           build.read_file(Join([stage, "/share/chibi/compiler-tools.tsv"])) == inventory &&
++           PolicyInspect(stage, arguments, false) && PolicyInspect(stage, arguments, true) &&
++           InstalledStable(stage, arguments, values, entries) &&
++           build.read_file(Join([stage, "/", outputs[2]])) == witness &&
++           build.read_file(Join([stage, "/", outputs[3]])) == receipt &&
++           build.read_file(Join([stage, "/share/chibi/compiler-tools.tsv"])) == inventory &&
++           inventory == Join(["1\n", InstalledInventory(stage, entries, false)]);
++}
++PrepareInstalledProject :: () -> int {
++    arguments := build.arguments();
++    if (!InstalledArguments(arguments, true)) {
++        build.report("sdk: invalid installed Project preparation arguments or payload");
++        return 2;
++    }
++    stage := Option(arguments, "--prefix");
++    outputs := PolicyOutputs();
++    for (path in build.concat(outputs, ["share/chibi/compiler-tools.tsv", ".project-proof"])) {
++        if (build.file_kind(Join([stage, "/", path])) != "") {
++            build.report("sdk: installed Project preparation requires fresh outputs");
++            return 2;
++        }
++    }
++    entries := InstalledEntries(stage);
++    before := InstalledInventory(stage, entries, true);
++    if (!build.copy_file(Option(arguments, "--policy-source"), Join([stage, "/", outputs[0]])) ||
++        !VerifyInputs(stage) || before != InstalledInventory(stage, entries, true) ||
++        !PolicyExport(stage, Join([stage, "/", outputs[0]]), "Inspect", Join([stage, "/", outputs[1]]))) {
++        build.report("sdk: installed Project preparation failed");
++        return 1;
++    }
++    values := PolicyValues(stage, arguments, before);
++    if (!InstalledStable(stage, arguments, values, entries) || !PolicyProof(stage) ||
++        !InstalledStable(stage, arguments, values, entries) ||
++        !build.write_file(Join([stage, "/", outputs[2]]), PolicyWitness(values)) ||
++        !build.write_file(Join([stage, "/", outputs[3]]), PolicyReceiptText(values, entries)) ||
++        !build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]),
++                          Join(["1\n", InstalledInventory(stage, entries, false)])) ||
++        !InstalledVerified(stage, arguments, entries)) {
++        build.report("sdk: installed Project witness, inventory or readiness failed");
++        return 1;
++    }
++    return 0;
++}
++VerifyInstalledProject :: () -> int {
++    arguments := build.arguments();
++    if (!InstalledArguments(arguments, false)) {
++        build.report("sdk: invalid installed Project verification arguments or payload");
++        return 2;
++    }
++    stage := Option(arguments, "--prefix");
++    arguments = build.concat(arguments, ["--policy-source", Join([stage, "/", PolicyOutputs()[0]])]);
++    if (!InstalledVerified(stage, arguments, InstalledEntries(stage))) {
++        build.report("sdk: installed Project verification failed");
++        return 1;
++    }
++    return 0;
++}
